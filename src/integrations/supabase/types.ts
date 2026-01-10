@@ -190,6 +190,33 @@ export type Database = {
           },
         ]
       }
+      driver_locations: {
+        Row: {
+          accuracy: number | null
+          chofer_id: string
+          id: string
+          lat: number
+          lng: number
+          updated_at: string
+        }
+        Insert: {
+          accuracy?: number | null
+          chofer_id: string
+          id?: string
+          lat: number
+          lng: number
+          updated_at?: string
+        }
+        Update: {
+          accuracy?: number | null
+          chofer_id?: string
+          id?: string
+          lat?: number
+          lng?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       envio_detalles: {
         Row: {
           concepto_id: string | null
@@ -301,6 +328,7 @@ export type Database = {
           dni_destinatario: string | null
           dni_remitente: string | null
           estado: Database["public"]["Enums"]["shipment_status"] | null
+          estado_retiro: string | null
           fecha_entrega: string | null
           fecha_recogida: string | null
           fecha_retiro: string | null
@@ -356,6 +384,7 @@ export type Database = {
           dni_destinatario?: string | null
           dni_remitente?: string | null
           estado?: Database["public"]["Enums"]["shipment_status"] | null
+          estado_retiro?: string | null
           fecha_entrega?: string | null
           fecha_recogida?: string | null
           fecha_retiro?: string | null
@@ -411,6 +440,7 @@ export type Database = {
           dni_destinatario?: string | null
           dni_remitente?: string | null
           estado?: Database["public"]["Enums"]["shipment_status"] | null
+          estado_retiro?: string | null
           fecha_entrega?: string | null
           fecha_recogida?: string | null
           fecha_retiro?: string | null
@@ -546,16 +576,20 @@ export type Database = {
           chofer_id: string | null
           created_at: string | null
           created_by: string | null
+          distancia_total_km: number | null
           estado: string | null
           fecha_llegada_estimada: string | null
           fecha_llegada_real: string | null
           fecha_salida: string | null
+          fin_real: string | null
           id: string
+          inicio_real: string | null
           notas: string | null
           numero: string
           recibido_por: string | null
           sucursal_destino_id: string
           sucursal_origen_id: string
+          tiempo_estimado_horas: number | null
           updated_at: string | null
           vehiculo_id: string | null
         }
@@ -564,16 +598,20 @@ export type Database = {
           chofer_id?: string | null
           created_at?: string | null
           created_by?: string | null
+          distancia_total_km?: number | null
           estado?: string | null
           fecha_llegada_estimada?: string | null
           fecha_llegada_real?: string | null
           fecha_salida?: string | null
+          fin_real?: string | null
           id?: string
+          inicio_real?: string | null
           notas?: string | null
           numero: string
           recibido_por?: string | null
           sucursal_destino_id: string
           sucursal_origen_id: string
+          tiempo_estimado_horas?: number | null
           updated_at?: string | null
           vehiculo_id?: string | null
         }
@@ -582,16 +620,20 @@ export type Database = {
           chofer_id?: string | null
           created_at?: string | null
           created_by?: string | null
+          distancia_total_km?: number | null
           estado?: string | null
           fecha_llegada_estimada?: string | null
           fecha_llegada_real?: string | null
           fecha_salida?: string | null
+          fin_real?: string | null
           id?: string
+          inicio_real?: string | null
           notas?: string | null
           numero?: string
           recibido_por?: string | null
           sucursal_destino_id?: string
           sucursal_origen_id?: string
+          tiempo_estimado_horas?: number | null
           updated_at?: string | null
           vehiculo_id?: string | null
         }
@@ -615,6 +657,50 @@ export type Database = {
             columns: ["vehiculo_id"]
             isOneToOne: false
             referencedRelation: "vehiculos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      incidentes: {
+        Row: {
+          chofer_id: string
+          created_at: string
+          descripcion: string | null
+          envio_id: string | null
+          estado: string
+          foto_evidencia: string | null
+          id: string
+          resolucion: string | null
+          tipo: string
+        }
+        Insert: {
+          chofer_id: string
+          created_at?: string
+          descripcion?: string | null
+          envio_id?: string | null
+          estado?: string
+          foto_evidencia?: string | null
+          id?: string
+          resolucion?: string | null
+          tipo: string
+        }
+        Update: {
+          chofer_id?: string
+          created_at?: string
+          descripcion?: string | null
+          envio_id?: string | null
+          estado?: string
+          foto_evidencia?: string | null
+          id?: string
+          resolucion?: string | null
+          tipo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "incidentes_envio_id_fkey"
+            columns: ["envio_id"]
+            isOneToOne: false
+            referencedRelation: "envios"
             referencedColumns: ["id"]
           },
         ]
