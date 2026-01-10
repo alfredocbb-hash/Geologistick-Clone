@@ -581,9 +581,10 @@ export default function NewShipment() {
       queryClient.invalidateQueries({ queryKey: ['clientes_cta_cte'] });
       toast({
         title: '¡Envío creado!',
-        description: `Tracking: ${data.tracking_number}`,
+        description: `Tracking: ${data.tracking_number}. Redirigiendo a etiqueta...`,
       });
-      navigate('/shipments');
+      // Redirigir a la página de impresión de etiqueta
+      navigate(`/print-label?id=${data.id}`);
     },
     onError: (error) => {
       toast({
