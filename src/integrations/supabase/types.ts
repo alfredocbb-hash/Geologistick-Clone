@@ -1754,6 +1754,7 @@ export type Database = {
         | "bodega"
         | "atencion_cliente"
         | "despachador"
+        | "super_admin"
       cash_session_status: "abierta" | "cerrada" | "pendiente_aprobacion"
       payment_method: "efectivo" | "mercado_pago" | "transferencia"
       payment_status: "pendiente" | "pagado" | "fallido" | "reembolsado"
@@ -1904,6 +1905,7 @@ export const Constants = {
         "bodega",
         "atencion_cliente",
         "despachador",
+        "super_admin",
       ],
       cash_session_status: ["abierta", "cerrada", "pendiente_aprobacion"],
       payment_method: ["efectivo", "mercado_pago", "transferencia"],
