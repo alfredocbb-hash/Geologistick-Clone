@@ -317,7 +317,7 @@ export default function NewShipment() {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-6 max-w-4xl mx-auto pb-8">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
@@ -697,17 +697,7 @@ export default function NewShipment() {
               <Separator className="my-2" />
 
               <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg font-semibold">Total</span>
-                  <Badge variant="outline" className={
-                    formData.tipo_pago === 'contado' ? 'bg-success/10 text-success' :
-                    formData.tipo_pago === 'destino' ? 'bg-warning/10 text-warning' :
-                    'bg-primary/10 text-primary'
-                  }>
-                    {formData.tipo_pago === 'contado' ? 'Contado' :
-                     formData.tipo_pago === 'destino' ? 'Pago Destino' : 'Cta. Cte.'}
-                  </Badge>
-                </div>
+                <span className="text-lg font-semibold">Total a Pagar</span>
                 <span className="text-2xl font-bold text-primary">
                   {formatCurrency(calcularPrecio())}
                 </span>
