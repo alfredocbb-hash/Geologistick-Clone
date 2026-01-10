@@ -47,7 +47,7 @@ import {
   CheckCircle2,
   AlertTriangle,
 } from 'lucide-react';
-import { GoogleMapsProvider } from '@/components/maps/GoogleMapsProvider';
+
 import { AddressAutocomplete, type AddressDetails } from '@/components/maps/AddressAutocomplete';
 
 interface Sucursal {
@@ -403,8 +403,7 @@ export default function Branches() {
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <GoogleMapsProvider>
-              <DialogHeader>
+            <DialogHeader>
                 <DialogTitle>
                   {editingSucursal ? 'Editar Sucursal' : 'Nueva Sucursal'}
                 </DialogTitle>
@@ -685,8 +684,7 @@ export default function Branches() {
                     : 'Crear'}
                 </Button>
               </div>
-              </form>
-            </GoogleMapsProvider>
+            </form>
           </DialogContent>
         </Dialog>
       </div>
