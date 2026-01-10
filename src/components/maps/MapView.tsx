@@ -4,10 +4,14 @@ import { useGoogleMapsLoaded } from './GoogleMapsProvider';
 import { Card } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
 
-interface MarkerInfo {
+export interface MarkerInfo {
   position: { lat: number; lng: number };
   title?: string;
-  icon?: 'origin' | 'destination' | 'branch' | 'current';
+  icon?: 'origin' | 'destination' | 'branch' | 'current' | 'warning';
+  id?: string;
+  type?: 'envio' | 'sucursal' | 'origin';
+  data?: any;
+  onClick?: () => void;
 }
 
 interface MapViewProps {
@@ -20,6 +24,7 @@ interface MapViewProps {
   polylinePath?: { lat: number; lng: number }[];
   height?: string;
   className?: string;
+  onMarkerClick?: (marker: MarkerInfo) => void;
 }
 
 const defaultCenter = { lat: -34.6037, lng: -58.3816 }; // Buenos Aires
@@ -50,6 +55,7 @@ const getMarkerIcon = (type?: MarkerInfo['icon']): string => {
     destination: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png',
     branch: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png',
     current: 'https://maps.google.com/mapfiles/ms/icons/yellow-dot.png',
+    warning: 'https://maps.google.com/mapfiles/ms/icons/grey-dot.png',
   };
   return icons[type || 'branch'] || icons.branch;
 };
@@ -64,6 +70,7 @@ function MapViewComponent({
   polylinePath = [],
   height = '300px',
   className = '',
+  onMarkerClick,
 }: MapViewProps) {
   const isLoaded = useGoogleMapsLoaded();
   const [map, setMap] = useState<google.maps.Map | null>(null);
@@ -143,10 +150,17 @@ function MapViewComponent({
         {/* Render markers if not showing route */}
         {!directions && markers.map((marker, index) => (
           <Marker
-            key={index}
+            key={marker.id || index}
             position={marker.position}
             title={marker.title}
             icon={getMarkerIcon(marker.icon)}
+            onClick={() => {
+              if (marker.onClick) {
+                marker.onClick();
+              } else if (onMarkerClick) {
+                onMarkerClick(marker);
+              }
+            }}
           />
         ))}
 

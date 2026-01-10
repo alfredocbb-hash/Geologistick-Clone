@@ -36,7 +36,6 @@ import {
   Zap,
   Clock,
   Loader2,
-  Printer,
   Calendar,
   User,
   CheckCircle,
@@ -48,7 +47,9 @@ import {
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
-import MapView from "@/components/maps/MapView";
+import MapView, { MarkerInfo } from "@/components/maps/MapView";
+import { ShipmentMapPopup } from "@/components/maps/ShipmentMapPopup";
+import { BranchMapPopup } from "@/components/maps/BranchMapPopup";
 
 interface RouteStop {
   envio_id: string;
@@ -84,6 +85,11 @@ export default function RoutePlanner() {
   const [routeOptions, setRouteOptions] = useState<RouteOption[]>([]);
   const [selectedOption, setSelectedOption] = useState<RouteOption | null>(null);
   const [filterType, setFilterType] = useState<"all" | "retiro" | "entrega">("all");
+  const [selectedMapItem, setSelectedMapItem] = useState<{
+    type: 'envio' | 'sucursal';
+    data: any;
+  } | null>(null);
+  const [isGeolocating, setIsGeolocating] = useState(false);
 
   // Fetch sucursal de origen del usuario
   const { data: sucursalOrigen } = useQuery({
@@ -101,6 +107,33 @@ export default function RoutePlanner() {
       return data;
     },
     enabled: !!profile?.sucursal_id,
+  });
+
+  // Fetch all branches with shipment counts
+  const { data: sucursalesConEnvios = [] } = useQuery({
+    queryKey: ["sucursales-con-envios"],
+    queryFn: async () => {
+      const { data: sucursales, error: sucError } = await supabase
+        .from("sucursales")
+        .select("*")
+        .eq("activa", true);
+
+      if (sucError) throw sucError;
+
+      const { data: enviosCounts, error: envError } = await supabase
+        .from("envios")
+        .select("sucursal_origen_id")
+        .in("estado", ["pendiente", "recogido", "en_bodega"])
+        .is("chofer_id", null);
+
+      if (envError) throw envError;
+
+      // Count shipments per branch
+      return (sucursales || []).map(s => ({
+        ...s,
+        enviosCount: (enviosCounts || []).filter(e => e.sucursal_origen_id === s.id).length
+      }));
+    },
   });
 
   // Fetch envíos pendientes
@@ -274,42 +307,175 @@ export default function RoutePlanner() {
     });
   }, [selectedOption, calculateTotalDistance]);
 
-  // Map markers - show numbered stops when route is optimized
+  // Geocode a shipment
+  const geocodeEnvio = useCallback(async (envio: any) => {
+    setIsGeolocating(true);
+    try {
+      const direccion = envio.tipo === "retiro" 
+        ? envio.direccion_retiro || envio.remitente?.direccion 
+        : envio.direccion_entrega || envio.destinatario?.direccion;
+      const ciudad = envio.tipo === "retiro"
+        ? envio.ciudad_retiro || envio.remitente?.ciudad
+        : envio.ciudad_entrega || envio.destinatario?.ciudad;
+
+      if (!direccion) {
+        toast.error("El envío no tiene dirección");
+        return;
+      }
+
+      const response = await supabase.functions.invoke('geocode-address', {
+        body: { address: direccion, city: ciudad }
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+
+      if (response.data?.lat && response.data?.lng) {
+        const latField = envio.tipo === "retiro" ? "remitente_lat" : "destinatario_lat";
+        const lngField = envio.tipo === "retiro" ? "remitente_lng" : "destinatario_lng";
+        
+        const { error } = await supabase
+          .from("envios")
+          .update({
+            [latField]: response.data.lat,
+            [lngField]: response.data.lng,
+          })
+          .eq("id", envio.id);
+
+        if (error) throw error;
+
+        toast.success("Envío geolocalizado correctamente");
+        queryClient.invalidateQueries({ queryKey: ["envios-planificador"] });
+      } else {
+        toast.error("No se encontraron coordenadas para esta dirección");
+      }
+    } catch (error: any) {
+      console.error("Geocode error:", error);
+      toast.error(error.message || "Error al geolocalizar la dirección");
+    } finally {
+      setIsGeolocating(false);
+      setSelectedMapItem(null);
+    }
+  }, [queryClient]);
+
+  // Geocode a branch
+  const geocodeSucursal = useCallback(async (sucursal: any) => {
+    setIsGeolocating(true);
+    try {
+      if (!sucursal.direccion) {
+        toast.error("La sucursal no tiene dirección");
+        return;
+      }
+
+      const response = await supabase.functions.invoke('geocode-address', {
+        body: { address: sucursal.direccion, city: sucursal.ciudad }
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+
+      if (response.data?.lat && response.data?.lng) {
+        const { error } = await supabase
+          .from("sucursales")
+          .update({
+            lat: response.data.lat,
+            lng: response.data.lng,
+          })
+          .eq("id", sucursal.id);
+
+        if (error) throw error;
+
+        toast.success("Sucursal geolocalizada correctamente");
+        queryClient.invalidateQueries({ queryKey: ["sucursales-con-envios"] });
+        queryClient.invalidateQueries({ queryKey: ["sucursal-origen"] });
+      } else {
+        toast.error("No se encontraron coordenadas para esta dirección");
+      }
+    } catch (error: any) {
+      console.error("Geocode error:", error);
+      toast.error(error.message || "Error al geolocalizar la sucursal");
+    } finally {
+      setIsGeolocating(false);
+      setSelectedMapItem(null);
+    }
+  }, [queryClient]);
+
+  // Handle marker click
+  const handleMarkerClick = useCallback((marker: MarkerInfo) => {
+    if (marker.type === 'envio' || marker.type === 'sucursal') {
+      setSelectedMapItem({
+        type: marker.type,
+        data: marker.data,
+      });
+    }
+  }, []);
+
+  // Map markers - show all sucursales, selected shipments, and origin
   const mapMarkers = useMemo(() => {
-    const markers: Array<{ position: { lat: number; lng: number }; title: string; icon?: 'origin' | 'destination' | 'branch' | 'current' }> = [];
+    const markers: MarkerInfo[] = [];
     
-    // Agregar sucursal de origen como primer marcador
+    // 1. Add all branches (except origin)
+    sucursalesConEnvios.forEach(sucursal => {
+      if (sucursal.id !== sucursalOrigen?.id && sucursal.lat && sucursal.lng) {
+        markers.push({
+          id: sucursal.id,
+          position: { lat: Number(sucursal.lat), lng: Number(sucursal.lng) },
+          title: `🏢 ${sucursal.nombre}${sucursal.enviosCount ? ` (${sucursal.enviosCount} envíos)` : ''}`,
+          icon: 'branch',
+          type: 'sucursal',
+          data: sucursal,
+        });
+      }
+    });
+    
+    // 2. Add origin branch
     if (sucursalOrigen?.lat && sucursalOrigen?.lng) {
+      const origenData = sucursalesConEnvios.find(s => s.id === sucursalOrigen.id) || sucursalOrigen;
       markers.push({
+        id: sucursalOrigen.id,
         position: { lat: Number(sucursalOrigen.lat), lng: Number(sucursalOrigen.lng) },
-        title: `🏢 Origen: ${sucursalOrigen.nombre}`,
+        title: `📍 Origen: ${sucursalOrigen.nombre}`,
         icon: 'origin',
+        type: 'origin',
+        data: origenData,
       });
     }
     
-    // Si hay ruta optimizada, mostrar paradas ordenadas
+    // 3. If optimized route, show ordered stops
     if (selectedOption) {
       selectedOption.stops.forEach((stop, index) => {
+        const envio = selectedEnviosData.find(e => e.id === stop.envio_id);
         markers.push({
+          id: stop.envio_id,
           position: { lat: stop.lat, lng: stop.lng },
           title: `${index + 1}. ${stop.tracking} - ${stop.cliente_nombre}`,
           icon: stop.tipo === 'retiro' ? 'current' : 'destination',
+          type: 'envio',
+          data: envio,
         });
       });
     } else {
-      // Envíos seleccionados sin optimizar
-      selectedEnviosData
-        .filter(e => e.coords?.lat && e.coords?.lng)
-        .forEach((e, index) => {
+      // 4. Show all selected shipments (with and without coords)
+      selectedEnviosData.forEach((envio, index) => {
+        const hasCoords = envio.coords?.lat && envio.coords?.lng;
+        
+        if (hasCoords) {
           markers.push({
-            position: { lat: Number(e.coords.lat), lng: Number(e.coords.lng) },
-            title: `${index + 1}. ${e.tracking_number}`,
+            id: envio.id,
+            position: { lat: Number(envio.coords.lat), lng: Number(envio.coords.lng) },
+            title: `${index + 1}. ${envio.tracking_number}`,
+            icon: envio.tipo === 'retiro' ? 'current' : 'destination',
+            type: 'envio',
+            data: envio,
           });
-        });
+        }
+      });
     }
     
     return markers;
-  }, [selectedEnviosData, selectedOption, sucursalOrigen]);
+  }, [selectedEnviosData, selectedOption, sucursalOrigen, sucursalesConEnvios]);
 
   // Polyline path for drawing route on map
   const routePolyline = useMemo(() => {
@@ -729,7 +895,16 @@ export default function RoutePlanner() {
             {/* Mapa */}
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Vista Previa</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">Vista Previa</CardTitle>
+                  {/* Show count of shipments without coords */}
+                  {selectedEnviosData.filter(e => !e.coords?.lat || !e.coords?.lng).length > 0 && (
+                    <Badge variant="outline" className="text-yellow-600 border-yellow-400">
+                      <AlertTriangle className="mr-1 h-3 w-3" />
+                      {selectedEnviosData.filter(e => !e.coords?.lat || !e.coords?.lng).length} sin coords
+                    </Badge>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Indicador de sucursal de origen */}
@@ -765,6 +940,26 @@ export default function RoutePlanner() {
                   </div>
                 )}
 
+                {/* Legend */}
+                <div className="flex flex-wrap gap-3 text-xs">
+                  <div className="flex items-center gap-1">
+                    <span className="w-3 h-3 rounded-full bg-green-500"></span>
+                    <span>Origen</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="w-3 h-3 rounded-full bg-blue-500"></span>
+                    <span>Sucursales</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="w-3 h-3 rounded-full bg-yellow-500"></span>
+                    <span>Retiros</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="w-3 h-3 rounded-full bg-red-500"></span>
+                    <span>Entregas</span>
+                  </div>
+                </div>
+
                 <div className="h-80 rounded-lg overflow-hidden">
                   <MapView
                     markers={mapMarkers}
@@ -777,11 +972,62 @@ export default function RoutePlanner() {
                           : { lat: -34.6037, lng: -58.3816 }
                     }
                     zoom={12}
+                    onMarkerClick={handleMarkerClick}
                   />
                 </div>
+
+                {/* Shipments without coordinates list */}
+                {selectedEnviosData.filter(e => !e.coords?.lat || !e.coords?.lng).length > 0 && (
+                  <div className="p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 space-y-2">
+                    <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200 flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4" />
+                      Envíos sin geolocalizar
+                    </p>
+                    <div className="space-y-1">
+                      {selectedEnviosData
+                        .filter(e => !e.coords?.lat || !e.coords?.lng)
+                        .map(envio => (
+                          <div 
+                            key={envio.id} 
+                            className="flex items-center justify-between text-sm p-2 bg-white dark:bg-gray-800 rounded cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
+                            onClick={() => setSelectedMapItem({ type: 'envio', data: envio })}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-xs">{envio.tracking_number}</span>
+                              <Badge variant="outline" className="text-xs">
+                                {envio.tipo === "retiro" ? "Retiro" : "Entrega"}
+                              </Badge>
+                            </div>
+                            <Button size="sm" variant="ghost" className="h-7 text-xs">
+                              <Navigation className="mr-1 h-3 w-3" />
+                              Geolocalizar
+                            </Button>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
+
+          {/* Shipment Popup */}
+          <ShipmentMapPopup
+            envio={selectedMapItem?.type === 'envio' ? selectedMapItem.data : null}
+            isOpen={selectedMapItem?.type === 'envio'}
+            onClose={() => setSelectedMapItem(null)}
+            onGeolocate={geocodeEnvio}
+            isGeolocating={isGeolocating}
+          />
+
+          {/* Branch Popup */}
+          <BranchMapPopup
+            sucursal={selectedMapItem?.type === 'sucursal' || selectedMapItem?.data?.id === sucursalOrigen?.id ? selectedMapItem?.data : null}
+            isOpen={selectedMapItem?.type === 'sucursal' || (selectedMapItem?.type === 'origin' as any)}
+            onClose={() => setSelectedMapItem(null)}
+            onGeolocate={geocodeSucursal}
+            isGeolocating={isGeolocating}
+          />
 
           {/* Opciones de ruta */}
           {routeOptions.length > 0 && (
