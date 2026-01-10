@@ -560,12 +560,15 @@ export default function Vehicles() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="sucursal">Sucursal</Label>
-                  <Select value={form.sucursal_id} onValueChange={(val) => setForm({ ...form, sucursal_id: val })}>
+                  <Select
+                    value={form.sucursal_id || "none"}
+                    onValueChange={(val) => setForm({ ...form, sucursal_id: val === "none" ? "" : val })}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Sin asignar" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Sin asignar</SelectItem>
+                      <SelectItem value="none">Sin asignar</SelectItem>
                       {sucursales?.map(s => (
                         <SelectItem key={s.id} value={s.id}>
                           {s.codigo && `[${s.codigo}] `}{s.nombre}
