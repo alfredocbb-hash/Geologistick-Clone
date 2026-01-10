@@ -33,6 +33,8 @@ import RouteSheets from "./pages/RouteSheets";
 import PrintRouteSheet from "./pages/PrintRouteSheet";
 import RoutePlanner from "./pages/RoutePlanner";
 import LiveMap from "./pages/LiveMap";
+import RouteStart from "./pages/RouteStart";
+import ActiveRouteNavigation from "./pages/ActiveRouteNavigation";
 import NotFound from "./pages/NotFound";
 
 // Icons for placeholders
@@ -71,6 +73,8 @@ const App = () => (
             <Route path="/vehicles" element={<DashboardLayout><Vehicles /></DashboardLayout>} />
             <Route path="/routes" element={<DashboardLayout><RoutesPage /></DashboardLayout>} />
             <Route path="/my-routes" element={<DashboardLayout><MyRoutes /></DashboardLayout>} />
+            <Route path="/route-start" element={<RouteStart />} />
+            <Route path="/active-route" element={<ActiveRouteNavigation />} />
             
             {/* Finanzas */}
             <Route path="/cash" element={<DashboardLayout><Cash /></DashboardLayout>} />
