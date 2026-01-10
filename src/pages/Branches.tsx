@@ -9,6 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Separator } from '@/components/ui/separator';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -37,6 +39,11 @@ import {
   Package,
   Percent,
   Save,
+  Warehouse,
+  Truck,
+  Home,
+  ArrowDownToLine,
+  ArrowUpFromLine,
 } from 'lucide-react';
 
 interface Sucursal {
@@ -49,6 +56,15 @@ interface Sucursal {
   horario_cierre: string | null;
   activa: boolean | null;
   created_at: string | null;
+  // New fields
+  codigo: string | null;
+  ciudad: string | null;
+  es_centro_logistico: boolean | null;
+  puede_despachar: boolean | null;
+  puede_recibir: boolean | null;
+  realiza_retiros: boolean | null;
+  realiza_entregas: boolean | null;
+  centro_logistico_id: string | null;
 }
 
 interface TarifaConcepto {
@@ -82,6 +98,15 @@ export default function Branches() {
     horario_apertura: '08:00',
     horario_cierre: '18:00',
     activa: true,
+    // New fields
+    codigo: '',
+    ciudad: '',
+    es_centro_logistico: false,
+    puede_despachar: true,
+    puede_recibir: true,
+    realiza_retiros: false,
+    realiza_entregas: false,
+    centro_logistico_id: '',
   });
   const [commissionData, setCommissionData] = useState<Record<string, {
     contado: string;
@@ -101,6 +126,9 @@ export default function Branches() {
       return data as Sucursal[];
     },
   });
+
+  // Get centros logísticos for dropdown
+  const centrosLogisticos = sucursales.filter(s => s.es_centro_logistico);
 
   // Fetch conceptos
   const { data: conceptos = [] } = useQuery({
@@ -158,6 +186,15 @@ export default function Branches() {
         horario_apertura: data.horario_apertura || null,
         horario_cierre: data.horario_cierre || null,
         activa: data.activa,
+        // New fields
+        codigo: data.codigo || null,
+        ciudad: data.ciudad || null,
+        es_centro_logistico: data.es_centro_logistico,
+        puede_despachar: data.puede_despachar,
+        puede_recibir: data.puede_recibir,
+        realiza_retiros: data.realiza_retiros,
+        realiza_entregas: data.realiza_entregas,
+        centro_logistico_id: data.centro_logistico_id || null,
       };
 
       if (editingSucursal) {
@@ -250,6 +287,14 @@ export default function Branches() {
       horario_apertura: '08:00',
       horario_cierre: '18:00',
       activa: true,
+      codigo: '',
+      ciudad: '',
+      es_centro_logistico: false,
+      puede_despachar: true,
+      puede_recibir: true,
+      realiza_retiros: false,
+      realiza_entregas: false,
+      centro_logistico_id: '',
     });
     setEditingSucursal(null);
   };
@@ -264,6 +309,14 @@ export default function Branches() {
       horario_apertura: sucursal.horario_apertura || '08:00',
       horario_cierre: sucursal.horario_cierre || '18:00',
       activa: sucursal.activa ?? true,
+      codigo: sucursal.codigo || '',
+      ciudad: sucursal.ciudad || '',
+      es_centro_logistico: sucursal.es_centro_logistico ?? false,
+      puede_despachar: sucursal.puede_despachar ?? true,
+      puede_recibir: sucursal.puede_recibir ?? true,
+      realiza_retiros: sucursal.realiza_retiros ?? false,
+      realiza_entregas: sucursal.realiza_entregas ?? false,
+      centro_logistico_id: sucursal.centro_logistico_id || '',
     });
     setIsDialogOpen(true);
   };
@@ -276,6 +329,20 @@ export default function Branches() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     saveMutation.mutate(formData);
+  };
+
+  const getCapacidadesBadges = (sucursal: Sucursal) => {
+    const badges = [];
+    if (sucursal.es_centro_logistico) {
+      badges.push({ label: 'Centro Logístico', color: 'bg-accent text-accent-foreground', icon: Warehouse });
+    }
+    if (sucursal.realiza_retiros) {
+      badges.push({ label: 'Retiros', color: 'bg-warning/20 text-warning', icon: ArrowUpFromLine });
+    }
+    if (sucursal.realiza_entregas) {
+      badges.push({ label: 'Entregas', color: 'bg-success/20 text-success', icon: ArrowDownToLine });
+    }
+    return badges;
   };
 
   if (!isAdmin()) {
@@ -295,7 +362,7 @@ export default function Branches() {
         <div>
           <h1 className="text-3xl font-bold text-foreground">Sucursales</h1>
           <p className="text-muted-foreground">
-            Administra las sucursales y sus comisiones
+            Administra las sucursales, capacidades y comisiones
           </p>
         </div>
         <Dialog
@@ -311,88 +378,244 @@ export default function Branches() {
               Nueva Sucursal
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
                 {editingSucursal ? 'Editar Sucursal' : 'Nueva Sucursal'}
               </DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="nombre">Nombre *</Label>
-                <Input
-                  id="nombre"
-                  value={formData.nombre}
-                  onChange={(e) =>
-                    setFormData({ ...formData, nombre: e.target.value })
-                  }
-                  required
-                />
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Basic Info */}
+              <div className="space-y-4">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <Building2 className="h-4 w-4" />
+                  Información Básica
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="codigo">Código *</Label>
+                    <Input
+                      id="codigo"
+                      value={formData.codigo}
+                      onChange={(e) =>
+                        setFormData({ ...formData, codigo: e.target.value.toUpperCase() })
+                      }
+                      placeholder="Ej: SUC01, CENTRAL"
+                      required
+                    />
+                    <p className="text-xs text-muted-foreground">Se usará en el tracking</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="nombre">Nombre *</Label>
+                    <Input
+                      id="nombre"
+                      value={formData.nombre}
+                      onChange={(e) =>
+                        setFormData({ ...formData, nombre: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="ciudad">Ciudad *</Label>
+                    <Input
+                      id="ciudad"
+                      value={formData.ciudad}
+                      onChange={(e) =>
+                        setFormData({ ...formData, ciudad: e.target.value })
+                      }
+                      placeholder="Ej: Buenos Aires"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="direccion">Dirección *</Label>
+                    <Input
+                      id="direccion"
+                      value={formData.direccion}
+                      onChange={(e) =>
+                        setFormData({ ...formData, direccion: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="telefono">Teléfono</Label>
+                    <Input
+                      id="telefono"
+                      value={formData.telefono}
+                      onChange={(e) =>
+                        setFormData({ ...formData, telefono: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) =>
+                        setFormData({ ...formData, email: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="horario_apertura">Hora Apertura</Label>
+                    <Input
+                      id="horario_apertura"
+                      type="time"
+                      value={formData.horario_apertura}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          horario_apertura: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="horario_cierre">Hora Cierre</Label>
+                    <Input
+                      id="horario_cierre"
+                      type="time"
+                      value={formData.horario_cierre}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          horario_cierre: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="direccion">Dirección *</Label>
-                <Input
-                  id="direccion"
-                  value={formData.direccion}
-                  onChange={(e) =>
-                    setFormData({ ...formData, direccion: e.target.value })
-                  }
-                  required
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="telefono">Teléfono</Label>
-                  <Input
-                    id="telefono"
-                    value={formData.telefono}
-                    onChange={(e) =>
-                      setFormData({ ...formData, telefono: e.target.value })
+
+              <Separator />
+
+              {/* Capacidades */}
+              <div className="space-y-4">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <Truck className="h-4 w-4" />
+                  Capacidades Operativas
+                </h3>
+                
+                {/* Centro Logístico */}
+                <div className="flex items-center justify-between p-4 rounded-lg bg-accent/10 border border-accent/20">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <Warehouse className="h-4 w-4 text-accent" />
+                      <Label className="font-medium">Centro Logístico</Label>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Hub central de distribución para otras sucursales
+                    </p>
+                  </div>
+                  <Switch
+                    checked={formData.es_centro_logistico}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, es_centro_logistico: checked })
                     }
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) =>
-                      setFormData({ ...formData, email: e.target.value })
-                    }
-                  />
+
+                {/* Asignar a centro logístico */}
+                {!formData.es_centro_logistico && centrosLogisticos.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Centro Logístico Asignado</Label>
+                    <Select
+                      value={formData.centro_logistico_id}
+                      onValueChange={(v) => setFormData({ ...formData, centro_logistico_id: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar centro logístico" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">Sin asignar</SelectItem>
+                        {centrosLogisticos
+                          .filter(c => c.id !== editingSucursal?.id)
+                          .map((c) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.codigo} - {c.nombre}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Los envíos pasarán por este centro antes de llegar a destino
+                    </p>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex items-center justify-between p-3 rounded-lg border">
+                    <div className="space-y-0.5">
+                      <Label className="text-sm">Puede Despachar</Label>
+                      <p className="text-xs text-muted-foreground">Enviar paquetes</p>
+                    </div>
+                    <Switch
+                      checked={formData.puede_despachar}
+                      onCheckedChange={(checked) =>
+                        setFormData({ ...formData, puede_despachar: checked })
+                      }
+                    />
+                  </div>
+                  <div className="flex items-center justify-between p-3 rounded-lg border">
+                    <div className="space-y-0.5">
+                      <Label className="text-sm">Puede Recibir</Label>
+                      <p className="text-xs text-muted-foreground">Recibir paquetes</p>
+                    </div>
+                    <Switch
+                      checked={formData.puede_recibir}
+                      onCheckedChange={(checked) =>
+                        setFormData({ ...formData, puede_recibir: checked })
+                      }
+                    />
+                  </div>
+                </div>
+
+                <Separator />
+
+                <h4 className="font-medium flex items-center gap-2">
+                  <Home className="h-4 w-4" />
+                  Servicios de Última Milla
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex items-center justify-between p-3 rounded-lg border border-warning/30 bg-warning/5">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <ArrowUpFromLine className="h-4 w-4 text-warning" />
+                        <Label className="text-sm">Realiza Retiros</Label>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Retirar en domicilio</p>
+                    </div>
+                    <Switch
+                      checked={formData.realiza_retiros}
+                      onCheckedChange={(checked) =>
+                        setFormData({ ...formData, realiza_retiros: checked })
+                      }
+                    />
+                  </div>
+                  <div className="flex items-center justify-between p-3 rounded-lg border border-success/30 bg-success/5">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <ArrowDownToLine className="h-4 w-4 text-success" />
+                        <Label className="text-sm">Realiza Entregas</Label>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Entregar a domicilio</p>
+                    </div>
+                    <Switch
+                      checked={formData.realiza_entregas}
+                      onCheckedChange={(checked) =>
+                        setFormData({ ...formData, realiza_entregas: checked })
+                      }
+                    />
+                  </div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="horario_apertura">Hora Apertura</Label>
-                  <Input
-                    id="horario_apertura"
-                    type="time"
-                    value={formData.horario_apertura}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        horario_apertura: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="horario_cierre">Hora Cierre</Label>
-                  <Input
-                    id="horario_cierre"
-                    type="time"
-                    value={formData.horario_cierre}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        horario_cierre: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-              </div>
+
+              <Separator />
+
               <div className="flex items-center justify-between">
                 <Label htmlFor="activa">Sucursal Activa</Label>
                 <Switch
@@ -403,6 +626,7 @@ export default function Branches() {
                   }
                 />
               </div>
+
               <div className="flex justify-end gap-2">
                 <Button
                   type="button"
@@ -432,7 +656,7 @@ export default function Branches() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="glass">
           <CardContent className="p-4 flex items-center gap-4">
             <div className="p-3 rounded-xl bg-sucursales/10">
@@ -446,13 +670,26 @@ export default function Branches() {
         </Card>
         <Card className="glass">
           <CardContent className="p-4 flex items-center gap-4">
-            <div className="p-3 rounded-xl bg-success/10">
-              <Building2 className="h-6 w-6 text-success" />
+            <div className="p-3 rounded-xl bg-accent/10">
+              <Warehouse className="h-6 w-6 text-accent" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Activas</p>
+              <p className="text-sm text-muted-foreground">Centros Logísticos</p>
               <p className="text-2xl font-bold">
-                {sucursales.filter((s) => s.activa).length}
+                {sucursales.filter((s) => s.es_centro_logistico).length}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="glass">
+          <CardContent className="p-4 flex items-center gap-4">
+            <div className="p-3 rounded-xl bg-success/10">
+              <ArrowDownToLine className="h-6 w-6 text-success" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Con Entregas</p>
+              <p className="text-2xl font-bold">
+                {sucursales.filter((s) => s.realiza_entregas).length}
               </p>
             </div>
           </CardContent>
@@ -460,12 +697,12 @@ export default function Branches() {
         <Card className="glass">
           <CardContent className="p-4 flex items-center gap-4">
             <div className="p-3 rounded-xl bg-warning/10">
-              <Building2 className="h-6 w-6 text-warning" />
+              <ArrowUpFromLine className="h-6 w-6 text-warning" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Inactivas</p>
+              <p className="text-sm text-muted-foreground">Con Retiros</p>
               <p className="text-2xl font-bold">
-                {sucursales.filter((s) => !s.activa).length}
+                {sucursales.filter((s) => s.realiza_retiros).length}
               </p>
             </div>
           </CardContent>
@@ -491,21 +728,25 @@ export default function Branches() {
               <CardContent className="p-6">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-sucursales/10">
-                      <Building2 className="h-5 w-5 text-sucursales" />
+                    <div className={`p-2 rounded-lg ${sucursal.es_centro_logistico ? 'bg-accent/10' : 'bg-sucursales/10'}`}>
+                      {sucursal.es_centro_logistico ? (
+                        <Warehouse className="h-5 w-5 text-accent" />
+                      ) : (
+                        <Building2 className="h-5 w-5 text-sucursales" />
+                      )}
                     </div>
                     <div>
-                      <h3 className="font-semibold">{sucursal.nombre}</h3>
-                      <Badge
-                        variant={sucursal.activa ? 'default' : 'secondary'}
-                        className={
-                          sucursal.activa
-                            ? 'bg-success/10 text-success'
-                            : 'bg-muted'
-                        }
-                      >
-                        {sucursal.activa ? 'Activa' : 'Inactiva'}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        {sucursal.codigo && (
+                          <Badge variant="outline" className="font-mono text-xs">
+                            {sucursal.codigo}
+                          </Badge>
+                        )}
+                        <h3 className="font-semibold">{sucursal.nombre}</h3>
+                      </div>
+                      {sucursal.ciudad && (
+                        <p className="text-sm text-muted-foreground">{sucursal.ciudad}</p>
+                      )}
                     </div>
                   </div>
                   <div className="flex gap-1">
@@ -525,6 +766,29 @@ export default function Branches() {
                       <Edit className="h-4 w-4" />
                     </Button>
                   </div>
+                </div>
+
+                {/* Capacidades badges */}
+                <div className="flex flex-wrap gap-1 mb-3">
+                  {getCapacidadesBadges(sucursal).map((badge, idx) => {
+                    const Icon = badge.icon;
+                    return (
+                      <Badge key={idx} className={`${badge.color} text-xs gap-1`}>
+                        <Icon className="h-3 w-3" />
+                        {badge.label}
+                      </Badge>
+                    );
+                  })}
+                  <Badge
+                    variant={sucursal.activa ? 'default' : 'secondary'}
+                    className={
+                      sucursal.activa
+                        ? 'bg-success/10 text-success'
+                        : 'bg-muted'
+                    }
+                  >
+                    {sucursal.activa ? 'Activa' : 'Inactiva'}
+                  </Badge>
                 </div>
 
                 <div className="space-y-2 text-sm">

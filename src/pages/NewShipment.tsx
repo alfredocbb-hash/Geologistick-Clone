@@ -14,12 +14,13 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import ContactAutocomplete from '@/components/shipments/ContactAutocomplete';
 import { 
   PackagePlus, ArrowLeft, User, MapPin, Package, DollarSign, Loader2, 
-  CreditCard, Truck, Calendar, Clock, Home, AlertCircle, Wallet, Phone
+  CreditCard, Truck, Calendar, Clock, Home, AlertCircle, Wallet, Phone,
+  Building2, ArrowRight
 } from 'lucide-react';
 
 interface TarifaConcepto {
@@ -51,6 +52,47 @@ interface Client {
   limite_credito?: number | null;
 }
 
+interface Sucursal {
+  id: string;
+  nombre: string;
+  codigo: string | null;
+  ciudad: string | null;
+  direccion: string;
+  puede_despachar: boolean | null;
+  puede_recibir: boolean | null;
+  realiza_retiros: boolean | null;
+  realiza_entregas: boolean | null;
+}
+
+type TipoServicioDetalle = 'sucursal_sucursal' | 'sucursal_puerta' | 'puerta_sucursal' | 'puerta_puerta';
+
+const TIPO_SERVICIO_OPTIONS: { value: TipoServicioDetalle; label: string; icon: string; description: string }[] = [
+  { 
+    value: 'sucursal_sucursal', 
+    label: 'Sucursal a Sucursal', 
+    icon: '🏢→🏢',
+    description: 'El cliente despacha y retira en sucursales'
+  },
+  { 
+    value: 'sucursal_puerta', 
+    label: 'Sucursal a Puerta', 
+    icon: '🏢→🏠',
+    description: 'Despacha en sucursal, entregamos a domicilio'
+  },
+  { 
+    value: 'puerta_sucursal', 
+    label: 'Puerta a Sucursal', 
+    icon: '🏠→🏢',
+    description: 'Retiramos a domicilio, retira en sucursal'
+  },
+  { 
+    value: 'puerta_puerta', 
+    label: 'Puerta a Puerta', 
+    icon: '🏠→🏠',
+    description: 'Retiramos y entregamos a domicilio'
+  },
+];
+
 const DIAS_SEMANA = [
   { key: 'lunes', label: 'Lun' },
   { key: 'martes', label: 'Mar' },
@@ -79,8 +121,8 @@ export default function NewShipment() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Tipo de servicio
-  const [tipoServicio, setTipoServicio] = useState<'envio_completo' | 'solo_retiro'>('envio_completo');
+  // Tipo de servicio detallado (4 opciones)
+  const [tipoServicioDetalle, setTipoServicioDetalle] = useState<TipoServicioDetalle>('sucursal_sucursal');
   
   // Días preferidos de entrega
   const [diasPreferidos, setDiasPreferidos] = useState<string[]>([]);
@@ -119,27 +161,55 @@ export default function NewShipment() {
     cliente_cta_cte_id: '',
     cantidad_bultos: '1',
     // Retiro en domicilio
-    requiere_retiro: false,
     fecha_retiro: '',
     horario_retiro: '',
     notas_retiro: '',
-    // Preferencias de entrega
+    direccion_retiro: '',
+    ciudad_retiro: '',
+    cp_retiro: '',
+    // Entrega a domicilio
+    direccion_entrega: '',
+    ciudad_entrega: '',
+    cp_entrega: '',
     horario_preferido_entrega: 'cualquier_hora',
   });
 
+  // Derived states
+  const tieneRetiro = tipoServicioDetalle === 'puerta_sucursal' || tipoServicioDetalle === 'puerta_puerta';
+  const tieneEntrega = tipoServicioDetalle === 'sucursal_puerta' || tipoServicioDetalle === 'puerta_puerta';
+
   // Queries
-  const { data: sucursales } = useQuery({
+  const { data: sucursales = [] } = useQuery({
     queryKey: ['sucursales'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('sucursales')
-        .select('*')
+        .select('id, nombre, codigo, ciudad, direccion, puede_despachar, puede_recibir, realiza_retiros, realiza_entregas')
         .eq('activa', true)
         .order('nombre');
       if (error) throw error;
-      return data;
+      return data as Sucursal[];
     },
   });
+
+  // Filter sucursales based on service type
+  const sucursalesOrigen = useMemo(() => {
+    if (tieneRetiro) {
+      // For pickup services, show sucursales that can do pickups
+      return sucursales.filter(s => s.realiza_retiros);
+    }
+    // For regular dispatch, show all that can dispatch
+    return sucursales.filter(s => s.puede_despachar !== false);
+  }, [sucursales, tieneRetiro]);
+
+  const sucursalesDestino = useMemo(() => {
+    if (tieneEntrega) {
+      // For delivery services, show sucursales that can do deliveries
+      return sucursales.filter(s => s.realiza_entregas);
+    }
+    // For pickup at branch, show all that can receive
+    return sucursales.filter(s => s.puede_recibir !== false);
+  }, [sucursales, tieneEntrega]);
 
   const { data: tarifas } = useQuery({
     queryKey: ['tarifas'],
@@ -222,9 +292,51 @@ export default function NewShipment() {
 
   const selectedTarifa = tarifas?.find(t => t.id === formData.tarifa_id);
 
+  // Auto-fill pickup address from sender when service requires pickup
+  useEffect(() => {
+    if (tieneRetiro && !formData.direccion_retiro) {
+      setFormData(prev => ({
+        ...prev,
+        direccion_retiro: prev.remitente_direccion,
+        ciudad_retiro: prev.remitente_ciudad,
+        cp_retiro: prev.remitente_codigo_postal,
+      }));
+    }
+  }, [tieneRetiro, formData.remitente_direccion]);
+
+  // Auto-fill delivery address from recipient when service requires delivery
+  useEffect(() => {
+    if (tieneEntrega && !formData.direccion_entrega) {
+      setFormData(prev => ({
+        ...prev,
+        direccion_entrega: prev.destinatario_direccion,
+        ciudad_entrega: prev.destinatario_ciudad,
+        cp_entrega: prev.destinatario_codigo_postal,
+      }));
+    }
+  }, [tieneEntrega, formData.destinatario_direccion]);
+
   // Calcular total por conceptos
   const calcularTotalConceptos = () => {
-    return conceptoPrecios.reduce((sum, cp) => sum + Number(cp.monto), 0);
+    let total = conceptoPrecios.reduce((sum, cp) => sum + Number(cp.monto), 0);
+    
+    // Add retiro concept if applicable
+    if (tieneRetiro) {
+      const retiroConcepto = conceptoPrecios.find(cp => cp.concepto?.codigo === 'retiro');
+      if (retiroConcepto) {
+        total += Number(retiroConcepto.monto);
+      }
+    }
+    
+    // Add entrega concept if applicable
+    if (tieneEntrega) {
+      const entregaConcepto = conceptoPrecios.find(cp => cp.concepto?.codigo === 'entrega');
+      if (entregaConcepto) {
+        total += Number(entregaConcepto.monto);
+      }
+    }
+    
+    return total;
   };
 
   const calcularPrecio = () => {
@@ -322,10 +434,10 @@ export default function NewShipment() {
         sucursal_id: formData.sucursal_origen_id || null,
       });
 
-      // 2. Find or create destinatario (unless using existing cta cte client or solo_retiro)
+      // 2. Find or create destinatario
       let destinatarioId = formData.cliente_cta_cte_id || null;
       
-      if (!destinatarioId && tipoServicio === 'envio_completo') {
+      if (!destinatarioId) {
         destinatarioId = await findOrCreateClient({
           nombre: formData.destinatario_nombre,
           apellido: formData.destinatario_apellido,
@@ -339,9 +451,9 @@ export default function NewShipment() {
         });
       }
 
-      // 3. Generate tracking number
+      // 3. Generate tracking number with sucursal code
       const { data: trackingData, error: trackingError } = await supabase
-        .rpc('generate_tracking_number');
+        .rpc('generate_tracking_number', { p_sucursal_id: formData.sucursal_origen_id || null });
 
       if (trackingError) throw trackingError;
 
@@ -366,20 +478,31 @@ export default function NewShipment() {
           pago_contra_entrega: formData.pago_contra_entrega,
           notas: formData.notas,
           created_by: user?.id,
-          // New fields
-          tipo_servicio: tipoServicio,
+          // Service type
+          tipo_servicio_detalle: tipoServicioDetalle,
           cantidad_bultos: parseInt(formData.cantidad_bultos) || 1,
+          // Legacy field for backwards compatibility
+          tipo_servicio: tieneRetiro ? 'solo_retiro' : 'envio_completo',
+          requiere_retiro: tieneRetiro,
+          // Pickup info
+          fecha_retiro: tieneRetiro && formData.fecha_retiro ? formData.fecha_retiro : null,
+          horario_retiro: tieneRetiro ? formData.horario_retiro : null,
+          notas_retiro: tieneRetiro ? formData.notas_retiro : null,
+          direccion_retiro: tieneRetiro ? formData.direccion_retiro : null,
+          ciudad_retiro: tieneRetiro ? formData.ciudad_retiro : null,
+          cp_retiro: tieneRetiro ? formData.cp_retiro : null,
+          // Delivery info
+          direccion_entrega: tieneEntrega ? formData.direccion_entrega : null,
+          ciudad_entrega: tieneEntrega ? formData.ciudad_entrega : null,
+          cp_entrega: tieneEntrega ? formData.cp_entrega : null,
+          dias_preferidos_entrega: diasPreferidos.length > 0 ? diasPreferidos : null,
+          horario_preferido_entrega: formData.horario_preferido_entrega,
+          // IDs and contact info
           codigo_postal_origen: formData.remitente_codigo_postal || null,
           codigo_postal_destino: formData.destinatario_codigo_postal || null,
           dni_remitente: formData.remitente_dni || null,
           dni_destinatario: formData.destinatario_dni || null,
           whatsapp_destinatario: formData.destinatario_whatsapp || null,
-          requiere_retiro: formData.requiere_retiro,
-          fecha_retiro: formData.requiere_retiro && formData.fecha_retiro ? formData.fecha_retiro : null,
-          horario_retiro: formData.requiere_retiro ? formData.horario_retiro : null,
-          notas_retiro: formData.requiere_retiro ? formData.notas_retiro : null,
-          dias_preferidos_entrega: diasPreferidos.length > 0 ? diasPreferidos : null,
-          horario_preferido_entrega: formData.horario_preferido_entrega,
         })
         .select()
         .single();
@@ -443,7 +566,7 @@ export default function NewShipment() {
       queryClient.invalidateQueries({ queryKey: ['all_clients'] });
       queryClient.invalidateQueries({ queryKey: ['clientes_cta_cte'] });
       toast({
-        title: tipoServicio === 'solo_retiro' ? '¡Retiro creado!' : '¡Envío creado!',
+        title: '¡Envío creado!',
         description: `Tracking: ${data.tracking_number}`,
       });
       navigate('/shipments');
@@ -461,10 +584,19 @@ export default function NewShipment() {
     e.preventDefault();
     
     // Validations
-    if (formData.requiere_retiro && !formData.fecha_retiro) {
+    if (tieneRetiro && !formData.fecha_retiro) {
       toast({
         title: 'Fecha requerida',
         description: 'Debes seleccionar una fecha para el retiro',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (tieneEntrega && !formData.direccion_entrega) {
+      toast({
+        title: 'Dirección requerida',
+        description: 'Debes ingresar una dirección de entrega',
         variant: 'destructive',
       });
       return;
@@ -540,12 +672,10 @@ export default function NewShipment() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
               <PackagePlus className="h-8 w-8 text-envios" />
-              {tipoServicio === 'solo_retiro' ? 'Nuevo Retiro' : 'Nuevo Envío'}
+              Nuevo Envío
             </h1>
             <p className="text-muted-foreground mt-1">
-              {tipoServicio === 'solo_retiro' 
-                ? 'Solicitar retiro de mercadería' 
-                : 'Completa los datos para crear un nuevo envío'}
+              Completa los datos para crear un nuevo envío
             </p>
           </div>
         </div>
@@ -588,7 +718,7 @@ export default function NewShipment() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Tipo de Servicio */}
+        {/* Tipo de Servicio - 4 opciones */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -598,28 +728,46 @@ export default function NewShipment() {
             <CardDescription>Selecciona el tipo de servicio que necesitas</CardDescription>
           </CardHeader>
           <CardContent>
-            <Tabs value={tipoServicio} onValueChange={(v) => setTipoServicio(v as 'envio_completo' | 'solo_retiro')}>
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="envio_completo" className="flex items-center gap-2">
-                  <Package className="h-4 w-4" />
-                  Envío Completo
-                </TabsTrigger>
-                <TabsTrigger value="solo_retiro" className="flex items-center gap-2">
-                  <Home className="h-4 w-4" />
-                  Solo Retiro
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-            
-            {tipoServicio === 'solo_retiro' && (
-              <Alert className="mt-4">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  <strong>Servicio de solo retiro:</strong> Pasaremos a retirar mercadería en la dirección indicada. 
-                  No se requiere información de destinatario.
-                </AlertDescription>
-              </Alert>
-            )}
+            <RadioGroup 
+              value={tipoServicioDetalle} 
+              onValueChange={(v) => setTipoServicioDetalle(v as TipoServicioDetalle)}
+              className="grid grid-cols-2 gap-4"
+            >
+              {TIPO_SERVICIO_OPTIONS.map((option) => (
+                <div key={option.value}>
+                  <RadioGroupItem 
+                    value={option.value} 
+                    id={option.value}
+                    className="peer sr-only"
+                  />
+                  <Label
+                    htmlFor={option.value}
+                    className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-envios [&:has([data-state=checked])]:border-envios cursor-pointer"
+                  >
+                    <span className="text-2xl mb-2">{option.icon}</span>
+                    <span className="font-semibold text-center">{option.label}</span>
+                    <span className="text-xs text-muted-foreground text-center mt-1">
+                      {option.description}
+                    </span>
+                  </Label>
+                </div>
+              ))}
+            </RadioGroup>
+
+            {/* Visual indicator of what's included */}
+            <div className="mt-4 p-3 rounded-lg bg-muted/50 flex items-center justify-center gap-4">
+              <div className={`flex items-center gap-2 ${tieneRetiro ? 'text-warning font-medium' : 'text-muted-foreground'}`}>
+                <Home className="h-4 w-4" />
+                <span>Retiro</span>
+                {tieneRetiro && <Badge variant="outline" className="bg-warning/10 text-warning border-warning">Incluido</Badge>}
+              </div>
+              <ArrowRight className="h-4 w-4 text-muted-foreground" />
+              <div className={`flex items-center gap-2 ${tieneEntrega ? 'text-success font-medium' : 'text-muted-foreground'}`}>
+                <MapPin className="h-4 w-4" />
+                <span>Entrega</span>
+                {tieneEntrega && <Badge variant="outline" className="bg-success/10 text-success border-success">Incluido</Badge>}
+              </div>
+            </div>
           </CardContent>
         </Card>
 
@@ -776,95 +924,23 @@ export default function NewShipment() {
           </CardContent>
         </Card>
 
-        {/* Retiro en Domicilio */}
-        {tipoServicio === 'envio_completo' && (
-          <Card>
+        {/* Retiro en Domicilio - Solo si tieneRetiro */}
+        {tieneRetiro && (
+          <Card className="border-warning/50 bg-warning/5">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Home className="h-5 w-5 text-warning" />
-                Retiro en Domicilio
+                Retiro a Domicilio
               </CardTitle>
-              <CardDescription>¿Necesitas que retiremos el paquete de tu domicilio?</CardDescription>
+              <CardDescription>Configuración del retiro en domicilio del remitente</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="requiere_retiro"
-                  checked={formData.requiere_retiro}
-                  onCheckedChange={(checked) => handleChange('requiere_retiro', !!checked)}
-                />
-                <label
-                  htmlFor="requiere_retiro"
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  Sí, solicito retiro en domicilio
-                </label>
-              </div>
-
-              {formData.requiere_retiro && (
-                <div className="grid gap-4 md:grid-cols-2 pt-4 border-t">
-                  <div className="space-y-2">
-                    <Label htmlFor="fecha_retiro" className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4" />
-                      Fecha de Retiro *
-                    </Label>
-                    <Input
-                      id="fecha_retiro"
-                      type="date"
-                      min={today}
-                      value={formData.fecha_retiro}
-                      onChange={(e) => handleChange('fecha_retiro', e.target.value)}
-                      required={formData.requiere_retiro}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="horario_retiro" className="flex items-center gap-2">
-                      <Clock className="h-4 w-4" />
-                      Horario Preferido
-                    </Label>
-                    <Select
-                      value={formData.horario_retiro}
-                      onValueChange={(v) => handleChange('horario_retiro', v)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Seleccionar horario" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {HORARIOS_RETIRO.map((h) => (
-                          <SelectItem key={h.value} value={h.value}>{h.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="notas_retiro">Notas para el retiro</Label>
-                    <Textarea
-                      id="notas_retiro"
-                      value={formData.notas_retiro}
-                      onChange={(e) => handleChange('notas_retiro', e.target.value)}
-                      placeholder="Instrucciones especiales para el retiro..."
-                    />
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Solo Retiro - Fecha y horario obligatorios */}
-        {tipoServicio === 'solo_retiro' && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5 text-warning" />
-                Programar Retiro
-              </CardTitle>
-              <CardDescription>Selecciona cuándo pasamos a retirar</CardDescription>
-            </CardHeader>
-            <CardContent>
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="fecha_retiro">Fecha de Retiro *</Label>
+                  <Label htmlFor="fecha_retiro" className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    Fecha de Retiro *
+                  </Label>
                   <Input
                     id="fecha_retiro"
                     type="date"
@@ -875,7 +951,10 @@ export default function NewShipment() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="horario_retiro">Horario Preferido</Label>
+                  <Label htmlFor="horario_retiro" className="flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    Horario Preferido
+                  </Label>
                   <Select
                     value={formData.horario_retiro}
                     onValueChange={(v) => handleChange('horario_retiro', v)}
@@ -890,22 +969,54 @@ export default function NewShipment() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+
+              <Separator />
+
+              <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="notas_retiro">Notas para el retiro</Label>
-                  <Textarea
-                    id="notas_retiro"
-                    value={formData.notas_retiro}
-                    onChange={(e) => handleChange('notas_retiro', e.target.value)}
-                    placeholder="Instrucciones especiales para el retiro..."
+                  <Label htmlFor="direccion_retiro">Dirección de Retiro *</Label>
+                  <Input
+                    id="direccion_retiro"
+                    value={formData.direccion_retiro}
+                    onChange={(e) => handleChange('direccion_retiro', e.target.value)}
+                    placeholder="Completar si es diferente a la del remitente"
+                    required
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ciudad_retiro">Ciudad</Label>
+                  <Input
+                    id="ciudad_retiro"
+                    value={formData.ciudad_retiro}
+                    onChange={(e) => handleChange('ciudad_retiro', e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cp_retiro">Código Postal</Label>
+                  <Input
+                    id="cp_retiro"
+                    value={formData.cp_retiro}
+                    onChange={(e) => handleChange('cp_retiro', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="notas_retiro">Notas para el retiro</Label>
+                <Textarea
+                  id="notas_retiro"
+                  value={formData.notas_retiro}
+                  onChange={(e) => handleChange('notas_retiro', e.target.value)}
+                  placeholder="Instrucciones especiales para el retiro..."
+                />
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* Destinatario - Solo si es envio_completo */}
-        {tipoServicio === 'envio_completo' && (formData.tipo_pago !== 'cuenta_corriente' || !formData.cliente_cta_cte_id) && (
+        {/* Destinatario */}
+        {(formData.tipo_pago !== 'cuenta_corriente' || !formData.cliente_cta_cte_id) && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -930,7 +1041,7 @@ export default function NewShipment() {
                     id="destinatario_nombre"
                     value={formData.destinatario_nombre}
                     onChange={(e) => handleChange('destinatario_nombre', e.target.value)}
-                    required={formData.tipo_pago !== 'cuenta_corriente'}
+                    required
                   />
                 </div>
                 <div className="space-y-2">
@@ -947,7 +1058,6 @@ export default function NewShipment() {
                     id="destinatario_dni"
                     value={formData.destinatario_dni}
                     onChange={(e) => handleChange('destinatario_dni', e.target.value)}
-                    placeholder="Ej: 12345678 o 20-12345678-9"
                   />
                 </div>
                 <div className="space-y-2">
@@ -956,19 +1066,16 @@ export default function NewShipment() {
                     id="destinatario_telefono"
                     value={formData.destinatario_telefono}
                     onChange={(e) => handleChange('destinatario_telefono', e.target.value)}
-                    required={formData.tipo_pago !== 'cuenta_corriente'}
+                    required
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="destinatario_whatsapp" className="flex items-center gap-2">
-                    <Phone className="h-4 w-4" />
-                    WhatsApp
-                  </Label>
+                  <Label htmlFor="destinatario_whatsapp">WhatsApp</Label>
                   <Input
                     id="destinatario_whatsapp"
                     value={formData.destinatario_whatsapp}
                     onChange={(e) => handleChange('destinatario_whatsapp', e.target.value)}
-                    placeholder="Ej: +54 9 11 1234-5678"
+                    placeholder="Ej: +54 11 1234-5678"
                   />
                 </div>
                 <div className="space-y-2">
@@ -981,20 +1088,19 @@ export default function NewShipment() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="destinatario_codigo_postal">Código Postal</Label>
-                  <Input
-                    id="destinatario_codigo_postal"
-                    value={formData.destinatario_codigo_postal}
-                    onChange={(e) => handleChange('destinatario_codigo_postal', e.target.value)}
-                    placeholder="Ej: 1000"
-                  />
-                </div>
-                <div className="space-y-2">
                   <Label htmlFor="destinatario_ciudad">Ciudad</Label>
                   <Input
                     id="destinatario_ciudad"
                     value={formData.destinatario_ciudad}
                     onChange={(e) => handleChange('destinatario_ciudad', e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="destinatario_codigo_postal">Código Postal</Label>
+                  <Input
+                    id="destinatario_codigo_postal"
+                    value={formData.destinatario_codigo_postal}
+                    onChange={(e) => handleChange('destinatario_codigo_postal', e.target.value)}
                   />
                 </div>
                 <div className="space-y-2 md:col-span-2">
@@ -1011,48 +1117,81 @@ export default function NewShipment() {
           </Card>
         )}
 
-        {/* Preferencias de Entrega - Solo para envio_completo */}
-        {tipoServicio === 'envio_completo' && (
-          <Card>
+        {/* Entrega a Domicilio - Solo si tieneEntrega */}
+        {tieneEntrega && (
+          <Card className="border-success/50 bg-success/5">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Clock className="h-5 w-5 text-primary" />
-                Preferencias de Entrega
+                <MapPin className="h-5 w-5 text-success" />
+                Entrega a Domicilio
               </CardTitle>
-              <CardDescription>Selecciona días y horarios preferidos para la entrega</CardDescription>
+              <CardDescription>Configuración de la entrega en domicilio del destinatario</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Días preferidos (opcional)</Label>
-                <div className="flex flex-wrap gap-2">
-                  {DIAS_SEMANA.map((dia) => (
-                    <Button
-                      key={dia.key}
-                      type="button"
-                      variant={diasPreferidos.includes(dia.key) ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => toggleDiaPreferido(dia.key)}
-                    >
-                      {dia.label}
-                    </Button>
-                  ))}
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="direccion_entrega">Dirección de Entrega *</Label>
+                  <Input
+                    id="direccion_entrega"
+                    value={formData.direccion_entrega}
+                    onChange={(e) => handleChange('direccion_entrega', e.target.value)}
+                    placeholder="Completar si es diferente a la del destinatario"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ciudad_entrega">Ciudad</Label>
+                  <Input
+                    id="ciudad_entrega"
+                    value={formData.ciudad_entrega}
+                    onChange={(e) => handleChange('ciudad_entrega', e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cp_entrega">Código Postal</Label>
+                  <Input
+                    id="cp_entrega"
+                    value={formData.cp_entrega}
+                    onChange={(e) => handleChange('cp_entrega', e.target.value)}
+                  />
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="horario_preferido_entrega">Horario preferido</Label>
-                <Select
-                  value={formData.horario_preferido_entrega}
-                  onValueChange={(v) => handleChange('horario_preferido_entrega', v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar horario" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {HORARIOS_ENTREGA.map((h) => (
-                      <SelectItem key={h.value} value={h.value}>{h.label}</SelectItem>
+
+              <Separator />
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Días preferidos (opcional)</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {DIAS_SEMANA.map((dia) => (
+                      <Button
+                        key={dia.key}
+                        type="button"
+                        variant={diasPreferidos.includes(dia.key) ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => toggleDiaPreferido(dia.key)}
+                      >
+                        {dia.label}
+                      </Button>
                     ))}
-                  </SelectContent>
-                </Select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="horario_preferido_entrega">Horario preferido</Label>
+                  <Select
+                    value={formData.horario_preferido_entrega}
+                    onValueChange={(v) => handleChange('horario_preferido_entrega', v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar horario" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {HORARIOS_ENTREGA.map((h) => (
+                        <SelectItem key={h.value} value={h.value}>{h.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -1069,7 +1208,9 @@ export default function NewShipment() {
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="sucursal_origen_id">Sucursal Origen</Label>
+              <Label htmlFor="sucursal_origen_id">
+                {tieneRetiro ? 'Sucursal que realiza retiro' : 'Sucursal Origen'}
+              </Label>
               <Select
                 value={formData.sucursal_origen_id}
                 onValueChange={(v) => handleChange('sucursal_origen_id', v)}
@@ -1078,30 +1219,46 @@ export default function NewShipment() {
                   <SelectValue placeholder="Seleccionar sucursal" />
                 </SelectTrigger>
                 <SelectContent>
-                  {sucursales?.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>
+                  {sucursalesOrigen.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.codigo && `${s.codigo} - `}{s.nombre}
+                      {s.ciudad && ` (${s.ciudad})`}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {tieneRetiro && sucursalesOrigen.length === 0 && (
+                <p className="text-xs text-destructive">
+                  No hay sucursales habilitadas para retiro a domicilio
+                </p>
+              )}
             </div>
-            {tipoServicio === 'envio_completo' && (
-              <div className="space-y-2">
-                <Label htmlFor="sucursal_destino_id">Sucursal Destino</Label>
-                <Select
-                  value={formData.sucursal_destino_id}
-                  onValueChange={(v) => handleChange('sucursal_destino_id', v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar sucursal" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sucursales?.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            <div className="space-y-2">
+              <Label htmlFor="sucursal_destino_id">
+                {tieneEntrega ? 'Sucursal que realiza entrega' : 'Sucursal Destino'}
+              </Label>
+              <Select
+                value={formData.sucursal_destino_id}
+                onValueChange={(v) => handleChange('sucursal_destino_id', v)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar sucursal" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sucursalesDestino.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.codigo && `${s.codigo} - `}{s.nombre}
+                      {s.ciudad && ` (${s.ciudad})`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {tieneEntrega && sucursalesDestino.length === 0 && (
+                <p className="text-xs text-destructive">
+                  No hay sucursales habilitadas para entrega a domicilio
+                </p>
+              )}
+            </div>
             <div className="space-y-2">
               <Label htmlFor="cantidad_bultos">Cantidad de Bultos</Label>
               <Input
@@ -1236,6 +1393,22 @@ export default function NewShipment() {
                 </div>
               )}
 
+              {/* Service badges */}
+              <div className="flex gap-2 py-2">
+                {tieneRetiro && (
+                  <Badge variant="outline" className="bg-warning/10 text-warning border-warning">
+                    <Home className="h-3 w-3 mr-1" />
+                    Incluye Retiro
+                  </Badge>
+                )}
+                {tieneEntrega && (
+                  <Badge variant="outline" className="bg-success/10 text-success border-success">
+                    <MapPin className="h-3 w-3 mr-1" />
+                    Incluye Entrega
+                  </Badge>
+                )}
+              </div>
+
               <Separator className="my-2" />
 
               <div className="flex justify-between items-center">
@@ -1266,7 +1439,7 @@ export default function NewShipment() {
             ) : (
               <>
                 <PackagePlus className="h-4 w-4 mr-2" />
-                {tipoServicio === 'solo_retiro' ? 'Crear Retiro' : 'Crear Envío'}
+                Crear Envío
               </>
             )}
           </Button>

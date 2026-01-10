@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Package, PackagePlus, Search, Filter, RefreshCw, Truck, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import { Package, PackagePlus, Search, Filter, RefreshCw, Truck, Clock, CheckCircle, AlertCircle, Printer, Eye } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Database } from '@/integrations/supabase/types';
@@ -212,6 +212,7 @@ export default function Shipments() {
                   <TableHead>Estado</TableHead>
                   <TableHead className="text-right">Precio</TableHead>
                   <TableHead>Fecha</TableHead>
+                  <TableHead className="text-center">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -240,6 +241,20 @@ export default function Shipments() {
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {envio.created_at ? format(new Date(envio.created_at), 'dd MMM yyyy', { locale: es }) : '-'}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center justify-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          asChild
+                          title="Imprimir etiqueta"
+                        >
+                          <Link to={`/print-label?id=${envio.id}`}>
+                            <Printer className="h-4 w-4" />
+                          </Link>
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
