@@ -495,6 +495,130 @@ export type Database = {
           },
         ]
       }
+      hoja_ruta_envios: {
+        Row: {
+          created_at: string | null
+          envio_id: string
+          estado: string | null
+          hoja_ruta_id: string
+          id: string
+          orden: number | null
+          recibido_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          envio_id: string
+          estado?: string | null
+          hoja_ruta_id: string
+          id?: string
+          orden?: number | null
+          recibido_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          envio_id?: string
+          estado?: string | null
+          hoja_ruta_id?: string
+          id?: string
+          orden?: number | null
+          recibido_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hoja_ruta_envios_envio_id_fkey"
+            columns: ["envio_id"]
+            isOneToOne: false
+            referencedRelation: "envios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hoja_ruta_envios_hoja_ruta_id_fkey"
+            columns: ["hoja_ruta_id"]
+            isOneToOne: false
+            referencedRelation: "hojas_ruta"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hojas_ruta: {
+        Row: {
+          cantidad_envios: number | null
+          chofer_id: string | null
+          created_at: string | null
+          created_by: string | null
+          estado: string | null
+          fecha_llegada_estimada: string | null
+          fecha_llegada_real: string | null
+          fecha_salida: string | null
+          id: string
+          notas: string | null
+          numero: string
+          recibido_por: string | null
+          sucursal_destino_id: string
+          sucursal_origen_id: string
+          updated_at: string | null
+          vehiculo_id: string | null
+        }
+        Insert: {
+          cantidad_envios?: number | null
+          chofer_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          estado?: string | null
+          fecha_llegada_estimada?: string | null
+          fecha_llegada_real?: string | null
+          fecha_salida?: string | null
+          id?: string
+          notas?: string | null
+          numero: string
+          recibido_por?: string | null
+          sucursal_destino_id: string
+          sucursal_origen_id: string
+          updated_at?: string | null
+          vehiculo_id?: string | null
+        }
+        Update: {
+          cantidad_envios?: number | null
+          chofer_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          estado?: string | null
+          fecha_llegada_estimada?: string | null
+          fecha_llegada_real?: string | null
+          fecha_salida?: string | null
+          id?: string
+          notas?: string | null
+          numero?: string
+          recibido_por?: string | null
+          sucursal_destino_id?: string
+          sucursal_origen_id?: string
+          updated_at?: string | null
+          vehiculo_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hojas_ruta_sucursal_destino_id_fkey"
+            columns: ["sucursal_destino_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hojas_ruta_sucursal_origen_id_fkey"
+            columns: ["sucursal_origen_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hojas_ruta_vehiculo_id_fkey"
+            columns: ["vehiculo_id"]
+            isOneToOne: false
+            referencedRelation: "vehiculos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       liquidacion_sucursal_detalles: {
         Row: {
           comision_aplicada: number
@@ -878,6 +1002,144 @@ export type Database = {
             columns: ["sucursal_id"]
             isOneToOne: false
             referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ruta_paradas: {
+        Row: {
+          completada_at: string | null
+          created_at: string | null
+          direccion: string | null
+          envio_id: string
+          estado: string | null
+          hora_estimada: string | null
+          id: string
+          lat: number | null
+          lng: number | null
+          notas: string | null
+          orden: number
+          ruta_id: string
+          tipo: string
+        }
+        Insert: {
+          completada_at?: string | null
+          created_at?: string | null
+          direccion?: string | null
+          envio_id: string
+          estado?: string | null
+          hora_estimada?: string | null
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          notas?: string | null
+          orden: number
+          ruta_id: string
+          tipo: string
+        }
+        Update: {
+          completada_at?: string | null
+          created_at?: string | null
+          direccion?: string | null
+          envio_id?: string
+          estado?: string | null
+          hora_estimada?: string | null
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          notas?: string | null
+          orden?: number
+          ruta_id?: string
+          tipo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ruta_paradas_envio_id_fkey"
+            columns: ["envio_id"]
+            isOneToOne: false
+            referencedRelation: "envios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ruta_paradas_ruta_id_fkey"
+            columns: ["ruta_id"]
+            isOneToOne: false
+            referencedRelation: "rutas_planificadas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rutas_planificadas: {
+        Row: {
+          chofer_id: string | null
+          created_at: string | null
+          created_by: string | null
+          distancia_total_km: number | null
+          estado: string | null
+          fecha: string
+          hora_inicio: string | null
+          id: string
+          notas: string | null
+          numero: string
+          paradas_completadas: number | null
+          sucursal_id: string | null
+          tiempo_estimado_minutos: number | null
+          tipo: string | null
+          total_paradas: number | null
+          updated_at: string | null
+          vehiculo_id: string | null
+        }
+        Insert: {
+          chofer_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          distancia_total_km?: number | null
+          estado?: string | null
+          fecha: string
+          hora_inicio?: string | null
+          id?: string
+          notas?: string | null
+          numero: string
+          paradas_completadas?: number | null
+          sucursal_id?: string | null
+          tiempo_estimado_minutos?: number | null
+          tipo?: string | null
+          total_paradas?: number | null
+          updated_at?: string | null
+          vehiculo_id?: string | null
+        }
+        Update: {
+          chofer_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          distancia_total_km?: number | null
+          estado?: string | null
+          fecha?: string
+          hora_inicio?: string | null
+          id?: string
+          notas?: string | null
+          numero?: string
+          paradas_completadas?: number | null
+          sucursal_id?: string | null
+          tiempo_estimado_minutos?: number | null
+          tipo?: string | null
+          total_paradas?: number | null
+          updated_at?: string | null
+          vehiculo_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rutas_planificadas_sucursal_id_fkey"
+            columns: ["sucursal_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rutas_planificadas_vehiculo_id_fkey"
+            columns: ["vehiculo_id"]
+            isOneToOne: false
+            referencedRelation: "vehiculos"
             referencedColumns: ["id"]
           },
         ]
@@ -1312,6 +1574,65 @@ export type Database = {
         }
         Relationships: []
       }
+      vehiculos: {
+        Row: {
+          anio: number | null
+          capacidad_bultos: number | null
+          capacidad_kg: number | null
+          chofer_asignado_id: string | null
+          created_at: string | null
+          estado: string | null
+          id: string
+          marca: string | null
+          modelo: string | null
+          notas: string | null
+          patente: string
+          sucursal_id: string | null
+          tipo: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          anio?: number | null
+          capacidad_bultos?: number | null
+          capacidad_kg?: number | null
+          chofer_asignado_id?: string | null
+          created_at?: string | null
+          estado?: string | null
+          id?: string
+          marca?: string | null
+          modelo?: string | null
+          notas?: string | null
+          patente: string
+          sucursal_id?: string | null
+          tipo?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          anio?: number | null
+          capacidad_bultos?: number | null
+          capacidad_kg?: number | null
+          chofer_asignado_id?: string | null
+          created_at?: string | null
+          estado?: string | null
+          id?: string
+          marca?: string | null
+          modelo?: string | null
+          notas?: string | null
+          patente?: string
+          sucursal_id?: string | null
+          tipo?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehiculos_sucursal_id_fkey"
+            columns: ["sucursal_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -1321,6 +1642,8 @@ export type Database = {
         Args: { _sucursal_id: string; _user_id: string }
         Returns: boolean
       }
+      generate_hoja_ruta_number: { Args: never; Returns: string }
+      generate_ruta_number: { Args: never; Returns: string }
       generate_tracking_number:
         | { Args: never; Returns: string }
         | { Args: { p_sucursal_id?: string }; Returns: string }

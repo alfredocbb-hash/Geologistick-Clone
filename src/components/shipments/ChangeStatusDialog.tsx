@@ -1,0 +1,248 @@
+import { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/lib/auth';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Badge } from '@/components/ui/badge';
+import { toast } from 'sonner';
+import { 
+  Clock, 
+  Package, 
+  Building2, 
+  Truck, 
+  CheckCircle, 
+  AlertCircle,
+  ArrowRight,
+  Shield,
+} from 'lucide-react';
+import type { Database } from '@/integrations/supabase/types';
+
+type ShipmentStatus = Database['public']['Enums']['shipment_status'];
+
+interface ChangeStatusDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  envioId: string | null;
+  currentStatus: ShipmentStatus;
+  trackingNumber: string;
+}
+
+const statusConfig: Record<ShipmentStatus, { label: string; color: string; icon: React.ElementType; description: string }> = {
+  pendiente: { 
+    label: 'Pendiente', 
+    color: 'bg-yellow-500', 
+    icon: Clock, 
+    description: 'El envío está esperando ser procesado' 
+  },
+  recogido: { 
+    label: 'Recogido', 
+    color: 'bg-blue-500', 
+    icon: Package, 
+    description: 'El paquete fue recogido del remitente' 
+  },
+  en_bodega: { 
+    label: 'En Bodega', 
+    color: 'bg-purple-500', 
+    icon: Building2, 
+    description: 'El paquete está en el centro de distribución' 
+  },
+  en_transito: { 
+    label: 'En Tránsito', 
+    color: 'bg-blue-600', 
+    icon: Truck, 
+    description: 'El paquete está en camino entre sucursales' 
+  },
+  en_reparto: { 
+    label: 'En Reparto', 
+    color: 'bg-orange-500', 
+    icon: Truck, 
+    description: 'El paquete está siendo llevado al destinatario' 
+  },
+  entregado: { 
+    label: 'Entregado', 
+    color: 'bg-green-500', 
+    icon: CheckCircle, 
+    description: 'El paquete fue entregado exitosamente' 
+  },
+  devuelto: { 
+    label: 'Devuelto', 
+    color: 'bg-red-500', 
+    icon: AlertCircle, 
+    description: 'El paquete fue devuelto al remitente' 
+  },
+  cancelado: { 
+    label: 'Cancelado', 
+    color: 'bg-gray-500', 
+    icon: AlertCircle, 
+    description: 'El envío fue cancelado' 
+  },
+};
+
+const statusOrder: ShipmentStatus[] = [
+  'pendiente',
+  'recogido',
+  'en_bodega',
+  'en_transito',
+  'en_reparto',
+  'entregado',
+  'devuelto',
+  'cancelado',
+];
+
+export function ChangeStatusDialog({ 
+  open, 
+  onOpenChange, 
+  envioId,
+  currentStatus,
+  trackingNumber,
+}: ChangeStatusDialogProps) {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [newStatus, setNewStatus] = useState<ShipmentStatus | null>(null);
+  const [notes, setNotes] = useState('');
+
+  const changeStatusMutation = useMutation({
+    mutationFn: async () => {
+      if (!envioId || !newStatus) throw new Error('Datos incompletos');
+
+      const { error: updateError } = await supabase
+        .from('envios')
+        .update({ estado: newStatus })
+        .eq('id', envioId);
+      
+      if (updateError) throw updateError;
+
+      const { error: historyError } = await supabase
+        .from('envio_historial')
+        .insert({
+          envio_id: envioId,
+          estado_anterior: currentStatus,
+          estado_nuevo: newStatus,
+          notas: notes || `Estado cambiado manualmente a ${statusConfig[newStatus].label}`,
+          created_by: user?.id
+        });
+      
+      if (historyError) throw historyError;
+    },
+    onSuccess: () => {
+      toast.success(`Estado actualizado a "${statusConfig[newStatus!].label}"`);
+      queryClient.invalidateQueries({ queryKey: ['envios'] });
+      queryClient.invalidateQueries({ queryKey: ['envios-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['envio-details', envioId] });
+      queryClient.invalidateQueries({ queryKey: ['envio-historial', envioId] });
+      handleClose();
+    },
+    onError: (error) => {
+      toast.error('Error al cambiar el estado');
+      console.error(error);
+    }
+  });
+
+  const handleClose = () => {
+    setNewStatus(null);
+    setNotes('');
+    onOpenChange(false);
+  };
+
+  const availableStatuses = statusOrder.filter(s => s !== currentStatus);
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Shield className="h-5 w-5 text-primary" />
+            Cambiar Estado del Envío
+          </DialogTitle>
+          <DialogDescription>
+            Cambiando estado de <strong className="font-mono">{trackingNumber}</strong>
+          </DialogDescription>
+        </DialogHeader>
+
+        {/* Current Status */}
+        <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg">
+          <span className="text-sm text-muted-foreground">Estado actual:</span>
+          <Badge className={`${statusConfig[currentStatus].color} text-white`}>
+            {statusConfig[currentStatus].label}
+          </Badge>
+        </div>
+
+        {/* Status Selection */}
+        <div className="space-y-3">
+          <Label>Nuevo estado</Label>
+          <RadioGroup 
+            value={newStatus || ''} 
+            onValueChange={(val) => setNewStatus(val as ShipmentStatus)}
+            className="grid grid-cols-2 gap-2"
+          >
+            {availableStatuses.map((status) => {
+              const config = statusConfig[status];
+              const Icon = config.icon;
+              return (
+                <label
+                  key={status}
+                  className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-all hover:bg-muted/50 ${
+                    newStatus === status ? 'ring-2 ring-primary border-primary bg-primary/5' : ''
+                  }`}
+                >
+                  <RadioGroupItem value={status} id={status} className="sr-only" />
+                  <div className={`${config.color} p-1.5 rounded-full text-white`}>
+                    <Icon className="h-3 w-3" />
+                  </div>
+                  <span className="text-sm font-medium">{config.label}</span>
+                </label>
+              );
+            })}
+          </RadioGroup>
+        </div>
+
+        {/* Notes */}
+        <div className="space-y-2">
+          <Label>Notas (opcional)</Label>
+          <Textarea
+            placeholder="Agregar notas sobre el cambio de estado..."
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={2}
+          />
+        </div>
+
+        {/* Preview */}
+        {newStatus && (
+          <div className="flex items-center justify-center gap-3 p-3 bg-muted/50 rounded-lg">
+            <Badge className={`${statusConfig[currentStatus].color} text-white`}>
+              {statusConfig[currentStatus].label}
+            </Badge>
+            <ArrowRight className="h-4 w-4 text-muted-foreground" />
+            <Badge className={`${statusConfig[newStatus].color} text-white`}>
+              {statusConfig[newStatus].label}
+            </Badge>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={handleClose}>
+            Cancelar
+          </Button>
+          <Button 
+            onClick={() => changeStatusMutation.mutate()}
+            disabled={!newStatus || changeStatusMutation.isPending}
+          >
+            {changeStatusMutation.isPending ? 'Guardando...' : 'Confirmar Cambio'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
