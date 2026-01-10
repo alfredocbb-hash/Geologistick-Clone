@@ -31,14 +31,30 @@ serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+
+    if (!token) {
+      return new Response(
+        JSON.stringify({ error: 'Missing bearer token' }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabaseClient.auth.getUser(token);
 
     if (authError || !user) {
+      console.error('Auth error in get-maps-api-key:', authError);
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
-        { 
+        {
           status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );
     }
