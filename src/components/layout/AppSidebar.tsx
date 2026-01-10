@@ -1,6 +1,7 @@
 import { useLocation } from 'react-router-dom';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/lib/auth';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
   Sidebar,
   SidebarContent,
@@ -41,100 +42,99 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import type { Database } from '@/integrations/supabase/types';
-
-type AppRole = Database['public']['Enums']['app_role'];
 
 interface NavItem {
   title: string;
   url: string;
   icon: React.ElementType;
-  roles?: AppRole[];
+  permissionKey?: string; // Dynamic permission key
 }
 
 interface NavGroup {
   label: string;
   items: NavItem[];
-  roles?: AppRole[];
+  permissionKeys?: string[]; // Any of these permissions shows the group
 }
 
 const navigation: NavGroup[] = [
   {
     label: 'Principal',
     items: [
-      { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
+      { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard, permissionKey: 'dashboard.view' },
     ],
   },
   {
     label: 'Envíos',
     items: [
-      { title: 'Todos los Envíos', url: '/shipments', icon: Package },
-      { title: 'Nuevo Envío', url: '/shipments/new', icon: PackagePlus, roles: ['admin', 'operador', 'atencion_cliente', 'despachador'] },
-      { title: 'Tracking', url: '/tracking', icon: MapPin },
+      { title: 'Todos los Envíos', url: '/shipments', icon: Package, permissionKey: 'shipments.view' },
+      { title: 'Nuevo Envío', url: '/shipments/new', icon: PackagePlus, permissionKey: 'shipments.create' },
+      { title: 'Tracking', url: '/tracking', icon: MapPin, permissionKey: 'tracking.view' },
     ],
+    permissionKeys: ['shipments.view', 'shipments.create', 'tracking.view'],
   },
   {
     label: 'Operaciones',
     items: [
-      { title: 'Escanear QR', url: '/scan', icon: QrCode },
-      { title: 'Planificador', url: '/planner', icon: Route, roles: ['admin', 'supervisor', 'operador', 'despachador'] },
-      { title: 'Hojas de Ruta', url: '/route-sheets', icon: FileText, roles: ['admin', 'supervisor', 'operador', 'despachador', 'bodega'] },
-      { title: 'Mapa en Vivo', url: '/live-map', icon: Map, roles: ['admin', 'supervisor', 'operador'] },
-      { title: 'Choferes', url: '/drivers', icon: Truck, roles: ['admin', 'supervisor', 'operador', 'despachador'] },
-      { title: 'Vehículos', url: '/vehicles', icon: Car, roles: ['admin', 'supervisor'] },
-      { title: 'Rutas de Entrega', url: '/routes', icon: MapPin, roles: ['admin', 'supervisor', 'operador', 'chofer'] },
-      { title: 'Mis Rutas', url: '/my-routes', icon: ClipboardList, roles: ['chofer'] },
+      { title: 'Escanear QR', url: '/scan', icon: QrCode, permissionKey: 'shipments.scan' },
+      { title: 'Planificador', url: '/planner', icon: Route, permissionKey: 'routes.plan' },
+      { title: 'Hojas de Ruta', url: '/route-sheets', icon: FileText, permissionKey: 'route_sheets.view' },
+      { title: 'Mapa en Vivo', url: '/live-map', icon: Map, permissionKey: 'live_map.view' },
+      { title: 'Choferes', url: '/drivers', icon: Truck, permissionKey: 'drivers.manage' },
+      { title: 'Vehículos', url: '/vehicles', icon: Car, permissionKey: 'vehicles.manage' },
+      { title: 'Rutas de Entrega', url: '/routes', icon: MapPin, permissionKey: 'my_routes.view' },
+      { title: 'Mis Rutas', url: '/my-routes', icon: ClipboardList, permissionKey: 'my_routes.view' },
     ],
-    roles: ['admin', 'supervisor', 'operador', 'despachador', 'chofer', 'bodega', 'sucursal'],
+    permissionKeys: ['shipments.scan', 'routes.plan', 'route_sheets.view', 'live_map.view', 'drivers.manage', 'vehicles.manage', 'my_routes.view'],
   },
   {
     label: 'Finanzas',
     items: [
-      { title: 'Control de Caja', url: '/cash', icon: Wallet, roles: ['admin', 'supervisor', 'operador', 'sucursal'] },
-      { title: 'Liq. Sucursales', url: '/settlements/branches', icon: FileText, roles: ['admin', 'supervisor'] },
-      { title: 'Liq. Choferes', url: '/settlements/drivers', icon: FileText, roles: ['admin', 'supervisor'] },
-      { title: 'Liq. Clientes', url: '/settlements/clients', icon: FileText, roles: ['admin', 'supervisor', 'atencion_cliente'] },
-      { title: 'Mis Comisiones', url: '/my-commissions', icon: DollarSign, roles: ['chofer'] },
-      { title: 'Pagos', url: '/payments', icon: CreditCard, roles: ['admin', 'supervisor', 'operador'] },
+      { title: 'Control de Caja', url: '/cash', icon: Wallet, permissionKey: 'cash.manage' },
+      { title: 'Liq. Sucursales', url: '/settlements/branches', icon: FileText, permissionKey: 'settlements.branch.view' },
+      { title: 'Liq. Choferes', url: '/settlements/drivers', icon: FileText, permissionKey: 'settlements.driver.view' },
+      { title: 'Liq. Clientes', url: '/settlements/clients', icon: FileText, permissionKey: 'settlements.client.view' },
+      { title: 'Mis Comisiones', url: '/my-commissions', icon: DollarSign, permissionKey: 'commissions.view' },
+      { title: 'Pagos', url: '/payments', icon: CreditCard, permissionKey: 'settlements.driver.manage' },
     ],
-    roles: ['admin', 'supervisor', 'operador', 'sucursal', 'chofer', 'atencion_cliente'],
+    permissionKeys: ['cash.manage', 'settlements.branch.view', 'settlements.driver.view', 'settlements.client.view', 'commissions.view'],
   },
   {
     label: 'Clientes',
     items: [
-      { title: 'Todos los Clientes', url: '/clients', icon: Users, roles: ['admin', 'operador', 'atencion_cliente'] },
+      { title: 'Todos los Clientes', url: '/clients', icon: Users, permissionKey: 'clients.view' },
     ],
-    roles: ['admin', 'operador', 'atencion_cliente'],
+    permissionKeys: ['clients.view', 'clients.manage'],
   },
   {
     label: 'Administración',
     items: [
-      { title: 'Sucursales', url: '/admin/branches', icon: Building2 },
-      { title: 'Tarifas', url: '/admin/rates', icon: Tags },
-      { title: 'Usuarios', url: '/admin/users', icon: UserCog },
-      { title: 'Gestión de Roles', url: '/admin/roles', icon: Settings, roles: ['super_admin'] },
-      { title: 'Configuración', url: '/admin/settings', icon: Settings },
+      { title: 'Sucursales', url: '/admin/branches', icon: Building2, permissionKey: 'branches.manage' },
+      { title: 'Tarifas', url: '/admin/rates', icon: Tags, permissionKey: 'rates.manage' },
+      { title: 'Usuarios', url: '/admin/users', icon: UserCog, permissionKey: 'users.manage' },
+      { title: 'Gestión de Roles', url: '/admin/roles', icon: Settings, permissionKey: 'roles.manage' },
     ],
-    roles: ['admin', 'super_admin'],
+    permissionKeys: ['branches.manage', 'rates.manage', 'users.manage', 'roles.manage'],
   },
 ];
 
 export function AppSidebar() {
   const { state, toggleSidebar } = useSidebar();
-  const { profile, roles, signOut, isAdmin } = useAuth();
+  const { profile, signOut, isSuperAdmin } = useAuth();
+  const { hasPermission, isLoading } = usePermissions();
   const location = useLocation();
   const collapsed = state === 'collapsed';
 
+  // Super admin can see everything
   const canAccessGroup = (group: NavGroup) => {
-    if (!group.roles) return true;
-    if (isAdmin()) return true;
-    return group.roles.some((role) => roles.includes(role));
+    if (isSuperAdmin()) return true;
+    if (!group.permissionKeys || group.permissionKeys.length === 0) return true;
+    return group.permissionKeys.some((key) => hasPermission(key));
   };
 
   const canAccessItem = (item: NavItem) => {
-    if (!item.roles) return true;
-    if (isAdmin()) return true;
-    return item.roles.some((role) => roles.includes(role));
+    if (isSuperAdmin()) return true;
+    if (!item.permissionKey) return true;
+    return hasPermission(item.permissionKey);
   };
 
   const getInitials = () => {
@@ -143,6 +143,34 @@ export function AppSidebar() {
     const last = profile.apellido?.charAt(0) || '';
     return (first + last).toUpperCase() || 'U';
   };
+
+  // Show minimal sidebar while loading permissions
+  if (isLoading) {
+    return (
+      <Sidebar collapsible="icon" className="border-r-0">
+        <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl gradient-primary shadow-lg">
+              <Package className="h-5 w-5 text-white" />
+            </div>
+            {!collapsed && (
+              <div className="flex flex-col">
+                <span className="text-lg font-bold text-sidebar-foreground">LogiTrack</span>
+                <span className="text-xs text-sidebar-foreground/60">Cargando...</span>
+              </div>
+            )}
+          </div>
+        </SidebarHeader>
+        <SidebarContent className="px-2 py-4">
+          <div className="animate-pulse space-y-4 px-3">
+            <div className="h-8 bg-sidebar-accent/50 rounded-lg" />
+            <div className="h-8 bg-sidebar-accent/50 rounded-lg" />
+            <div className="h-8 bg-sidebar-accent/50 rounded-lg" />
+          </div>
+        </SidebarContent>
+      </Sidebar>
+    );
+  }
 
   return (
     <Sidebar collapsible="icon" className="border-r-0">
@@ -161,39 +189,44 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent className="px-2 py-4">
-        {navigation.filter(canAccessGroup).map((group) => (
-          <SidebarGroup key={group.label}>
-            {!collapsed && (
-              <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/50 px-3 mb-2">
-                {group.label}
-              </SidebarGroupLabel>
-            )}
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {group.items.filter(canAccessItem).map((item) => {
-                  const isActive = location.pathname === item.url;
-                  return (
-                    <SidebarMenuItem key={item.url}>
-                      <SidebarMenuButton asChild>
-                        <NavLink
-                          to={item.url}
-                          className={cn(
-                            'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all',
-                            'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground',
-                            isActive && 'bg-sidebar-primary text-sidebar-primary-foreground shadow-md'
-                          )}
-                        >
-                          <item.icon className={cn('h-5 w-5 shrink-0', isActive && 'text-sidebar-primary-foreground')} />
-                          {!collapsed && <span>{item.title}</span>}
-                        </NavLink>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ))}
+        {navigation.filter(canAccessGroup).map((group) => {
+          const accessibleItems = group.items.filter(canAccessItem);
+          if (accessibleItems.length === 0) return null;
+          
+          return (
+            <SidebarGroup key={group.label}>
+              {!collapsed && (
+                <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/50 px-3 mb-2">
+                  {group.label}
+                </SidebarGroupLabel>
+              )}
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {accessibleItems.map((item) => {
+                    const isActive = location.pathname === item.url;
+                    return (
+                      <SidebarMenuItem key={item.url}>
+                        <SidebarMenuButton asChild>
+                          <NavLink
+                            to={item.url}
+                            className={cn(
+                              'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all',
+                              'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground',
+                              isActive && 'bg-sidebar-primary text-sidebar-primary-foreground shadow-md'
+                            )}
+                          >
+                            <item.icon className={cn('h-5 w-5 shrink-0', isActive && 'text-sidebar-primary-foreground')} />
+                            {!collapsed && <span>{item.title}</span>}
+                          </NavLink>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          );
+        })}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border p-4">
