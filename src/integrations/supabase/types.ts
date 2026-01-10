@@ -75,6 +75,7 @@ export type Database = {
           codigo_postal: string | null
           created_at: string | null
           direccion: string
+          dni_cuit: string | null
           email: string | null
           id: string
           limite_credito: number | null
@@ -93,6 +94,7 @@ export type Database = {
           codigo_postal?: string | null
           created_at?: string | null
           direccion: string
+          dni_cuit?: string | null
           email?: string | null
           id?: string
           limite_credito?: number | null
@@ -111,6 +113,7 @@ export type Database = {
           codigo_postal?: string | null
           created_at?: string | null
           direccion?: string
+          dni_cuit?: string | null
           email?: string | null
           id?: string
           limite_credito?: number | null
@@ -270,82 +273,121 @@ export type Database = {
       }
       envios: {
         Row: {
+          cantidad_bultos: number | null
           chofer_id: string | null
+          codigo_postal_destino: string | null
+          codigo_postal_origen: string | null
           created_at: string | null
           created_by: string | null
           descripcion: string | null
           destinatario_id: string | null
+          dias_preferidos_entrega: string[] | null
           dimensiones: string | null
+          dni_destinatario: string | null
+          dni_remitente: string | null
           estado: Database["public"]["Enums"]["shipment_status"] | null
           fecha_entrega: string | null
           fecha_recogida: string | null
+          fecha_retiro: string | null
           firma_destinatario: string | null
           foto_entrega: string | null
+          horario_preferido_entrega: string | null
+          horario_retiro: string | null
           id: string
           notas: string | null
+          notas_retiro: string | null
           pago_contra_entrega: boolean | null
           peso_kg: number | null
           precio_total: number
           remitente_id: string | null
+          requiere_retiro: boolean | null
           sucursal_destino_id: string | null
           sucursal_origen_id: string | null
           tarifa_id: string | null
           tipo_pago: string | null
+          tipo_servicio: string | null
           tracking_number: string
           updated_at: string | null
           valor_declarado: number | null
+          whatsapp_destinatario: string | null
         }
         Insert: {
+          cantidad_bultos?: number | null
           chofer_id?: string | null
+          codigo_postal_destino?: string | null
+          codigo_postal_origen?: string | null
           created_at?: string | null
           created_by?: string | null
           descripcion?: string | null
           destinatario_id?: string | null
+          dias_preferidos_entrega?: string[] | null
           dimensiones?: string | null
+          dni_destinatario?: string | null
+          dni_remitente?: string | null
           estado?: Database["public"]["Enums"]["shipment_status"] | null
           fecha_entrega?: string | null
           fecha_recogida?: string | null
+          fecha_retiro?: string | null
           firma_destinatario?: string | null
           foto_entrega?: string | null
+          horario_preferido_entrega?: string | null
+          horario_retiro?: string | null
           id?: string
           notas?: string | null
+          notas_retiro?: string | null
           pago_contra_entrega?: boolean | null
           peso_kg?: number | null
           precio_total: number
           remitente_id?: string | null
+          requiere_retiro?: boolean | null
           sucursal_destino_id?: string | null
           sucursal_origen_id?: string | null
           tarifa_id?: string | null
           tipo_pago?: string | null
+          tipo_servicio?: string | null
           tracking_number: string
           updated_at?: string | null
           valor_declarado?: number | null
+          whatsapp_destinatario?: string | null
         }
         Update: {
+          cantidad_bultos?: number | null
           chofer_id?: string | null
+          codigo_postal_destino?: string | null
+          codigo_postal_origen?: string | null
           created_at?: string | null
           created_by?: string | null
           descripcion?: string | null
           destinatario_id?: string | null
+          dias_preferidos_entrega?: string[] | null
           dimensiones?: string | null
+          dni_destinatario?: string | null
+          dni_remitente?: string | null
           estado?: Database["public"]["Enums"]["shipment_status"] | null
           fecha_entrega?: string | null
           fecha_recogida?: string | null
+          fecha_retiro?: string | null
           firma_destinatario?: string | null
           foto_entrega?: string | null
+          horario_preferido_entrega?: string | null
+          horario_retiro?: string | null
           id?: string
           notas?: string | null
+          notas_retiro?: string | null
           pago_contra_entrega?: boolean | null
           peso_kg?: number | null
           precio_total?: number
           remitente_id?: string | null
+          requiere_retiro?: boolean | null
           sucursal_destino_id?: string | null
           sucursal_origen_id?: string | null
           tarifa_id?: string | null
           tipo_pago?: string | null
+          tipo_servicio?: string | null
           tracking_number?: string
           updated_at?: string | null
           valor_declarado?: number | null
+          whatsapp_destinatario?: string | null
         }
         Relationships: [
           {
