@@ -13,10 +13,14 @@ import Dashboard from "./pages/Dashboard";
 import Shipments from "./pages/Shipments";
 import NewShipment from "./pages/NewShipment";
 import Tracking from "./pages/Tracking";
+import Clients from "./pages/Clients";
+import Branches from "./pages/Branches";
+import Rates from "./pages/Rates";
+import Users from "./pages/Users";
 import NotFound from "./pages/NotFound";
 
 // Icons for placeholders
-import { Truck, MapPin, ClipboardList, Wallet, DollarSign, FileText, CreditCard, Users, Building2, Tags, UserCog, Settings } from "lucide-react";
+import { Truck, MapPin, ClipboardList, Wallet, DollarSign, FileText, CreditCard, Users as UsersIcon, Building2, Tags, UserCog, Settings } from "lucide-react";
 
 const queryClient = new QueryClient();
 
@@ -52,12 +56,12 @@ const App = () => (
             <Route path="/payments" element={<DashboardLayout><PlaceholderPage title="Pagos" description="Gestión de pagos de clientes" icon={CreditCard} /></DashboardLayout>} />
             
             {/* Clientes */}
-            <Route path="/clients" element={<DashboardLayout><PlaceholderPage title="Clientes" description="Gestión de clientes" icon={Users} /></DashboardLayout>} />
+            <Route path="/clients" element={<DashboardLayout><Clients /></DashboardLayout>} />
             
             {/* Administración */}
-            <Route path="/admin/branches" element={<DashboardLayout><PlaceholderPage title="Sucursales" description="Gestión de sucursales" icon={Building2} /></DashboardLayout>} />
-            <Route path="/admin/rates" element={<DashboardLayout><PlaceholderPage title="Tarifas" description="Configuración de tarifas" icon={Tags} /></DashboardLayout>} />
-            <Route path="/admin/users" element={<DashboardLayout><PlaceholderPage title="Usuarios" description="Gestión de usuarios y roles" icon={UserCog} /></DashboardLayout>} />
+            <Route path="/admin/branches" element={<DashboardLayout><Branches /></DashboardLayout>} />
+            <Route path="/admin/rates" element={<DashboardLayout><Rates /></DashboardLayout>} />
+            <Route path="/admin/users" element={<DashboardLayout><Users /></DashboardLayout>} />
             <Route path="/admin/settings" element={<DashboardLayout><PlaceholderPage title="Configuración" description="Ajustes del sistema" icon={Settings} /></DashboardLayout>} />
             
             {/* Profile */}
