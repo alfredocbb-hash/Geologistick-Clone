@@ -112,9 +112,10 @@ const navigation: NavGroup[] = [
       { title: 'Sucursales', url: '/admin/branches', icon: Building2 },
       { title: 'Tarifas', url: '/admin/rates', icon: Tags },
       { title: 'Usuarios', url: '/admin/users', icon: UserCog },
+      { title: 'Gestión de Roles', url: '/admin/roles', icon: Settings, roles: ['super_admin'] },
       { title: 'Configuración', url: '/admin/settings', icon: Settings },
     ],
-    roles: ['admin'],
+    roles: ['admin', 'super_admin'],
   },
 ];
 

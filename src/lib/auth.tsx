@@ -28,6 +28,7 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   hasRole: (role: AppRole) => boolean;
   isAdmin: () => boolean;
+  isSuperAdmin: () => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -122,7 +123,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const hasRole = (role: AppRole) => roles.includes(role);
 
-  const isAdmin = () => hasRole('admin');
+  const isAdmin = () => hasRole('admin') || hasRole('super_admin');
+
+  const isSuperAdmin = () => hasRole('super_admin');
 
   return (
     <AuthContext.Provider
@@ -137,6 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signOut,
         hasRole,
         isAdmin,
+        isSuperAdmin,
       }}
     >
       {children}
