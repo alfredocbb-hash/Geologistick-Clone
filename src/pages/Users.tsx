@@ -71,6 +71,7 @@ interface Sucursal {
 }
 
 const ROLE_LABELS: Record<AppRole, string> = {
+  super_admin: 'Super Admin',
   admin: 'Administrador',
   supervisor: 'Supervisor',
   operador: 'Operador',
@@ -83,6 +84,7 @@ const ROLE_LABELS: Record<AppRole, string> = {
 };
 
 const ROLE_COLORS: Record<AppRole, string> = {
+  super_admin: 'bg-amber-500/10 text-amber-500',
   admin: 'bg-red-500/10 text-red-500',
   supervisor: 'bg-orange-500/10 text-orange-500',
   operador: 'bg-blue-500/10 text-blue-500',
@@ -95,7 +97,7 @@ const ROLE_COLORS: Record<AppRole, string> = {
 };
 
 export default function Users() {
-  const { isAdmin, user: currentUser } = useAuth();
+  const { isAdmin, isSuperAdmin, user: currentUser } = useAuth();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -276,10 +278,15 @@ export default function Users() {
     if (!editingProfile) return;
     // Prevent removing admin role from self
     if (
-      role === 'admin' &&
+      (role === 'admin' || role === 'super_admin') &&
       editingProfile.user_id === currentUser?.id
     ) {
       toast.error('No puedes quitarte el rol de admin a ti mismo');
+      return;
+    }
+    // Prevent non-super_admin from removing super_admin role
+    if (role === 'super_admin' && !isSuperAdmin()) {
+      toast.error('Solo un Super Admin puede quitar este rol');
       return;
     }
     removeRoleMutation.mutate({ userId: editingProfile.user_id, role });
@@ -374,7 +381,10 @@ export default function Users() {
     );
   }
 
-  const availableRoles = Object.keys(ROLE_LABELS) as AppRole[];
+  // Filter out super_admin from available roles if user is not super_admin
+  const availableRoles = (Object.keys(ROLE_LABELS) as AppRole[]).filter(
+    role => role !== 'super_admin' || isSuperAdmin()
+  );
 
   return (
     <div className="space-y-6">

@@ -19,6 +19,7 @@ import Clients from "./pages/Clients";
 import Branches from "./pages/Branches";
 import Rates from "./pages/Rates";
 import Users from "./pages/Users";
+import RolePermissions from "./pages/RolePermissions";
 import Cash from "./pages/Cash";
 import Drivers from "./pages/Drivers";
 import RoutesPage from "./pages/Routes";
@@ -91,6 +92,7 @@ const App = () => (
             <Route path="/admin/branches" element={<DashboardLayout><Branches /></DashboardLayout>} />
             <Route path="/admin/rates" element={<DashboardLayout><Rates /></DashboardLayout>} />
             <Route path="/admin/users" element={<DashboardLayout><Users /></DashboardLayout>} />
+            <Route path="/admin/roles" element={<DashboardLayout><RolePermissions /></DashboardLayout>} />
             <Route path="/admin/settings" element={<DashboardLayout><PlaceholderPage title="Configuración" description="Ajustes del sistema" icon={Settings} /></DashboardLayout>} />
             
             {/* Profile */}
