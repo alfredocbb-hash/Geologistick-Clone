@@ -1,6 +1,7 @@
 import { useJsApiLoader } from '@react-google-maps/api';
 import { ReactNode, useState, useEffect, createContext, useContext, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/lib/auth';
 
 const libraries: ("places" | "geometry" | "drawing")[] = ['places', 'geometry'];
 
@@ -52,12 +53,26 @@ export function GoogleMapsProvider({ children }: GoogleMapsProviderProps) {
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const { user, loading: authLoading } = useAuth();
 
-  // Fetch API key from edge function
+  // Fetch API key from edge function only when user is authenticated
   useEffect(() => {
     let mounted = true;
 
     const fetchApiKey = async () => {
+      // Wait for auth to finish loading
+      if (authLoading) {
+        return;
+      }
+
+      // If no user, don't try to fetch the API key
+      if (!user) {
+        if (mounted) {
+          setIsLoading(false);
+        }
+        return;
+      }
+
       // Check if Google Maps is already loaded (e.g., from previous session)
       if (typeof window !== 'undefined' && window.google?.maps) {
         if (mounted) {
@@ -100,7 +115,7 @@ export function GoogleMapsProvider({ children }: GoogleMapsProviderProps) {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [user, authLoading]);
 
   // Create a stable context value for non-loaded states
   const notLoadedValue = useMemo(() => ({
