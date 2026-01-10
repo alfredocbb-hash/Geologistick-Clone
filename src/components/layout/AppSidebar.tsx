@@ -34,6 +34,9 @@ import {
   ChevronLeft,
   ChevronRight,
   QrCode,
+  Route,
+  Map,
+  Car,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -74,7 +77,11 @@ const navigation: NavGroup[] = [
     label: 'Operaciones',
     items: [
       { title: 'Escanear QR', url: '/scan', icon: QrCode },
-      { title: 'Choferes Activos', url: '/drivers', icon: Truck, roles: ['admin', 'supervisor', 'operador', 'despachador'] },
+      { title: 'Planificador', url: '/planner', icon: Route, roles: ['admin', 'supervisor', 'operador', 'despachador'] },
+      { title: 'Hojas de Ruta', url: '/route-sheets', icon: FileText, roles: ['admin', 'supervisor', 'operador', 'despachador', 'bodega'] },
+      { title: 'Mapa en Vivo', url: '/live-map', icon: Map, roles: ['admin', 'supervisor', 'operador'] },
+      { title: 'Choferes', url: '/drivers', icon: Truck, roles: ['admin', 'supervisor', 'operador', 'despachador'] },
+      { title: 'Vehículos', url: '/vehicles', icon: Car, roles: ['admin', 'supervisor'] },
       { title: 'Rutas de Entrega', url: '/routes', icon: MapPin, roles: ['admin', 'supervisor', 'operador', 'chofer'] },
       { title: 'Mis Rutas', url: '/my-routes', icon: ClipboardList, roles: ['chofer'] },
     ],
