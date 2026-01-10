@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import {
   Dialog,
   DialogContent,
@@ -41,7 +42,7 @@ import {
   MapPin,
   Edit,
   Trash2,
-  Package,
+  CreditCard,
   Building2,
 } from 'lucide-react';
 
@@ -135,6 +136,8 @@ export default function Clients() {
         codigo_postal: data.codigo_postal || null,
         notas: data.notas || null,
         sucursal_id: data.sucursal_id || profile?.sucursal_id || null,
+        tiene_cuenta_corriente: data.tiene_cuenta_corriente,
+        limite_credito: data.limite_credito ? parseFloat(data.limite_credito) : 0,
       };
 
       if (editingClient) {
@@ -354,6 +357,43 @@ export default function Clients() {
                     rows={3}
                   />
                 </div>
+                
+                {/* Cuenta Corriente Section */}
+                <Separator className="md:col-span-2" />
+                <div className="md:col-span-2 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="tiene_cuenta_corriente">Cuenta Corriente</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Habilitar crédito para este cliente
+                      </p>
+                    </div>
+                    <Switch
+                      id="tiene_cuenta_corriente"
+                      checked={formData.tiene_cuenta_corriente}
+                      onCheckedChange={(checked) =>
+                        setFormData({ ...formData, tiene_cuenta_corriente: checked })
+                      }
+                    />
+                  </div>
+                  
+                  {formData.tiene_cuenta_corriente && (
+                    <div className="space-y-2">
+                      <Label htmlFor="limite_credito">Límite de Crédito ($)</Label>
+                      <Input
+                        id="limite_credito"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={formData.limite_credito}
+                        onChange={(e) =>
+                          setFormData({ ...formData, limite_credito: e.target.value })
+                        }
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="flex justify-end gap-2">
                 <Button
@@ -398,12 +438,14 @@ export default function Clients() {
         </Card>
         <Card className="glass">
           <CardContent className="p-4 flex items-center gap-4">
-            <div className="p-3 rounded-xl bg-envios/10">
-              <Package className="h-6 w-6 text-envios" />
+            <div className="p-3 rounded-xl bg-finanzas/10">
+              <CreditCard className="h-6 w-6 text-finanzas" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Con Envíos</p>
-              <p className="text-2xl font-bold">--</p>
+              <p className="text-sm text-muted-foreground">Con Cuenta Cte.</p>
+              <p className="text-2xl font-bold">
+                {clients.filter((c) => c.tiene_cuenta_corriente).length}
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -467,6 +509,7 @@ export default function Clients() {
                   <TableHead>Contacto</TableHead>
                   <TableHead>Dirección</TableHead>
                   <TableHead>Sucursal</TableHead>
+                  <TableHead>Cuenta Cte.</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
@@ -516,6 +559,25 @@ export default function Clients() {
                       <Badge variant="outline">
                         {getSucursalName(client.sucursal_id)}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {client.tiene_cuenta_corriente ? (
+                        <div className="space-y-1">
+                          <Badge className="bg-finanzas/10 text-finanzas border-finanzas">
+                            Habilitada
+                          </Badge>
+                          <div className="text-xs text-muted-foreground">
+                            Saldo: ${(client.saldo_cuenta_corriente || 0).toFixed(2)}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Límite: ${(client.limite_credito || 0).toFixed(2)}
+                          </div>
+                        </div>
+                      ) : (
+                        <Badge variant="outline" className="text-muted-foreground">
+                          No
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
