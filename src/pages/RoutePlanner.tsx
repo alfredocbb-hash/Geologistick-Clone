@@ -1,5 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,7 @@ import {
   PlayCircle,
   Building2,
   AlertTriangle,
+  GripVertical,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -220,30 +222,115 @@ export default function RoutePlanner() {
     return enviosPendientes.filter(e => selectedEnvios.includes(e.id));
   }, [enviosPendientes, selectedEnvios]);
 
-  // Map markers
+  // Haversine distance calculation
+  const calcDistance = useCallback((lat1: number, lng1: number, lat2: number, lng2: number) => {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLng/2) * Math.sin(dLng/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  }, []);
+
+  // Calculate total distance for a route
+  const calculateTotalDistance = useCallback((stops: RouteStop[]) => {
+    if (stops.length < 1) return 0;
+    
+    let total = 0;
+    const startLat = sucursalOrigen?.lat ? Number(sucursalOrigen.lat) : -34.6037;
+    const startLng = sucursalOrigen?.lng ? Number(sucursalOrigen.lng) : -58.3816;
+    
+    // Distance from origin to first stop
+    total += calcDistance(startLat, startLng, stops[0].lat, stops[0].lng);
+    
+    // Distance between stops
+    for (let i = 0; i < stops.length - 1; i++) {
+      total += calcDistance(stops[i].lat, stops[i].lng, stops[i+1].lat, stops[i+1].lng);
+    }
+    
+    return Math.round(total * 1.3 * 10) / 10; // Road correction factor
+  }, [calcDistance, sucursalOrigen]);
+
+  // Handle drag and drop reordering
+  const handleDragEnd = useCallback((result: DropResult) => {
+    if (!result.destination || !selectedOption) return;
+    
+    const reorderedStops = Array.from(selectedOption.stops);
+    const [movedItem] = reorderedStops.splice(result.source.index, 1);
+    reorderedStops.splice(result.destination.index, 0, movedItem);
+    
+    // Recalculate distance
+    const newDistance = calculateTotalDistance(reorderedStops);
+    const newTime = Math.round((newDistance / 25 + reorderedStops.length * 0.1) * 10) / 10;
+    
+    setSelectedOption({
+      ...selectedOption,
+      stops: reorderedStops,
+      totalDistance: newDistance,
+      estimatedTime: newTime,
+      reasoning: "Orden personalizado por el usuario",
+    });
+  }, [selectedOption, calculateTotalDistance]);
+
+  // Map markers - show numbered stops when route is optimized
   const mapMarkers = useMemo(() => {
-    const markers: Array<{ position: { lat: number; lng: number }; title: string }> = [];
+    const markers: Array<{ position: { lat: number; lng: number }; title: string; icon?: 'origin' | 'destination' | 'branch' | 'current' }> = [];
     
     // Agregar sucursal de origen como primer marcador
     if (sucursalOrigen?.lat && sucursalOrigen?.lng) {
       markers.push({
         position: { lat: Number(sucursalOrigen.lat), lng: Number(sucursalOrigen.lng) },
         title: `🏢 Origen: ${sucursalOrigen.nombre}`,
+        icon: 'origin',
       });
     }
     
-    // Agregar envíos seleccionados
-    selectedEnviosData
-      .filter(e => e.coords?.lat && e.coords?.lng)
-      .forEach((e, index) => {
+    // Si hay ruta optimizada, mostrar paradas ordenadas
+    if (selectedOption) {
+      selectedOption.stops.forEach((stop, index) => {
         markers.push({
-          position: { lat: Number(e.coords.lat), lng: Number(e.coords.lng) },
-          title: `${index + 1}. ${e.tracking_number}`,
+          position: { lat: stop.lat, lng: stop.lng },
+          title: `${index + 1}. ${stop.tracking} - ${stop.cliente_nombre}`,
+          icon: stop.tipo === 'retiro' ? 'current' : 'destination',
         });
       });
+    } else {
+      // Envíos seleccionados sin optimizar
+      selectedEnviosData
+        .filter(e => e.coords?.lat && e.coords?.lng)
+        .forEach((e, index) => {
+          markers.push({
+            position: { lat: Number(e.coords.lat), lng: Number(e.coords.lng) },
+            title: `${index + 1}. ${e.tracking_number}`,
+          });
+        });
+    }
     
     return markers;
-  }, [selectedEnviosData, sucursalOrigen]);
+  }, [selectedEnviosData, selectedOption, sucursalOrigen]);
+
+  // Polyline path for drawing route on map
+  const routePolyline = useMemo(() => {
+    if (!selectedOption) return [];
+    
+    const path: { lat: number; lng: number }[] = [];
+    
+    // Add origin branch as first point
+    if (sucursalOrigen?.lat && sucursalOrigen?.lng) {
+      path.push({ lat: Number(sucursalOrigen.lat), lng: Number(sucursalOrigen.lng) });
+    }
+    
+    // Add each stop in order
+    selectedOption.stops.forEach(stop => {
+      if (stop.lat && stop.lng) {
+        path.push({ lat: stop.lat, lng: stop.lng });
+      }
+    });
+    
+    return path;
+  }, [selectedOption, sucursalOrigen]);
 
   const toggleEnvio = (id: string) => {
     setSelectedEnvios(prev =>
@@ -681,6 +768,7 @@ export default function RoutePlanner() {
                 <div className="h-80 rounded-lg overflow-hidden">
                   <MapView
                     markers={mapMarkers}
+                    polylinePath={routePolyline}
                     center={
                       sucursalOrigen?.lat && sucursalOrigen?.lng 
                         ? { lat: Number(sucursalOrigen.lat), lng: Number(sucursalOrigen.lng) }
@@ -737,6 +825,64 @@ export default function RoutePlanner() {
                     </div>
                   ))}
                 </div>
+
+                {/* Orden de paradas con drag & drop */}
+                {selectedOption && (
+                  <Card className="border-dashed">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-base flex items-center gap-2">
+                          <MapPin className="h-4 w-4" />
+                          Orden de Paradas
+                        </CardTitle>
+                        <p className="text-xs text-muted-foreground">
+                          Arrastra para reordenar
+                        </p>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <DragDropContext onDragEnd={handleDragEnd}>
+                        <Droppable droppableId="stops">
+                          {(provided) => (
+                            <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-2 max-h-64 overflow-y-auto">
+                              {selectedOption.stops.map((stop, index) => (
+                                <Draggable key={stop.envio_id} draggableId={stop.envio_id} index={index}>
+                                  {(provided, snapshot) => (
+                                    <div
+                                      ref={provided.innerRef}
+                                      {...provided.draggableProps}
+                                      className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
+                                        snapshot.isDragging ? 'bg-primary/10 border-primary shadow-lg' : 'bg-muted/50 hover:bg-muted'
+                                      }`}
+                                    >
+                                      <div {...provided.dragHandleProps} className="cursor-grab active:cursor-grabbing">
+                                        <GripVertical className="h-5 w-5 text-muted-foreground" />
+                                      </div>
+                                      <div className="flex items-center justify-center w-7 h-7 rounded-full bg-primary text-primary-foreground font-bold text-sm shrink-0">
+                                        {index + 1}
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-0.5">
+                                          <Badge variant={stop.tipo === "retiro" ? "secondary" : "default"} className="text-xs">
+                                            {stop.tipo === "retiro" ? "Retiro" : "Entrega"}
+                                          </Badge>
+                                          <span className="font-mono text-xs text-muted-foreground">{stop.tracking}</span>
+                                        </div>
+                                        <p className="text-sm font-medium truncate">{stop.cliente_nombre}</p>
+                                        <p className="text-xs text-muted-foreground truncate">{stop.direccion}</p>
+                                      </div>
+                                    </div>
+                                  )}
+                                </Draggable>
+                              ))}
+                              {provided.placeholder}
+                            </div>
+                          )}
+                        </Droppable>
+                      </DragDropContext>
+                    </CardContent>
+                  </Card>
+                )}
 
                 {/* Asignación */}
                 {selectedOption && (
