@@ -57,6 +57,9 @@ interface Client {
   notas: string | null;
   sucursal_id: string | null;
   created_at: string | null;
+  tiene_cuenta_corriente: boolean | null;
+  limite_credito: number | null;
+  saldo_cuenta_corriente: number | null;
 }
 
 interface Sucursal {
@@ -80,6 +83,8 @@ export default function Clients() {
     codigo_postal: '',
     notas: '',
     sucursal_id: '',
+    tiene_cuenta_corriente: false,
+    limite_credito: '',
   });
 
   // Fetch sucursales

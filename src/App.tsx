@@ -54,9 +54,11 @@ const App = () => (
             
             {/* Finanzas */}
             <Route path="/cash" element={<DashboardLayout><Cash /></DashboardLayout>} />
-            <Route path="/commissions" element={<DashboardLayout><PlaceholderPage title="Comisiones" description="Gestión de comisiones de choferes" icon={DollarSign} /></DashboardLayout>} />
+            <Route path="/commissions" element={<DashboardLayout><PlaceholderPage title="Comisiones Choferes" description="Gestión de comisiones de choferes" icon={DollarSign} /></DashboardLayout>} />
             <Route path="/my-commissions" element={<DashboardLayout><PlaceholderPage title="Mis Comisiones" description="Comisiones del chofer" icon={DollarSign} /></DashboardLayout>} />
-            <Route path="/settlements" element={<DashboardLayout><PlaceholderPage title="Liquidaciones" description="Pagos a choferes" icon={FileText} /></DashboardLayout>} />
+            <Route path="/settlements/branches" element={<DashboardLayout><PlaceholderPage title="Liquidaciones Sucursales" description="Liquidaciones por sucursal" icon={FileText} /></DashboardLayout>} />
+            <Route path="/settlements/drivers" element={<DashboardLayout><PlaceholderPage title="Liquidaciones Choferes" description="Pagos a choferes" icon={FileText} /></DashboardLayout>} />
+            <Route path="/settlements/clients" element={<DashboardLayout><PlaceholderPage title="Liquidaciones Clientes" description="Cuentas corrientes de clientes" icon={FileText} /></DashboardLayout>} />
             <Route path="/payments" element={<DashboardLayout><PlaceholderPage title="Pagos" description="Gestión de pagos de clientes" icon={CreditCard} /></DashboardLayout>} />
             
             {/* Clientes */}
