@@ -14,6 +14,60 @@ export type Database = {
   }
   public: {
     Tables: {
+      cliente_cuenta_corriente: {
+        Row: {
+          cliente_id: string
+          created_at: string | null
+          created_by: string | null
+          descripcion: string | null
+          envio_id: string | null
+          id: string
+          monto: number
+          saldo_anterior: number
+          saldo_nuevo: number
+          tipo: string
+        }
+        Insert: {
+          cliente_id: string
+          created_at?: string | null
+          created_by?: string | null
+          descripcion?: string | null
+          envio_id?: string | null
+          id?: string
+          monto: number
+          saldo_anterior?: number
+          saldo_nuevo?: number
+          tipo: string
+        }
+        Update: {
+          cliente_id?: string
+          created_at?: string | null
+          created_by?: string | null
+          descripcion?: string | null
+          envio_id?: string | null
+          id?: string
+          monto?: number
+          saldo_anterior?: number
+          saldo_nuevo?: number
+          tipo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cliente_cuenta_corriente_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cliente_cuenta_corriente_envio_id_fkey"
+            columns: ["envio_id"]
+            isOneToOne: false
+            referencedRelation: "envios"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clientes: {
         Row: {
           apellido: string | null
@@ -23,10 +77,13 @@ export type Database = {
           direccion: string
           email: string | null
           id: string
+          limite_credito: number | null
           nombre: string
           notas: string | null
+          saldo_cuenta_corriente: number | null
           sucursal_id: string | null
           telefono: string
+          tiene_cuenta_corriente: boolean | null
           updated_at: string | null
           user_id: string | null
         }
@@ -38,10 +95,13 @@ export type Database = {
           direccion: string
           email?: string | null
           id?: string
+          limite_credito?: number | null
           nombre: string
           notas?: string | null
+          saldo_cuenta_corriente?: number | null
           sucursal_id?: string | null
           telefono: string
+          tiene_cuenta_corriente?: boolean | null
           updated_at?: string | null
           user_id?: string | null
         }
@@ -53,10 +113,13 @@ export type Database = {
           direccion?: string
           email?: string | null
           id?: string
+          limite_credito?: number | null
           nombre?: string
           notas?: string | null
+          saldo_cuenta_corriente?: number | null
           sucursal_id?: string | null
           telefono?: string
+          tiene_cuenta_corriente?: boolean | null
           updated_at?: string | null
           user_id?: string | null
         }
@@ -114,6 +177,48 @@ export type Database = {
             columns: ["liquidacion_id"]
             isOneToOne: false
             referencedRelation: "liquidaciones"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      envio_detalles: {
+        Row: {
+          concepto_id: string | null
+          created_at: string | null
+          envio_id: string
+          id: string
+          monto: number
+          nombre_concepto: string
+        }
+        Insert: {
+          concepto_id?: string | null
+          created_at?: string | null
+          envio_id: string
+          id?: string
+          monto?: number
+          nombre_concepto: string
+        }
+        Update: {
+          concepto_id?: string | null
+          created_at?: string | null
+          envio_id?: string
+          id?: string
+          monto?: number
+          nombre_concepto?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "envio_detalles_concepto_id_fkey"
+            columns: ["concepto_id"]
+            isOneToOne: false
+            referencedRelation: "tarifa_conceptos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "envio_detalles_envio_id_fkey"
+            columns: ["envio_id"]
+            isOneToOne: false
+            referencedRelation: "envios"
             referencedColumns: ["id"]
           },
         ]
@@ -185,6 +290,7 @@ export type Database = {
           sucursal_destino_id: string | null
           sucursal_origen_id: string | null
           tarifa_id: string | null
+          tipo_pago: string | null
           tracking_number: string
           updated_at: string | null
           valor_declarado: number | null
@@ -210,6 +316,7 @@ export type Database = {
           sucursal_destino_id?: string | null
           sucursal_origen_id?: string | null
           tarifa_id?: string | null
+          tipo_pago?: string | null
           tracking_number: string
           updated_at?: string | null
           valor_declarado?: number | null
@@ -235,6 +342,7 @@ export type Database = {
           sucursal_destino_id?: string | null
           sucursal_origen_id?: string | null
           tarifa_id?: string | null
+          tipo_pago?: string | null
           tracking_number?: string
           updated_at?: string | null
           valor_declarado?: number | null
@@ -273,6 +381,51 @@ export type Database = {
             columns: ["tarifa_id"]
             isOneToOne: false
             referencedRelation: "tarifas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      liquidacion_sucursal_detalles: {
+        Row: {
+          comision_aplicada: number
+          created_at: string | null
+          envio_id: string
+          id: string
+          liquidacion_id: string
+          monto_envio: number
+          tipo_pago: string
+        }
+        Insert: {
+          comision_aplicada: number
+          created_at?: string | null
+          envio_id: string
+          id?: string
+          liquidacion_id: string
+          monto_envio: number
+          tipo_pago: string
+        }
+        Update: {
+          comision_aplicada?: number
+          created_at?: string | null
+          envio_id?: string
+          id?: string
+          liquidacion_id?: string
+          monto_envio?: number
+          tipo_pago?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "liquidacion_sucursal_detalles_envio_id_fkey"
+            columns: ["envio_id"]
+            isOneToOne: false
+            referencedRelation: "envios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "liquidacion_sucursal_detalles_liquidacion_id_fkey"
+            columns: ["liquidacion_id"]
+            isOneToOne: false
+            referencedRelation: "liquidaciones_sucursal"
             referencedColumns: ["id"]
           },
         ]
@@ -330,6 +483,127 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      liquidaciones_cliente: {
+        Row: {
+          cliente_id: string
+          created_at: string | null
+          created_by: string | null
+          estado: string | null
+          id: string
+          notas: string | null
+          periodo_fin: string
+          periodo_inicio: string
+          saldo_anterior: number | null
+          saldo_final: number | null
+          total_cargos: number | null
+          total_pagos: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          cliente_id: string
+          created_at?: string | null
+          created_by?: string | null
+          estado?: string | null
+          id?: string
+          notas?: string | null
+          periodo_fin: string
+          periodo_inicio: string
+          saldo_anterior?: number | null
+          saldo_final?: number | null
+          total_cargos?: number | null
+          total_pagos?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          cliente_id?: string
+          created_at?: string | null
+          created_by?: string | null
+          estado?: string | null
+          id?: string
+          notas?: string | null
+          periodo_fin?: string
+          periodo_inicio?: string
+          saldo_anterior?: number | null
+          saldo_final?: number | null
+          total_cargos?: number | null
+          total_pagos?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "liquidaciones_cliente_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      liquidaciones_sucursal: {
+        Row: {
+          aprobado_por: string | null
+          created_at: string | null
+          created_by: string | null
+          estado: string | null
+          fecha_pago: string | null
+          id: string
+          metodo_pago: Database["public"]["Enums"]["payment_method"] | null
+          notas: string | null
+          periodo_fin: string
+          periodo_inicio: string
+          referencia_pago: string | null
+          saldo: number | null
+          sucursal_id: string
+          total_cobrado: number | null
+          total_comisiones: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          aprobado_por?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          estado?: string | null
+          fecha_pago?: string | null
+          id?: string
+          metodo_pago?: Database["public"]["Enums"]["payment_method"] | null
+          notas?: string | null
+          periodo_fin: string
+          periodo_inicio: string
+          referencia_pago?: string | null
+          saldo?: number | null
+          sucursal_id: string
+          total_cobrado?: number | null
+          total_comisiones?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          aprobado_por?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          estado?: string | null
+          fecha_pago?: string | null
+          id?: string
+          metodo_pago?: Database["public"]["Enums"]["payment_method"] | null
+          notas?: string | null
+          periodo_fin?: string
+          periodo_inicio?: string
+          referencia_pago?: string | null
+          saldo?: number | null
+          sucursal_id?: string
+          total_cobrado?: number | null
+          total_comisiones?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "liquidaciones_sucursal_sucursal_id_fkey"
+            columns: ["sucursal_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       movimientos_caja: {
         Row: {
@@ -557,6 +831,54 @@ export type Database = {
           },
         ]
       }
+      sucursal_comisiones: {
+        Row: {
+          concepto_id: string
+          created_at: string | null
+          id: string
+          porcentaje_contado: number | null
+          porcentaje_cta_cte: number | null
+          porcentaje_destino: number | null
+          sucursal_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          concepto_id: string
+          created_at?: string | null
+          id?: string
+          porcentaje_contado?: number | null
+          porcentaje_cta_cte?: number | null
+          porcentaje_destino?: number | null
+          sucursal_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          concepto_id?: string
+          created_at?: string | null
+          id?: string
+          porcentaje_contado?: number | null
+          porcentaje_cta_cte?: number | null
+          porcentaje_destino?: number | null
+          sucursal_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sucursal_comisiones_concepto_id_fkey"
+            columns: ["concepto_id"]
+            isOneToOne: false
+            referencedRelation: "tarifa_conceptos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sucursal_comisiones_sucursal_id_fkey"
+            columns: ["sucursal_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sucursales: {
         Row: {
           activa: boolean | null
@@ -592,6 +914,78 @@ export type Database = {
           id?: string
           nombre?: string
           telefono?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      tarifa_concepto_precios: {
+        Row: {
+          concepto_id: string
+          created_at: string | null
+          id: string
+          monto: number
+          tarifa_id: string
+        }
+        Insert: {
+          concepto_id: string
+          created_at?: string | null
+          id?: string
+          monto?: number
+          tarifa_id: string
+        }
+        Update: {
+          concepto_id?: string
+          created_at?: string | null
+          id?: string
+          monto?: number
+          tarifa_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tarifa_concepto_precios_concepto_id_fkey"
+            columns: ["concepto_id"]
+            isOneToOne: false
+            referencedRelation: "tarifa_conceptos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tarifa_concepto_precios_tarifa_id_fkey"
+            columns: ["tarifa_id"]
+            isOneToOne: false
+            referencedRelation: "tarifas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tarifa_conceptos: {
+        Row: {
+          activo: boolean | null
+          codigo: string
+          created_at: string | null
+          descripcion: string | null
+          id: string
+          nombre: string
+          orden: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          activo?: boolean | null
+          codigo: string
+          created_at?: string | null
+          descripcion?: string | null
+          id?: string
+          nombre: string
+          orden?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          activo?: boolean | null
+          codigo?: string
+          created_at?: string | null
+          descripcion?: string | null
+          id?: string
+          nombre?: string
+          orden?: number | null
           updated_at?: string | null
         }
         Relationships: []

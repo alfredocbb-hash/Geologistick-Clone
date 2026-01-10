@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
@@ -15,6 +16,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { toast } from 'sonner';
 import {
   Plus,
@@ -26,6 +35,8 @@ import {
   Edit,
   Users,
   Package,
+  Percent,
+  Save,
 } from 'lucide-react';
 
 interface Sucursal {
@@ -40,11 +51,29 @@ interface Sucursal {
   created_at: string | null;
 }
 
+interface TarifaConcepto {
+  id: string;
+  nombre: string;
+  codigo: string;
+  activo: boolean;
+}
+
+interface SucursalComision {
+  id: string;
+  sucursal_id: string;
+  concepto_id: string;
+  porcentaje_contado: number;
+  porcentaje_destino: number;
+  porcentaje_cta_cte: number;
+}
+
 export default function Branches() {
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isCommissionsDialogOpen, setIsCommissionsDialogOpen] = useState(false);
   const [editingSucursal, setEditingSucursal] = useState<Sucursal | null>(null);
+  const [selectedSucursalForCommissions, setSelectedSucursalForCommissions] = useState<Sucursal | null>(null);
   const [formData, setFormData] = useState({
     nombre: '',
     direccion: '',
@@ -54,6 +83,11 @@ export default function Branches() {
     horario_cierre: '18:00',
     activa: true,
   });
+  const [commissionData, setCommissionData] = useState<Record<string, {
+    contado: string;
+    destino: string;
+    cta_cte: string;
+  }>>({});
 
   // Fetch sucursales
   const { data: sucursales = [], isLoading } = useQuery({
@@ -68,7 +102,52 @@ export default function Branches() {
     },
   });
 
-  // Create/Update mutation
+  // Fetch conceptos
+  const { data: conceptos = [] } = useQuery({
+    queryKey: ['tarifa_conceptos'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('tarifa_conceptos')
+        .select('*')
+        .eq('activo', true)
+        .order('orden');
+      if (error) throw error;
+      return data as TarifaConcepto[];
+    },
+  });
+
+  // Fetch comisiones para la sucursal seleccionada
+  const { data: sucursalComisiones = [] } = useQuery({
+    queryKey: ['sucursal_comisiones', selectedSucursalForCommissions?.id],
+    queryFn: async () => {
+      if (!selectedSucursalForCommissions) return [];
+      const { data, error } = await supabase
+        .from('sucursal_comisiones')
+        .select('*')
+        .eq('sucursal_id', selectedSucursalForCommissions.id);
+      if (error) throw error;
+      return data as SucursalComision[];
+    },
+    enabled: !!selectedSucursalForCommissions,
+  });
+
+  // Initialize commission data when dialog opens
+  useEffect(() => {
+    if (selectedSucursalForCommissions && conceptos.length > 0) {
+      const initialData: Record<string, { contado: string; destino: string; cta_cte: string }> = {};
+      conceptos.forEach((concepto) => {
+        const existing = sucursalComisiones.find((c) => c.concepto_id === concepto.id);
+        initialData[concepto.id] = {
+          contado: existing?.porcentaje_contado?.toString() || '0',
+          destino: existing?.porcentaje_destino?.toString() || '0',
+          cta_cte: existing?.porcentaje_cta_cte?.toString() || '0',
+        };
+      });
+      setCommissionData(initialData);
+    }
+  }, [selectedSucursalForCommissions, conceptos, sucursalComisiones]);
+
+  // Create/Update sucursal mutation
   const saveMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
       const sucursalData = {
@@ -95,11 +174,48 @@ export default function Branches() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sucursales-full'] });
       queryClient.invalidateQueries({ queryKey: ['sucursales'] });
-      toast.success(
-        editingSucursal ? 'Sucursal actualizada' : 'Sucursal creada'
-      );
+      toast.success(editingSucursal ? 'Sucursal actualizada' : 'Sucursal creada');
       resetForm();
       setIsDialogOpen(false);
+    },
+    onError: (error: Error) => {
+      toast.error('Error: ' + error.message);
+    },
+  });
+
+  // Save commissions mutation
+  const saveCommissionsMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedSucursalForCommissions) return;
+
+      const operations = Object.entries(commissionData).map(async ([conceptoId, values]) => {
+        const existing = sucursalComisiones.find((c) => c.concepto_id === conceptoId);
+        const data = {
+          sucursal_id: selectedSucursalForCommissions.id,
+          concepto_id: conceptoId,
+          porcentaje_contado: parseFloat(values.contado) || 0,
+          porcentaje_destino: parseFloat(values.destino) || 0,
+          porcentaje_cta_cte: parseFloat(values.cta_cte) || 0,
+        };
+
+        if (existing) {
+          const { error } = await supabase
+            .from('sucursal_comisiones')
+            .update(data)
+            .eq('id', existing.id);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from('sucursal_comisiones').insert(data);
+          if (error) throw error;
+        }
+      });
+
+      await Promise.all(operations);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sucursal_comisiones'] });
+      toast.success('Comisiones guardadas');
+      setIsCommissionsDialogOpen(false);
     },
     onError: (error: Error) => {
       toast.error('Error: ' + error.message);
@@ -152,6 +268,11 @@ export default function Branches() {
     setIsDialogOpen(true);
   };
 
+  const handleOpenCommissions = (sucursal: Sucursal) => {
+    setSelectedSucursalForCommissions(sucursal);
+    setIsCommissionsDialogOpen(true);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     saveMutation.mutate(formData);
@@ -174,7 +295,7 @@ export default function Branches() {
         <div>
           <h1 className="text-3xl font-bold text-foreground">Sucursales</h1>
           <p className="text-muted-foreground">
-            Administra las sucursales del sistema
+            Administra las sucursales y sus comisiones
           </p>
         </div>
         <Dialog
@@ -365,9 +486,7 @@ export default function Branches() {
           {sucursales.map((sucursal) => (
             <Card
               key={sucursal.id}
-              className={`glass card-hover ${
-                !sucursal.activa ? 'opacity-60' : ''
-              }`}
+              className={`glass card-hover ${!sucursal.activa ? 'opacity-60' : ''}`}
             >
               <CardContent className="p-6">
                 <div className="flex items-start justify-between mb-4">
@@ -389,13 +508,23 @@ export default function Branches() {
                       </Badge>
                     </div>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleEdit(sucursal)}
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
+                  <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleOpenCommissions(sucursal)}
+                      title="Configurar comisiones"
+                    >
+                      <Percent className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleEdit(sucursal)}
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="space-y-2 text-sm">
@@ -451,6 +580,117 @@ export default function Branches() {
           ))}
         </div>
       )}
+
+      {/* Dialog para configurar comisiones */}
+      <Dialog open={isCommissionsDialogOpen} onOpenChange={setIsCommissionsDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              Comisiones - {selectedSucursalForCommissions?.nombre}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Define el porcentaje de comisión por cada concepto según el tipo de pago.
+            </p>
+            
+            {conceptos.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No hay conceptos configurados. Ve a Tarifas → Conceptos para crearlos.
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Concepto</TableHead>
+                    <TableHead className="text-center">% Contado</TableHead>
+                    <TableHead className="text-center">% Destino</TableHead>
+                    <TableHead className="text-center">% Cta. Cte.</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {conceptos.map((concepto) => (
+                    <TableRow key={concepto.id}>
+                      <TableCell className="font-medium">{concepto.nombre}</TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max="100"
+                          value={commissionData[concepto.id]?.contado || '0'}
+                          onChange={(e) =>
+                            setCommissionData({
+                              ...commissionData,
+                              [concepto.id]: {
+                                ...commissionData[concepto.id],
+                                contado: e.target.value,
+                              },
+                            })
+                          }
+                          className="w-20 text-center"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max="100"
+                          value={commissionData[concepto.id]?.destino || '0'}
+                          onChange={(e) =>
+                            setCommissionData({
+                              ...commissionData,
+                              [concepto.id]: {
+                                ...commissionData[concepto.id],
+                                destino: e.target.value,
+                              },
+                            })
+                          }
+                          className="w-20 text-center"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max="100"
+                          value={commissionData[concepto.id]?.cta_cte || '0'}
+                          onChange={(e) =>
+                            setCommissionData({
+                              ...commissionData,
+                              [concepto.id]: {
+                                ...commissionData[concepto.id],
+                                cta_cte: e.target.value,
+                              },
+                            })
+                          }
+                          className="w-20 text-center"
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <Button variant="outline" onClick={() => setIsCommissionsDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => saveCommissionsMutation.mutate()}
+                disabled={saveCommissionsMutation.isPending || conceptos.length === 0}
+                className="bg-sucursales hover:bg-sucursales/90"
+              >
+                <Save className="h-4 w-4 mr-2" />
+                {saveCommissionsMutation.isPending ? 'Guardando...' : 'Guardar Comisiones'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
