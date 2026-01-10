@@ -78,7 +78,9 @@ export type Database = {
           dni_cuit: string | null
           email: string | null
           id: string
+          lat: number | null
           limite_credito: number | null
+          lng: number | null
           nombre: string
           notas: string | null
           saldo_cuenta_corriente: number | null
@@ -97,7 +99,9 @@ export type Database = {
           dni_cuit?: string | null
           email?: string | null
           id?: string
+          lat?: number | null
           limite_credito?: number | null
+          lng?: number | null
           nombre: string
           notas?: string | null
           saldo_cuenta_corriente?: number | null
@@ -116,7 +120,9 @@ export type Database = {
           dni_cuit?: string | null
           email?: string | null
           id?: string
+          lat?: number | null
           limite_credito?: number | null
+          lng?: number | null
           nombre?: string
           notas?: string | null
           saldo_cuenta_corriente?: number | null
@@ -285,10 +291,13 @@ export type Database = {
           created_by: string | null
           descripcion: string | null
           destinatario_id: string | null
+          destinatario_lat: number | null
+          destinatario_lng: number | null
           dias_preferidos_entrega: string[] | null
           dimensiones: string | null
           direccion_entrega: string | null
           direccion_retiro: string | null
+          distancia_km: number | null
           dni_destinatario: string | null
           dni_remitente: string | null
           estado: Database["public"]["Enums"]["shipment_status"] | null
@@ -306,6 +315,8 @@ export type Database = {
           peso_kg: number | null
           precio_total: number
           remitente_id: string | null
+          remitente_lat: number | null
+          remitente_lng: number | null
           requiere_retiro: boolean | null
           rotulo_generado: boolean | null
           rotulo_generado_at: string | null
@@ -335,10 +346,13 @@ export type Database = {
           created_by?: string | null
           descripcion?: string | null
           destinatario_id?: string | null
+          destinatario_lat?: number | null
+          destinatario_lng?: number | null
           dias_preferidos_entrega?: string[] | null
           dimensiones?: string | null
           direccion_entrega?: string | null
           direccion_retiro?: string | null
+          distancia_km?: number | null
           dni_destinatario?: string | null
           dni_remitente?: string | null
           estado?: Database["public"]["Enums"]["shipment_status"] | null
@@ -356,6 +370,8 @@ export type Database = {
           peso_kg?: number | null
           precio_total: number
           remitente_id?: string | null
+          remitente_lat?: number | null
+          remitente_lng?: number | null
           requiere_retiro?: boolean | null
           rotulo_generado?: boolean | null
           rotulo_generado_at?: string | null
@@ -385,10 +401,13 @@ export type Database = {
           created_by?: string | null
           descripcion?: string | null
           destinatario_id?: string | null
+          destinatario_lat?: number | null
+          destinatario_lng?: number | null
           dias_preferidos_entrega?: string[] | null
           dimensiones?: string | null
           direccion_entrega?: string | null
           direccion_retiro?: string | null
+          distancia_km?: number | null
           dni_destinatario?: string | null
           dni_remitente?: string | null
           estado?: Database["public"]["Enums"]["shipment_status"] | null
@@ -406,6 +425,8 @@ export type Database = {
           peso_kg?: number | null
           precio_total?: number
           remitente_id?: string | null
+          remitente_lat?: number | null
+          remitente_lng?: number | null
           requiere_retiro?: boolean | null
           rotulo_generado?: boolean | null
           rotulo_generado_at?: string | null
@@ -1022,6 +1043,8 @@ export type Database = {
           horario_apertura: string | null
           horario_cierre: string | null
           id: string
+          lat: number | null
+          lng: number | null
           nombre: string
           puede_despachar: boolean | null
           puede_recibir: boolean | null
@@ -1042,6 +1065,8 @@ export type Database = {
           horario_apertura?: string | null
           horario_cierre?: string | null
           id?: string
+          lat?: number | null
+          lng?: number | null
           nombre: string
           puede_despachar?: boolean | null
           puede_recibir?: boolean | null
@@ -1062,6 +1087,8 @@ export type Database = {
           horario_apertura?: string | null
           horario_cierre?: string | null
           id?: string
+          lat?: number | null
+          lng?: number | null
           nombre?: string
           puede_despachar?: boolean | null
           puede_recibir?: boolean | null
