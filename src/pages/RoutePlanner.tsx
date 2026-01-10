@@ -40,6 +40,8 @@ import {
   User,
   CheckCircle,
   PlayCircle,
+  Building2,
+  AlertTriangle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -80,6 +82,24 @@ export default function RoutePlanner() {
   const [routeOptions, setRouteOptions] = useState<RouteOption[]>([]);
   const [selectedOption, setSelectedOption] = useState<RouteOption | null>(null);
   const [filterType, setFilterType] = useState<"all" | "retiro" | "entrega">("all");
+
+  // Fetch sucursal de origen del usuario
+  const { data: sucursalOrigen } = useQuery({
+    queryKey: ["sucursal-origen", profile?.sucursal_id],
+    queryFn: async () => {
+      if (!profile?.sucursal_id) return null;
+      
+      const { data, error } = await supabase
+        .from("sucursales")
+        .select("id, nombre, direccion, ciudad, lat, lng")
+        .eq("id", profile.sucursal_id)
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!profile?.sucursal_id,
+  });
 
   // Fetch envíos pendientes
   const { data: enviosPendientes = [], isLoading: loadingEnvios } = useQuery({
@@ -202,13 +222,28 @@ export default function RoutePlanner() {
 
   // Map markers
   const mapMarkers = useMemo(() => {
-    return selectedEnviosData
+    const markers: Array<{ position: { lat: number; lng: number }; title: string }> = [];
+    
+    // Agregar sucursal de origen como primer marcador
+    if (sucursalOrigen?.lat && sucursalOrigen?.lng) {
+      markers.push({
+        position: { lat: Number(sucursalOrigen.lat), lng: Number(sucursalOrigen.lng) },
+        title: `🏢 Origen: ${sucursalOrigen.nombre}`,
+      });
+    }
+    
+    // Agregar envíos seleccionados
+    selectedEnviosData
       .filter(e => e.coords?.lat && e.coords?.lng)
-      .map((e, index) => ({
-        position: { lat: Number(e.coords.lat), lng: Number(e.coords.lng) },
-        title: `${index + 1}. ${e.tracking_number}`,
-      }));
-  }, [selectedEnviosData]);
+      .forEach((e, index) => {
+        markers.push({
+          position: { lat: Number(e.coords.lat), lng: Number(e.coords.lng) },
+          title: `${index + 1}. ${e.tracking_number}`,
+        });
+      });
+    
+    return markers;
+  }, [selectedEnviosData, sucursalOrigen]);
 
   const toggleEnvio = (id: string) => {
     setSelectedEnvios(prev =>
@@ -235,6 +270,11 @@ export default function RoutePlanner() {
     if (selectedEnvios.length < 2) {
       toast.error("Selecciona al menos 2 envíos para optimizar");
       return;
+    }
+
+    // Advertencia si la sucursal no tiene coordenadas
+    if (!sucursalOrigen?.lat || !sucursalOrigen?.lng) {
+      toast.warning("La sucursal de origen no tiene coordenadas. Se usará ubicación por defecto.");
     }
 
     setIsOptimizing(true);
@@ -290,9 +330,9 @@ export default function RoutePlanner() {
         return { ordered, totalDistance };
       };
 
-      // Starting point (center of Buenos Aires)
-      const startLat = -34.6037;
-      const startLng = -58.3816;
+      // Starting point from user's sucursal
+      const startLat = sucursalOrigen?.lat ? Number(sucursalOrigen.lat) : -34.6037;
+      const startLng = sucursalOrigen?.lng ? Number(sucursalOrigen.lng) : -58.3816;
 
       // Option 1: Pickups first, then deliveries
       const retiros = enviosConCoords.filter(e => e.tipo === "retiro");
@@ -604,11 +644,50 @@ export default function RoutePlanner() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">Vista Previa</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
+                {/* Indicador de sucursal de origen */}
+                {sucursalOrigen && (
+                  <div className="flex items-center gap-2 p-3 bg-primary/10 rounded-lg border border-primary/20">
+                    <Building2 className="h-5 w-5 text-primary" />
+                    <div>
+                      <p className="text-sm font-medium">
+                        Punto de partida: {sucursalOrigen.nombre}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {sucursalOrigen.direccion}{sucursalOrigen.ciudad ? `, ${sucursalOrigen.ciudad}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {!sucursalOrigen && profile?.sucursal_id && (
+                  <div className="flex items-center gap-2 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                    <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-500" />
+                    <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                      No se pudo cargar la sucursal de origen
+                    </p>
+                  </div>
+                )}
+
+                {!profile?.sucursal_id && (
+                  <div className="flex items-center gap-2 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                    <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-500" />
+                    <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                      No tienes una sucursal asignada
+                    </p>
+                  </div>
+                )}
+
                 <div className="h-80 rounded-lg overflow-hidden">
                   <MapView
                     markers={mapMarkers}
-                    center={mapMarkers.length > 0 ? undefined : { lat: -34.6037, lng: -58.3816 }}
+                    center={
+                      sucursalOrigen?.lat && sucursalOrigen?.lng 
+                        ? { lat: Number(sucursalOrigen.lat), lng: Number(sucursalOrigen.lng) }
+                        : mapMarkers.length > 0 
+                          ? undefined 
+                          : { lat: -34.6037, lng: -58.3816 }
+                    }
                     zoom={12}
                   />
                 </div>
