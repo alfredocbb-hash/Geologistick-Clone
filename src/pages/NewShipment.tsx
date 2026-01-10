@@ -714,7 +714,7 @@ export default function NewShipment() {
           <Button
             type="submit"
             disabled={createShipmentMutation.isPending}
-            className="bg-shipments hover:bg-shipments/90"
+            className="bg-envios hover:bg-envios/90 text-white"
           >
             {createShipmentMutation.isPending ? (
               <>
