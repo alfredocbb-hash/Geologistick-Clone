@@ -156,6 +156,11 @@ export function ChangeStatusDialog({
   };
 
   const availableStatuses = statusOrder.filter(s => s !== currentStatus);
+  const currentConfig = currentStatus ? statusConfig[currentStatus] : null;
+
+  if (!open || !currentConfig) {
+    return null;
+  }
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -173,8 +178,8 @@ export function ChangeStatusDialog({
         {/* Current Status */}
         <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg">
           <span className="text-sm text-muted-foreground">Estado actual:</span>
-          <Badge className={`${statusConfig[currentStatus].color} text-white`}>
-            {statusConfig[currentStatus].label}
+          <Badge className={`${currentConfig.color} text-white`}>
+            {currentConfig.label}
           </Badge>
         </div>
 
@@ -221,8 +226,8 @@ export function ChangeStatusDialog({
         {/* Preview */}
         {newStatus && (
           <div className="flex items-center justify-center gap-3 p-3 bg-muted/50 rounded-lg">
-            <Badge className={`${statusConfig[currentStatus].color} text-white`}>
-              {statusConfig[currentStatus].label}
+            <Badge className={`${currentConfig.color} text-white`}>
+              {currentConfig.label}
             </Badge>
             <ArrowRight className="h-4 w-4 text-muted-foreground" />
             <Badge className={`${statusConfig[newStatus].color} text-white`}>
