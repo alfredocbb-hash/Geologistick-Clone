@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'app.lovable.53354d35df094ff79101b454344485d4',
+  appId: 'com.geologic.choferapp',
   appName: 'ChoferApp',
   webDir: 'dist',
   server: {
