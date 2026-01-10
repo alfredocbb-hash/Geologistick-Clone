@@ -244,7 +244,7 @@ export default function Users() {
         nombre: formData.nombre,
         apellido: formData.apellido || null,
         telefono: formData.telefono || null,
-        sucursal_id: formData.sucursal_id || null,
+        sucursal_id: formData.sucursal_id === 'none' ? null : (formData.sucursal_id || null),
         activo: formData.activo,
       },
     });
@@ -534,7 +534,7 @@ export default function Users() {
                     <SelectValue placeholder="Seleccionar sucursal" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Sin asignar</SelectItem>
+                    <SelectItem value="none">Sin asignar</SelectItem>
                     {sucursales.map((s) => (
                       <SelectItem key={s.id} value={s.id}>
                         {s.nombre}
