@@ -17,10 +17,11 @@ import Clients from "./pages/Clients";
 import Branches from "./pages/Branches";
 import Rates from "./pages/Rates";
 import Users from "./pages/Users";
+import Cash from "./pages/Cash";
 import NotFound from "./pages/NotFound";
 
 // Icons for placeholders
-import { Truck, MapPin, ClipboardList, Wallet, DollarSign, FileText, CreditCard, Users as UsersIcon, Building2, Tags, UserCog, Settings } from "lucide-react";
+import { Truck, MapPin, ClipboardList, DollarSign, FileText, CreditCard, Users as UsersIcon, Settings } from "lucide-react";
 
 const queryClient = new QueryClient();
 
@@ -49,7 +50,7 @@ const App = () => (
             <Route path="/my-routes" element={<DashboardLayout><PlaceholderPage title="Mis Rutas" description="Rutas asignadas al chofer" icon={ClipboardList} /></DashboardLayout>} />
             
             {/* Finanzas */}
-            <Route path="/cash" element={<DashboardLayout><PlaceholderPage title="Control de Caja" description="Apertura y cierre de caja" icon={Wallet} /></DashboardLayout>} />
+            <Route path="/cash" element={<DashboardLayout><Cash /></DashboardLayout>} />
             <Route path="/commissions" element={<DashboardLayout><PlaceholderPage title="Comisiones" description="Gestión de comisiones de choferes" icon={DollarSign} /></DashboardLayout>} />
             <Route path="/my-commissions" element={<DashboardLayout><PlaceholderPage title="Mis Comisiones" description="Comisiones del chofer" icon={DollarSign} /></DashboardLayout>} />
             <Route path="/settlements" element={<DashboardLayout><PlaceholderPage title="Liquidaciones" description="Pagos a choferes" icon={FileText} /></DashboardLayout>} />
