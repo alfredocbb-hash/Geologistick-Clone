@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { QRCodeSVG } from 'qrcode.react';
 import { 
   ArrowLeft, 
   Printer, 
@@ -12,7 +13,6 @@ import {
   Package,
   Phone,
   MapPin,
-  QrCode,
   Truck,
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -258,10 +258,15 @@ export default function PrintLabel() {
               </p>
             </div>
 
-            {/* QR Code placeholder */}
+            {/* QR Code */}
             <div className="flex justify-center mb-3">
-              <div className="w-24 h-24 border-2 border-dashed border-muted-foreground rounded-lg flex items-center justify-center">
-                <QrCode className="h-16 w-16 text-muted-foreground" />
+              <div className="bg-white p-2 rounded-lg">
+                <QRCodeSVG 
+                  value={`${window.location.origin}/tracking?q=${envio.tracking_number}-${String(bultoNum).padStart(2, '0')}`}
+                  size={96}
+                  level="M"
+                  includeMargin={false}
+                />
               </div>
             </div>
 
@@ -368,11 +373,20 @@ export default function PrintLabel() {
               <p className="text-xs font-semibold text-muted-foreground mb-1">REMITENTE</p>
               <p className="font-medium">
                 {envio.remitente 
-                  ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}`
+                  ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}`.trim()
                   : 'Sin remitente'}
               </p>
+              {envio.dni_remitente && (
+                <p className="text-xs">DNI: {envio.dni_remitente}</p>
+              )}
+              {envio.remitente?.telefono && (
+                <p className="text-xs flex items-center gap-1">
+                  <Phone className="h-3 w-3" />
+                  {envio.remitente.telefono}
+                </p>
+              )}
               {envio.sucursal_origen && (
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-muted-foreground mt-1">
                   {envio.sucursal_origen.codigo} - {envio.sucursal_origen.nombre}
                 </p>
               )}
