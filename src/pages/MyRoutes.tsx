@@ -116,6 +116,56 @@ export default function MyRoutes() {
         });
 
       if (historyError) throw historyError;
+
+      // Generate driver commission when shipment is delivered
+      if (newStatus === 'entregado' && user?.id) {
+        // Fetch shipment with tarifa to calculate commission
+        const { data: envioData } = await supabase
+          .from('envios')
+          .select(`
+            id,
+            precio_total,
+            tarifa_id,
+            tarifas:tarifas(comision_chofer_porcentaje, comision_chofer_fija)
+          `)
+          .eq('id', shipmentId)
+          .single();
+
+        if (envioData && envioData.tarifas) {
+          const tarifa = envioData.tarifas as { comision_chofer_porcentaje: number | null; comision_chofer_fija: number | null };
+          const porcentaje = tarifa.comision_chofer_porcentaje || 0;
+          const montoFijo = tarifa.comision_chofer_fija || 0;
+          const comisionPorcentaje = (envioData.precio_total * porcentaje) / 100;
+          const montoTotal = comisionPorcentaje + montoFijo;
+
+          if (montoTotal > 0) {
+            // Check if commission already exists for this shipment
+            const { data: existingCommission } = await supabase
+              .from('comisiones')
+              .select('id')
+              .eq('envio_id', shipmentId)
+              .eq('chofer_id', user.id)
+              .maybeSingle();
+
+            if (!existingCommission) {
+              const { error: commissionError } = await supabase
+                .from('comisiones')
+                .insert({
+                  chofer_id: user.id,
+                  envio_id: shipmentId,
+                  monto: montoTotal,
+                  porcentaje_aplicado: porcentaje,
+                  monto_fijo_aplicado: montoFijo,
+                });
+
+              if (commissionError) {
+                console.error('Error creating commission:', commissionError);
+                // Don't throw - commission is secondary, shipment update succeeded
+              }
+            }
+          }
+        }
+      }
     },
     onSuccess: () => {
       toast.success('Estado actualizado correctamente');
