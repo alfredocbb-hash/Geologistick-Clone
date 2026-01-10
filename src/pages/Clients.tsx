@@ -242,14 +242,15 @@ export default function Clients() {
               Nuevo Cliente
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            <DialogHeader className="flex-shrink-0">
               <DialogTitle>
                 {editingClient ? 'Editar Cliente' : 'Nuevo Cliente'}
               </DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto space-y-4 pr-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Información Personal */}
                 <div className="space-y-2">
                   <Label htmlFor="nombre">Nombre *</Label>
                   <Input
@@ -271,6 +272,8 @@ export default function Clients() {
                     }
                   />
                 </div>
+
+                {/* Contacto */}
                 <div className="space-y-2">
                   <Label htmlFor="telefono">Teléfono *</Label>
                   <Input
@@ -293,7 +296,9 @@ export default function Clients() {
                     }
                   />
                 </div>
-                <div className="space-y-2 md:col-span-2">
+
+                {/* Ubicación */}
+                <div className="space-y-2 sm:col-span-2">
                   <Label htmlFor="direccion">Dirección *</Label>
                   <Input
                     id="direccion"
@@ -324,8 +329,10 @@ export default function Clients() {
                     }
                   />
                 </div>
+
+                {/* Configuración */}
                 {isAdmin() && (
-                  <div className="space-y-2">
+                  <div className="space-y-2 sm:col-span-2">
                     <Label htmlFor="sucursal">Sucursal</Label>
                     <Select
                       value={formData.sucursal_id}
@@ -346,7 +353,7 @@ export default function Clients() {
                     </Select>
                   </div>
                 )}
-                <div className="space-y-2 md:col-span-2">
+                <div className="space-y-2 sm:col-span-2">
                   <Label htmlFor="notas">Notas</Label>
                   <Textarea
                     id="notas"
@@ -354,13 +361,13 @@ export default function Clients() {
                     onChange={(e) =>
                       setFormData({ ...formData, notas: e.target.value })
                     }
-                    rows={3}
+                    rows={2}
                   />
                 </div>
                 
                 {/* Cuenta Corriente Section */}
-                <Separator className="md:col-span-2" />
-                <div className="md:col-span-2 space-y-4">
+                <Separator className="sm:col-span-2" />
+                <div className="sm:col-span-2 space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
                       <Label htmlFor="tiene_cuenta_corriente">Cuenta Corriente</Label>
@@ -395,30 +402,32 @@ export default function Clients() {
                   )}
                 </div>
               </div>
-              <div className="flex justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    resetForm();
-                    setIsDialogOpen(false);
-                  }}
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={saveMutation.isPending}
-                  className="bg-clientes hover:bg-clientes/90"
-                >
-                  {saveMutation.isPending
-                    ? 'Guardando...'
-                    : editingClient
-                    ? 'Actualizar'
-                    : 'Crear'}
-                </Button>
-              </div>
             </form>
+            <div className="flex justify-end gap-2 pt-4 border-t flex-shrink-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  resetForm();
+                  setIsDialogOpen(false);
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                form="client-form"
+                disabled={saveMutation.isPending}
+                className="bg-clientes hover:bg-clientes/90"
+                onClick={handleSubmit}
+              >
+                {saveMutation.isPending
+                  ? 'Guardando...'
+                  : editingClient
+                  ? 'Actualizar'
+                  : 'Crear'}
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
       </div>
