@@ -1152,12 +1152,15 @@ export default function RoutePlanner() {
 
                       <div className="space-y-2">
                         <Label>Vehículo</Label>
-                        <Select value={selectedVehiculo} onValueChange={setSelectedVehiculo}>
+                        <Select
+                          value={selectedVehiculo || "none"}
+                          onValueChange={(v) => setSelectedVehiculo(v === "none" ? "" : v)}
+                        >
                           <SelectTrigger>
                             <SelectValue placeholder="Sin asignar" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">Sin asignar</SelectItem>
+                            <SelectItem value="none">Sin asignar</SelectItem>
                             {vehiculos.map(v => (
                               <SelectItem key={v.id} value={v.id}>
                                 {v.patente} - {v.marca}

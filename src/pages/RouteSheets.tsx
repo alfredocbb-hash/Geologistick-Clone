@@ -372,12 +372,15 @@ export default function RouteSheets() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Chofer (Opcional)</Label>
-                  <Select value={selectedChofer} onValueChange={setSelectedChofer}>
+                  <Select
+                    value={selectedChofer || "none"}
+                    onValueChange={(v) => setSelectedChofer(v === "none" ? "" : v)}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Sin asignar" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Sin asignar</SelectItem>
+                      <SelectItem value="none">Sin asignar</SelectItem>
                       {choferes.map(chofer => (
                         <SelectItem key={chofer.user_id} value={chofer.user_id}>
                           {chofer.nombre} {chofer.apellido}
@@ -389,12 +392,15 @@ export default function RouteSheets() {
 
                 <div className="space-y-2">
                   <Label>Vehículo (Opcional)</Label>
-                  <Select value={selectedVehiculo} onValueChange={setSelectedVehiculo}>
+                  <Select
+                    value={selectedVehiculo || "none"}
+                    onValueChange={(v) => setSelectedVehiculo(v === "none" ? "" : v)}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Sin asignar" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Sin asignar</SelectItem>
+                      <SelectItem value="none">Sin asignar</SelectItem>
                       {vehiculos.map(vehiculo => (
                         <SelectItem key={vehiculo.id} value={vehiculo.id}>
                           {vehiculo.patente} - {vehiculo.marca} {vehiculo.modelo}
