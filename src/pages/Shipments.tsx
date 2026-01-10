@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { Link } from 'react-router-dom';
@@ -9,9 +9,22 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Package, PackagePlus, Search, Filter, RefreshCw, Truck, Clock, CheckCircle, AlertCircle, Printer, Eye } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Package, PackagePlus, Search, Filter, RefreshCw, Truck, Clock, CheckCircle, AlertCircle, Printer, XCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
 
 type ShipmentStatus = Database['public']['Enums']['shipment_status'];
@@ -28,9 +41,48 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; icon:
 };
 
 export default function Shipments() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [envioToCancel, setEnvioToCancel] = useState<any>(null);
+  const [cancelReason, setCancelReason] = useState('');
+
+  const cancelMutation = useMutation({
+    mutationFn: async ({ envioId, reason, previousStatus }: { envioId: string; reason: string; previousStatus: string | null }) => {
+      const { error: updateError } = await supabase
+        .from('envios')
+        .update({ estado: 'cancelado' })
+        .eq('id', envioId);
+      
+      if (updateError) throw updateError;
+
+      const { error: historyError } = await supabase
+        .from('envio_historial')
+        .insert({
+          envio_id: envioId,
+          estado_anterior: previousStatus as ShipmentStatus,
+          estado_nuevo: 'cancelado' as ShipmentStatus,
+          notas: reason || 'Envío cancelado',
+          created_by: user?.id
+        });
+      
+      if (historyError) throw historyError;
+    },
+    onSuccess: () => {
+      toast.success('Envío cancelado exitosamente');
+      queryClient.invalidateQueries({ queryKey: ['envios'] });
+      queryClient.invalidateQueries({ queryKey: ['envios-stats'] });
+      setCancelDialogOpen(false);
+      setEnvioToCancel(null);
+      setCancelReason('');
+    },
+    onError: (error) => {
+      toast.error('Error al cancelar el envío');
+      console.error(error);
+    }
+  });
 
   const { data: envios, isLoading, refetch } = useQuery({
     queryKey: ['envios', statusFilter],
@@ -254,6 +306,21 @@ export default function Shipments() {
                             <Printer className="h-4 w-4" />
                           </Link>
                         </Button>
+                        {envio.estado !== 'cancelado' && envio.estado !== 'entregado' && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Cancelar envío"
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEnvioToCancel(envio);
+                              setCancelDialogOpen(true);
+                            }}
+                          >
+                            <XCircle className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -275,6 +342,48 @@ export default function Shipments() {
           )}
         </CardContent>
       </Card>
+
+      {/* Cancel Dialog */}
+      <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Cancelar este envío?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Estás a punto de cancelar el envío <strong>{envioToCancel?.tracking_number}</strong>.
+              Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          
+          <div className="space-y-2">
+            <Label>Motivo de cancelación (opcional)</Label>
+            <Textarea
+              placeholder="Ingresa el motivo de la cancelación..."
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+            />
+          </div>
+          
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setEnvioToCancel(null);
+              setCancelReason('');
+            }}>
+              No, mantener
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => cancelMutation.mutate({ 
+                envioId: envioToCancel?.id, 
+                reason: cancelReason,
+                previousStatus: envioToCancel?.estado
+              })}
+              className="bg-destructive hover:bg-destructive/90"
+              disabled={cancelMutation.isPending}
+            >
+              {cancelMutation.isPending ? 'Cancelando...' : 'Sí, cancelar envío'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
