@@ -1,260 +1,132 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { Package, Truck, MapPin, Phone, CheckCircle, Clock, XCircle, AlertCircle, Navigation } from 'lucide-react';
+import { 
+  Package, 
+  Truck, 
+  MapPin, 
+  CheckCircle, 
+  Clock, 
+  PlayCircle, 
+  Route as RouteIcon,
+  QrCode,
+  Loader2,
+  Calendar,
+  Navigation
+} from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import type { Database } from '@/integrations/supabase/types';
+import QRScanner from '@/components/qr/QRScanner';
+import { ReceiveRouteSheetDialog } from '@/components/scan/ReceiveRouteSheetDialog';
 
-type ShipmentStatus = Database['public']['Enums']['shipment_status'];
-
-interface MyShipment {
+interface HojaRuta {
   id: string;
-  tracking_number: string;
-  estado: ShipmentStatus;
-  precio_total: number;
-  pago_contra_entrega: boolean;
-  descripcion: string | null;
-  notas: string | null;
+  numero: string;
+  estado: string;
+  cantidad_envios: number | null;
+  distancia_total_km: number | null;
+  tiempo_estimado_horas: number | null;
+  fecha_salida: string | null;
+  inicio_real: string | null;
+  fin_real: string | null;
   created_at: string;
-  fecha_entrega: string | null;
-  destinatario?: {
-    nombre: string;
-    apellido: string | null;
-    direccion: string;
-    ciudad: string | null;
-    telefono: string;
-  } | null;
-  sucursal_destino?: { nombre: string } | null;
+  sucursal_origen: { nombre: string; codigo: string | null } | null;
+  sucursal_destino: { nombre: string; codigo: string | null } | null;
+  vehiculo: { patente: string; marca: string | null; modelo: string | null } | null;
 }
 
 export default function MyRoutes() {
   const { user } = useAuth();
-  const queryClient = useQueryClient();
-  const [selectedShipment, setSelectedShipment] = useState<MyShipment | null>(null);
-  const [actionType, setActionType] = useState<'pickup' | 'deliver' | 'return' | null>(null);
-  const [notes, setNotes] = useState('');
+  const navigate = useNavigate();
+  const [showQRScanner, setShowQRScanner] = useState(false);
+  const [receiveHojaId, setReceiveHojaId] = useState<string | null>(null);
 
-  // Fetch my assigned shipments
-  const { data: myShipments = [], isLoading } = useQuery({
-    queryKey: ['my-shipments', user?.id],
+  // Fetch my assigned route sheets
+  const { data: hojasRuta = [], isLoading } = useQuery({
+    queryKey: ['my-hojas-ruta', user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
 
       const { data, error } = await supabase
-        .from('envios')
+        .from('hojas_ruta')
         .select(`
           id,
-          tracking_number,
+          numero,
           estado,
-          precio_total,
-          pago_contra_entrega,
-          descripcion,
-          notas,
+          cantidad_envios,
+          distancia_total_km,
+          tiempo_estimado_horas,
+          fecha_salida,
+          inicio_real,
+          fin_real,
           created_at,
-          fecha_entrega,
-          destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, direccion, ciudad, telefono),
-          sucursal_destino:sucursales!envios_sucursal_destino_id_fkey(nombre)
+          sucursal_origen:sucursales!hojas_ruta_sucursal_origen_id_fkey(nombre, codigo),
+          sucursal_destino:sucursales!hojas_ruta_sucursal_destino_id_fkey(nombre, codigo),
+          vehiculo:vehiculos(patente, marca, modelo)
         `)
         .eq('chofer_id', user.id)
-        .in('estado', ['pendiente', 'recogido', 'en_bodega', 'en_transito', 'en_reparto', 'entregado', 'devuelto'])
-        .order('estado', { ascending: true })
-        .order('created_at', { ascending: true });
+        .in('estado', ['pendiente', 'en_transito', 'completada'])
+        .order('created_at', { ascending: false })
+        .limit(50);
 
       if (error) throw error;
-      return data as MyShipment[];
+      return data as HojaRuta[];
     },
     enabled: !!user?.id,
   });
 
-  // Mutation to update shipment status
-  const updateStatusMutation = useMutation({
-    mutationFn: async ({ 
-      shipmentId, 
-      newStatus, 
-      notes 
-    }: { 
-      shipmentId: string; 
-      newStatus: ShipmentStatus; 
-      notes?: string;
-    }) => {
-      const currentShipment = myShipments.find(s => s.id === shipmentId);
-      
-      // Update shipment
-      const updateData: Record<string, unknown> = { estado: newStatus };
-      if (newStatus === 'entregado') {
-        updateData.fecha_entrega = new Date().toISOString();
-      }
-      if (notes) {
-        updateData.notas = notes;
-      }
+  // Handle QR scan to receive route sheets
+  const handleQRScan = async (data: string) => {
+    setShowQRScanner(false);
+    
+    // Try to find a hoja de ruta by number or id
+    const { data: hoja, error } = await supabase
+      .from('hojas_ruta')
+      .select('id, numero, estado')
+      .or(`numero.eq.${data},id.eq.${data}`)
+      .single();
 
-      const { error: updateError } = await supabase
-        .from('envios')
-        .update(updateData)
-        .eq('id', shipmentId);
-
-      if (updateError) throw updateError;
-
-      // Create history entry
-      const { error: historyError } = await supabase
-        .from('envio_historial')
-        .insert({
-          envio_id: shipmentId,
-          estado_anterior: currentShipment?.estado || 'pendiente',
-          estado_nuevo: newStatus,
-          notas: notes || null,
-          created_by: user?.id,
-        });
-
-      if (historyError) throw historyError;
-
-      // Generate driver commission when shipment is delivered
-      if (newStatus === 'entregado' && user?.id) {
-        // Fetch shipment with tarifa to calculate commission
-        const { data: envioData } = await supabase
-          .from('envios')
-          .select(`
-            id,
-            precio_total,
-            tarifa_id,
-            tarifas:tarifas(comision_chofer_porcentaje, comision_chofer_fija)
-          `)
-          .eq('id', shipmentId)
-          .single();
-
-        if (envioData && envioData.tarifas) {
-          const tarifa = envioData.tarifas as { comision_chofer_porcentaje: number | null; comision_chofer_fija: number | null };
-          const porcentaje = tarifa.comision_chofer_porcentaje || 0;
-          const montoFijo = tarifa.comision_chofer_fija || 0;
-          const comisionPorcentaje = (envioData.precio_total * porcentaje) / 100;
-          const montoTotal = comisionPorcentaje + montoFijo;
-
-          if (montoTotal > 0) {
-            // Check if commission already exists for this shipment
-            const { data: existingCommission } = await supabase
-              .from('comisiones')
-              .select('id')
-              .eq('envio_id', shipmentId)
-              .eq('chofer_id', user.id)
-              .maybeSingle();
-
-            if (!existingCommission) {
-              const { error: commissionError } = await supabase
-                .from('comisiones')
-                .insert({
-                  chofer_id: user.id,
-                  envio_id: shipmentId,
-                  monto: montoTotal,
-                  porcentaje_aplicado: porcentaje,
-                  monto_fijo_aplicado: montoFijo,
-                });
-
-              if (commissionError) {
-                console.error('Error creating commission:', commissionError);
-                // Don't throw - commission is secondary, shipment update succeeded
-              }
-            }
-          }
-        }
-      }
-    },
-    onSuccess: () => {
-      toast.success('Estado actualizado correctamente');
-      queryClient.invalidateQueries({ queryKey: ['my-shipments'] });
-      closeActionDialog();
-    },
-    onError: (error) => {
-      toast.error('Error al actualizar: ' + error.message);
-    },
-  });
-
-  const openActionDialog = (shipment: MyShipment, action: 'pickup' | 'deliver' | 'return') => {
-    setSelectedShipment(shipment);
-    setActionType(action);
-    setNotes('');
-  };
-
-  const closeActionDialog = () => {
-    setSelectedShipment(null);
-    setActionType(null);
-    setNotes('');
-  };
-
-  const handleAction = () => {
-    if (!selectedShipment || !actionType) return;
-
-    let newStatus: ShipmentStatus;
-    switch (actionType) {
-      case 'pickup':
-        newStatus = 'en_transito';
-        break;
-      case 'deliver':
-        newStatus = 'entregado';
-        break;
-      case 'return':
-        newStatus = 'devuelto';
-        break;
-      default:
-        return;
+    if (error || !hoja) {
+      toast.error('Hoja de ruta no encontrada');
+      return;
     }
 
-    updateStatusMutation.mutate({
-      shipmentId: selectedShipment.id,
-      newStatus,
-      notes: notes || undefined,
-    });
+    // Play beep sound
+    const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1f');
+    audio.play().catch(() => {});
+
+    if (hoja.estado === 'en_transito' || hoja.estado === 'completada') {
+      // If it's my route and in transit, go to active navigation
+      navigate(`/active-route?id=${hoja.id}`);
+    } else {
+      // Show receive dialog
+      setReceiveHojaId(hoja.id);
+    }
   };
 
-  const getStatusBadge = (estado: ShipmentStatus) => {
+  const getStatusBadge = (estado: string) => {
     const config: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
       pendiente: { 
         label: 'Pendiente', 
         className: 'bg-warning/10 text-warning border-warning',
         icon: <Clock className="h-3 w-3" />
       },
-      recogido: { 
-        label: 'Recogido', 
-        className: 'bg-info/10 text-info border-info',
-        icon: <Package className="h-3 w-3" />
-      },
-      en_bodega: { 
-        label: 'En Bodega', 
-        className: 'bg-muted text-muted-foreground border-muted-foreground',
-        icon: <Package className="h-3 w-3" />
-      },
       en_transito: { 
-        label: 'En Tránsito', 
-        className: 'bg-chofer/10 text-chofer border-chofer',
-        icon: <Truck className="h-3 w-3" />
-      },
-      en_reparto: { 
-        label: 'En Reparto', 
+        label: 'En Curso', 
         className: 'bg-primary/10 text-primary border-primary',
         icon: <Navigation className="h-3 w-3" />
       },
-      entregado: { 
-        label: 'Entregado', 
+      completada: { 
+        label: 'Completada', 
         className: 'bg-success/10 text-success border-success',
         icon: <CheckCircle className="h-3 w-3" />
-      },
-      devuelto: { 
-        label: 'Devuelto', 
-        className: 'bg-destructive/10 text-destructive border-destructive',
-        icon: <XCircle className="h-3 w-3" />
-      },
-      cancelado: { 
-        label: 'Cancelado', 
-        className: 'bg-muted text-muted-foreground border-muted-foreground',
-        icon: <XCircle className="h-3 w-3" />
       },
     };
     const c = config[estado] || { label: estado, className: '', icon: null };
@@ -266,127 +138,96 @@ export default function MyRoutes() {
     );
   };
 
-  const pendingShipments = myShipments.filter(s => 
-    ['pendiente', 'recogido', 'en_bodega'].includes(s.estado)
-  );
-  const inTransitShipments = myShipments.filter(s => 
-    ['en_transito', 'en_reparto'].includes(s.estado)
-  );
-  const completedShipments = myShipments.filter(s => 
-    ['entregado', 'devuelto'].includes(s.estado)
-  );
+  const pendingRoutes = hojasRuta.filter(h => h.estado === 'pendiente');
+  const activeRoutes = hojasRuta.filter(h => h.estado === 'en_transito');
+  const completedRoutes = hojasRuta.filter(h => h.estado === 'completada');
 
   const stats = {
-    pending: pendingShipments.length,
-    inTransit: inTransitShipments.length,
-    completed: completedShipments.filter(s => s.estado === 'entregado').length,
-    returned: completedShipments.filter(s => s.estado === 'devuelto').length,
+    pending: pendingRoutes.length,
+    active: activeRoutes.length,
+    completed: completedRoutes.length,
+    totalEnvios: hojasRuta.reduce((acc, h) => acc + (h.cantidad_envios || 0), 0),
   };
 
-  const ShipmentCard = ({ shipment }: { shipment: MyShipment }) => {
-    const canPickup = ['pendiente', 'recogido', 'en_bodega'].includes(shipment.estado);
-    const canDeliver = ['en_transito', 'en_reparto'].includes(shipment.estado);
-    const isCompleted = ['entregado', 'devuelto'].includes(shipment.estado);
+  const RouteCard = ({ hoja }: { hoja: HojaRuta }) => {
+    const isActive = hoja.estado === 'en_transito';
+    const isPending = hoja.estado === 'pendiente';
+    const isCompleted = hoja.estado === 'completada';
 
     return (
-      <Card className={isCompleted ? 'opacity-70' : ''}>
+      <Card className={isCompleted ? 'opacity-70' : isActive ? 'border-primary border-2' : ''}>
         <CardContent className="p-4">
           <div className="flex items-start justify-between mb-3">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <span className="font-mono font-bold">{shipment.tracking_number}</span>
-                {getStatusBadge(shipment.estado)}
+                <span className="font-mono font-bold text-lg">{hoja.numero}</span>
+                {getStatusBadge(hoja.estado)}
               </div>
-              {shipment.pago_contra_entrega && (
-                <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-500">
-                  Pago contra entrega
-                </Badge>
-              )}
+              <div className="text-sm text-muted-foreground flex items-center gap-1">
+                <Calendar className="h-3 w-3" />
+                {format(new Date(hoja.created_at), 'dd/MM/yy HH:mm', { locale: es })}
+              </div>
             </div>
             <div className="text-right">
-              <div className="text-lg font-bold">${shipment.precio_total.toFixed(2)}</div>
-              <div className="text-xs text-muted-foreground">
-                {format(new Date(shipment.created_at), 'dd/MM/yy', { locale: es })}
-              </div>
+              <div className="text-2xl font-bold">{hoja.cantidad_envios || 0}</div>
+              <div className="text-xs text-muted-foreground">envíos</div>
             </div>
           </div>
 
+          {/* Route info */}
           <div className="space-y-2 mb-4">
-            <div className="flex items-start gap-2">
-              <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-              <div className="text-sm">
-                <div className="font-medium">
-                  {shipment.destinatario?.nombre} {shipment.destinatario?.apellido}
-                </div>
-                <div className="text-muted-foreground">
-                  {shipment.destinatario?.direccion}
-                  {shipment.destinatario?.ciudad && `, ${shipment.destinatario.ciudad}`}
-                </div>
-              </div>
+            <div className="flex items-center gap-2 text-sm">
+              <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span className="font-medium">{hoja.sucursal_origen?.nombre || 'Origen'}</span>
+              <span className="text-muted-foreground">→</span>
+              <span className="font-medium">{hoja.sucursal_destino?.nombre || 'Destino'}</span>
             </div>
             
-            {shipment.destinatario?.telefono && (
-              <a 
-                href={`tel:${shipment.destinatario.telefono}`}
-                className="flex items-center gap-2 text-sm text-primary hover:underline"
-              >
-                <Phone className="h-4 w-4" />
-                {shipment.destinatario.telefono}
-              </a>
-            )}
-
-            {shipment.descripcion && (
-              <div className="text-sm text-muted-foreground bg-muted/50 p-2 rounded">
-                <span className="font-medium">Descripción:</span> {shipment.descripcion}
+            {hoja.vehiculo && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Truck className="h-4 w-4" />
+                {hoja.vehiculo.patente}
+                {hoja.vehiculo.marca && ` - ${hoja.vehiculo.marca} ${hoja.vehiculo.modelo || ''}`}
               </div>
             )}
 
-            {shipment.notas && (
-              <div className="text-sm text-muted-foreground bg-muted/50 p-2 rounded">
-                <span className="font-medium">Notas:</span> {shipment.notas}
+            {hoja.distancia_total_km && (
+              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                <span>{hoja.distancia_total_km.toFixed(1)} km</span>
+                {hoja.tiempo_estimado_horas && (
+                  <span>~{Math.round(hoja.tiempo_estimado_horas * 60)} min</span>
+                )}
               </div>
             )}
           </div>
 
-          {!isCompleted && (
-            <div className="flex gap-2">
-              {canPickup && (
-                <Button 
-                  className="flex-1 bg-chofer hover:bg-chofer/90"
-                  onClick={() => openActionDialog(shipment, 'pickup')}
-                >
-                  <Truck className="h-4 w-4 mr-2" />
-                  Recoger
-                </Button>
-              )}
-              {canDeliver && (
-                <>
-                  <Button 
-                    className="flex-1 bg-success hover:bg-success/90"
-                    onClick={() => openActionDialog(shipment, 'deliver')}
-                  >
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    Entregar
-                  </Button>
-                  <Button 
-                    variant="outline"
-                    className="border-destructive text-destructive hover:bg-destructive/10"
-                    onClick={() => openActionDialog(shipment, 'return')}
-                  >
-                    <XCircle className="h-4 w-4 mr-2" />
-                    Devolver
-                  </Button>
-                </>
-              )}
-            </div>
-          )}
-
-          {shipment.estado === 'entregado' && shipment.fecha_entrega && (
-            <div className="text-sm text-success flex items-center gap-1">
-              <CheckCircle className="h-4 w-4" />
-              Entregado el {format(new Date(shipment.fecha_entrega), 'dd/MM/yy HH:mm', { locale: es })}
-            </div>
-          )}
+          {/* Actions */}
+          <div className="flex gap-2">
+            {isPending && (
+              <Button 
+                className="flex-1 bg-primary hover:bg-primary/90"
+                onClick={() => navigate(`/route-start?id=${hoja.id}`)}
+              >
+                <PlayCircle className="h-4 w-4 mr-2" />
+                Iniciar Ruta
+              </Button>
+            )}
+            {isActive && (
+              <Button 
+                className="flex-1 bg-success hover:bg-success/90"
+                onClick={() => navigate(`/active-route?id=${hoja.id}`)}
+              >
+                <Navigation className="h-4 w-4 mr-2" />
+                Continuar Ruta
+              </Button>
+            )}
+            {isCompleted && hoja.fin_real && (
+              <div className="text-sm text-success flex items-center gap-1 w-full justify-center">
+                <CheckCircle className="h-4 w-4" />
+                Completada {format(new Date(hoja.fin_real), 'dd/MM HH:mm', { locale: es })}
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
     );
@@ -395,54 +236,75 @@ export default function MyRoutes() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Mis Rutas</h1>
-        <p className="text-muted-foreground">Gestiona tus envíos asignados</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Mis Rutas</h1>
+          <p className="text-muted-foreground">Hojas de ruta asignadas</p>
+        </div>
+        <Button onClick={() => setShowQRScanner(true)} variant="outline">
+          <QrCode className="h-4 w-4 mr-2" />
+          Escanear
+        </Button>
       </div>
 
       {/* Stats */}
       <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
         <Card className="border-warning/30 bg-warning/5">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Por Recoger</CardTitle>
+            <CardTitle className="text-sm font-medium">Pendientes</CardTitle>
             <Clock className="h-4 w-4 text-warning" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-warning">{stats.pending}</div>
           </CardContent>
         </Card>
-        <Card className="border-chofer/30 bg-chofer/5">
+        <Card className="border-primary/30 bg-primary/5">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">En Tránsito</CardTitle>
-            <Truck className="h-4 w-4 text-chofer" />
+            <CardTitle className="text-sm font-medium">En Curso</CardTitle>
+            <Navigation className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-chofer">{stats.inTransit}</div>
+            <div className="text-2xl font-bold text-primary">{stats.active}</div>
           </CardContent>
         </Card>
         <Card className="border-success/30 bg-success/5">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Entregados</CardTitle>
+            <CardTitle className="text-sm font-medium">Completadas</CardTitle>
             <CheckCircle className="h-4 w-4 text-success" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-success">{stats.completed}</div>
           </CardContent>
         </Card>
-        <Card className="border-destructive/30 bg-destructive/5">
+        <Card className="border-muted">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Devueltos</CardTitle>
-            <XCircle className="h-4 w-4 text-destructive" />
+            <CardTitle className="text-sm font-medium">Total Envíos</CardTitle>
+            <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-destructive">{stats.returned}</div>
+            <div className="text-2xl font-bold">{stats.totalEnvios}</div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Shipments Tabs */}
+      {/* Active Routes Section */}
+      {activeRoutes.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Navigation className="h-5 w-5 text-primary" />
+            Rutas Activas
+          </h2>
+          <div className="space-y-3">
+            {activeRoutes.map((hoja) => (
+              <RouteCard key={hoja.id} hoja={hoja} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Tabs for Pending and Completed */}
       <Tabs defaultValue="pending" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="pending" className="flex items-center gap-2">
             <Clock className="h-4 w-4" />
             Pendientes
@@ -450,58 +312,31 @@ export default function MyRoutes() {
               <Badge variant="secondary" className="ml-1">{stats.pending}</Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="transit" className="flex items-center gap-2">
-            <Truck className="h-4 w-4" />
-            En Tránsito
-            {stats.inTransit > 0 && (
-              <Badge variant="secondary" className="ml-1">{stats.inTransit}</Badge>
-            )}
-          </TabsTrigger>
           <TabsTrigger value="completed" className="flex items-center gap-2">
             <CheckCircle className="h-4 w-4" />
-            Completados
+            Completadas
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="pending" className="mt-4">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
-          ) : pendingShipments.length === 0 ? (
+          ) : pendingRoutes.length === 0 ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
                 <CheckCircle className="h-12 w-12 text-success mb-4" />
-                <h3 className="text-lg font-semibold">Sin pendientes</h3>
-                <p className="text-muted-foreground">No tienes envíos pendientes de recoger</p>
+                <h3 className="text-lg font-semibold">Sin rutas pendientes</h3>
+                <p className="text-muted-foreground text-center mt-2">
+                  No tienes hojas de ruta pendientes de iniciar
+                </p>
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {pendingShipments.map((shipment) => (
-                <ShipmentCard key={shipment.id} shipment={shipment} />
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="transit" className="mt-4">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            </div>
-          ) : inTransitShipments.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold">Sin envíos en tránsito</h3>
-                <p className="text-muted-foreground">Recoge envíos pendientes para verlos aquí</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {inTransitShipments.map((shipment) => (
-                <ShipmentCard key={shipment.id} shipment={shipment} />
+            <div className="space-y-3">
+              {pendingRoutes.map((hoja) => (
+                <RouteCard key={hoja.id} hoja={hoja} />
               ))}
             </div>
           )}
@@ -510,92 +345,41 @@ export default function MyRoutes() {
         <TabsContent value="completed" className="mt-4">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
-          ) : completedShipments.length === 0 ? (
+          ) : completedRoutes.length === 0 ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
-                <Package className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold">Sin entregas completadas</h3>
-                <p className="text-muted-foreground">Tus entregas completadas aparecerán aquí</p>
+                <RouteIcon className="h-12 w-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold">Sin rutas completadas</h3>
+                <p className="text-muted-foreground text-center mt-2">
+                  Aún no has completado ninguna ruta
+                </p>
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {completedShipments.map((shipment) => (
-                <ShipmentCard key={shipment.id} shipment={shipment} />
+            <div className="space-y-3">
+              {completedRoutes.map((hoja) => (
+                <RouteCard key={hoja.id} hoja={hoja} />
               ))}
             </div>
           )}
         </TabsContent>
       </Tabs>
 
-      {/* Action Dialog */}
-      <Dialog open={!!actionType} onOpenChange={(open) => !open && closeActionDialog()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {actionType === 'pickup' && 'Confirmar Recogida'}
-              {actionType === 'deliver' && 'Confirmar Entrega'}
-              {actionType === 'return' && 'Registrar Devolución'}
-            </DialogTitle>
-            <DialogDescription>
-              {actionType === 'pickup' && 'El envío pasará a estado "En Tránsito"'}
-              {actionType === 'deliver' && 'El envío se marcará como entregado'}
-              {actionType === 'return' && 'El envío se marcará como devuelto'}
-            </DialogDescription>
-          </DialogHeader>
+      {/* QR Scanner */}
+      {showQRScanner && (
+        <QRScanner 
+          onScan={handleQRScan} 
+          onClose={() => setShowQRScanner(false)} 
+        />
+      )}
 
-          {selectedShipment && (
-            <div className="py-4">
-              <div className="bg-muted/50 p-4 rounded-lg mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-mono font-bold">{selectedShipment.tracking_number}</span>
-                  <span className="font-bold">${selectedShipment.precio_total.toFixed(2)}</span>
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  {selectedShipment.destinatario?.nombre} - {selectedShipment.destinatario?.direccion}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">
-                  {actionType === 'return' ? 'Razón de la devolución *' : 'Notas (opcional)'}
-                </label>
-                <Textarea
-                  placeholder={
-                    actionType === 'return' 
-                      ? 'Ej: Destinatario no encontrado, dirección incorrecta...'
-                      : 'Agregar notas sobre la entrega...'
-                  }
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={3}
-                />
-              </div>
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={closeActionDialog}>
-              Cancelar
-            </Button>
-            <Button 
-              onClick={handleAction}
-              disabled={updateStatusMutation.isPending || (actionType === 'return' && !notes.trim())}
-              className={
-                actionType === 'deliver' 
-                  ? 'bg-success hover:bg-success/90' 
-                  : actionType === 'return'
-                  ? 'bg-destructive hover:bg-destructive/90'
-                  : 'bg-chofer hover:bg-chofer/90'
-              }
-            >
-              {updateStatusMutation.isPending ? 'Procesando...' : 'Confirmar'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Receive Route Sheet Dialog */}
+      <ReceiveRouteSheetDialog
+        hojaRutaId={receiveHojaId}
+        onClose={() => setReceiveHojaId(null)}
+      />
     </div>
   );
 }
