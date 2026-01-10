@@ -44,7 +44,11 @@ import {
   Home,
   ArrowDownToLine,
   ArrowUpFromLine,
+  CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react';
+import { GoogleMapsProvider } from '@/components/maps/GoogleMapsProvider';
+import { AddressAutocomplete, type AddressDetails } from '@/components/maps/AddressAutocomplete';
 
 interface Sucursal {
   id: string;
@@ -65,6 +69,8 @@ interface Sucursal {
   realiza_retiros: boolean | null;
   realiza_entregas: boolean | null;
   centro_logistico_id: string | null;
+  lat: number | null;
+  lng: number | null;
 }
 
 interface TarifaConcepto {
@@ -107,6 +113,8 @@ export default function Branches() {
     realiza_retiros: false,
     realiza_entregas: false,
     centro_logistico_id: '',
+    lat: null as number | null,
+    lng: null as number | null,
   });
   const [commissionData, setCommissionData] = useState<Record<string, {
     contado: string;
@@ -195,6 +203,8 @@ export default function Branches() {
         realiza_retiros: data.realiza_retiros,
         realiza_entregas: data.realiza_entregas,
         centro_logistico_id: data.centro_logistico_id || null,
+        lat: data.lat,
+        lng: data.lng,
       };
 
       if (editingSucursal) {
@@ -295,6 +305,8 @@ export default function Branches() {
       realiza_retiros: false,
       realiza_entregas: false,
       centro_logistico_id: '',
+      lat: null,
+      lng: null,
     });
     setEditingSucursal(null);
   };
@@ -317,8 +329,20 @@ export default function Branches() {
       realiza_retiros: sucursal.realiza_retiros ?? false,
       realiza_entregas: sucursal.realiza_entregas ?? false,
       centro_logistico_id: sucursal.centro_logistico_id || '',
+      lat: sucursal.lat || null,
+      lng: sucursal.lng || null,
     });
     setIsDialogOpen(true);
+  };
+
+  const handleAddressSelect = (details: AddressDetails) => {
+    setFormData(prev => ({
+      ...prev,
+      direccion: details.formattedAddress || details.address,
+      ciudad: details.city || prev.ciudad,
+      lat: details.lat,
+      lng: details.lng,
+    }));
   };
 
   const handleOpenCommissions = (sucursal: Sucursal) => {
@@ -379,12 +403,13 @@ export default function Branches() {
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>
-                {editingSucursal ? 'Editar Sucursal' : 'Nueva Sucursal'}
-              </DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <GoogleMapsProvider>
+              <DialogHeader>
+                <DialogTitle>
+                  {editingSucursal ? 'Editar Sucursal' : 'Nueva Sucursal'}
+                </DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleSubmit} className="space-y-6">
               {/* Basic Info */}
               <div className="space-y-4">
                 <h3 className="font-semibold flex items-center gap-2">
@@ -417,27 +442,37 @@ export default function Branches() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="ciudad">Ciudad *</Label>
+                    <Label htmlFor="ciudad">Ciudad</Label>
                     <Input
                       id="ciudad"
                       value={formData.ciudad}
                       onChange={(e) =>
                         setFormData({ ...formData, ciudad: e.target.value })
                       }
-                      placeholder="Ej: Buenos Aires"
-                      required
+                      placeholder="Se completa automáticamente"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="direccion">Dirección *</Label>
-                    <Input
+                  <div className="col-span-2 space-y-2">
+                    <AddressAutocomplete
                       id="direccion"
+                      label="Dirección"
                       value={formData.direccion}
-                      onChange={(e) =>
-                        setFormData({ ...formData, direccion: e.target.value })
-                      }
+                      onChange={(value) => setFormData({ ...formData, direccion: value })}
+                      onSelect={handleAddressSelect}
+                      placeholder="Buscar dirección..."
                       required
                     />
+                    {formData.lat && formData.lng ? (
+                      <div className="flex items-center gap-2 text-xs text-success">
+                        <CheckCircle2 className="h-3 w-3" />
+                        <span>Geolocalizado: {formData.lat.toFixed(6)}, {formData.lng.toFixed(6)}</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <AlertTriangle className="h-3 w-3" />
+                        <span>Seleccione una dirección del autocompletado para geolocalizar</span>
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="telefono">Teléfono</Label>
@@ -650,7 +685,8 @@ export default function Branches() {
                     : 'Crear'}
                 </Button>
               </div>
-            </form>
+              </form>
+            </GoogleMapsProvider>
           </DialogContent>
         </Dialog>
       </div>
