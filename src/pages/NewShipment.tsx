@@ -17,10 +17,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import ContactAutocomplete from '@/components/shipments/ContactAutocomplete';
+import { AddressAutocomplete, type AddressDetails } from '@/components/maps';
 import { 
   PackagePlus, ArrowLeft, User, MapPin, Package, DollarSign, Loader2, 
   CreditCard, Truck, Calendar, Clock, Home, AlertCircle, Wallet, Phone,
-  Building2, ArrowRight
+  Building2, ArrowRight, Navigation
 } from 'lucide-react';
 
 interface TarifaConcepto {
@@ -173,6 +174,11 @@ export default function NewShipment() {
     cp_entrega: '',
     horario_preferido_entrega: 'cualquier_hora',
   });
+
+  // Coordinates state for distance calculation
+  const [remitenteCoords, setRemitenteCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [destinatarioCoords, setDestinatarioCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [distanciaKm, setDistanciaKm] = useState<number | null>(null);
 
   // Derived states
   const tieneRetiro = tipoServicioDetalle === 'puerta_sucursal' || tipoServicioDetalle === 'puerta_puerta';
@@ -651,6 +657,74 @@ export default function NewShipment() {
     );
   };
 
+  // Handle address selection from Google Maps autocomplete
+  const handleRemitenteAddressSelect = (details: AddressDetails) => {
+    setFormData(prev => ({
+      ...prev,
+      remitente_direccion: details.address || details.formattedAddress,
+      remitente_ciudad: details.city || prev.remitente_ciudad,
+      remitente_codigo_postal: details.postalCode || prev.remitente_codigo_postal,
+    }));
+    setRemitenteCoords({ lat: details.lat, lng: details.lng });
+  };
+
+  const handleDestinatarioAddressSelect = (details: AddressDetails) => {
+    setFormData(prev => ({
+      ...prev,
+      destinatario_direccion: details.address || details.formattedAddress,
+      destinatario_ciudad: details.city || prev.destinatario_ciudad,
+      destinatario_codigo_postal: details.postalCode || prev.destinatario_codigo_postal,
+    }));
+    setDestinatarioCoords({ lat: details.lat, lng: details.lng });
+  };
+
+  const handleRetiroAddressSelect = (details: AddressDetails) => {
+    setFormData(prev => ({
+      ...prev,
+      direccion_retiro: details.address || details.formattedAddress,
+      ciudad_retiro: details.city || prev.ciudad_retiro,
+      cp_retiro: details.postalCode || prev.cp_retiro,
+    }));
+    setRemitenteCoords({ lat: details.lat, lng: details.lng });
+  };
+
+  const handleEntregaAddressSelect = (details: AddressDetails) => {
+    setFormData(prev => ({
+      ...prev,
+      direccion_entrega: details.address || details.formattedAddress,
+      ciudad_entrega: details.city || prev.ciudad_entrega,
+      cp_entrega: details.postalCode || prev.cp_entrega,
+    }));
+    setDestinatarioCoords({ lat: details.lat, lng: details.lng });
+  };
+
+  // Calculate distance when both coordinates are available
+  useEffect(() => {
+    const calculateDistance = async () => {
+      if (!remitenteCoords || !destinatarioCoords) {
+        setDistanciaKm(null);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase.functions.invoke('calculate-distance', {
+          body: {
+            origin: remitenteCoords,
+            destination: destinatarioCoords,
+          },
+        });
+
+        if (!error && data?.distance_km) {
+          setDistanciaKm(data.distance_km);
+        }
+      } catch (err) {
+        console.error('Error calculating distance:', err);
+      }
+    };
+
+    calculateDistance();
+  }, [remitenteCoords, destinatarioCoords]);
+
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('es-AR', {
       style: 'currency',
@@ -904,11 +978,13 @@ export default function NewShipment() {
                 />
               </div>
               <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="remitente_direccion">Dirección *</Label>
-                <Input
+                <AddressAutocomplete
                   id="remitente_direccion"
                   value={formData.remitente_direccion}
-                  onChange={(e) => handleChange('remitente_direccion', e.target.value)}
+                  onChange={(value) => handleChange('remitente_direccion', value)}
+                  onSelect={handleRemitenteAddressSelect}
+                  label="Dirección"
+                  placeholder="Ingrese la dirección del remitente..."
                   required
                 />
               </div>
@@ -975,12 +1051,13 @@ export default function NewShipment() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="direccion_retiro">Dirección de Retiro *</Label>
-                  <Input
+                  <AddressAutocomplete
                     id="direccion_retiro"
                     value={formData.direccion_retiro}
-                    onChange={(e) => handleChange('direccion_retiro', e.target.value)}
-                    placeholder="Completar si es diferente a la del remitente"
+                    onChange={(value) => handleChange('direccion_retiro', value)}
+                    onSelect={handleRetiroAddressSelect}
+                    label="Dirección de Retiro"
+                    placeholder="Ingrese la dirección de retiro..."
                     required
                   />
                 </div>
@@ -1103,15 +1180,17 @@ export default function NewShipment() {
                     onChange={(e) => handleChange('destinatario_codigo_postal', e.target.value)}
                   />
                 </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="destinatario_direccion">Dirección *</Label>
-                  <Input
-                    id="destinatario_direccion"
-                    value={formData.destinatario_direccion}
-                    onChange={(e) => handleChange('destinatario_direccion', e.target.value)}
-                    required={formData.tipo_pago !== 'cuenta_corriente'}
-                  />
-                </div>
+              <div className="space-y-2 md:col-span-2">
+                <AddressAutocomplete
+                  id="destinatario_direccion"
+                  value={formData.destinatario_direccion}
+                  onChange={(value) => handleChange('destinatario_direccion', value)}
+                  onSelect={handleDestinatarioAddressSelect}
+                  label="Dirección"
+                  placeholder="Ingrese la dirección del destinatario..."
+                  required={formData.tipo_pago !== 'cuenta_corriente'}
+                />
+              </div>
               </div>
             </CardContent>
           </Card>
@@ -1130,12 +1209,13 @@ export default function NewShipment() {
             <CardContent className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="direccion_entrega">Dirección de Entrega *</Label>
-                  <Input
+                  <AddressAutocomplete
                     id="direccion_entrega"
                     value={formData.direccion_entrega}
-                    onChange={(e) => handleChange('direccion_entrega', e.target.value)}
-                    placeholder="Completar si es diferente a la del destinatario"
+                    onChange={(value) => handleChange('direccion_entrega', value)}
+                    onSelect={handleEntregaAddressSelect}
+                    label="Dirección de Entrega"
+                    placeholder="Ingrese la dirección de entrega..."
                     required
                   />
                 </div>
@@ -1390,6 +1470,17 @@ export default function NewShipment() {
                       Number(selectedTarifa.precio_por_kg)
                     ).toLocaleString('es-AR')}
                   </span>
+                </div>
+              )}
+
+              {/* Distance info */}
+              {distanciaKm && (
+                <div className="flex justify-between text-sm py-2 bg-muted/50 rounded px-2">
+                  <span className="flex items-center gap-1">
+                    <Navigation className="h-3 w-3" />
+                    Distancia estimada
+                  </span>
+                  <span className="font-medium">{distanciaKm} km</span>
                 </div>
               )}
 
