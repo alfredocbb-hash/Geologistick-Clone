@@ -30,12 +30,14 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen w-full">
+      <div className="flex min-h-screen w-full overflow-hidden">
         <AppSidebar />
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col min-w-0">
           <AppHeader />
-          <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8 animate-fade-in">
-            {children}
+          <main className="flex-1 overflow-auto p-3 sm:p-4 md:p-6 lg:p-8 animate-fade-in">
+            <div className="max-w-full">
+              {children}
+            </div>
           </main>
         </div>
       </div>
