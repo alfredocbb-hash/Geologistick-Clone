@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,19 +12,18 @@ import {
   QrCode, 
   Search, 
   Package, 
-  CheckCircle2, 
   Building2, 
-  Home, 
   Loader2,
   AlertTriangle,
   Store,
   Truck,
-  X
+  FileText,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import QRScanner from '@/components/qr/QRScanner';
 import PickupConfirmation from '@/components/scan/PickupConfirmation';
 import ReceiveShipmentDialog from '@/components/scan/ReceiveShipmentDialog';
+import { ReceiveRouteSheetDialog } from '@/components/scan/ReceiveRouteSheetDialog';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   pendiente: { label: 'Pendiente', color: 'bg-orange-100 text-orange-800' },
@@ -37,7 +36,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   cancelado: { label: 'Cancelado', color: 'bg-red-100 text-red-800' },
 };
 
-type ScanMode = 'pickup' | 'receive_center' | 'receive_branch' | null;
+type ScanMode = 'pickup' | 'receive_center' | 'receive_branch' | 'receive_route_sheet' | null;
 
 interface ScannedShipment {
   id: string;
@@ -75,6 +74,7 @@ export default function ScanQR() {
   const [receiveType, setReceiveType] = useState<'center' | 'branch'>('center');
   const [duplicateShipment, setDuplicateShipment] = useState<ScannedShipment | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const [routeSheetId, setRouteSheetId] = useState<string | null>(null);
 
   // Role-based permissions
   const isDriver = hasRole('chofer');
@@ -136,6 +136,13 @@ export default function ScanQR() {
   const handleScan = async (data: string, mode: ScanMode = null) => {
     playBeepSound();
     setShowScanner(false);
+    
+    // Check if it's a route sheet QR (format: HR:uuid)
+    if (data.startsWith('HR:')) {
+      const hrId = data.replace('HR:', '');
+      setRouteSheetId(hrId);
+      return;
+    }
     
     // Extract tracking number from QR (may contain URL)
     let trackingNumber = data;
@@ -303,6 +310,18 @@ export default function ScanQR() {
                 <span className="text-xs opacity-80">Punto de venta</span>
               </Button>
             )}
+
+            {(isOperator || isBranchOperator) && (
+              <Button
+                onClick={() => handleQuickAction('receive_route_sheet')}
+                size="lg"
+                className="bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 h-24 flex flex-col gap-2"
+              >
+                <FileText className="h-6 w-6" />
+                <span className="font-bold">Recibir Hoja de Ruta</span>
+                <span className="text-xs opacity-80">Recepción masiva</span>
+              </Button>
+            )}
           </div>
 
           {/* Divider */}
@@ -458,6 +477,15 @@ export default function ScanQR() {
           </Card>
         </div>
       )}
+
+      {/* Route Sheet Receive Dialog */}
+      <ReceiveRouteSheetDialog
+        hojaRutaId={routeSheetId}
+        onClose={() => {
+          setRouteSheetId(null);
+          queryClient.invalidateQueries({ queryKey: ['envios'] });
+        }}
+      />
     </div>
   );
 }

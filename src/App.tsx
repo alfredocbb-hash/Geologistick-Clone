@@ -29,6 +29,10 @@ import ClientSettlements from "./pages/ClientSettlements";
 import MyCommissions from "./pages/MyCommissions";
 import ScanQR from "./pages/ScanQR";
 import Vehicles from "./pages/Vehicles";
+import RouteSheets from "./pages/RouteSheets";
+import PrintRouteSheet from "./pages/PrintRouteSheet";
+import RoutePlanner from "./pages/RoutePlanner";
+import LiveMap from "./pages/LiveMap";
 import NotFound from "./pages/NotFound";
 
 // Icons for placeholders
@@ -59,6 +63,10 @@ const App = () => (
             
             {/* Operaciones */}
             <Route path="/scan" element={<DashboardLayout><ScanQR /></DashboardLayout>} />
+            <Route path="/planner" element={<DashboardLayout><RoutePlanner /></DashboardLayout>} />
+            <Route path="/route-sheets" element={<DashboardLayout><RouteSheets /></DashboardLayout>} />
+            <Route path="/print-route-sheet" element={<PrintRouteSheet />} />
+            <Route path="/live-map" element={<DashboardLayout><LiveMap /></DashboardLayout>} />
             <Route path="/drivers" element={<DashboardLayout><Drivers /></DashboardLayout>} />
             <Route path="/vehicles" element={<DashboardLayout><Vehicles /></DashboardLayout>} />
             <Route path="/routes" element={<DashboardLayout><RoutesPage /></DashboardLayout>} />
