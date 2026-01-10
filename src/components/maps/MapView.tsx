@@ -1,4 +1,4 @@
-import { GoogleMap, Marker, DirectionsRenderer } from '@react-google-maps/api';
+import { GoogleMap, Marker, DirectionsRenderer, Polyline } from '@react-google-maps/api';
 import { useState, useCallback, useEffect, memo } from 'react';
 import { useGoogleMapsLoaded } from './GoogleMapsProvider';
 import { Card } from '@/components/ui/card';
@@ -17,6 +17,7 @@ interface MapViewProps {
   showRoute?: boolean;
   origin?: { lat: number; lng: number };
   destination?: { lat: number; lng: number };
+  polylinePath?: { lat: number; lng: number }[];
   height?: string;
   className?: string;
 }
@@ -60,6 +61,7 @@ function MapViewComponent({
   showRoute = false,
   origin,
   destination,
+  polylinePath = [],
   height = '300px',
   className = '',
 }: MapViewProps) {
@@ -159,6 +161,19 @@ function MapViewComponent({
                 strokeWeight: 4,
                 strokeOpacity: 0.8,
               },
+            }}
+          />
+        )}
+
+        {/* Render polyline path */}
+        {polylinePath.length > 1 && !directions && (
+          <Polyline
+            path={polylinePath}
+            options={{
+              strokeColor: '#3b82f6',
+              strokeWeight: 4,
+              strokeOpacity: 0.8,
+              geodesic: true,
             }}
           />
         )}
