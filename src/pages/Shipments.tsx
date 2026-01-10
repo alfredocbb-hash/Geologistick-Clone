@@ -21,11 +21,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Package, PackagePlus, Search, Filter, RefreshCw, Truck, Clock, CheckCircle, AlertCircle, Printer, XCircle } from 'lucide-react';
+import { Package, PackagePlus, Search, Filter, RefreshCw, Truck, Clock, CheckCircle, AlertCircle, Printer, XCircle, Eye, History, Shield } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
+import { ShipmentHistoryDialog } from '@/components/shipments/ShipmentHistoryDialog';
+import { ShipmentDetailsDialog } from '@/components/shipments/ShipmentDetailsDialog';
+import { ChangeStatusDialog } from '@/components/shipments/ChangeStatusDialog';
 
 type ShipmentStatus = Database['public']['Enums']['shipment_status'];
 
@@ -41,13 +44,39 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; icon:
 };
 
 export default function Shipments() {
-  const { isAdmin, user } = useAuth();
+  const { isAdmin, hasRole, user, profile } = useAuth();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [envioToCancel, setEnvioToCancel] = useState<any>(null);
   const [cancelReason, setCancelReason] = useState('');
+  
+  // New dialog states
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
+  const [selectedEnvio, setSelectedEnvio] = useState<any>(null);
+
+  // Check if user can change status (admin, supervisor, or centro logístico)
+  const [isCentroLogistico, setIsCentroLogistico] = useState(false);
+  
+  useQuery({
+    queryKey: ['user-sucursal-check', profile?.sucursal_id],
+    queryFn: async () => {
+      if (!profile?.sucursal_id) return false;
+      const { data } = await supabase
+        .from('sucursales')
+        .select('es_centro_logistico')
+        .eq('id', profile.sucursal_id)
+        .single();
+      setIsCentroLogistico(data?.es_centro_logistico || false);
+      return data?.es_centro_logistico || false;
+    },
+    enabled: !!profile?.sucursal_id,
+  });
+
+  const canChangeStatus = isAdmin() || hasRole('supervisor') || isCentroLogistico;
 
   const cancelMutation = useMutation({
     mutationFn: async ({ envioId, reason, previousStatus }: { envioId: string; reason: string; previousStatus: string | null }) => {
@@ -299,6 +328,30 @@ export default function Shipments() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          title="Ver detalles"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedEnvio(envio);
+                            setDetailsDialogOpen(true);
+                          }}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Ver historial"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedEnvio(envio);
+                            setHistoryDialogOpen(true);
+                          }}
+                        >
+                          <History className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           asChild
                           title="Imprimir etiqueta"
                         >
@@ -306,6 +359,21 @@ export default function Shipments() {
                             <Printer className="h-4 w-4" />
                           </Link>
                         </Button>
+                        {canChangeStatus && envio.estado !== 'cancelado' && envio.estado !== 'entregado' && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Cambiar estado"
+                            className="text-primary"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedEnvio(envio);
+                              setStatusDialogOpen(true);
+                            }}
+                          >
+                            <Shield className="h-4 w-4" />
+                          </Button>
+                        )}
                         {envio.estado !== 'cancelado' && envio.estado !== 'entregado' && (
                           <Button
                             variant="ghost"
@@ -384,6 +452,30 @@ export default function Shipments() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* History Dialog */}
+      <ShipmentHistoryDialog
+        open={historyDialogOpen}
+        onOpenChange={setHistoryDialogOpen}
+        envioId={selectedEnvio?.id}
+        trackingNumber={selectedEnvio?.tracking_number || ''}
+      />
+
+      {/* Details Dialog */}
+      <ShipmentDetailsDialog
+        open={detailsDialogOpen}
+        onOpenChange={setDetailsDialogOpen}
+        envioId={selectedEnvio?.id}
+      />
+
+      {/* Change Status Dialog */}
+      <ChangeStatusDialog
+        open={statusDialogOpen}
+        onOpenChange={setStatusDialogOpen}
+        envioId={selectedEnvio?.id}
+        currentStatus={selectedEnvio?.estado}
+        trackingNumber={selectedEnvio?.tracking_number || ''}
+      />
     </div>
   );
 }

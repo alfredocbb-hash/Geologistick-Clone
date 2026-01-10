@@ -28,6 +28,7 @@ import DriverSettlements from "./pages/DriverSettlements";
 import ClientSettlements from "./pages/ClientSettlements";
 import MyCommissions from "./pages/MyCommissions";
 import ScanQR from "./pages/ScanQR";
+import Vehicles from "./pages/Vehicles";
 import NotFound from "./pages/NotFound";
 
 // Icons for placeholders
@@ -59,6 +60,7 @@ const App = () => (
             {/* Operaciones */}
             <Route path="/scan" element={<DashboardLayout><ScanQR /></DashboardLayout>} />
             <Route path="/drivers" element={<DashboardLayout><Drivers /></DashboardLayout>} />
+            <Route path="/vehicles" element={<DashboardLayout><Vehicles /></DashboardLayout>} />
             <Route path="/routes" element={<DashboardLayout><RoutesPage /></DashboardLayout>} />
             <Route path="/my-routes" element={<DashboardLayout><MyRoutes /></DashboardLayout>} />
             
