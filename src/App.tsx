@@ -27,6 +27,7 @@ import BranchSettlements from "./pages/BranchSettlements";
 import DriverSettlements from "./pages/DriverSettlements";
 import ClientSettlements from "./pages/ClientSettlements";
 import MyCommissions from "./pages/MyCommissions";
+import ScanQR from "./pages/ScanQR";
 import NotFound from "./pages/NotFound";
 
 // Icons for placeholders
@@ -56,6 +57,7 @@ const App = () => (
             <Route path="/print-label" element={<DashboardLayout><PrintLabel /></DashboardLayout>} />
             
             {/* Operaciones */}
+            <Route path="/scan" element={<DashboardLayout><ScanQR /></DashboardLayout>} />
             <Route path="/drivers" element={<DashboardLayout><Drivers /></DashboardLayout>} />
             <Route path="/routes" element={<DashboardLayout><RoutesPage /></DashboardLayout>} />
             <Route path="/my-routes" element={<DashboardLayout><MyRoutes /></DashboardLayout>} />
