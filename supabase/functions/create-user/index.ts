@@ -1,0 +1,142 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+Deno.serve(async (req) => {
+  // Handle CORS preflight
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    // Get the authorization header to validate the caller
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "No authorization header" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Create a client with the user's token to check their role
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    // Get the calling user
+    const { data: { user: callingUser }, error: userError } = await userClient.auth.getUser();
+    if (userError || !callingUser) {
+      return new Response(
+        JSON.stringify({ error: "Invalid token" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Check if caller is admin using the database function
+    const adminClient = createClient(supabaseUrl, supabaseServiceKey);
+    const { data: isAdminResult, error: adminCheckError } = await adminClient
+      .rpc('is_admin', { _user_id: callingUser.id });
+
+    if (adminCheckError || !isAdminResult) {
+      return new Response(
+        JSON.stringify({ error: "Solo los administradores pueden crear usuarios" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Parse request body
+    const { email, password, nombre, apellido, telefono, sucursal_id, roles } = await req.json();
+
+    // Validate required fields
+    if (!email || !password || !nombre) {
+      return new Response(
+        JSON.stringify({ error: "Email, contraseña y nombre son requeridos" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (password.length < 6) {
+      return new Response(
+        JSON.stringify({ error: "La contraseña debe tener al menos 6 caracteres" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Create the user using admin client
+    const { data: newUser, error: createError } = await adminClient.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true, // Auto-confirm email
+      user_metadata: { nombre },
+    });
+
+    if (createError) {
+      console.error("Error creating user:", createError);
+      return new Response(
+        JSON.stringify({ error: createError.message }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const userId = newUser.user.id;
+
+    // Wait a moment for the trigger to create the profile
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Update the profile with additional data
+    const { error: profileError } = await adminClient
+      .from('profiles')
+      .update({
+        apellido: apellido || null,
+        telefono: telefono || null,
+        sucursal_id: sucursal_id || null,
+        activo: true,
+      })
+      .eq('user_id', userId);
+
+    if (profileError) {
+      console.error("Error updating profile:", profileError);
+      // Don't fail, profile was created by trigger
+    }
+
+    // Assign roles if provided
+    if (roles && Array.isArray(roles) && roles.length > 0) {
+      const roleInserts = roles.map((role: string) => ({
+        user_id: userId,
+        role: role,
+      }));
+
+      const { error: rolesError } = await adminClient
+        .from('user_roles')
+        .insert(roleInserts);
+
+      if (rolesError) {
+        console.error("Error assigning roles:", rolesError);
+        // Don't fail, user was created
+      }
+    }
+
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        user_id: userId,
+        message: "Usuario creado exitosamente" 
+      }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+
+  } catch (error) {
+    console.error("Unexpected error:", error);
+    return new Response(
+      JSON.stringify({ error: "Error interno del servidor" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});
