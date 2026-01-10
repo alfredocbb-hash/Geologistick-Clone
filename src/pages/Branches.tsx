@@ -524,14 +524,14 @@ export default function Branches() {
                   <div className="space-y-2">
                     <Label>Centro Logístico Asignado</Label>
                     <Select
-                      value={formData.centro_logistico_id}
-                      onValueChange={(v) => setFormData({ ...formData, centro_logistico_id: v })}
+                      value={formData.centro_logistico_id || "none"}
+                      onValueChange={(v) => setFormData({ ...formData, centro_logistico_id: v === "none" ? "" : v })}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Seleccionar centro logístico" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Sin asignar</SelectItem>
+                        <SelectItem value="none">Sin asignar</SelectItem>
                         {centrosLogisticos
                           .filter(c => c.id !== editingSucursal?.id)
                           .map((c) => (
