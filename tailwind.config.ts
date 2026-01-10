@@ -61,11 +61,14 @@ export default {
           foreground: "hsl(var(--info-foreground))",
         },
         // Colores por módulo
-        shipments: "hsl(var(--shipments))",
-        drivers: "hsl(var(--drivers))",
-        cash: "hsl(var(--cash))",
-        commissions: "hsl(var(--commissions))",
-        payments: "hsl(var(--payments))",
+        envios: "hsl(var(--envios))",
+        chofer: "hsl(var(--chofer))",
+        caja: "hsl(var(--caja))",
+        comisiones: "hsl(var(--comisiones))",
+        pagos: "hsl(var(--pagos))",
+        clientes: "hsl(var(--clientes))",
+        sucursales: "hsl(var(--sucursales))",
+        tarifas: "hsl(var(--tarifas))",
         admin: "hsl(var(--admin))",
         // Sidebar
         sidebar: {

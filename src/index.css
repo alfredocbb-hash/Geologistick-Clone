@@ -47,11 +47,14 @@ Sistema Logístico - Tema moderno y colorido
     --info-foreground: 0 0% 100%;
 
     /* Colores por módulo */
-    --shipments: 217 91% 60%;
-    --drivers: 142 76% 36%;
-    --cash: 38 92% 50%;
-    --commissions: 262 83% 58%;
-    --payments: 340 82% 52%;
+    --envios: 217 91% 60%;
+    --chofer: 142 76% 36%;
+    --caja: 38 92% 50%;
+    --comisiones: 262 83% 58%;
+    --pagos: 340 82% 52%;
+    --clientes: 199 89% 48%;
+    --sucursales: 280 68% 50%;
+    --tarifas: 25 95% 53%;
     --admin: 222 47% 20%;
 
     --border: 214 32% 91%;
