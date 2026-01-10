@@ -21,10 +21,14 @@ import Cash from "./pages/Cash";
 import Drivers from "./pages/Drivers";
 import RoutesPage from "./pages/Routes";
 import MyRoutes from "./pages/MyRoutes";
+import BranchSettlements from "./pages/BranchSettlements";
+import DriverSettlements from "./pages/DriverSettlements";
+import ClientSettlements from "./pages/ClientSettlements";
+import MyCommissions from "./pages/MyCommissions";
 import NotFound from "./pages/NotFound";
 
 // Icons for placeholders
-import { DollarSign, FileText, CreditCard, Users as UsersIcon, Settings } from "lucide-react";
+import { CreditCard, Users as UsersIcon, Settings } from "lucide-react";
 
 const queryClient = new QueryClient();
 
@@ -54,11 +58,10 @@ const App = () => (
             
             {/* Finanzas */}
             <Route path="/cash" element={<DashboardLayout><Cash /></DashboardLayout>} />
-            <Route path="/commissions" element={<DashboardLayout><PlaceholderPage title="Comisiones Choferes" description="Gestión de comisiones de choferes" icon={DollarSign} /></DashboardLayout>} />
-            <Route path="/my-commissions" element={<DashboardLayout><PlaceholderPage title="Mis Comisiones" description="Comisiones del chofer" icon={DollarSign} /></DashboardLayout>} />
-            <Route path="/settlements/branches" element={<DashboardLayout><PlaceholderPage title="Liquidaciones Sucursales" description="Liquidaciones por sucursal" icon={FileText} /></DashboardLayout>} />
-            <Route path="/settlements/drivers" element={<DashboardLayout><PlaceholderPage title="Liquidaciones Choferes" description="Pagos a choferes" icon={FileText} /></DashboardLayout>} />
-            <Route path="/settlements/clients" element={<DashboardLayout><PlaceholderPage title="Liquidaciones Clientes" description="Cuentas corrientes de clientes" icon={FileText} /></DashboardLayout>} />
+            <Route path="/settlements/branches" element={<DashboardLayout><BranchSettlements /></DashboardLayout>} />
+            <Route path="/settlements/drivers" element={<DashboardLayout><DriverSettlements /></DashboardLayout>} />
+            <Route path="/settlements/clients" element={<DashboardLayout><ClientSettlements /></DashboardLayout>} />
+            <Route path="/my-commissions" element={<DashboardLayout><MyCommissions /></DashboardLayout>} />
             <Route path="/payments" element={<DashboardLayout><PlaceholderPage title="Pagos" description="Gestión de pagos de clientes" icon={CreditCard} /></DashboardLayout>} />
             
             {/* Clientes */}
@@ -71,7 +74,7 @@ const App = () => (
             <Route path="/admin/settings" element={<DashboardLayout><PlaceholderPage title="Configuración" description="Ajustes del sistema" icon={Settings} /></DashboardLayout>} />
             
             {/* Profile */}
-            <Route path="/profile" element={<DashboardLayout><PlaceholderPage title="Mi Perfil" description="Información personal" icon={Users} /></DashboardLayout>} />
+            <Route path="/profile" element={<DashboardLayout><PlaceholderPage title="Mi Perfil" description="Información personal" icon={UsersIcon} /></DashboardLayout>} />
             
             {/* Redirect root to dashboard */}
             <Route path="/" element={<Navigate to="/dashboard" replace />} />

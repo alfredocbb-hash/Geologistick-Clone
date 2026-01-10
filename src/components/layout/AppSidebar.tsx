@@ -82,12 +82,13 @@ const navigation: NavGroup[] = [
     label: 'Finanzas',
     items: [
       { title: 'Control de Caja', url: '/cash', icon: Wallet, roles: ['admin', 'supervisor', 'operador', 'sucursal'] },
-      { title: 'Comisiones', url: '/commissions', icon: DollarSign, roles: ['admin', 'supervisor'] },
+      { title: 'Liq. Sucursales', url: '/settlements/branches', icon: FileText, roles: ['admin', 'supervisor'] },
+      { title: 'Liq. Choferes', url: '/settlements/drivers', icon: FileText, roles: ['admin', 'supervisor'] },
+      { title: 'Liq. Clientes', url: '/settlements/clients', icon: FileText, roles: ['admin', 'supervisor', 'atencion_cliente'] },
       { title: 'Mis Comisiones', url: '/my-commissions', icon: DollarSign, roles: ['chofer'] },
-      { title: 'Liquidaciones', url: '/settlements', icon: FileText, roles: ['admin', 'supervisor', 'chofer'] },
       { title: 'Pagos', url: '/payments', icon: CreditCard, roles: ['admin', 'supervisor', 'operador'] },
     ],
-    roles: ['admin', 'supervisor', 'operador', 'sucursal', 'chofer'],
+    roles: ['admin', 'supervisor', 'operador', 'sucursal', 'chofer', 'atencion_cliente'],
   },
   {
     label: 'Clientes',
