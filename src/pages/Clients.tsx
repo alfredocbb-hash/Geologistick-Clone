@@ -185,6 +185,8 @@ export default function Clients() {
       codigo_postal: '',
       notas: '',
       sucursal_id: '',
+      tiene_cuenta_corriente: false,
+      limite_credito: '',
     });
     setEditingClient(null);
   };
@@ -201,6 +203,8 @@ export default function Clients() {
       codigo_postal: client.codigo_postal || '',
       notas: client.notas || '',
       sucursal_id: client.sucursal_id || '',
+      tiene_cuenta_corriente: client.tiene_cuenta_corriente ?? false,
+      limite_credito: client.limite_credito?.toString() || '',
     });
     setIsDialogOpen(true);
   };
