@@ -33,6 +33,7 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
+  QrCode,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -72,11 +73,12 @@ const navigation: NavGroup[] = [
   {
     label: 'Operaciones',
     items: [
+      { title: 'Escanear QR', url: '/scan', icon: QrCode },
       { title: 'Choferes Activos', url: '/drivers', icon: Truck, roles: ['admin', 'supervisor', 'operador', 'despachador'] },
       { title: 'Rutas de Entrega', url: '/routes', icon: MapPin, roles: ['admin', 'supervisor', 'operador', 'chofer'] },
       { title: 'Mis Rutas', url: '/my-routes', icon: ClipboardList, roles: ['chofer'] },
     ],
-    roles: ['admin', 'supervisor', 'operador', 'despachador', 'chofer'],
+    roles: ['admin', 'supervisor', 'operador', 'despachador', 'chofer', 'bodega', 'sucursal'],
   },
   {
     label: 'Finanzas',
