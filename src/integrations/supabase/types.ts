@@ -275,14 +275,20 @@ export type Database = {
         Row: {
           cantidad_bultos: number | null
           chofer_id: string | null
+          ciudad_entrega: string | null
+          ciudad_retiro: string | null
           codigo_postal_destino: string | null
           codigo_postal_origen: string | null
+          cp_entrega: string | null
+          cp_retiro: string | null
           created_at: string | null
           created_by: string | null
           descripcion: string | null
           destinatario_id: string | null
           dias_preferidos_entrega: string[] | null
           dimensiones: string | null
+          direccion_entrega: string | null
+          direccion_retiro: string | null
           dni_destinatario: string | null
           dni_remitente: string | null
           estado: Database["public"]["Enums"]["shipment_status"] | null
@@ -301,11 +307,16 @@ export type Database = {
           precio_total: number
           remitente_id: string | null
           requiere_retiro: boolean | null
+          rotulo_generado: boolean | null
+          rotulo_generado_at: string | null
           sucursal_destino_id: string | null
+          sucursal_entrega_id: string | null
           sucursal_origen_id: string | null
+          sucursal_retiro_id: string | null
           tarifa_id: string | null
           tipo_pago: string | null
           tipo_servicio: string | null
+          tipo_servicio_detalle: string | null
           tracking_number: string
           updated_at: string | null
           valor_declarado: number | null
@@ -314,14 +325,20 @@ export type Database = {
         Insert: {
           cantidad_bultos?: number | null
           chofer_id?: string | null
+          ciudad_entrega?: string | null
+          ciudad_retiro?: string | null
           codigo_postal_destino?: string | null
           codigo_postal_origen?: string | null
+          cp_entrega?: string | null
+          cp_retiro?: string | null
           created_at?: string | null
           created_by?: string | null
           descripcion?: string | null
           destinatario_id?: string | null
           dias_preferidos_entrega?: string[] | null
           dimensiones?: string | null
+          direccion_entrega?: string | null
+          direccion_retiro?: string | null
           dni_destinatario?: string | null
           dni_remitente?: string | null
           estado?: Database["public"]["Enums"]["shipment_status"] | null
@@ -340,11 +357,16 @@ export type Database = {
           precio_total: number
           remitente_id?: string | null
           requiere_retiro?: boolean | null
+          rotulo_generado?: boolean | null
+          rotulo_generado_at?: string | null
           sucursal_destino_id?: string | null
+          sucursal_entrega_id?: string | null
           sucursal_origen_id?: string | null
+          sucursal_retiro_id?: string | null
           tarifa_id?: string | null
           tipo_pago?: string | null
           tipo_servicio?: string | null
+          tipo_servicio_detalle?: string | null
           tracking_number: string
           updated_at?: string | null
           valor_declarado?: number | null
@@ -353,14 +375,20 @@ export type Database = {
         Update: {
           cantidad_bultos?: number | null
           chofer_id?: string | null
+          ciudad_entrega?: string | null
+          ciudad_retiro?: string | null
           codigo_postal_destino?: string | null
           codigo_postal_origen?: string | null
+          cp_entrega?: string | null
+          cp_retiro?: string | null
           created_at?: string | null
           created_by?: string | null
           descripcion?: string | null
           destinatario_id?: string | null
           dias_preferidos_entrega?: string[] | null
           dimensiones?: string | null
+          direccion_entrega?: string | null
+          direccion_retiro?: string | null
           dni_destinatario?: string | null
           dni_remitente?: string | null
           estado?: Database["public"]["Enums"]["shipment_status"] | null
@@ -379,11 +407,16 @@ export type Database = {
           precio_total?: number
           remitente_id?: string | null
           requiere_retiro?: boolean | null
+          rotulo_generado?: boolean | null
+          rotulo_generado_at?: string | null
           sucursal_destino_id?: string | null
+          sucursal_entrega_id?: string | null
           sucursal_origen_id?: string | null
+          sucursal_retiro_id?: string | null
           tarifa_id?: string | null
           tipo_pago?: string | null
           tipo_servicio?: string | null
+          tipo_servicio_detalle?: string | null
           tracking_number?: string
           updated_at?: string | null
           valor_declarado?: number | null
@@ -412,8 +445,22 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "envios_sucursal_entrega_id_fkey"
+            columns: ["sucursal_entrega_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "envios_sucursal_origen_id_fkey"
             columns: ["sucursal_origen_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "envios_sucursal_retiro_id_fkey"
+            columns: ["sucursal_retiro_id"]
             isOneToOne: false
             referencedRelation: "sucursales"
             referencedColumns: ["id"]
@@ -921,44 +968,117 @@ export type Database = {
           },
         ]
       }
+      sucursal_zonas: {
+        Row: {
+          activa: boolean | null
+          ciudad: string
+          codigo_postal_desde: string | null
+          codigo_postal_hasta: string | null
+          created_at: string | null
+          id: string
+          provincia: string | null
+          sucursal_id: string
+        }
+        Insert: {
+          activa?: boolean | null
+          ciudad: string
+          codigo_postal_desde?: string | null
+          codigo_postal_hasta?: string | null
+          created_at?: string | null
+          id?: string
+          provincia?: string | null
+          sucursal_id: string
+        }
+        Update: {
+          activa?: boolean | null
+          ciudad?: string
+          codigo_postal_desde?: string | null
+          codigo_postal_hasta?: string | null
+          created_at?: string | null
+          id?: string
+          provincia?: string | null
+          sucursal_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sucursal_zonas_sucursal_id_fkey"
+            columns: ["sucursal_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sucursales: {
         Row: {
           activa: boolean | null
+          centro_logistico_id: string | null
+          ciudad: string | null
+          codigo: string | null
           created_at: string | null
           direccion: string
           email: string | null
+          es_centro_logistico: boolean | null
           horario_apertura: string | null
           horario_cierre: string | null
           id: string
           nombre: string
+          puede_despachar: boolean | null
+          puede_recibir: boolean | null
+          realiza_entregas: boolean | null
+          realiza_retiros: boolean | null
           telefono: string | null
           updated_at: string | null
         }
         Insert: {
           activa?: boolean | null
+          centro_logistico_id?: string | null
+          ciudad?: string | null
+          codigo?: string | null
           created_at?: string | null
           direccion: string
           email?: string | null
+          es_centro_logistico?: boolean | null
           horario_apertura?: string | null
           horario_cierre?: string | null
           id?: string
           nombre: string
+          puede_despachar?: boolean | null
+          puede_recibir?: boolean | null
+          realiza_entregas?: boolean | null
+          realiza_retiros?: boolean | null
           telefono?: string | null
           updated_at?: string | null
         }
         Update: {
           activa?: boolean | null
+          centro_logistico_id?: string | null
+          ciudad?: string | null
+          codigo?: string | null
           created_at?: string | null
           direccion?: string
           email?: string | null
+          es_centro_logistico?: boolean | null
           horario_apertura?: string | null
           horario_cierre?: string | null
           id?: string
           nombre?: string
+          puede_despachar?: boolean | null
+          puede_recibir?: boolean | null
+          realiza_entregas?: boolean | null
+          realiza_retiros?: boolean | null
           telefono?: string | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "sucursales_centro_logistico_id_fkey"
+            columns: ["centro_logistico_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       tarifa_concepto_precios: {
         Row: {
@@ -1077,6 +1197,73 @@ export type Database = {
         }
         Relationships: []
       }
+      transferencias: {
+        Row: {
+          created_at: string | null
+          despachado_por: string | null
+          envio_id: string
+          estado: string | null
+          fecha_despacho: string | null
+          fecha_recepcion: string | null
+          id: string
+          notas: string | null
+          recibido_por: string | null
+          sucursal_destino_id: string
+          sucursal_origen_id: string
+          tipo: string
+        }
+        Insert: {
+          created_at?: string | null
+          despachado_por?: string | null
+          envio_id: string
+          estado?: string | null
+          fecha_despacho?: string | null
+          fecha_recepcion?: string | null
+          id?: string
+          notas?: string | null
+          recibido_por?: string | null
+          sucursal_destino_id: string
+          sucursal_origen_id: string
+          tipo: string
+        }
+        Update: {
+          created_at?: string | null
+          despachado_por?: string | null
+          envio_id?: string
+          estado?: string | null
+          fecha_despacho?: string | null
+          fecha_recepcion?: string | null
+          id?: string
+          notas?: string | null
+          recibido_por?: string | null
+          sucursal_destino_id?: string
+          sucursal_origen_id?: string
+          tipo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transferencias_envio_id_fkey"
+            columns: ["envio_id"]
+            isOneToOne: false
+            referencedRelation: "envios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transferencias_sucursal_destino_id_fkey"
+            columns: ["sucursal_destino_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transferencias_sucursal_origen_id_fkey"
+            columns: ["sucursal_origen_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string | null
@@ -1107,7 +1294,9 @@ export type Database = {
         Args: { _sucursal_id: string; _user_id: string }
         Returns: boolean
       }
-      generate_tracking_number: { Args: never; Returns: string }
+      generate_tracking_number:
+        | { Args: never; Returns: string }
+        | { Args: { p_sucursal_id?: string }; Returns: string }
       get_user_sucursal: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {

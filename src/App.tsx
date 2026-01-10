@@ -12,6 +12,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Shipments from "./pages/Shipments";
 import NewShipment from "./pages/NewShipment";
+import PrintLabel from "./pages/PrintLabel";
 import Tracking from "./pages/Tracking";
 import Clients from "./pages/Clients";
 import Branches from "./pages/Branches";
@@ -50,6 +51,7 @@ const App = () => (
             {/* Envíos */}
             <Route path="/shipments" element={<DashboardLayout><Shipments /></DashboardLayout>} />
             <Route path="/shipments/new" element={<DashboardLayout><NewShipment /></DashboardLayout>} />
+            <Route path="/print-label" element={<DashboardLayout><PrintLabel /></DashboardLayout>} />
             
             {/* Operaciones */}
             <Route path="/drivers" element={<DashboardLayout><Drivers /></DashboardLayout>} />
