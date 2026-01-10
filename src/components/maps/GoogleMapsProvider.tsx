@@ -1,5 +1,5 @@
-import { LoadScript } from '@react-google-maps/api';
-import { ReactNode, useState, useEffect, createContext, useContext } from 'react';
+import { useJsApiLoader } from '@react-google-maps/api';
+import { ReactNode, useState, useEffect, createContext, useContext, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 const libraries: ("places" | "geometry" | "drawing")[] = ['places', 'geometry'];
@@ -20,25 +20,57 @@ interface GoogleMapsProviderProps {
   children: ReactNode;
 }
 
+// Inner component that loads Google Maps once we have the API key
+function GoogleMapsLoader({ 
+  apiKey, 
+  children 
+}: { 
+  apiKey: string; 
+  children: ReactNode;
+}) {
+  const { isLoaded, loadError } = useJsApiLoader({
+    googleMapsApiKey: apiKey,
+    libraries,
+    language: 'es',
+    region: 'AR',
+  });
+
+  const contextValue = useMemo(() => ({
+    isLoaded,
+    loadError: loadError?.message || null,
+    apiKey,
+  }), [isLoaded, loadError, apiKey]);
+
+  return (
+    <GoogleMapsContext.Provider value={contextValue}>
+      {children}
+    </GoogleMapsContext.Provider>
+  );
+}
+
 export function GoogleMapsProvider({ children }: GoogleMapsProviderProps) {
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [scriptLoaded, setScriptLoaded] = useState(false);
 
   // Fetch API key from edge function
   useEffect(() => {
+    let mounted = true;
+
     const fetchApiKey = async () => {
-      // Check if Google Maps is already loaded
-      if (window.google?.maps) {
-        setScriptLoaded(true);
-        setIsLoading(false);
+      // Check if Google Maps is already loaded (e.g., from previous session)
+      if (typeof window !== 'undefined' && window.google?.maps) {
+        if (mounted) {
+          setIsLoading(false);
+        }
         return;
       }
 
       try {
         const { data, error } = await supabase.functions.invoke('get-maps-api-key');
         
+        if (!mounted) return;
+
         if (error) {
           console.error('Error fetching Maps API key:', error);
           setLoadError('Failed to load Google Maps API key');
@@ -53,87 +85,51 @@ export function GoogleMapsProvider({ children }: GoogleMapsProviderProps) {
         }
       } catch (err) {
         console.error('Error fetching Maps API key:', err);
-        setLoadError('Failed to load Google Maps API key');
+        if (mounted) {
+          setLoadError('Failed to load Google Maps API key');
+        }
       } finally {
-        setIsLoading(false);
+        if (mounted) {
+          setIsLoading(false);
+        }
       }
     };
 
     fetchApiKey();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  // If no API key or still loading, render children without maps
-  if (isLoading) {
+  // Create a stable context value for non-loaded states
+  const notLoadedValue = useMemo(() => ({
+    isLoaded: false,
+    loadError,
+    apiKey: null,
+  }), [loadError]);
+
+  // If still loading or no API key, provide a non-loaded context
+  if (isLoading || loadError || !apiKey) {
     return (
-      <GoogleMapsContext.Provider value={{ isLoaded: false, loadError: null, apiKey: null }}>
+      <GoogleMapsContext.Provider value={notLoadedValue}>
         {children}
       </GoogleMapsContext.Provider>
     );
   }
 
-  if (loadError || !apiKey) {
-    return (
-      <GoogleMapsContext.Provider value={{ isLoaded: false, loadError, apiKey: null }}>
-        {children}
-      </GoogleMapsContext.Provider>
-    );
-  }
-
-  // If already loaded by previous render
-  if (window.google?.maps) {
-    return (
-      <GoogleMapsContext.Provider value={{ isLoaded: true, loadError: null, apiKey }}>
-        {children}
-      </GoogleMapsContext.Provider>
-    );
-  }
-
+  // Once we have the API key, use the loader component
   return (
-    <LoadScript
-      googleMapsApiKey={apiKey}
-      libraries={libraries}
-      language="es"
-      region="AR"
-      onLoad={() => setScriptLoaded(true)}
-      onError={() => setLoadError('Failed to load Google Maps script')}
-    >
-      <GoogleMapsContext.Provider value={{ isLoaded: scriptLoaded, loadError: null, apiKey }}>
-        {children}
-      </GoogleMapsContext.Provider>
-    </LoadScript>
+    <GoogleMapsLoader apiKey={apiKey}>
+      {children}
+    </GoogleMapsLoader>
   );
 }
 
 // Hook to check if Google Maps is available
 export function useGoogleMapsLoaded(): boolean {
   const context = useContext(GoogleMapsContext);
-  const [isLoaded, setIsLoaded] = useState(context.isLoaded);
-
-  useEffect(() => {
-    if (context.isLoaded) {
-      setIsLoaded(true);
-      return;
-    }
-
-    const checkLoaded = () => {
-      if (window.google?.maps) {
-        setIsLoaded(true);
-      }
-    };
-
-    checkLoaded();
-    
-    // Check periodically until loaded
-    const interval = setInterval(checkLoaded, 100);
-    const timeout = setTimeout(() => clearInterval(interval), 10000);
-
-    return () => {
-      clearInterval(interval);
-      clearTimeout(timeout);
-    };
-  }, [context.isLoaded]);
-
-  return isLoaded;
+  return context.isLoaded;
 }
 
 // Hook to get full context
