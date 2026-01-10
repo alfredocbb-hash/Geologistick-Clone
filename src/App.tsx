@@ -18,10 +18,13 @@ import Branches from "./pages/Branches";
 import Rates from "./pages/Rates";
 import Users from "./pages/Users";
 import Cash from "./pages/Cash";
+import Drivers from "./pages/Drivers";
+import RoutesPage from "./pages/Routes";
+import MyRoutes from "./pages/MyRoutes";
 import NotFound from "./pages/NotFound";
 
 // Icons for placeholders
-import { Truck, MapPin, ClipboardList, DollarSign, FileText, CreditCard, Users as UsersIcon, Settings } from "lucide-react";
+import { DollarSign, FileText, CreditCard, Users as UsersIcon, Settings } from "lucide-react";
 
 const queryClient = new QueryClient();
 
@@ -45,9 +48,9 @@ const App = () => (
             <Route path="/shipments/new" element={<DashboardLayout><NewShipment /></DashboardLayout>} />
             
             {/* Operaciones */}
-            <Route path="/drivers" element={<DashboardLayout><PlaceholderPage title="Choferes Activos" description="Gestión de choferes en ruta" icon={Truck} /></DashboardLayout>} />
-            <Route path="/routes" element={<DashboardLayout><PlaceholderPage title="Rutas de Entrega" description="Planificación y asignación de rutas" icon={MapPin} /></DashboardLayout>} />
-            <Route path="/my-routes" element={<DashboardLayout><PlaceholderPage title="Mis Rutas" description="Rutas asignadas al chofer" icon={ClipboardList} /></DashboardLayout>} />
+            <Route path="/drivers" element={<DashboardLayout><Drivers /></DashboardLayout>} />
+            <Route path="/routes" element={<DashboardLayout><RoutesPage /></DashboardLayout>} />
+            <Route path="/my-routes" element={<DashboardLayout><MyRoutes /></DashboardLayout>} />
             
             {/* Finanzas */}
             <Route path="/cash" element={<DashboardLayout><Cash /></DashboardLayout>} />
