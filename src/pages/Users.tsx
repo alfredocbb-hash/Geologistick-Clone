@@ -99,8 +99,10 @@ export default function Users() {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
   const [editingRoles, setEditingRoles] = useState<AppRole[]>([]);
+  const [isCreating, setIsCreating] = useState(false);
   const [formData, setFormData] = useState({
     nombre: '',
     apellido: '',
@@ -108,6 +110,15 @@ export default function Users() {
     sucursal_id: '',
     activo: true,
     newRole: '' as AppRole | '',
+  });
+  const [createFormData, setCreateFormData] = useState({
+    email: '',
+    password: '',
+    nombre: '',
+    apellido: '',
+    telefono: '',
+    sucursal_id: '',
+    selectedRoles: [] as AppRole[],
   });
 
   // Fetch sucursales
@@ -279,6 +290,80 @@ export default function Users() {
     return `${nombre[0]}${apellido?.[0] || ''}`.toUpperCase();
   };
 
+  const handleCreateUser = async () => {
+    if (!createFormData.email || !createFormData.password || !createFormData.nombre) {
+      toast.error('Email, contraseña y nombre son requeridos');
+      return;
+    }
+    if (createFormData.password.length < 6) {
+      toast.error('La contraseña debe tener al menos 6 caracteres');
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${sessionData.session?.access_token}`,
+          },
+          body: JSON.stringify({
+            email: createFormData.email,
+            password: createFormData.password,
+            nombre: createFormData.nombre,
+            apellido: createFormData.apellido || null,
+            telefono: createFormData.telefono || null,
+            sucursal_id: createFormData.sucursal_id === 'none' ? null : (createFormData.sucursal_id || null),
+            roles: createFormData.selectedRoles,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Error al crear usuario');
+      }
+
+      toast.success('Usuario creado exitosamente');
+      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      queryClient.invalidateQueries({ queryKey: ['all-user-roles'] });
+      setIsCreateDialogOpen(false);
+      setCreateFormData({
+        email: '',
+        password: '',
+        nombre: '',
+        apellido: '',
+        telefono: '',
+        sucursal_id: '',
+        selectedRoles: [],
+      });
+    } catch (error) {
+      console.error('Error creating user:', error);
+      toast.error(error instanceof Error ? error.message : 'Error al crear usuario');
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const toggleCreateRole = (role: AppRole) => {
+    if (createFormData.selectedRoles.includes(role)) {
+      setCreateFormData({
+        ...createFormData,
+        selectedRoles: createFormData.selectedRoles.filter(r => r !== role),
+      });
+    } else {
+      setCreateFormData({
+        ...createFormData,
+        selectedRoles: [...createFormData.selectedRoles, role],
+      });
+    }
+  };
+
   if (!isAdmin()) {
     return (
       <div className="flex items-center justify-center h-[50vh]">
@@ -301,6 +386,10 @@ export default function Users() {
             Administra usuarios y roles del sistema
           </p>
         </div>
+        <Button onClick={() => setIsCreateDialogOpen(true)}>
+          <UserPlus className="h-4 w-4 mr-2" />
+          Nuevo Usuario
+        </Button>
       </div>
 
       {/* Stats */}
@@ -607,6 +696,127 @@ export default function Users() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Create User Dialog */}
+      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Crear Nuevo Usuario</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Email *</Label>
+              <Input
+                type="email"
+                placeholder="usuario@ejemplo.com"
+                value={createFormData.email}
+                onChange={(e) =>
+                  setCreateFormData({ ...createFormData, email: e.target.value })
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Contraseña *</Label>
+              <Input
+                type="password"
+                placeholder="Mínimo 6 caracteres"
+                value={createFormData.password}
+                onChange={(e) =>
+                  setCreateFormData({ ...createFormData, password: e.target.value })
+                }
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Nombre *</Label>
+                <Input
+                  placeholder="Juan"
+                  value={createFormData.nombre}
+                  onChange={(e) =>
+                    setCreateFormData({ ...createFormData, nombre: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Apellido</Label>
+                <Input
+                  placeholder="Pérez"
+                  value={createFormData.apellido}
+                  onChange={(e) =>
+                    setCreateFormData({ ...createFormData, apellido: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Teléfono</Label>
+              <Input
+                placeholder="+54 11 1234-5678"
+                value={createFormData.telefono}
+                onChange={(e) =>
+                  setCreateFormData({ ...createFormData, telefono: e.target.value })
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Sucursal</Label>
+              <Select
+                value={createFormData.sucursal_id}
+                onValueChange={(value) =>
+                  setCreateFormData({ ...createFormData, sucursal_id: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar sucursal" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin asignar</SelectItem>
+                  {sucursales.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Roles</Label>
+              <div className="flex flex-wrap gap-2">
+                {availableRoles.map((role) => (
+                  <Badge
+                    key={role}
+                    className={`cursor-pointer transition-all ${
+                      createFormData.selectedRoles.includes(role)
+                        ? ROLE_COLORS[role]
+                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                    }`}
+                    onClick={() => toggleCreateRole(role)}
+                  >
+                    {ROLE_LABELS[role]} {createFormData.selectedRoles.includes(role) && '✓'}
+                  </Badge>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Haz clic en los roles para seleccionar/deseleccionar
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setIsCreateDialogOpen(false)}
+                disabled={isCreating}
+              >
+                Cancelar
+              </Button>
+              <Button onClick={handleCreateUser} disabled={isCreating}>
+                {isCreating ? 'Creando...' : 'Crear Usuario'}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
