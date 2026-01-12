@@ -68,34 +68,82 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    let mounted = true;
+    let initialSessionLoaded = false;
+
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        if (!mounted) return;
+
+        // Log auth events for debugging (only in development)
+        if (import.meta.env.DEV) {
+          console.log('Auth event:', event, session?.user?.id);
+        }
+
         setSession(session);
         setUser(session?.user ?? null);
 
         if (session?.user) {
-          // Use setTimeout to avoid potential race conditions
-          setTimeout(() => fetchUserData(session.user.id), 0);
+          // Use setTimeout to avoid potential race conditions with Supabase internals
+          setTimeout(() => {
+            if (mounted) {
+              fetchUserData(session.user.id);
+            }
+          }, 0);
         } else {
           setProfile(null);
           setRoles([]);
         }
-        setLoading(false);
+
+        // Only update loading after initial session has been loaded
+        if (initialSessionLoaded) {
+          setLoading(false);
+        }
       }
     );
 
     // THEN get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return;
+
+      initialSessionLoaded = true;
       setSession(session);
       setUser(session?.user ?? null);
+
       if (session?.user) {
         fetchUserData(session.user.id);
       }
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    // Set up periodic session check to detect expired sessions
+    const sessionCheckInterval = setInterval(async () => {
+      if (!mounted) return;
+      
+      const { data: { session: currentSession }, error } = await supabase.auth.getSession();
+      
+      if (error) {
+        if (import.meta.env.DEV) {
+          console.error('Session check error:', error);
+        }
+        return;
+      }
+
+      // If we had a session but now we don't, update state
+      if (session && !currentSession) {
+        setSession(null);
+        setUser(null);
+        setProfile(null);
+        setRoles([]);
+      }
+    }, 60000); // Check every minute
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+      clearInterval(sessionCheckInterval);
+    };
   }, []);
 
   const signIn = async (email: string, password: string) => {
