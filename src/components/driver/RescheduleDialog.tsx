@@ -46,12 +46,24 @@ export default function RescheduleDialog({ shipment, onClose, onSuccess }: Resch
     mutationFn: async () => {
       if (!newDate) throw new Error('Selecciona una nueva fecha');
 
-      // Update shipment with new delivery date
+      // Get current reprogramado_count
+      const { data: currentEnvio } = await supabase
+        .from('envios')
+        .select('reprogramado_count')
+        .eq('id', shipment.id)
+        .single();
+
+      const currentCount = currentEnvio?.reprogramado_count || 0;
+
+      // Update shipment with new delivery date, increment reprogramado_count, clear chofer_id
       const { error: updateError } = await supabase
         .from('envios')
         .update({ 
           fecha_entrega: newDate.toISOString(),
           estado: 'pendiente', // Reset to pending for re-delivery
+          chofer_id: null, // Remove driver assignment so it can be reassigned
+          reprogramado_count: currentCount + 1,
+          ultima_reprogramacion: new Date().toISOString(),
         })
         .eq('id', shipment.id);
 
@@ -64,7 +76,7 @@ export default function RescheduleDialog({ shipment, onClose, onSuccess }: Resch
           envio_id: shipment.id,
           estado_anterior: shipment.estado as any,
           estado_nuevo: 'pendiente',
-          notas: `Entrega reprogramada para ${format(newDate, 'dd/MM/yyyy', { locale: es })}. Motivo: ${reason || 'No especificado'}`,
+          notas: `Entrega reprogramada para ${format(newDate, 'dd/MM/yyyy', { locale: es })}. Motivo: ${reason || 'No especificado'}. Intento #${currentCount + 1}`,
           created_by: user?.id,
         });
 
