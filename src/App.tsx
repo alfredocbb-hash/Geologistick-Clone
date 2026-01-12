@@ -36,6 +36,7 @@ import RoutePlanner from "./pages/RoutePlanner";
 import LiveMap from "./pages/LiveMap";
 import RouteStart from "./pages/RouteStart";
 import ActiveRouteNavigation from "./pages/ActiveRouteNavigation";
+import IntegrationSettings from "./pages/IntegrationSettings";
 import NotFound from "./pages/NotFound";
 
 // Icons for placeholders
@@ -94,6 +95,7 @@ const App = () => (
             <Route path="/admin/users" element={<DashboardLayout><Users /></DashboardLayout>} />
             <Route path="/admin/roles" element={<DashboardLayout><RolePermissions /></DashboardLayout>} />
             <Route path="/admin/settings" element={<DashboardLayout><PlaceholderPage title="Configuración" description="Ajustes del sistema" icon={Settings} /></DashboardLayout>} />
+            <Route path="/admin/integrations" element={<DashboardLayout><IntegrationSettings /></DashboardLayout>} />
             
             {/* Profile */}
             <Route path="/profile" element={<DashboardLayout><PlaceholderPage title="Mi Perfil" description="Información personal" icon={UsersIcon} /></DashboardLayout>} />

@@ -1485,6 +1485,45 @@ export type Database = {
           },
         ]
       }
+      system_integrations: {
+        Row: {
+          config_key: string
+          config_value: string
+          created_at: string | null
+          environment:
+            | Database["public"]["Enums"]["integration_environment"]
+            | null
+          id: string
+          integration_type: Database["public"]["Enums"]["integration_type"]
+          is_active: boolean | null
+          updated_at: string | null
+        }
+        Insert: {
+          config_key: string
+          config_value: string
+          created_at?: string | null
+          environment?:
+            | Database["public"]["Enums"]["integration_environment"]
+            | null
+          id?: string
+          integration_type: Database["public"]["Enums"]["integration_type"]
+          is_active?: boolean | null
+          updated_at?: string | null
+        }
+        Update: {
+          config_key?: string
+          config_value?: string
+          created_at?: string | null
+          environment?:
+            | Database["public"]["Enums"]["integration_environment"]
+            | null
+          id?: string
+          integration_type?: Database["public"]["Enums"]["integration_type"]
+          is_active?: boolean | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       tarifa_concepto_precios: {
         Row: {
           concepto_id: string
@@ -1787,6 +1826,13 @@ export type Database = {
         | "despachador"
         | "super_admin"
       cash_session_status: "abierta" | "cerrada" | "pendiente_aprobacion"
+      integration_environment: "sandbox" | "production"
+      integration_type:
+        | "mercado_pago"
+        | "google_maps"
+        | "whatsapp"
+        | "email_smtp"
+        | "sms"
       payment_method: "efectivo" | "mercado_pago" | "transferencia" | "tarjeta"
       payment_status: "pendiente" | "pagado" | "fallido" | "reembolsado"
       settlement_status: "generada" | "enviada" | "pagada" | "rechazada"
@@ -1939,6 +1985,14 @@ export const Constants = {
         "super_admin",
       ],
       cash_session_status: ["abierta", "cerrada", "pendiente_aprobacion"],
+      integration_environment: ["sandbox", "production"],
+      integration_type: [
+        "mercado_pago",
+        "google_maps",
+        "whatsapp",
+        "email_smtp",
+        "sms",
+      ],
       payment_method: ["efectivo", "mercado_pago", "transferencia", "tarjeta"],
       payment_status: ["pendiente", "pagado", "fallido", "reembolsado"],
       settlement_status: ["generada", "enviada", "pagada", "rechazada"],
