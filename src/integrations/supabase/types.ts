@@ -1797,6 +1797,13 @@ export type Database = {
         Args: { _sucursal_id: string; _user_id: string }
         Returns: boolean
       }
+      current_user_has_role: {
+        Args: { _role: Database["public"]["Enums"]["app_role"] }
+        Returns: boolean
+      }
+      current_user_is_admin: { Args: never; Returns: boolean }
+      current_user_is_super_admin: { Args: never; Returns: boolean }
+      current_user_sucursal: { Args: never; Returns: string }
       generate_hoja_ruta_number: { Args: never; Returns: string }
       generate_ruta_number: { Args: never; Returns: string }
       generate_tracking_number:
