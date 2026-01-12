@@ -38,6 +38,7 @@ import {
   Route,
   Map,
   Car,
+  Plug,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -112,8 +113,9 @@ const navigation: NavGroup[] = [
       { title: 'Tarifas', url: '/admin/rates', icon: Tags, permissionKey: 'rates.manage' },
       { title: 'Usuarios', url: '/admin/users', icon: UserCog, permissionKey: 'users.manage' },
       { title: 'Gestión de Roles', url: '/admin/roles', icon: Settings, permissionKey: 'roles.manage' },
+      { title: 'Integraciones', url: '/admin/integrations', icon: Plug, permissionKey: 'integrations.manage' },
     ],
-    permissionKeys: ['branches.manage', 'rates.manage', 'users.manage', 'roles.manage'],
+    permissionKeys: ['branches.manage', 'rates.manage', 'users.manage', 'roles.manage', 'integrations.manage'],
   },
 ];
 

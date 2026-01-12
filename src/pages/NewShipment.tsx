@@ -1580,6 +1580,7 @@ export default function NewShipment() {
         }}
         trackingNumber={createdEnvio?.tracking_number || ''}
         amount={createdEnvio?.precio_total || 0}
+        envioId={createdEnvio?.id}
         onConfirm={handlePaymentConfirm}
         isLoading={isProcessingPayment}
       />
