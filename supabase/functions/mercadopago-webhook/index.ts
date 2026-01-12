@@ -31,7 +31,8 @@ serve(async (req) => {
     );
 
     const body: MercadoPagoWebhook = await req.json();
-    console.log("Mercado Pago webhook received:", JSON.stringify(body, null, 2));
+    // Log only non-sensitive webhook metadata
+    console.log(`Webhook received: type=${body.type}, action=${body.action}`);
 
     // Only process payment notifications
     if (body.type !== "payment") {
@@ -82,7 +83,7 @@ serve(async (req) => {
 
     if (!mpResponse.ok) {
       const errorData = await mpResponse.json();
-      console.error("Error fetching payment from MP:", errorData);
+      console.error("Error fetching payment from MP:", errorData?.message || "Unknown error");
       return new Response(
         JSON.stringify({ error: "Error fetching payment details" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -90,7 +91,7 @@ serve(async (req) => {
     }
 
     const payment = await mpResponse.json();
-    console.log("Payment details:", JSON.stringify(payment, null, 2));
+    // Don't log full payment details - only log processing status at the end
 
     const envioId = payment.external_reference;
     const status = payment.status;
@@ -132,7 +133,7 @@ serve(async (req) => {
       .eq("metodo", "mercado_pago");
 
     if (updateError) {
-      console.error("Error updating payment:", updateError);
+      console.error("Error updating payment:", updateError?.message || "Unknown error");
       
       // If no existing record, create one
       if (envioId) {
@@ -149,12 +150,12 @@ serve(async (req) => {
           });
 
         if (insertError) {
-          console.error("Error inserting payment:", insertError);
+          console.error("Error inserting payment:", insertError?.message || "Unknown error");
         }
       }
     }
 
-    console.log(`Payment ${paymentId} updated to status: ${paymentStatus}`);
+    console.log(`Payment processed: status=${paymentStatus}`);
 
     return new Response(
       JSON.stringify({ success: true, status: paymentStatus }),

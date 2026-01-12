@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
     });
 
     if (createError) {
-      console.error("Error creating user:", createError);
+      console.error("User creation failed:", createError?.message || "Unknown error");
       return new Response(
         JSON.stringify({ error: createError.message }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
       .eq('user_id', userId);
 
     if (profileError) {
-      console.error("Error updating profile:", profileError);
+      console.error("Profile update failed:", profileError?.message || "Unknown error");
       // Don't fail, profile was created by trigger
     }
 
@@ -118,7 +118,7 @@ Deno.serve(async (req) => {
         .insert(roleInserts);
 
       if (rolesError) {
-        console.error("Error assigning roles:", rolesError);
+        console.error("Role assignment failed:", rolesError?.message || "Unknown error");
         // Don't fail, user was created
       }
     }
