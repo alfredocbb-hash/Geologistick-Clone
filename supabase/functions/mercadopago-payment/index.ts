@@ -126,7 +126,7 @@ serve(async (req) => {
 
     if (!mpResponse.ok) {
       const errorData = await mpResponse.json();
-      console.error("Mercado Pago error:", errorData);
+      console.error("Mercado Pago error:", errorData?.message || "Preference creation failed");
       return new Response(
         JSON.stringify({ error: "Error al crear preferencia de pago", details: errorData }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -148,7 +148,7 @@ serve(async (req) => {
       });
 
     if (paymentError) {
-      console.error("Error creating payment record:", paymentError);
+      console.error("Error creating payment record:", paymentError?.message || "Unknown error");
     }
 
     return new Response(
