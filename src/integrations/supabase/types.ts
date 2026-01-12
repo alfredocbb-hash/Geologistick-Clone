@@ -1787,7 +1787,7 @@ export type Database = {
         | "despachador"
         | "super_admin"
       cash_session_status: "abierta" | "cerrada" | "pendiente_aprobacion"
-      payment_method: "efectivo" | "mercado_pago" | "transferencia"
+      payment_method: "efectivo" | "mercado_pago" | "transferencia" | "tarjeta"
       payment_status: "pendiente" | "pagado" | "fallido" | "reembolsado"
       settlement_status: "generada" | "enviada" | "pagada" | "rechazada"
       shipment_status:
@@ -1939,7 +1939,7 @@ export const Constants = {
         "super_admin",
       ],
       cash_session_status: ["abierta", "cerrada", "pendiente_aprobacion"],
-      payment_method: ["efectivo", "mercado_pago", "transferencia"],
+      payment_method: ["efectivo", "mercado_pago", "transferencia", "tarjeta"],
       payment_status: ["pendiente", "pagado", "fallido", "reembolsado"],
       settlement_status: ["generada", "enviada", "pagada", "rechazada"],
       shipment_status: [

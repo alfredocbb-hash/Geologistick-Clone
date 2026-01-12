@@ -22,6 +22,7 @@ import {
   CreditCard, Truck, Calendar, Clock, Home, AlertCircle, Wallet, Phone,
   Building2, ArrowRight, Navigation
 } from 'lucide-react';
+import { PaymentMethodDialog } from '@/components/shipments/PaymentMethodDialog';
 
 interface TarifaConcepto {
   id: string;
@@ -173,6 +174,11 @@ export default function NewShipment() {
   const [origenCoords, setOrigenCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [destinoCoords, setDestinoCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [distanciaKm, setDistanciaKm] = useState<number | null>(null);
+
+  // Payment modal state
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [createdEnvio, setCreatedEnvio] = useState<{ id: string; tracking_number: string; precio_total: number; remitente_id: string } | null>(null);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   // Derived states
   const tieneRetiro = tipoServicioDetalle === 'puerta_sucursal' || tipoServicioDetalle === 'puerta_puerta';
@@ -579,12 +585,24 @@ export default function NewShipment() {
       queryClient.invalidateQueries({ queryKey: ['envios'] });
       queryClient.invalidateQueries({ queryKey: ['all_clients'] });
       queryClient.invalidateQueries({ queryKey: ['clientes_cta_cte'] });
-      toast({
-        title: '¡Envío creado!',
-        description: `Tracking: ${data.tracking_number}. Redirigiendo a etiqueta...`,
-      });
-      // Redirigir a la página de impresión de etiqueta
-      navigate(`/print-label?id=${data.id}`);
+      
+      // Si es pago contado, mostrar modal para seleccionar método de pago
+      if (formData.tipo_pago === 'contado') {
+        setCreatedEnvio({
+          id: data.id,
+          tracking_number: data.tracking_number,
+          precio_total: data.precio_total,
+          remitente_id: data.remitente_id || '',
+        });
+        setShowPaymentModal(true);
+      } else {
+        // Para cuenta corriente o destinatario, redirigir directamente
+        toast({
+          title: '¡Envío creado!',
+          description: `Tracking: ${data.tracking_number}. Redirigiendo a etiqueta...`,
+        });
+        navigate(`/print-label?id=${data.id}`);
+      }
     },
     onError: (error) => {
       toast({
@@ -691,6 +709,42 @@ export default function NewShipment() {
     setDiasPreferidos(prev => 
       prev.includes(dia) ? prev.filter(d => d !== dia) : [...prev, dia]
     );
+  };
+
+  // Handle payment confirmation
+  const handlePaymentConfirm = async (method: 'efectivo' | 'mercado_pago' | 'transferencia' | 'tarjeta', reference: string) => {
+    if (!createdEnvio) return;
+    
+    setIsProcessingPayment(true);
+    try {
+      const { error } = await supabase.from('pagos').insert({
+        envio_id: createdEnvio.id,
+        cliente_id: createdEnvio.remitente_id || null,
+        monto: createdEnvio.precio_total,
+        metodo: method,
+        referencia: reference || null,
+        estado: 'pendiente',
+        created_by: user?.id,
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: '¡Pago registrado!',
+        description: `Tracking: ${createdEnvio.tracking_number}. Redirigiendo a etiqueta...`,
+      });
+      
+      setShowPaymentModal(false);
+      navigate(`/print-label?id=${createdEnvio.id}`);
+    } catch (error: any) {
+      toast({
+        title: 'Error al registrar pago',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsProcessingPayment(false);
+    }
   };
 
   // Handle address selection from Google Maps autocomplete
@@ -1513,6 +1567,22 @@ export default function NewShipment() {
           </Button>
         </div>
       </form>
+
+      {/* Payment Method Dialog */}
+      <PaymentMethodDialog
+        open={showPaymentModal}
+        onOpenChange={(open) => {
+          if (!open && createdEnvio) {
+            // Si cierra el modal sin pagar, igual redirige a la etiqueta
+            navigate(`/print-label?id=${createdEnvio.id}`);
+          }
+          setShowPaymentModal(open);
+        }}
+        trackingNumber={createdEnvio?.tracking_number || ''}
+        amount={createdEnvio?.precio_total || 0}
+        onConfirm={handlePaymentConfirm}
+        isLoading={isProcessingPayment}
+      />
     </div>
   );
 }

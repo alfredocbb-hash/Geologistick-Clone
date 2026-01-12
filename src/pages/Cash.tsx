@@ -91,6 +91,7 @@ const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   efectivo: 'Efectivo',
   mercado_pago: 'Mercado Pago',
   transferencia: 'Transferencia',
+  tarjeta: 'Tarjeta',
 };
 
 const STATUS_CONFIG: Record<CashSessionStatus, { label: string; color: string; icon: typeof Clock }> = {
