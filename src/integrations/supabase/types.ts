@@ -345,6 +345,7 @@ export type Database = {
           remitente_id: string | null
           remitente_lat: number | null
           remitente_lng: number | null
+          reprogramado_count: number | null
           requiere_retiro: boolean | null
           rotulo_generado: boolean | null
           rotulo_generado_at: string | null
@@ -357,6 +358,7 @@ export type Database = {
           tipo_servicio: string | null
           tipo_servicio_detalle: string | null
           tracking_number: string
+          ultima_reprogramacion: string | null
           updated_at: string | null
           valor_declarado: number | null
           whatsapp_destinatario: string | null
@@ -401,6 +403,7 @@ export type Database = {
           remitente_id?: string | null
           remitente_lat?: number | null
           remitente_lng?: number | null
+          reprogramado_count?: number | null
           requiere_retiro?: boolean | null
           rotulo_generado?: boolean | null
           rotulo_generado_at?: string | null
@@ -413,6 +416,7 @@ export type Database = {
           tipo_servicio?: string | null
           tipo_servicio_detalle?: string | null
           tracking_number: string
+          ultima_reprogramacion?: string | null
           updated_at?: string | null
           valor_declarado?: number | null
           whatsapp_destinatario?: string | null
@@ -457,6 +461,7 @@ export type Database = {
           remitente_id?: string | null
           remitente_lat?: number | null
           remitente_lng?: number | null
+          reprogramado_count?: number | null
           requiere_retiro?: boolean | null
           rotulo_generado?: boolean | null
           rotulo_generado_at?: string | null
@@ -469,6 +474,7 @@ export type Database = {
           tipo_servicio?: string | null
           tipo_servicio_detalle?: string | null
           tracking_number?: string
+          ultima_reprogramacion?: string | null
           updated_at?: string | null
           valor_declarado?: number | null
           whatsapp_destinatario?: string | null

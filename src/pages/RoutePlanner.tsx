@@ -43,6 +43,9 @@ import {
   Building2,
   AlertTriangle,
   GripVertical,
+  CalendarClock,
+  Edit,
+  RefreshCw,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -50,6 +53,8 @@ import { useNavigate } from "react-router-dom";
 import MapView, { MarkerInfo } from "@/components/maps/MapView";
 import { ShipmentMapPopup } from "@/components/maps/ShipmentMapPopup";
 import { BranchMapPopup } from "@/components/maps/BranchMapPopup";
+import EditRouteDialog from "@/components/routes/EditRouteDialog";
+import RescheduledShipmentsList from "@/components/routes/RescheduledShipmentsList";
 
 interface RouteStop {
   envio_id: string;
@@ -90,6 +95,8 @@ export default function RoutePlanner() {
     data: any;
   } | null>(null);
   const [isGeolocating, setIsGeolocating] = useState(false);
+  const [editingRoute, setEditingRoute] = useState<any | null>(null);
+  const [selectedReprogramados, setSelectedReprogramados] = useState<string[]>([]);
 
   // Fetch sucursal de origen del usuario
   const { data: sucursalOrigen } = useQuery({
@@ -768,6 +775,10 @@ export default function RoutePlanner() {
             <Navigation className="mr-2 h-4 w-4" />
             Crear Ruta
           </TabsTrigger>
+          <TabsTrigger value="reprogramados">
+            <CalendarClock className="mr-2 h-4 w-4" />
+            Reprogramados
+          </TabsTrigger>
           <TabsTrigger value="activas">
             <PlayCircle className="mr-2 h-4 w-4" />
             Rutas Activas ({rutasActivas.length})
@@ -1208,6 +1219,48 @@ export default function RoutePlanner() {
           )}
         </TabsContent>
 
+        <TabsContent value="reprogramados">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <RefreshCw className="h-5 w-5" />
+                Envíos Reprogramados
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <RescheduledShipmentsList
+                selectedEnvios={selectedReprogramados}
+                onToggleEnvio={(id) => {
+                  setSelectedReprogramados(prev => 
+                    prev.includes(id) 
+                      ? prev.filter(i => i !== id) 
+                      : [...prev, id]
+                  );
+                }}
+                onSelectAll={(ids) => setSelectedReprogramados(ids)}
+              />
+
+              {selectedReprogramados.length > 0 && (
+                <div className="mt-4 pt-4 border-t flex gap-3">
+                  <Button 
+                    onClick={() => {
+                      // Add to current selection and switch to crear tab
+                      setSelectedEnvios(prev => [...new Set([...prev, ...selectedReprogramados])]);
+                      setSelectedReprogramados([]);
+                      setActiveTab("crear");
+                      toast.success(`${selectedReprogramados.length} envío(s) agregados a selección`);
+                    }}
+                    className="flex-1"
+                  >
+                    <Navigation className="mr-2 h-4 w-4" />
+                    Agregar a Nueva Ruta
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="activas">
           <Card>
             <CardContent className="pt-6">
@@ -1233,9 +1286,19 @@ export default function RoutePlanner() {
                             {ruta.tipo === "mixta" ? "Mixta" : ruta.tipo === "retiro" ? "Retiros" : "Entregas"}
                           </Badge>
                         </div>
-                        <span className="text-sm text-muted-foreground">
-                          {format(new Date(ruta.fecha), "dd/MM/yyyy", { locale: es })}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-muted-foreground">
+                            {format(new Date(ruta.fecha), "dd/MM/yyyy", { locale: es })}
+                          </span>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => setEditingRoute(ruta)}
+                          >
+                            <Edit className="h-4 w-4 mr-1" />
+                            Editar
+                          </Button>
+                        </div>
                       </div>
                       
                       <div className="flex items-center gap-6 text-sm text-muted-foreground">
@@ -1260,6 +1323,14 @@ export default function RoutePlanner() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Edit Route Dialog */}
+      {editingRoute && (
+        <EditRouteDialog
+          route={editingRoute}
+          onClose={() => setEditingRoute(null)}
+        />
+      )}
     </div>
   );
 }
