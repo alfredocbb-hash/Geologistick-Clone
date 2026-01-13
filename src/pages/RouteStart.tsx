@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -15,7 +15,8 @@ import {
   MapPin, 
   Clock,
   Route,
-  Calendar
+  Calendar,
+  Navigation
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -34,6 +35,17 @@ export default function RouteStart() {
   const [isDragging, setIsDragging] = useState(false);
 
   const isPlannedRoute = routeType === 'planificada';
+  
+  // Check if route is already started and redirect
+  const routeStatus = isPlannedRoute 
+    ? (useQuery({
+        queryKey: ['ruta-planificada-start', routeId],
+        enabled: false // will be fetched by the main query
+      }).data as any)?.estado
+    : (useQuery({
+        queryKey: ['hoja-ruta-start', routeId],
+        enabled: false // will be fetched by the main query
+      }).data as any)?.estado;
 
   // Fetch hoja de ruta (for inter-branch transfers)
   const { data: hojaRuta, isLoading: loadingHoja } = useQuery({
@@ -144,140 +156,79 @@ export default function RouteStart() {
     enabled: !!routeId && isPlannedRoute,
   });
 
-  // Start route mutation for Hoja de Ruta
+  // Start route mutation for Hoja de Ruta using RPC
   const startHojaRouteMutation = useMutation({
     mutationFn: async () => {
-      if (!routeId || !user?.id) throw new Error('Datos incompletos');
+      if (!routeId) throw new Error('Datos incompletos');
 
-      // Update hoja de ruta
-      const { error: hojaError } = await supabase
-        .from('hojas_ruta')
-        .update({
-          estado: 'en_transito',
-          fecha_salida: new Date().toISOString(),
-          inicio_real: new Date().toISOString(),
-          chofer_id: user.id,
-        })
-        .eq('id', routeId);
-
-      if (hojaError) throw hojaError;
-
-      // Update all shipments
-      const updates = envios.map(async (item) => {
-        const envio = item.envio;
-        if (!envio) return;
-
-        const isPickup = envio.requiere_retiro;
-        
-        if (isPickup) {
-          await supabase
-            .from('envios')
-            .update({
-              estado_retiro: 'en_camino',
-              chofer_id: user.id,
-            })
-            .eq('id', envio.id);
-        } else {
-          await supabase
-            .from('envios')
-            .update({
-              estado: 'en_reparto',
-              chofer_id: user.id,
-            })
-            .eq('id', envio.id);
-        }
-
-        await supabase
-          .from('envio_historial')
-          .insert({
-            envio_id: envio.id,
-            estado_anterior: envio.estado as any,
-            estado_nuevo: isPickup ? envio.estado : 'en_reparto',
-            notas: 'Ruta iniciada por el chofer',
-            created_by: user.id,
-          });
+      const { data, error } = await supabase.rpc('start_hoja_ruta', {
+        p_hoja_id: routeId
       });
 
-      await Promise.all(updates);
+      if (error) throw error;
       
-      return routeId;
+      const result = data as { success: boolean; error?: string; message?: string; already_started?: boolean };
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Error al iniciar la ruta');
+      }
+      
+      return { routeId, alreadyStarted: result.already_started };
     },
-    onSuccess: (returnedId) => {
+    onSuccess: ({ routeId: returnedId, alreadyStarted }) => {
       queryClient.invalidateQueries({ queryKey: ['my-hojas-ruta'] });
-      queryClient.invalidateQueries({ queryKey: ['my-active-route'] });
-      toast.success('¡Ruta iniciada!');
+      queryClient.invalidateQueries({ queryKey: ['my-active-route-hoja', returnedId] });
+      queryClient.invalidateQueries({ queryKey: ['my-active-route-envios-hoja', returnedId] });
+      queryClient.invalidateQueries({ queryKey: ['hoja-ruta-start', returnedId] });
+      
+      if (alreadyStarted) {
+        toast.info('La ruta ya estaba iniciada, continuando...');
+      } else {
+        toast.success('¡Ruta iniciada!');
+      }
       navigate(`/active-route?id=${returnedId}&type=hoja`);
     },
     onError: (error) => {
       console.error('Error al iniciar ruta:', error);
-      toast.error('Error al iniciar la ruta');
+      toast.error(error instanceof Error ? error.message : 'Error al iniciar la ruta');
     }
   });
 
-  // Start route mutation for Ruta Planificada
+  // Start route mutation for Ruta Planificada using RPC
   const startRutaPlanificadaMutation = useMutation({
     mutationFn: async () => {
-      if (!routeId || !user?.id) throw new Error('Datos incompletos');
+      if (!routeId) throw new Error('Datos incompletos');
 
-      // Update ruta planificada
-      const { error: rutaError } = await supabase
-        .from('rutas_planificadas')
-        .update({
-          estado: 'en_curso',
-        })
-        .eq('id', routeId);
-
-      if (rutaError) throw rutaError;
-
-      // Update all shipments in paradas
-      const updates = paradas.map(async (parada) => {
-        const envio = parada.envio;
-        if (!envio) return;
-
-        const isPickup = parada.tipo === 'retiro';
-        
-        if (isPickup) {
-          await supabase
-            .from('envios')
-            .update({
-              estado_retiro: 'en_camino',
-              chofer_id: user.id,
-            })
-            .eq('id', envio.id);
-        } else {
-          await supabase
-            .from('envios')
-            .update({
-              estado: 'en_reparto',
-              chofer_id: user.id,
-            })
-            .eq('id', envio.id);
-        }
-
-        await supabase
-          .from('envio_historial')
-          .insert({
-            envio_id: envio.id,
-            estado_anterior: envio.estado as any,
-            estado_nuevo: isPickup ? envio.estado : 'en_reparto',
-            notas: 'Ruta de reparto iniciada por el chofer',
-            created_by: user.id,
-          });
+      const { data, error } = await supabase.rpc('start_ruta_planificada', {
+        p_ruta_id: routeId
       });
 
-      await Promise.all(updates);
+      if (error) throw error;
       
-      return routeId;
+      const result = data as { success: boolean; error?: string; message?: string; already_started?: boolean };
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Error al iniciar la ruta');
+      }
+      
+      return { routeId, alreadyStarted: result.already_started };
     },
-    onSuccess: (returnedId) => {
+    onSuccess: ({ routeId: returnedId, alreadyStarted }) => {
       queryClient.invalidateQueries({ queryKey: ['my-rutas-planificadas'] });
-      queryClient.invalidateQueries({ queryKey: ['my-active-route'] });
-      toast.success('¡Ruta de reparto iniciada!');
+      queryClient.invalidateQueries({ queryKey: ['my-active-route-planificada', returnedId] });
+      queryClient.invalidateQueries({ queryKey: ['my-active-route-paradas', returnedId] });
+      queryClient.invalidateQueries({ queryKey: ['ruta-planificada-start', returnedId] });
+      
+      if (alreadyStarted) {
+        toast.info('La ruta ya estaba iniciada, continuando...');
+      } else {
+        toast.success('¡Ruta de reparto iniciada!');
+      }
       navigate(`/active-route?id=${returnedId}&type=planificada`);
     },
     onError: (error) => {
       console.error('Error al iniciar ruta:', error);
-      toast.error('Error al iniciar la ruta');
+      toast.error(error instanceof Error ? error.message : 'Error al iniciar la ruta');
     }
   });
 
@@ -313,6 +264,18 @@ export default function RouteStart() {
 
   const isLoading = isPlannedRoute ? (loadingRuta || loadingParadas) : (loadingHoja || loadingEnvios);
   const routeData = isPlannedRoute ? rutaPlanificada : hojaRuta;
+  
+  // Determine if route is already in progress
+  const isRouteAlreadyStarted = isPlannedRoute 
+    ? rutaPlanificada?.estado === 'en_curso'
+    : hojaRuta?.estado === 'en_transito';
+
+  // Auto-redirect if route is already started
+  useEffect(() => {
+    if (routeData && isRouteAlreadyStarted) {
+      navigate(`/active-route?id=${routeId}&type=${routeType}`, { replace: true });
+    }
+  }, [routeData, isRouteAlreadyStarted, routeId, routeType, navigate]);
 
   if (isLoading) {
     return (
@@ -329,6 +292,24 @@ export default function RouteStart() {
         <h2 className="text-xl font-semibold mb-2">Ruta no encontrada</h2>
         <Button onClick={() => navigate('/my-routes')} className="mt-4">
           Volver a Mis Rutas
+        </Button>
+      </div>
+    );
+  }
+  
+  // If route is already started, show continue button instead of slider
+  if (isRouteAlreadyStarted) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+        <Navigation className="h-16 w-16 text-primary mb-4 animate-pulse" />
+        <h2 className="text-xl font-semibold mb-2">Ruta en curso</h2>
+        <p className="text-muted-foreground mb-4">Redirigiendo a la navegación...</p>
+        <Button 
+          onClick={() => navigate(`/active-route?id=${routeId}&type=${routeType}`)}
+          className="bg-success hover:bg-success/90"
+        >
+          <Navigation className="h-4 w-4 mr-2" />
+          Continuar Ruta
         </Button>
       </div>
     );
