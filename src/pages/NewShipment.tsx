@@ -340,7 +340,7 @@ export default function NewShipment() {
     return baseTotal + (peso * precioPorKg);
   };
 
-  // Find or create client helper
+  // Find or create client helper - busca SIEMPRE en la base de datos para evitar duplicados
   const findOrCreateClient = async (data: {
     nombre: string;
     apellido?: string;
@@ -352,57 +352,98 @@ export default function NewShipment() {
     dni_cuit?: string;
     sucursal_id?: string | null;
   }) => {
-    let existingClient = null;
-    
+    // 1. Buscar PRIMERO en la base de datos por DNI/CUIT (más confiable que la caché)
     if (data.dni_cuit && data.dni_cuit.trim()) {
-      existingClient = allClients.find(c => 
-        c.dni_cuit?.toLowerCase().trim() === data.dni_cuit!.toLowerCase().trim()
-      );
+      const { data: clientByDni, error: dniError } = await supabase
+        .from('clientes')
+        .select('*')
+        .ilike('dni_cuit', data.dni_cuit.trim())
+        .maybeSingle();
+      
+      if (dniError) {
+        console.error('Error buscando cliente por DNI:', dniError);
+      }
+      
+      if (clientByDni) {
+        // Actualizar datos del cliente existente
+        const { error: updateError } = await supabase
+          .from('clientes')
+          .update({
+            nombre: data.nombre,
+            apellido: data.apellido || clientByDni.apellido,
+            email: data.email || clientByDni.email,
+            direccion: data.direccion || clientByDni.direccion,
+            ciudad: data.ciudad || clientByDni.ciudad,
+            codigo_postal: data.codigo_postal || clientByDni.codigo_postal,
+            telefono: data.telefono || clientByDni.telefono,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', clientByDni.id);
+
+        if (updateError) throw updateError;
+        return clientByDni.id;
+      }
     }
     
-    if (!existingClient && data.telefono) {
-      existingClient = allClients.find(c => 
-        c.telefono === data.telefono
-      );
+    // 2. Si no encontró por DNI, buscar por teléfono en la base de datos
+    if (data.telefono) {
+      const { data: clientByPhone, error: phoneError } = await supabase
+        .from('clientes')
+        .select('*')
+        .eq('telefono', data.telefono)
+        .maybeSingle();
+      
+      if (phoneError) {
+        console.error('Error buscando cliente por teléfono:', phoneError);
+      }
+      
+      if (clientByPhone) {
+        // Actualizar datos del cliente existente
+        const { error: updateError } = await supabase
+          .from('clientes')
+          .update({
+            nombre: data.nombre,
+            apellido: data.apellido || clientByPhone.apellido,
+            email: data.email || clientByPhone.email,
+            direccion: data.direccion || clientByPhone.direccion,
+            ciudad: data.ciudad || clientByPhone.ciudad,
+            codigo_postal: data.codigo_postal || clientByPhone.codigo_postal,
+            dni_cuit: data.dni_cuit || clientByPhone.dni_cuit,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', clientByPhone.id);
+
+        if (updateError) throw updateError;
+        return clientByPhone.id;
+      }
     }
 
-    if (existingClient) {
-      const { error: updateError } = await supabase
-        .from('clientes')
-        .update({
-          nombre: data.nombre,
-          apellido: data.apellido || existingClient.apellido,
-          email: data.email || existingClient.email,
-          direccion: data.direccion || existingClient.direccion,
-          ciudad: data.ciudad || existingClient.ciudad,
-          codigo_postal: data.codigo_postal || existingClient.codigo_postal,
-          dni_cuit: data.dni_cuit || existingClient.dni_cuit,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', existingClient.id);
+    // 3. Solo si no existe, crear nuevo cliente
+    const { data: newClient, error: createError } = await supabase
+      .from('clientes')
+      .insert({
+        nombre: data.nombre,
+        apellido: data.apellido,
+        telefono: data.telefono,
+        email: data.email,
+        direccion: data.direccion,
+        ciudad: data.ciudad,
+        codigo_postal: data.codigo_postal,
+        dni_cuit: data.dni_cuit,
+        sucursal_id: data.sucursal_id,
+      })
+      .select()
+      .single();
 
-      if (updateError) throw updateError;
-      return existingClient.id;
-    } else {
-      const { data: newClient, error: createError } = await supabase
-        .from('clientes')
-        .insert({
-          nombre: data.nombre,
-          apellido: data.apellido,
-          telefono: data.telefono,
-          email: data.email,
-          direccion: data.direccion,
-          ciudad: data.ciudad,
-          codigo_postal: data.codigo_postal,
-          dni_cuit: data.dni_cuit,
-          sucursal_id: data.sucursal_id,
-        })
-        .select()
-        .single();
-
-      if (createError) throw createError;
-      return newClient.id;
+    if (createError) {
+      // Manejo específico para error de duplicado
+      if (createError.message?.includes('idx_clientes_dni_cuit_unique') || 
+          createError.code === '23505') {
+        throw new Error(`Ya existe un cliente con el DNI/CUIT ${data.dni_cuit}. Por favor verifique los datos.`);
+      }
+      throw createError;
     }
+    return newClient.id;
   };
 
   const createShipmentMutation = useMutation({
