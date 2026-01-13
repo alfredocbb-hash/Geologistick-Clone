@@ -176,3 +176,17 @@ Sistema Logístico - Tema moderno y colorido
     @apply transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5;
   }
 }
+
+/* Barcode scanner styles - makes WebView transparent for native camera */
+body.barcode-scanner-active {
+  background: transparent !important;
+}
+
+body.barcode-scanner-active .fixed,
+body.barcode-scanner-active .absolute {
+  display: none !important;
+}
+
+body.barcode-scanner-active #barcode-scanner-container {
+  display: block !important;
+}
