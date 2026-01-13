@@ -158,7 +158,7 @@ export default function MyRoutes() {
 
     if (hoja.estado === 'en_transito' || hoja.estado === 'completada') {
       // If it's my route and in transit, go to active navigation
-      navigate(`/active-route?id=${hoja.id}`);
+      navigate(`/active-route?id=${hoja.id}&type=hoja`);
     } else {
       // Show receive dialog
       setReceiveHojaId(hoja.id);

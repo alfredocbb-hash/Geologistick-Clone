@@ -1825,6 +1825,8 @@ export type Database = {
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
+      start_hoja_ruta: { Args: { p_hoja_id: string }; Returns: Json }
+      start_ruta_planificada: { Args: { p_ruta_id: string }; Returns: Json }
     }
     Enums: {
       app_role:
