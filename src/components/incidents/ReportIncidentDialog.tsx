@@ -139,18 +139,53 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
 
       if (historyError) throw historyError;
     },
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['my-active-route-paradas'] });
+      await queryClient.cancelQueries({ queryKey: ['my-active-route-envios-hoja'] });
+      
+      const previousParadas = queryClient.getQueryData(['my-active-route-paradas']);
+      const previousEnviosHoja = queryClient.getQueryData(['my-active-route-envios-hoja']);
+      
+      queryClient.setQueryData(['my-active-route-paradas'], (old: any) => {
+        if (!old) return old;
+        return old.map((p: any) => 
+          p.envio?.id === shipment.id 
+            ? { ...p, envio: { ...p.envio, estado: 'devuelto' } }
+            : p
+        );
+      });
+      
+      queryClient.setQueryData(['my-active-route-envios-hoja'], (old: any) => {
+        if (!old) return old;
+        return old.map((e: any) => 
+          e.envio?.id === shipment.id 
+            ? { ...e, envio: { ...e.envio, estado: 'devuelto' } }
+            : e
+        );
+      });
+      
+      return { previousParadas, previousEnviosHoja };
+    },
     onSuccess: () => {
       // Play warning sound
       const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1f');
       audio.play().catch(() => {});
       
-      queryClient.invalidateQueries({ queryKey: ['my-shipments'] });
-      queryClient.invalidateQueries({ queryKey: ['my-active-route'] });
+      queryClient.invalidateQueries({ queryKey: ['my-active-route-paradas'] });
+      queryClient.invalidateQueries({ queryKey: ['my-active-route-envios-hoja'] });
+      queryClient.invalidateQueries({ queryKey: ['my-active-route-hoja'] });
+      queryClient.invalidateQueries({ queryKey: ['my-active-route-planificada'] });
       toast.warning('Incidente reportado correctamente');
       onSuccess();
       onClose();
     },
-    onError: (error) => {
+    onError: (error, _, context) => {
+      if (context?.previousParadas) {
+        queryClient.setQueryData(['my-active-route-paradas'], context.previousParadas);
+      }
+      if (context?.previousEnviosHoja) {
+        queryClient.setQueryData(['my-active-route-envios-hoja'], context.previousEnviosHoja);
+      }
       toast.error('Error al reportar incidente: ' + error.message);
     },
   });

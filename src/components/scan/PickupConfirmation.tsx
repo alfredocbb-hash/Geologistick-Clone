@@ -73,13 +73,49 @@ export default function PickupConfirmation({ shipment, onClose, onSuccess }: Pic
 
       if (historyError) throw historyError;
     },
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['my-active-route-paradas'] });
+      await queryClient.cancelQueries({ queryKey: ['my-active-route-envios-hoja'] });
+      
+      const previousParadas = queryClient.getQueryData(['my-active-route-paradas']);
+      const previousEnviosHoja = queryClient.getQueryData(['my-active-route-envios-hoja']);
+      
+      queryClient.setQueryData(['my-active-route-paradas'], (old: any) => {
+        if (!old) return old;
+        return old.map((p: any) => 
+          p.envio?.id === shipment.id 
+            ? { ...p, envio: { ...p.envio, estado: 'recogido', estado_retiro: 'retirado' } }
+            : p
+        );
+      });
+      
+      queryClient.setQueryData(['my-active-route-envios-hoja'], (old: any) => {
+        if (!old) return old;
+        return old.map((e: any) => 
+          e.envio?.id === shipment.id 
+            ? { ...e, envio: { ...e.envio, estado: 'recogido', estado_retiro: 'retirado' } }
+            : e
+        );
+      });
+      
+      return { previousParadas, previousEnviosHoja };
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['envios'] });
+      queryClient.invalidateQueries({ queryKey: ['my-active-route-paradas'] });
+      queryClient.invalidateQueries({ queryKey: ['my-active-route-envios-hoja'] });
+      queryClient.invalidateQueries({ queryKey: ['my-active-route-hoja'] });
+      queryClient.invalidateQueries({ queryKey: ['my-active-route-planificada'] });
       toast.success('¡Retiro confirmado exitosamente!');
       onSuccess();
       onClose();
     },
-    onError: (error) => {
+    onError: (error, _, context) => {
+      if (context?.previousParadas) {
+        queryClient.setQueryData(['my-active-route-paradas'], context.previousParadas);
+      }
+      if (context?.previousEnviosHoja) {
+        queryClient.setQueryData(['my-active-route-envios-hoja'], context.previousEnviosHoja);
+      }
       toast.error('Error al confirmar retiro: ' + error.message);
     },
   });

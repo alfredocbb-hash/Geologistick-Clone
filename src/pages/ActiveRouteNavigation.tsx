@@ -82,7 +82,7 @@ export default function ActiveRouteNavigation() {
       return data;
     },
     enabled: !!routeId && !isPlannedRoute,
-    refetchInterval: 30000,
+    refetchInterval: 60000,
   });
 
   // Fetch ruta planificada
@@ -105,7 +105,7 @@ export default function ActiveRouteNavigation() {
       return data;
     },
     enabled: !!routeId && isPlannedRoute,
-    refetchInterval: 30000,
+    refetchInterval: 60000,
   });
 
   // Fetch envíos de la hoja de ruta

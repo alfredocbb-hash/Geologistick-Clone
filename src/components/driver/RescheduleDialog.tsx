@@ -82,14 +82,49 @@ export default function RescheduleDialog({ shipment, onClose, onSuccess }: Resch
 
       if (historyError) throw historyError;
     },
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['my-active-route-paradas'] });
+      await queryClient.cancelQueries({ queryKey: ['my-active-route-envios-hoja'] });
+      
+      const previousParadas = queryClient.getQueryData(['my-active-route-paradas']);
+      const previousEnviosHoja = queryClient.getQueryData(['my-active-route-envios-hoja']);
+      
+      queryClient.setQueryData(['my-active-route-paradas'], (old: any) => {
+        if (!old) return old;
+        return old.map((p: any) => 
+          p.envio?.id === shipment.id 
+            ? { ...p, envio: { ...p.envio, estado: 'pendiente' } }
+            : p
+        );
+      });
+      
+      queryClient.setQueryData(['my-active-route-envios-hoja'], (old: any) => {
+        if (!old) return old;
+        return old.map((e: any) => 
+          e.envio?.id === shipment.id 
+            ? { ...e, envio: { ...e.envio, estado: 'pendiente' } }
+            : e
+        );
+      });
+      
+      return { previousParadas, previousEnviosHoja };
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['my-shipments'] });
-      queryClient.invalidateQueries({ queryKey: ['my-active-route'] });
+      queryClient.invalidateQueries({ queryKey: ['my-active-route-paradas'] });
+      queryClient.invalidateQueries({ queryKey: ['my-active-route-envios-hoja'] });
+      queryClient.invalidateQueries({ queryKey: ['my-active-route-hoja'] });
+      queryClient.invalidateQueries({ queryKey: ['my-active-route-planificada'] });
       toast.success('Entrega reprogramada correctamente');
       onSuccess();
       onClose();
     },
-    onError: (error) => {
+    onError: (error, _, context) => {
+      if (context?.previousParadas) {
+        queryClient.setQueryData(['my-active-route-paradas'], context.previousParadas);
+      }
+      if (context?.previousEnviosHoja) {
+        queryClient.setQueryData(['my-active-route-envios-hoja'], context.previousEnviosHoja);
+      }
       toast.error('Error al reprogramar: ' + error.message);
     },
   });

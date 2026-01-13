@@ -108,21 +108,17 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
 
   const confirmMutation = useMutation({
     mutationFn: async () => {
-      let photoUrl: string | null = null;
-      let signatureUrl: string | null = null;
-
-      // Upload photo if provided
-      if (photo) {
-        const photoPath = `deliveries/${shipment.id}/photo_${Date.now()}.jpg`;
-        photoUrl = await uploadFile(photo, photoPath);
-      }
-
-      // Upload signature if provided
-      if (signature) {
-        const signatureBlob = dataURLtoBlob(signature);
-        const signaturePath = `deliveries/${shipment.id}/signature_${Date.now()}.png`;
-        signatureUrl = await uploadFile(signatureBlob, signaturePath);
-      }
+      const timestamp = Date.now();
+      
+      // Upload photo and signature in parallel
+      const [photoUrl, signatureUrl] = await Promise.all([
+        photo 
+          ? uploadFile(photo, `deliveries/${shipment.id}/photo_${timestamp}.jpg`)
+          : Promise.resolve(null),
+        signature
+          ? uploadFile(dataURLtoBlob(signature), `deliveries/${shipment.id}/signature_${timestamp}.png`)
+          : Promise.resolve(null),
+      ]);
 
       // Update shipment
       const updateData: Record<string, unknown> = {
@@ -140,8 +136,8 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
 
       if (updateError) throw updateError;
 
-      // Add history entry
-      const { error: historyError } = await supabase
+      // Add history entry and calculate commission in parallel
+      const historyPromise = supabase
         .from('envio_historial')
         .insert({
           envio_id: shipment.id,
@@ -152,10 +148,9 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
           created_by: user?.id,
         });
 
-      if (historyError) throw historyError;
-
-      // Generate driver commission
-      if (user?.id) {
+      const commissionPromise = (async () => {
+        if (!user?.id) return;
+        
         const { data: envioData } = await supabase
           .from('envios')
           .select(`
@@ -193,20 +188,64 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
             }
           }
         }
-      }
+      })();
+
+      await Promise.all([historyPromise, commissionPromise]);
+    },
+    onMutate: async () => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['my-active-route-paradas'] });
+      await queryClient.cancelQueries({ queryKey: ['my-active-route-envios-hoja'] });
+      
+      // Snapshot previous values
+      const previousParadas = queryClient.getQueryData(['my-active-route-paradas']);
+      const previousEnviosHoja = queryClient.getQueryData(['my-active-route-envios-hoja']);
+      
+      // Optimistically update paradas
+      queryClient.setQueryData(['my-active-route-paradas'], (old: any) => {
+        if (!old) return old;
+        return old.map((p: any) => 
+          p.envio?.id === shipment.id 
+            ? { ...p, envio: { ...p.envio, estado: 'entregado' } }
+            : p
+        );
+      });
+      
+      // Optimistically update envios hoja
+      queryClient.setQueryData(['my-active-route-envios-hoja'], (old: any) => {
+        if (!old) return old;
+        return old.map((e: any) => 
+          e.envio?.id === shipment.id 
+            ? { ...e, envio: { ...e.envio, estado: 'entregado' } }
+            : e
+        );
+      });
+      
+      return { previousParadas, previousEnviosHoja };
     },
     onSuccess: () => {
       // Play success sound
       const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdGWEjJCLhX51aV1RR0BGUFxnc36IkJaZl5GIe21fTj45Njg+R1FdaXeCjpeepKaknZOGdmNQPjEqKS00P0xbaoKSnaewtLKsoJF+aVQ/Ly');
       audio.play().catch(() => {});
       
-      queryClient.invalidateQueries({ queryKey: ['my-shipments'] });
-      queryClient.invalidateQueries({ queryKey: ['my-active-route'] });
+      // Invalidate to ensure we have fresh data
+      queryClient.invalidateQueries({ queryKey: ['my-active-route-paradas'] });
+      queryClient.invalidateQueries({ queryKey: ['my-active-route-envios-hoja'] });
+      queryClient.invalidateQueries({ queryKey: ['my-active-route-hoja'] });
+      queryClient.invalidateQueries({ queryKey: ['my-active-route-planificada'] });
+      
       toast.success('¡Entrega confirmada exitosamente!');
       onSuccess();
       onClose();
     },
-    onError: (error) => {
+    onError: (error, _, context) => {
+      // Rollback on error
+      if (context?.previousParadas) {
+        queryClient.setQueryData(['my-active-route-paradas'], context.previousParadas);
+      }
+      if (context?.previousEnviosHoja) {
+        queryClient.setQueryData(['my-active-route-envios-hoja'], context.previousEnviosHoja);
+      }
       toast.error('Error al confirmar entrega: ' + error.message);
     },
   });
