@@ -39,12 +39,15 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check if caller is admin using the database function
+    // Check if caller is admin using direct query (RPC won't work with service role)
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
-    const { data: isAdminResult, error: adminCheckError } = await adminClient
-      .rpc('is_admin', { _user_id: callingUser.id });
+    const { data: adminRoles, error: adminCheckError } = await adminClient
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', callingUser.id)
+      .in('role', ['admin', 'super_admin']);
 
-    if (adminCheckError || !isAdminResult) {
+    if (adminCheckError || !adminRoles || adminRoles.length === 0) {
       return new Response(
         JSON.stringify({ error: "Solo los administradores pueden crear usuarios" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
