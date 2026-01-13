@@ -45,24 +45,27 @@ export default function ActiveRouteNavigation() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
-  const hojaRutaId = searchParams.get('id');
+  const routeId = searchParams.get('id');
+  const routeType = searchParams.get('type') || 'hoja'; // 'hoja' or 'planificada'
   
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [selectedShipment, setSelectedShipment] = useState<any>(null);
   const [dialogType, setDialogType] = useState<'pickup' | 'delivery' | 'incident' | 'reschedule' | null>(null);
 
+  const isPlannedRoute = routeType === 'planificada';
+
   // Enable geolocation tracking
   const { location, isTracking } = useGeolocation({ 
-    enabled: !!hojaRutaId,
+    enabled: !!routeId,
     updateInterval: 30000 
   });
 
   // Fetch hoja de ruta
   const { data: hojaRuta, isLoading: loadingHoja } = useQuery({
-    queryKey: ['my-active-route', hojaRutaId],
+    queryKey: ['my-active-route-hoja', routeId],
     queryFn: async () => {
-      if (!hojaRutaId) return null;
+      if (!routeId) return null;
       
       const { data, error } = await supabase
         .from('hojas_ruta')
@@ -72,21 +75,44 @@ export default function ActiveRouteNavigation() {
           sucursal_destino:sucursales!hojas_ruta_sucursal_destino_id_fkey(nombre, codigo),
           vehiculo:vehiculos(patente, marca, modelo)
         `)
-        .eq('id', hojaRutaId)
+        .eq('id', routeId)
         .single();
 
       if (error) throw error;
       return data;
     },
-    enabled: !!hojaRutaId,
+    enabled: !!routeId && !isPlannedRoute,
+    refetchInterval: 30000,
+  });
+
+  // Fetch ruta planificada
+  const { data: rutaPlanificada, isLoading: loadingRuta } = useQuery({
+    queryKey: ['my-active-route-planificada', routeId],
+    queryFn: async () => {
+      if (!routeId) return null;
+      
+      const { data, error } = await supabase
+        .from('rutas_planificadas')
+        .select(`
+          *,
+          vehiculo:vehiculos(patente, marca, modelo),
+          sucursal:sucursales(nombre, codigo)
+        `)
+        .eq('id', routeId)
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!routeId && isPlannedRoute,
     refetchInterval: 30000,
   });
 
   // Fetch envíos de la hoja de ruta
-  const { data: envios = [], isLoading: loadingEnvios } = useQuery({
-    queryKey: ['my-active-route-envios', hojaRutaId],
+  const { data: enviosHoja = [], isLoading: loadingEnviosHoja } = useQuery({
+    queryKey: ['my-active-route-envios-hoja', routeId],
     queryFn: async () => {
-      if (!hojaRutaId) return [];
+      if (!routeId) return [];
       
       const { data, error } = await supabase
         .from('hoja_ruta_envios')
@@ -109,14 +135,63 @@ export default function ActiveRouteNavigation() {
             remitente:clientes!envios_remitente_id_fkey(nombre, apellido, telefono, direccion, ciudad)
           )
         `)
-        .eq('hoja_ruta_id', hojaRutaId)
+        .eq('hoja_ruta_id', routeId)
         .order('orden');
 
       if (error) throw error;
       return data;
     },
-    enabled: !!hojaRutaId,
+    enabled: !!routeId && !isPlannedRoute,
   });
+
+  // Fetch paradas de la ruta planificada
+  const { data: paradasRuta = [], isLoading: loadingParadas } = useQuery({
+    queryKey: ['my-active-route-paradas', routeId],
+    queryFn: async () => {
+      if (!routeId) return [];
+      
+      const { data, error } = await supabase
+        .from('ruta_paradas')
+        .select(`
+          *,
+          envio:envios(
+            id,
+            tracking_number,
+            estado,
+            estado_retiro,
+            requiere_retiro,
+            pago_contra_entrega,
+            precio_total,
+            direccion_retiro,
+            ciudad_retiro,
+            direccion_entrega,
+            ciudad_entrega,
+            notas,
+            destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, telefono, direccion, ciudad),
+            remitente:clientes!envios_remitente_id_fkey(nombre, apellido, telefono, direccion, ciudad)
+          )
+        `)
+        .eq('ruta_id', routeId)
+        .order('orden');
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!routeId && isPlannedRoute,
+  });
+
+  // Unified data
+  const routeData = isPlannedRoute ? rutaPlanificada : hojaRuta;
+  const routeNumber = isPlannedRoute ? rutaPlanificada?.numero : hojaRuta?.numero;
+  const envios = isPlannedRoute 
+    ? paradasRuta.map(p => ({
+        ...p,
+        envio: {
+          ...p.envio,
+          requiere_retiro: p.tipo === 'retiro'
+        }
+      }))
+    : enviosHoja;
 
   // Calculate stats
   const stats = useMemo(() => {
@@ -157,20 +232,28 @@ export default function ActiveRouteNavigation() {
   // Close route mutation
   const closeRouteMutation = useMutation({
     mutationFn: async () => {
-      if (!hojaRutaId) throw new Error('No hay ruta activa');
+      if (!routeId) throw new Error('No hay ruta activa');
 
-      const { error } = await supabase
-        .from('hojas_ruta')
-        .update({
-          estado: 'completada',
-          fin_real: new Date().toISOString(),
-        })
-        .eq('id', hojaRutaId);
-
-      if (error) throw error;
+      if (isPlannedRoute) {
+        const { error } = await supabase
+          .from('rutas_planificadas')
+          .update({ estado: 'completada' })
+          .eq('id', routeId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('hojas_ruta')
+          .update({
+            estado: 'completada',
+            fin_real: new Date().toISOString(),
+          })
+          .eq('id', routeId);
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-hojas-ruta'] });
+      queryClient.invalidateQueries({ queryKey: ['my-rutas-planificadas'] });
       toast.success('¡Ruta completada!');
       navigate('/my-routes');
     },
@@ -261,7 +344,7 @@ export default function ActiveRouteNavigation() {
     window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank');
   }, []);
 
-  const isLoading = loadingHoja || loadingEnvios;
+  const isLoading = isPlannedRoute ? (loadingRuta || loadingParadas) : (loadingHoja || loadingEnviosHoja);
 
   if (isLoading) {
     return (
@@ -271,7 +354,7 @@ export default function ActiveRouteNavigation() {
     );
   }
 
-  if (!hojaRuta) {
+  if (!routeData) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
         <Route className="h-16 w-16 text-muted-foreground mb-4" />
@@ -304,7 +387,7 @@ export default function ActiveRouteNavigation() {
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div>
-              <h1 className="text-lg font-bold">{hojaRuta.numero}</h1>
+              <h1 className="text-lg font-bold">{routeNumber}</h1>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <span>{format(new Date(), 'dd/MM', { locale: es })}</span>
                 <span>•</span>

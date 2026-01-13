@@ -26,17 +26,20 @@ export default function RouteStart() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
-  const hojaRutaId = searchParams.get('id');
+  const routeId = searchParams.get('id');
+  const routeType = searchParams.get('type') || 'hoja'; // 'hoja' or 'planificada'
   
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [slideProgress, setSlideProgress] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
 
-  // Fetch hoja de ruta
+  const isPlannedRoute = routeType === 'planificada';
+
+  // Fetch hoja de ruta (for inter-branch transfers)
   const { data: hojaRuta, isLoading: loadingHoja } = useQuery({
-    queryKey: ['hoja-ruta-start', hojaRutaId],
+    queryKey: ['hoja-ruta-start', routeId],
     queryFn: async () => {
-      if (!hojaRutaId) return null;
+      if (!routeId) return null;
       
       const { data, error } = await supabase
         .from('hojas_ruta')
@@ -46,20 +49,42 @@ export default function RouteStart() {
           sucursal_destino:sucursales!hojas_ruta_sucursal_destino_id_fkey(nombre, codigo),
           vehiculo:vehiculos(patente, marca, modelo)
         `)
-        .eq('id', hojaRutaId)
+        .eq('id', routeId)
         .single();
 
       if (error) throw error;
       return data;
     },
-    enabled: !!hojaRutaId,
+    enabled: !!routeId && !isPlannedRoute,
+  });
+
+  // Fetch ruta planificada (for delivery routes with stops)
+  const { data: rutaPlanificada, isLoading: loadingRuta } = useQuery({
+    queryKey: ['ruta-planificada-start', routeId],
+    queryFn: async () => {
+      if (!routeId) return null;
+      
+      const { data, error } = await supabase
+        .from('rutas_planificadas')
+        .select(`
+          *,
+          vehiculo:vehiculos(patente, marca, modelo),
+          sucursal:sucursales(nombre, codigo)
+        `)
+        .eq('id', routeId)
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!routeId && isPlannedRoute,
   });
 
   // Fetch envíos de la hoja de ruta
   const { data: envios = [], isLoading: loadingEnvios } = useQuery({
-    queryKey: ['hoja-ruta-envios-start', hojaRutaId],
+    queryKey: ['hoja-ruta-envios-start', routeId],
     queryFn: async () => {
-      if (!hojaRutaId) return [];
+      if (!routeId) return [];
       
       const { data, error } = await supabase
         .from('hoja_ruta_envios')
@@ -78,19 +103,51 @@ export default function RouteStart() {
             remitente:clientes!envios_remitente_id_fkey(nombre, apellido)
           )
         `)
-        .eq('hoja_ruta_id', hojaRutaId)
+        .eq('hoja_ruta_id', routeId)
         .order('orden');
 
       if (error) throw error;
       return data;
     },
-    enabled: !!hojaRutaId,
+    enabled: !!routeId && !isPlannedRoute,
   });
 
-  // Start route mutation
-  const startRouteMutation = useMutation({
+  // Fetch paradas de la ruta planificada
+  const { data: paradas = [], isLoading: loadingParadas } = useQuery({
+    queryKey: ['ruta-planificada-paradas-start', routeId],
+    queryFn: async () => {
+      if (!routeId) return [];
+      
+      const { data, error } = await supabase
+        .from('ruta_paradas')
+        .select(`
+          *,
+          envio:envios(
+            id,
+            tracking_number,
+            estado,
+            requiere_retiro,
+            pago_contra_entrega,
+            precio_total,
+            direccion_retiro,
+            direccion_entrega,
+            destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido),
+            remitente:clientes!envios_remitente_id_fkey(nombre, apellido)
+          )
+        `)
+        .eq('ruta_id', routeId)
+        .order('orden');
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!routeId && isPlannedRoute,
+  });
+
+  // Start route mutation for Hoja de Ruta
+  const startHojaRouteMutation = useMutation({
     mutationFn: async () => {
-      if (!hojaRutaId || !user?.id) throw new Error('Datos incompletos');
+      if (!routeId || !user?.id) throw new Error('Datos incompletos');
 
       // Update hoja de ruta
       const { error: hojaError } = await supabase
@@ -101,7 +158,7 @@ export default function RouteStart() {
           inicio_real: new Date().toISOString(),
           chofer_id: user.id,
         })
-        .eq('id', hojaRutaId);
+        .eq('id', routeId);
 
       if (hojaError) throw hojaError;
 
@@ -113,7 +170,6 @@ export default function RouteStart() {
         const isPickup = envio.requiere_retiro;
         
         if (isPickup) {
-          // Update pickup status
           await supabase
             .from('envios')
             .update({
@@ -122,7 +178,6 @@ export default function RouteStart() {
             })
             .eq('id', envio.id);
         } else {
-          // Update delivery status
           await supabase
             .from('envios')
             .update({
@@ -132,7 +187,6 @@ export default function RouteStart() {
             .eq('id', envio.id);
         }
 
-        // Add history entry
         await supabase
           .from('envio_historial')
           .insert({
@@ -146,19 +200,88 @@ export default function RouteStart() {
 
       await Promise.all(updates);
       
-      return hojaRutaId;
+      return routeId;
     },
     onSuccess: (returnedId) => {
       queryClient.invalidateQueries({ queryKey: ['my-hojas-ruta'] });
       queryClient.invalidateQueries({ queryKey: ['my-active-route'] });
       toast.success('¡Ruta iniciada!');
-      navigate(`/active-route?id=${returnedId}`);
+      navigate(`/active-route?id=${returnedId}&type=hoja`);
     },
     onError: (error) => {
       console.error('Error al iniciar ruta:', error);
       toast.error('Error al iniciar la ruta');
     }
   });
+
+  // Start route mutation for Ruta Planificada
+  const startRutaPlanificadaMutation = useMutation({
+    mutationFn: async () => {
+      if (!routeId || !user?.id) throw new Error('Datos incompletos');
+
+      // Update ruta planificada
+      const { error: rutaError } = await supabase
+        .from('rutas_planificadas')
+        .update({
+          estado: 'en_curso',
+        })
+        .eq('id', routeId);
+
+      if (rutaError) throw rutaError;
+
+      // Update all shipments in paradas
+      const updates = paradas.map(async (parada) => {
+        const envio = parada.envio;
+        if (!envio) return;
+
+        const isPickup = parada.tipo === 'retiro';
+        
+        if (isPickup) {
+          await supabase
+            .from('envios')
+            .update({
+              estado_retiro: 'en_camino',
+              chofer_id: user.id,
+            })
+            .eq('id', envio.id);
+        } else {
+          await supabase
+            .from('envios')
+            .update({
+              estado: 'en_reparto',
+              chofer_id: user.id,
+            })
+            .eq('id', envio.id);
+        }
+
+        await supabase
+          .from('envio_historial')
+          .insert({
+            envio_id: envio.id,
+            estado_anterior: envio.estado as any,
+            estado_nuevo: isPickup ? envio.estado : 'en_reparto',
+            notas: 'Ruta de reparto iniciada por el chofer',
+            created_by: user.id,
+          });
+      });
+
+      await Promise.all(updates);
+      
+      return routeId;
+    },
+    onSuccess: (returnedId) => {
+      queryClient.invalidateQueries({ queryKey: ['my-rutas-planificadas'] });
+      queryClient.invalidateQueries({ queryKey: ['my-active-route'] });
+      toast.success('¡Ruta de reparto iniciada!');
+      navigate(`/active-route?id=${returnedId}&type=planificada`);
+    },
+    onError: (error) => {
+      console.error('Error al iniciar ruta:', error);
+      toast.error('Error al iniciar la ruta');
+    }
+  });
+
+  const startRouteMutation = isPlannedRoute ? startRutaPlanificadaMutation : startHojaRouteMutation;
 
   // Slide handlers
   const handleSlideStart = useCallback(() => {
@@ -188,7 +311,8 @@ export default function RouteStart() {
     setIsDragging(false);
   }, [slideProgress]);
 
-  const isLoading = loadingHoja || loadingEnvios;
+  const isLoading = isPlannedRoute ? (loadingRuta || loadingParadas) : (loadingHoja || loadingEnvios);
+  const routeData = isPlannedRoute ? rutaPlanificada : hojaRuta;
 
   if (isLoading) {
     return (
@@ -198,7 +322,7 @@ export default function RouteStart() {
     );
   }
 
-  if (!hojaRuta) {
+  if (!routeData) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
         <Route className="h-16 w-16 text-muted-foreground mb-4" />
@@ -210,8 +334,22 @@ export default function RouteStart() {
     );
   }
 
-  const pickupsCount = envios.filter(e => e.envio?.requiere_retiro).length;
-  const deliveriesCount = envios.filter(e => !e.envio?.requiere_retiro).length;
+  // Determine counts based on route type
+  const stopsData = isPlannedRoute ? paradas : envios;
+  const pickupsCount = isPlannedRoute 
+    ? paradas.filter(p => p.tipo === 'retiro').length
+    : envios.filter(e => e.envio?.requiere_retiro).length;
+  const deliveriesCount = isPlannedRoute
+    ? paradas.filter(p => p.tipo === 'entrega').length
+    : envios.filter(e => !e.envio?.requiere_retiro).length;
+  const totalStops = isPlannedRoute ? (rutaPlanificada?.total_paradas || paradas.length) : (hojaRuta?.cantidad_envios || envios.length);
+  const distanceKm = isPlannedRoute ? rutaPlanificada?.distancia_total_km : hojaRuta?.distancia_total_km;
+  const durationHours = isPlannedRoute 
+    ? (rutaPlanificada?.tiempo_estimado_minutos ? rutaPlanificada.tiempo_estimado_minutos / 60 : null)
+    : hojaRuta?.tiempo_estimado_horas;
+  const routeNumber = isPlannedRoute ? rutaPlanificada?.numero : hojaRuta?.numero;
+  const routeDate = isPlannedRoute ? rutaPlanificada?.fecha : hojaRuta?.fecha_salida;
+  const vehiculo = isPlannedRoute ? rutaPlanificada?.vehiculo : hojaRuta?.vehiculo;
 
   return (
     <div className="min-h-screen bg-background">
@@ -241,7 +379,10 @@ export default function RouteStart() {
             {/* Route Code */}
             <div className="text-center mb-6">
               <p className="text-sm text-muted-foreground">CÓDIGO</p>
-              <p className="text-3xl font-bold text-primary">{hojaRuta.numero}</p>
+              <p className="text-3xl font-bold text-primary">{routeNumber}</p>
+              {isPlannedRoute && (
+                <Badge className="mt-2 bg-chofer/10 text-chofer border-chofer">Ruta de Reparto</Badge>
+              )}
             </div>
 
             {/* Date & Stops */}
@@ -250,15 +391,15 @@ export default function RouteStart() {
                 <Calendar className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
                 <p className="text-sm text-muted-foreground">Fecha</p>
                 <p className="font-semibold">
-                  {hojaRuta.fecha_salida 
-                    ? format(new Date(hojaRuta.fecha_salida), 'dd/MM/yyyy', { locale: es })
+                  {routeDate 
+                    ? format(new Date(routeDate), 'dd/MM/yyyy', { locale: es })
                     : 'Hoy'}
                 </p>
               </div>
               <div className="text-center">
                 <MapPin className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
-                <p className="text-sm text-muted-foreground">Visitas</p>
-                <p className="font-semibold">{hojaRuta.cantidad_envios || envios.length}</p>
+                <p className="text-sm text-muted-foreground">{isPlannedRoute ? 'Paradas' : 'Visitas'}</p>
+                <p className="font-semibold">{totalStops}</p>
               </div>
             </div>
 
@@ -270,12 +411,12 @@ export default function RouteStart() {
                 <div className="text-center">
                   <Clock className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
                   <p className="text-xs text-muted-foreground">DURACIÓN</p>
-                  <p className="font-semibold">{hojaRuta.tiempo_estimado_horas?.toFixed(1) || '2.0'} hs.</p>
+                  <p className="font-semibold">{durationHours?.toFixed(1) || '2.0'} hs.</p>
                 </div>
                 <div className="text-center">
                   <Route className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
                   <p className="text-xs text-muted-foreground">DISTANCIA</p>
-                  <p className="font-semibold">{hojaRuta.distancia_total_km?.toFixed(1) || '0'} km</p>
+                  <p className="font-semibold">{distanceKm?.toFixed(1) || '0'} km</p>
                 </div>
               </div>
 
@@ -325,14 +466,14 @@ export default function RouteStart() {
         </Card>
 
         {/* Vehicle Info */}
-        {hojaRuta.vehiculo && (
+        {vehiculo && (
           <Card>
             <CardContent className="p-4 flex items-center gap-3">
               <Truck className="h-6 w-6 text-muted-foreground" />
               <div>
-                <p className="font-medium">{hojaRuta.vehiculo.patente}</p>
+                <p className="font-medium">{vehiculo.patente}</p>
                 <p className="text-sm text-muted-foreground">
-                  {hojaRuta.vehiculo.marca} {hojaRuta.vehiculo.modelo}
+                  {vehiculo.marca} {vehiculo.modelo}
                 </p>
               </div>
             </CardContent>
