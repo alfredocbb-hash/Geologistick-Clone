@@ -235,20 +235,19 @@ export default function ActiveRouteNavigation() {
       if (!routeId) throw new Error('No hay ruta activa');
 
       if (isPlannedRoute) {
-        const { error } = await supabase
-          .from('rutas_planificadas')
-          .update({ estado: 'completada' })
-          .eq('id', routeId);
+        const { data, error } = await supabase.rpc('close_ruta_planificada', { p_ruta_id: routeId });
         if (error) throw error;
+        const result = data as { success: boolean; error?: string; message?: string } | null;
+        if (result && !result.success) {
+          throw new Error(result.error || 'Error al cerrar ruta');
+        }
       } else {
-        const { error } = await supabase
-          .from('hojas_ruta')
-          .update({
-            estado: 'completada',
-            fin_real: new Date().toISOString(),
-          })
-          .eq('id', routeId);
+        const { data, error } = await supabase.rpc('close_hoja_ruta', { p_hoja_id: routeId });
         if (error) throw error;
+        const result = data as { success: boolean; error?: string; message?: string } | null;
+        if (result && !result.success) {
+          throw new Error(result.error || 'Error al cerrar hoja de ruta');
+        }
       }
     },
     onSuccess: () => {

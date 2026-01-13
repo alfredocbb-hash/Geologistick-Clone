@@ -1803,6 +1803,8 @@ export type Database = {
         Args: { _sucursal_id: string; _user_id: string }
         Returns: boolean
       }
+      close_hoja_ruta: { Args: { p_hoja_id: string }; Returns: Json }
+      close_ruta_planificada: { Args: { p_ruta_id: string }; Returns: Json }
       current_user_has_role: {
         Args: { _role: Database["public"]["Enums"]["app_role"] }
         Returns: boolean
