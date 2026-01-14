@@ -2,6 +2,7 @@ import { useLocation } from 'react-router-dom';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/lib/auth';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useBranchConfig } from '@/hooks/useBranchConfig';
 import {
   Sidebar,
   SidebarContent,
@@ -39,6 +40,7 @@ import {
   Map,
   Car,
   Plug,
+  Home,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -49,6 +51,7 @@ interface NavItem {
   url: string;
   icon: React.ElementType;
   permissionKey?: string; // Dynamic permission key
+  requiresBranchDelivery?: boolean; // Only show if branch has home delivery enabled
 }
 
 interface NavGroup {
@@ -76,14 +79,14 @@ const navigation: NavGroup[] = [
   {
     label: 'Operaciones',
     items: [
-      { title: 'Escanear QR', url: '/scan', icon: QrCode, permissionKey: 'shipments.scan' },
+      { title: 'Entrega en Sucursal', url: '/scan', icon: QrCode, permissionKey: 'shipments.scan' },
+      { title: 'Entrega a Domicilio', url: '/my-routes', icon: Home, permissionKey: 'my_routes.view', requiresBranchDelivery: true },
       { title: 'Planificador', url: '/planner', icon: Route, permissionKey: 'routes.plan' },
       { title: 'Hojas de Ruta', url: '/route-sheets', icon: FileText, permissionKey: 'route_sheets.view' },
       { title: 'Mapa en Vivo', url: '/live-map', icon: Map, permissionKey: 'live_map.view' },
       { title: 'Choferes', url: '/drivers', icon: Truck, permissionKey: 'drivers.manage' },
       { title: 'Vehículos', url: '/vehicles', icon: Car, permissionKey: 'vehicles.manage' },
       { title: 'Rutas de Entrega', url: '/routes', icon: MapPin, permissionKey: 'my_routes.view' },
-      { title: 'Mis Rutas', url: '/my-routes', icon: ClipboardList, permissionKey: 'my_routes.view' },
     ],
     permissionKeys: ['shipments.scan', 'routes.plan', 'route_sheets.view', 'live_map.view', 'drivers.manage', 'vehicles.manage', 'my_routes.view'],
   },
@@ -123,6 +126,7 @@ export function AppSidebar() {
   const { state, toggleSidebar } = useSidebar();
   const { profile, signOut, isSuperAdmin } = useAuth();
   const { hasPermission, isLoading } = usePermissions();
+  const { realizaEntregas, isLoading: branchLoading } = useBranchConfig();
   const location = useLocation();
   const collapsed = state === 'collapsed';
 
@@ -135,8 +139,14 @@ export function AppSidebar() {
 
   const canAccessItem = (item: NavItem) => {
     if (isSuperAdmin()) return true;
-    if (!item.permissionKey) return true;
-    return hasPermission(item.permissionKey);
+    
+    // Check permission first
+    if (item.permissionKey && !hasPermission(item.permissionKey)) return false;
+    
+    // Check branch delivery requirement
+    if (item.requiresBranchDelivery && !realizaEntregas) return false;
+    
+    return true;
   };
 
   const getInitials = () => {
@@ -146,8 +156,8 @@ export function AppSidebar() {
     return (first + last).toUpperCase() || 'U';
   };
 
-  // Show minimal sidebar while loading permissions
-  if (isLoading) {
+  // Show minimal sidebar while loading permissions or branch config
+  if (isLoading || branchLoading) {
     return (
       <Sidebar collapsible="icon" className="border-r-0">
         <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
