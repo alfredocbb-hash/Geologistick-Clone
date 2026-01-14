@@ -234,8 +234,17 @@ export default function ScanQR() {
     } else if (isBranchOperator && ['en_bodega', 'en_transito'].includes(shipment.estado)) {
       setReceiveType('branch');
       setShowReceiveDialog(true);
+    } else if (isDriver) {
+      // Para choferes: mostrar info del envío en lugar de redirigir
+      toast.info(`Envío ${shipment.tracking_number}`, {
+        description: `Estado: ${STATUS_CONFIG[shipment.estado]?.label || shipment.estado}`,
+        duration: 5000,
+      });
+      setScannedShipment(shipment);
+      // Mostrar el diálogo de duplicado/info con detalles
+      setDuplicateShipment(shipment);
     } else {
-      // Default: show shipment details
+      // Default para otros roles: show shipment details
       navigate(`/shipments?search=${shipment.tracking_number}`);
     }
   };
@@ -434,7 +443,7 @@ export default function ScanQR() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-amber-600">
                 <AlertTriangle className="h-5 w-5" />
-                Envío Ya Procesado
+                {isDriver ? 'Información del Envío' : 'Envío Ya Procesado'}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -452,7 +461,9 @@ export default function ScanQR() {
               </div>
 
               <p className="text-center text-muted-foreground text-sm">
-                Este envío ya fue procesado y no puede ser retirado nuevamente.
+                {isDriver 
+                  ? 'Este envío no requiere retiro o ya fue procesado anteriormente.'
+                  : 'Este envío ya fue procesado y no puede ser retirado nuevamente.'}
               </p>
 
               <div className="flex gap-2">
