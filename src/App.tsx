@@ -37,10 +37,11 @@ import LiveMap from "./pages/LiveMap";
 import RouteStart from "./pages/RouteStart";
 import ActiveRouteNavigation from "./pages/ActiveRouteNavigation";
 import IntegrationSettings from "./pages/IntegrationSettings";
+import SystemSettings from "./pages/SystemSettings";
 import NotFound from "./pages/NotFound";
 
 // Icons for placeholders
-import { CreditCard, Users as UsersIcon, Settings } from "lucide-react";
+import { CreditCard, Users as UsersIcon } from "lucide-react";
 
 const queryClient = new QueryClient();
 
@@ -94,7 +95,7 @@ const App = () => (
             <Route path="/admin/rates" element={<DashboardLayout><Rates /></DashboardLayout>} />
             <Route path="/admin/users" element={<DashboardLayout><Users /></DashboardLayout>} />
             <Route path="/admin/roles" element={<DashboardLayout><RolePermissions /></DashboardLayout>} />
-            <Route path="/admin/settings" element={<DashboardLayout><PlaceholderPage title="Configuración" description="Ajustes del sistema" icon={Settings} /></DashboardLayout>} />
+            <Route path="/admin/settings" element={<DashboardLayout><SystemSettings /></DashboardLayout>} />
             <Route path="/admin/integrations" element={<DashboardLayout><IntegrationSettings /></DashboardLayout>} />
             
             {/* Profile */}
