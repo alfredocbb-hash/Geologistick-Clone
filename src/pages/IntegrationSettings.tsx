@@ -22,10 +22,11 @@ import {
   XCircle,
   Loader2,
   Copy,
-  ExternalLink
+  ExternalLink,
+  FileText
 } from 'lucide-react';
 
-type IntegrationType = 'mercado_pago' | 'google_maps' | 'whatsapp' | 'email_smtp' | 'sms';
+type IntegrationType = 'mercado_pago' | 'google_maps' | 'whatsapp' | 'email_smtp' | 'sms' | 'arca';
 type IntegrationEnvironment = 'sandbox' | 'production';
 
 interface IntegrationConfig {
@@ -108,6 +109,18 @@ const INTEGRATIONS_CONFIG: Record<IntegrationType, {
       { key: 'api_key', label: 'API Key', placeholder: 'Tu API Key', type: 'password', required: true },
       { key: 'api_secret', label: 'API Secret', placeholder: 'Tu API Secret', type: 'password', required: true },
       { key: 'sender_id', label: 'Sender ID', placeholder: '+5491112345678', type: 'text', required: true },
+    ],
+  },
+  arca: {
+    name: 'ARCA (AFIP)',
+    description: 'Facturación electrónica con AFIP/ARCA',
+    icon: FileText,
+    docsUrl: 'https://www.afip.gob.ar/fe/',
+    fields: [
+      { key: 'cuit', label: 'CUIT del Contribuyente', placeholder: '20-12345678-9', type: 'text', required: true, helpText: 'CUIT de la empresa emisora de facturas' },
+      { key: 'punto_venta', label: 'Punto de Venta', placeholder: '1', type: 'text', required: true, helpText: 'Número de punto de venta electrónico habilitado en AFIP' },
+      { key: 'cert_pem', label: 'Certificado X.509 (PEM)', placeholder: '-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----', type: 'password', required: true, helpText: 'Certificado digital emitido por AFIP en formato PEM' },
+      { key: 'private_key', label: 'Clave Privada (PEM)', placeholder: '-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----', type: 'password', required: true, helpText: 'Clave privada correspondiente al certificado' },
     ],
   },
 };
@@ -228,7 +241,7 @@ export default function IntegrationSettings() {
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as IntegrationType)}>
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           {(Object.entries(INTEGRATIONS_CONFIG) as [IntegrationType, typeof INTEGRATIONS_CONFIG[IntegrationType]][]).map(([key, config]) => {
             const Icon = config.icon;
             const configured = configs && Object.keys(configs).length > 0;
