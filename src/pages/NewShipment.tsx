@@ -269,6 +269,21 @@ export default function NewShipment() {
     enabled: !!formData.tarifa_id,
   });
 
+  // Filtrar conceptos según el tipo de servicio
+  const conceptosPreciosFiltrados = useMemo(() => {
+    return conceptoPrecios.filter((cp) => {
+      const codigo = cp.concepto?.codigo?.toLowerCase();
+      
+      // Excluir "retiro" si el servicio NO incluye retiro a domicilio
+      if (codigo === 'retiro' && !tieneRetiro) return false;
+      
+      // Excluir "entrega" si el servicio NO incluye entrega a domicilio
+      if (codigo === 'entrega' && !tieneEntrega) return false;
+      
+      return true;
+    });
+  }, [conceptoPrecios, tieneRetiro, tieneEntrega]);
+
   // Fetch ALL clients for autocomplete and deduplication
   const { data: allClients = [] } = useQuery({
     queryKey: ['all_clients'],
@@ -308,25 +323,9 @@ export default function NewShipment() {
 
   const selectedTarifa = tarifas?.find(t => t.id === formData.tarifa_id);
 
-  // Calcular total por conceptos
+  // Calcular total por conceptos (usando conceptos filtrados)
   const calcularTotalConceptos = () => {
-    let total = conceptoPrecios.reduce((sum, cp) => sum + Number(cp.monto), 0);
-    
-    if (tieneRetiro) {
-      const retiroConcepto = conceptoPrecios.find(cp => cp.concepto?.codigo === 'retiro');
-      if (retiroConcepto) {
-        total += Number(retiroConcepto.monto);
-      }
-    }
-    
-    if (tieneEntrega) {
-      const entregaConcepto = conceptoPrecios.find(cp => cp.concepto?.codigo === 'entrega');
-      if (entregaConcepto) {
-        total += Number(entregaConcepto.monto);
-      }
-    }
-    
-    return total;
+    return conceptosPreciosFiltrados.reduce((sum, cp) => sum + Number(cp.monto), 0);
   };
 
   const calcularPrecio = () => {
@@ -575,9 +574,9 @@ export default function NewShipment() {
 
       if (envioError) throw envioError;
 
-      // 5. Create shipment details by concept
-      if (conceptoPrecios.length > 0) {
-        const detalles = conceptoPrecios.map((cp) => ({
+      // 5. Create shipment details by concept (solo los filtrados según tipo de servicio)
+      if (conceptosPreciosFiltrados.length > 0) {
+        const detalles = conceptosPreciosFiltrados.map((cp) => ({
           envio_id: envio.id,
           concepto_id: cp.concepto_id,
           nombre_concepto: cp.concepto?.nombre || 'Sin nombre',
@@ -1546,8 +1545,8 @@ export default function NewShipment() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {conceptoPrecios.length > 0 ? (
-                  conceptoPrecios.map((cp) => (
+                {conceptosPreciosFiltrados.length > 0 ? (
+                  conceptosPreciosFiltrados.map((cp) => (
                     <div key={cp.id} className="flex justify-between text-sm">
                       <span>{cp.concepto?.nombre || 'Concepto'}</span>
                       <span>{formatCurrency(cp.monto)}</span>
