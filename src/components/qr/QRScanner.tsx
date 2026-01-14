@@ -27,7 +27,9 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
   const scanningRef = useRef(false);
 
   useEffect(() => {
-    console.log('[QRScanner] Platform detected:', platform, 'isNative:', isNative);
+    if (import.meta.env.DEV) {
+      console.log('[QRScanner] Platform detected:', platform, 'isNative:', isNative);
+    }
     
     if (isNative) {
       initNativeScanner();
@@ -47,11 +49,15 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
   const initNativeScanner = async () => {
     try {
       setIsLoading(true);
-      console.log('[QRScanner] Initializing native scanner...');
+      if (import.meta.env.DEV) {
+        console.log('[QRScanner] Initializing native scanner...');
+      }
       
       // Check if barcode scanning is supported
       const { supported } = await BarcodeScanner.isSupported();
-      console.log('[QRScanner] BarcodeScanner supported:', supported);
+      if (import.meta.env.DEV) {
+        console.log('[QRScanner] BarcodeScanner supported:', supported);
+      }
       
       if (!supported) {
         setError('El escaneo de códigos no está soportado en este dispositivo');
@@ -63,34 +69,48 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
       if (platform === 'android') {
         try {
           const { available } = await BarcodeScanner.isGoogleBarcodeScannerModuleAvailable();
-          console.log('[QRScanner] Google Barcode Scanner module available:', available);
+          if (import.meta.env.DEV) {
+            console.log('[QRScanner] Google Barcode Scanner module available:', available);
+          }
           
           if (!available) {
             setInstallingModule(true);
-            console.log('[QRScanner] Installing Google Barcode Scanner module...');
+            if (import.meta.env.DEV) {
+              console.log('[QRScanner] Installing Google Barcode Scanner module...');
+            }
             
             // Listen to installation progress
             await BarcodeScanner.addListener('googleBarcodeScannerModuleInstallProgress', (event) => {
-              console.log('[QRScanner] Module install progress:', event.progress, '%');
+              if (import.meta.env.DEV) {
+                console.log('[QRScanner] Module install progress:', event.progress, '%');
+              }
             });
             
             await BarcodeScanner.installGoogleBarcodeScannerModule();
-            console.log('[QRScanner] Module installed successfully');
+            if (import.meta.env.DEV) {
+              console.log('[QRScanner] Module installed successfully');
+            }
             setInstallingModule(false);
           }
         } catch (moduleError) {
-          console.error('[QRScanner] Error checking/installing module:', moduleError);
+          if (import.meta.env.DEV) {
+            console.error('[QRScanner] Error checking/installing module:', moduleError);
+          }
           // Continue anyway, might work
         }
       }
       
       // Check and request permissions
       const permissionStatus = await BarcodeScanner.checkPermissions();
-      console.log('[QRScanner] Current permission status:', permissionStatus);
+      if (import.meta.env.DEV) {
+        console.log('[QRScanner] Current permission status:', permissionStatus);
+      }
       
       if (permissionStatus.camera !== 'granted') {
         const { camera } = await BarcodeScanner.requestPermissions();
-        console.log('[QRScanner] Permission request result:', camera);
+        if (import.meta.env.DEV) {
+          console.log('[QRScanner] Permission request result:', camera);
+        }
         
         if (camera === 'denied') {
           setError('Permiso de cámara denegado. Abre la configuración para habilitarlo.');
@@ -110,14 +130,18 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
       setIsScanning(true);
       scanningRef.current = true;
       
-      console.log('[QRScanner] Starting scan...');
+      if (import.meta.env.DEV) {
+        console.log('[QRScanner] Starting scan...');
+      }
       
       // Use scan() method - opens native scanner UI
       const { barcodes } = await BarcodeScanner.scan({
         formats: [BarcodeFormat.QrCode],
       });
       
-      console.log('[QRScanner] Scan result:', barcodes);
+      if (import.meta.env.DEV) {
+        console.log('[QRScanner] Scan result:', barcodes);
+      }
       
       if (barcodes.length > 0 && barcodes[0].rawValue) {
         onScan(barcodes[0].rawValue);
@@ -126,7 +150,9 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
         onClose();
       }
     } catch (err: any) {
-      console.error('[QRScanner] Error in native scanner:', err);
+      if (import.meta.env.DEV) {
+        console.error('[QRScanner] Error in native scanner:', err);
+      }
       
       // Check if user cancelled
       if (err?.message?.includes('cancel') || err?.code === 'USER_CANCELED') {
@@ -144,7 +170,9 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
     try {
       await BarcodeScanner.openSettings();
     } catch (err) {
-      console.error('[QRScanner] Error opening settings:', err);
+      if (import.meta.env.DEV) {
+        console.error('[QRScanner] Error opening settings:', err);
+      }
     }
   };
 
@@ -152,7 +180,9 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
   const initWebScanner = async () => {
     try {
       setIsLoading(true);
-      console.log('[QRScanner] Initializing web scanner...');
+      if (import.meta.env.DEV) {
+        console.log('[QRScanner] Initializing web scanner...');
+      }
       
       const devices = await Html5Qrcode.getCameras();
       if (devices && devices.length) {
@@ -173,7 +203,9 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
       }
       setIsLoading(false);
     } catch (err) {
-      console.error('[QRScanner] Error initializing web scanner:', err);
+      if (import.meta.env.DEV) {
+        console.error('[QRScanner] Error initializing web scanner:', err);
+      }
       setError('Error al acceder a la cámara. Por favor, permite el acceso.');
       setIsLoading(false);
     }
@@ -201,7 +233,9 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
         () => {} // Ignore errors during scanning
       );
     } catch (err) {
-      console.error('[QRScanner] Error starting web camera:', err);
+      if (import.meta.env.DEV) {
+        console.error('[QRScanner] Error starting web camera:', err);
+      }
       setError('Error al iniciar la cámara');
     }
   };
@@ -214,7 +248,9 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
           await scannerRef.current.stop();
         }
       } catch (err) {
-        console.error('[QRScanner] Error stopping web scanner:', err);
+        if (import.meta.env.DEV) {
+          console.error('[QRScanner] Error stopping web scanner:', err);
+        }
       }
     }
   };
@@ -239,8 +275,10 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
         <div className="flex items-center gap-2 text-white">
           <Camera className="h-5 w-5" />
           <span className="font-medium">Escáner QR</span>
-          {/* Debug: show platform */}
-          <span className="text-xs text-white/50 ml-2">({platform})</span>
+          {/* Debug: show platform only in dev */}
+          {import.meta.env.DEV && (
+            <span className="text-xs text-white/50 ml-2">({platform})</span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {!isNative && cameras.length > 1 && (

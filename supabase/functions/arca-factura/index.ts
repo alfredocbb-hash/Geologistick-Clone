@@ -176,17 +176,8 @@ async function emitirFacturaARCA(
     const cae = `${Date.now()}${Math.floor(Math.random() * 10000)}`;
     const caeVencimiento = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     
-    console.log('SANDBOX MODE: Simulating ARCA invoice emission');
-    console.log({
-      tipo: tipoComprobante,
-      numero: numeroComprobante,
-      cuit_emisor: config.cuit,
-      punto_venta: config.punto_venta,
-      receptor,
-      importe_neto: importeNeto,
-      importe_iva: importeIva,
-      importe_total: importeTotal,
-    });
+    // Log only operation status, not sensitive data
+    console.log(`SANDBOX MODE: Simulating ARCA invoice emission - tipo: ${tipoComprobante}, numero: ${numeroComprobante}`);
     
     return {
       success: true,
