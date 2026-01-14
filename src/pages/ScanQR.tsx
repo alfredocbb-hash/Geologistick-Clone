@@ -103,8 +103,8 @@ export default function ScanQR() {
       
       oscillator.start(audioContext.currentTime);
       oscillator.stop(audioContext.currentTime + 0.15);
-    } catch (e) {
-      console.log('Audio not supported');
+    } catch {
+      // Audio not supported - silently ignore
     }
   };
 
@@ -133,8 +133,8 @@ export default function ScanQR() {
       gain2.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.35);
       osc2.start(audioContext.currentTime + 0.2);
       osc2.stop(audioContext.currentTime + 0.35);
-    } catch (e) {
-      console.log('Audio not supported');
+    } catch {
+      // Audio not supported - silently ignore
     }
   };
 
