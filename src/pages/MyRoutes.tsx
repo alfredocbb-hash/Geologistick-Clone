@@ -27,6 +27,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import QRScanner from '@/components/qr/QRScanner';
 import { ReceiveRouteSheetDialog } from '@/components/scan/ReceiveRouteSheetDialog';
+import { CollectRouteSheetDialog } from '@/components/scan/CollectRouteSheetDialog';
 
 interface HojaRuta {
   id: string;
@@ -66,6 +67,7 @@ export default function MyRoutes() {
   const navigate = useNavigate();
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [receiveHojaId, setReceiveHojaId] = useState<string | null>(null);
+  const [collectHojaId, setCollectHojaId] = useState<string | null>(null);
 
   // Fetch my assigned route sheets (Hojas de Ruta - Inter-branch transfers)
   const { data: hojasRuta = [], isLoading: loadingHojas } = useQuery({
@@ -296,13 +298,23 @@ export default function MyRoutes() {
           {/* Actions */}
           <div className="flex gap-2">
             {isPending && (
-              <Button 
-                className="flex-1 bg-primary hover:bg-primary/90"
-                onClick={() => navigate(`/route-start?id=${hoja.id}&type=hoja`)}
-              >
-                <PlayCircle className="h-4 w-4 mr-2" />
-                Iniciar Ruta
-              </Button>
+              <>
+                <Button 
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setCollectHojaId(hoja.id)}
+                >
+                  <Package className="h-4 w-4 mr-2" />
+                  Recolectar
+                </Button>
+                <Button 
+                  className="flex-1 bg-primary hover:bg-primary/90"
+                  onClick={() => navigate(`/route-start?id=${hoja.id}&type=hoja`)}
+                >
+                  <PlayCircle className="h-4 w-4 mr-2" />
+                  Iniciar
+                </Button>
+              </>
             )}
             {isActive && (
               <Button 
@@ -591,6 +603,12 @@ export default function MyRoutes() {
       <ReceiveRouteSheetDialog
         hojaRutaId={receiveHojaId}
         onClose={() => setReceiveHojaId(null)}
+      />
+      
+      {/* Collect Route Sheet Dialog */}
+      <CollectRouteSheetDialog
+        hojaRutaId={collectHojaId}
+        onClose={() => setCollectHojaId(null)}
       />
     </div>
   );
