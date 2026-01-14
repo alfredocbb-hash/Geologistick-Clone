@@ -3,7 +3,7 @@ import { Html5Qrcode, Html5QrcodeScannerState } from 'html5-qrcode';
 import { Capacitor } from '@capacitor/core';
 import { BarcodeScanner, BarcodeFormat } from '@capacitor-mlkit/barcode-scanning';
 import { Button } from '@/components/ui/button';
-import { X, Camera, SwitchCamera, Loader2 } from 'lucide-react';
+import { X, Camera, SwitchCamera, Loader2, Settings } from 'lucide-react';
 
 interface QRScannerProps {
   onScan: (data: string) => void;
@@ -16,12 +16,19 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
   const [currentCameraIndex, setCurrentCameraIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isScanning, setIsScanning] = useState(false);
+  const [showOpenSettings, setShowOpenSettings] = useState(false);
+  const [installingModule, setInstallingModule] = useState(false);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const isNative = Capacitor.isNativePlatform();
+  
+  // More robust native detection
+  const platform = Capacitor.getPlatform();
+  const isNative = platform === 'android' || platform === 'ios';
   const scanningRef = useRef(false);
 
   useEffect(() => {
+    console.log('[QRScanner] Platform detected:', platform, 'isNative:', isNative);
+    
     if (isNative) {
       initNativeScanner();
     } else {
@@ -36,50 +43,108 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
     };
   }, []);
 
-  // Native scanner using ML Kit - uses scan() method for single scan
+  // Native scanner using ML Kit
   const initNativeScanner = async () => {
     try {
       setIsLoading(true);
+      console.log('[QRScanner] Initializing native scanner...');
       
-      // Check and request permissions
-      const { camera } = await BarcodeScanner.requestPermissions();
-      if (camera !== 'granted') {
-        setError('Se requiere permiso de cámara para escanear códigos QR');
+      // Check if barcode scanning is supported
+      const { supported } = await BarcodeScanner.isSupported();
+      console.log('[QRScanner] BarcodeScanner supported:', supported);
+      
+      if (!supported) {
+        setError('El escaneo de códigos no está soportado en este dispositivo');
         setIsLoading(false);
         return;
+      }
+
+      // For Android: Check if Google Barcode Scanner module is available
+      if (platform === 'android') {
+        try {
+          const { available } = await BarcodeScanner.isGoogleBarcodeScannerModuleAvailable();
+          console.log('[QRScanner] Google Barcode Scanner module available:', available);
+          
+          if (!available) {
+            setInstallingModule(true);
+            console.log('[QRScanner] Installing Google Barcode Scanner module...');
+            
+            // Listen to installation progress
+            await BarcodeScanner.addListener('googleBarcodeScannerModuleInstallProgress', (event) => {
+              console.log('[QRScanner] Module install progress:', event.progress, '%');
+            });
+            
+            await BarcodeScanner.installGoogleBarcodeScannerModule();
+            console.log('[QRScanner] Module installed successfully');
+            setInstallingModule(false);
+          }
+        } catch (moduleError) {
+          console.error('[QRScanner] Error checking/installing module:', moduleError);
+          // Continue anyway, might work
+        }
+      }
+      
+      // Check and request permissions
+      const permissionStatus = await BarcodeScanner.checkPermissions();
+      console.log('[QRScanner] Current permission status:', permissionStatus);
+      
+      if (permissionStatus.camera !== 'granted') {
+        const { camera } = await BarcodeScanner.requestPermissions();
+        console.log('[QRScanner] Permission request result:', camera);
+        
+        if (camera === 'denied') {
+          setError('Permiso de cámara denegado. Abre la configuración para habilitarlo.');
+          setShowOpenSettings(true);
+          setIsLoading(false);
+          return;
+        }
+        
+        if (camera !== 'granted') {
+          setError('Se requiere permiso de cámara para escanear códigos QR');
+          setIsLoading(false);
+          return;
+        }
       }
 
       setIsLoading(false);
       setIsScanning(true);
       scanningRef.current = true;
       
-      // Add class to make WebView background transparent
-      document.body.classList.add('barcode-scanner-active');
-
-      // Continuously scan while the component is mounted
-      while (scanningRef.current) {
-        try {
-          const { barcodes } = await BarcodeScanner.scan({
-            formats: [BarcodeFormat.QrCode],
-          });
-          
-          if (barcodes.length > 0 && barcodes[0].rawValue && scanningRef.current) {
-            onScan(barcodes[0].rawValue);
-            break;
-          }
-        } catch (scanError: any) {
-          // User cancelled or error - check if we should continue
-          if (!scanningRef.current || scanError?.message?.includes('cancel')) {
-            break;
-          }
-        }
+      console.log('[QRScanner] Starting scan...');
+      
+      // Use scan() method - opens native scanner UI
+      const { barcodes } = await BarcodeScanner.scan({
+        formats: [BarcodeFormat.QrCode],
+      });
+      
+      console.log('[QRScanner] Scan result:', barcodes);
+      
+      if (barcodes.length > 0 && barcodes[0].rawValue) {
+        onScan(barcodes[0].rawValue);
+      } else {
+        // User cancelled
+        onClose();
       }
-    } catch (err) {
-      console.error('Error initializing native scanner:', err);
-      setError('Error al iniciar el escáner. Por favor, intenta de nuevo.');
+    } catch (err: any) {
+      console.error('[QRScanner] Error in native scanner:', err);
+      
+      // Check if user cancelled
+      if (err?.message?.includes('cancel') || err?.code === 'USER_CANCELED') {
+        onClose();
+        return;
+      }
+      
+      setError('Error al iniciar el escáner: ' + (err?.message || 'Error desconocido'));
       setIsLoading(false);
-    } finally {
-      document.body.classList.remove('barcode-scanner-active');
+      setIsScanning(false);
+    }
+  };
+
+  const openSettings = async () => {
+    try {
+      await BarcodeScanner.openSettings();
+    } catch (err) {
+      console.error('[QRScanner] Error opening settings:', err);
     }
   };
 
@@ -87,6 +152,8 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
   const initWebScanner = async () => {
     try {
       setIsLoading(true);
+      console.log('[QRScanner] Initializing web scanner...');
+      
       const devices = await Html5Qrcode.getCameras();
       if (devices && devices.length) {
         setCameras(devices);
@@ -106,7 +173,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
       }
       setIsLoading(false);
     } catch (err) {
-      console.error('Error initializing web scanner:', err);
+      console.error('[QRScanner] Error initializing web scanner:', err);
       setError('Error al acceder a la cámara. Por favor, permite el acceso.');
       setIsLoading(false);
     }
@@ -134,7 +201,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
         () => {} // Ignore errors during scanning
       );
     } catch (err) {
-      console.error('Error starting web camera:', err);
+      console.error('[QRScanner] Error starting web camera:', err);
       setError('Error al iniciar la cámara');
     }
   };
@@ -147,7 +214,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
           await scannerRef.current.stop();
         }
       } catch (err) {
-        console.error('Error stopping web scanner:', err);
+        console.error('[QRScanner] Error stopping web scanner:', err);
       }
     }
   };
@@ -162,17 +229,18 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
 
   const handleClose = async () => {
     scanningRef.current = false;
-    document.body.classList.remove('barcode-scanner-active');
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 bg-black/90 z-50 flex flex-col">
+    <div id="barcode-scanner-container" className="fixed inset-0 bg-black/90 z-50 flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between p-4 bg-black/50">
         <div className="flex items-center gap-2 text-white">
           <Camera className="h-5 w-5" />
           <span className="font-medium">Escáner QR</span>
+          {/* Debug: show platform */}
+          <span className="text-xs text-white/50 ml-2">({platform})</span>
         </div>
         <div className="flex items-center gap-2">
           {!isNative && cameras.length > 1 && (
@@ -199,20 +267,28 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
       {/* Scanner Area */}
       <div className="flex-1 flex items-center justify-center p-4">
         <div className="relative w-full max-w-sm">
-          {isLoading ? (
+          {isLoading || installingModule ? (
             <div className="text-center text-white p-8">
               <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
-              <p>Iniciando cámara...</p>
+              <p>{installingModule ? 'Instalando módulo de escaneo...' : 'Iniciando cámara...'}</p>
             </div>
           ) : error ? (
             <div className="text-center text-white p-8">
               <p className="text-red-400 mb-4">{error}</p>
-              <Button onClick={handleClose} variant="outline">
-                Cerrar
-              </Button>
+              {showOpenSettings && (
+                <Button onClick={openSettings} variant="outline" className="mb-2">
+                  <Settings className="h-4 w-4 mr-2" />
+                  Abrir Configuración
+                </Button>
+              )}
+              <div>
+                <Button onClick={handleClose} variant="ghost" className="text-white">
+                  Cerrar
+                </Button>
+              </div>
             </div>
           ) : isNative ? (
-            // Native scanner - shows message while native camera overlay is active
+            // Native scanner - shows message while native camera is active
             <div className="flex items-center justify-center h-64">
               <div className="text-center text-white">
                 {isScanning ? (

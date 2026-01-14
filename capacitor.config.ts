@@ -10,6 +10,9 @@ const config: CapacitorConfig = {
       backgroundColor: '#1e293b',
       showSpinner: true,
       spinnerColor: '#3b82f6'
+    },
+    BarcodeScanner: {
+      enableGoogleBarcodeScanning: true
     }
   }
 };
