@@ -38,10 +38,11 @@ import RouteStart from "./pages/RouteStart";
 import ActiveRouteNavigation from "./pages/ActiveRouteNavigation";
 import IntegrationSettings from "./pages/IntegrationSettings";
 import SystemSettings from "./pages/SystemSettings";
+import Payments from "./pages/Payments";
 import NotFound from "./pages/NotFound";
 
 // Icons for placeholders
-import { CreditCard, Users as UsersIcon } from "lucide-react";
+import { Users as UsersIcon } from "lucide-react";
 
 const queryClient = new QueryClient();
 
@@ -85,7 +86,7 @@ const App = () => (
             <Route path="/settlements/drivers" element={<DashboardLayout><DriverSettlements /></DashboardLayout>} />
             <Route path="/settlements/clients" element={<DashboardLayout><ClientSettlements /></DashboardLayout>} />
             <Route path="/my-commissions" element={<DashboardLayout><MyCommissions /></DashboardLayout>} />
-            <Route path="/payments" element={<DashboardLayout><PlaceholderPage title="Pagos" description="Gestión de pagos de clientes" icon={CreditCard} /></DashboardLayout>} />
+            <Route path="/payments" element={<DashboardLayout><Payments /></DashboardLayout>} />
             
             {/* Clientes */}
             <Route path="/clients" element={<DashboardLayout><Clients /></DashboardLayout>} />
