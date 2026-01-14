@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -27,16 +28,19 @@ import {
   Calendar,
   FileText,
   Printer,
-  ExternalLink,
   Camera,
   PenTool,
   AlertTriangle,
   ImageOff,
+  Download,
+  Loader2,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
+import { generateEPODPDF } from '@/lib/generateEPODPDF';
 
 type ShipmentStatus = Database['public']['Enums']['shipment_status'];
 
@@ -75,6 +79,8 @@ export function ShipmentDetailsDialog({
   onOpenChange, 
   envioId 
 }: ShipmentDetailsDialogProps) {
+  const [isGeneratingEPOD, setIsGeneratingEPOD] = useState(false);
+  
   const { data: envio, isLoading } = useQuery({
     queryKey: ['envio-details', envioId],
     queryFn: async () => {
@@ -143,6 +149,38 @@ export function ShipmentDetailsDialog({
     enabled: open && !!envioId,
   });
 
+  const { data: historial } = useQuery({
+    queryKey: ['envio-historial', envioId],
+    queryFn: async () => {
+      if (!envioId) return [];
+      
+      const { data, error } = await supabase
+        .from('envio_historial')
+        .select('*')
+        .eq('envio_id', envioId)
+        .order('created_at', { ascending: true });
+      
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: open && !!envioId,
+  });
+
+  const handleDownloadEPOD = async () => {
+    if (!envio) return;
+    
+    setIsGeneratingEPOD(true);
+    try {
+      await generateEPODPDF(envio as any, historial || [], incidentes || []);
+      toast.success('EPOD descargado exitosamente');
+    } catch (error) {
+      console.error('Error generating EPOD:', error);
+      toast.error('Error al generar el EPOD');
+    } finally {
+      setIsGeneratingEPOD(false);
+    }
+  };
+
   const InfoRow = ({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: React.ReactNode }) => (
     <div className="flex items-start gap-3 py-2">
       <Icon className="h-4 w-4 text-muted-foreground mt-0.5" />
@@ -166,12 +204,27 @@ export function ShipmentDetailsDialog({
               <span>Detalles del Envío</span>
             </div>
             {envio && (
-              <Button variant="outline" size="sm" asChild>
-                <Link to={`/print-label?id=${envio.id}`}>
-                  <Printer className="h-4 w-4 mr-2" />
-                  Imprimir
-                </Link>
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleDownloadEPOD}
+                  disabled={isGeneratingEPOD}
+                >
+                  {isGeneratingEPOD ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-2" />
+                  )}
+                  EPOD
+                </Button>
+                <Button variant="outline" size="sm" asChild>
+                  <Link to={`/print-label?id=${envio.id}`}>
+                    <Printer className="h-4 w-4 mr-2" />
+                    Etiqueta
+                  </Link>
+                </Button>
+              </div>
             )}
           </DialogTitle>
         </DialogHeader>
@@ -416,14 +469,61 @@ export function ShipmentDetailsDialog({
                 {/* Estado de entrega */}
                 {envio.fecha_entrega && (
                   <div className="p-4 border rounded-lg bg-green-500/10 border-green-500/20">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle className="h-5 w-5 text-green-600" />
-                      <div>
-                        <p className="font-medium text-green-700">Entregado</p>
-                        <p className="text-sm text-muted-foreground">
-                          {format(new Date(envio.fecha_entrega), "d 'de' MMMM yyyy 'a las' HH:mm", { locale: es })}
-                        </p>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="h-5 w-5 text-green-600" />
+                        <div>
+                          <p className="font-medium text-green-700">Entregado</p>
+                          <p className="text-sm text-muted-foreground">
+                            {format(new Date(envio.fecha_entrega), "d 'de' MMMM yyyy 'a las' HH:mm", { locale: es })}
+                          </p>
+                        </div>
                       </div>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={handleDownloadEPOD}
+                        disabled={isGeneratingEPOD}
+                        className="ml-2"
+                      >
+                        {isGeneratingEPOD ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Download className="h-4 w-4 mr-2" />
+                        )}
+                        Descargar EPOD
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Geolocalización de entrega */}
+                {(envio as any).entrega_lat && (envio as any).entrega_lng && (
+                  <div className="p-4 border rounded-lg bg-blue-500/10 border-blue-500/20">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="h-5 w-5 text-blue-600" />
+                        <div>
+                          <p className="font-medium text-blue-700">Ubicación GPS de Entrega</p>
+                          <p className="text-sm text-muted-foreground font-mono">
+                            {(envio as any).entrega_lat.toFixed(6)}, {(envio as any).entrega_lng.toFixed(6)}
+                          </p>
+                        </div>
+                      </div>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        asChild
+                      >
+                        <a 
+                          href={`https://www.google.com/maps?q=${(envio as any).entrega_lat},${(envio as any).entrega_lng}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <MapPin className="h-4 w-4 mr-2" />
+                          Ver en Mapa
+                        </a>
+                      </Button>
                     </div>
                   </div>
                 )}
