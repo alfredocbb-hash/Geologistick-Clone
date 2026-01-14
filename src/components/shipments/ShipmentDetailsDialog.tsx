@@ -28,6 +28,10 @@ import {
   FileText,
   Printer,
   ExternalLink,
+  Camera,
+  PenTool,
+  AlertTriangle,
+  ImageOff,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -122,6 +126,23 @@ export function ShipmentDetailsDialog({
     enabled: open && !!envioId,
   });
 
+  const { data: incidentes } = useQuery({
+    queryKey: ['envio-incidentes', envioId],
+    queryFn: async () => {
+      if (!envioId) return [];
+      
+      const { data, error } = await supabase
+        .from('incidentes')
+        .select('*')
+        .eq('envio_id', envioId)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: open && !!envioId,
+  });
+
   const InfoRow = ({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: React.ReactNode }) => (
     <div className="flex items-start gap-3 py-2">
       <Icon className="h-4 w-4 text-muted-foreground mt-0.5" />
@@ -187,10 +208,11 @@ export function ShipmentDetailsDialog({
             </div>
 
             <Tabs defaultValue="general" className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="general">General</TabsTrigger>
                 <TabsTrigger value="contactos">Contactos</TabsTrigger>
                 <TabsTrigger value="financiero">Financiero</TabsTrigger>
+                <TabsTrigger value="evidencia">Evidencia</TabsTrigger>
               </TabsList>
 
               <TabsContent value="general" className="space-y-4 mt-4">
@@ -388,6 +410,151 @@ export function ShipmentDetailsDialog({
                     </div>
                   </div>
                 )}
+              </TabsContent>
+
+              <TabsContent value="evidencia" className="space-y-4 mt-4">
+                {/* Estado de entrega */}
+                {envio.fecha_entrega && (
+                  <div className="p-4 border rounded-lg bg-green-500/10 border-green-500/20">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-5 w-5 text-green-600" />
+                      <div>
+                        <p className="font-medium text-green-700">Entregado</p>
+                        <p className="text-sm text-muted-foreground">
+                          {format(new Date(envio.fecha_entrega), "d 'de' MMMM yyyy 'a las' HH:mm", { locale: es })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Foto de entrega */}
+                <div className="p-4 border rounded-lg">
+                  <p className="text-xs font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+                    <Camera className="h-4 w-4" />
+                    FOTO DE ENTREGA
+                  </p>
+                  {envio.foto_entrega ? (
+                    <a 
+                      href={envio.foto_entrega} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="block"
+                    >
+                      <img 
+                        src={envio.foto_entrega} 
+                        alt="Foto de entrega"
+                        className="rounded-lg max-h-64 w-full object-contain bg-muted hover:opacity-90 transition-opacity cursor-pointer"
+                      />
+                      <p className="text-xs text-center text-muted-foreground mt-2">
+                        Click para ver en tamaño completo
+                      </p>
+                    </a>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                      <ImageOff className="h-12 w-12 mb-2 opacity-50" />
+                      <p className="text-sm">Sin foto de entrega</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Firma del destinatario */}
+                <div className="p-4 border rounded-lg">
+                  <p className="text-xs font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+                    <PenTool className="h-4 w-4" />
+                    FIRMA DEL DESTINATARIO
+                  </p>
+                  {envio.firma_destinatario ? (
+                    <a 
+                      href={envio.firma_destinatario} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="block"
+                    >
+                      <div className="bg-white rounded-lg border p-4">
+                        <img 
+                          src={envio.firma_destinatario} 
+                          alt="Firma del destinatario"
+                          className="max-h-32 w-full object-contain"
+                        />
+                      </div>
+                      <p className="text-xs text-center text-muted-foreground mt-2">
+                        Click para ver en tamaño completo
+                      </p>
+                    </a>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                      <PenTool className="h-12 w-12 mb-2 opacity-50" />
+                      <p className="text-sm">Sin firma registrada</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Incidentes */}
+                <div className="p-4 border rounded-lg">
+                  <p className="text-xs font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4" />
+                    INCIDENTES REPORTADOS
+                  </p>
+                  {incidentes && incidentes.length > 0 ? (
+                    <div className="space-y-4">
+                      {incidentes.map((incidente) => (
+                        <div key={incidente.id} className="p-3 border rounded-lg bg-orange-500/5 border-orange-500/20">
+                          <div className="flex items-start justify-between mb-2">
+                            <div>
+                              <Badge variant="outline" className="bg-orange-500/10 text-orange-700 border-orange-500/20">
+                                {incidente.tipo}
+                              </Badge>
+                              <Badge 
+                                variant="outline" 
+                                className={`ml-2 ${
+                                  incidente.estado === 'resuelto' 
+                                    ? 'bg-green-500/10 text-green-700 border-green-500/20'
+                                    : 'bg-yellow-500/10 text-yellow-700 border-yellow-500/20'
+                                }`}
+                              >
+                                {incidente.estado}
+                              </Badge>
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {format(new Date(incidente.created_at), "d MMM yyyy", { locale: es })}
+                            </span>
+                          </div>
+                          {incidente.descripcion && (
+                            <p className="text-sm mb-2">{incidente.descripcion}</p>
+                          )}
+                          {incidente.resolucion && (
+                            <div className="text-sm text-muted-foreground bg-muted/50 p-2 rounded mt-2">
+                              <span className="font-medium">Resolución:</span> {incidente.resolucion}
+                            </div>
+                          )}
+                          {incidente.foto_evidencia && (
+                            <a 
+                              href={incidente.foto_evidencia} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="block mt-3"
+                            >
+                              <img 
+                                src={incidente.foto_evidencia} 
+                                alt="Evidencia del incidente"
+                                className="rounded-lg max-h-48 w-full object-contain bg-muted hover:opacity-90 transition-opacity cursor-pointer"
+                              />
+                              <p className="text-xs text-center text-muted-foreground mt-1">
+                                Click para ver en tamaño completo
+                              </p>
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                      <CheckCircle className="h-12 w-12 mb-2 opacity-50 text-green-500" />
+                      <p className="text-sm">Sin incidentes reportados</p>
+                    </div>
+                  )}
+                </div>
               </TabsContent>
             </Tabs>
           </ScrollArea>
