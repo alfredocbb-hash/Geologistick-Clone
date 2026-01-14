@@ -14,6 +14,66 @@ export type Database = {
   }
   public: {
     Tables: {
+      arca_config: {
+        Row: {
+          condicion_iva: string
+          created_at: string | null
+          cuit: string
+          domicilio_comercial: string | null
+          environment: string | null
+          factura_a_habilitada: boolean | null
+          factura_b_habilitada: boolean | null
+          factura_c_habilitada: boolean | null
+          id: string
+          inicio_actividades: string | null
+          is_active: boolean | null
+          punto_venta: number
+          razon_social: string
+          ultimo_numero_a: number | null
+          ultimo_numero_b: number | null
+          ultimo_numero_c: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          condicion_iva: string
+          created_at?: string | null
+          cuit: string
+          domicilio_comercial?: string | null
+          environment?: string | null
+          factura_a_habilitada?: boolean | null
+          factura_b_habilitada?: boolean | null
+          factura_c_habilitada?: boolean | null
+          id?: string
+          inicio_actividades?: string | null
+          is_active?: boolean | null
+          punto_venta: number
+          razon_social: string
+          ultimo_numero_a?: number | null
+          ultimo_numero_b?: number | null
+          ultimo_numero_c?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          condicion_iva?: string
+          created_at?: string | null
+          cuit?: string
+          domicilio_comercial?: string | null
+          environment?: string | null
+          factura_a_habilitada?: boolean | null
+          factura_b_habilitada?: boolean | null
+          factura_c_habilitada?: boolean | null
+          id?: string
+          inicio_actividades?: string | null
+          is_active?: boolean | null
+          punto_venta?: number
+          razon_social?: string
+          ultimo_numero_a?: number | null
+          ultimo_numero_b?: number | null
+          ultimo_numero_c?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       cliente_cuenta_corriente: {
         Row: {
           cliente_id: string
@@ -73,6 +133,7 @@ export type Database = {
           apellido: string | null
           ciudad: string | null
           codigo_postal: string | null
+          condicion_iva: string | null
           created_at: string | null
           direccion: string
           dni_cuit: string | null
@@ -83,10 +144,12 @@ export type Database = {
           lng: number | null
           nombre: string
           notas: string | null
+          razon_social: string | null
           saldo_cuenta_corriente: number | null
           sucursal_id: string | null
           telefono: string
           tiene_cuenta_corriente: boolean | null
+          tipo_contribuyente: string | null
           updated_at: string | null
           user_id: string | null
         }
@@ -94,6 +157,7 @@ export type Database = {
           apellido?: string | null
           ciudad?: string | null
           codigo_postal?: string | null
+          condicion_iva?: string | null
           created_at?: string | null
           direccion: string
           dni_cuit?: string | null
@@ -104,10 +168,12 @@ export type Database = {
           lng?: number | null
           nombre: string
           notas?: string | null
+          razon_social?: string | null
           saldo_cuenta_corriente?: number | null
           sucursal_id?: string | null
           telefono: string
           tiene_cuenta_corriente?: boolean | null
+          tipo_contribuyente?: string | null
           updated_at?: string | null
           user_id?: string | null
         }
@@ -115,6 +181,7 @@ export type Database = {
           apellido?: string | null
           ciudad?: string | null
           codigo_postal?: string | null
+          condicion_iva?: string | null
           created_at?: string | null
           direccion?: string
           dni_cuit?: string | null
@@ -125,10 +192,12 @@ export type Database = {
           lng?: number | null
           nombre?: string
           notas?: string | null
+          razon_social?: string | null
           saldo_cuenta_corriente?: number | null
           sucursal_id?: string | null
           telefono?: string
           tiene_cuenta_corriente?: boolean | null
+          tipo_contribuyente?: string | null
           updated_at?: string | null
           user_id?: string | null
         }
@@ -569,6 +638,86 @@ export type Database = {
             columns: ["tarifa_id"]
             isOneToOne: false
             referencedRelation: "tarifas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      facturas: {
+        Row: {
+          arca_response: Json | null
+          cae: string | null
+          cae_vencimiento: string | null
+          created_at: string | null
+          created_by: string | null
+          envio_id: string | null
+          error_mensaje: string | null
+          estado: string | null
+          fecha_emision: string | null
+          id: string
+          importe_iva: number | null
+          importe_neto: number
+          importe_total: number
+          numero_comprobante: number
+          pdf_url: string | null
+          punto_venta: number
+          receptor_condicion_iva: string | null
+          receptor_cuit: string | null
+          receptor_domicilio: string | null
+          receptor_nombre: string | null
+          tipo_comprobante: string
+        }
+        Insert: {
+          arca_response?: Json | null
+          cae?: string | null
+          cae_vencimiento?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          envio_id?: string | null
+          error_mensaje?: string | null
+          estado?: string | null
+          fecha_emision?: string | null
+          id?: string
+          importe_iva?: number | null
+          importe_neto: number
+          importe_total: number
+          numero_comprobante: number
+          pdf_url?: string | null
+          punto_venta: number
+          receptor_condicion_iva?: string | null
+          receptor_cuit?: string | null
+          receptor_domicilio?: string | null
+          receptor_nombre?: string | null
+          tipo_comprobante: string
+        }
+        Update: {
+          arca_response?: Json | null
+          cae?: string | null
+          cae_vencimiento?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          envio_id?: string | null
+          error_mensaje?: string | null
+          estado?: string | null
+          fecha_emision?: string | null
+          id?: string
+          importe_iva?: number | null
+          importe_neto?: number
+          importe_total?: number
+          numero_comprobante?: number
+          pdf_url?: string | null
+          punto_venta?: number
+          receptor_condicion_iva?: string | null
+          receptor_cuit?: string | null
+          receptor_domicilio?: string | null
+          receptor_nombre?: string | null
+          tipo_comprobante?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "facturas_envio_id_fkey"
+            columns: ["envio_id"]
+            isOneToOne: false
+            referencedRelation: "envios"
             referencedColumns: ["id"]
           },
         ]
@@ -1892,6 +2041,7 @@ export type Database = {
         | "whatsapp"
         | "email_smtp"
         | "sms"
+        | "arca"
       payment_method: "efectivo" | "mercado_pago" | "transferencia" | "tarjeta"
       payment_status: "pendiente" | "pagado" | "fallido" | "reembolsado"
       settlement_status: "generada" | "enviada" | "pagada" | "rechazada"
@@ -2051,6 +2201,7 @@ export const Constants = {
         "whatsapp",
         "email_smtp",
         "sms",
+        "arca",
       ],
       payment_method: ["efectivo", "mercado_pago", "transferencia", "tarjeta"],
       payment_status: ["pendiente", "pagado", "fallido", "reembolsado"],
