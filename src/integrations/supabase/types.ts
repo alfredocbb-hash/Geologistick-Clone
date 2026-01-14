@@ -327,6 +327,8 @@ export type Database = {
           distancia_km: number | null
           dni_destinatario: string | null
           dni_remitente: string | null
+          entrega_lat: number | null
+          entrega_lng: number | null
           estado: Database["public"]["Enums"]["shipment_status"] | null
           estado_retiro: string | null
           fecha_entrega: string | null
@@ -385,6 +387,8 @@ export type Database = {
           distancia_km?: number | null
           dni_destinatario?: string | null
           dni_remitente?: string | null
+          entrega_lat?: number | null
+          entrega_lng?: number | null
           estado?: Database["public"]["Enums"]["shipment_status"] | null
           estado_retiro?: string | null
           fecha_entrega?: string | null
@@ -443,6 +447,8 @@ export type Database = {
           distancia_km?: number | null
           dni_destinatario?: string | null
           dni_remitente?: string | null
+          entrega_lat?: number | null
+          entrega_lng?: number | null
           estado?: Database["public"]["Enums"]["shipment_status"] | null
           estado_retiro?: string | null
           fecha_entrega?: string | null

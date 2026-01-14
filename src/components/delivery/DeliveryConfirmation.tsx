@@ -52,6 +52,25 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
     shipment.pago_contra_entrega ? shipment.precio_total.toString() : ''
   );
   const [notes, setNotes] = useState('');
+  const [deliveryLocation, setDeliveryLocation] = useState<{ lat: number; lng: number } | null>(null);
+
+  // Capture GPS location on mount
+  useState(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setDeliveryLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          });
+        },
+        (error) => {
+          console.log('GPS no disponible:', error.message);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      );
+    }
+  });
 
   // Handle photo selection
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -120,10 +139,12 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
           : Promise.resolve(null),
       ]);
 
-      // Update shipment
+      // Update shipment with GPS coordinates
       const updateData: Record<string, unknown> = {
         estado: 'entregado',
         fecha_entrega: new Date().toISOString(),
+        entrega_lat: deliveryLocation?.lat || null,
+        entrega_lng: deliveryLocation?.lng || null,
       };
 
       if (photoUrl) updateData.foto_entrega = photoUrl;
