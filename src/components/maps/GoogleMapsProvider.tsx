@@ -1,9 +1,13 @@
 import { useJsApiLoader } from '@react-google-maps/api';
-import { ReactNode, useState, useEffect, createContext, useContext, useMemo } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/lib/auth';
+import { ReactNode, createContext, useContext, useMemo } from 'react';
 
 const libraries: ("places" | "geometry" | "drawing")[] = ['places', 'geometry'];
+
+// Get the client-side Maps API key from environment
+// This should be a RESTRICTED key configured in Google Cloud Console:
+// - HTTP referrer restrictions: your domain only
+// - API restrictions: Maps JavaScript API only
+const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
 interface GoogleMapsContextType {
   isLoaded: boolean;
@@ -21,123 +25,26 @@ interface GoogleMapsProviderProps {
   children: ReactNode;
 }
 
-// Inner component that loads Google Maps once we have the API key
-function GoogleMapsLoader({ 
-  apiKey, 
-  children 
-}: { 
-  apiKey: string; 
-  children: ReactNode;
-}) {
+export function GoogleMapsProvider({ children }: GoogleMapsProviderProps) {
   const { isLoaded, loadError } = useJsApiLoader({
-    googleMapsApiKey: apiKey,
+    googleMapsApiKey: MAPS_API_KEY,
     libraries,
     language: 'es',
     region: 'AR',
   });
 
   const contextValue = useMemo(() => ({
-    isLoaded,
-    loadError: loadError?.message || null,
-    apiKey,
-  }), [isLoaded, loadError, apiKey]);
+    isLoaded: MAPS_API_KEY ? isLoaded : false,
+    loadError: !MAPS_API_KEY 
+      ? 'Google Maps API key not configured' 
+      : loadError?.message || null,
+    apiKey: MAPS_API_KEY || null,
+  }), [isLoaded, loadError]);
 
   return (
     <GoogleMapsContext.Provider value={contextValue}>
       {children}
     </GoogleMapsContext.Provider>
-  );
-}
-
-export function GoogleMapsProvider({ children }: GoogleMapsProviderProps) {
-  const [apiKey, setApiKey] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const { user, loading: authLoading } = useAuth();
-
-  // Fetch API key from edge function only when user is authenticated
-  useEffect(() => {
-    let mounted = true;
-
-    const fetchApiKey = async () => {
-      // Wait for auth to finish loading
-      if (authLoading) {
-        return;
-      }
-
-      // If no user, don't try to fetch the API key
-      if (!user) {
-        if (mounted) {
-          setIsLoading(false);
-        }
-        return;
-      }
-
-      // Check if Google Maps is already loaded (e.g., from previous session)
-      if (typeof window !== 'undefined' && window.google?.maps) {
-        if (mounted) {
-          setIsLoading(false);
-        }
-        return;
-      }
-
-      try {
-        const { data, error } = await supabase.functions.invoke('get-maps-api-key');
-        
-        if (!mounted) return;
-
-        if (error) {
-          console.error('Error fetching Maps API key:', error);
-          setLoadError('Failed to load Google Maps API key');
-          setIsLoading(false);
-          return;
-        }
-
-        if (data?.apiKey) {
-          setApiKey(data.apiKey);
-        } else {
-          setLoadError('Google Maps API key not configured');
-        }
-      } catch (err) {
-        console.error('Error fetching Maps API key:', err);
-        if (mounted) {
-          setLoadError('Failed to load Google Maps API key');
-        }
-      } finally {
-        if (mounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    fetchApiKey();
-
-    return () => {
-      mounted = false;
-    };
-  }, [user, authLoading]);
-
-  // Create a stable context value for non-loaded states
-  const notLoadedValue = useMemo(() => ({
-    isLoaded: false,
-    loadError,
-    apiKey: null,
-  }), [loadError]);
-
-  // If still loading or no API key, provide a non-loaded context
-  if (isLoading || loadError || !apiKey) {
-    return (
-      <GoogleMapsContext.Provider value={notLoadedValue}>
-        {children}
-      </GoogleMapsContext.Provider>
-    );
-  }
-
-  // Once we have the API key, use the loader component
-  return (
-    <GoogleMapsLoader apiKey={apiKey}>
-      {children}
-    </GoogleMapsLoader>
   );
 }
 
@@ -151,3 +58,6 @@ export function useGoogleMapsLoaded(): boolean {
 export function useGoogleMaps(): GoogleMapsContextType {
   return useContext(GoogleMapsContext);
 }
+
+// Re-export for backwards compatibility
+export { MAPS_API_KEY };
