@@ -78,6 +78,7 @@ const PERMISSION_CATEGORIES: Record<string, string> = {
   'rates': 'Tarifas',
   'users': 'Usuarios',
   'roles': 'Roles',
+  'invoicing': 'Facturación',
 };
 
 const getPermissionCategory = (key: string): string => {
