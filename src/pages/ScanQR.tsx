@@ -18,11 +18,13 @@ import {
   Store,
   Truck,
   FileText,
+  PackageCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import QRScanner from '@/components/qr/QRScanner';
 import PickupConfirmation from '@/components/scan/PickupConfirmation';
 import ReceiveShipmentDialog from '@/components/scan/ReceiveShipmentDialog';
+import { BranchDeliveryDialog } from '@/components/scan/BranchDeliveryDialog';
 import { ReceiveRouteSheetDialog } from '@/components/scan/ReceiveRouteSheetDialog';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
@@ -36,7 +38,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   cancelado: { label: 'Cancelado', color: 'bg-red-100 text-red-800' },
 };
 
-type ScanMode = 'pickup' | 'receive_center' | 'receive_branch' | 'receive_route_sheet' | null;
+type ScanMode = 'pickup' | 'receive_center' | 'receive_branch' | 'receive_route_sheet' | 'branch_delivery' | null;
 
 interface ScannedShipment {
   id: string;
@@ -45,6 +47,8 @@ interface ScannedShipment {
   requiere_retiro: boolean | null;
   direccion_retiro: string | null;
   ciudad_retiro: string | null;
+  tipo_pago?: string | null;
+  precio_total?: number;
   remitente?: {
     nombre: string;
     apellido: string | null;
@@ -71,6 +75,7 @@ export default function ScanQR() {
   const [scanMode, setScanMode] = useState<ScanMode>(null);
   const [showPickupConfirmation, setShowPickupConfirmation] = useState(false);
   const [showReceiveDialog, setShowReceiveDialog] = useState(false);
+  const [showBranchDeliveryDialog, setShowBranchDeliveryDialog] = useState(false);
   const [receiveType, setReceiveType] = useState<'center' | 'branch'>('center');
   const [duplicateShipment, setDuplicateShipment] = useState<ScannedShipment | null>(null);
   const [isSearching, setIsSearching] = useState(false);
@@ -174,6 +179,8 @@ export default function ScanQR() {
           requiere_retiro,
           direccion_retiro,
           ciudad_retiro,
+          tipo_pago,
+          precio_total,
           remitente:clientes!envios_remitente_id_fkey(nombre, apellido, telefono),
           destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido),
           sucursal_destino:sucursales!envios_sucursal_destino_id_fkey(nombre, ciudad)
@@ -222,6 +229,19 @@ export default function ScanQR() {
     if (mode === 'receive_branch') {
       setReceiveType('branch');
       setShowReceiveDialog(true);
+      return;
+    }
+
+    if (mode === 'branch_delivery') {
+      if (!['en_bodega', 'en_transito'].includes(shipment.estado)) {
+        playWarningSound();
+        toast.error('Este envío no está listo para entregar', {
+          description: `Estado actual: ${STATUS_CONFIG[shipment.estado]?.label || shipment.estado}`,
+        });
+        setDuplicateShipment(shipment);
+        return;
+      }
+      setShowBranchDeliveryDialog(true);
       return;
     }
 
@@ -317,6 +337,18 @@ export default function ScanQR() {
                 <Store className="h-6 w-6" />
                 <span className="font-bold">Recibir en Sucursal</span>
                 <span className="text-xs opacity-80">Punto de venta</span>
+              </Button>
+            )}
+
+            {isBranchOperator && (
+              <Button
+                onClick={() => handleQuickAction('branch_delivery')}
+                size="lg"
+                className="bg-gradient-to-r from-emerald-600 to-green-500 hover:from-emerald-700 hover:to-green-600 h-24 flex flex-col gap-2"
+              >
+                <PackageCheck className="h-6 w-6" />
+                <span className="font-bold">Entregar a Cliente</span>
+                <span className="text-xs opacity-80">Entrega en sucursal</span>
               </Button>
             )}
 
@@ -435,6 +467,27 @@ export default function ScanQR() {
           }}
         />
       )}
+
+      {/* Branch Delivery Dialog */}
+      <BranchDeliveryDialog
+        open={showBranchDeliveryDialog && !!scannedShipment}
+        shipment={scannedShipment ? {
+          id: scannedShipment.id,
+          tracking_number: scannedShipment.tracking_number,
+          tipo_pago: scannedShipment.tipo_pago,
+          precio_total: scannedShipment.precio_total || 0,
+          destinatario: scannedShipment.destinatario,
+        } : null}
+        onClose={() => {
+          setShowBranchDeliveryDialog(false);
+          setScannedShipment(null);
+        }}
+        onSuccess={() => {
+          setShowBranchDeliveryDialog(false);
+          setScannedShipment(null);
+          queryClient.invalidateQueries({ queryKey: ['envios'] });
+        }}
+      />
 
       {/* Duplicate/Already Processed Alert */}
       {duplicateShipment && (

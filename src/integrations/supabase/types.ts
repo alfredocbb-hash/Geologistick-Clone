@@ -327,10 +327,17 @@ export type Database = {
           distancia_km: number | null
           dni_destinatario: string | null
           dni_remitente: string | null
+          dni_retira: string | null
           entrega_lat: number | null
           entrega_lng: number | null
+          entregado_en_sucursal: boolean | null
+          entregado_por: string | null
           estado: Database["public"]["Enums"]["shipment_status"] | null
           estado_retiro: string | null
+          factura_cae: string | null
+          factura_fecha: string | null
+          factura_numero: string | null
+          factura_tipo: string | null
           fecha_entrega: string | null
           fecha_recogida: string | null
           fecha_retiro: string | null
@@ -339,16 +346,21 @@ export type Database = {
           horario_preferido_entrega: string | null
           horario_retiro: string | null
           id: string
+          nombre_retira: string | null
           notas: string | null
           notas_retiro: string | null
           pago_contra_entrega: boolean | null
+          parentesco_retira: string | null
           peso_kg: number | null
           precio_total: number
           remitente_id: string | null
           remitente_lat: number | null
           remitente_lng: number | null
           reprogramado_count: number | null
+          requiere_factura: boolean | null
           requiere_retiro: boolean | null
+          retira_firma: string | null
+          retira_foto: string | null
           rotulo_generado: boolean | null
           rotulo_generado_at: string | null
           sucursal_destino_id: string | null
@@ -387,10 +399,17 @@ export type Database = {
           distancia_km?: number | null
           dni_destinatario?: string | null
           dni_remitente?: string | null
+          dni_retira?: string | null
           entrega_lat?: number | null
           entrega_lng?: number | null
+          entregado_en_sucursal?: boolean | null
+          entregado_por?: string | null
           estado?: Database["public"]["Enums"]["shipment_status"] | null
           estado_retiro?: string | null
+          factura_cae?: string | null
+          factura_fecha?: string | null
+          factura_numero?: string | null
+          factura_tipo?: string | null
           fecha_entrega?: string | null
           fecha_recogida?: string | null
           fecha_retiro?: string | null
@@ -399,16 +418,21 @@ export type Database = {
           horario_preferido_entrega?: string | null
           horario_retiro?: string | null
           id?: string
+          nombre_retira?: string | null
           notas?: string | null
           notas_retiro?: string | null
           pago_contra_entrega?: boolean | null
+          parentesco_retira?: string | null
           peso_kg?: number | null
           precio_total: number
           remitente_id?: string | null
           remitente_lat?: number | null
           remitente_lng?: number | null
           reprogramado_count?: number | null
+          requiere_factura?: boolean | null
           requiere_retiro?: boolean | null
+          retira_firma?: string | null
+          retira_foto?: string | null
           rotulo_generado?: boolean | null
           rotulo_generado_at?: string | null
           sucursal_destino_id?: string | null
@@ -447,10 +471,17 @@ export type Database = {
           distancia_km?: number | null
           dni_destinatario?: string | null
           dni_remitente?: string | null
+          dni_retira?: string | null
           entrega_lat?: number | null
           entrega_lng?: number | null
+          entregado_en_sucursal?: boolean | null
+          entregado_por?: string | null
           estado?: Database["public"]["Enums"]["shipment_status"] | null
           estado_retiro?: string | null
+          factura_cae?: string | null
+          factura_fecha?: string | null
+          factura_numero?: string | null
+          factura_tipo?: string | null
           fecha_entrega?: string | null
           fecha_recogida?: string | null
           fecha_retiro?: string | null
@@ -459,16 +490,21 @@ export type Database = {
           horario_preferido_entrega?: string | null
           horario_retiro?: string | null
           id?: string
+          nombre_retira?: string | null
           notas?: string | null
           notas_retiro?: string | null
           pago_contra_entrega?: boolean | null
+          parentesco_retira?: string | null
           peso_kg?: number | null
           precio_total?: number
           remitente_id?: string | null
           remitente_lat?: number | null
           remitente_lng?: number | null
           reprogramado_count?: number | null
+          requiere_factura?: boolean | null
           requiere_retiro?: boolean | null
+          retira_firma?: string | null
+          retira_foto?: string | null
           rotulo_generado?: boolean | null
           rotulo_generado_at?: string | null
           sucursal_destino_id?: string | null
