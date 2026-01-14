@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.calculate-distance]
 verify_jwt = false
+
+[functions.arca-factura]
+verify_jwt = false
