@@ -32,9 +32,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Building2, Calculator, FileText, Check, DollarSign, Calendar } from 'lucide-react';
+import { Building2, Calculator, FileText, Check, DollarSign, Calendar, Eye, CreditCard } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { SettlementDetailDialog } from '@/components/settlements/SettlementDetailDialog';
+import type { Database } from '@/integrations/supabase/types';
+
+type PaymentMethod = Database['public']['Enums']['payment_method'];
 
 interface Sucursal {
   id: string;
@@ -55,11 +59,15 @@ interface LiquidacionSucursal {
   sucursal_id: string;
   periodo_inicio: string;
   periodo_fin: string;
-  total_cobrado: number;
-  total_comisiones: number;
-  saldo: number;
-  estado: string;
-  created_at: string;
+  total_cobrado: number | null;
+  total_comisiones: number | null;
+  saldo: number | null;
+  estado: string | null;
+  notas: string | null;
+  created_at: string | null;
+  fecha_pago: string | null;
+  metodo_pago: string | null;
+  referencia_pago: string | null;
   sucursal?: { nombre: string };
 }
 
@@ -77,6 +85,12 @@ export default function BranchSettlements() {
   } | null>(null);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [notas, setNotas] = useState('');
+  const [showDetailDialog, setShowDetailDialog] = useState(false);
+  const [detailLiquidacion, setDetailLiquidacion] = useState<LiquidacionSucursal | null>(null);
+  const [showPayDialog, setShowPayDialog] = useState(false);
+  const [payingLiquidacion, setPayingLiquidacion] = useState<string | null>(null);
+  const [metodoPago, setMetodoPago] = useState<PaymentMethod>('transferencia');
+  const [referenciaPago, setReferenciaPago] = useState('');
 
   // Fetch sucursales
   const { data: sucursales = [] } = useQuery({
@@ -246,14 +260,50 @@ export default function BranchSettlements() {
     },
   });
 
-  const getEstadoBadge = (estado: string) => {
+  // Pay mutation
+  const payMutation = useMutation({
+    mutationFn: async () => {
+      if (!payingLiquidacion) throw new Error('No hay liquidación seleccionada');
+
+      const { error } = await supabase
+        .from('liquidaciones_sucursal')
+        .update({
+          estado: 'pagada',
+          metodo_pago: metodoPago,
+          referencia_pago: referenciaPago || null,
+          fecha_pago: new Date().toISOString(),
+          aprobado_por: user?.id,
+        })
+        .eq('id', payingLiquidacion);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Pago registrado');
+      queryClient.invalidateQueries({ queryKey: ['liquidaciones-sucursal'] });
+      setShowPayDialog(false);
+      setPayingLiquidacion(null);
+      setMetodoPago('transferencia');
+      setReferenciaPago('');
+    },
+    onError: (error) => {
+      toast.error('Error: ' + error.message);
+    },
+  });
+
+  const getEstadoBadge = (estado: string | null) => {
     const config: Record<string, { label: string; className: string }> = {
       pendiente: { label: 'Pendiente', className: 'bg-warning/10 text-warning border-warning' },
-      aprobada: { label: 'Aprobada', className: 'bg-success/10 text-success border-success' },
-      pagada: { label: 'Pagada', className: 'bg-primary/10 text-primary border-primary' },
+      aprobada: { label: 'Aprobada', className: 'bg-info/10 text-info border-info' },
+      pagada: { label: 'Pagada', className: 'bg-success/10 text-success border-success' },
     };
-    const c = config[estado] || { label: estado, className: '' };
+    const c = config[estado || 'pendiente'] || { label: estado || 'Desconocido', className: '' };
     return <Badge variant="outline" className={c.className}>{c.label}</Badge>;
+  };
+
+  const openPayDialog = (id: string) => {
+    setPayingLiquidacion(id);
+    setShowPayDialog(true);
   };
 
   return (
@@ -452,17 +502,44 @@ export default function BranchSettlements() {
                     <TableCell className="font-bold">${(liq.saldo || 0).toFixed(2)}</TableCell>
                     <TableCell>{getEstadoBadge(liq.estado || 'pendiente')}</TableCell>
                     <TableCell className="text-right">
-                      {liq.estado === 'pendiente' && (
+                      <div className="flex items-center justify-end gap-2">
                         <Button
                           size="sm"
-                          variant="outline"
-                          onClick={() => approveMutation.mutate(liq.id)}
-                          disabled={approveMutation.isPending}
+                          variant="ghost"
+                          onClick={() => {
+                            setDetailLiquidacion(liq);
+                            setShowDetailDialog(true);
+                          }}
                         >
-                          <Check className="h-4 w-4 mr-1" />
-                          Aprobar
+                          <Eye className="h-4 w-4" />
                         </Button>
-                      )}
+                        {liq.estado === 'pendiente' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => approveMutation.mutate(liq.id)}
+                            disabled={approveMutation.isPending}
+                          >
+                            <Check className="h-4 w-4 mr-1" />
+                            Aprobar
+                          </Button>
+                        )}
+                        {liq.estado === 'aprobada' && (
+                          <Button
+                            size="sm"
+                            onClick={() => openPayDialog(liq.id)}
+                          >
+                            <CreditCard className="h-4 w-4 mr-1" />
+                            Pagar
+                          </Button>
+                        )}
+                        {liq.estado === 'pagada' && (
+                          <Badge variant="outline" className="bg-success/10 text-success">
+                            <Check className="h-3 w-3 mr-1" />
+                            Pagada
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -500,6 +577,62 @@ export default function BranchSettlements() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Pay Dialog */}
+      <Dialog open={showPayDialog} onOpenChange={setShowPayDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Registrar Pago de Liquidación</DialogTitle>
+            <DialogDescription>
+              Ingresa los datos del pago realizado a la sucursal
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Método de Pago</Label>
+              <Select value={metodoPago} onValueChange={(v) => setMetodoPago(v as PaymentMethod)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="transferencia">Transferencia</SelectItem>
+                  <SelectItem value="efectivo">Efectivo</SelectItem>
+                  <SelectItem value="mercado_pago">Mercado Pago</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Referencia (opcional)</Label>
+              <Input
+                placeholder="Número de transferencia, recibo, etc."
+                value={referenciaPago}
+                onChange={(e) => setReferenciaPago(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPayDialog(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={() => payMutation.mutate()} 
+              disabled={payMutation.isPending}
+              className="bg-success hover:bg-success/90"
+            >
+              {payMutation.isPending ? 'Procesando...' : 'Confirmar Pago'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Detail Dialog */}
+      <SettlementDetailDialog
+        open={showDetailDialog}
+        onOpenChange={setShowDetailDialog}
+        settlementId={detailLiquidacion?.id || null}
+        type="branch"
+        settlement={detailLiquidacion}
+      />
     </div>
   );
 }

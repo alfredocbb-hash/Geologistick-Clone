@@ -32,10 +32,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Truck, Calculator, FileText, Check, DollarSign, Calendar, CreditCard } from 'lucide-react';
+import { Truck, Calculator, FileText, Check, DollarSign, Calendar, CreditCard, Eye } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Database } from '@/integrations/supabase/types';
+import { SettlementDetailDialog } from '@/components/settlements/SettlementDetailDialog';
 
 type PaymentMethod = Database['public']['Enums']['payment_method'];
 
@@ -64,9 +65,13 @@ interface Liquidacion {
   periodo_inicio: string;
   periodo_fin: string;
   monto_total: number;
-  cantidad_envios: number;
-  estado: string;
-  created_at: string;
+  cantidad_envios: number | null;
+  estado: string | null;
+  notas: string | null;
+  created_at: string | null;
+  fecha_pago: string | null;
+  metodo_pago: string | null;
+  referencia_pago: string | null;
   chofer?: { nombre: string; apellido: string | null };
 }
 
@@ -83,22 +88,34 @@ export default function DriverSettlements() {
   const [metodoPago, setMetodoPago] = useState<PaymentMethod>('efectivo');
   const [referenciaPago, setReferenciaPago] = useState('');
   const [notas, setNotas] = useState('');
+  const [showDetailDialog, setShowDetailDialog] = useState(false);
+  const [detailLiquidacion, setDetailLiquidacion] = useState<Liquidacion | null>(null);
 
-  // Fetch choferes (profiles with chofer role)
+  // Fetch choferes - using separate queries to avoid join issues
   const { data: choferes = [] } = useQuery({
-    queryKey: ['choferes'],
+    queryKey: ['choferes-for-settlements'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // First get all user_ids with chofer role
+      const { data: roles, error: rolesError } = await supabase
+        .from('user_roles')
+        .select('user_id')
+        .eq('role', 'chofer');
+      
+      if (rolesError) throw rolesError;
+      if (!roles || roles.length === 0) return [];
+      
+      const userIds = roles.map(r => r.user_id);
+      
+      // Then get profiles for those users
+      const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
-        .select(`
-          id, nombre, apellido, user_id,
-          user_roles!inner(role)
-        `)
-        .eq('user_roles.role', 'chofer')
+        .select('id, nombre, apellido, user_id')
+        .in('user_id', userIds)
         .eq('activo', true)
         .order('nombre');
-      if (error) throw error;
-      return data as Chofer[];
+      
+      if (profilesError) throw profilesError;
+      return (profiles || []) as Chofer[];
     },
   });
 
@@ -446,21 +463,33 @@ export default function DriverSettlements() {
                     </TableCell>
                     <TableCell>{getEstadoBadge(liq.estado || 'generada')}</TableCell>
                     <TableCell className="text-right">
-                      {liq.estado === 'generada' && (
+                      <div className="flex items-center justify-end gap-2">
                         <Button
                           size="sm"
-                          onClick={() => openPayDialog(liq.id)}
+                          variant="ghost"
+                          onClick={() => {
+                            setDetailLiquidacion(liq);
+                            setShowDetailDialog(true);
+                          }}
                         >
-                          <CreditCard className="h-4 w-4 mr-1" />
-                          Pagar
+                          <Eye className="h-4 w-4" />
                         </Button>
-                      )}
-                      {liq.estado === 'pagada' && (
-                        <Badge variant="outline" className="bg-success/10 text-success">
-                          <Check className="h-3 w-3 mr-1" />
-                          Pagada
-                        </Badge>
-                      )}
+                        {liq.estado === 'generada' && (
+                          <Button
+                            size="sm"
+                            onClick={() => openPayDialog(liq.id)}
+                          >
+                            <CreditCard className="h-4 w-4 mr-1" />
+                            Pagar
+                          </Button>
+                        )}
+                        {liq.estado === 'pagada' && (
+                          <Badge variant="outline" className="bg-success/10 text-success">
+                            <Check className="h-3 w-3 mr-1" />
+                            Pagada
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -516,6 +545,15 @@ export default function DriverSettlements() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Detail Dialog */}
+      <SettlementDetailDialog
+        open={showDetailDialog}
+        onOpenChange={setShowDetailDialog}
+        settlementId={detailLiquidacion?.id || null}
+        type="driver"
+        settlement={detailLiquidacion}
+      />
     </div>
   );
 }
