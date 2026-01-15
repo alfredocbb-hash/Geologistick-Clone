@@ -11,8 +11,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Bell, ChevronDown, LogOut, User, Settings, Building2 } from 'lucide-react';
+import { ChevronDown, LogOut, User, Settings, Building2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { NotificationPopover } from '@/components/notifications/NotificationPopover';
 
 export function AppHeader() {
   const { profile, roles, signOut } = useAuth();
@@ -53,12 +54,7 @@ export function AppHeader() {
       <div className="flex-1" />
 
       {/* Notifications */}
-      <Button variant="ghost" size="icon" className="relative">
-        <Bell className="h-5 w-5" />
-        <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground flex items-center justify-center">
-          3
-        </span>
-      </Button>
+      <NotificationPopover />
 
       {/* User Menu */}
       <DropdownMenu>
