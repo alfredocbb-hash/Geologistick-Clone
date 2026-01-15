@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { Loader2, Palette, Image, Type, Globe, Save, Eye } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-
+import { LogoUploader } from '@/components/branding/LogoUploader';
 interface BrandingFormData {
   nombre_app: string;
   logo_light: string;
@@ -391,49 +391,40 @@ export default function BrandingSettings() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Logos e Imágenes</CardTitle>
-                    <CardDescription>URLs de logos y favicon</CardDescription>
+                    <CardDescription>Sube tus logos y favicon directamente o usa URLs externas</CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>Logo (Modo Claro)</Label>
-                      <Input
-                        value={formData.logo_light}
-                        onChange={(e) => handleChange('logo_light', e.target.value)}
-                        placeholder="https://..."
-                      />
-                      {formData.logo_light && (
-                        <div className="p-4 bg-white rounded border">
-                          <img src={formData.logo_light} alt="Logo Light" className="h-12 object-contain" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Logo (Modo Oscuro)</Label>
-                      <Input
-                        value={formData.logo_dark}
-                        onChange={(e) => handleChange('logo_dark', e.target.value)}
-                        placeholder="https://..."
-                      />
-                      {formData.logo_dark && (
-                        <div className="p-4 bg-gray-900 rounded border">
-                          <img src={formData.logo_dark} alt="Logo Dark" className="h-12 object-contain" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Favicon</Label>
-                      <Input
-                        value={formData.favicon}
-                        onChange={(e) => handleChange('favicon', e.target.value)}
-                        placeholder="https://..."
-                      />
-                      {formData.favicon && (
-                        <div className="flex items-center gap-2">
-                          <img src={formData.favicon} alt="Favicon" className="h-8 w-8 object-contain" />
-                          <span className="text-sm text-muted-foreground">Vista previa del favicon</span>
-                        </div>
-                      )}
-                    </div>
+                  <CardContent className="space-y-6">
+                    {tenantId && (
+                      <>
+                        <LogoUploader
+                          label="Logo (Modo Claro)"
+                          value={formData.logo_light}
+                          onChange={(url) => handleChange('logo_light', url)}
+                          tenantId={tenantId}
+                          fileType="logo-light"
+                          helpText="Recomendado: PNG o SVG con fondo transparente, 200x60px mínimo"
+                        />
+                        
+                        <LogoUploader
+                          label="Logo (Modo Oscuro)"
+                          value={formData.logo_dark}
+                          onChange={(url) => handleChange('logo_dark', url)}
+                          tenantId={tenantId}
+                          fileType="logo-dark"
+                          helpText="Versión clara del logo para fondos oscuros"
+                        />
+                        
+                        <LogoUploader
+                          label="Favicon"
+                          value={formData.favicon}
+                          onChange={(url) => handleChange('favicon', url)}
+                          tenantId={tenantId}
+                          fileType="favicon"
+                          accept="image/png,image/x-icon,image/svg+xml"
+                          helpText="Icono para pestaña del navegador. Recomendado: 32x32px o 64x64px"
+                        />
+                      </>
+                    )}
                   </CardContent>
                 </Card>
               </TabsContent>
