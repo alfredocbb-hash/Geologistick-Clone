@@ -2013,6 +2013,92 @@ export type Database = {
           },
         ]
       }
+      tenant_branding: {
+        Row: {
+          color_acento: string | null
+          color_fondo: string | null
+          color_fondo_dark: string | null
+          color_primario: string | null
+          color_primario_foreground: string | null
+          color_secundario: string | null
+          color_sidebar: string | null
+          color_sidebar_dark: string | null
+          created_at: string | null
+          custom_css: string | null
+          custom_domain: string | null
+          favicon: string | null
+          footer_text: string | null
+          id: string
+          logo_dark: string | null
+          logo_light: string | null
+          meta_description: string | null
+          meta_title: string | null
+          nombre_app: string | null
+          support_email: string | null
+          support_phone: string | null
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          color_acento?: string | null
+          color_fondo?: string | null
+          color_fondo_dark?: string | null
+          color_primario?: string | null
+          color_primario_foreground?: string | null
+          color_secundario?: string | null
+          color_sidebar?: string | null
+          color_sidebar_dark?: string | null
+          created_at?: string | null
+          custom_css?: string | null
+          custom_domain?: string | null
+          favicon?: string | null
+          footer_text?: string | null
+          id?: string
+          logo_dark?: string | null
+          logo_light?: string | null
+          meta_description?: string | null
+          meta_title?: string | null
+          nombre_app?: string | null
+          support_email?: string | null
+          support_phone?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          color_acento?: string | null
+          color_fondo?: string | null
+          color_fondo_dark?: string | null
+          color_primario?: string | null
+          color_primario_foreground?: string | null
+          color_secundario?: string | null
+          color_sidebar?: string | null
+          color_sidebar_dark?: string | null
+          created_at?: string | null
+          custom_css?: string | null
+          custom_domain?: string | null
+          favicon?: string | null
+          footer_text?: string | null
+          id?: string
+          logo_dark?: string | null
+          logo_light?: string | null
+          meta_description?: string | null
+          meta_title?: string | null
+          nombre_app?: string | null
+          support_email?: string | null
+          support_phone?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_branding_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenants: {
         Row: {
           activo: boolean | null
