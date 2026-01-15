@@ -126,6 +126,9 @@ export default function BrandingSettings() {
       }
     },
     onSuccess: () => {
+      // Invalidar la consulta de esta página
+      queryClient.invalidateQueries({ queryKey: ['tenant-branding-admin'] });
+      // Invalidar la consulta del TenantProvider (para aplicar colores globalmente)
       queryClient.invalidateQueries({ queryKey: ['tenant-branding'] });
       toast.success('Configuración de marca guardada');
     },
