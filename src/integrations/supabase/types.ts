@@ -1648,6 +1648,57 @@ export type Database = {
           },
         ]
       }
+      subscription_plans: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          display_order: number | null
+          features: Json | null
+          id: string
+          is_active: boolean | null
+          max_branches: number
+          max_shipments_month: number
+          max_users: number
+          name: string
+          price_monthly: number
+          stripe_price_id: string
+          stripe_product_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          display_order?: number | null
+          features?: Json | null
+          id?: string
+          is_active?: boolean | null
+          max_branches: number
+          max_shipments_month: number
+          max_users: number
+          name: string
+          price_monthly: number
+          stripe_price_id: string
+          stripe_product_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          display_order?: number | null
+          features?: Json | null
+          id?: string
+          is_active?: boolean | null
+          max_branches?: number
+          max_shipments_month?: number
+          max_users?: number
+          name?: string
+          price_monthly?: number
+          stripe_price_id?: string
+          stripe_product_id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       sucursal_comisiones: {
         Row: {
           concepto_id: string
@@ -2099,6 +2150,104 @@ export type Database = {
           },
         ]
       }
+      tenant_subscriptions: {
+        Row: {
+          cancel_at_period_end: boolean | null
+          created_at: string | null
+          current_period_end: string | null
+          current_period_start: string | null
+          id: string
+          plan_id: string
+          status: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          cancel_at_period_end?: boolean | null
+          created_at?: string | null
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          plan_id: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          cancel_at_period_end?: boolean | null
+          created_at?: string | null
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          plan_id?: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_subscriptions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_subscriptions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_usage: {
+        Row: {
+          branches_count: number | null
+          created_at: string | null
+          id: string
+          month_year: string
+          shipments_count: number | null
+          tenant_id: string
+          updated_at: string | null
+          users_count: number | null
+        }
+        Insert: {
+          branches_count?: number | null
+          created_at?: string | null
+          id?: string
+          month_year: string
+          shipments_count?: number | null
+          tenant_id: string
+          updated_at?: string | null
+          users_count?: number | null
+        }
+        Update: {
+          branches_count?: number | null
+          created_at?: string | null
+          id?: string
+          month_year?: string
+          shipments_count?: number | null
+          tenant_id?: string
+          updated_at?: string | null
+          users_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_usage_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenants: {
         Row: {
           activo: boolean | null
@@ -2346,6 +2495,40 @@ export type Database = {
       generate_tracking_number:
         | { Args: never; Returns: string }
         | { Args: { p_sucursal_id?: string }; Returns: string }
+      get_or_create_tenant_usage: {
+        Args: { p_tenant_id: string }
+        Returns: {
+          branches_count: number | null
+          created_at: string | null
+          id: string
+          month_year: string
+          shipments_count: number | null
+          tenant_id: string
+          updated_at: string | null
+          users_count: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "tenant_usage"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      get_tenant_subscription_details: {
+        Args: { p_tenant_id: string }
+        Returns: {
+          cancel_at_period_end: boolean
+          current_period_end: string
+          max_branches: number
+          max_shipments_month: number
+          max_users: number
+          plan_name: string
+          status: string
+          stripe_price_id: string
+          stripe_product_id: string
+          subscription_id: string
+        }[]
+      }
       get_user_sucursal: { Args: { _user_id: string }; Returns: string }
       get_user_tenant: { Args: { p_user_id: string }; Returns: string }
       has_role: {
