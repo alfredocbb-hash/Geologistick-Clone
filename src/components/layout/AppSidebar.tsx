@@ -3,6 +3,7 @@ import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/lib/auth';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useBranchConfig } from '@/hooks/useBranchConfig';
+import { useTenantContext } from '@/components/providers/TenantProvider';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from '@/components/ui/sidebar';
 import { Package, LayoutDashboard, Truck, Users, DollarSign, CreditCard, Settings, Building2, Tags, UserCog, Wallet, FileText, PackagePlus, MapPin, ClipboardList, LogOut, ChevronLeft, ChevronRight, QrCode, Route, Map, Car, Plug, Home, Palette, Crown } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -193,6 +194,7 @@ export function AppSidebar() {
     realizaEntregas,
     isLoading: branchLoading
   } = useBranchConfig();
+  const { branding } = useTenantContext();
   const location = useLocation();
   const collapsed = state === 'collapsed';
 
@@ -245,13 +247,23 @@ export function AppSidebar() {
   return <Sidebar collapsible="icon" className="border-r-0">
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl gradient-primary shadow-lg">
-            <Package className="h-5 w-5 text-white" />
-          </div>
-          {!collapsed && <div className="flex flex-col">
-              <span className="text-lg font-bold text-sidebar-foreground">LogiTrack</span>
-              <span className="text-xs text-sidebar-foreground/60">Gestión Logística</span>
-            </div>}
+          {branding?.logo_light ? (
+            <img 
+              src={branding.logo_light} 
+              alt={branding.nombre_app || 'Logo'} 
+              className="h-10 w-auto max-w-[160px] object-contain"
+            />
+          ) : (
+            <>
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl gradient-primary shadow-lg">
+                <Package className="h-5 w-5 text-white" />
+              </div>
+              {!collapsed && <div className="flex flex-col">
+                  <span className="text-lg font-bold text-sidebar-foreground">{branding?.nombre_app || 'LogiTrack'}</span>
+                  <span className="text-xs text-sidebar-foreground/60">Gestión Logística</span>
+                </div>}
+            </>
+          )}
         </div>
       </SidebarHeader>
 
