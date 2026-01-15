@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/auth';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useBranchConfig } from '@/hooks/useBranchConfig';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from '@/components/ui/sidebar';
-import { Package, LayoutDashboard, Truck, Users, DollarSign, CreditCard, Settings, Building2, Tags, UserCog, Wallet, FileText, PackagePlus, MapPin, ClipboardList, LogOut, ChevronLeft, ChevronRight, QrCode, Route, Map, Car, Plug, Home } from 'lucide-react';
+import { Package, LayoutDashboard, Truck, Users, DollarSign, CreditCard, Settings, Building2, Tags, UserCog, Wallet, FileText, PackagePlus, MapPin, ClipboardList, LogOut, ChevronLeft, ChevronRight, QrCode, Route, Map, Car, Plug, Home, Palette } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -161,6 +161,11 @@ const navigation: NavGroup[] = [{
     title: 'Integraciones',
     url: '/admin/integrations',
     icon: Plug,
+    permissionKey: 'integrations.manage'
+  }, {
+    title: 'Personalización',
+    url: '/admin/branding',
+    icon: Palette,
     permissionKey: 'integrations.manage'
   }],
   permissionKeys: ['branches.manage', 'rates.manage', 'users.manage', 'roles.manage', 'integrations.manage']
