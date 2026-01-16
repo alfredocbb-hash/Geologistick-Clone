@@ -47,7 +47,7 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
         .from('rutas_planificadas')
         .select('*')
         .eq('chofer_id', user?.id)
-        .in('estado', ['asignada', 'en_progreso'])
+        .in('estado', ['asignada', 'confirmada', 'en_progreso'])
         .order('fecha', { ascending: true })
         .limit(5);
       
@@ -242,7 +242,7 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
               </Card>
             ))}
 
-            {rutasPlanificadas?.filter(r => r.estado === 'asignada').map((ruta) => (
+            {rutasPlanificadas?.filter(r => ['asignada', 'confirmada'].includes(r.estado || '')).map((ruta) => (
               <Card 
                 key={ruta.id} 
                 className="bg-slate-800/50 border-slate-700 min-w-[140px] cursor-pointer hover:border-slate-600 transition-colors"
