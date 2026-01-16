@@ -45,6 +45,7 @@ import Payments from "./pages/Payments";
 import BrandingSettings from "./pages/BrandingSettings";
 import Subscription from "./pages/Subscription";
 import Profile from "./pages/Profile";
+import Tenants from "./pages/Tenants";
 import NotFound from "./pages/NotFound";
 
 // Icons for placeholders
@@ -109,6 +110,7 @@ const App = () => (
               <Route path="/admin/integrations" element={<DashboardLayout><IntegrationSettings /></DashboardLayout>} />
               <Route path="/admin/branding" element={<BrandingSettings />} />
               <Route path="/subscription" element={<DashboardLayout><Subscription /></DashboardLayout>} />
+              <Route path="/admin/tenants" element={<DashboardLayout><Tenants /></DashboardLayout>} />
               
               {/* Profile */}
               <Route path="/profile" element={<DashboardLayout><Profile /></DashboardLayout>} />

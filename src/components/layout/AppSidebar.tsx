@@ -198,8 +198,12 @@ export function AppSidebar() {
   const location = useLocation();
   const collapsed = state === 'collapsed';
 
-  // Super admin can see everything
+  // Super admin can see everything, but also check for super admin only sections
   const canAccessGroup = (group: NavGroup) => {
+    // Super Admin section - only for super_admin
+    if (group.label === 'Super Admin') {
+      return isSuperAdmin();
+    }
     if (isSuperAdmin()) return true;
     if (!group.permissionKeys || group.permissionKeys.length === 0) return true;
     return group.permissionKeys.some(key => hasPermission(key));
