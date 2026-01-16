@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/auth';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { AppSidebar } from './AppSidebar';
 import { AppHeader } from './AppHeader';
+import { TrialBanner } from '@/components/trial/TrialBanner';
 import { Loader2 } from 'lucide-react';
 
 interface DashboardLayoutProps {
@@ -33,6 +34,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       <div className="flex min-h-screen w-full overflow-hidden">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
+          <TrialBanner />
           <AppHeader />
           <main className="flex-1 overflow-auto p-3 sm:p-4 md:p-6 lg:p-8 animate-fade-in">
             <div className="max-w-full">
