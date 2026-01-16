@@ -43,6 +43,16 @@ export interface TenantBranding {
   custom_domain: string | null;
   meta_title: string | null;
   meta_description: string | null;
+  // Contact & Social Media
+  company_address: string | null;
+  company_city: string | null;
+  company_country: string | null;
+  company_description: string | null;
+  social_twitter: string | null;
+  social_linkedin: string | null;
+  social_instagram: string | null;
+  social_facebook: string | null;
+  social_whatsapp: string | null;
 }
 
 export function useTenant() {
