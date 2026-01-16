@@ -3,11 +3,13 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider } from "@/lib/auth";
+import { AuthProvider, useAuth } from "@/lib/auth";
 import { TenantProvider } from "@/components/providers/TenantProvider";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { PlaceholderPage } from "@/components/PlaceholderPage";
 import { GoogleMapsProvider } from "@/components/maps";
+import { MobileAppLayout } from "@/components/mobile/MobileAppLayout";
+import { useNativePlatform } from "@/hooks/useNativePlatform";
 
 // Pages
 import Index from "./pages/Index";
@@ -53,6 +55,19 @@ import { Users as UsersIcon } from "lucide-react";
 
 const queryClient = new QueryClient();
 
+// Mobile driver app wrapper
+function MobileDriverWrapper() {
+  const { isNative } = useNativePlatform();
+  const { userRole } = useAuth();
+  
+  // Show mobile layout for native drivers
+  if (isNative && userRole === 'chofer') {
+    return <MobileAppLayout />;
+  }
+  
+  return null;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -63,6 +78,9 @@ const App = () => (
           <TenantProvider>
             <GoogleMapsProvider>
               <Routes>
+              {/* Mobile Driver App - Native only */}
+              <Route path="/driver/*" element={<MobileAppLayout />} />
+              
               {/* Public Routes */}
               <Route path="/" element={<Index />} />
               <Route path="/login" element={<Login />} />
