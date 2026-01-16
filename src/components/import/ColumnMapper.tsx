@@ -96,20 +96,22 @@ export default function ColumnMapper({
             <SelectItem value="__none__">
               <span className="text-muted-foreground">No mapear</span>
             </SelectItem>
-            {headers.map((header) => {
-              const isUsed = usedColumns.has(header) && mapping[field.key] !== header;
-              return (
-                <SelectItem
-                  key={header}
-                  value={header}
-                  disabled={isUsed}
-                  className={isUsed ? "opacity-50" : ""}
-                >
-                  {header}
-                  {isUsed && " (en uso)"}
-                </SelectItem>
-              );
-            })}
+            {headers
+              .filter((header) => header && header.trim() !== "")
+              .map((header) => {
+                const isUsed = usedColumns.has(header) && mapping[field.key] !== header;
+                return (
+                  <SelectItem
+                    key={header}
+                    value={header}
+                    disabled={isUsed}
+                    className={isUsed ? "opacity-50" : ""}
+                  >
+                    {header}
+                    {isUsed && " (en uso)"}
+                  </SelectItem>
+                );
+              })}
           </SelectContent>
         </Select>
         <div className="text-sm text-muted-foreground truncate" title={sampleValue}>
