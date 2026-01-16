@@ -9,6 +9,7 @@ interface MobileBottomNavProps {
   onTabChange: (tab: MobileTab) => void;
   notificationCount?: number;
   userRole?: UserMobileRole;
+  hasPermission?: (key: string) => boolean;
 }
 
 interface TabConfig {
@@ -16,6 +17,7 @@ interface TabConfig {
   label: string;
   icon: typeof Home;
   isCenter?: boolean;
+  permissionKey?: string;
 }
 
 const getTabsForRole = (role: UserMobileRole): TabConfig[] => {
@@ -23,16 +25,16 @@ const getTabsForRole = (role: UserMobileRole): TabConfig[] => {
     case 'chofer':
       return [
         { id: 'home', label: 'Inicio', icon: Home },
-        { id: 'routes', label: 'Rutas', icon: Route },
-        { id: 'scan', label: 'Scan', icon: QrCode, isCenter: true },
-        { id: 'earnings', label: 'Dinero', icon: Wallet },
+        { id: 'routes', label: 'Rutas', icon: Route, permissionKey: 'my_routes.view' },
+        { id: 'scan', label: 'Scan', icon: QrCode, isCenter: true, permissionKey: 'shipments.scan' },
+        { id: 'earnings', label: 'Dinero', icon: Wallet, permissionKey: 'commissions.view' },
         { id: 'profile', label: 'Perfil', icon: User },
       ];
     case 'centro_logistico':
       return [
         { id: 'home', label: 'Inicio', icon: Home },
-        { id: 'reception', label: 'Recepción', icon: Package },
-        { id: 'scan', label: 'Scan', icon: QrCode, isCenter: true },
+        { id: 'reception', label: 'Recepción', icon: Package, permissionKey: 'route_sheets.view' },
+        { id: 'scan', label: 'Scan', icon: QrCode, isCenter: true, permissionKey: 'shipments.scan' },
         { id: 'history', label: 'Historial', icon: Clock },
         { id: 'profile', label: 'Perfil', icon: User },
       ];
@@ -40,16 +42,26 @@ const getTabsForRole = (role: UserMobileRole): TabConfig[] => {
     default:
       return [
         { id: 'home', label: 'Inicio', icon: Home },
-        { id: 'deliveries', label: 'Entregas', icon: Truck },
-        { id: 'scan', label: 'Scan', icon: QrCode, isCenter: true },
+        { id: 'deliveries', label: 'Entregas', icon: Truck, permissionKey: 'delivery.confirm' },
+        { id: 'scan', label: 'Scan', icon: QrCode, isCenter: true, permissionKey: 'shipments.scan' },
         { id: 'history', label: 'Historial', icon: Clock },
         { id: 'profile', label: 'Perfil', icon: User },
       ];
   }
 };
 
-export function MobileBottomNav({ activeTab, onTabChange, notificationCount = 0, userRole = 'sucursal' }: MobileBottomNavProps) {
-  const tabs = getTabsForRole(userRole);
+export function MobileBottomNav({ activeTab, onTabChange, notificationCount = 0, userRole = 'sucursal', hasPermission }: MobileBottomNavProps) {
+  const allTabs = getTabsForRole(userRole);
+  
+  // Filter tabs based on permissions
+  const tabs = allTabs.filter(tab => {
+    // Tabs without permissionKey are always visible (home, profile, history)
+    if (!tab.permissionKey) return true;
+    // If hasPermission function is not available, show all tabs (fallback)
+    if (!hasPermission) return true;
+    // Check if user has the required permission
+    return hasPermission(tab.permissionKey);
+  });
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-slate-900/95 backdrop-blur-xl border-t border-slate-700/50" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>

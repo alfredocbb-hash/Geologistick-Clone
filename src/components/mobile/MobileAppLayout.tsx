@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import { MobileHeader } from './MobileHeader';
 import { MobileBottomNav, MobileTab } from './MobileBottomNav';
 import { MobileHomeTab } from './MobileHomeTab';
@@ -11,6 +12,7 @@ import { MobileDeliveriesTab } from './MobileDeliveriesTab';
 import { MobileHistoryTab } from './MobileHistoryTab';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useAuth } from '@/lib/auth';
+import { usePermissions } from '@/hooks/usePermissions';
 import { NotificationPopover } from '@/components/notifications/NotificationPopover';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 
@@ -21,6 +23,7 @@ export function MobileAppLayout() {
   const [showNotifications, setShowNotifications] = useState(false);
   const { unreadCount } = useNotifications();
   const { hasRole } = useAuth();
+  const { hasPermission, isLoading: permissionsLoading } = usePermissions();
 
   // Determine user's mobile role
   const getUserMobileRole = (): UserMobileRole => {
@@ -35,6 +38,15 @@ export function MobileAppLayout() {
   const handleTabChange = (tab: MobileTab) => {
     setActiveTab(tab);
   };
+
+  // Show loading while permissions are being fetched
+  if (permissionsLoading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -93,6 +105,7 @@ export function MobileAppLayout() {
         onTabChange={handleTabChange}
         notificationCount={unreadCount}
         userRole={userRole}
+        hasPermission={hasPermission}
       />
 
       {/* Notifications Sheet */}
