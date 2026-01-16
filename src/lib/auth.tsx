@@ -5,7 +5,9 @@ import type { Database } from '@/integrations/supabase/types';
 
 type AppRole = Database['public']['Enums']['app_role'];
 
-interface Profile {
+export interface Profile {
+  created_at?: string | null;
+  tenant_id?: string | null;
   id: string;
   user_id: string;
   email: string;

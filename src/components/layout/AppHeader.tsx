@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ChevronDown, LogOut, User, Settings, Building2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { NotificationPopover } from '@/components/notifications/NotificationPopover';
@@ -61,6 +61,7 @@ export function AppHeader() {
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="flex items-center gap-2 px-2">
             <Avatar className="h-8 w-8">
+              <AvatarImage src={profile?.avatar_url || undefined} alt="Avatar" />
               <AvatarFallback className="bg-primary text-primary-foreground text-sm font-semibold">
                 {getInitials()}
               </AvatarFallback>
