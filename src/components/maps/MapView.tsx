@@ -1,8 +1,8 @@
 import { GoogleMap, Marker, DirectionsRenderer, Polyline } from '@react-google-maps/api';
 import { useState, useCallback, useEffect, memo } from 'react';
-import { useGoogleMapsLoaded } from './GoogleMapsProvider';
+import { useGoogleMaps } from './GoogleMapsProvider';
 import { Card } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle } from 'lucide-react';
 
 export interface MarkerInfo {
   position: { lat: number; lng: number };
@@ -72,7 +72,7 @@ function MapViewComponent({
   className = '',
   onMarkerClick,
 }: MapViewProps) {
-  const isLoaded = useGoogleMapsLoaded();
+  const { isLoaded, loadError } = useGoogleMaps();
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const [directions, setDirections] = useState<google.maps.DirectionsResult | null>(null);
 
@@ -125,6 +125,18 @@ function MapViewComponent({
       map.fitBounds(bounds, 50);
     }
   }, [map, markers, zoom]);
+
+  if (loadError) {
+    return (
+      <Card className={`flex items-center justify-center bg-muted ${className}`} style={{ height }}>
+        <div className="flex flex-col items-center gap-2 text-muted-foreground">
+          <AlertTriangle className="h-6 w-6 text-yellow-500" />
+          <span className="text-sm">Error al cargar el mapa</span>
+          <span className="text-xs max-w-xs text-center">{loadError}</span>
+        </div>
+      </Card>
+    );
+  }
 
   if (!isLoaded) {
     return (
