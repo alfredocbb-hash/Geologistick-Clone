@@ -190,8 +190,8 @@ export function parseCSV(content: string): CSVParseResult {
     };
   }
   
-  // Parse headers
-  const headers = parseCSVLine(lines[0], delimiter);
+  // Parse headers and trim them to avoid whitespace issues
+  const headers = parseCSVLine(lines[0], delimiter).map(h => h.trim());
   
   // Parse rows
   const rows: Record<string, string>[] = [];
@@ -209,6 +209,7 @@ export function parseCSV(content: string): CSVParseResult {
       });
     }
     
+    // Create row object with trimmed headers as keys
     const row: Record<string, string> = {};
     headers.forEach((header, index) => {
       row[header] = values[index] || '';
