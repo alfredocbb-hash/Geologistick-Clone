@@ -2118,6 +2118,10 @@ export type Database = {
           color_secundario: string | null
           color_sidebar: string | null
           color_sidebar_dark: string | null
+          company_address: string | null
+          company_city: string | null
+          company_country: string | null
+          company_description: string | null
           created_at: string | null
           custom_css: string | null
           custom_domain: string | null
@@ -2129,6 +2133,11 @@ export type Database = {
           meta_description: string | null
           meta_title: string | null
           nombre_app: string | null
+          social_facebook: string | null
+          social_instagram: string | null
+          social_linkedin: string | null
+          social_twitter: string | null
+          social_whatsapp: string | null
           support_email: string | null
           support_phone: string | null
           tenant_id: string | null
@@ -2143,6 +2152,10 @@ export type Database = {
           color_secundario?: string | null
           color_sidebar?: string | null
           color_sidebar_dark?: string | null
+          company_address?: string | null
+          company_city?: string | null
+          company_country?: string | null
+          company_description?: string | null
           created_at?: string | null
           custom_css?: string | null
           custom_domain?: string | null
@@ -2154,6 +2167,11 @@ export type Database = {
           meta_description?: string | null
           meta_title?: string | null
           nombre_app?: string | null
+          social_facebook?: string | null
+          social_instagram?: string | null
+          social_linkedin?: string | null
+          social_twitter?: string | null
+          social_whatsapp?: string | null
           support_email?: string | null
           support_phone?: string | null
           tenant_id?: string | null
@@ -2168,6 +2186,10 @@ export type Database = {
           color_secundario?: string | null
           color_sidebar?: string | null
           color_sidebar_dark?: string | null
+          company_address?: string | null
+          company_city?: string | null
+          company_country?: string | null
+          company_description?: string | null
           created_at?: string | null
           custom_css?: string | null
           custom_domain?: string | null
@@ -2179,6 +2201,11 @@ export type Database = {
           meta_description?: string | null
           meta_title?: string | null
           nombre_app?: string | null
+          social_facebook?: string | null
+          social_instagram?: string | null
+          social_linkedin?: string | null
+          social_twitter?: string | null
+          social_whatsapp?: string | null
           support_email?: string | null
           support_phone?: string | null
           tenant_id?: string | null

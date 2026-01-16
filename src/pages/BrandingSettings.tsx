@@ -9,9 +9,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Loader2, Palette, Image, Type, Globe, Save, Eye } from 'lucide-react';
+import { Loader2, Palette, Image, Type, Globe, Save, Eye, Phone } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LogoUploader } from '@/components/branding/LogoUploader';
+
 interface BrandingFormData {
   nombre_app: string;
   logo_light: string;
@@ -32,6 +33,16 @@ interface BrandingFormData {
   custom_domain: string;
   meta_title: string;
   meta_description: string;
+  // Contact & Social Media
+  company_address: string;
+  company_city: string;
+  company_country: string;
+  company_description: string;
+  social_twitter: string;
+  social_linkedin: string;
+  social_instagram: string;
+  social_facebook: string;
+  social_whatsapp: string;
 }
 
 const defaultBranding: BrandingFormData = {
@@ -54,6 +65,15 @@ const defaultBranding: BrandingFormData = {
   custom_domain: '',
   meta_title: '',
   meta_description: '',
+  company_address: '',
+  company_city: '',
+  company_country: '',
+  company_description: '',
+  social_twitter: '',
+  social_linkedin: '',
+  social_instagram: '',
+  social_facebook: '',
+  social_whatsapp: '',
 };
 
 export default function BrandingSettings() {
@@ -96,6 +116,15 @@ export default function BrandingSettings() {
           custom_domain: data.custom_domain || '',
           meta_title: data.meta_title || '',
           meta_description: data.meta_description || '',
+          company_address: data.company_address || '',
+          company_city: data.company_city || '',
+          company_country: data.company_country || '',
+          company_description: data.company_description || '',
+          social_twitter: data.social_twitter || '',
+          social_linkedin: data.social_linkedin || '',
+          social_instagram: data.social_instagram || '',
+          social_facebook: data.social_facebook || '',
+          social_whatsapp: data.social_whatsapp || '',
         });
       }
       return data;
@@ -204,6 +233,10 @@ export default function BrandingSettings() {
                 <TabsTrigger value="images">
                   <Image className="h-4 w-4 mr-2" />
                   Imágenes
+                </TabsTrigger>
+                <TabsTrigger value="contact">
+                  <Phone className="h-4 w-4 mr-2" />
+                  Contacto
                 </TabsTrigger>
                 <TabsTrigger value="advanced">
                   <Globe className="h-4 w-4 mr-2" />
@@ -427,6 +460,110 @@ export default function BrandingSettings() {
                     )}
                   </CardContent>
                 </Card>
+              </TabsContent>
+
+              <TabsContent value="contact">
+                <div className="space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Ubicación</CardTitle>
+                      <CardDescription>Dirección física de la empresa</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <Label>Dirección</Label>
+                        <Input
+                          value={formData.company_address}
+                          onChange={(e) => handleChange('company_address', e.target.value)}
+                          placeholder="Av. Corrientes 1234, Piso 5"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Ciudad</Label>
+                          <Input
+                            value={formData.company_city}
+                            onChange={(e) => handleChange('company_city', e.target.value)}
+                            placeholder="Buenos Aires"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>País</Label>
+                          <Input
+                            value={formData.company_country}
+                            onChange={(e) => handleChange('company_country', e.target.value)}
+                            placeholder="Argentina"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Descripción de la Empresa</Label>
+                        <Textarea
+                          value={formData.company_description}
+                          onChange={(e) => handleChange('company_description', e.target.value)}
+                          placeholder="Plataforma líder en gestión de logística y envíos..."
+                          rows={3}
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Redes Sociales</CardTitle>
+                      <CardDescription>Links a tus perfiles de redes sociales</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Twitter / X</Label>
+                          <Input
+                            value={formData.social_twitter}
+                            onChange={(e) => handleChange('social_twitter', e.target.value)}
+                            placeholder="https://twitter.com/tuempresa"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>LinkedIn</Label>
+                          <Input
+                            value={formData.social_linkedin}
+                            onChange={(e) => handleChange('social_linkedin', e.target.value)}
+                            placeholder="https://linkedin.com/company/tuempresa"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Instagram</Label>
+                          <Input
+                            value={formData.social_instagram}
+                            onChange={(e) => handleChange('social_instagram', e.target.value)}
+                            placeholder="https://instagram.com/tuempresa"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Facebook</Label>
+                          <Input
+                            value={formData.social_facebook}
+                            onChange={(e) => handleChange('social_facebook', e.target.value)}
+                            placeholder="https://facebook.com/tuempresa"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>WhatsApp</Label>
+                        <Input
+                          value={formData.social_whatsapp}
+                          onChange={(e) => handleChange('social_whatsapp', e.target.value)}
+                          placeholder="+54 11 1234-5678"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Número de WhatsApp para contacto directo
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
               </TabsContent>
 
               <TabsContent value="advanced">
