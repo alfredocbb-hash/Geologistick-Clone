@@ -52,7 +52,7 @@ export function MobileBottomNav({ activeTab, onTabChange, notificationCount = 0,
   const tabs = getTabsForRole(userRole);
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-slate-900/95 backdrop-blur-xl border-t border-slate-700/50 safe-area-bottom">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-slate-900/95 backdrop-blur-xl border-t border-slate-700/50" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
       <div className="flex items-center justify-around h-16 px-2">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;

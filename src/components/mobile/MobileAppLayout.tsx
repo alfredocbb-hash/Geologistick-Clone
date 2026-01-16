@@ -76,11 +76,15 @@ export function MobileAppLayout() {
         onProfileClick={() => setActiveTab('profile')}
       />
 
-      {/* Main Content */}
-      <main className="pt-14 pb-20 px-4 min-h-screen">
-        <div className="pt-4">
-          {renderTabContent()}
-        </div>
+      {/* Main Content - adjusted for safe areas */}
+      <main 
+        className="px-4 min-h-screen"
+        style={{ 
+          paddingTop: 'calc(3.5rem + env(safe-area-inset-top, 0px) + 1rem)',
+          paddingBottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))'
+        }}
+      >
+        {renderTabContent()}
       </main>
 
       {/* Bottom Navigation */}
