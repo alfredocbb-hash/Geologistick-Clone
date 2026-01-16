@@ -316,6 +316,7 @@ export default function ImportShipmentsDialog({
       return progressState;
     },
     onSuccess: (result) => {
+      setIsImporting(false);
       setStep("complete");
       queryClient.invalidateQueries({ queryKey: ["envios-planificador"] });
       
