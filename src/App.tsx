@@ -58,10 +58,10 @@ const queryClient = new QueryClient();
 // Mobile driver app wrapper
 function MobileDriverWrapper() {
   const { isNative } = useNativePlatform();
-  const { userRole } = useAuth();
+  const { hasRole } = useAuth();
   
   // Show mobile layout for native drivers
-  if (isNative && userRole === 'chofer') {
+  if (isNative && hasRole('chofer')) {
     return <MobileAppLayout />;
   }
   
