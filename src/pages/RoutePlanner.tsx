@@ -46,6 +46,7 @@ import {
   CalendarClock,
   Edit,
   RefreshCw,
+  Upload,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -54,6 +55,7 @@ import MapView, { MarkerInfo } from "@/components/maps/MapView";
 import { ShipmentMapPopup } from "@/components/maps/ShipmentMapPopup";
 import { BranchMapPopup } from "@/components/maps/BranchMapPopup";
 import EditRouteDialog from "@/components/routes/EditRouteDialog";
+import ImportShipmentsDialog from "@/components/import/ImportShipmentsDialog";
 import RescheduledShipmentsList from "@/components/routes/RescheduledShipmentsList";
 
 interface RouteStop {
@@ -97,6 +99,7 @@ export default function RoutePlanner() {
   const [isGeolocating, setIsGeolocating] = useState(false);
   const [editingRoute, setEditingRoute] = useState<any | null>(null);
   const [selectedReprogramados, setSelectedReprogramados] = useState<string[]>([]);
+  const [showImportDialog, setShowImportDialog] = useState(false);
 
   // Fetch sucursal de origen del usuario
   const { data: sucursalOrigen } = useQuery({
@@ -793,6 +796,14 @@ export default function RoutePlanner() {
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg">Envíos Disponibles</CardTitle>
                   <div className="flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => setShowImportDialog(true)}
+                    >
+                      <Upload className="mr-1 h-3 w-3" />
+                      Importar CSV
+                    </Button>
                     <Button variant="outline" size="sm" onClick={selectAll}>
                       Todos
                     </Button>
@@ -1331,6 +1342,15 @@ export default function RoutePlanner() {
           onClose={() => setEditingRoute(null)}
         />
       )}
+
+      {/* Import Shipments Dialog */}
+      <ImportShipmentsDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        onImportComplete={() => {
+          queryClient.invalidateQueries({ queryKey: ["envios-planificador"] });
+        }}
+      />
     </div>
   );
 }
