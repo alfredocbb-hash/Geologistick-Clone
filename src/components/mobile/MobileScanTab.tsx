@@ -4,6 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
+import { usePermissions } from '@/hooks/usePermissions';
 import { toast } from 'sonner';
 import QRScanner from '@/components/qr/QRScanner';
 import PickupConfirmation from '@/components/scan/PickupConfirmation';
@@ -29,6 +30,7 @@ interface ScannedShipment {
 
 export function MobileScanTab() {
   const { user, hasRole } = useAuth();
+  const { hasPermission } = usePermissions();
   const queryClient = useQueryClient();
   
   const [showScanner, setShowScanner] = useState(false);
@@ -95,27 +97,38 @@ export function MobileScanTab() {
       // Save scanned shipment
       setScannedShipment(shipment);
       
-      // Determine which dialog to show based on user role and shipment status
+      // Determine which dialog to show based on PERMISSIONS and shipment status
+      // Use permissions from Gestión de Roles instead of just role checks
+      const canPickup = hasPermission('shipments.scan') || hasPermission('route.start');
+      const canDeliver = hasPermission('delivery.confirm');
+      const canReceive = hasPermission('route_sheets.view');
+      
       if (hasRole('chofer')) {
         // Driver: pickup or delivery based on status
-        if (shipment.estado === 'pendiente' || shipment.estado === 'en_bodega') {
+        if ((shipment.estado === 'pendiente' || shipment.estado === 'en_bodega') && canPickup) {
           setShowPickupDialog(true);
-        } else {
+        } else if (canDeliver) {
           setShowDeliveryDialog(true);
+        } else if (canPickup) {
+          setShowPickupDialog(true);
         }
       } else if (hasRole('operador') || hasRole('bodega')) {
-        // Logistics center: receive shipment
-        setShowReceiveDialog(true);
-      } else if (hasRole('sucursal') || hasRole('despachador')) {
-        // Branch: receive or deliver
-        if (shipment.estado === 'en_transito') {
+        // Logistics center: receive shipment if has permission
+        if (canReceive) {
           setShowReceiveDialog(true);
-        } else {
+        }
+      } else if (hasRole('sucursal') || hasRole('despachador')) {
+        // Branch: receive or deliver based on permissions
+        if (shipment.estado === 'en_transito' && canReceive) {
+          setShowReceiveDialog(true);
+        } else if (canDeliver) {
           setShowDeliveryDialog(true);
         }
-      } else {
-        // Default: show delivery dialog
+      } else if (canDeliver) {
+        // Fallback: show delivery dialog if user has delivery permission
         setShowDeliveryDialog(true);
+      } else if (canReceive) {
+        setShowReceiveDialog(true);
       }
       
       toast.success('Envío encontrado', {
