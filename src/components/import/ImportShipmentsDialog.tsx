@@ -35,6 +35,7 @@ import {
   CSVParseError,
 } from "@/lib/csvParser";
 import CSVPreviewTable from "./CSVPreviewTable";
+import ColumnMapper from "./ColumnMapper";
 
 interface ImportShipmentsDialogProps {
   open: boolean;
@@ -65,7 +66,7 @@ export default function ImportShipmentsDialog({
   const [validationErrors, setValidationErrors] = useState<CSVParseError[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [progress, setProgress] = useState<ImportProgress | null>(null);
-  const [step, setStep] = useState<"upload" | "preview" | "importing" | "complete">("upload");
+  const [step, setStep] = useState<"upload" | "mapping" | "preview" | "importing" | "complete">("upload");
 
   const resetState = useCallback(() => {
     setFile(null);
@@ -112,7 +113,7 @@ export default function ImportShipmentsDialog({
 
         setValidationErrors(errors);
         setParseResult(result);
-        setStep("preview");
+        setStep("mapping");
       } catch (error) {
         console.error("Error parsing CSV:", error);
         toast.error("Error al leer el archivo CSV");
@@ -354,6 +355,7 @@ export default function ImportShipmentsDialog({
           </DialogTitle>
           <DialogDescription>
             {step === "upload" && "Selecciona un archivo CSV para importar envíos al sistema"}
+            {step === "mapping" && "Asigna las columnas del CSV a los campos del sistema"}
             {step === "preview" && "Revisa los datos antes de importar"}
             {step === "importing" && "Importando envíos..."}
             {step === "complete" && "Importación completada"}
@@ -387,6 +389,27 @@ export default function ImportShipmentsDialog({
                 <FileUp className="mr-2 h-4 w-4" />
                 Seleccionar archivo
               </Button>
+            </div>
+          )}
+
+          {/* Mapping Step */}
+          {step === "mapping" && parseResult && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-4 mb-4">
+                <Badge variant="outline" className="gap-1">
+                  <FileSpreadsheet className="h-3 w-3" />
+                  {file?.name}
+                </Badge>
+                <span className="text-sm text-muted-foreground">
+                  {parseResult.totalRows} filas detectadas
+                </span>
+              </div>
+              <ColumnMapper
+                headers={parseResult.headers}
+                rows={parseResult.rows}
+                mapping={mapping}
+                onMappingChange={setMapping}
+              />
             </div>
           )}
 
@@ -551,10 +574,35 @@ export default function ImportShipmentsDialog({
             </Button>
           )}
 
-          {step === "preview" && (
+          {step === "mapping" && (
             <>
               <Button variant="outline" onClick={resetState}>
-                Cambiar archivo
+                ← Cambiar archivo
+              </Button>
+              <Button
+                onClick={() => {
+                  // Re-validate with current mapping before preview
+                  if (parseResult) {
+                    const errors: CSVParseError[] = [...parseResult.errors];
+                    parseResult.rows.forEach((row, index) => {
+                      const error = validateRow(row, mapping, index + 2);
+                      if (error) errors.push(error);
+                    });
+                    setValidationErrors(errors);
+                  }
+                  setStep("preview");
+                }}
+                disabled={!mapping.recipientName || !mapping.recipientAddress}
+              >
+                Continuar →
+              </Button>
+            </>
+          )}
+
+          {step === "preview" && (
+            <>
+              <Button variant="outline" onClick={() => setStep("mapping")}>
+                ← Volver al mapeo
               </Button>
               <Button
                 onClick={() => importMutation.mutate()}
