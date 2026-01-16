@@ -54,6 +54,8 @@ export function MobileRoutesTab() {
     switch (estado) {
       case 'asignada':
         return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">Pendiente</Badge>;
+      case 'confirmada':
+        return <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">Confirmada</Badge>;
       case 'en_transito':
       case 'en_progreso':
         return <Badge className="bg-green-500/20 text-green-400 border-green-500/30">En Curso</Badge>;
@@ -68,14 +70,14 @@ export function MobileRoutesTab() {
   // Separate routes by status
   const activeHojas = hojasRuta?.filter(h => ['asignada', 'en_transito'].includes(h.estado || '')) || [];
   const completedHojas = hojasRuta?.filter(h => h.estado === 'completada') || [];
-  const activeRutas = rutasPlanificadas?.filter(r => ['asignada', 'en_progreso'].includes(r.estado || '')) || [];
+  const activeRutas = rutasPlanificadas?.filter(r => ['asignada', 'confirmada', 'en_progreso'].includes(r.estado || '')) || [];
   const completedRutas = rutasPlanificadas?.filter(r => r.estado === 'finalizada') || [];
 
   const RouteCard = ({ route, type }: { route: any; type: 'hoja' | 'ruta' }) => {
     const isHoja = type === 'hoja';
     const isActive = isHoja 
       ? ['asignada', 'en_transito'].includes(route.estado)
-      : ['asignada', 'en_progreso'].includes(route.estado);
+      : ['asignada', 'confirmada', 'en_progreso'].includes(route.estado);
 
     return (
       <Card 
