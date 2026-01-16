@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { MobileHeader } from './MobileHeader';
 import { MobileBottomNav, MobileTab } from './MobileBottomNav';
 import { MobileHomeTab } from './MobileHomeTab';
@@ -24,6 +25,25 @@ export function MobileAppLayout() {
   const { unreadCount } = useNotifications();
   const { hasRole } = useAuth();
   const { hasPermission, isLoading: permissionsLoading } = usePermissions();
+  const queryClient = useQueryClient();
+
+  // Refresh permissions when app resumes (comes back to focus)
+  // This ensures changes in Gestión de Roles are reflected without reinstalling the APK
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Invalidate permissions cache when app becomes visible again
+        queryClient.invalidateQueries({ queryKey: ['user-permissions'] });
+        queryClient.invalidateQueries({ queryKey: ['user-roles'] });
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [queryClient]);
 
   // Determine user's mobile role
   const getUserMobileRole = (): UserMobileRole => {

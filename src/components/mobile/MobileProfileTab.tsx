@@ -1,10 +1,10 @@
 import { useAuth } from '@/lib/auth';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   User, Mail, Phone, MapPin, Car, LogOut, 
   ChevronRight, Shield, Bell, Moon, HelpCircle,
-  Package, TrendingUp, Clock
+  Package, TrendingUp, Clock, RefreshCw
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -12,10 +12,13 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { useState } from 'react';
 
 export function MobileProfileTab() {
   const { user, profile, signOut } = useAuth();
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Fetch stats
   const { data: stats } = useQuery({
@@ -68,6 +71,23 @@ export function MobileProfileTab() {
       navigate('/login');
     } catch (error) {
       toast.error('Error al cerrar sesión');
+    }
+  };
+
+  const handleRefreshApp = async () => {
+    setIsRefreshing(true);
+    try {
+      // Invalidate all cached data including permissions
+      await queryClient.invalidateQueries({ queryKey: ['user-permissions'] });
+      await queryClient.invalidateQueries({ queryKey: ['user-roles'] });
+      await queryClient.invalidateQueries();
+      toast.success('App actualizada', {
+        description: 'Los datos y permisos se han actualizado'
+      });
+    } catch (error) {
+      toast.error('Error al actualizar');
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -196,6 +216,20 @@ export function MobileProfileTab() {
           label="Ayuda y soporte" 
           onClick={() => {}}
         />
+      </Card>
+
+      <Card className="bg-slate-800/30 border-slate-700 overflow-hidden">
+        <button 
+          onClick={handleRefreshApp}
+          disabled={isRefreshing}
+          className="w-full flex items-center justify-between p-4 hover:bg-slate-800/50 transition-colors text-primary disabled:opacity-50"
+        >
+          <div className="flex items-center gap-3">
+            <RefreshCw className={`h-5 w-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span>Actualizar datos y permisos</span>
+          </div>
+          <ChevronRight className="h-5 w-5 text-slate-500" />
+        </button>
       </Card>
 
       <Card className="bg-slate-800/30 border-slate-700 overflow-hidden">
