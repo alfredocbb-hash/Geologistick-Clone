@@ -1,18 +1,41 @@
 import { useState } from 'react';
 import { QrCode, Package, Truck, History, CheckCircle2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { toast } from 'sonner';
-import { useNavigate } from 'react-router-dom';
+import QRScanner from '@/components/qr/QRScanner';
+import PickupConfirmation from '@/components/scan/PickupConfirmation';
+import ReceiveShipmentDialog from '@/components/scan/ReceiveShipmentDialog';
+import { BranchDeliveryDialog } from '@/components/scan/BranchDeliveryDialog';
 
 type ScanMode = 'idle' | 'scanning';
 
+interface ScannedShipment {
+  id: string;
+  tracking_number: string;
+  estado: string;
+  direccion_entrega: string | null;
+  direccion_retiro: string | null;
+  ciudad_retiro: string | null;
+  destinatario_id: string | null;
+  remitente_id: string | null;
+  sucursal_destino_id: string | null;
+  precio_total: number;
+  pago_contra_entrega: boolean | null;
+  tipo_pago: string | null;
+}
+
 export function MobileScanTab() {
-  const { user } = useAuth();
-  const navigate = useNavigate();
-  const [scanMode, setScanMode] = useState<ScanMode>('idle');
+  const { user, hasRole } = useAuth();
+  const queryClient = useQueryClient();
+  
+  const [showScanner, setShowScanner] = useState(false);
+  const [scannedShipment, setScannedShipment] = useState<ScannedShipment | null>(null);
+  const [showPickupDialog, setShowPickupDialog] = useState(false);
+  const [showReceiveDialog, setShowReceiveDialog] = useState(false);
+  const [showDeliveryDialog, setShowDeliveryDialog] = useState(false);
 
   // Fetch recent scans
   const { data: recentScans } = useQuery({
@@ -35,8 +58,109 @@ export function MobileScanTab() {
   });
 
   const handleScanClick = () => {
-    // Navigate to the existing scan page
-    navigate('/scan');
+    setShowScanner(true);
+  };
+
+  const handleScanResult = async (data: string) => {
+    setShowScanner(false);
+    
+    // Extract tracking number from QR (might be URL or just tracking)
+    let tracking = data;
+    if (data.includes('/')) {
+      const parts = data.split('/');
+      tracking = parts[parts.length - 1];
+    }
+    
+    // Clean up tracking number
+    tracking = tracking.trim();
+    
+    try {
+      // Search for shipment by tracking number
+      const { data: shipment, error } = await supabase
+        .from('envios')
+        .select('*')
+        .eq('tracking_number', tracking)
+        .single();
+      
+      if (error || !shipment) {
+        toast.error('Envío no encontrado', {
+          description: `No se encontró un envío con el código: ${tracking}`
+        });
+        return;
+      }
+      
+      // Play success sound
+      playBeepSound();
+      
+      // Save scanned shipment
+      setScannedShipment(shipment);
+      
+      // Determine which dialog to show based on user role and shipment status
+      if (hasRole('chofer')) {
+        // Driver: pickup or delivery based on status
+        if (shipment.estado === 'pendiente' || shipment.estado === 'en_bodega') {
+          setShowPickupDialog(true);
+        } else {
+          setShowDeliveryDialog(true);
+        }
+      } else if (hasRole('operador') || hasRole('bodega')) {
+        // Logistics center: receive shipment
+        setShowReceiveDialog(true);
+      } else if (hasRole('sucursal') || hasRole('despachador')) {
+        // Branch: receive or deliver
+        if (shipment.estado === 'en_transito') {
+          setShowReceiveDialog(true);
+        } else {
+          setShowDeliveryDialog(true);
+        }
+      } else {
+        // Default: show delivery dialog
+        setShowDeliveryDialog(true);
+      }
+      
+      toast.success('Envío encontrado', {
+        description: `Tracking: ${shipment.tracking_number}`
+      });
+      
+    } catch (err) {
+      console.error('Error searching shipment:', err);
+      toast.error('Error al buscar envío');
+    }
+  };
+
+  const playBeepSound = () => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = 1000;
+      oscillator.type = 'sine';
+      gainNode.gain.value = 0.3;
+      
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 0.15);
+    } catch (err) {
+      // Ignore audio errors
+    }
+  };
+
+  const handleDialogClose = () => {
+    setShowPickupDialog(false);
+    setShowReceiveDialog(false);
+    setShowDeliveryDialog(false);
+    setScannedShipment(null);
+    
+    // Refresh recent scans
+    queryClient.invalidateQueries({ queryKey: ['mobile-recent-scans'] });
+  };
+
+  const handleDialogSuccess = () => {
+    handleDialogClose();
+    toast.success('Operación completada');
   };
 
   const getStatusColor = (estado: string) => {
@@ -100,7 +224,7 @@ export function MobileScanTab() {
       <div className="grid grid-cols-2 gap-3">
         <Card 
           className="bg-slate-800/50 border-slate-700 cursor-pointer hover:border-primary/50 transition-colors"
-          onClick={() => navigate('/my-routes')}
+          onClick={handleScanClick}
         >
           <CardContent className="p-4 flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center">
@@ -108,14 +232,14 @@ export function MobileScanTab() {
             </div>
             <div>
               <p className="font-medium text-white">Colectar</p>
-              <p className="text-xs text-slate-400">Ruta asignada</p>
+              <p className="text-xs text-slate-400">Escanear retiro</p>
             </div>
           </CardContent>
         </Card>
 
         <Card 
           className="bg-slate-800/50 border-slate-700 cursor-pointer hover:border-primary/50 transition-colors"
-          onClick={() => navigate('/my-routes')}
+          onClick={handleScanClick}
         >
           <CardContent className="p-4 flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-green-500/20 flex items-center justify-center">
@@ -123,7 +247,7 @@ export function MobileScanTab() {
             </div>
             <div>
               <p className="font-medium text-white">Entregar</p>
-              <p className="text-xs text-slate-400">Ruta activa</p>
+              <p className="text-xs text-slate-400">Escanear entrega</p>
             </div>
           </CardContent>
         </Card>
@@ -160,6 +284,43 @@ export function MobileScanTab() {
             ))}
           </div>
         </div>
+      )}
+
+      {/* QR Scanner Overlay */}
+      {showScanner && (
+        <QRScanner
+          onScan={handleScanResult}
+          onClose={() => setShowScanner(false)}
+        />
+      )}
+
+      {/* Pickup Confirmation Dialog */}
+      {scannedShipment && showPickupDialog && (
+        <PickupConfirmation
+          shipment={scannedShipment}
+          onClose={handleDialogClose}
+          onSuccess={handleDialogSuccess}
+        />
+      )}
+
+      {/* Receive Shipment Dialog */}
+      {scannedShipment && showReceiveDialog && (
+        <ReceiveShipmentDialog
+          shipment={scannedShipment}
+          type={hasRole('operador') || hasRole('bodega') ? 'center' : 'branch'}
+          onClose={handleDialogClose}
+          onSuccess={handleDialogSuccess}
+        />
+      )}
+
+      {/* Branch Delivery Dialog */}
+      {scannedShipment && showDeliveryDialog && (
+        <BranchDeliveryDialog
+          open={showDeliveryDialog}
+          shipment={scannedShipment}
+          onClose={handleDialogClose}
+          onSuccess={handleDialogSuccess}
+        />
       )}
     </div>
   );
