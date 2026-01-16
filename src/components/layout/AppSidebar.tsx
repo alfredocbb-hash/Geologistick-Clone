@@ -57,6 +57,11 @@ const navigation: NavGroup[] = [{
     icon: QrCode,
     permissionKey: 'shipments.scan'
   }, {
+    title: 'Mis Rutas',
+    url: '/my-routes',
+    icon: Route,
+    permissionKey: 'my_routes.view'
+  }, {
     title: 'Entrega a Domicilio',
     url: '/my-routes',
     icon: Home,
