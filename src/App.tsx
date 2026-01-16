@@ -10,7 +10,9 @@ import { PlaceholderPage } from "@/components/PlaceholderPage";
 import { GoogleMapsProvider } from "@/components/maps";
 
 // Pages
+import Index from "./pages/Index";
 import Login from "./pages/Login";
+import Onboarding from "./pages/Onboarding";
 import Dashboard from "./pages/Dashboard";
 import Shipments from "./pages/Shipments";
 import NewShipment from "./pages/NewShipment";
@@ -60,7 +62,9 @@ const App = () => (
             <GoogleMapsProvider>
               <Routes>
               {/* Public Routes */}
+              <Route path="/" element={<Index />} />
               <Route path="/login" element={<Login />} />
+              <Route path="/onboarding" element={<Onboarding />} />
               <Route path="/tracking" element={<Tracking />} />
               
               {/* Protected Routes */}
@@ -107,9 +111,6 @@ const App = () => (
               
               {/* Profile */}
               <Route path="/profile" element={<DashboardLayout><PlaceholderPage title="Mi Perfil" description="Información personal" icon={UsersIcon} /></DashboardLayout>} />
-              
-              {/* Redirect root to dashboard */}
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
               
               {/* 404 */}
               <Route path="*" element={<NotFound />} />
