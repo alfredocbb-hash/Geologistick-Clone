@@ -6,14 +6,31 @@ import { MobileRoutesTab } from './MobileRoutesTab';
 import { MobileScanTab } from './MobileScanTab';
 import { MobileEarningsTab } from './MobileEarningsTab';
 import { MobileProfileTab } from './MobileProfileTab';
+import { MobileReceptionTab } from './MobileReceptionTab';
+import { MobileDeliveriesTab } from './MobileDeliveriesTab';
+import { MobileHistoryTab } from './MobileHistoryTab';
 import { useNotifications } from '@/hooks/useNotifications';
+import { useAuth } from '@/lib/auth';
 import { NotificationPopover } from '@/components/notifications/NotificationPopover';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
+
+export type UserMobileRole = 'chofer' | 'centro_logistico' | 'sucursal';
 
 export function MobileAppLayout() {
   const [activeTab, setActiveTab] = useState<MobileTab>('home');
   const [showNotifications, setShowNotifications] = useState(false);
   const { unreadCount } = useNotifications();
+  const { hasRole } = useAuth();
+
+  // Determine user's mobile role
+  const getUserMobileRole = (): UserMobileRole => {
+    if (hasRole('chofer')) return 'chofer';
+    if (hasRole('operador') || hasRole('bodega')) return 'centro_logistico';
+    // Default to sucursal for sucursal, despachador, admin roles
+    return 'sucursal';
+  };
+
+  const userRole = getUserMobileRole();
 
   const handleTabChange = (tab: MobileTab) => {
     setActiveTab(tab);
@@ -23,14 +40,29 @@ export function MobileAppLayout() {
     switch (activeTab) {
       case 'home':
         return <MobileHomeTab onNavigateToRoutes={() => setActiveTab('routes')} />;
+      
+      // Chofer tabs
       case 'routes':
         return <MobileRoutesTab />;
-      case 'scan':
-        return <MobileScanTab />;
       case 'earnings':
         return <MobileEarningsTab />;
+      
+      // Centro logístico tabs
+      case 'reception':
+        return <MobileReceptionTab />;
+      
+      // Sucursal tabs
+      case 'deliveries':
+        return <MobileDeliveriesTab />;
+      
+      // Common tabs
+      case 'scan':
+        return <MobileScanTab />;
+      case 'history':
+        return <MobileHistoryTab />;
       case 'profile':
         return <MobileProfileTab />;
+      
       default:
         return <MobileHomeTab onNavigateToRoutes={() => setActiveTab('routes')} />;
     }
@@ -56,6 +88,7 @@ export function MobileAppLayout() {
         activeTab={activeTab} 
         onTabChange={handleTabChange}
         notificationCount={unreadCount}
+        userRole={userRole}
       />
 
       {/* Notifications Sheet */}

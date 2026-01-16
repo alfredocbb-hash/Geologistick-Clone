@@ -1,23 +1,56 @@
-import { Home, Route, QrCode, Wallet, User } from 'lucide-react';
+import { Home, Route, QrCode, Wallet, User, Package, Clock, Truck } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { UserMobileRole } from './MobileAppLayout';
 
-export type MobileTab = 'home' | 'routes' | 'scan' | 'earnings' | 'profile';
+export type MobileTab = 'home' | 'routes' | 'scan' | 'earnings' | 'profile' | 'reception' | 'deliveries' | 'history';
 
 interface MobileBottomNavProps {
   activeTab: MobileTab;
   onTabChange: (tab: MobileTab) => void;
   notificationCount?: number;
+  userRole?: UserMobileRole;
 }
 
-const tabs = [
-  { id: 'home' as const, label: 'Inicio', icon: Home },
-  { id: 'routes' as const, label: 'Rutas', icon: Route },
-  { id: 'scan' as const, label: 'Scan', icon: QrCode, isCenter: true },
-  { id: 'earnings' as const, label: 'Dinero', icon: Wallet },
-  { id: 'profile' as const, label: 'Perfil', icon: User },
-];
+interface TabConfig {
+  id: MobileTab;
+  label: string;
+  icon: typeof Home;
+  isCenter?: boolean;
+}
 
-export function MobileBottomNav({ activeTab, onTabChange, notificationCount = 0 }: MobileBottomNavProps) {
+const getTabsForRole = (role: UserMobileRole): TabConfig[] => {
+  switch (role) {
+    case 'chofer':
+      return [
+        { id: 'home', label: 'Inicio', icon: Home },
+        { id: 'routes', label: 'Rutas', icon: Route },
+        { id: 'scan', label: 'Scan', icon: QrCode, isCenter: true },
+        { id: 'earnings', label: 'Dinero', icon: Wallet },
+        { id: 'profile', label: 'Perfil', icon: User },
+      ];
+    case 'centro_logistico':
+      return [
+        { id: 'home', label: 'Inicio', icon: Home },
+        { id: 'reception', label: 'Recepción', icon: Package },
+        { id: 'scan', label: 'Scan', icon: QrCode, isCenter: true },
+        { id: 'history', label: 'Historial', icon: Clock },
+        { id: 'profile', label: 'Perfil', icon: User },
+      ];
+    case 'sucursal':
+    default:
+      return [
+        { id: 'home', label: 'Inicio', icon: Home },
+        { id: 'deliveries', label: 'Entregas', icon: Truck },
+        { id: 'scan', label: 'Scan', icon: QrCode, isCenter: true },
+        { id: 'history', label: 'Historial', icon: Clock },
+        { id: 'profile', label: 'Perfil', icon: User },
+      ];
+  }
+};
+
+export function MobileBottomNav({ activeTab, onTabChange, notificationCount = 0, userRole = 'sucursal' }: MobileBottomNavProps) {
+  const tabs = getTabsForRole(userRole);
+
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-slate-900/95 backdrop-blur-xl border-t border-slate-700/50 safe-area-bottom">
       <div className="flex items-center justify-around h-16 px-2">
