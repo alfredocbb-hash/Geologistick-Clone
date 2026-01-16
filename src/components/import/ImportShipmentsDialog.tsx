@@ -199,6 +199,32 @@ export default function ImportShipmentsDialog({
     return `${prefix}${cleanOrder || timestamp}`;
   };
 
+  // Helper function to get row value with flexible matching
+  const getRowValue = (row: Record<string, string>, columnKey: string | undefined): string => {
+    if (!columnKey) return '';
+    
+    // Try exact match first
+    if (row[columnKey] !== undefined) return row[columnKey];
+    
+    // Try trimmed match
+    const trimmedKey = columnKey.trim();
+    for (const key of Object.keys(row)) {
+      if (key.trim() === trimmedKey) {
+        return row[key];
+      }
+    }
+    
+    // Try case-insensitive match
+    const lowerKey = trimmedKey.toLowerCase();
+    for (const key of Object.keys(row)) {
+      if (key.trim().toLowerCase() === lowerKey) {
+        return row[key];
+      }
+    }
+    
+    return '';
+  };
+
   // Import shipments mutation
   const importMutation = useMutation({
     mutationFn: async () => {
@@ -221,22 +247,22 @@ export default function ImportShipmentsDialog({
         const rowNumber = i + 2;
 
         try {
-          // Extract data from row using mapping
+          // Extract data from row using mapping with flexible matching
           const trackingNumber = 
-            row[mapping.trackingNumber || ""] || 
-            row[mapping.orderNumber || ""] ||
+            getRowValue(row, mapping.trackingNumber) || 
+            getRowValue(row, mapping.orderNumber) ||
             generateTrackingNumber(String(i));
           
-          const recipientName = row[mapping.recipientName || ""];
-          const recipientAddress = row[mapping.recipientAddress || ""];
-          const recipientCity = row[mapping.recipientCity || ""];
-          const recipientPhone = row[mapping.recipientPhone || ""];
-          const senderName = row[mapping.senderName || ""];
-          const senderEmail = row[mapping.senderEmail || ""];
-          const totalPrice = parsePrice(row[mapping.totalPrice || ""]);
-          const notes = row[mapping.notes || ""];
-          const lat = parseCoordinate(row[mapping.recipientLat || ""]);
-          const lng = parseCoordinate(row[mapping.recipientLng || ""]);
+          const recipientName = getRowValue(row, mapping.recipientName);
+          const recipientAddress = getRowValue(row, mapping.recipientAddress);
+          const recipientCity = getRowValue(row, mapping.recipientCity);
+          const recipientPhone = getRowValue(row, mapping.recipientPhone);
+          const senderName = getRowValue(row, mapping.senderName);
+          const senderEmail = getRowValue(row, mapping.senderEmail);
+          const totalPrice = parsePrice(getRowValue(row, mapping.totalPrice));
+          const notes = getRowValue(row, mapping.notes);
+          const lat = parseCoordinate(getRowValue(row, mapping.recipientLat));
+          const lng = parseCoordinate(getRowValue(row, mapping.recipientLng));
 
           // Validate required fields
           if (!recipientName || !recipientAddress) {
