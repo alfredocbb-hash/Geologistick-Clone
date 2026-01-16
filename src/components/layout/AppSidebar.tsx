@@ -20,6 +20,7 @@ interface NavGroup {
   label: string;
   items: NavItem[];
   permissionKeys?: string[]; // Any of these permissions shows the group
+  superAdminOnly?: boolean; // Only show to super_admin users
 }
 const navigation: NavGroup[] = [{
   label: 'Principal',
@@ -175,6 +176,14 @@ const navigation: NavGroup[] = [{
     permissionKey: 'integrations.manage'
   }],
   permissionKeys: ['branches.manage', 'rates.manage', 'users.manage', 'roles.manage', 'integrations.manage']
+}, {
+  label: 'Super Admin',
+  items: [{
+    title: 'Empresas',
+    url: '/admin/tenants',
+    icon: Building2,
+  }],
+  superAdminOnly: true
 }];
 export function AppSidebar() {
   const {
@@ -200,8 +209,8 @@ export function AppSidebar() {
 
   // Super admin can see everything, but also check for super admin only sections
   const canAccessGroup = (group: NavGroup) => {
-    // Super Admin section - only for super_admin
-    if (group.label === 'Super Admin') {
+    // Super Admin only section
+    if (group.superAdminOnly) {
       return isSuperAdmin();
     }
     if (isSuperAdmin()) return true;
