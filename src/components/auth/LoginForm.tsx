@@ -59,14 +59,19 @@ export function LoginForm() {
         description: error.message,
         variant: 'destructive',
       });
+      setIsLoading(false);
     } else {
       toast({
         title: '¡Cuenta creada!',
-        description: 'Tu cuenta ha sido creada. Ya puedes iniciar sesión.',
+        description: 'Redirigiendo a configuración...',
       });
+      // Auto-login and redirect to onboarding
+      const { error: loginError } = await signIn(email, password);
+      if (!loginError) {
+        navigate('/onboarding');
+      }
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
   };
 
   return (
