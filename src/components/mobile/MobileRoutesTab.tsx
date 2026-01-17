@@ -1,7 +1,8 @@
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
-import { MapPin, Package, Clock, ChevronRight, Truck, CheckCircle2, AlertCircle } from 'lucide-react';
+import { MapPin, Package, Clock, ChevronRight, Truck } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -11,11 +12,20 @@ import { useNavigate } from 'react-router-dom';
 export function MobileRoutesTab() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  // Invalidar caché al montar para obtener datos frescos
+  useEffect(() => {
+    console.log('[MobileRoutesTab] Mounting, invalidating cache for user:', user?.id);
+    queryClient.invalidateQueries({ queryKey: ['mobile-all-hojas-ruta'] });
+    queryClient.invalidateQueries({ queryKey: ['mobile-all-rutas-planificadas'] });
+  }, [queryClient, user?.id]);
 
   // Fetch hojas de ruta
   const { data: hojasRuta, isLoading: loadingHojas } = useQuery({
     queryKey: ['mobile-all-hojas-ruta', user?.id],
     queryFn: async () => {
+      console.log('[MobileRoutesTab] Fetching hojas_ruta for user:', user?.id);
       const { data, error } = await supabase
         .from('hojas_ruta')
         .select(`
@@ -26,29 +36,41 @@ export function MobileRoutesTab() {
         .eq('chofer_id', user?.id)
         .order('created_at', { ascending: false });
       
+      console.log('[MobileRoutesTab] Fetched hojas_ruta:', data?.length, 'items', data);
       if (error) throw error;
       return data;
     },
-    enabled: !!user?.id
+    enabled: !!user?.id,
+    staleTime: 0,
+    refetchOnMount: 'always'
   });
 
   // Fetch rutas planificadas
   const { data: rutasPlanificadas, isLoading: loadingRutas } = useQuery({
     queryKey: ['mobile-all-rutas-planificadas', user?.id],
     queryFn: async () => {
+      console.log('[MobileRoutesTab] Fetching rutas_planificadas for user:', user?.id);
       const { data, error } = await supabase
         .from('rutas_planificadas')
         .select('*')
         .eq('chofer_id', user?.id)
         .order('fecha', { ascending: false });
       
+      console.log('[MobileRoutesTab] Fetched rutas_planificadas:', data?.length, 'items', data);
       if (error) throw error;
       return data;
     },
-    enabled: !!user?.id
+    enabled: !!user?.id,
+    staleTime: 0,
+    refetchOnMount: 'always'
   });
 
   const isLoading = loadingHojas || loadingRutas;
+
+  // Debug logging
+  console.log('[MobileRoutesTab] State - user.id:', user?.id);
+  console.log('[MobileRoutesTab] State - hojasRuta:', hojasRuta);
+  console.log('[MobileRoutesTab] State - rutasPlanificadas:', rutasPlanificadas);
 
   const getStatusBadge = (estado: string) => {
     switch (estado) {
@@ -72,6 +94,10 @@ export function MobileRoutesTab() {
   const completedHojas = hojasRuta?.filter(h => h.estado === 'completada') || [];
   const activeRutas = rutasPlanificadas?.filter(r => ['asignada', 'confirmada', 'en_progreso'].includes(r.estado || '')) || [];
   const completedRutas = rutasPlanificadas?.filter(r => r.estado === 'finalizada') || [];
+
+  // Log active/completed counts
+  console.log('[MobileRoutesTab] activeHojas:', activeHojas.length, activeHojas);
+  console.log('[MobileRoutesTab] activeRutas:', activeRutas.length, activeRutas);
 
   const RouteCard = ({ route, type }: { route: any; type: 'hoja' | 'ruta' }) => {
     const isHoja = type === 'hoja';
