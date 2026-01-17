@@ -4,6 +4,7 @@ import { Capacitor } from '@capacitor/core';
 import { BarcodeScanner, BarcodeFormat } from '@capacitor-mlkit/barcode-scanning';
 import { Button } from '@/components/ui/button';
 import { X, Camera, SwitchCamera, Loader2, Settings } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface QRScannerProps {
   onScan: (data: string) => void;
@@ -27,9 +28,8 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
   const scanningRef = useRef(false);
 
   useEffect(() => {
-    if (import.meta.env.DEV) {
-      console.log('[QRScanner] Platform detected:', platform, 'isNative:', isNative);
-    }
+    console.log('[QRScanner] Platform detected:', platform, 'isNative:', isNative);
+    toast.info(`Plataforma: ${platform}, Nativo: ${isNative}`);
     
     if (isNative) {
       initNativeScanner();
@@ -47,120 +47,149 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
 
   // Native scanner using ML Kit
   const initNativeScanner = async () => {
+    let scanTimeout: NodeJS.Timeout | null = null;
+    
     try {
       setIsLoading(true);
-      if (import.meta.env.DEV) {
-        console.log('[QRScanner] Initializing native scanner...');
-      }
+      console.log('[QRScanner] Initializing native scanner...');
+      toast.info('Iniciando escáner nativo...');
       
       // Check if barcode scanning is supported
+      toast.info('Verificando soporte del dispositivo...');
       const { supported } = await BarcodeScanner.isSupported();
-      if (import.meta.env.DEV) {
-        console.log('[QRScanner] BarcodeScanner supported:', supported);
-      }
+      console.log('[QRScanner] BarcodeScanner supported:', supported);
       
       if (!supported) {
-        setError('El escaneo de códigos no está soportado en este dispositivo');
+        const errorMsg = 'El escaneo de códigos no está soportado en este dispositivo';
+        toast.error(errorMsg);
+        setError(errorMsg);
         setIsLoading(false);
         return;
       }
+      
+      toast.success('Dispositivo soportado ✓');
 
       // For Android: Check if Google Barcode Scanner module is available
       if (platform === 'android') {
         try {
+          toast.info('Verificando módulo ML Kit...');
           const { available } = await BarcodeScanner.isGoogleBarcodeScannerModuleAvailable();
-          if (import.meta.env.DEV) {
-            console.log('[QRScanner] Google Barcode Scanner module available:', available);
-          }
+          console.log('[QRScanner] Google Barcode Scanner module available:', available);
           
           if (!available) {
             setInstallingModule(true);
-            if (import.meta.env.DEV) {
-              console.log('[QRScanner] Installing Google Barcode Scanner module...');
-            }
+            toast.info('Instalando módulo de escaneo... Esto puede tardar unos segundos.');
+            console.log('[QRScanner] Installing Google Barcode Scanner module...');
             
             // Listen to installation progress
             await BarcodeScanner.addListener('googleBarcodeScannerModuleInstallProgress', (event) => {
-              if (import.meta.env.DEV) {
-                console.log('[QRScanner] Module install progress:', event.progress, '%');
-              }
+              console.log('[QRScanner] Module install progress:', event.progress, '%');
+              toast.info(`Instalando: ${event.progress}%`);
             });
             
             await BarcodeScanner.installGoogleBarcodeScannerModule();
-            if (import.meta.env.DEV) {
-              console.log('[QRScanner] Module installed successfully');
-            }
+            console.log('[QRScanner] Module installed successfully');
+            toast.success('Módulo instalado correctamente ✓');
             setInstallingModule(false);
+          } else {
+            toast.success('Módulo ML Kit disponible ✓');
           }
-        } catch (moduleError) {
-          if (import.meta.env.DEV) {
-            console.error('[QRScanner] Error checking/installing module:', moduleError);
-          }
+        } catch (moduleError: any) {
+          console.error('[QRScanner] Error checking/installing module:', moduleError);
+          toast.error(`Error módulo: ${moduleError?.message || 'Error desconocido'}`);
           // Continue anyway, might work
         }
       }
       
       // Check and request permissions
+      toast.info('Verificando permisos de cámara...');
       const permissionStatus = await BarcodeScanner.checkPermissions();
-      if (import.meta.env.DEV) {
-        console.log('[QRScanner] Current permission status:', permissionStatus);
-      }
+      console.log('[QRScanner] Current permission status:', permissionStatus);
       
       if (permissionStatus.camera !== 'granted') {
+        toast.info('Solicitando permiso de cámara...');
         const { camera } = await BarcodeScanner.requestPermissions();
-        if (import.meta.env.DEV) {
-          console.log('[QRScanner] Permission request result:', camera);
-        }
+        console.log('[QRScanner] Permission request result:', camera);
         
         if (camera === 'denied') {
-          setError('Permiso de cámara denegado. Abre la configuración para habilitarlo.');
+          const errorMsg = 'Permiso de cámara denegado. Abre la configuración para habilitarlo.';
+          toast.error(errorMsg);
+          setError(errorMsg);
           setShowOpenSettings(true);
           setIsLoading(false);
           return;
         }
         
         if (camera !== 'granted') {
-          setError('Se requiere permiso de cámara para escanear códigos QR');
+          const errorMsg = 'Se requiere permiso de cámara para escanear códigos QR';
+          toast.error(errorMsg);
+          setError(errorMsg);
           setIsLoading(false);
           return;
         }
       }
+      
+      toast.success('Permisos concedidos ✓');
 
       setIsLoading(false);
       setIsScanning(true);
       scanningRef.current = true;
       
-      if (import.meta.env.DEV) {
-        console.log('[QRScanner] Starting scan...');
-      }
+      console.log('[QRScanner] Starting scan...');
+      toast.info('Abriendo cámara... Apunta hacia el código QR');
+      
+      // Set timeout for security - if scanner doesn't respond in 15 seconds
+      scanTimeout = setTimeout(() => {
+        console.error('[QRScanner] Scan timeout - scanner not responding');
+        toast.error('El escáner está tardando mucho. Verifica Google Play Services.');
+        setError('Timeout: El escáner no respondió después de 15 segundos');
+        setIsLoading(false);
+        setIsScanning(false);
+      }, 15000);
       
       // Use scan() method - opens native scanner UI
       const { barcodes } = await BarcodeScanner.scan({
         formats: [BarcodeFormat.QrCode],
       });
       
-      if (import.meta.env.DEV) {
-        console.log('[QRScanner] Scan result:', barcodes);
+      // Clear timeout if scan completed
+      if (scanTimeout) {
+        clearTimeout(scanTimeout);
+        scanTimeout = null;
       }
       
+      console.log('[QRScanner] Scan result:', barcodes);
+      
       if (barcodes.length > 0 && barcodes[0].rawValue) {
+        toast.success(`Código escaneado: ${barcodes[0].rawValue.substring(0, 20)}...`);
         onScan(barcodes[0].rawValue);
       } else {
-        // User cancelled
+        toast.info('Escaneo cancelado');
         onClose();
       }
     } catch (err: any) {
-      if (import.meta.env.DEV) {
-        console.error('[QRScanner] Error in native scanner:', err);
+      // Clear timeout if error occurred
+      if (scanTimeout) {
+        clearTimeout(scanTimeout);
+        scanTimeout = null;
       }
+      
+      console.error('[QRScanner] Error in native scanner:', err);
+      
+      const errorMessage = err?.message || err?.toString() || 'Error desconocido';
+      console.error('[QRScanner] Error message:', errorMessage);
+      console.error('[QRScanner] Error code:', err?.code);
+      console.error('[QRScanner] Full error object:', JSON.stringify(err, null, 2));
       
       // Check if user cancelled
       if (err?.message?.includes('cancel') || err?.code === 'USER_CANCELED') {
+        toast.info('Escaneo cancelado por el usuario');
         onClose();
         return;
       }
       
-      setError('Error al iniciar el escáner: ' + (err?.message || 'Error desconocido'));
+      toast.error(`Error escáner: ${errorMessage}`);
+      setError('Error al iniciar el escáner: ' + errorMessage);
       setIsLoading(false);
       setIsScanning(false);
     }
