@@ -64,8 +64,11 @@ export function MobileBottomNav({ activeTab, onTabChange, notificationCount = 0,
   });
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-slate-900/95 backdrop-blur-xl border-t border-slate-700/50" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-      <div className="flex items-center justify-around h-16 px-2">
+    <nav 
+      className="fixed bottom-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur-2xl border-t border-slate-800/50" 
+      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+    >
+      <div className="flex items-center justify-around h-18 px-2 py-1">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
           const Icon = tab.icon;
@@ -75,16 +78,29 @@ export function MobileBottomNav({ activeTab, onTabChange, notificationCount = 0,
               <button
                 key={tab.id}
                 onClick={() => onTabChange(tab.id)}
-                className={cn(
-                  "relative -mt-6 flex flex-col items-center justify-center",
-                  "w-16 h-16 rounded-full transition-all duration-300",
-                  "bg-gradient-to-br from-primary to-primary/80",
-                  "shadow-lg shadow-primary/30",
-                  isActive && "scale-110 shadow-xl shadow-primary/50"
-                )}
+                className="relative -mt-8 group"
               >
-                <Icon className="h-7 w-7 text-primary-foreground" />
-                <span className="text-[10px] font-medium text-primary-foreground mt-0.5">
+                {/* Glow effect */}
+                <div className={cn(
+                  "absolute inset-0 rounded-full blur-xl transition-opacity duration-300",
+                  "bg-gradient-to-r from-primary to-emerald-500",
+                  isActive ? "opacity-50" : "opacity-20 group-hover:opacity-40"
+                )} />
+                
+                {/* Button */}
+                <div className={cn(
+                  "relative flex flex-col items-center justify-center",
+                  "w-16 h-16 rounded-full transition-all duration-300",
+                  "bg-gradient-to-br from-primary via-primary to-emerald-500",
+                  "shadow-xl shadow-primary/40",
+                  "active:scale-95",
+                  isActive && "scale-110"
+                )}>
+                  <Icon className="h-7 w-7 text-white" strokeWidth={2} />
+                </div>
+                
+                {/* Label below */}
+                <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] font-semibold text-primary whitespace-nowrap">
                   {tab.label}
                 </span>
               </button>
@@ -96,34 +112,45 @@ export function MobileBottomNav({ activeTab, onTabChange, notificationCount = 0,
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
               className={cn(
-                "relative flex flex-col items-center justify-center py-2 px-3",
-                "transition-all duration-200 rounded-xl",
-                isActive && "bg-slate-800/50"
+                "relative flex flex-col items-center justify-center py-2 px-3 min-w-[56px]",
+                "transition-all duration-200 rounded-2xl",
+                "active:scale-95",
+                isActive && "bg-slate-800/60"
               )}
             >
+              {/* Notification badge */}
               {tab.id === 'home' && notificationCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                <span className="absolute top-0 right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-lg shadow-red-500/30">
                   {notificationCount > 9 ? '9+' : notificationCount}
                 </span>
               )}
-              <Icon 
-                className={cn(
-                  "h-6 w-6 transition-all duration-200",
-                  isActive 
-                    ? "text-primary scale-110" 
-                    : "text-slate-400"
-                )} 
-              />
+              
+              {/* Icon with animated indicator */}
+              <div className="relative">
+                <Icon 
+                  className={cn(
+                    "h-6 w-6 transition-all duration-300",
+                    isActive 
+                      ? "text-primary scale-110" 
+                      : "text-slate-500"
+                  )} 
+                  strokeWidth={isActive ? 2.5 : 2}
+                />
+              </div>
+              
+              {/* Label */}
               <span 
                 className={cn(
-                  "text-[10px] mt-1 font-medium transition-colors",
+                  "text-[10px] mt-1 font-medium transition-all duration-200",
                   isActive ? "text-primary" : "text-slate-500"
                 )}
               >
                 {tab.label}
               </span>
+              
+              {/* Active indicator dot */}
               {isActive && (
-                <span className="absolute -bottom-1 w-1 h-1 rounded-full bg-primary" />
+                <span className="absolute -bottom-0.5 w-1 h-1 rounded-full bg-primary shadow-sm shadow-primary" />
               )}
             </button>
           );

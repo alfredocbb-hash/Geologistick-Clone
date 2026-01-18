@@ -22,17 +22,22 @@ export type UserMobileRole = 'chofer' | 'centro_logistico' | 'sucursal';
 export function MobileAppLayout() {
   const [activeTab, setActiveTab] = useState<MobileTab>('home');
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
   const { unreadCount } = useNotifications();
-  const { hasRole } = useAuth();
+  const { hasRole, profile } = useAuth();
   const { hasPermission, isLoading: permissionsLoading } = usePermissions();
   const queryClient = useQueryClient();
 
+  // Show splash screen briefly on first load
+  useEffect(() => {
+    const timer = setTimeout(() => setShowSplash(false), 1500);
+    return () => clearTimeout(timer);
+  }, []);
+
   // Refresh permissions when app resumes (comes back to focus)
-  // This ensures changes in Gestión de Roles are reflected without reinstalling the APK
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        // Invalidate permissions cache when app becomes visible again
         queryClient.invalidateQueries({ queryKey: ['user-permissions'] });
         queryClient.invalidateQueries({ queryKey: ['user-roles'] });
       }
@@ -49,7 +54,6 @@ export function MobileAppLayout() {
   const getUserMobileRole = (): UserMobileRole => {
     if (hasRole('chofer')) return 'chofer';
     if (hasRole('operador') || hasRole('bodega')) return 'centro_logistico';
-    // Default to sucursal for sucursal, despachador, admin roles
     return 'sucursal';
   };
 
@@ -59,11 +63,29 @@ export function MobileAppLayout() {
     setActiveTab(tab);
   };
 
+  // Show splash screen
+  if (showSplash) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center">
+        <div className="relative mb-6">
+          <div className="absolute inset-0 bg-primary/30 rounded-3xl blur-xl animate-pulse" />
+          <div className="relative w-24 h-24 bg-gradient-to-br from-primary via-primary to-emerald-500 rounded-3xl flex items-center justify-center shadow-2xl shadow-primary/40">
+            <span className="text-5xl">🚚</span>
+          </div>
+        </div>
+        <h1 className="text-2xl font-bold text-white mb-2">ChoferApp</h1>
+        <p className="text-slate-400 text-sm mb-6">Cargando...</p>
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   // Show loading while permissions are being fetched
   if (permissionsLoading) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+        <p className="text-slate-400 text-sm">Cargando permisos...</p>
       </div>
     );
   }
@@ -101,7 +123,7 @@ export function MobileAppLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white">
+    <div className="min-h-screen bg-slate-950 text-white">
       {/* Header */}
       <MobileHeader 
         onNotificationsClick={() => setShowNotifications(true)}
@@ -113,7 +135,7 @@ export function MobileAppLayout() {
         className="px-4 min-h-screen"
         style={{ 
           paddingTop: 'calc(3.5rem + env(safe-area-inset-top, 0px) + 1rem)',
-          paddingBottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))'
+          paddingBottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))'
         }}
       >
         {renderTabContent()}
@@ -130,7 +152,7 @@ export function MobileAppLayout() {
 
       {/* Notifications Sheet */}
       <Sheet open={showNotifications} onOpenChange={setShowNotifications}>
-        <SheetContent side="right" className="bg-slate-900 border-slate-700 w-full sm:max-w-md p-0">
+        <SheetContent side="right" className="bg-slate-950 border-slate-800 w-full sm:max-w-md p-0">
           <div className="p-4">
             <h2 className="text-lg font-semibold text-white mb-4">Notificaciones</h2>
             <NotificationPopover />
