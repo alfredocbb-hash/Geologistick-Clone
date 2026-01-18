@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
-import { MapPin, Package, Clock, ChevronRight, Truck, Navigation, Play, CheckCircle2 } from 'lucide-react';
+import { MapPin, Package, Clock, ChevronRight, Truck, Navigation, PlayCircle, CheckCircle2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -110,7 +110,7 @@ export function MobileRoutesTab() {
   const activeRutas = rutasPlanificadas?.filter(r => ['asignada', 'confirmada', 'en_progreso'].includes(r.estado || '')) || [];
   const completedRutas = rutasPlanificadas?.filter(r => r.estado === 'finalizada') || [];
 
-  const RouteCard = ({ route, type }: { route: any; type: 'hoja' | 'ruta' }) => {
+  const RouteCard = ({ route, type }: { route: any; type: 'hoja' | 'planificada' }) => {
     const isHoja = type === 'hoja';
     const isActive = isHoja 
       ? ['asignada', 'en_transito'].includes(route.estado)
@@ -118,12 +118,23 @@ export function MobileRoutesTab() {
     const isInProgress = route.estado === 'en_transito' || route.estado === 'en_progreso';
     const statusConfig = getStatusConfig(route.estado);
 
+    // Determine correct navigation path
+    const handleNavigate = () => {
+      if (isInProgress) {
+        // Route already in progress - go to active navigation
+        navigate(`/active-route?id=${route.id}&type=${type}`);
+      } else {
+        // Route not started - go to start screen
+        navigate(`/route-start?id=${route.id}&type=${type}`);
+      }
+    };
+
     return (
       <Card 
         className={`bg-slate-900/60 border-slate-800/50 cursor-pointer hover:border-primary/50 transition-all active:scale-[0.98] overflow-hidden ${
           isInProgress ? 'ring-2 ring-primary/30' : ''
         }`}
-        onClick={() => navigate(`/driver/route?id=${route.id}&type=${type}`)}
+        onClick={handleNavigate}
       >
         {/* Progress indicator for active routes */}
         {isInProgress && (
@@ -171,7 +182,7 @@ export function MobileRoutesTab() {
               className="mt-4 w-full flex items-center justify-center gap-2 py-3 rounded-xl transition-all active:scale-[0.98] bg-gradient-to-r from-primary/20 to-emerald-500/20 hover:from-primary/30 hover:to-emerald-500/30"
               onClick={(e) => {
                 e.stopPropagation();
-                navigate(`/driver/route?id=${route.id}&type=${type}`);
+                handleNavigate();
               }}
             >
               {isInProgress ? (
@@ -181,7 +192,7 @@ export function MobileRoutesTab() {
                 </>
               ) : (
                 <>
-                  <Play className="h-5 w-5 text-primary" />
+                  <PlayCircle className="h-5 w-5 text-primary" />
                   <span className="text-primary font-semibold">Iniciar Ruta</span>
                 </>
               )}
@@ -242,7 +253,7 @@ export function MobileRoutesTab() {
                 <RouteCard key={hoja.id} route={hoja} type="hoja" />
               ))}
               {activeRutas.map(ruta => (
-                <RouteCard key={ruta.id} route={ruta} type="ruta" />
+                <RouteCard key={ruta.id} route={ruta} type="planificada" />
               ))}
             </>
           )}
@@ -257,7 +268,7 @@ export function MobileRoutesTab() {
                 <RouteCard key={hoja.id} route={hoja} type="hoja" />
               ))}
               {completedRutas.map(ruta => (
-                <RouteCard key={ruta.id} route={ruta} type="ruta" />
+                <RouteCard key={ruta.id} route={ruta} type="planificada" />
               ))}
             </>
           )}

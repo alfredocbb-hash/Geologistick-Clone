@@ -120,11 +120,9 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
         <Card 
           className="relative overflow-hidden bg-gradient-to-br from-primary/30 via-primary/20 to-emerald-500/20 border-primary/30 cursor-pointer group"
           onClick={() => {
-            if ('sucursal_origen_id' in activeRoute) {
-              navigate(`/driver/route?id=${activeRoute.id}&type=hoja`);
-            } else {
-              navigate(`/driver/route?id=${activeRoute.id}&type=ruta`);
-            }
+            const type = 'sucursal_origen_id' in activeRoute ? 'hoja' : 'planificada';
+            // Active routes are already in progress, go to active-route
+            navigate(`/active-route?id=${activeRoute.id}&type=${type}`);
           }}
         >
           {/* Background pattern */}
@@ -295,7 +293,7 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
               <Card 
                 key={hoja.id} 
                 className="bg-slate-900/60 border-slate-800/50 min-w-[160px] cursor-pointer hover:border-primary/50 transition-all active:scale-95"
-                onClick={() => navigate(`/driver/route?id=${hoja.id}&type=hoja`)}
+                onClick={() => navigate(`/route-start?id=${hoja.id}&type=hoja`)}
               >
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-3">
@@ -314,7 +312,7 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
               <Card 
                 key={ruta.id} 
                 className="bg-slate-900/60 border-slate-800/50 min-w-[160px] cursor-pointer hover:border-primary/50 transition-all active:scale-95"
-                onClick={() => navigate(`/driver/route?id=${ruta.id}&type=ruta`)}
+                onClick={() => navigate(`/route-start?id=${ruta.id}&type=planificada`)}
               >
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-3">

@@ -93,8 +93,14 @@ function NativeAppWrapper() {
     );
   }
 
-  // Show mobile app layout
-  return <MobileAppLayout />;
+  // Show mobile app layout with internal routes for navigation
+  return (
+    <Routes>
+      <Route path="/route-start" element={<RouteStart />} />
+      <Route path="/active-route" element={<ActiveRouteNavigation />} />
+      <Route path="*" element={<MobileAppLayout />} />
+    </Routes>
+  );
 }
 
 // Main app routes component
