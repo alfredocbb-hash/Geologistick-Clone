@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
-import { Package, TrendingUp, MapPin, Clock, ChevronRight, Truck } from 'lucide-react';
+import { Package, TrendingUp, MapPin, Clock, ChevronRight, Truck, Navigation, Zap } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -96,95 +96,115 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
 
   const isLoading = loadingHojas || loadingRutas;
 
+  // Calculate progress percentage
+  const progressPercent = todayStats?.total 
+    ? Math.round((todayStats.completed / todayStats.total) * 100) 
+    : 0;
+
   return (
-    <div className="space-y-6 pb-4">
-      {/* Greeting */}
+    <div className="space-y-5 pb-4">
+      {/* Greeting Section */}
       <div className="space-y-1">
         <h1 className="text-2xl font-bold text-white">
           {getGreeting()}, {firstName}! 👋
         </h1>
-        <p className="text-slate-400">
+        <p className="text-slate-400 capitalize">
           {format(new Date(), "EEEE, d 'de' MMMM", { locale: es })}
         </p>
       </div>
 
-      {/* Active Route Card */}
+      {/* Active Route Card - Hero Style */}
       {isLoading ? (
-        <Skeleton className="h-32 w-full rounded-2xl" />
+        <Skeleton className="h-44 w-full rounded-3xl" />
       ) : activeRoute ? (
         <Card 
-          className="bg-gradient-to-br from-primary/20 to-primary/5 border-primary/30 cursor-pointer hover:border-primary/50 transition-colors"
+          className="relative overflow-hidden bg-gradient-to-br from-primary/30 via-primary/20 to-emerald-500/20 border-primary/30 cursor-pointer group"
           onClick={() => {
-            if ('numero' in activeRoute && 'sucursal_origen_id' in activeRoute) {
+            if ('sucursal_origen_id' in activeRoute) {
               navigate(`/driver/route?id=${activeRoute.id}&type=hoja`);
             } else {
               navigate(`/driver/route?id=${activeRoute.id}&type=ruta`);
             }
           }}
         >
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
-                <span className="w-2 h-2 rounded-full bg-green-400 mr-2 animate-pulse" />
+          {/* Background pattern */}
+          <div className="absolute inset-0 opacity-10">
+            <div className="absolute top-0 right-0 w-40 h-40 bg-white rounded-full blur-3xl" />
+          </div>
+          
+          <CardContent className="relative p-5">
+            <div className="flex items-center justify-between mb-4">
+              <Badge className="bg-emerald-500/30 text-emerald-300 border-emerald-500/40 px-3 py-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 mr-2 animate-pulse" />
                 RUTA ACTIVA
               </Badge>
-              <ChevronRight className="h-5 w-5 text-primary" />
+              <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
+                <Navigation className="h-5 w-5 text-white" />
+              </div>
             </div>
             
-            <div className="space-y-2">
-              <p className="font-semibold text-white text-lg">
+            <div className="space-y-3">
+              <p className="font-bold text-white text-xl">
                 {'numero' in activeRoute ? activeRoute.numero : (activeRoute as any).numero}
               </p>
-              <div className="flex items-center gap-2 text-slate-300 text-sm">
+              
+              <div className="flex items-center gap-2 text-slate-200 text-sm">
                 <MapPin className="h-4 w-4 text-primary" />
                 {'sucursal_origen' in activeRoute 
                   ? `${(activeRoute as any).sucursal_origen?.ciudad} → ${(activeRoute as any).sucursal_destino?.ciudad}`
                   : `${(activeRoute as any).total_paradas || 0} paradas`
                 }
               </div>
-              <div className="flex items-center gap-2 text-slate-400 text-sm">
-                <Package className="h-4 w-4" />
-                {'cantidad_envios' in activeRoute 
-                  ? `${activeRoute.cantidad_envios || 0} envíos`
-                  : `${(activeRoute as any).paradas_completadas || 0}/${(activeRoute as any).total_paradas || 0} completadas`
-                }
+              
+              <div className="flex items-center gap-3 text-slate-300 text-sm">
+                <div className="flex items-center gap-1.5">
+                  <Package className="h-4 w-4" />
+                  {'cantidad_envios' in activeRoute 
+                    ? `${activeRoute.cantidad_envios || 0} envíos`
+                    : `${(activeRoute as any).paradas_completadas || 0}/${(activeRoute as any).total_paradas || 0}`
+                  }
+                </div>
               </div>
             </div>
 
-            <div className="mt-4 flex items-center justify-center py-2 px-4 bg-primary/20 rounded-xl">
-              <Truck className="h-4 w-4 text-primary mr-2" />
-              <span className="text-primary font-medium">Continuar Ruta</span>
-            </div>
+            {/* Continue button */}
+            <button className="mt-5 w-full flex items-center justify-center gap-2 py-3.5 bg-white/20 hover:bg-white/30 rounded-2xl transition-all active:scale-[0.98]">
+              <Truck className="h-5 w-5 text-white" />
+              <span className="text-white font-semibold">Continuar Ruta</span>
+              <ChevronRight className="h-5 w-5 text-white" />
+            </button>
           </CardContent>
         </Card>
       ) : (
-        <Card className="bg-slate-800/50 border-slate-700">
-          <CardContent className="p-6 text-center">
-            <div className="w-12 h-12 rounded-full bg-slate-700 flex items-center justify-center mx-auto mb-3">
-              <Truck className="h-6 w-6 text-slate-400" />
+        <Card className="bg-slate-900/60 border-slate-800/50 backdrop-blur-xl">
+          <CardContent className="p-8 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-slate-800/80 flex items-center justify-center mx-auto mb-4">
+              <Truck className="h-8 w-8 text-slate-500" />
             </div>
-            <p className="text-slate-400">No hay rutas activas</p>
+            <p className="text-slate-400 mb-3">No hay rutas activas</p>
             <button 
               onClick={onNavigateToRoutes}
-              className="mt-3 text-primary text-sm font-medium"
+              className="inline-flex items-center gap-1 text-primary text-sm font-semibold hover:underline"
             >
-              Ver rutas pendientes →
+              Ver rutas pendientes
+              <ChevronRight className="h-4 w-4" />
             </button>
           </CardContent>
         </Card>
       )}
 
-      {/* Quick Stats */}
+      {/* Quick Stats - Modern Cards */}
       <div className="grid grid-cols-2 gap-3">
-        <Card className="bg-slate-800/50 border-slate-700">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-green-500/20 flex items-center justify-center">
-                <TrendingUp className="h-5 w-5 text-green-400" />
+        <Card className="bg-slate-900/60 border-slate-800/50 backdrop-blur-xl overflow-hidden">
+          <CardContent className="p-4 relative">
+            <div className="absolute top-0 right-0 w-20 h-20 bg-emerald-500/10 rounded-full blur-2xl" />
+            <div className="relative flex items-start gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-500/10 flex items-center justify-center">
+                <TrendingUp className="h-6 w-6 text-emerald-400" />
               </div>
-              <div>
-                <p className="text-slate-400 text-xs">Hoy</p>
-                <p className="text-white font-bold text-lg">
+              <div className="flex-1">
+                <p className="text-slate-400 text-xs font-medium">Hoy</p>
+                <p className="text-white font-bold text-xl mt-0.5">
                   ${(todayStats?.earnings || 0).toLocaleString()}
                 </p>
               </div>
@@ -192,21 +212,68 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
           </CardContent>
         </Card>
 
-        <Card className="bg-slate-800/50 border-slate-700">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center">
-                <Package className="h-5 w-5 text-blue-400" />
+        <Card className="bg-slate-900/60 border-slate-800/50 backdrop-blur-xl overflow-hidden">
+          <CardContent className="p-4 relative">
+            <div className="absolute top-0 right-0 w-20 h-20 bg-blue-500/10 rounded-full blur-2xl" />
+            <div className="relative flex items-start gap-3">
+              <div className="relative w-12 h-12">
+                {/* Circular progress */}
+                <svg className="w-12 h-12 -rotate-90" viewBox="0 0 48 48">
+                  <circle 
+                    cx="24" cy="24" r="20" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    strokeWidth="4"
+                    className="text-slate-700"
+                  />
+                  <circle 
+                    cx="24" cy="24" r="20" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    strokeWidth="4"
+                    strokeDasharray={`${progressPercent * 1.256} 126`}
+                    strokeLinecap="round"
+                    className="text-blue-400 transition-all duration-500"
+                  />
+                </svg>
+                <Package className="absolute inset-0 m-auto h-5 w-5 text-blue-400" />
               </div>
-              <div>
-                <p className="text-slate-400 text-xs">Entregas</p>
-                <p className="text-white font-bold text-lg">
+              <div className="flex-1">
+                <p className="text-slate-400 text-xs font-medium">Entregas</p>
+                <p className="text-white font-bold text-xl mt-0.5">
                   {todayStats?.completed || 0}/{todayStats?.total || 0}
                 </p>
               </div>
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-3 gap-3">
+        <button 
+          onClick={onNavigateToRoutes}
+          className="flex flex-col items-center gap-2 p-4 bg-slate-900/60 border border-slate-800/50 rounded-2xl hover:bg-slate-800/60 transition-all active:scale-95"
+        >
+          <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center">
+            <Route className="h-6 w-6 text-primary" />
+          </div>
+          <span className="text-xs text-slate-300 font-medium">Rutas</span>
+        </button>
+        
+        <button className="flex flex-col items-center gap-2 p-4 bg-slate-900/60 border border-slate-800/50 rounded-2xl hover:bg-slate-800/60 transition-all active:scale-95">
+          <div className="w-12 h-12 rounded-xl bg-amber-500/20 flex items-center justify-center">
+            <Clock className="h-6 w-6 text-amber-400" />
+          </div>
+          <span className="text-xs text-slate-300 font-medium">Historial</span>
+        </button>
+        
+        <button className="flex flex-col items-center gap-2 p-4 bg-slate-900/60 border border-slate-800/50 rounded-2xl hover:bg-slate-800/60 transition-all active:scale-95">
+          <div className="w-12 h-12 rounded-xl bg-purple-500/20 flex items-center justify-center">
+            <Zap className="h-6 w-6 text-purple-400" />
+          </div>
+          <span className="text-xs text-slate-300 font-medium">Reportes</span>
+        </button>
       </div>
 
       {/* Pending Routes */}
@@ -216,9 +283,10 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
             <h2 className="text-lg font-semibold text-white">Próximas Rutas</h2>
             <button 
               onClick={onNavigateToRoutes}
-              className="text-primary text-sm font-medium"
+              className="text-primary text-sm font-medium flex items-center gap-1 hover:underline"
             >
               Ver todas
+              <ChevronRight className="h-4 w-4" />
             </button>
           </div>
 
@@ -226,16 +294,16 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
             {hojasRuta?.filter(h => h.estado === 'asignada').map((hoja) => (
               <Card 
                 key={hoja.id} 
-                className="bg-slate-800/50 border-slate-700 min-w-[140px] cursor-pointer hover:border-slate-600 transition-colors"
+                className="bg-slate-900/60 border-slate-800/50 min-w-[160px] cursor-pointer hover:border-primary/50 transition-all active:scale-95"
                 onClick={() => navigate(`/driver/route?id=${hoja.id}&type=hoja`)}
               >
-                <CardContent className="p-3">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Clock className="h-3 w-3 text-slate-400" />
-                    <span className="text-xs text-slate-400">Pendiente</span>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-2 h-2 rounded-full bg-amber-400" />
+                    <span className="text-xs text-amber-400 font-medium">Pendiente</span>
                   </div>
-                  <p className="font-medium text-white text-sm truncate">{hoja.numero}</p>
-                  <p className="text-xs text-slate-400 mt-1">
+                  <p className="font-semibold text-white text-sm truncate">{hoja.numero}</p>
+                  <p className="text-xs text-slate-400 mt-1.5">
                     {hoja.cantidad_envios || 0} envíos
                   </p>
                 </CardContent>
@@ -245,18 +313,18 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
             {rutasPlanificadas?.filter(r => ['asignada', 'confirmada'].includes(r.estado || '')).map((ruta) => (
               <Card 
                 key={ruta.id} 
-                className="bg-slate-800/50 border-slate-700 min-w-[140px] cursor-pointer hover:border-slate-600 transition-colors"
+                className="bg-slate-900/60 border-slate-800/50 min-w-[160px] cursor-pointer hover:border-primary/50 transition-all active:scale-95"
                 onClick={() => navigate(`/driver/route?id=${ruta.id}&type=ruta`)}
               >
-                <CardContent className="p-3">
-                  <div className="flex items-center gap-2 mb-2">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-3">
                     <Clock className="h-3 w-3 text-slate-400" />
                     <span className="text-xs text-slate-400">
                       {ruta.hora_inicio || 'Pendiente'}
                     </span>
                   </div>
-                  <p className="font-medium text-white text-sm truncate">{ruta.numero}</p>
-                  <p className="text-xs text-slate-400 mt-1">
+                  <p className="font-semibold text-white text-sm truncate">{ruta.numero}</p>
+                  <p className="text-xs text-slate-400 mt-1.5">
                     {ruta.total_paradas || 0} paradas
                   </p>
                 </CardContent>
@@ -268,3 +336,6 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
     </div>
   );
 }
+
+// Import Route icon
+import { Route } from 'lucide-react';
