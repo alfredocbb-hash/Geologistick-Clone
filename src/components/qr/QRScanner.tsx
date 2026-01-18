@@ -216,18 +216,42 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
   const initWebScanner = async () => {
     try {
       setIsLoading(true);
-      if (import.meta.env.DEV) {
-        console.log('[QRScanner] Initializing web scanner...');
+      console.log('[QRScanner] Initializing web scanner...');
+      
+      // First, request camera permission explicitly before listing devices
+      try {
+        console.log('[QRScanner] Requesting camera permission...');
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: 'environment' } 
+        });
+        // Stop the stream immediately - we just needed to trigger permission prompt
+        stream.getTracks().forEach(track => track.stop());
+        console.log('[QRScanner] Camera permission granted');
+      } catch (permErr: any) {
+        console.error('[QRScanner] Camera permission denied:', permErr);
+        if (permErr.name === 'NotAllowedError' || permErr.name === 'PermissionDeniedError') {
+          setError('Permiso de cámara denegado. Por favor, permite el acceso en la configuración del navegador.');
+        } else if (permErr.name === 'NotFoundError') {
+          setError('No se encontró ninguna cámara en el dispositivo.');
+        } else {
+          setError(`Error al acceder a la cámara: ${permErr.message || permErr.name}`);
+        }
+        setIsLoading(false);
+        return;
       }
       
+      // Now list cameras after permission is granted
       const devices = await Html5Qrcode.getCameras();
+      console.log('[QRScanner] Cameras found:', devices.length);
+      
       if (devices && devices.length) {
         setCameras(devices);
         // Prefer back camera
         const backCameraIndex = devices.findIndex(d => 
           d.label.toLowerCase().includes('back') || 
           d.label.toLowerCase().includes('trasera') ||
-          d.label.toLowerCase().includes('posterior')
+          d.label.toLowerCase().includes('posterior') ||
+          d.label.toLowerCase().includes('rear')
         );
         const startIndex = backCameraIndex >= 0 ? backCameraIndex : 0;
         setCurrentCameraIndex(startIndex);
@@ -235,14 +259,12 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
         scannerRef.current = new Html5Qrcode('qr-reader');
         await startWebCamera(devices[startIndex].id);
       } else {
-        setError('No se encontraron cámaras');
+        setError('No se encontraron cámaras disponibles');
       }
       setIsLoading(false);
-    } catch (err) {
-      if (import.meta.env.DEV) {
-        console.error('[QRScanner] Error initializing web scanner:', err);
-      }
-      setError('Error al acceder a la cámara. Por favor, permite el acceso.');
+    } catch (err: any) {
+      console.error('[QRScanner] Error initializing web scanner:', err);
+      setError(`Error al inicializar el escáner: ${err.message || 'Error desconocido'}`);
       setIsLoading(false);
     }
   };
