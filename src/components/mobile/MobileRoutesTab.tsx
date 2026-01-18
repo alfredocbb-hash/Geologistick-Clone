@@ -167,7 +167,13 @@ export function MobileRoutesTab() {
           </div>
 
           {isActive && (
-            <button className="mt-4 w-full flex items-center justify-center gap-2 py-3 rounded-xl transition-all active:scale-[0.98] bg-gradient-to-r from-primary/20 to-emerald-500/20 hover:from-primary/30 hover:to-emerald-500/30">
+            <button 
+              className="mt-4 w-full flex items-center justify-center gap-2 py-3 rounded-xl transition-all active:scale-[0.98] bg-gradient-to-r from-primary/20 to-emerald-500/20 hover:from-primary/30 hover:to-emerald-500/30"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/driver/route?id=${route.id}&type=${type}`);
+              }}
+            >
               {isInProgress ? (
                 <>
                   <Navigation className="h-5 w-5 text-primary" />

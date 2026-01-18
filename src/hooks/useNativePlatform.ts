@@ -9,6 +9,7 @@ export function useNativePlatform() {
   // Check if loaded from Capacitor app via URL or stored flag
   const isLoadedInCapacitorApp = 
     window.location.href.includes('forceHideBadge=true') ||
+    window.location.href.includes('geologic.lovable.app') ||
     localStorage.getItem('capacitor-native') === 'true' ||
     document.referrer.includes('capacitor://') ||
     window.location.href.includes('lovableproject.com');
