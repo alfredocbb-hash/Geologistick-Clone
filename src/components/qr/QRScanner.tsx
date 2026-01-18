@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode, Html5QrcodeScannerState } from 'html5-qrcode';
-import { Capacitor } from '@capacitor/core';
 import { BarcodeScanner, BarcodeFormat } from '@capacitor-mlkit/barcode-scanning';
 import { Button } from '@/components/ui/button';
 import { X, Camera, SwitchCamera, Loader2, Settings } from 'lucide-react';
 import { toast } from 'sonner';
+import { useNativePlatform } from '@/hooks/useNativePlatform';
 
 interface QRScannerProps {
   onScan: (data: string) => void;
@@ -21,14 +21,20 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
   const [installingModule, setInstallingModule] = useState(false);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  
-  // More robust native detection
-  const platform = Capacitor.getPlatform();
-  const isNative = platform === 'android' || platform === 'ios';
   const scanningRef = useRef(false);
+  
+  // Use centralized native platform detection
+  const { isNative, isAndroid, platform } = useNativePlatform();
 
   useEffect(() => {
-    console.log('[QRScanner] Platform detected:', platform, 'isNative:', isNative);
+    console.log('[QRScanner] Detection details:', {
+      platform,
+      isNative,
+      isAndroid,
+      userAgent: navigator.userAgent,
+      href: window.location.href,
+      localStorage: localStorage.getItem('capacitor-native')
+    });
     toast.info(`Plataforma: ${platform}, Nativo: ${isNative}`);
     
     if (isNative) {
@@ -43,7 +49,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
         stopWebScanner();
       }
     };
-  }, []);
+  }, [isNative, platform]);
 
   // Native scanner using ML Kit
   const initNativeScanner = async () => {
@@ -70,7 +76,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
       toast.success('Dispositivo soportado ✓');
 
       // For Android: Check if Google Barcode Scanner module is available
-      if (platform === 'android') {
+      if (isAndroid) {
         try {
           toast.info('Verificando módulo ML Kit...');
           const { available } = await BarcodeScanner.isGoogleBarcodeScannerModuleAvailable();
