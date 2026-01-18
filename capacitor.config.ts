@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'ChoferApp',
   webDir: 'dist',
   server: {
-    url: 'https://53354d35-df09-4ff7-9101-b454344485d4.lovableproject.com?forceHideBadge=true',
+    url: 'https://geologic.lovable.app?forceHideBadge=true',
     cleartext: true
   },
   plugins: {
