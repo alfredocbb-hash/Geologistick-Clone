@@ -19,6 +19,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
   const [isScanning, setIsScanning] = useState(false);
   const [showOpenSettings, setShowOpenSettings] = useState(false);
   const [installingModule, setInstallingModule] = useState(false);
+  const [webStarted, setWebStarted] = useState(false);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const scanningRef = useRef(false);
@@ -33,14 +34,16 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
       isAndroid,
       userAgent: navigator.userAgent,
       href: window.location.href,
-      localStorage: localStorage.getItem('capacitor-native')
     });
     toast.info(`Plataforma: ${platform}, Nativo: ${isNative}`);
-    
+
     if (isNative) {
       initNativeScanner();
     } else {
-      initWebScanner();
+      // On web, require an explicit user action to trigger camera permissions reliably
+      setIsLoading(false);
+      setError(null);
+      setShowOpenSettings(false);
     }
 
     return () => {
@@ -49,7 +52,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
         stopWebScanner();
       }
     };
-  }, [isNative, platform]);
+  }, [isNative, platform, isAndroid]);
 
   // Native scanner using ML Kit
   const initNativeScanner = async () => {
@@ -217,33 +220,59 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
     try {
       setIsLoading(true);
       console.log('[QRScanner] Initializing web scanner...');
-      
-      // First, request camera permission explicitly before listing devices
-      try {
-        console.log('[QRScanner] Requesting camera permission...');
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: 'environment' } 
-        });
-        // Stop the stream immediately - we just needed to trigger permission prompt
-        stream.getTracks().forEach(track => track.stop());
-        console.log('[QRScanner] Camera permission granted');
-      } catch (permErr: any) {
-        console.error('[QRScanner] Camera permission denied:', permErr);
-        if (permErr.name === 'NotAllowedError' || permErr.name === 'PermissionDeniedError') {
-          setError('Permiso de cámara denegado. Por favor, permite el acceso en la configuración del navegador.');
-        } else if (permErr.name === 'NotFoundError') {
-          setError('No se encontró ninguna cámara en el dispositivo.');
-        } else {
-          setError(`Error al acceder a la cámara: ${permErr.message || permErr.name}`);
-        }
+
+      if (!window.isSecureContext) {
+        setError('La cámara solo funciona en una conexión segura (HTTPS).');
         setIsLoading(false);
         return;
       }
-      
+
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setError('Tu navegador no soporta acceso a cámara (getUserMedia).');
+        setIsLoading(false);
+        return;
+      }
+
+      // First, request camera permission explicitly before listing devices
+      let stream: MediaStream | null = null;
+      try {
+        console.log('[QRScanner] Requesting camera permission...');
+
+        // Try back camera first (best for QR)
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: 'environment' } },
+          });
+        } catch (firstErr: any) {
+          // Fallback: any camera (some devices/browsers fail with facingMode constraints)
+          console.warn('[QRScanner] Back camera constraint failed, retrying with video:true', firstErr);
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        }
+
+        // Stop the stream immediately - we just needed to trigger permission prompt
+        stream.getTracks().forEach((track) => track.stop());
+        console.log('[QRScanner] Camera permission granted');
+      } catch (permErr: any) {
+        console.error('[QRScanner] Camera permission error:', permErr);
+
+        if (permErr?.name === 'NotAllowedError' || permErr?.name === 'PermissionDeniedError') {
+          setError('Permiso de cámara denegado. En Chrome: candado → Permisos → Cámara → Permitir.');
+        } else if (permErr?.name === 'NotFoundError') {
+          setError('No se encontró ninguna cámara en el dispositivo.');
+        } else if (permErr?.name === 'NotReadableError') {
+          setError('La cámara está en uso por otra app o no está disponible en este momento.');
+        } else {
+          setError(`Error al acceder a la cámara: ${permErr?.message || permErr?.name || 'desconocido'}`);
+        }
+
+        setIsLoading(false);
+        return;
+      }
+
       // Now list cameras after permission is granted
       const devices = await Html5Qrcode.getCameras();
       console.log('[QRScanner] Cameras found:', devices.length);
-      
+
       if (devices && devices.length) {
         setCameras(devices);
         // Prefer back camera
@@ -255,7 +284,14 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
         );
         const startIndex = backCameraIndex >= 0 ? backCameraIndex : 0;
         setCurrentCameraIndex(startIndex);
-        
+
+        const containerEl = document.getElementById('qr-reader');
+        if (!containerEl) {
+          setError('No se pudo inicializar la cámara. Reintenta.');
+          setIsLoading(false);
+          return;
+        }
+
         scannerRef.current = new Html5Qrcode('qr-reader');
         await startWebCamera(devices[startIndex].id);
       } else {
@@ -321,6 +357,15 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
     await startWebCamera(cameras[nextIndex].id);
   };
 
+  const handleStartWebScanner = async () => {
+    setError(null);
+    setShowOpenSettings(false);
+    setWebStarted(true);
+    // Espera un tick para que se renderice #qr-reader antes de inicializar html5-qrcode
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    await initWebScanner();
+  };
+
   const handleClose = async () => {
     scanningRef.current = false;
     onClose();
@@ -371,12 +416,28 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
           ) : error ? (
             <div className="text-center text-white p-8">
               <p className="text-red-400 mb-4">{error}</p>
+
               {showOpenSettings && (
                 <Button onClick={openSettings} variant="outline" className="mb-2">
                   <Settings className="h-4 w-4 mr-2" />
                   Abrir Configuración
                 </Button>
               )}
+
+              {!isNative && (
+                <Button onClick={handleStartWebScanner} variant="outline" className="mb-2">
+                  Reintentar cámara
+                </Button>
+              )}
+
+              <div className="text-xs text-white/60 mb-4">
+                {!isNative && (
+                  <p>
+                    Tip: en Chrome → Ajustes del sitio → Cámara → Permitir.
+                  </p>
+                )}
+              </div>
+
               <div>
                 <Button onClick={handleClose} variant="ghost" className="text-white">
                   Cerrar
@@ -400,18 +461,31 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
             </div>
           ) : (
             <>
-              <div 
-                id="qr-reader" 
-                ref={containerRef}
-                className="rounded-lg overflow-hidden"
-              />
-              {/* Overlay corners */}
-              <div className="absolute inset-0 pointer-events-none">
-                <div className="absolute top-0 left-0 w-16 h-16 border-t-4 border-l-4 border-primary rounded-tl-lg" />
-                <div className="absolute top-0 right-0 w-16 h-16 border-t-4 border-r-4 border-primary rounded-tr-lg" />
-                <div className="absolute bottom-0 left-0 w-16 h-16 border-b-4 border-l-4 border-primary rounded-bl-lg" />
-                <div className="absolute bottom-0 right-0 w-16 h-16 border-b-4 border-r-4 border-primary rounded-br-lg" />
-              </div>
+              {!webStarted ? (
+                <div className="text-center text-white p-8">
+                  <p className="mb-4 text-white/80">
+                    Para escanear, primero debemos pedir permiso de camara.
+                  </p>
+                  <Button onClick={handleStartWebScanner} className="w-full">
+                    Activar camara
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <div
+                    id="qr-reader"
+                    ref={containerRef}
+                    className="rounded-lg overflow-hidden"
+                  />
+                  {/* Overlay corners */}
+                  <div className="absolute inset-0 pointer-events-none">
+                    <div className="absolute top-0 left-0 w-16 h-16 border-t-4 border-l-4 border-primary rounded-tl-lg" />
+                    <div className="absolute top-0 right-0 w-16 h-16 border-t-4 border-r-4 border-primary rounded-tr-lg" />
+                    <div className="absolute bottom-0 left-0 w-16 h-16 border-b-4 border-l-4 border-primary rounded-bl-lg" />
+                    <div className="absolute bottom-0 right-0 w-16 h-16 border-b-4 border-r-4 border-primary rounded-br-lg" />
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>
