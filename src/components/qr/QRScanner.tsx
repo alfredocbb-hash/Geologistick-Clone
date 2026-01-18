@@ -194,10 +194,11 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
         return;
       }
       
-      toast.error(`Error escáner: ${errorMessage}`);
-      setError('Error al iniciar el escáner: ' + errorMessage);
-      setIsLoading(false);
-      setIsScanning(false);
+      // Fallback to web scanner if native fails
+      console.log('[QRScanner] Native scanner failed, falling back to web scanner...');
+      toast.warning('Escáner nativo falló, usando alternativa web...');
+      setError(null);
+      await initWebScanner();
     }
   };
 

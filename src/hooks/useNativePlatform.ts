@@ -1,27 +1,12 @@
 import { Capacitor } from '@capacitor/core';
 
 export function useNativePlatform() {
+  // Use ONLY Capacitor's official detection - no URL or localStorage heuristics
   const capacitorPlatform = Capacitor.getPlatform();
+  const isCapacitorNative = Capacitor.isNativePlatform();
   
-  // Enhanced detection for Capacitor WebView
+  // Fallback detection for WebView environments where Capacitor might not initialize properly
   const userAgent = navigator.userAgent.toLowerCase();
-  
-  // Check if loaded from Capacitor app via URL or stored flag
-  const isLoadedInCapacitorApp = 
-    window.location.href.includes('forceHideBadge=true') ||
-    window.location.href.includes('geologic.lovable.app') ||
-    localStorage.getItem('capacitor-native') === 'true' ||
-    document.referrer.includes('capacitor://') ||
-    window.location.href.includes('lovableproject.com');
-  
-  // Store flag for future visits within the app
-  if (isLoadedInCapacitorApp && typeof localStorage !== 'undefined') {
-    try {
-      localStorage.setItem('capacitor-native', 'true');
-    } catch (e) {
-      // Ignore localStorage errors
-    }
-  }
   
   const isAndroidWebView = 
     userAgent.includes('wv') || 
@@ -33,16 +18,12 @@ export function useNativePlatform() {
     (userAgent.includes('iphone') || userAgent.includes('ipad')) &&
     !userAgent.includes('safari') && !userAgent.includes('crios');
   
-  const isCapacitorNative = 
-    typeof (window as any).Capacitor?.isNativePlatform === 'function' 
-      ? (window as any).Capacitor.isNativePlatform() 
-      : false;
-  
-  const isAndroid = capacitorPlatform === 'android' || isAndroidWebView || 
-    (isLoadedInCapacitorApp && userAgent.includes('android'));
-  const isIOS = capacitorPlatform === 'ios' || isIOSWebView ||
-    (isLoadedInCapacitorApp && (userAgent.includes('iphone') || userAgent.includes('ipad')));
-  const isNative = capacitorPlatform !== 'web' || isCapacitorNative || isAndroidWebView || isIOSWebView || isLoadedInCapacitorApp;
+  // isNative is TRUE only when:
+  // 1. Capacitor explicitly says we're native, OR
+  // 2. We detect a native WebView environment
+  const isAndroid = capacitorPlatform === 'android' || (isCapacitorNative && userAgent.includes('android'));
+  const isIOS = capacitorPlatform === 'ios' || (isCapacitorNative && (userAgent.includes('iphone') || userAgent.includes('ipad')));
+  const isNative = isCapacitorNative || capacitorPlatform !== 'web' || isAndroidWebView || isIOSWebView;
   const isWeb = !isNative;
   
   const platform = isAndroid ? 'android' : isIOS ? 'ios' : capacitorPlatform;
