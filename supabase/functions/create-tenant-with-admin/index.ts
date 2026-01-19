@@ -186,6 +186,13 @@ Deno.serve(async (req) => {
 
     if (branchError) {
       console.error("Branch creation failed:", branchError);
+      // Rollback: delete tenant
+      await adminClient.from('tenants').delete().eq('id', tenant.id);
+      await adminClient.auth.admin.deleteUser(userId);
+      return new Response(
+        JSON.stringify({ error: "Error al crear sucursal: " + branchError.message }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // 4. Wait for the trigger to create profile, then update it
@@ -224,7 +231,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 5. Assign admin role
+    // 5. Assign admin role (CRITICAL - must succeed)
     const { error: roleError } = await adminClient
       .from('user_roles')
       .insert({
@@ -234,6 +241,15 @@ Deno.serve(async (req) => {
 
     if (roleError) {
       console.error("Role assignment failed:", roleError);
+      // Rollback everything - this is critical
+      await adminClient.from('sucursales').delete().eq('tenant_id', tenant.id);
+      await adminClient.from('profiles').delete().eq('user_id', userId);
+      await adminClient.auth.admin.deleteUser(userId);
+      await adminClient.from('tenants').delete().eq('id', tenant.id);
+      return new Response(
+        JSON.stringify({ error: "Error al asignar rol de administrador: " + roleError.message }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // 6. Create branding

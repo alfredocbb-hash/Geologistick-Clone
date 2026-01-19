@@ -106,17 +106,40 @@ export default function Onboarding() {
         .update({ nombre_app: formData.nombreEmpresa })
         .eq('tenant_id', tenantId);
 
-      // Update main branch
-      await supabase
+      // Check if main branch exists
+      const { data: existingBranch } = await supabase
         .from('sucursales')
-        .update({
-          nombre: `${formData.nombreEmpresa} - Principal`,
-          direccion: formData.direccionSucursal,
-          ciudad: formData.ciudadSucursal || null,
-          telefono: formData.telefonoSucursal || null,
-        })
+        .select('id')
         .eq('tenant_id', tenantId)
-        .eq('codigo', 'MAIN');
+        .eq('codigo', 'MAIN')
+        .maybeSingle();
+
+      if (existingBranch) {
+        // Update existing branch
+        await supabase
+          .from('sucursales')
+          .update({
+            nombre: `${formData.nombreEmpresa} - Principal`,
+            direccion: formData.direccionSucursal,
+            ciudad: formData.ciudadSucursal || null,
+            telefono: formData.telefonoSucursal || null,
+          })
+          .eq('id', existingBranch.id);
+      } else {
+        // Create main branch if it doesn't exist
+        await supabase
+          .from('sucursales')
+          .insert({
+            nombre: `${formData.nombreEmpresa} - Principal`,
+            direccion: formData.direccionSucursal,
+            ciudad: formData.ciudadSucursal || null,
+            telefono: formData.telefonoSucursal || null,
+            tenant_id: tenantId,
+            codigo: 'MAIN',
+            es_centro_logistico: true,
+            activa: true,
+          });
+      }
 
       setCurrentStep(3);
     } catch (error: any) {
