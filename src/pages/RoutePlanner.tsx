@@ -611,7 +611,9 @@ export default function RoutePlanner() {
       const option1Stops = [...retirosOpt.ordered, ...entregasOpt.ordered].map(e => ({
         envio_id: e.id,
         tipo: e.tipo,
-        direccion: e.tipo === "retiro" ? e.remitente?.direccion : e.destinatario?.direccion,
+        direccion: e.tipo === "retiro" 
+          ? (e.direccion_retiro || e.remitente?.direccion)
+          : (e.direccion_entrega || e.destinatario?.direccion),
         lat: Number(e.coords.lat),
         lng: Number(e.coords.lng),
         cliente_nombre: e.tipo === "retiro" 
@@ -626,7 +628,9 @@ export default function RoutePlanner() {
       const option2Stops = allMixed.ordered.map(e => ({
         envio_id: e.id,
         tipo: e.tipo,
-        direccion: e.tipo === "retiro" ? e.remitente?.direccion : e.destinatario?.direccion,
+        direccion: e.tipo === "retiro" 
+          ? (e.direccion_retiro || e.remitente?.direccion)
+          : (e.direccion_entrega || e.destinatario?.direccion),
         lat: Number(e.coords.lat),
         lng: Number(e.coords.lng),
         cliente_nombre: e.tipo === "retiro" 
@@ -882,8 +886,8 @@ export default function RoutePlanner() {
                             </TableCell>
                             <TableCell className="text-xs">
                               {envio.tipo === "retiro" 
-                                ? envio.remitente?.direccion 
-                                : envio.destinatario?.direccion}
+                                ? (envio.direccion_retiro || envio.remitente?.direccion)
+                                : (envio.direccion_entrega || envio.destinatario?.direccion)}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -1301,6 +1305,14 @@ export default function RoutePlanner() {
                           <span className="text-sm text-muted-foreground">
                             {format(new Date(ruta.fecha), "dd/MM/yyyy", { locale: es })}
                           </span>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => window.open(`/print/planned-route?id=${ruta.id}`, '_blank')}
+                          >
+                            <Route className="h-4 w-4 mr-1" />
+                            Imprimir
+                          </Button>
                           <Button 
                             variant="outline" 
                             size="sm"

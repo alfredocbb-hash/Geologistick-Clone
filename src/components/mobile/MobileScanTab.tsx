@@ -93,11 +93,28 @@ export function MobileScanTab() {
     
     try {
       // Search for shipment by tracking number (case-insensitive)
-      const { data: shipment, error } = await supabase
+      // First try exact match, then try without last segment (for package suffixes)
+      let { data: shipment, error } = await supabase
         .from('envios')
         .select('*')
         .ilike('tracking_number', tracking)
         .maybeSingle();
+      
+      // If not found, try searching with a partial match (removing potential suffix)
+      if (!shipment && !error) {
+        const baseTracking = tracking.replace(/-\d{1,2}$/, '');
+        if (baseTracking !== tracking) {
+          const { data: partialMatch, error: partialError } = await supabase
+            .from('envios')
+            .select('*')
+            .ilike('tracking_number', baseTracking)
+            .maybeSingle();
+          
+          if (!partialError && partialMatch) {
+            shipment = partialMatch;
+          }
+        }
+      }
       
       if (error) {
         console.error('[MobileScanTab] Database error:', error);
