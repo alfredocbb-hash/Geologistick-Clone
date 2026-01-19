@@ -1,51 +1,151 @@
 import { useAuth } from '@/lib/auth';
+import { useTenant } from '@/hooks/useTenant';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Package, Truck, DollarSign, Users, TrendingUp, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 export default function Dashboard() {
   const { profile, roles } = useAuth();
+  const { tenantId } = useTenant();
 
-  const stats = [
+  // Fetch real stats
+  const { data: stats, isLoading: statsLoading } = useQuery({
+    queryKey: ['dashboard-stats', tenantId],
+    queryFn: async () => {
+      if (!tenantId) return null;
+      
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Envíos de hoy
+      const { count: todayShipments } = await supabase
+        .from('envios')
+        .select('*', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
+        .gte('created_at', today);
+
+      // En tránsito
+      const { count: inTransit } = await supabase
+        .from('envios')
+        .select('*', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
+        .in('estado', ['en_transito', 'en_reparto']);
+
+      // Ingresos del día (envíos de hoy)
+      const { data: todayRevenue } = await supabase
+        .from('envios')
+        .select('precio_total')
+        .eq('tenant_id', tenantId)
+        .gte('created_at', today);
+      
+      const revenue = todayRevenue?.reduce((sum, e) => sum + (e.precio_total || 0), 0) || 0;
+
+      // Choferes activos (con rutas hoy)
+      const { data: activeDrivers } = await supabase
+        .from('rutas_planificadas')
+        .select('chofer_id')
+        .eq('tenant_id', tenantId)
+        .eq('fecha', today)
+        .eq('estado', 'en_curso');
+      
+      const uniqueDrivers = new Set(activeDrivers?.map(r => r.chofer_id).filter(Boolean)).size;
+
+      return {
+        todayShipments: todayShipments || 0,
+        inTransit: inTransit || 0,
+        revenue,
+        activeDrivers: uniqueDrivers,
+      };
+    },
+    enabled: !!tenantId,
+  });
+
+  // Fetch recent shipments
+  const { data: recentShipments, isLoading: shipmentsLoading } = useQuery({
+    queryKey: ['recent-shipments', tenantId],
+    queryFn: async () => {
+      if (!tenantId) return [];
+      
+      const { data } = await supabase
+        .from('envios')
+        .select('tracking_number, estado, direccion_entrega, created_at')
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: false })
+        .limit(5);
+      
+      return data || [];
+    },
+    enabled: !!tenantId,
+  });
+
+  // Fetch daily summary
+  const { data: dailySummary } = useQuery({
+    queryKey: ['daily-summary', tenantId],
+    queryFn: async () => {
+      if (!tenantId) return null;
+      
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Entregas completadas hoy
+      const { count: deliveredToday } = await supabase
+        .from('envios')
+        .select('*', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
+        .eq('estado', 'entregado')
+        .gte('fecha_entrega', today);
+
+      // Pendientes
+      const { count: pending } = await supabase
+        .from('envios')
+        .select('*', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
+        .eq('estado', 'pendiente');
+
+      // Incidencias
+      const { count: incidents } = await supabase
+        .from('incidentes')
+        .select('*', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
+        .eq('estado', 'abierto');
+
+      return {
+        delivered: deliveredToday || 0,
+        pending: pending || 0,
+        incidents: incidents || 0,
+      };
+    },
+    enabled: !!tenantId,
+  });
+
+  const statsConfig = [
     {
       title: 'Envíos Hoy',
-      value: '24',
-      change: '+12%',
-      changeType: 'positive' as const,
+      value: stats?.todayShipments ?? 0,
       icon: Package,
       color: 'bg-shipments',
     },
     {
       title: 'En Tránsito',
-      value: '156',
-      change: '+5%',
-      changeType: 'positive' as const,
+      value: stats?.inTransit ?? 0,
       icon: Truck,
       color: 'bg-drivers',
     },
     {
       title: 'Ingresos del Día',
-      value: '$12,450',
-      change: '+18%',
-      changeType: 'positive' as const,
+      value: `$${(stats?.revenue ?? 0).toLocaleString()}`,
       icon: DollarSign,
       color: 'bg-cash',
     },
     {
       title: 'Choferes Activos',
-      value: '8',
-      change: '-2',
-      changeType: 'neutral' as const,
+      value: stats?.activeDrivers ?? 0,
       icon: Users,
       color: 'bg-commissions',
     },
-  ];
-
-  const recentShipments = [
-    { id: 'ENV-20240115-A1B2C3', status: 'en_transito', destination: 'Buenos Aires', time: 'Hace 15 min' },
-    { id: 'ENV-20240115-D4E5F6', status: 'entregado', destination: 'Córdoba', time: 'Hace 32 min' },
-    { id: 'ENV-20240115-G7H8I9', status: 'pendiente', destination: 'Rosario', time: 'Hace 45 min' },
-    { id: 'ENV-20240115-J0K1L2', status: 'en_reparto', destination: 'Mendoza', time: 'Hace 1 hora' },
   ];
 
   const getStatusBadge = (status: string) => {
@@ -80,7 +180,7 @@ export default function Dashboard() {
 
       {/* Stats Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat) => (
+        {statsConfig.map((stat) => (
           <Card key={stat.title} className="card-hover overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -91,14 +191,11 @@ export default function Dashboard() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="flex items-baseline gap-2">
+              {statsLoading ? (
+                <Skeleton className="h-9 w-24" />
+              ) : (
                 <span className="text-3xl font-bold">{stat.value}</span>
-                <span className={`text-sm font-medium ${
-                  stat.changeType === 'positive' ? 'text-success' : 'text-muted-foreground'
-                }`}>
-                  {stat.change}
-                </span>
-              </div>
+              )}
             </CardContent>
           </Card>
         ))}
@@ -116,23 +213,39 @@ export default function Dashboard() {
             <CardDescription>Los últimos movimientos del sistema</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {recentShipments.map((shipment) => (
-                <div
-                  key={shipment.id}
-                  className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
-                >
-                  <div className="flex flex-col gap-1">
-                    <span className="font-mono text-sm font-medium">{shipment.id}</span>
-                    <span className="text-xs text-muted-foreground">{shipment.destination}</span>
+            {shipmentsLoading ? (
+              <div className="space-y-4">
+                {[...Array(4)].map((_, i) => (
+                  <Skeleton key={i} className="h-16 w-full" />
+                ))}
+              </div>
+            ) : recentShipments && recentShipments.length > 0 ? (
+              <div className="space-y-4">
+                {recentShipments.map((shipment) => (
+                  <div
+                    key={shipment.tracking_number}
+                    className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                  >
+                    <div className="flex flex-col gap-1">
+                      <span className="font-mono text-sm font-medium">{shipment.tracking_number}</span>
+                      <span className="text-xs text-muted-foreground">{shipment.direccion_entrega}</span>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      {getStatusBadge(shipment.estado || 'pendiente')}
+                      <span className="text-xs text-muted-foreground">
+                        {formatDistanceToNow(new Date(shipment.created_at), { addSuffix: true, locale: es })}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex flex-col items-end gap-1">
-                    {getStatusBadge(shipment.status)}
-                    <span className="text-xs text-muted-foreground">{shipment.time}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <Package className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                <p>Sin envíos recientes</p>
+                <p className="text-sm">Los envíos aparecerán aquí</p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -150,15 +263,19 @@ export default function Dashboard() {
               <div className="flex items-center gap-4 p-4 rounded-lg bg-success/10 border border-success/20">
                 <CheckCircle className="h-8 w-8 text-success" />
                 <div>
-                  <p className="font-semibold text-success">45 Entregas Completadas</p>
-                  <p className="text-sm text-muted-foreground">95% de éxito en entregas</p>
+                  <p className="font-semibold text-success">
+                    {dailySummary?.delivered ?? 0} Entregas Completadas
+                  </p>
+                  <p className="text-sm text-muted-foreground">Completadas hoy</p>
                 </div>
               </div>
               
               <div className="flex items-center gap-4 p-4 rounded-lg bg-warning/10 border border-warning/20">
                 <Clock className="h-8 w-8 text-warning" />
                 <div>
-                  <p className="font-semibold text-warning">12 Envíos Pendientes</p>
+                  <p className="font-semibold text-warning">
+                    {dailySummary?.pending ?? 0} Envíos Pendientes
+                  </p>
                   <p className="text-sm text-muted-foreground">Esperando asignación</p>
                 </div>
               </div>
@@ -166,7 +283,9 @@ export default function Dashboard() {
               <div className="flex items-center gap-4 p-4 rounded-lg bg-destructive/10 border border-destructive/20">
                 <AlertCircle className="h-8 w-8 text-destructive" />
                 <div>
-                  <p className="font-semibold text-destructive">3 Incidencias</p>
+                  <p className="font-semibold text-destructive">
+                    {dailySummary?.incidents ?? 0} Incidencias
+                  </p>
                   <p className="text-sm text-muted-foreground">Requieren atención</p>
                 </div>
               </div>
