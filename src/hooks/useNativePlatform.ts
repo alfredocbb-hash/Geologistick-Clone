@@ -23,16 +23,21 @@ export function useNativePlatform() {
     !userAgent.includes('crios') &&
     !userAgent.includes('fxios'); // Also exclude Firefox iOS
   
-  // isNative is TRUE only when:
-  // 1. Capacitor explicitly says we're native (most reliable), OR
-  // 2. We detect a CONFIRMED native WebView environment (stricter checks)
-  const isAndroid = capacitorPlatform === 'android' || (isCapacitorNative && userAgent.includes('android'));
-  const isIOS = capacitorPlatform === 'ios' || (isCapacitorNative && (userAgent.includes('iphone') || userAgent.includes('ipad')));
-  
   // Only trust Capacitor's isNativePlatform() OR confirmed WebView detection
   const isNative = isCapacitorNative || isAndroidWebView || isIOSWebView;
   const isWeb = !isNative;
   
+  // isAndroid/isIOS detection - CRITICAL: Include WebView detection for remote URL scenarios
+  // When Capacitor loads a remote URL, getPlatform() may return "web" but we're still in Android WebView
+  const isAndroid = capacitorPlatform === 'android' || 
+    (isCapacitorNative && userAgent.includes('android')) ||
+    isAndroidWebView; // If we detected Android WebView, we ARE on Android
+    
+  const isIOS = capacitorPlatform === 'ios' || 
+    (isCapacitorNative && (userAgent.includes('iphone') || userAgent.includes('ipad'))) ||
+    isIOSWebView; // If we detected iOS WebView, we ARE on iOS
+  
+  // Platform string - prioritize detected platform over Capacitor's report
   const platform = isAndroid ? 'android' : isIOS ? 'ios' : capacitorPlatform;
   
   return { isNative, isAndroid, isIOS, isWeb, platform };
