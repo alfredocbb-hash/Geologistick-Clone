@@ -1,13 +1,8 @@
 import { useJsApiLoader } from '@react-google-maps/api';
-import { ReactNode, createContext, useContext, useMemo } from 'react';
+import { ReactNode, createContext, useContext, useMemo, useEffect, useState } from 'react';
+import { useMapsApiKey } from '@/hooks/useMapsApiKey';
 
 const libraries: ("places" | "geometry" | "drawing")[] = ['places', 'geometry'];
-
-// Get the client-side Maps API key from environment
-// This should be a RESTRICTED key configured in Google Cloud Console:
-// - HTTP referrer restrictions: your domain only
-// - API restrictions: Maps JavaScript API only
-const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
 interface GoogleMapsContextType {
   isLoaded: boolean;
@@ -25,26 +20,68 @@ interface GoogleMapsProviderProps {
   children: ReactNode;
 }
 
-export function GoogleMapsProvider({ children }: GoogleMapsProviderProps) {
+// Inner component that loads the map once we have the API key
+function GoogleMapsLoaderInner({ 
+  apiKey, 
+  children 
+}: { 
+  apiKey: string; 
+  children: ReactNode;
+}) {
   const { isLoaded, loadError } = useJsApiLoader({
-    googleMapsApiKey: MAPS_API_KEY,
+    googleMapsApiKey: apiKey,
     libraries,
     language: 'es',
     region: 'AR',
   });
 
   const contextValue = useMemo(() => ({
-    isLoaded: MAPS_API_KEY ? isLoaded : false,
-    loadError: !MAPS_API_KEY 
-      ? 'Google Maps API key not configured' 
-      : loadError?.message || null,
-    apiKey: MAPS_API_KEY || null,
-  }), [isLoaded, loadError]);
+    isLoaded,
+    loadError: loadError?.message || null,
+    apiKey,
+  }), [isLoaded, loadError, apiKey]);
 
   return (
     <GoogleMapsContext.Provider value={contextValue}>
       {children}
     </GoogleMapsContext.Provider>
+  );
+}
+
+export function GoogleMapsProvider({ children }: GoogleMapsProviderProps) {
+  const { apiKey, isLoading, error } = useMapsApiKey();
+
+  // While loading the API key, show children with a "not loaded" context
+  if (isLoading) {
+    return (
+      <GoogleMapsContext.Provider value={{ 
+        isLoaded: false, 
+        loadError: null, 
+        apiKey: null 
+      }}>
+        {children}
+      </GoogleMapsContext.Provider>
+    );
+  }
+
+  // If there's an error or no API key, provide error context
+  if (error || !apiKey) {
+    return (
+      <GoogleMapsContext.Provider value={{ 
+        isLoaded: false, 
+        loadError: error || 'Google Maps API key not configured', 
+        apiKey: null 
+      }}>
+        {children}
+      </GoogleMapsContext.Provider>
+    );
+  }
+
+  // Once we have the API key, use the inner loader
+  return (
+    <GoogleMapsLoaderInner apiKey={apiKey}>
+      {children}
+    </GoogleMapsLoaderInner>
   );
 }
 
@@ -59,5 +96,5 @@ export function useGoogleMaps(): GoogleMapsContextType {
   return useContext(GoogleMapsContext);
 }
 
-// Re-export for backwards compatibility
-export { MAPS_API_KEY };
+// Export a getter for backwards compatibility (will be null until loaded)
+export const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
