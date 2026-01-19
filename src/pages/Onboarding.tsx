@@ -106,12 +106,12 @@ export default function Onboarding() {
         .update({ nombre_app: formData.nombreEmpresa })
         .eq('tenant_id', tenantId);
 
-      // Check if main branch exists
+      // Check if admin branch exists (compatible with both ADMIN and MAIN codes)
       const { data: existingBranch } = await supabase
         .from('sucursales')
         .select('id')
         .eq('tenant_id', tenantId)
-        .eq('codigo', 'MAIN')
+        .in('codigo', ['ADMIN', 'MAIN'])
         .maybeSingle();
 
       if (existingBranch) {

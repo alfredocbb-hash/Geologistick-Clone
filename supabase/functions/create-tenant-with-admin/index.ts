@@ -170,14 +170,14 @@ Deno.serve(async (req) => {
     const userId = newUser.user.id;
     console.log("User created:", userId);
 
-    // 3. Create the main branch first (needed for profile)
+    // 3. Create the "Administración" branch first (needed for profile)
     const { data: branch, error: branchError } = await adminClient
       .from('sucursales')
       .insert({
-        nombre: 'Sucursal Principal',
+        nombre: 'Administración',
         direccion: 'Por configurar',
         tenant_id: tenant.id,
-        codigo: 'MAIN',
+        codigo: 'ADMIN',
         es_centro_logistico: true,
         activa: true
       })
