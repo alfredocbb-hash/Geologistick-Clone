@@ -3,9 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Building2, Package, Truck, RefreshCw } from "lucide-react";
+import { Building2, Package, Truck, RefreshCw, AlertCircle, Navigation } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import MapView from "@/components/maps/MapView";
+import { Link } from "react-router-dom";
 
 interface SucursalConEnvios {
   id: string;
@@ -70,6 +71,10 @@ export default function LiveMap() {
   const sucursalesConCoords = useMemo(() => {
     return sucursalesData.filter(s => s.lat && s.lng);
   }, [sucursalesData]);
+
+  // Check if there are any geolocated branches
+  const hasGeolocatedBranches = sucursalesConCoords.length > 0;
+  const branchesWithoutCoords = sucursalesData.filter(s => !s.lat || !s.lng).length;
 
   // Map markers
   const mapMarkers = useMemo(() => {
@@ -169,23 +174,53 @@ export default function LiveMap() {
             <CardTitle className="text-lg">Ubicación de Sucursales</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-[500px] rounded-lg overflow-hidden">
-              <MapView
-                markers={mapMarkers}
-                center={{ lat: -34.6037, lng: -58.3816 }}
-                zoom={10}
-              />
-            </div>
-            <div className="flex gap-4 mt-4 text-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded-full bg-purple-500"></div>
-                <span>Centro Logístico</span>
+            {!hasGeolocatedBranches ? (
+              <div className="h-[500px] rounded-lg border-2 border-dashed border-muted flex flex-col items-center justify-center gap-4 bg-muted/20">
+                <div className="p-4 rounded-full bg-warning/10">
+                  <AlertCircle className="h-12 w-12 text-warning" />
+                </div>
+                <div className="text-center">
+                  <h3 className="font-semibold text-lg mb-2">Sin sucursales geolocalizadas</h3>
+                  <p className="text-muted-foreground mb-4 max-w-md">
+                    {branchesWithoutCoords > 0 
+                      ? `Hay ${branchesWithoutCoords} sucursales sin coordenadas. Geolocalizalas para verlas en el mapa.`
+                      : 'No hay sucursales registradas aún.'}
+                  </p>
+                  <Button asChild>
+                    <Link to="/branches">
+                      <Navigation className="h-4 w-4 mr-2" />
+                      Ir a Sucursales
+                    </Link>
+                  </Button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded-full bg-blue-500"></div>
-                <span>Sucursal</span>
-              </div>
-            </div>
+            ) : (
+              <>
+                <div className="h-[500px] rounded-lg overflow-hidden">
+                  <MapView
+                    markers={mapMarkers}
+                    center={{ lat: -34.6037, lng: -58.3816 }}
+                    zoom={10}
+                  />
+                </div>
+                <div className="flex gap-4 mt-4 text-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded-full bg-purple-500"></div>
+                    <span>Centro Logístico</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded-full bg-blue-500"></div>
+                    <span>Sucursal</span>
+                  </div>
+                  {branchesWithoutCoords > 0 && (
+                    <div className="flex items-center gap-2 ml-auto text-warning">
+                      <AlertCircle className="h-4 w-4" />
+                      <span>{branchesWithoutCoords} sin geolocalizar</span>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -210,33 +245,40 @@ export default function LiveMap() {
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground mb-2">
-                    {sucursal.ciudad}
+                    {sucursal.ciudad || sucursal.direccion}
                   </p>
-                  <div className="flex gap-2">
-                    {sucursal.envios_pendientes > 0 && (
-                      <Badge variant="outline" className="text-xs">
-                        <Package className="mr-1 h-3 w-3" />
-                        {sucursal.envios_pendientes} pend.
-                      </Badge>
-                    )}
-                    {sucursal.envios_en_bodega > 0 && (
-                      <Badge variant="outline" className="text-xs">
-                        <Building2 className="mr-1 h-3 w-3" />
-                        {sucursal.envios_en_bodega} bodega
-                      </Badge>
-                    )}
-                    {sucursal.envios_en_reparto > 0 && (
-                      <Badge variant="outline" className="text-xs">
-                        <Truck className="mr-1 h-3 w-3" />
-                        {sucursal.envios_en_reparto} reparto
-                      </Badge>
-                    )}
-                    {sucursal.envios_pendientes === 0 && 
-                     sucursal.envios_en_bodega === 0 && 
-                     sucursal.envios_en_reparto === 0 && (
-                      <span className="text-xs text-muted-foreground">Sin envíos activos</span>
-                    )}
-                  </div>
+                  {!sucursal.lat || !sucursal.lng ? (
+                    <Badge variant="outline" className="text-xs text-warning border-warning/50">
+                      <AlertCircle className="mr-1 h-3 w-3" />
+                      Sin geolocalizar
+                    </Badge>
+                  ) : (
+                    <div className="flex gap-2 flex-wrap">
+                      {sucursal.envios_pendientes > 0 && (
+                        <Badge variant="outline" className="text-xs">
+                          <Package className="mr-1 h-3 w-3" />
+                          {sucursal.envios_pendientes} pend.
+                        </Badge>
+                      )}
+                      {sucursal.envios_en_bodega > 0 && (
+                        <Badge variant="outline" className="text-xs">
+                          <Building2 className="mr-1 h-3 w-3" />
+                          {sucursal.envios_en_bodega} bodega
+                        </Badge>
+                      )}
+                      {sucursal.envios_en_reparto > 0 && (
+                        <Badge variant="outline" className="text-xs">
+                          <Truck className="mr-1 h-3 w-3" />
+                          {sucursal.envios_en_reparto} reparto
+                        </Badge>
+                      )}
+                      {sucursal.envios_pendientes === 0 && 
+                       sucursal.envios_en_bodega === 0 && 
+                       sucursal.envios_en_reparto === 0 && (
+                        <span className="text-xs text-muted-foreground">Sin envíos activos</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
