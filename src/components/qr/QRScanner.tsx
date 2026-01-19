@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { Html5Qrcode, Html5QrcodeScannerState } from 'html5-qrcode';
 import { BarcodeScanner, BarcodeFormat, LensFacing } from '@capacitor-mlkit/barcode-scanning';
 import { Button } from '@/components/ui/button';
-import { X, Camera, SwitchCamera, Loader2, Settings, RefreshCw, Globe, Smartphone } from 'lucide-react';
+import { X, Camera, SwitchCamera, Loader2, Settings, RefreshCw, Globe } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNativePlatform } from '@/hooks/useNativePlatform';
 
@@ -40,47 +40,19 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
   const [showOpenSettings, setShowOpenSettings] = useState(false);
   const [webStarted, setWebStarted] = useState(false);
   const [forceWebScanner, setForceWebScanner] = useState(false);
-  const [tryNativeScanner, setTryNativeScanner] = useState(false);
   const [nativeStep, setNativeStep] = useState<NativeStep>('idle');
   const [usingStartScan, setUsingStartScan] = useState(false);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const scanningRef = useRef(false);
   const listenerCleanupRef = useRef<(() => void) | null>(null);
-  const elapsedTimerRef = useRef<number | null>(null);
   
   // Use centralized native platform detection
   const { isNative, isAndroid, isIOS, platform } = useNativePlatform();
   
-  // NEW STRATEGY: On Android native, start with web scanner by default
-  // Only use native scanner if user explicitly requests it via tryNativeScanner
-  const shouldUseNative = isNative && tryNativeScanner && !forceWebScanner;
-  
-  // Check if we're in Android native environment (for showing "try native" option)
-  const isAndroidNative = isNative && isAndroid;
-
-  // Start elapsed timer when loading
-  useEffect(() => {
-    if (isLoading) {
-      setElapsedSeconds(0);
-      elapsedTimerRef.current = window.setInterval(() => {
-        setElapsedSeconds(prev => prev + 1);
-      }, 1000);
-    } else {
-      if (elapsedTimerRef.current) {
-        clearInterval(elapsedTimerRef.current);
-        elapsedTimerRef.current = null;
-      }
-    }
-    
-    return () => {
-      if (elapsedTimerRef.current) {
-        clearInterval(elapsedTimerRef.current);
-      }
-    };
-  }, [isLoading]);
+  // Determine if we should use native scanner
+  const shouldUseNative = isNative && !forceWebScanner;
 
   // Cleanup function for native scanner
   const cleanupNativeScanner = useCallback(async () => {
@@ -122,8 +94,6 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
       isIOS,
       shouldUseNative,
       forceWebScanner,
-      tryNativeScanner,
-      isAndroidNative,
       userAgent: navigator.userAgent.substring(0, 100),
       href: window.location.href,
     });
@@ -131,19 +101,12 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
     toast.info(`Plataforma: ${platform}, Nativo: ${isNative}, Android: ${isAndroid}`);
 
     if (shouldUseNative) {
-      // User explicitly requested native scanner
       initNativeScannerWithStartScan();
     } else {
-      // Default: use web scanner (works better in WebView)
-      // Automatically start web scanner for better UX
+      // On web or forced web mode
       setIsLoading(false);
       setError(null);
       setShowOpenSettings(false);
-      
-      // Auto-start web scanner after a short delay
-      setTimeout(() => {
-        handleStartWebScanner();
-      }, 100);
     }
 
     return () => {
@@ -154,7 +117,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
         stopWebScanner();
       }
     };
-  }, [shouldUseNative, platform, isAndroid, forceWebScanner, tryNativeScanner]);
+  }, [shouldUseNative, platform, isAndroid, forceWebScanner]);
 
   // Native scanner using startScan() - camera behind WebView (more reliable)
   const initNativeScannerWithStartScan = async () => {
@@ -357,21 +320,10 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
   const handleUseWebFallback = async () => {
     console.log('[QRScanner] Switching to web scanner fallback');
     await cleanupNativeScanner();
-    setTryNativeScanner(false);
     setForceWebScanner(true);
     setError(null);
     setNativeStep('idle');
     setIsLoading(false);
-  };
-  
-  // Try native scanner (user initiated)
-  const handleTryNativeScanner = async () => {
-    console.log('[QRScanner] User requested native scanner');
-    await stopWebScanner();
-    setWebStarted(false);
-    setForceWebScanner(false);
-    setTryNativeScanner(true);
-    setError(null);
   };
 
   const openSettings = async () => {
@@ -543,8 +495,6 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
     scanningRef.current = false;
     if (shouldUseNative) {
       await cleanupNativeScanner();
-    } else {
-      await stopWebScanner();
     }
     onClose();
   };
@@ -559,7 +509,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
       case 'requesting_permissions': return 'Solicitando permisos...';
       case 'starting_scan': return 'Iniciando cámara...';
       case 'scanning': return 'Escaneando...';
-      default: return 'Iniciando cámara web...';
+      default: return 'Iniciando...';
     }
   };
 
@@ -579,7 +529,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
           <Camera className="h-5 w-5" />
           <span className="font-medium">Escáner QR</span>
           <span className="text-xs text-white/50 ml-2">
-            ({shouldUseNative ? 'nativo' : 'web'})
+            ({forceWebScanner ? 'web' : platform})
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -607,7 +557,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
       {/* Scanner Area */}
       <div className="flex-1 flex items-center justify-center p-4">
         <div className="relative w-full max-w-sm">
-          {/* Web scanner container - always render for web mode */}
+          {/* Web scanner container */}
           {!shouldUseNative && (
             <div 
               id="qr-reader" 
@@ -622,40 +572,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
             <div className="text-center text-white p-8">
               <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
               <p className="mb-2">{getStepDescription()}</p>
-              <p className="text-xs text-white/60 mb-4">Esto puede tardar unos segundos...</p>
-              
-              {/* Always show fallback buttons during loading */}
-              <div className="flex flex-col gap-2 mt-4">
-                <Button 
-                  onClick={handleUseWebFallback} 
-                  variant="outline" 
-                  className="w-full text-white border-white/30"
-                >
-                  <Globe className="h-4 w-4 mr-2" />
-                  Usar cámara alternativa
-                </Button>
-                <Button 
-                  onClick={handleClose} 
-                  variant="ghost" 
-                  className="w-full text-white/70"
-                >
-                  <X className="h-4 w-4 mr-2" />
-                  Cancelar
-                </Button>
-              </div>
-              
-              {/* Debug info for Android native */}
-              {isAndroidNative && (
-                <div className="mt-6 p-3 bg-black/50 rounded-lg text-left text-xs text-white/60 font-mono">
-                  <p className="text-white/80 mb-1">🔧 Diagnóstico:</p>
-                  <p>step: {nativeStep}</p>
-                  <p>loading: {isLoading ? 'sí' : 'no'}</p>
-                  <p>tryNative: {tryNativeScanner ? 'sí' : 'no'}</p>
-                  <p>forceWeb: {forceWebScanner ? 'sí' : 'no'}</p>
-                  <p>platform: {platform}</p>
-                  <p className="text-yellow-400">⏱️ Tiempo: {elapsedSeconds}s</p>
-                </div>
-              )}
+              <p className="text-xs text-white/60">Esto puede tardar unos segundos...</p>
             </div>
           ) : error ? (
             <div className="text-center text-white p-8">
@@ -683,18 +600,10 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
                 )}
 
                 {!shouldUseNative && (
-                  <>
-                    <Button onClick={handleStartWebScanner} variant="outline" className="w-full">
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                      Reintentar cámara
-                    </Button>
-                    {isAndroidNative && (
-                      <Button onClick={handleTryNativeScanner} variant="ghost" className="w-full text-white/70">
-                        <Smartphone className="h-4 w-4 mr-2" />
-                        Probar escáner nativo
-                      </Button>
-                    )}
-                  </>
+                  <Button onClick={handleStartWebScanner} variant="outline" className="w-full">
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Reintentar cámara
+                  </Button>
                 )}
               </div>
 
@@ -741,22 +650,20 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
               </div>
             </div>
           ) : (
-            // Web scanner UI - auto-started, so just show instructions when ready
+            // Web scanner UI
             <>
-              {webStarted && !error && (
+              {!webStarted ? (
+                <div className="text-center text-white p-8">
+                  <p className="mb-4 text-white/80">
+                    Para escanear, primero debemos pedir permiso de cámara.
+                  </p>
+                  <Button onClick={handleStartWebScanner} className="w-full">
+                    Activar cámara
+                  </Button>
+                </div>
+              ) : (
                 <div className="text-center text-white/60 text-sm mt-4">
                   <p>Apunta hacia el código QR</p>
-                  {/* Option to try native on Android */}
-                  {isAndroidNative && !tryNativeScanner && (
-                    <Button 
-                      onClick={handleTryNativeScanner} 
-                      variant="ghost" 
-                      className="text-white/50 mt-4 text-xs"
-                    >
-                      <Smartphone className="h-3 w-3 mr-1" />
-                      Probar escáner nativo
-                    </Button>
-                  )}
                 </div>
               )}
             </>
