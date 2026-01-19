@@ -10,9 +10,11 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Building2, User } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
 
 const formSchema = z.object({
+  // Tenant fields
   nombre: z.string().min(2, 'El nombre debe tener al menos 2 caracteres'),
   slug: z.string().min(2, 'El slug debe tener al menos 2 caracteres').regex(/^[a-z0-9-]+$/, 'Solo letras minúsculas, números y guiones'),
   plan: z.enum(['trial', 'starter', 'professional', 'enterprise']),
@@ -20,7 +22,13 @@ const formSchema = z.object({
   max_usuarios: z.coerce.number().min(1, 'Mínimo 1 usuario'),
   max_sucursales: z.coerce.number().min(1, 'Mínimo 1 sucursal'),
   max_envios_mes: z.coerce.number().min(1, 'Mínimo 1 envío'),
-  trial_days: z.coerce.number().min(0, 'Mínimo 0 días')
+  trial_days: z.coerce.number().min(0, 'Mínimo 0 días'),
+  // Admin user fields
+  admin_email: z.string().email('Email inválido'),
+  admin_password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
+  admin_nombre: z.string().min(2, 'El nombre debe tener al menos 2 caracteres'),
+  admin_apellido: z.string().optional(),
+  admin_telefono: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -51,7 +59,12 @@ export function CreateTenantDialog({ open, onOpenChange, onSuccess }: CreateTena
       max_usuarios: 5,
       max_sucursales: 3,
       max_envios_mes: 500,
-      trial_days: 14
+      trial_days: 14,
+      admin_email: '',
+      admin_password: '',
+      admin_nombre: '',
+      admin_apellido: '',
+      admin_telefono: '',
     }
   });
 
@@ -76,66 +89,33 @@ export function CreateTenantDialog({ open, onOpenChange, onSuccess }: CreateTena
   const onSubmit = async (values: FormValues) => {
     setIsSubmitting(true);
     try {
-      const trialEndsAt = values.plan === 'trial' && values.trial_days > 0
-        ? new Date(Date.now() + values.trial_days * 24 * 60 * 60 * 1000).toISOString()
-        : null;
-
-      // Create tenant
-      const { data: tenant, error: tenantError } = await supabase
-        .from('tenants')
-        .insert({
-          nombre: values.nombre,
+      const { data, error } = await supabase.functions.invoke('create-tenant-with-admin', {
+        body: {
+          nombre_empresa: values.nombre,
           slug: values.slug,
           plan: values.plan,
           activo: values.activo,
           max_usuarios: values.max_usuarios,
           max_sucursales: values.max_sucursales,
           max_envios_mes: values.max_envios_mes,
-          trial_ends_at: trialEndsAt
-        })
-        .select()
-        .single();
+          trial_days: values.plan === 'trial' ? values.trial_days : 0,
+          admin_email: values.admin_email,
+          admin_password: values.admin_password,
+          admin_nombre: values.admin_nombre,
+          admin_apellido: values.admin_apellido || null,
+          admin_telefono: values.admin_telefono || null,
+        }
+      });
 
-      if (tenantError) throw tenantError;
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
 
-      // Create default branch
-      const { error: branchError } = await supabase
-        .from('sucursales')
-        .insert({
-          nombre: 'Sucursal Principal',
-          direccion: 'Por configurar',
-          tenant_id: tenant.id,
-          codigo: 'MAIN',
-          es_centro_logistico: true,
-          activa: true
-        });
-
-      if (branchError) {
-        console.error('Error creating branch:', branchError);
-      }
-
-      // Create branding
-      const { error: brandingError } = await supabase
-        .from('tenant_branding')
-        .insert({
-          tenant_id: tenant.id,
-          nombre_app: values.nombre
-        });
-
-      if (brandingError) {
-        console.error('Error creating branding:', brandingError);
-      }
-
-      toast.success('Empresa creada correctamente');
+      toast.success('Empresa y administrador creados correctamente');
       form.reset();
       onSuccess();
     } catch (error: any) {
       console.error('Error creating tenant:', error);
-      if (error.code === '23505') {
-        toast.error('Ya existe una empresa con ese slug');
-      } else {
-        toast.error('Error al crear la empresa');
-      }
+      toast.error(error.message || 'Error al crear la empresa');
     } finally {
       setIsSubmitting(false);
     }
@@ -143,13 +123,19 @@ export function CreateTenantDialog({ open, onOpenChange, onSuccess }: CreateTena
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Nueva Empresa</DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {/* Tenant Section */}
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Building2 className="h-4 w-4" />
+              <span className="text-sm font-medium">Datos de la Empresa</span>
+            </div>
+
             <FormField
               control={form.control}
               name="nombre"
@@ -291,6 +277,86 @@ export function CreateTenantDialog({ open, onOpenChange, onSuccess }: CreateTena
                   <FormControl>
                     <Switch checked={field.value} onCheckedChange={field.onChange} />
                   </FormControl>
+                </FormItem>
+              )}
+            />
+
+            <Separator className="my-4" />
+
+            {/* Admin User Section */}
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <User className="h-4 w-4" />
+              <span className="text-sm font-medium">Usuario Administrador</span>
+            </div>
+
+            <FormField
+              control={form.control}
+              name="admin_email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Email del Administrador</FormLabel>
+                  <FormControl>
+                    <Input {...field} type="email" placeholder="admin@empresa.com" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="admin_password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Contraseña</FormLabel>
+                  <FormControl>
+                    <Input {...field} type="password" placeholder="Mínimo 6 caracteres" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="admin_nombre"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nombre</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="Juan" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="admin_apellido"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Apellido</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="Pérez" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <FormField
+              control={form.control}
+              name="admin_telefono"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Teléfono (opcional)</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="+54 11 1234-5678" />
+                  </FormControl>
+                  <FormMessage />
                 </FormItem>
               )}
             />
