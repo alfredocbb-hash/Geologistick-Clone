@@ -46,6 +46,8 @@ import {
   ArrowUpFromLine,
   CheckCircle2,
   AlertTriangle,
+  Navigation,
+  Loader2,
 } from 'lucide-react';
 
 import { AddressAutocomplete, type AddressDetails } from '@/components/maps/AddressAutocomplete';
@@ -288,6 +290,116 @@ export default function Branches() {
     },
   });
 
+  // State for geocoding
+  const [geocodingId, setGeocodingId] = useState<string | null>(null);
+  const [geocodingAll, setGeocodingAll] = useState(false);
+
+  // Geocode a single branch
+  const geocodeBranch = async (sucursal: Sucursal) => {
+    try {
+      setGeocodingId(sucursal.id);
+      
+      const { data, error } = await supabase.functions.invoke('geocode-address', {
+        body: {
+          address: sucursal.direccion,
+          city: sucursal.ciudad,
+          country: 'Argentina'
+        }
+      });
+      
+      if (error) throw error;
+      
+      if (data?.lat && data?.lng) {
+        const { error: updateError } = await supabase
+          .from('sucursales')
+          .update({ 
+            lat: data.lat, 
+            lng: data.lng,
+            ciudad: data.city || sucursal.ciudad
+          })
+          .eq('id', sucursal.id);
+        
+        if (updateError) throw updateError;
+        
+        queryClient.invalidateQueries({ queryKey: ['sucursales-full'] });
+        queryClient.invalidateQueries({ queryKey: ['sucursales'] });
+        toast.success(`${sucursal.nombre} geolocalizada correctamente`);
+      } else {
+        toast.error('No se encontraron coordenadas para esta dirección');
+      }
+    } catch (error) {
+      console.error('Geocoding error:', error);
+      toast.error('Error al geolocalizar: ' + (error instanceof Error ? error.message : 'Error desconocido'));
+    } finally {
+      setGeocodingId(null);
+    }
+  };
+
+  // Geocode all branches without coordinates
+  const geocodeAllBranches = async () => {
+    const branchesWithoutCoords = sucursales.filter(s => !s.lat || !s.lng);
+    
+    if (branchesWithoutCoords.length === 0) {
+      toast.info('Todas las sucursales ya tienen coordenadas');
+      return;
+    }
+    
+    setGeocodingAll(true);
+    let successCount = 0;
+    let errorCount = 0;
+    
+    for (const sucursal of branchesWithoutCoords) {
+      try {
+        const { data, error } = await supabase.functions.invoke('geocode-address', {
+          body: {
+            address: sucursal.direccion,
+            city: sucursal.ciudad,
+            country: 'Argentina'
+          }
+        });
+        
+        if (error) throw error;
+        
+        if (data?.lat && data?.lng) {
+          const { error: updateError } = await supabase
+            .from('sucursales')
+            .update({ 
+              lat: data.lat, 
+              lng: data.lng,
+              ciudad: data.city || sucursal.ciudad
+            })
+            .eq('id', sucursal.id);
+          
+          if (updateError) throw updateError;
+          successCount++;
+        } else {
+          errorCount++;
+        }
+      } catch (error) {
+        console.error(`Error geocoding ${sucursal.nombre}:`, error);
+        errorCount++;
+      }
+      
+      // Small delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+    
+    queryClient.invalidateQueries({ queryKey: ['sucursales-full'] });
+    queryClient.invalidateQueries({ queryKey: ['sucursales'] });
+    
+    if (successCount > 0) {
+      toast.success(`${successCount} sucursales geolocalizadas`);
+    }
+    if (errorCount > 0) {
+      toast.warning(`${errorCount} sucursales no pudieron ser geolocalizadas`);
+    }
+    
+    setGeocodingAll(false);
+  };
+
+  // Count branches without coordinates
+  const branchesWithoutCoords = sucursales.filter(s => !s.lat || !s.lng).length;
+
   const resetForm = () => {
     setFormData({
       nombre: '',
@@ -396,6 +508,25 @@ export default function Branches() {
             if (!open) resetForm();
           }}
         >
+          {branchesWithoutCoords > 0 && (
+            <Button
+              variant="outline"
+              onClick={geocodeAllBranches}
+              disabled={geocodingAll}
+            >
+              {geocodingAll ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Geolocalizando...
+                </>
+              ) : (
+                <>
+                  <Navigation className="h-4 w-4 mr-2" />
+                  Geolocalizar todas ({branchesWithoutCoords})
+                </>
+              )}
+            </Button>
+          )}
           <DialogTrigger asChild>
             <Button className="bg-sucursales hover:bg-sucursales/90">
               <Plus className="h-4 w-4 mr-2" />
@@ -828,7 +959,35 @@ export default function Branches() {
                 <div className="space-y-2 text-sm">
                   <div className="flex items-start gap-2">
                     <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
-                    <span>{sucursal.direccion}</span>
+                    <div className="flex-1">
+                      <span>{sucursal.direccion}</span>
+                      {sucursal.lat && sucursal.lng ? (
+                        <div className="flex items-center gap-1 text-xs text-success mt-1">
+                          <CheckCircle2 className="h-3 w-3" />
+                          <span>Geolocalizada</span>
+                        </div>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-xs text-warning hover:text-warning mt-1"
+                          onClick={() => geocodeBranch(sucursal)}
+                          disabled={geocodingId === sucursal.id}
+                        >
+                          {geocodingId === sucursal.id ? (
+                            <>
+                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                              Geolocalizando...
+                            </>
+                          ) : (
+                            <>
+                              <Navigation className="h-3 w-3 mr-1" />
+                              Geolocalizar
+                            </>
+                          )}
+                        </Button>
+                      )}
+                    </div>
                   </div>
                   {sucursal.telefono && (
                     <div className="flex items-center gap-2">
