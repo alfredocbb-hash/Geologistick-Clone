@@ -10,6 +10,7 @@ import QRScanner from '@/components/qr/QRScanner';
 import PickupConfirmation from '@/components/scan/PickupConfirmation';
 import ReceiveShipmentDialog from '@/components/scan/ReceiveShipmentDialog';
 import { BranchDeliveryDialog } from '@/components/scan/BranchDeliveryDialog';
+import { parseQRCode } from '@/lib/qrParser';
 
 type ScanMode = 'idle' | 'scanning';
 
@@ -68,25 +69,44 @@ export function MobileScanTab() {
   const handleScanResult = async (data: string) => {
     setShowScanner(false);
     
-    // Extract tracking number from QR (might be URL or just tracking)
-    let tracking = data;
-    if (data.includes('/')) {
-      const parts = data.split('/');
-      tracking = parts[parts.length - 1];
+    // Use the centralized QR parser
+    const parsed = parseQRCode(data);
+    console.log('[MobileScanTab] Parsed QR:', parsed);
+    
+    if (parsed.type === 'route_sheet') {
+      toast.info('Código de hoja de ruta detectado', {
+        description: `HR: ${parsed.value}`
+      });
+      setIsPulsing(true);
+      return;
     }
     
-    // Clean up tracking number
-    tracking = tracking.trim();
+    if (parsed.type === 'unknown' || !parsed.value) {
+      toast.error('Código QR no reconocido', {
+        description: 'No se pudo extraer un número de tracking válido'
+      });
+      setIsPulsing(true);
+      return;
+    }
+    
+    const tracking = parsed.value;
     
     try {
-      // Search for shipment by tracking number
+      // Search for shipment by tracking number (case-insensitive)
       const { data: shipment, error } = await supabase
         .from('envios')
         .select('*')
-        .eq('tracking_number', tracking)
-        .single();
+        .ilike('tracking_number', tracking)
+        .maybeSingle();
       
-      if (error || !shipment) {
+      if (error) {
+        console.error('[MobileScanTab] Database error:', error);
+        toast.error('Error al buscar envío');
+        setIsPulsing(true);
+        return;
+      }
+      
+      if (!shipment) {
         toast.error('Envío no encontrado', {
           description: `No se encontró un envío con el código: ${tracking}`
         });

@@ -74,6 +74,7 @@ export function MobileRoutesTab() {
 
   const getStatusConfig = (estado: string) => {
     switch (estado) {
+      case 'pendiente':
       case 'asignada':
         return { 
           badge: <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/30">Pendiente</Badge>,
@@ -87,18 +88,24 @@ export function MobileRoutesTab() {
           icon: CheckCircle2
         };
       case 'en_transito':
-      case 'en_progreso':
+      case 'en_curso':
         return { 
           badge: <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30">En Curso</Badge>,
           color: 'emerald',
           icon: Navigation
         };
       case 'completada':
-      case 'finalizada':
+      case 'recibida':
         return { 
           badge: <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/30">Completada</Badge>,
           color: 'blue',
           icon: CheckCircle2
+        };
+      case 'cancelada':
+        return { 
+          badge: <Badge className="bg-red-500/20 text-red-300 border-red-500/30">Cancelada</Badge>,
+          color: 'red',
+          icon: Package
         };
       default:
         return { 
@@ -109,18 +116,28 @@ export function MobileRoutesTab() {
     }
   };
 
-  // Separate routes by status
-  const activeHojas = hojasRuta?.filter(h => ['asignada', 'en_transito'].includes(h.estado || '')) || [];
-  const completedHojas = hojasRuta?.filter(h => h.estado === 'completada') || [];
-  const activeRutas = rutasPlanificadas?.filter(r => ['asignada', 'confirmada', 'en_progreso'].includes(r.estado || '')) || [];
-  const completedRutas = rutasPlanificadas?.filter(r => r.estado === 'finalizada') || [];
+  // Separate routes by status - using correct database states
+  // hojas_ruta states: pendiente, en_transito, recibida, completada, cancelada
+  // rutas_planificadas states: confirmada, en_curso, completada, cancelada
+  const activeHojas = hojasRuta?.filter(h => 
+    ['pendiente', 'asignada', 'en_transito'].includes(h.estado || '')
+  ) || [];
+  const completedHojas = hojasRuta?.filter(h => 
+    ['completada', 'recibida'].includes(h.estado || '')
+  ) || [];
+  const activeRutas = rutasPlanificadas?.filter(r => 
+    ['pendiente', 'asignada', 'confirmada', 'en_curso'].includes(r.estado || '')
+  ) || [];
+  const completedRutas = rutasPlanificadas?.filter(r => 
+    r.estado === 'completada'
+  ) || [];
 
   const RouteCard = ({ route, type }: { route: any; type: 'hoja' | 'planificada' }) => {
     const isHoja = type === 'hoja';
     const isActive = isHoja 
-      ? ['asignada', 'en_transito'].includes(route.estado)
-      : ['asignada', 'confirmada', 'en_progreso'].includes(route.estado);
-    const isInProgress = route.estado === 'en_transito' || route.estado === 'en_progreso';
+      ? ['pendiente', 'asignada', 'en_transito'].includes(route.estado)
+      : ['pendiente', 'asignada', 'confirmada', 'en_curso'].includes(route.estado);
+    const isInProgress = route.estado === 'en_transito' || route.estado === 'en_curso';
     const statusConfig = getStatusConfig(route.estado);
 
     // Determine correct navigation path
