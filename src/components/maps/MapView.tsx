@@ -7,9 +7,9 @@ import { Loader2, AlertTriangle } from 'lucide-react';
 export interface MarkerInfo {
   position: { lat: number; lng: number };
   title?: string;
-  icon?: 'origin' | 'destination' | 'branch' | 'current' | 'warning';
+  icon?: 'origin' | 'destination' | 'branch' | 'current' | 'warning' | 'driver';
   id?: string;
-  type?: 'envio' | 'sucursal' | 'origin';
+  type?: 'envio' | 'sucursal' | 'origin' | 'driver';
   data?: any;
   onClick?: () => void;
 }
@@ -56,6 +56,7 @@ const getMarkerIcon = (type?: MarkerInfo['icon']): string => {
     branch: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png',
     current: 'https://maps.google.com/mapfiles/ms/icons/yellow-dot.png',
     warning: 'https://maps.google.com/mapfiles/ms/icons/grey-dot.png',
+    driver: 'https://maps.google.com/mapfiles/ms/icons/truck.png',
   };
   return icons[type || 'branch'] || icons.branch;
 };
