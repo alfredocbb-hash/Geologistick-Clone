@@ -455,7 +455,16 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
                     <p className="text-sm text-white/70">Apunta hacia el código QR</p>
                   </>
                 ) : (
-                  <p>Preparando escáner...</p>
+                  <>
+                    <p className="mb-4">Preparando escáner...</p>
+                    <Button 
+                      onClick={handleStartWebScanner} 
+                      variant="outline" 
+                      className="text-white border-white/30"
+                    >
+                      Usar cámara web (alternativa)
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
