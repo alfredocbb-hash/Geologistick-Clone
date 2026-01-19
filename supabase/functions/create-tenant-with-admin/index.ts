@@ -145,12 +145,16 @@ Deno.serve(async (req) => {
 
     console.log("Tenant created:", tenant.id);
 
-    // 2. Create the admin user
+    // 2. Create the admin user with tenant_id in metadata
+    // This tells the handle_new_user trigger to NOT create a new tenant
     const { data: newUser, error: createUserError } = await adminClient.auth.admin.createUser({
       email: admin_email,
       password: admin_password,
       email_confirm: true,
-      user_metadata: { nombre: admin_nombre },
+      user_metadata: { 
+        nombre: admin_nombre,
+        tenant_id: tenant.id  // Pass tenant_id so trigger knows not to create new tenant
+      },
     });
 
     if (createUserError) {
