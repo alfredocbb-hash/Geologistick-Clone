@@ -138,6 +138,12 @@ export function MobileAppLayout() {
           paddingBottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))'
         }}
       >
+        {/* Debug: Domain indicator - helps diagnose APK URL issues */}
+        {import.meta.env.DEV && (
+          <p className="text-xs text-slate-500 text-center mb-2 font-mono">
+            {window.location.hostname}
+          </p>
+        )}
         {renderTabContent()}
       </main>
 

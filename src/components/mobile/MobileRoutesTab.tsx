@@ -16,10 +16,15 @@ export function MobileRoutesTab() {
 
   // Invalidar caché al montar para obtener datos frescos
   useEffect(() => {
+    if (user) {
+      console.log('[MobileRoutesTab] Usuario logueado:', user.email, 'ID:', user.id);
+    } else {
+      console.warn('[MobileRoutesTab] ⚠️ No hay usuario logueado! Las rutas no se cargarán.');
+    }
     console.log('[MobileRoutesTab] Mounting, invalidating cache for user:', user?.id);
     queryClient.invalidateQueries({ queryKey: ['mobile-all-hojas-ruta'] });
     queryClient.invalidateQueries({ queryKey: ['mobile-all-rutas-planificadas'] });
-  }, [queryClient, user?.id]);
+  }, [queryClient, user?.id, user?.email]);
 
   // Fetch hojas de ruta
   const { data: hojasRuta, isLoading: loadingHojas } = useQuery({
