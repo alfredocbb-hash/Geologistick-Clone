@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
+import { useTenant } from '@/hooks/useTenant';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -93,6 +94,7 @@ interface SucursalComision {
 
 export default function Branches() {
   const { isAdmin } = useAuth();
+  const { tenantId } = useTenant();
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isCommissionsDialogOpen, setIsCommissionsDialogOpen] = useState(false);
@@ -188,6 +190,11 @@ export default function Branches() {
   // Create/Update sucursal mutation
   const saveMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
+      // Guard: tenant_id is required for creating branches
+      if (!editingSucursal && !tenantId) {
+        throw new Error('No se encontró tu empresa. Por favor, recarga la página.');
+      }
+
       const sucursalData = {
         nombre: data.nombre,
         direccion: data.direccion,
@@ -216,7 +223,11 @@ export default function Branches() {
           .eq('id', editingSucursal.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('sucursales').insert(sucursalData);
+        // Include tenant_id when creating a new branch
+        const { error } = await supabase.from('sucursales').insert({
+          ...sucursalData,
+          tenant_id: tenantId,
+        });
         if (error) throw error;
       }
     },
