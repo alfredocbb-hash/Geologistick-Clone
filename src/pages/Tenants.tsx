@@ -9,14 +9,16 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Building2, Plus, Search, Users, Package, Calendar, MoreHorizontal, CheckCircle, XCircle, Eye, Pencil } from 'lucide-react';
+import { Building2, Plus, Search, Users, Package, Calendar, MoreHorizontal, CheckCircle, XCircle, Eye, Pencil, Trash2 } from 'lucide-react';
 import { format, differenceInDays, isPast } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { CreateTenantDialog } from '@/components/tenants/CreateTenantDialog';
 import { EditTenantDialog } from '@/components/tenants/EditTenantDialog';
 import { TenantDetailsDialog } from '@/components/tenants/TenantDetailsDialog';
+import { DeleteTenantDialog } from '@/components/tenants/DeleteTenantDialog';
 import { toast } from 'sonner';
+import { DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 
 interface TenantWithStats {
   id: string;
@@ -41,6 +43,7 @@ export default function Tenants() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState<TenantWithStats | null>(null);
 
   const { data: tenants, isLoading, refetch } = useQuery({
@@ -146,6 +149,11 @@ export default function Tenants() {
   const handleViewDetails = (tenant: TenantWithStats) => {
     setSelectedTenant(tenant);
     setDetailsDialogOpen(true);
+  };
+
+  const handleDelete = (tenant: TenantWithStats) => {
+    setSelectedTenant(tenant);
+    setDeleteDialogOpen(true);
   };
 
   return (
@@ -326,6 +334,14 @@ export default function Tenants() {
                               </>
                             )}
                           </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem 
+                            onClick={() => handleDelete(tenant)}
+                            className="text-destructive focus:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Eliminar
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -362,6 +378,15 @@ export default function Tenants() {
             open={detailsDialogOpen}
             onOpenChange={setDetailsDialogOpen}
             tenant={selectedTenant}
+          />
+          <DeleteTenantDialog
+            open={deleteDialogOpen}
+            onOpenChange={setDeleteDialogOpen}
+            tenant={selectedTenant}
+            onSuccess={() => {
+              refetch();
+              setDeleteDialogOpen(false);
+            }}
           />
         </>
       )}
