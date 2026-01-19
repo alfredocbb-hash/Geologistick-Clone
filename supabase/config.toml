@@ -3,6 +3,9 @@ project_id = "uhlgimnmfifmrxraorrl"
 [functions.create-user]
 verify_jwt = false
 
+[functions.create-tenant-with-admin]
+verify_jwt = false
+
 [functions.geocode-address]
 verify_jwt = false
 
