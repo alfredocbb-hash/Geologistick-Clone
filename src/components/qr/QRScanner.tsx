@@ -32,10 +32,11 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
       platform,
       isNative,
       isAndroid,
-      userAgent: navigator.userAgent,
+      userAgent: navigator.userAgent.substring(0, 100),
       href: window.location.href,
     });
-    toast.info(`Plataforma: ${platform}, Nativo: ${isNative}`);
+    // More detailed toast for debugging
+    toast.info(`Plataforma: ${platform}, Nativo: ${isNative}, Android: ${isAndroid}`);
 
     if (isNative) {
       initNativeScanner();
@@ -79,9 +80,11 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
       toast.success('Dispositivo soportado ✓');
 
       // For Android: Check if Google Barcode Scanner module is available
+      // IMPORTANT: Check isAndroid again here since platform detection might have changed
+      console.log('[QRScanner] Checking Android module, isAndroid:', isAndroid, 'platform:', platform);
       if (isAndroid) {
         try {
-          toast.info('Verificando módulo ML Kit...');
+          toast.info('Verificando módulo ML Kit (Android)...');
           const { available } = await BarcodeScanner.isGoogleBarcodeScannerModuleAvailable();
           console.log('[QRScanner] Google Barcode Scanner module available:', available);
           
