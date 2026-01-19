@@ -215,6 +215,20 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
     }
   };
 
+  // Wait for qr-reader element to exist in DOM
+  const waitForQrReaderElement = async (maxAttempts = 20): Promise<HTMLElement | null> => {
+    for (let i = 0; i < maxAttempts; i++) {
+      const element = document.getElementById('qr-reader');
+      if (element) {
+        console.log('[QRScanner] qr-reader element found after', i + 1, 'attempts');
+        return element;
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    console.error('[QRScanner] qr-reader element not found after', maxAttempts, 'attempts');
+    return null;
+  };
+
   // Web scanner using html5-qrcode
   const initWebScanner = async () => {
     try {
@@ -285,19 +299,21 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
         const startIndex = backCameraIndex >= 0 ? backCameraIndex : 0;
         setCurrentCameraIndex(startIndex);
 
-        const containerEl = document.getElementById('qr-reader');
+        // Wait for qr-reader element to exist
+        const containerEl = await waitForQrReaderElement();
         if (!containerEl) {
-          setError('No se pudo inicializar la cámara. Reintenta.');
+          setError('No se pudo inicializar la cámara. Recarga la página e intenta de nuevo.');
           setIsLoading(false);
           return;
         }
 
         scannerRef.current = new Html5Qrcode('qr-reader');
+        setIsLoading(false); // Set loading false BEFORE starting camera so container is visible
         await startWebCamera(devices[startIndex].id);
       } else {
         setError('No se encontraron cámaras disponibles');
+        setIsLoading(false);
       }
-      setIsLoading(false);
     } catch (err: any) {
       console.error('[QRScanner] Error initializing web scanner:', err);
       setError(`Error al inicializar el escáner: ${err.message || 'Error desconocido'}`);
@@ -408,6 +424,17 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
       {/* Scanner Area */}
       <div className="flex-1 flex items-center justify-center p-4">
         <div className="relative w-full max-w-sm">
+          {/* Always render qr-reader container for web scanner - visibility controlled by className */}
+          {!isNative && (
+            <div 
+              id="qr-reader" 
+              ref={containerRef}
+              className={`w-full aspect-square rounded-2xl overflow-hidden bg-slate-900 ${
+                (isLoading || !webStarted || error) ? 'hidden' : ''
+              }`}
+            />
+          )}
+
           {isLoading || installingModule ? (
             <div className="text-center text-white p-8">
               <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
@@ -473,36 +500,40 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
               {!webStarted ? (
                 <div className="text-center text-white p-8">
                   <p className="mb-4 text-white/80">
-                    Para escanear, primero debemos pedir permiso de camara.
+                    Para escanear, primero debemos pedir permiso de cámara.
                   </p>
                   <Button onClick={handleStartWebScanner} className="w-full">
-                    Activar camara
+                    Activar cámara
                   </Button>
                 </div>
               ) : (
-                <>
-                  <div
-                    id="qr-reader"
-                    ref={containerRef}
-                    className="rounded-lg overflow-hidden"
-                  />
-                  {/* Overlay corners */}
-                  <div className="absolute inset-0 pointer-events-none">
-                    <div className="absolute top-0 left-0 w-16 h-16 border-t-4 border-l-4 border-primary rounded-tl-lg" />
-                    <div className="absolute top-0 right-0 w-16 h-16 border-t-4 border-r-4 border-primary rounded-tr-lg" />
-                    <div className="absolute bottom-0 left-0 w-16 h-16 border-b-4 border-l-4 border-primary rounded-bl-lg" />
-                    <div className="absolute bottom-0 right-0 w-16 h-16 border-b-4 border-r-4 border-primary rounded-br-lg" />
-                  </div>
-                </>
+                /* Camera is active - qr-reader div is visible above */
+                <div className="text-center text-white/60 text-sm mt-4">
+                  <p>Apunta hacia el código QR</p>
+                </div>
               )}
             </>
+          )}
+
+          {/* Scan frame overlay for active scanning */}
+          {!isNative && webStarted && !isLoading && !error && (
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+              <div className="w-64 h-64 border-2 border-primary/50 rounded-xl relative">
+                <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-primary rounded-tl-lg" />
+                <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-primary rounded-tr-lg" />
+                <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-primary rounded-bl-lg" />
+                <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-primary rounded-br-lg" />
+              </div>
+            </div>
           )}
         </div>
       </div>
 
       {/* Instructions */}
-      <div className="p-4 text-center text-white/70">
-        <p>Apunta la cámara hacia el código QR del envío</p>
+      <div className="p-4 text-center">
+        <p className="text-white/70 text-sm">
+          Coloca el código QR dentro del recuadro
+        </p>
       </div>
     </div>
   );
