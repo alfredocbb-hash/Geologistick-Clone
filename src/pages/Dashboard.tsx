@@ -13,9 +13,9 @@ export default function Dashboard() {
   const { profile, roles } = useAuth();
   const { tenantId } = useTenant();
 
-  // Fetch real stats
+  // Fetch real stats - v2 forces cache invalidation
   const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ['dashboard-stats', tenantId],
+    queryKey: ['dashboard-stats', tenantId, 'v2'],
     queryFn: async () => {
       if (!tenantId) return null;
       
@@ -64,9 +64,9 @@ export default function Dashboard() {
     enabled: !!tenantId,
   });
 
-  // Fetch recent shipments
+  // Fetch recent shipments - v2 forces cache invalidation
   const { data: recentShipments, isLoading: shipmentsLoading } = useQuery({
-    queryKey: ['recent-shipments', tenantId],
+    queryKey: ['recent-shipments', tenantId, 'v2'],
     queryFn: async () => {
       if (!tenantId) return [];
       
@@ -82,9 +82,9 @@ export default function Dashboard() {
     enabled: !!tenantId,
   });
 
-  // Fetch daily summary
+  // Fetch daily summary - v2 forces cache invalidation
   const { data: dailySummary } = useQuery({
-    queryKey: ['daily-summary', tenantId],
+    queryKey: ['daily-summary', tenantId, 'v2'],
     queryFn: async () => {
       if (!tenantId) return null;
       
