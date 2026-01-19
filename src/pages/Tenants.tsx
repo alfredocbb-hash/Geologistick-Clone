@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Building2, Plus, Search, Users, Package, Calendar, MoreHorizontal, CheckCircle, XCircle, Eye, Pencil, Trash2 } from 'lucide-react';
+import { Building2, Plus, Search, Users, Package, Calendar, MoreHorizontal, CheckCircle, XCircle, Eye, Pencil, Trash2, Palette } from 'lucide-react';
 import { format, differenceInDays, isPast } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -17,6 +17,7 @@ import { CreateTenantDialog } from '@/components/tenants/CreateTenantDialog';
 import { EditTenantDialog } from '@/components/tenants/EditTenantDialog';
 import { TenantDetailsDialog } from '@/components/tenants/TenantDetailsDialog';
 import { DeleteTenantDialog } from '@/components/tenants/DeleteTenantDialog';
+import { TenantBrandingDialog } from '@/components/tenants/TenantBrandingDialog';
 import { toast } from 'sonner';
 import { DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 
@@ -44,6 +45,7 @@ export default function Tenants() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [brandingDialogOpen, setBrandingDialogOpen] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState<TenantWithStats | null>(null);
 
   const { data: tenants, isLoading, refetch } = useQuery({
@@ -154,6 +156,11 @@ export default function Tenants() {
   const handleDelete = (tenant: TenantWithStats) => {
     setSelectedTenant(tenant);
     setDeleteDialogOpen(true);
+  };
+
+  const handleBranding = (tenant: TenantWithStats) => {
+    setSelectedTenant(tenant);
+    setBrandingDialogOpen(true);
   };
 
   return (
@@ -321,6 +328,10 @@ export default function Tenants() {
                             <Pencil className="h-4 w-4 mr-2" />
                             Editar
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleBranding(tenant)}>
+                            <Palette className="h-4 w-4 mr-2" />
+                            Personalizar
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleToggleActive(tenant)}>
                             {tenant.activo ? (
                               <>
@@ -386,6 +397,15 @@ export default function Tenants() {
             onSuccess={() => {
               refetch();
               setDeleteDialogOpen(false);
+            }}
+          />
+          <TenantBrandingDialog
+            open={brandingDialogOpen}
+            onOpenChange={setBrandingDialogOpen}
+            tenant={selectedTenant}
+            onSuccess={() => {
+              refetch();
+              setBrandingDialogOpen(false);
             }}
           />
         </>
