@@ -170,7 +170,8 @@ export default function ScanQR() {
     setIsSearching(true);
     
     try {
-      const { data: shipments, error } = await supabase
+      // First try exact match
+      let { data: shipments, error } = await supabase
         .from('envios')
         .select(`
           id,
@@ -185,8 +186,34 @@ export default function ScanQR() {
           destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido),
           sucursal_destino:sucursales!envios_sucursal_destino_id_fkey(nombre, ciudad)
         `)
-        .ilike('tracking_number', `%${tracking}%`)
+        .ilike('tracking_number', tracking)
         .limit(1);
+
+      // If not found, try partial match (removing suffix or searching with wildcard)
+      if ((!shipments || shipments.length === 0) && !error) {
+        const baseTracking = tracking.replace(/-\d{1,2}$/, '');
+        const { data: partialShipments, error: partialError } = await supabase
+          .from('envios')
+          .select(`
+            id,
+            tracking_number,
+            estado,
+            requiere_retiro,
+            direccion_retiro,
+            ciudad_retiro,
+            tipo_pago,
+            precio_total,
+            remitente:clientes!envios_remitente_id_fkey(nombre, apellido, telefono),
+            destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido),
+            sucursal_destino:sucursales!envios_sucursal_destino_id_fkey(nombre, ciudad)
+          `)
+          .ilike('tracking_number', `${baseTracking}%`)
+          .limit(1);
+        
+        if (!partialError && partialShipments && partialShipments.length > 0) {
+          shipments = partialShipments;
+        }
+      }
 
       if (error) throw error;
 

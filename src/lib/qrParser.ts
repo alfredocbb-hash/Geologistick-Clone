@@ -69,6 +69,12 @@ export function parseQRCode(data: string): ParsedQR {
     // Already decoded or not encoded
   }
 
+  // Normalize: remove package suffix like -01, -02 if tracking has format XXX-ENV-YYYYMMDD-HASH-XX
+  // Pattern: code-ENV-date-hash-suffix where suffix is 1-2 digits
+  if (/^[A-Z0-9]+-ENV-\d{8}-[A-Z0-9]+-\d{1,2}$/i.test(tracking)) {
+    tracking = tracking.replace(/-\d{1,2}$/, '');
+  }
+
   // Validate that we have something that looks like a tracking number
   if (tracking && tracking.length >= 5) {
     return {
