@@ -179,7 +179,10 @@ export default function Vehicles() {
       } else {
         const { error } = await supabase
           .from('vehiculos')
-          .insert(vehicleData);
+          .insert({
+            ...vehicleData,
+            tenant_id: profile?.tenant_id,
+          });
         if (error) throw error;
       }
     },

@@ -60,7 +60,7 @@ interface Movimiento {
 }
 
 export default function ClientSettlements() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const queryClient = useQueryClient();
   const [selectedCliente, setSelectedCliente] = useState<string>('');
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
@@ -132,6 +132,7 @@ export default function ClientSettlements() {
           saldo_nuevo: saldoNuevo,
           descripcion: descripcion || `Pago recibido - ${metodoPago}${referenciaPago ? ` - Ref: ${referenciaPago}` : ''}`,
           created_by: user?.id,
+          tenant_id: profile?.tenant_id,
         });
 
       if (movError) throw movError;

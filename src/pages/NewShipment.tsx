@@ -430,6 +430,7 @@ export default function NewShipment() {
         codigo_postal: data.codigo_postal,
         dni_cuit: data.dni_cuit,
         sucursal_id: data.sucursal_id,
+        tenant_id: profile?.tenant_id,
       })
       .select()
       .single();
@@ -612,6 +613,7 @@ export default function NewShipment() {
             saldo_nuevo: saldoNuevo,
             descripcion: `Envío ${trackingData}`,
             created_by: user?.id,
+            tenant_id: profile?.tenant_id,
           });
 
         if (movError) throw movError;

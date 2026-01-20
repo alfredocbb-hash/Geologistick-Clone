@@ -204,6 +204,7 @@ export default function Cash() {
         monto_inicial: data.monto_inicial,
         notas_apertura: data.notas_apertura || null,
         estado: 'abierta',
+        tenant_id: profile.tenant_id,
       });
       if (error) throw error;
     },
@@ -272,6 +273,7 @@ export default function Cash() {
         metodo_pago: data.metodo_pago,
         referencia: data.referencia || null,
         created_by: user.id,
+        tenant_id: profile?.tenant_id,
       });
       if (error) throw error;
     },
