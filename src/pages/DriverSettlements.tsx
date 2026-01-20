@@ -916,17 +916,18 @@ export default function DriverSettlements() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>No, mantener</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
-              onClick={() => {
-                if (liquidacionToCancel) {
-                  cancelMutation.mutate(liquidacionToCancel.id);
-                }
-              }}
-              disabled={cancelMutation.isPending}
-            >
-              {cancelMutation.isPending ? 'Cancelando...' : 'Sí, cancelar liquidación'}
-            </AlertDialogAction>
+          <AlertDialogAction
+            className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+            onClick={(e) => {
+              e.preventDefault();
+              if (liquidacionToCancel) {
+                cancelMutation.mutate(liquidacionToCancel.id);
+              }
+            }}
+            disabled={cancelMutation.isPending}
+          >
+            {cancelMutation.isPending ? 'Cancelando...' : 'Sí, cancelar liquidación'}
+          </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
