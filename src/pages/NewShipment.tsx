@@ -17,10 +17,11 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import ContactAutocomplete from '@/components/shipments/ContactAutocomplete';
 import { AddressAutocomplete, type AddressDetails } from '@/components/maps';
+import { Checkbox } from '@/components/ui/checkbox';
 import { 
   PackagePlus, ArrowLeft, User, MapPin, Package, DollarSign, Loader2, 
   CreditCard, Truck, Calendar, Clock, Home, AlertCircle, Wallet, Phone,
-  Building2, ArrowRight, Navigation
+  Building2, ArrowRight, Navigation, Plus
 } from 'lucide-react';
 import { PaymentMethodDialog } from '@/components/shipments/PaymentMethodDialog';
 
@@ -28,6 +29,7 @@ interface TarifaConcepto {
   id: string;
   nombre: string;
   codigo: string;
+  es_basico?: boolean | null;
 }
 
 interface TarifaConceptoPrecio {
@@ -179,7 +181,9 @@ export default function NewShipment() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [createdEnvio, setCreatedEnvio] = useState<{ id: string; tracking_number: string; precio_total: number; remitente_id: string } | null>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-
+  
+  // State for selected additional concepts
+  const [conceptosSeleccionados, setConceptosSeleccionados] = useState<Set<string>>(new Set());
   // Derived states
   const tieneRetiro = tipoServicioDetalle === 'puerta_sucursal' || tipoServicioDetalle === 'puerta_puerta';
   const tieneEntrega = tipoServicioDetalle === 'sucursal_puerta' || tipoServicioDetalle === 'puerta_puerta';
@@ -247,12 +251,28 @@ export default function NewShipment() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('tarifa_conceptos')
-        .select('*')
+        .select('id, nombre, codigo, es_basico, activo')
         .eq('activo', true)
         .order('orden');
       if (error) throw error;
       return data as TarifaConcepto[];
     },
+  });
+
+  // Query para obtener conceptos habilitados para la sucursal del usuario
+  const { data: sucursalConceptos = [] } = useQuery({
+    queryKey: ['sucursal-conceptos', sucursalOrigenId],
+    queryFn: async () => {
+      if (!sucursalOrigenId) return [];
+      const { data, error } = await supabase
+        .from('sucursal_conceptos')
+        .select('concepto_id, habilitado')
+        .eq('sucursal_id', sucursalOrigenId)
+        .eq('habilitado', true);
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!sucursalOrigenId,
   });
 
   const { data: conceptoPrecios = [] } = useQuery({
@@ -261,7 +281,7 @@ export default function NewShipment() {
       if (!formData.tarifa_id) return [];
       const { data, error } = await supabase
         .from('tarifa_concepto_precios')
-        .select('*, concepto:tarifa_conceptos(*)')
+        .select('*, concepto:tarifa_conceptos(id, nombre, codigo, es_basico)')
         .eq('tarifa_id', formData.tarifa_id);
       if (error) throw error;
       return data as TarifaConceptoPrecio[];
@@ -269,20 +289,38 @@ export default function NewShipment() {
     enabled: !!formData.tarifa_id,
   });
 
-  // Filtrar conceptos según el tipo de servicio
-  const conceptosPreciosFiltrados = useMemo(() => {
-    return conceptoPrecios.filter((cp) => {
+  // Clasificar conceptos en básicos y adicionales
+  const { conceptosBasicos, conceptosAdicionales } = useMemo(() => {
+    // Primero aplicar el filtro por tipo de servicio
+    const filtradosPorServicio = conceptoPrecios.filter((cp) => {
       const codigo = cp.concepto?.codigo?.toLowerCase();
-      
-      // Excluir "retiro" si el servicio NO incluye retiro a domicilio
       if (codigo === 'retiro' && !tieneRetiro) return false;
-      
-      // Excluir "entrega" si el servicio NO incluye entrega a domicilio
       if (codigo === 'entrega' && !tieneEntrega) return false;
-      
       return true;
     });
-  }, [conceptoPrecios, tieneRetiro, tieneEntrega]);
+
+    // Separar en básicos y adicionales
+    const basicos = filtradosPorServicio.filter(cp => cp.concepto?.es_basico !== false);
+    
+    // Los adicionales deben estar habilitados para la sucursal
+    const habilitadosIds = new Set(sucursalConceptos.map(sc => sc.concepto_id));
+    const adicionales = filtradosPorServicio.filter(cp => {
+      const esAdicional = cp.concepto?.es_basico === false;
+      const habilitadoParaSucursal = habilitadosIds.has(cp.concepto_id);
+      return esAdicional && habilitadoParaSucursal;
+    });
+
+    return { conceptosBasicos: basicos, conceptosAdicionales: adicionales };
+  }, [conceptoPrecios, sucursalConceptos, tieneRetiro, tieneEntrega]);
+
+  // Filtrar conceptos según el tipo de servicio (para mantener compatibilidad)
+  const conceptosPreciosFiltrados = useMemo(() => {
+    // Combinar básicos + adicionales seleccionados
+    const adicionalSeleccionados = conceptosAdicionales.filter(cp => 
+      conceptosSeleccionados.has(cp.concepto_id)
+    );
+    return [...conceptosBasicos, ...adicionalSeleccionados];
+  }, [conceptosBasicos, conceptosAdicionales, conceptosSeleccionados]);
 
   // Fetch ALL clients for autocomplete and deduplication
   const { data: allClients = [] } = useQuery({
@@ -323,9 +361,21 @@ export default function NewShipment() {
 
   const selectedTarifa = tarifas?.find(t => t.id === formData.tarifa_id);
 
-  // Calcular total por conceptos (usando conceptos filtrados)
+  // Calcular total por conceptos básicos
+  const calcularTotalConceptosBasicos = () => {
+    return conceptosBasicos.reduce((sum, cp) => sum + Number(cp.monto), 0);
+  };
+
+  // Calcular total por conceptos adicionales seleccionados
+  const calcularTotalConceptosAdicionales = () => {
+    return conceptosAdicionales
+      .filter(cp => conceptosSeleccionados.has(cp.concepto_id))
+      .reduce((sum, cp) => sum + Number(cp.monto), 0);
+  };
+
+  // Calcular total (básicos siempre + adicionales seleccionados)
   const calcularTotalConceptos = () => {
-    return conceptosPreciosFiltrados.reduce((sum, cp) => sum + Number(cp.monto), 0);
+    return calcularTotalConceptosBasicos() + calcularTotalConceptosAdicionales();
   };
 
   const calcularPrecio = () => {
@@ -337,6 +387,19 @@ export default function NewShipment() {
     
     const baseTotal = totalConceptos > 0 ? totalConceptos : precioBase;
     return baseTotal + (peso * precioPorKg);
+  };
+
+  // Toggle concepto adicional selection
+  const toggleConceptoAdicional = (conceptoId: string) => {
+    setConceptosSeleccionados(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(conceptoId)) {
+        newSet.delete(conceptoId);
+      } else {
+        newSet.add(conceptoId);
+      }
+      return newSet;
+    });
   };
 
   // Find or create client helper - busca SIEMPRE en la base de datos para evitar duplicados
@@ -1537,6 +1600,45 @@ export default function NewShipment() {
                 <Label htmlFor="pago_contra_entrega">Cobrar contra entrega</Label>
               </div>
             )}
+            
+            {/* Conceptos Adicionales */}
+            {conceptosAdicionales.length > 0 && formData.tarifa_id && (
+              <div className="space-y-3 md:col-span-2">
+                <Label className="flex items-center gap-2">
+                  <Plus className="h-4 w-4" />
+                  Conceptos Adicionales
+                </Label>
+                <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Selecciona los servicios adicionales que deseas incluir:
+                  </p>
+                  {conceptosAdicionales.map((cp) => (
+                    <div 
+                      key={cp.id} 
+                      className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Checkbox
+                          id={`concepto-${cp.id}`}
+                          checked={conceptosSeleccionados.has(cp.concepto_id)}
+                          onCheckedChange={() => toggleConceptoAdicional(cp.concepto_id)}
+                        />
+                        <Label 
+                          htmlFor={`concepto-${cp.id}`} 
+                          className="cursor-pointer font-normal"
+                        >
+                          {cp.concepto?.nombre}
+                        </Label>
+                      </div>
+                      <Badge variant="outline" className="bg-background">
+                        {formatCurrency(cp.monto)}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="notas">Notas adicionales</Label>
               <Textarea
@@ -1560,8 +1662,9 @@ export default function NewShipment() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {conceptosPreciosFiltrados.length > 0 ? (
-                  conceptosPreciosFiltrados.map((cp) => (
+                {/* Conceptos Básicos */}
+                {conceptosBasicos.length > 0 ? (
+                  conceptosBasicos.map((cp) => (
                     <div key={cp.id} className="flex justify-between text-sm">
                       <span>{cp.concepto?.nombre || 'Concepto'}</span>
                       <span>{formatCurrency(cp.monto)}</span>
@@ -1573,6 +1676,20 @@ export default function NewShipment() {
                     <span>{formatCurrency(selectedTarifa.precio_base)}</span>
                   </div>
                 )}
+                
+                {/* Conceptos Adicionales Seleccionados */}
+                {conceptosAdicionales
+                  .filter(cp => conceptosSeleccionados.has(cp.concepto_id))
+                  .map((cp) => (
+                    <div key={cp.id} className="flex justify-between text-sm text-primary">
+                      <span className="flex items-center gap-1">
+                        <Plus className="h-3 w-3" />
+                        {cp.concepto?.nombre}
+                      </span>
+                      <span>{formatCurrency(cp.monto)}</span>
+                    </div>
+                  ))}
+                
                 {parseFloat(formData.peso_kg) > 0 && selectedTarifa.precio_por_kg && (
                   <div className="flex justify-between text-sm">
                     <span>Peso ({formData.peso_kg} kg x {formatCurrency(selectedTarifa.precio_por_kg)})</span>
