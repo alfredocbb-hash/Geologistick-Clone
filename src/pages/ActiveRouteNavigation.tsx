@@ -217,15 +217,18 @@ export default function ActiveRouteNavigation() {
       const envio = e.envio;
       if (!envio) return false;
       
-      if (envio.requiere_retiro && envio.estado_retiro !== 'retirado' && envio.estado_retiro !== 'fallido') {
-        return true;
+      const isPickupStop = envio.requiere_retiro;
+      
+      if (isPickupStop) {
+        // Retiro completado si estado_retiro es 'retirado'/'fallido' O estado es 'recogido'
+        const pickupCompleted = envio.estado_retiro === 'retirado' || 
+                                envio.estado_retiro === 'fallido' ||
+                                envio.estado === 'recogido';
+        return !pickupCompleted;
       }
       
-      if (!envio.requiere_retiro && envio.estado !== 'entregado' && envio.estado !== 'devuelto') {
-        return true;
-      }
-      
-      return false;
+      // Entrega: verificar estado
+      return envio.estado !== 'entregado' && envio.estado !== 'devuelto';
     });
   }, [envios]);
 

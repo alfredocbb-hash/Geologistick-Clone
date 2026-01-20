@@ -52,6 +52,7 @@ export default function PickupConfirmation({ shipment, onClose, onSuccess }: Pic
         .from('envios')
         .update({
           estado: 'recogido',
+          estado_retiro: 'retirado',
           fecha_recogida: new Date().toISOString(),
           chofer_id: user?.id,
         })
