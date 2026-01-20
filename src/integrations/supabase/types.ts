@@ -1485,6 +1485,63 @@ export type Database = {
         }
         Relationships: []
       }
+      ruta_frecuente_paradas: {
+        Row: {
+          ciudad: string | null
+          cliente_id: string | null
+          created_at: string | null
+          direccion: string | null
+          id: string
+          lat: number | null
+          lng: number | null
+          notas: string | null
+          orden: number
+          ruta_frecuente_id: string
+          tipo: string
+        }
+        Insert: {
+          ciudad?: string | null
+          cliente_id?: string | null
+          created_at?: string | null
+          direccion?: string | null
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          notas?: string | null
+          orden: number
+          ruta_frecuente_id: string
+          tipo?: string
+        }
+        Update: {
+          ciudad?: string | null
+          cliente_id?: string | null
+          created_at?: string | null
+          direccion?: string | null
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          notas?: string | null
+          orden?: number
+          ruta_frecuente_id?: string
+          tipo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ruta_frecuente_paradas_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ruta_frecuente_paradas_ruta_frecuente_id_fkey"
+            columns: ["ruta_frecuente_id"]
+            isOneToOne: false
+            referencedRelation: "rutas_frecuentes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ruta_paradas: {
         Row: {
           completada_at: string | null
@@ -1544,6 +1601,57 @@ export type Database = {
             columns: ["ruta_id"]
             isOneToOne: false
             referencedRelation: "rutas_planificadas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rutas_frecuentes: {
+        Row: {
+          activa: boolean | null
+          created_at: string | null
+          created_by: string | null
+          descripcion: string | null
+          id: string
+          nombre: string
+          sucursal_id: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          activa?: boolean | null
+          created_at?: string | null
+          created_by?: string | null
+          descripcion?: string | null
+          id?: string
+          nombre: string
+          sucursal_id?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          activa?: boolean | null
+          created_at?: string | null
+          created_by?: string | null
+          descripcion?: string | null
+          id?: string
+          nombre?: string
+          sucursal_id?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rutas_frecuentes_sucursal_id_fkey"
+            columns: ["sucursal_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rutas_frecuentes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
