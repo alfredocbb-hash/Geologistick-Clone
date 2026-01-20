@@ -54,6 +54,22 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Get the admin's tenant_id from their profile
+    const { data: adminProfile, error: profileError } = await adminClient
+      .from('profiles')
+      .select('tenant_id')
+      .eq('user_id', callingUser.id)
+      .single();
+
+    if (profileError || !adminProfile?.tenant_id) {
+      return new Response(
+        JSON.stringify({ error: "No se pudo obtener el tenant del administrador" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const adminTenantId = adminProfile.tenant_id;
+
     // Parse request body
     const { email, password, nombre, apellido, telefono, sucursal_id, roles } = await req.json();
 
@@ -72,12 +88,16 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Create the user using admin client
+    // Create the user using admin client - include tenant_id in metadata so the trigger knows
+    // this user belongs to an existing tenant and doesn't create a new one
     const { data: newUser, error: createError } = await adminClient.auth.admin.createUser({
       email,
       password,
       email_confirm: true, // Auto-confirm email
-      user_metadata: { nombre },
+      user_metadata: { 
+        nombre,
+        tenant_id: adminTenantId, // Pass tenant_id so handle_new_user trigger assigns to existing tenant
+      },
     });
 
     if (createError) {
@@ -94,7 +114,7 @@ Deno.serve(async (req) => {
     await new Promise(resolve => setTimeout(resolve, 500));
 
     // Update the profile with additional data
-    const { error: profileError } = await adminClient
+    const { error: profileUpdateError } = await adminClient
       .from('profiles')
       .update({
         apellido: apellido || null,
@@ -104,8 +124,8 @@ Deno.serve(async (req) => {
       })
       .eq('user_id', userId);
 
-    if (profileError) {
-      console.error("Profile update failed:", profileError?.message || "Unknown error");
+    if (profileUpdateError) {
+      console.error("Profile update failed:", profileUpdateError?.message || "Unknown error");
       // Don't fail, profile was created by trigger
     }
 
