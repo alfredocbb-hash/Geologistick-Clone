@@ -10,6 +10,7 @@ import QRScanner from '@/components/qr/QRScanner';
 import PickupConfirmation from '@/components/scan/PickupConfirmation';
 import ReceiveShipmentDialog from '@/components/scan/ReceiveShipmentDialog';
 import { BranchDeliveryDialog } from '@/components/scan/BranchDeliveryDialog';
+import { UltimaMillaDialog } from '@/components/scan/UltimaMillaDialog';
 import { parseQRCode } from '@/lib/qrParser';
 
 type ScanMode = 'idle' | 'scanning';
@@ -21,12 +22,19 @@ interface ScannedShipment {
   direccion_entrega: string | null;
   direccion_retiro: string | null;
   ciudad_retiro: string | null;
+  ciudad_entrega?: string | null;
   destinatario_id: string | null;
   remitente_id: string | null;
   sucursal_destino_id: string | null;
   precio_total: number;
   pago_contra_entrega: boolean | null;
   tipo_pago: string | null;
+  chofer_id?: string | null;
+  destinatario?: {
+    nombre: string;
+    apellido: string | null;
+    telefono?: string;
+  } | null;
 }
 
 export function MobileScanTab() {
@@ -39,6 +47,7 @@ export function MobileScanTab() {
   const [showPickupDialog, setShowPickupDialog] = useState(false);
   const [showReceiveDialog, setShowReceiveDialog] = useState(false);
   const [showDeliveryDialog, setShowDeliveryDialog] = useState(false);
+  const [showUltimaMillaDialog, setShowUltimaMillaDialog] = useState(false);
   const [isPulsing, setIsPulsing] = useState(true);
 
   // Fetch recent scans
@@ -92,11 +101,13 @@ export function MobileScanTab() {
     const tracking = parsed.value;
     
     try {
-      // Search for shipment by tracking number (case-insensitive)
-      // First try exact match, then try without last segment (for package suffixes)
+      // Search for shipment by tracking number (case-insensitive) with destinatario info
       let { data: shipment, error } = await supabase
         .from('envios')
-        .select('*')
+        .select(`
+          *,
+          destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, telefono)
+        `)
         .ilike('tracking_number', tracking)
         .maybeSingle();
       
@@ -106,7 +117,10 @@ export function MobileScanTab() {
         if (baseTracking !== tracking) {
           const { data: partialMatch, error: partialError } = await supabase
             .from('envios')
-            .select('*')
+            .select(`
+              *,
+              destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, telefono)
+            `)
             .ilike('tracking_number', baseTracking)
             .maybeSingle();
           
@@ -143,7 +157,17 @@ export function MobileScanTab() {
       const canDeliver = hasPermission('delivery.confirm');
       const canReceive = hasPermission('route_sheets.view');
       
-      if (hasRole('chofer')) {
+      // Check if this is a last-mile scenario: shipment is en_transito/en_reparto 
+      // and assigned to a DIFFERENT driver
+      const isLastMileScenario = hasRole('chofer') && 
+        (shipment.estado === 'en_transito' || shipment.estado === 'en_reparto') &&
+        shipment.chofer_id && 
+        shipment.chofer_id !== user?.id;
+      
+      if (isLastMileScenario) {
+        // Show última milla dialog
+        setShowUltimaMillaDialog(true);
+      } else if (hasRole('chofer')) {
         if ((shipment.estado === 'pendiente' || shipment.estado === 'en_bodega') && canPickup) {
           setShowPickupDialog(true);
         } else if (canDeliver) {
@@ -212,6 +236,7 @@ export function MobileScanTab() {
     setShowPickupDialog(false);
     setShowReceiveDialog(false);
     setShowDeliveryDialog(false);
+    setShowUltimaMillaDialog(false);
     setScannedShipment(null);
     setIsPulsing(true);
     
@@ -408,6 +433,16 @@ export function MobileScanTab() {
       {scannedShipment && showDeliveryDialog && (
         <BranchDeliveryDialog
           open={showDeliveryDialog}
+          shipment={scannedShipment}
+          onClose={handleDialogClose}
+          onSuccess={handleDialogSuccess}
+        />
+      )}
+
+      {/* Última Milla Dialog */}
+      {scannedShipment && showUltimaMillaDialog && (
+        <UltimaMillaDialog
+          open={showUltimaMillaDialog}
           shipment={scannedShipment}
           onClose={handleDialogClose}
           onSuccess={handleDialogSuccess}
