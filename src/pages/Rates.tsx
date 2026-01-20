@@ -34,7 +34,12 @@ import {
   Users,
   Layers,
   Trash2,
+  Building2,
+  Box,
+  Ruler,
 } from 'lucide-react';
+import { RateTypeSelector, getRateTypeLabel, ConceptBranchesDialog } from '@/components/rates';
+import type { RateType } from '@/components/rates';
 
 interface Tarifa {
   id: string;
@@ -42,11 +47,14 @@ interface Tarifa {
   precio_base: number;
   precio_por_kg: number | null;
   precio_por_km: number | null;
+  precio_por_m3: number | null;
   zona_origen: string | null;
   zona_destino: string | null;
   comision_chofer_porcentaje: number | null;
   comision_chofer_fija: number | null;
   activa: boolean | null;
+  tipo_tarifa: RateType;
+  rangos_precios: any[];
   created_at: string | null;
 }
 
@@ -57,6 +65,7 @@ interface TarifaConcepto {
   descripcion: string | null;
   activo: boolean;
   orden: number;
+  es_basico: boolean;
 }
 
 interface TarifaConceptoPrecio {
@@ -74,15 +83,19 @@ export default function Rates() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isConceptDialogOpen, setIsConceptDialogOpen] = useState(false);
   const [isPricingDialogOpen, setIsPricingDialogOpen] = useState(false);
+  const [isBranchDialogOpen, setIsBranchDialogOpen] = useState(false);
   const [editingTarifa, setEditingTarifa] = useState<Tarifa | null>(null);
   const [editingConcept, setEditingConcept] = useState<TarifaConcepto | null>(null);
   const [selectedTarifaForPricing, setSelectedTarifaForPricing] = useState<Tarifa | null>(null);
+  const [selectedConceptForBranches, setSelectedConceptForBranches] = useState<TarifaConcepto | null>(null);
   
   const [formData, setFormData] = useState({
     nombre: '',
+    tipo_tarifa: 'peso' as RateType,
     precio_base: '',
     precio_por_kg: '',
     precio_por_km: '',
+    precio_por_m3: '',
     zona_origen: '',
     zona_destino: '',
     comision_chofer_porcentaje: '',
@@ -96,6 +109,7 @@ export default function Rates() {
     descripcion: '',
     activo: true,
     orden: 0,
+    es_basico: true,
   });
 
   const [conceptPrices, setConceptPrices] = useState<Record<string, string>>({});
@@ -146,9 +160,11 @@ export default function Rates() {
     mutationFn: async (data: typeof formData) => {
       const tarifaData = {
         nombre: data.nombre,
+        tipo_tarifa: data.tipo_tarifa,
         precio_base: parseFloat(data.precio_base),
         precio_por_kg: data.precio_por_kg ? parseFloat(data.precio_por_kg) : null,
         precio_por_km: data.precio_por_km ? parseFloat(data.precio_por_km) : null,
+        precio_por_m3: data.precio_por_m3 ? parseFloat(data.precio_por_m3) : null,
         zona_origen: data.zona_origen || null,
         zona_destino: data.zona_destino || null,
         comision_chofer_porcentaje: data.comision_chofer_porcentaje
@@ -194,6 +210,7 @@ export default function Rates() {
         descripcion: data.descripcion || null,
         activo: data.activo,
         orden: data.orden,
+        es_basico: data.es_basico,
       };
 
       if (editingConcept) {
@@ -299,9 +316,11 @@ export default function Rates() {
   const resetForm = () => {
     setFormData({
       nombre: '',
+      tipo_tarifa: 'peso',
       precio_base: '',
       precio_por_kg: '',
       precio_por_km: '',
+      precio_por_m3: '',
       zona_origen: '',
       zona_destino: '',
       comision_chofer_porcentaje: '',
@@ -318,6 +337,7 @@ export default function Rates() {
       descripcion: '',
       activo: true,
       orden: conceptos.length,
+      es_basico: true,
     });
     setEditingConcept(null);
   };
@@ -326,9 +346,11 @@ export default function Rates() {
     setEditingTarifa(tarifa);
     setFormData({
       nombre: tarifa.nombre,
+      tipo_tarifa: tarifa.tipo_tarifa || 'peso',
       precio_base: tarifa.precio_base.toString(),
       precio_por_kg: tarifa.precio_por_kg?.toString() || '',
       precio_por_km: tarifa.precio_por_km?.toString() || '',
+      precio_por_m3: tarifa.precio_por_m3?.toString() || '',
       zona_origen: tarifa.zona_origen || '',
       zona_destino: tarifa.zona_destino || '',
       comision_chofer_porcentaje: tarifa.comision_chofer_porcentaje?.toString() || '',
@@ -346,6 +368,7 @@ export default function Rates() {
       descripcion: concept.descripcion || '',
       activo: concept.activo,
       orden: concept.orden,
+      es_basico: concept.es_basico ?? true,
     });
     setIsConceptDialogOpen(true);
   };
@@ -359,6 +382,11 @@ export default function Rates() {
     });
     setConceptPrices(prices);
     setIsPricingDialogOpen(true);
+  };
+
+  const handleOpenBranches = (concept: TarifaConcepto) => {
+    setSelectedConceptForBranches(concept);
+    setIsBranchDialogOpen(true);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -386,6 +414,96 @@ export default function Rates() {
       prices[c.id] = existingPrice ? existingPrice.monto.toString() : '0';
     });
     setConceptPrices(prices);
+  };
+
+  // Get icon for rate type
+  const getRateTypeIcon = (type: RateType) => {
+    switch (type) {
+      case 'peso': return Weight;
+      case 'distancia': return Ruler;
+      case 'zona': return MapPin;
+      case 'codigo_postal': return MapPin;
+      case 'volumen': return Box;
+      default: return DollarSign;
+    }
+  };
+
+  // Render dynamic fields based on rate type
+  const renderRateTypeFields = () => {
+    switch (formData.tipo_tarifa) {
+      case 'peso':
+        return (
+          <div className="space-y-2">
+            <Label htmlFor="precio_por_kg">Precio por Kg</Label>
+            <Input
+              id="precio_por_kg"
+              type="number"
+              step="0.01"
+              value={formData.precio_por_kg}
+              onChange={(e) => setFormData({ ...formData, precio_por_kg: e.target.value })}
+              placeholder="0.00"
+            />
+          </div>
+        );
+      case 'distancia':
+        return (
+          <div className="space-y-2">
+            <Label htmlFor="precio_por_km">Precio por Km</Label>
+            <Input
+              id="precio_por_km"
+              type="number"
+              step="0.01"
+              value={formData.precio_por_km}
+              onChange={(e) => setFormData({ ...formData, precio_por_km: e.target.value })}
+              placeholder="0.00"
+            />
+          </div>
+        );
+      case 'volumen':
+        return (
+          <div className="space-y-2">
+            <Label htmlFor="precio_por_m3">Precio por m³</Label>
+            <Input
+              id="precio_por_m3"
+              type="number"
+              step="0.01"
+              value={formData.precio_por_m3}
+              onChange={(e) => setFormData({ ...formData, precio_por_m3: e.target.value })}
+              placeholder="0.00"
+            />
+          </div>
+        );
+      case 'zona':
+      case 'codigo_postal':
+        return (
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="zona_origen">
+                {formData.tipo_tarifa === 'codigo_postal' ? 'CP Origen' : 'Zona Origen'}
+              </Label>
+              <Input
+                id="zona_origen"
+                value={formData.zona_origen}
+                onChange={(e) => setFormData({ ...formData, zona_origen: e.target.value })}
+                placeholder={formData.tipo_tarifa === 'codigo_postal' ? 'Ej: 1000' : 'Ej: Capital'}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="zona_destino">
+                {formData.tipo_tarifa === 'codigo_postal' ? 'CP Destino' : 'Zona Destino'}
+              </Label>
+              <Input
+                id="zona_destino"
+                value={formData.zona_destino}
+                onChange={(e) => setFormData({ ...formData, zona_destino: e.target.value })}
+                placeholder={formData.tipo_tarifa === 'codigo_postal' ? 'Ej: 1900' : 'Ej: GBA'}
+              />
+            </div>
+          </div>
+        );
+      default:
+        return null;
+    }
   };
 
   if (!isAdmin()) {
@@ -438,90 +556,44 @@ export default function Rates() {
                   Nueva Tarifa
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-lg">
+              <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>
                     {editingTarifa ? 'Editar Tarifa' : 'Nueva Tarifa'}
                   </DialogTitle>
                 </DialogHeader>
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form onSubmit={handleSubmit} className="space-y-6">
+                  {/* Rate Type Selector */}
+                  <RateTypeSelector
+                    value={formData.tipo_tarifa}
+                    onChange={(value) => setFormData({ ...formData, tipo_tarifa: value })}
+                  />
+
                   <div className="space-y-2">
-                    <Label htmlFor="nombre">Nombre *</Label>
+                    <Label htmlFor="nombre">Nombre de la Tarifa *</Label>
                     <Input
                       id="nombre"
                       value={formData.nombre}
-                      onChange={(e) =>
-                        setFormData({ ...formData, nombre: e.target.value })
-                      }
+                      onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
                       placeholder="Ej: Envío Local, Express, etc."
                       required
                     />
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="precio_base">Precio Base *</Label>
-                      <Input
-                        id="precio_base"
-                        type="number"
-                        step="0.01"
-                        value={formData.precio_base}
-                        onChange={(e) =>
-                          setFormData({ ...formData, precio_base: e.target.value })
-                        }
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="precio_por_kg">$/Kg</Label>
-                      <Input
-                        id="precio_por_kg"
-                        type="number"
-                        step="0.01"
-                        value={formData.precio_por_kg}
-                        onChange={(e) =>
-                          setFormData({ ...formData, precio_por_kg: e.target.value })
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="precio_por_km">$/Km</Label>
-                      <Input
-                        id="precio_por_km"
-                        type="number"
-                        step="0.01"
-                        value={formData.precio_por_km}
-                        onChange={(e) =>
-                          setFormData({ ...formData, precio_por_km: e.target.value })
-                        }
-                      />
-                    </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="precio_base">Precio Base *</Label>
+                    <Input
+                      id="precio_base"
+                      type="number"
+                      step="0.01"
+                      value={formData.precio_base}
+                      onChange={(e) => setFormData({ ...formData, precio_base: e.target.value })}
+                      required
+                    />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="zona_origen">Zona Origen</Label>
-                      <Input
-                        id="zona_origen"
-                        value={formData.zona_origen}
-                        onChange={(e) =>
-                          setFormData({ ...formData, zona_origen: e.target.value })
-                        }
-                        placeholder="Ej: Capital"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="zona_destino">Zona Destino</Label>
-                      <Input
-                        id="zona_destino"
-                        value={formData.zona_destino}
-                        onChange={(e) =>
-                          setFormData({ ...formData, zona_destino: e.target.value })
-                        }
-                        placeholder="Ej: GBA"
-                      />
-                    </div>
-                  </div>
+                  {/* Dynamic fields based on rate type */}
+                  {renderRateTypeFields()}
 
                   <div className="border-t pt-4">
                     <h4 className="text-sm font-medium mb-3">Comisión Chofer</h4>
@@ -599,7 +671,7 @@ export default function Rates() {
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card className="glass">
               <CardContent className="p-4 flex items-center gap-4">
                 <div className="p-3 rounded-xl bg-tarifas/10">
@@ -630,9 +702,22 @@ export default function Rates() {
                   <Layers className="h-6 w-6 text-primary" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Conceptos Activos</p>
+                  <p className="text-sm text-muted-foreground">Conceptos Básicos</p>
                   <p className="text-2xl font-bold">
-                    {conceptos.filter((c) => c.activo).length}
+                    {conceptos.filter((c) => c.activo && c.es_basico).length}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="glass">
+              <CardContent className="p-4 flex items-center gap-4">
+                <div className="p-3 rounded-xl bg-warning/10">
+                  <Building2 className="h-6 w-6 text-warning" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Conceptos Adicionales</p>
+                  <p className="text-2xl font-bold">
+                    {conceptos.filter((c) => c.activo && !c.es_basico).length}
                   </p>
                 </div>
               </CardContent>
@@ -650,115 +735,130 @@ export default function Rates() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {tarifas.map((tarifa) => (
-                <Card
-                  key={tarifa.id}
-                  className={`glass card-hover ${!tarifa.activa ? 'opacity-60' : ''}`}
-                >
-                  <CardContent className="p-6">
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <h3 className="font-semibold text-lg">{tarifa.nombre}</h3>
-                        <Badge
-                          variant={tarifa.activa ? 'default' : 'secondary'}
-                          className={
-                            tarifa.activa
-                              ? 'bg-success/10 text-success'
-                              : 'bg-muted'
+              {tarifas.map((tarifa) => {
+                const TypeIcon = getRateTypeIcon(tarifa.tipo_tarifa);
+                return (
+                  <Card
+                    key={tarifa.id}
+                    className={`glass card-hover ${!tarifa.activa ? 'opacity-60' : ''}`}
+                  >
+                    <CardContent className="p-6">
+                      <div className="flex items-start justify-between mb-4">
+                        <div>
+                          <h3 className="font-semibold text-lg">{tarifa.nombre}</h3>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="outline" className="text-xs">
+                              <TypeIcon className="h-3 w-3 mr-1" />
+                              {getRateTypeLabel(tarifa.tipo_tarifa)}
+                            </Badge>
+                            <Badge
+                              variant={tarifa.activa ? 'default' : 'secondary'}
+                              className={
+                                tarifa.activa
+                                  ? 'bg-success/10 text-success'
+                                  : 'bg-muted'
+                              }
+                            >
+                              {tarifa.activa ? 'Activa' : 'Inactiva'}
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              setSelectedTarifaForPricing(tarifa);
+                              initializePrices();
+                              setIsPricingDialogOpen(true);
+                            }}
+                            title="Configurar precios por concepto"
+                          >
+                            <Layers className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleEdit(tarifa)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="mb-4">
+                        <p className="text-3xl font-bold text-tarifas">
+                          {formatCurrency(tarifa.precio_base)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Precio base</p>
+                      </div>
+
+                      <div className="space-y-2 text-sm">
+                        {tarifa.precio_por_kg && (
+                          <div className="flex items-center gap-2">
+                            <Weight className="h-4 w-4 text-muted-foreground" />
+                            <span>{formatCurrency(tarifa.precio_por_kg)} por kg</span>
+                          </div>
+                        )}
+                        {tarifa.precio_por_km && (
+                          <div className="flex items-center gap-2">
+                            <Ruler className="h-4 w-4 text-muted-foreground" />
+                            <span>{formatCurrency(tarifa.precio_por_km)} por km</span>
+                          </div>
+                        )}
+                        {tarifa.precio_por_m3 && (
+                          <div className="flex items-center gap-2">
+                            <Box className="h-4 w-4 text-muted-foreground" />
+                            <span>{formatCurrency(tarifa.precio_por_m3)} por m³</span>
+                          </div>
+                        )}
+                        {(tarifa.zona_origen || tarifa.zona_destino) && (
+                          <div className="flex items-center gap-2">
+                            <MapPin className="h-4 w-4 text-muted-foreground" />
+                            <span>
+                              {tarifa.zona_origen || 'Cualquier'} →{' '}
+                              {tarifa.zona_destino || 'Cualquier'}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {(tarifa.comision_chofer_porcentaje || tarifa.comision_chofer_fija) && (
+                        <div className="mt-4 pt-4 border-t">
+                          <div className="flex items-center gap-2 text-sm">
+                            <Users className="h-4 w-4 text-chofer" />
+                            <span className="text-muted-foreground">Comisión chofer:</span>
+                            {tarifa.comision_chofer_porcentaje && (
+                              <span className="font-medium">
+                                {tarifa.comision_chofer_porcentaje}%
+                              </span>
+                            )}
+                            {tarifa.comision_chofer_porcentaje &&
+                              tarifa.comision_chofer_fija && <span>+</span>}
+                            {tarifa.comision_chofer_fija && (
+                              <span className="font-medium">
+                                {formatCurrency(tarifa.comision_chofer_fija)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="mt-4 pt-4 border-t flex items-center justify-end">
+                        <Switch
+                          checked={tarifa.activa ?? true}
+                          onCheckedChange={(checked) =>
+                            toggleActiveMutation.mutate({
+                              id: tarifa.id,
+                              activa: checked,
+                            })
                           }
-                        >
-                          {tarifa.activa ? 'Activa' : 'Inactiva'}
-                        </Badge>
+                        />
                       </div>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            setSelectedTarifaForPricing(tarifa);
-                            initializePrices();
-                            setIsPricingDialogOpen(true);
-                          }}
-                          title="Configurar precios por concepto"
-                        >
-                          <Layers className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEdit(tarifa)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="mb-4">
-                      <p className="text-3xl font-bold text-tarifas">
-                        {formatCurrency(tarifa.precio_base)}
-                      </p>
-                      <p className="text-xs text-muted-foreground">Precio base</p>
-                    </div>
-
-                    <div className="space-y-2 text-sm">
-                      {tarifa.precio_por_kg && (
-                        <div className="flex items-center gap-2">
-                          <Weight className="h-4 w-4 text-muted-foreground" />
-                          <span>{formatCurrency(tarifa.precio_por_kg)} por kg</span>
-                        </div>
-                      )}
-                      {tarifa.precio_por_km && (
-                        <div className="flex items-center gap-2">
-                          <MapPin className="h-4 w-4 text-muted-foreground" />
-                          <span>{formatCurrency(tarifa.precio_por_km)} por km</span>
-                        </div>
-                      )}
-                      {(tarifa.zona_origen || tarifa.zona_destino) && (
-                        <div className="flex items-center gap-2">
-                          <MapPin className="h-4 w-4 text-muted-foreground" />
-                          <span>
-                            {tarifa.zona_origen || 'Cualquier'} →{' '}
-                            {tarifa.zona_destino || 'Cualquier'}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {(tarifa.comision_chofer_porcentaje || tarifa.comision_chofer_fija) && (
-                      <div className="mt-4 pt-4 border-t">
-                        <div className="flex items-center gap-2 text-sm">
-                          <Users className="h-4 w-4 text-chofer" />
-                          <span className="text-muted-foreground">Comisión chofer:</span>
-                          {tarifa.comision_chofer_porcentaje && (
-                            <span className="font-medium">
-                              {tarifa.comision_chofer_porcentaje}%
-                            </span>
-                          )}
-                          {tarifa.comision_chofer_porcentaje &&
-                            tarifa.comision_chofer_fija && <span>+</span>}
-                          {tarifa.comision_chofer_fija && (
-                            <span className="font-medium">
-                              {formatCurrency(tarifa.comision_chofer_fija)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="mt-4 pt-4 border-t flex items-center justify-end">
-                      <Switch
-                        checked={tarifa.activa ?? true}
-                        onCheckedChange={(checked) =>
-                          toggleActiveMutation.mutate({
-                            id: tarifa.id,
-                            activa: checked,
-                          })
-                        }
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </TabsContent>
@@ -766,9 +866,15 @@ export default function Rates() {
         {/* Conceptos Tab */}
         <TabsContent value="conceptos" className="space-y-6">
           <div className="flex justify-between items-center">
-            <p className="text-muted-foreground">
-              Define los conceptos que componen las tarifas (Flete, Seguro, Embalaje, etc.)
-            </p>
+            <div>
+              <p className="text-muted-foreground">
+                Define los conceptos que componen las tarifas.
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Los conceptos <strong>básicos</strong> están disponibles para todas las sucursales.
+                Los <strong>adicionales</strong> se habilitan por sucursal.
+              </p>
+            </div>
             <Dialog
               open={isConceptDialogOpen}
               onOpenChange={(open) => {
@@ -850,6 +956,28 @@ export default function Rates() {
                       />
                     </div>
                   </div>
+
+                  {/* Basic/Additional toggle */}
+                  <div className="border-t pt-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label htmlFor="concept_basico">Concepto Básico</Label>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {conceptFormData.es_basico 
+                            ? 'Disponible para todas las sucursales' 
+                            : 'Requiere habilitación por sucursal'}
+                        </p>
+                      </div>
+                      <Switch
+                        id="concept_basico"
+                        checked={conceptFormData.es_basico}
+                        onCheckedChange={(checked) =>
+                          setConceptFormData({ ...conceptFormData, es_basico: checked })
+                        }
+                      />
+                    </div>
+                  </div>
+
                   <div className="flex justify-end gap-2">
                     <Button
                       type="button"
@@ -882,6 +1010,7 @@ export default function Rates() {
                     <TableHead>Orden</TableHead>
                     <TableHead>Nombre</TableHead>
                     <TableHead>Código</TableHead>
+                    <TableHead>Tipo</TableHead>
                     <TableHead>Descripción</TableHead>
                     <TableHead>Estado</TableHead>
                     <TableHead className="text-right">Acciones</TableHead>
@@ -890,7 +1019,7 @@ export default function Rates() {
                 <TableBody>
                   {conceptos.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                         No hay conceptos registrados
                       </TableCell>
                     </TableRow>
@@ -903,6 +1032,14 @@ export default function Rates() {
                           <code className="text-xs bg-muted px-2 py-1 rounded">
                             {concepto.codigo}
                           </code>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={concepto.es_basico ? 'default' : 'outline'}
+                            className={concepto.es_basico ? 'bg-primary/10 text-primary' : 'border-warning text-warning'}
+                          >
+                            {concepto.es_basico ? 'Básico' : 'Adicional'}
+                          </Badge>
                         </TableCell>
                         <TableCell className="text-muted-foreground">
                           {concepto.descripcion || '-'}
@@ -917,6 +1054,16 @@ export default function Rates() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
+                            {!concepto.es_basico && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleOpenBranches(concepto)}
+                                title="Gestionar sucursales"
+                              >
+                                <Building2 className="h-4 w-4" />
+                              </Button>
+                            )}
                             <Button
                               variant="ghost"
                               size="icon"
@@ -961,7 +1108,14 @@ export default function Rates() {
             </p>
             {conceptos.filter(c => c.activo).map((concepto) => (
               <div key={concepto.id} className="flex items-center gap-4">
-                <Label className="w-32">{concepto.nombre}</Label>
+                <div className="w-32 flex items-center gap-2">
+                  <Label>{concepto.nombre}</Label>
+                  {!concepto.es_basico && (
+                    <Badge variant="outline" className="text-xs border-warning text-warning">
+                      +
+                    </Badge>
+                  )}
+                </div>
                 <div className="flex-1">
                   <Input
                     type="number"
@@ -1007,6 +1161,16 @@ export default function Rates() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Dialog para gestionar sucursales de un concepto adicional */}
+      {selectedConceptForBranches && (
+        <ConceptBranchesDialog
+          open={isBranchDialogOpen}
+          onOpenChange={setIsBranchDialogOpen}
+          conceptId={selectedConceptForBranches.id}
+          conceptName={selectedConceptForBranches.nombre}
+        />
+      )}
     </div>
   );
 }

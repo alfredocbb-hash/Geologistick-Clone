@@ -1791,6 +1791,58 @@ export type Database = {
           },
         ]
       }
+      sucursal_conceptos: {
+        Row: {
+          concepto_id: string
+          created_at: string | null
+          habilitado: boolean | null
+          id: string
+          sucursal_id: string
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          concepto_id: string
+          created_at?: string | null
+          habilitado?: boolean | null
+          id?: string
+          sucursal_id: string
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          concepto_id?: string
+          created_at?: string | null
+          habilitado?: boolean | null
+          id?: string
+          sucursal_id?: string
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sucursal_conceptos_concepto_id_fkey"
+            columns: ["concepto_id"]
+            isOneToOne: false
+            referencedRelation: "tarifa_conceptos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sucursal_conceptos_sucursal_id_fkey"
+            columns: ["sucursal_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sucursal_conceptos_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sucursal_zonas: {
         Row: {
           activa: boolean | null
@@ -2014,6 +2066,7 @@ export type Database = {
           codigo: string
           created_at: string | null
           descripcion: string | null
+          es_basico: boolean | null
           id: string
           nombre: string
           orden: number | null
@@ -2025,6 +2078,7 @@ export type Database = {
           codigo: string
           created_at?: string | null
           descripcion?: string | null
+          es_basico?: boolean | null
           id?: string
           nombre: string
           orden?: number | null
@@ -2036,6 +2090,7 @@ export type Database = {
           codigo?: string
           created_at?: string | null
           descripcion?: string | null
+          es_basico?: boolean | null
           id?: string
           nombre?: string
           orden?: number | null
@@ -2063,7 +2118,10 @@ export type Database = {
           precio_base: number
           precio_por_kg: number | null
           precio_por_km: number | null
+          precio_por_m3: number | null
+          rangos_precios: Json | null
           tenant_id: string | null
+          tipo_tarifa: string | null
           updated_at: string | null
           zona_destino: string | null
           zona_origen: string | null
@@ -2078,7 +2136,10 @@ export type Database = {
           precio_base: number
           precio_por_kg?: number | null
           precio_por_km?: number | null
+          precio_por_m3?: number | null
+          rangos_precios?: Json | null
           tenant_id?: string | null
+          tipo_tarifa?: string | null
           updated_at?: string | null
           zona_destino?: string | null
           zona_origen?: string | null
@@ -2093,7 +2154,10 @@ export type Database = {
           precio_base?: number
           precio_por_kg?: number | null
           precio_por_km?: number | null
+          precio_por_m3?: number | null
+          rangos_precios?: Json | null
           tenant_id?: string | null
+          tipo_tarifa?: string | null
           updated_at?: string | null
           zona_destino?: string | null
           zona_origen?: string | null
