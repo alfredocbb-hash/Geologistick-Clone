@@ -231,9 +231,10 @@ export default function NewShipment() {
   });
 
   // Sucursales destino (para retiro en sucursal)
+  // Para puerta_sucursal podemos incluir la sucursal origen como destino
   const sucursalesDestino = useMemo(() => {
-    return sucursales.filter(s => s.puede_recibir !== false && s.id !== sucursalOrigenId);
-  }, [sucursales, sucursalOrigenId]);
+    return sucursales.filter(s => s.puede_recibir !== false);
+  }, [sucursales]);
 
   const { data: tarifas } = useQuery({
     queryKey: ['tarifas'],
