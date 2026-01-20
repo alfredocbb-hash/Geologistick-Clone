@@ -31,7 +31,7 @@ serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    // Verify the token using getClaims (not getUser which is deprecated)
+    // Verify the token using getClaims
     const token = authHeader.replace('Bearer ', '');
     const { data: claimsData, error: authError } = await supabase.auth.getClaims(token);
     
@@ -49,14 +49,65 @@ serve(async (req) => {
     const userId = claimsData.claims.sub;
     console.log('Authenticated user:', userId);
 
-    // Get the Google Maps API key from environment
-    // This key should be restricted in Google Cloud Console to:
-    // - HTTP referrer restrictions: your domains only
-    // - API restrictions: Maps JavaScript API, Places API only
-    const mapsApiKey = Deno.env.get('GOOGLE_MAPS_API_KEY') || Deno.env.get('VITE_GOOGLE_MAPS_API_KEY');
+    // Get user's tenant from profile
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('tenant_id')
+      .eq('user_id', userId)
+      .single();
+
+    if (profileError || !profile?.tenant_id) {
+      console.error('Profile error:', profileError);
+      return new Response(
+        JSON.stringify({ error: 'User profile not found' }),
+        { 
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    const tenantId = profile.tenant_id;
+    console.log('Tenant ID:', tenantId);
+
+    // Use service role to fetch integration config (bypasses RLS)
+    const serviceClient = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    );
+
+    // Try to get API key from system_integrations table for this tenant
+    // First try production, then sandbox
+    let mapsApiKey: string | null = null;
+
+    for (const env of ['production', 'sandbox']) {
+      const { data: integration, error: integrationError } = await serviceClient
+        .from('system_integrations')
+        .select('config_value')
+        .eq('tenant_id', tenantId)
+        .eq('integration_type', 'google_maps')
+        .eq('config_key', 'api_key')
+        .eq('environment', env)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (!integrationError && integration?.config_value) {
+        mapsApiKey = integration.config_value;
+        console.log(`Found Maps API key in ${env} environment`);
+        break;
+      }
+    }
+
+    // Fallback to environment variable if not found in DB
+    if (!mapsApiKey) {
+      mapsApiKey = Deno.env.get('GOOGLE_MAPS_API_KEY') || Deno.env.get('VITE_GOOGLE_MAPS_API_KEY') || null;
+      if (mapsApiKey) {
+        console.log('Using Maps API key from environment variable');
+      }
+    }
     
     if (!mapsApiKey) {
-      console.error('Maps API key not configured');
+      console.error('Maps API key not configured for tenant:', tenantId);
       return new Response(
         JSON.stringify({ error: 'Maps API key not configured' }),
         { 
