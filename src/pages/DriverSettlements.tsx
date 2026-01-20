@@ -76,7 +76,7 @@ interface Liquidacion {
 }
 
 export default function DriverSettlements() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const queryClient = useQueryClient();
   const [selectedChofer, setSelectedChofer] = useState<string>('');
   const [fechaInicio, setFechaInicio] = useState<string>('');
@@ -209,6 +209,7 @@ export default function DriverSettlements() {
           estado: 'generada',
           notas: notas || null,
           generado_por: user?.id,
+          tenant_id: profile?.tenant_id,
         })
         .select()
         .single();

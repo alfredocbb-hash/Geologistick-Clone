@@ -703,6 +703,7 @@ export default function RoutePlanner() {
           tiempo_estimado_minutos: Math.round(selectedOption.estimatedTime * 60),
           estado: "confirmada",
           created_by: profile?.user_id,
+          tenant_id: profile?.tenant_id,
         })
         .select()
         .single();

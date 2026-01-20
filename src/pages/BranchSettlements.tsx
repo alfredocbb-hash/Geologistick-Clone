@@ -72,7 +72,7 @@ interface LiquidacionSucursal {
 }
 
 export default function BranchSettlements() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const queryClient = useQueryClient();
   const [selectedSucursal, setSelectedSucursal] = useState<string>('');
   const [fechaInicio, setFechaInicio] = useState<string>('');
@@ -202,6 +202,7 @@ export default function BranchSettlements() {
           estado: 'pendiente',
           notas: notas || null,
           created_by: user?.id,
+          tenant_id: profile?.tenant_id,
         })
         .select()
         .single();

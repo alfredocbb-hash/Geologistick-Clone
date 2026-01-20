@@ -189,6 +189,7 @@ export default function RouteSheets() {
           cantidad_envios: selectedEnvios.length,
           notas: notas || null,
           created_by: profile.user_id,
+          tenant_id: profile.tenant_id,
         })
         .select()
         .single();

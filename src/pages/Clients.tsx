@@ -147,7 +147,10 @@ export default function Clients() {
           .eq('id', editingClient.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('clientes').insert(clientData);
+        const { error } = await supabase.from('clientes').insert({
+          ...clientData,
+          tenant_id: profile?.tenant_id,
+        });
         if (error) throw error;
       }
     },

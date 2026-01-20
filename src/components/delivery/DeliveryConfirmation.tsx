@@ -41,7 +41,7 @@ interface DeliveryConfirmationProps {
 }
 
 export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: DeliveryConfirmationProps) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -205,6 +205,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
                 monto: montoTotal,
                 porcentaje_aplicado: porcentaje,
                 monto_fijo_aplicado: montoFijo,
+                tenant_id: profile?.tenant_id,
               });
             }
           }

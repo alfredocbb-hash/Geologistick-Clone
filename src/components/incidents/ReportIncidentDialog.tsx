@@ -39,7 +39,7 @@ interface ReportIncidentDialogProps {
 }
 
 export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: ReportIncidentDialogProps) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -111,6 +111,7 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
           descripcion: description || null,
           foto_evidencia: photoUrl,
           estado: 'pendiente',
+          tenant_id: profile?.tenant_id,
         });
 
       if (incidentError) throw incidentError;

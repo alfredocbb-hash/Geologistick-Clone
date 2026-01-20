@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/lib/auth';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { 
@@ -148,6 +149,7 @@ const getMpStatusBadge = (status: string | null) => {
 };
 
 export default function Payments() {
+  const { profile } = useAuth();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('historial');
   const [searchTerm, setSearchTerm] = useState('');
@@ -318,6 +320,7 @@ export default function Payments() {
           metodo: method,
           estado: 'pagado',
           referencia: reference || null,
+          tenant_id: profile?.tenant_id,
         });
 
       if (error) throw error;
