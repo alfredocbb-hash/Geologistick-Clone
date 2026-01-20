@@ -598,7 +598,13 @@ export default function ActiveRouteNavigation() {
           return (
             <Card 
               key={item.id} 
-              className={`${isCurrent ? 'border-primary border-2' : ''} ${isCompleted ? 'opacity-60' : ''}`}
+              className={`${isCurrent ? 'border-primary border-2' : ''} ${isCompleted ? 'opacity-60' : 'cursor-pointer hover:border-primary/50'}`}
+              onClick={() => {
+                if (!isCompleted) {
+                  setSelectedShipment(envio);
+                  setDialogType(isItemPickup ? 'pickup' : 'delivery');
+                }
+              }}
             >
               <CardContent className="p-3 flex items-center gap-3">
                 {/* Status Icon */}
@@ -623,6 +629,11 @@ export default function ActiveRouteNavigation() {
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">#{index + 1}</span>
                     <span className="font-mono text-xs">{envio.tracking_number}</span>
+                    {isCurrent && (
+                      <Badge variant="outline" className="text-xs border-primary text-primary">
+                        Sugerida
+                      </Badge>
+                    )}
                   </div>
                   <p className="font-medium truncate">
                     {itemContact?.nombre} {itemContact?.apellido}
@@ -634,8 +645,23 @@ export default function ActiveRouteNavigation() {
                   )}
                 </div>
 
-                {/* Arrow */}
-                <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />
+                {/* Action Button */}
+                {!isCompleted && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={isItemPickup ? 'text-chofer hover:bg-chofer/10' : 'text-success hover:bg-success/10'}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedShipment(envio);
+                      setDialogType(isItemPickup ? 'pickup' : 'delivery');
+                    }}
+                  >
+                    <CheckCircle className="h-4 w-4" />
+                  </Button>
+                )}
+
+                {isCompleted && <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />}
               </CardContent>
             </Card>
           );

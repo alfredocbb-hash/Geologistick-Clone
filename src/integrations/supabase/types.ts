@@ -236,33 +236,42 @@ export type Database = {
         Row: {
           chofer_id: string
           created_at: string | null
+          editado_at: string | null
+          editado_por: string | null
           envio_id: string | null
           id: string
           liquidacion_id: string | null
           monto: number
           monto_fijo_aplicado: number | null
+          monto_original: number | null
           porcentaje_aplicado: number | null
           tenant_id: string | null
         }
         Insert: {
           chofer_id: string
           created_at?: string | null
+          editado_at?: string | null
+          editado_por?: string | null
           envio_id?: string | null
           id?: string
           liquidacion_id?: string | null
           monto: number
           monto_fijo_aplicado?: number | null
+          monto_original?: number | null
           porcentaje_aplicado?: number | null
           tenant_id?: string | null
         }
         Update: {
           chofer_id?: string
           created_at?: string | null
+          editado_at?: string | null
+          editado_por?: string | null
           envio_id?: string | null
           id?: string
           liquidacion_id?: string | null
           monto?: number
           monto_fijo_aplicado?: number | null
+          monto_original?: number | null
           porcentaje_aplicado?: number | null
           tenant_id?: string | null
         }
@@ -472,6 +481,7 @@ export type Database = {
         Row: {
           cantidad_bultos: number | null
           chofer_id: string | null
+          chofer_ultima_milla_id: string | null
           ciudad_entrega: string | null
           ciudad_retiro: string | null
           codigo_postal_destino: string | null
@@ -502,6 +512,7 @@ export type Database = {
           factura_fecha: string | null
           factura_numero: string | null
           factura_tipo: string | null
+          fecha_asignacion_ultima_milla: string | null
           fecha_entrega: string | null
           fecha_recogida: string | null
           fecha_retiro: string | null
@@ -545,6 +556,7 @@ export type Database = {
         Insert: {
           cantidad_bultos?: number | null
           chofer_id?: string | null
+          chofer_ultima_milla_id?: string | null
           ciudad_entrega?: string | null
           ciudad_retiro?: string | null
           codigo_postal_destino?: string | null
@@ -575,6 +587,7 @@ export type Database = {
           factura_fecha?: string | null
           factura_numero?: string | null
           factura_tipo?: string | null
+          fecha_asignacion_ultima_milla?: string | null
           fecha_entrega?: string | null
           fecha_recogida?: string | null
           fecha_retiro?: string | null
@@ -618,6 +631,7 @@ export type Database = {
         Update: {
           cantidad_bultos?: number | null
           chofer_id?: string | null
+          chofer_ultima_milla_id?: string | null
           ciudad_entrega?: string | null
           ciudad_retiro?: string | null
           codigo_postal_destino?: string | null
@@ -648,6 +662,7 @@ export type Database = {
           factura_fecha?: string | null
           factura_numero?: string | null
           factura_tipo?: string | null
+          fecha_asignacion_ultima_milla?: string | null
           fecha_entrega?: string | null
           fecha_recogida?: string | null
           fecha_retiro?: string | null
@@ -1464,6 +1479,10 @@ export type Database = {
           activo: boolean | null
           apellido: string | null
           avatar_url: string | null
+          comision_fija: number | null
+          comision_notas: string | null
+          comision_porcentaje: number | null
+          comision_tipo: string | null
           created_at: string | null
           email: string
           id: string
@@ -1478,6 +1497,10 @@ export type Database = {
           activo?: boolean | null
           apellido?: string | null
           avatar_url?: string | null
+          comision_fija?: number | null
+          comision_notas?: string | null
+          comision_porcentaje?: number | null
+          comision_tipo?: string | null
           created_at?: string | null
           email: string
           id?: string
@@ -1492,6 +1515,10 @@ export type Database = {
           activo?: boolean | null
           apellido?: string | null
           avatar_url?: string | null
+          comision_fija?: number | null
+          comision_notas?: string | null
+          comision_porcentaje?: number | null
+          comision_tipo?: string | null
           created_at?: string | null
           email?: string
           id?: string

@@ -42,7 +42,10 @@ import {
   Mail,
   Phone,
   Key,
+  Percent,
+  DollarSign,
 } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
 import { ResetPasswordDialog } from '@/components/users/ResetPasswordDialog';
 import type { Database } from '@/integrations/supabase/types';
 
@@ -59,6 +62,11 @@ interface Profile {
   sucursal_id: string | null;
   activo: boolean | null;
   created_at: string | null;
+  // Commission fields
+  comision_tipo: string | null;
+  comision_porcentaje: number | null;
+  comision_fija: number | null;
+  comision_notas: string | null;
 }
 
 interface UserRole {
@@ -116,6 +124,11 @@ export default function Users() {
     sucursal_id: '',
     activo: true,
     newRole: '' as AppRole | '',
+    // Commission fields
+    comision_tipo: 'tarifa' as string,
+    comision_porcentaje: 0,
+    comision_fija: 0,
+    comision_notas: '',
   });
   const [createFormData, setCreateFormData] = useState({
     email: '',
@@ -248,12 +261,18 @@ export default function Users() {
       sucursal_id: profile.sucursal_id || '',
       activo: profile.activo ?? true,
       newRole: '',
+      comision_tipo: profile.comision_tipo || 'tarifa',
+      comision_porcentaje: profile.comision_porcentaje || 0,
+      comision_fija: profile.comision_fija || 0,
+      comision_notas: profile.comision_notas || '',
     });
     setIsDialogOpen(true);
   };
 
   const handleSave = () => {
     if (!editingProfile) return;
+
+    const isChofer = editingRoles.includes('chofer');
 
     updateProfileMutation.mutate({
       profileId: editingProfile.id,
@@ -263,6 +282,13 @@ export default function Users() {
         telefono: formData.telefono || null,
         sucursal_id: formData.sucursal_id === 'none' ? null : (formData.sucursal_id || null),
         activo: formData.activo,
+        // Only save commission fields if user is a driver
+        ...(isChofer && {
+          comision_tipo: formData.comision_tipo,
+          comision_porcentaje: formData.comision_porcentaje,
+          comision_fija: formData.comision_fija,
+          comision_notas: formData.comision_notas || null,
+        }),
       },
     });
     setIsDialogOpen(false);
@@ -705,6 +731,89 @@ export default function Users() {
                   </Button>
                 </div>
               </div>
+
+              {/* Commission Configuration - Only visible for drivers */}
+              {editingRoles.includes('chofer') && (
+                <div className="space-y-4 p-4 bg-chofer/5 rounded-lg border border-chofer/20">
+                  <div className="flex items-center gap-2">
+                    <Truck className="h-4 w-4 text-chofer" />
+                    <Label className="text-chofer font-medium">Configuración de Comisiones</Label>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Label>Tipo de Comisión</Label>
+                      <Select
+                        value={formData.comision_tipo}
+                        onValueChange={(value) =>
+                          setFormData({ ...formData, comision_tipo: value })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar tipo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="tarifa">Según Tarifa del Envío</SelectItem>
+                          <SelectItem value="porcentaje">Porcentaje Fijo</SelectItem>
+                          <SelectItem value="fija">Comisión Fija por Entrega</SelectItem>
+                          <SelectItem value="mixta">Mixta (Porcentaje + Fijo)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {(formData.comision_tipo === 'porcentaje' || formData.comision_tipo === 'mixta') && (
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-1">
+                          <Percent className="h-3 w-3" />
+                          Porcentaje (%)
+                        </Label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="100"
+                          value={formData.comision_porcentaje}
+                          onChange={(e) =>
+                            setFormData({ ...formData, comision_porcentaje: parseFloat(e.target.value) || 0 })
+                          }
+                          placeholder="Ej: 10"
+                        />
+                      </div>
+                    )}
+
+                    {(formData.comision_tipo === 'fija' || formData.comision_tipo === 'mixta') && (
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-1">
+                          <DollarSign className="h-3 w-3" />
+                          Monto Fijo por Entrega ($)
+                        </Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={formData.comision_fija}
+                          onChange={(e) =>
+                            setFormData({ ...formData, comision_fija: parseFloat(e.target.value) || 0 })
+                          }
+                          placeholder="Ej: 150"
+                        />
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <Label>Notas (acuerdos especiales)</Label>
+                      <Textarea
+                        value={formData.comision_notas}
+                        onChange={(e) =>
+                          setFormData({ ...formData, comision_notas: e.target.value })
+                        }
+                        placeholder="Ej: Comisión adicional por zona alejada..."
+                        rows={2}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="flex items-center justify-between">
                 <Label>Usuario Activo</Label>
