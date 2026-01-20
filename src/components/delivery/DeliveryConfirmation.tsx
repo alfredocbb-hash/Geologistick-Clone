@@ -172,6 +172,13 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
       const commissionPromise = (async () => {
         if (!user?.id) return;
         
+        // First get driver's commission config from profile
+        const { data: driverProfile } = await supabase
+          .from('profiles')
+          .select('comision_tipo, comision_porcentaje, comision_fija')
+          .eq('user_id', user.id)
+          .single();
+
         const { data: envioData } = await supabase
           .from('envios')
           .select(`
@@ -183,31 +190,50 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
           .eq('id', shipment.id)
           .single();
 
-        if (envioData && envioData.tarifas) {
+        if (!envioData) return;
+
+        let montoTotal = 0;
+        let porcentajeAplicado = 0;
+        let montoFijoAplicado = 0;
+
+        // Calculate commission based on driver's config or fallback to tariff
+        const comisionTipo = driverProfile?.comision_tipo || 'tarifa';
+
+        if (comisionTipo === 'tarifa' && envioData.tarifas) {
           const tarifa = envioData.tarifas as { comision_chofer_porcentaje: number | null; comision_chofer_fija: number | null };
-          const porcentaje = tarifa.comision_chofer_porcentaje || 0;
-          const montoFijo = tarifa.comision_chofer_fija || 0;
-          const comisionPorcentaje = (envioData.precio_total * porcentaje) / 100;
-          const montoTotal = comisionPorcentaje + montoFijo;
+          porcentajeAplicado = tarifa.comision_chofer_porcentaje || 0;
+          montoFijoAplicado = tarifa.comision_chofer_fija || 0;
+          const comisionPorcentaje = (envioData.precio_total * porcentajeAplicado) / 100;
+          montoTotal = comisionPorcentaje + montoFijoAplicado;
+        } else if (comisionTipo === 'porcentaje') {
+          porcentajeAplicado = driverProfile?.comision_porcentaje || 0;
+          montoTotal = (envioData.precio_total * porcentajeAplicado) / 100;
+        } else if (comisionTipo === 'fija') {
+          montoFijoAplicado = driverProfile?.comision_fija || 0;
+          montoTotal = montoFijoAplicado;
+        } else if (comisionTipo === 'mixta') {
+          porcentajeAplicado = driverProfile?.comision_porcentaje || 0;
+          montoFijoAplicado = driverProfile?.comision_fija || 0;
+          montoTotal = (envioData.precio_total * porcentajeAplicado) / 100 + montoFijoAplicado;
+        }
 
-          if (montoTotal > 0) {
-            const { data: existingCommission } = await supabase
-              .from('comisiones')
-              .select('id')
-              .eq('envio_id', shipment.id)
-              .eq('chofer_id', user.id)
-              .maybeSingle();
+        if (montoTotal > 0) {
+          const { data: existingCommission } = await supabase
+            .from('comisiones')
+            .select('id')
+            .eq('envio_id', shipment.id)
+            .eq('chofer_id', user.id)
+            .maybeSingle();
 
-            if (!existingCommission) {
-              await supabase.from('comisiones').insert({
-                chofer_id: user.id,
-                envio_id: shipment.id,
-                monto: montoTotal,
-                porcentaje_aplicado: porcentaje,
-                monto_fijo_aplicado: montoFijo,
-                tenant_id: profile?.tenant_id,
-              });
-            }
+          if (!existingCommission) {
+            await supabase.from('comisiones').insert({
+              chofer_id: user.id,
+              envio_id: shipment.id,
+              monto: montoTotal,
+              porcentaje_aplicado: porcentajeAplicado,
+              monto_fijo_aplicado: montoFijoAplicado,
+              tenant_id: profile?.tenant_id,
+            });
           }
         }
       })();

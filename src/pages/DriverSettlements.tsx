@@ -32,7 +32,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Truck, Calculator, FileText, Check, DollarSign, Calendar, CreditCard, Eye } from 'lucide-react';
+import { Truck, Calculator, FileText, Check, DollarSign, Calendar, CreditCard, Eye, Edit2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Database } from '@/integrations/supabase/types';
@@ -51,6 +51,7 @@ interface Comision {
   id: string;
   envio_id: string;
   monto: number;
+  monto_original?: number | null;
   created_at: string;
   envio?: {
     tracking_number: string;
@@ -90,6 +91,7 @@ export default function DriverSettlements() {
   const [notas, setNotas] = useState('');
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [detailLiquidacion, setDetailLiquidacion] = useState<Liquidacion | null>(null);
+  const [montosEditados, setMontosEditados] = useState<Record<string, number>>({});
 
   // Fetch choferes - using separate queries to avoid join issues
   const { data: choferes = [] } = useQuery({
@@ -175,6 +177,10 @@ export default function DriverSettlements() {
       if (error) throw error;
 
       const total = (data || []).reduce((sum, c) => sum + c.monto, 0);
+      
+      // Reset edited amounts when calculating new commissions
+      setMontosEditados({});
+      
       return { comisiones: data as Comision[], total };
     },
     onSuccess: (data) => {
@@ -197,6 +203,11 @@ export default function DriverSettlements() {
       const chofer = choferes.find(c => c.id === selectedChofer);
       if (!chofer) throw new Error('Chofer no encontrado');
 
+      // Calculate total with edited amounts
+      const montoTotalFinal = comisionesPendientes.reduce((sum, c) => {
+        return sum + (montosEditados[c.id] ?? c.monto);
+      }, 0);
+
       // Create liquidacion
       const { data: liquidacion, error: liquidacionError } = await supabase
         .from('liquidaciones')
@@ -204,7 +215,7 @@ export default function DriverSettlements() {
           chofer_id: chofer.user_id,
           periodo_inicio: fechaInicio || format(new Date(comisionesPendientes[comisionesPendientes.length - 1].created_at), 'yyyy-MM-dd'),
           periodo_fin: fechaFin || format(new Date(), 'yyyy-MM-dd'),
-          monto_total: totalPendiente,
+          monto_total: montoTotalFinal,
           cantidad_envios: comisionesPendientes.length,
           estado: 'generada',
           notas: notas || null,
@@ -216,13 +227,24 @@ export default function DriverSettlements() {
 
       if (liquidacionError) throw liquidacionError;
 
-      // Update comisiones with liquidacion_id
-      const { error: updateError } = await supabase
-        .from('comisiones')
-        .update({ liquidacion_id: liquidacion.id })
-        .in('id', comisionesPendientes.map(c => c.id));
+      // Update each commission with its final amount and audit fields
+      for (const comision of comisionesPendientes) {
+        const nuevoMonto = montosEditados[comision.id];
+        const wasEdited = nuevoMonto !== undefined && nuevoMonto !== comision.monto;
 
-      if (updateError) throw updateError;
+        await supabase
+          .from('comisiones')
+          .update({
+            liquidacion_id: liquidacion.id,
+            ...(wasEdited && {
+              monto: nuevoMonto,
+              monto_original: comision.monto,
+              editado_por: user?.id,
+              editado_at: new Date().toISOString(),
+            }),
+          })
+          .eq('id', comision.id);
+      }
 
       return liquidacion;
     },
@@ -232,6 +254,7 @@ export default function DriverSettlements() {
       setComisionesPendientes([]);
       setTotalPendiente(0);
       setNotas('');
+      setMontosEditados({});
     },
     onError: (error) => {
       toast.error('Error: ' + error.message);
@@ -361,7 +384,7 @@ export default function DriverSettlements() {
                         <span className="text-sm text-muted-foreground">Total a Pagar</span>
                       </div>
                       <p className="text-2xl font-bold text-success">
-                        ${totalPendiente.toFixed(2)}
+                        ${comisionesPendientes.reduce((sum, c) => sum + (montosEditados[c.id] ?? c.monto), 0).toFixed(2)}
                       </p>
                     </CardContent>
                   </Card>
@@ -387,26 +410,48 @@ export default function DriverSettlements() {
                       <TableHead>Tracking</TableHead>
                       <TableHead>Fecha</TableHead>
                       <TableHead>Monto Envío</TableHead>
-                      <TableHead className="text-right">Comisión</TableHead>
+                      <TableHead>Monto Original</TableHead>
+                      <TableHead className="text-right">Monto Final</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {comisionesPendientes.map((comision) => (
-                      <TableRow key={comision.id}>
-                        <TableCell className="font-mono">
-                          {comision.envio?.tracking_number || '-'}
-                        </TableCell>
-                        <TableCell>
-                          {format(new Date(comision.created_at), 'dd/MM/yy', { locale: es })}
-                        </TableCell>
-                        <TableCell>
-                          ${(comision.envio?.precio_total || 0).toFixed(2)}
-                        </TableCell>
-                        <TableCell className="text-right font-bold text-success">
-                          ${comision.monto.toFixed(2)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {comisionesPendientes.map((comision) => {
+                      const montoFinal = montosEditados[comision.id] ?? comision.monto;
+                      const wasEdited = montosEditados[comision.id] !== undefined && montosEditados[comision.id] !== comision.monto;
+                      
+                      return (
+                        <TableRow key={comision.id}>
+                          <TableCell className="font-mono">
+                            {comision.envio?.tracking_number || '-'}
+                          </TableCell>
+                          <TableCell>
+                            {format(new Date(comision.created_at), 'dd/MM/yy', { locale: es })}
+                          </TableCell>
+                          <TableCell>
+                            ${(comision.envio?.precio_total || 0).toFixed(2)}
+                          </TableCell>
+                          <TableCell className={wasEdited ? 'text-muted-foreground line-through' : ''}>
+                            ${comision.monto.toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                className={`w-24 text-right font-bold ${wasEdited ? 'border-warning text-warning' : 'text-success'}`}
+                                value={montoFinal}
+                                onChange={(e) => setMontosEditados(prev => ({
+                                  ...prev,
+                                  [comision.id]: parseFloat(e.target.value) || 0
+                                }))}
+                              />
+                              {wasEdited && <Edit2 className="h-3 w-3 text-warning" />}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
