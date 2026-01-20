@@ -31,9 +31,12 @@ serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    // Verify the token
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    // Verify the token using getClaims (not getUser which is deprecated)
+    const token = authHeader.replace('Bearer ', '');
+    const { data: claimsData, error: authError } = await supabase.auth.getClaims(token);
+    
+    if (authError || !claimsData?.claims) {
+      console.error('Auth error:', authError);
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
         { 
@@ -43,6 +46,9 @@ serve(async (req) => {
       );
     }
 
+    const userId = claimsData.claims.sub;
+    console.log('Authenticated user:', userId);
+
     // Get the Google Maps API key from environment
     // This key should be restricted in Google Cloud Console to:
     // - HTTP referrer restrictions: your domains only
@@ -50,6 +56,7 @@ serve(async (req) => {
     const mapsApiKey = Deno.env.get('GOOGLE_MAPS_API_KEY') || Deno.env.get('VITE_GOOGLE_MAPS_API_KEY');
     
     if (!mapsApiKey) {
+      console.error('Maps API key not configured');
       return new Response(
         JSON.stringify({ error: 'Maps API key not configured' }),
         { 
