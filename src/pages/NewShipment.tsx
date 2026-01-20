@@ -71,9 +71,9 @@ interface Sucursal {
   lng: number | null;
 }
 
-type TipoServicioDetalle = 'sucursal_sucursal' | 'sucursal_puerta' | 'puerta_sucursal' | 'puerta_puerta';
+type TipoServicioDetalle = 'sucursal_sucursal' | 'sucursal_puerta' | 'puerta_sucursal' | 'puerta_puerta' | 'retiro_almacenaje';
 
-const TIPO_SERVICIO_OPTIONS: { value: TipoServicioDetalle; label: string; icon: string; description: string }[] = [
+const TIPO_SERVICIO_OPTIONS: { value: TipoServicioDetalle; label: string; icon: string; description: string; requiresCtaCte?: boolean }[] = [
   { 
     value: 'sucursal_sucursal', 
     label: 'Sucursal a Sucursal', 
@@ -97,6 +97,13 @@ const TIPO_SERVICIO_OPTIONS: { value: TipoServicioDetalle; label: string; icon: 
     label: 'Puerta a Puerta', 
     icon: '🏠→🏠',
     description: 'Retiramos y entregamos a domicilio'
+  },
+  { 
+    value: 'retiro_almacenaje', 
+    label: 'Retiro para Almacenaje', 
+    icon: '🏠→📦',
+    description: 'Retiro de cliente con Cta. Cte. para guardar en bodega',
+    requiresCtaCte: true
   },
 ];
 
@@ -187,7 +194,8 @@ export default function NewShipment() {
   // State for selected additional concepts
   const [conceptosSeleccionados, setConceptosSeleccionados] = useState<Set<string>>(new Set());
   // Derived states
-  const tieneRetiro = tipoServicioDetalle === 'puerta_sucursal' || tipoServicioDetalle === 'puerta_puerta';
+  const esRetiroAlmacenaje = tipoServicioDetalle === 'retiro_almacenaje';
+  const tieneRetiro = tipoServicioDetalle === 'puerta_sucursal' || tipoServicioDetalle === 'puerta_puerta' || esRetiroAlmacenaje;
   const tieneEntrega = tipoServicioDetalle === 'sucursal_puerta' || tipoServicioDetalle === 'puerta_puerta';
   
   // La sucursal de origen es fija - la del usuario
@@ -554,7 +562,12 @@ export default function NewShipment() {
       let destinatarioCp = '';
       let sucursalDestinoId: string | null = null;
 
-      if (tieneEntrega) {
+      if (esRetiroAlmacenaje) {
+        // Retiro para almacenaje: el destino es la sucursal de origen
+        sucursalDestinoId = sucursalOrigenId;
+        destinatarioDireccion = sucursalUsuario?.direccion || '';
+        destinatarioCiudad = sucursalUsuario?.ciudad || '';
+      } else if (tieneEntrega) {
         // Entrega a domicilio
         destinatarioDireccion = formData.destinatario_direccion;
         destinatarioCiudad = formData.destinatario_ciudad;
@@ -568,9 +581,10 @@ export default function NewShipment() {
       }
 
       // 2. Find or create destinatario
+      // Para retiro_almacenaje, el remitente es también el destinatario (cliente con cta cte)
       let destinatarioId = formData.cliente_cta_cte_id || null;
       
-      if (!destinatarioId) {
+      if (!destinatarioId && !esRetiroAlmacenaje) {
         destinatarioId = await findOrCreateClient({
           nombre: formData.destinatario_nombre,
           apellido: formData.destinatario_apellido,
@@ -582,6 +596,9 @@ export default function NewShipment() {
           dni_cuit: formData.destinatario_dni,
           sucursal_id: sucursalDestinoId,
         });
+      } else if (esRetiroAlmacenaje && !destinatarioId) {
+        // Para retiro almacenaje, usar el remitente como destinatario
+        destinatarioId = remitenteId;
       }
 
       // 3. Generate tracking number with sucursal code
@@ -779,10 +796,19 @@ export default function NewShipment() {
       return;
     }
 
-    if (!tieneEntrega && !formData.sucursal_destino_id) {
+    if (!tieneEntrega && !esRetiroAlmacenaje && !formData.sucursal_destino_id) {
       toast({
         title: 'Sucursal destino requerida',
         description: 'Debes seleccionar la sucursal de destino',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (esRetiroAlmacenaje && !formData.cliente_cta_cte_id) {
+      toast({
+        title: 'Cliente requerido',
+        description: 'Debes seleccionar un cliente con cuenta corriente para el retiro',
         variant: 'destructive',
       });
       return;
@@ -1070,8 +1096,15 @@ export default function NewShipment() {
           <CardContent>
             <RadioGroup 
               value={tipoServicioDetalle} 
-              onValueChange={(v) => setTipoServicioDetalle(v as TipoServicioDetalle)}
-              className="grid grid-cols-2 gap-4"
+              onValueChange={(v) => {
+                const newValue = v as TipoServicioDetalle;
+                setTipoServicioDetalle(newValue);
+                // Si selecciona retiro_almacenaje, forzar cuenta corriente
+                if (newValue === 'retiro_almacenaje') {
+                  handleChange('tipo_pago', 'cuenta_corriente');
+                }
+              }}
+              className="grid grid-cols-2 lg:grid-cols-3 gap-4"
             >
               {TIPO_SERVICIO_OPTIONS.map((option) => (
                 <div key={option.value}>
@@ -1082,13 +1115,18 @@ export default function NewShipment() {
                   />
                   <Label
                     htmlFor={option.value}
-                    className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-envios [&:has([data-state=checked])]:border-envios cursor-pointer"
+                    className={`flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-envios [&:has([data-state=checked])]:border-envios cursor-pointer ${option.requiresCtaCte ? 'ring-1 ring-primary/30' : ''}`}
                   >
                     <span className="text-2xl mb-2">{option.icon}</span>
                     <span className="font-semibold text-center">{option.label}</span>
                     <span className="text-xs text-muted-foreground text-center mt-1">
                       {option.description}
                     </span>
+                    {option.requiresCtaCte && (
+                      <Badge variant="outline" className="mt-2 bg-primary/10 text-primary border-primary text-[10px]">
+                        Solo Cta. Cte.
+                      </Badge>
+                    )}
                   </Label>
                 </div>
               ))}
@@ -1102,11 +1140,19 @@ export default function NewShipment() {
                 {tieneRetiro && <Badge variant="outline" className="bg-warning/10 text-warning border-warning">Incluido</Badge>}
               </div>
               <ArrowRight className="h-4 w-4 text-muted-foreground" />
-              <div className={`flex items-center gap-2 ${tieneEntrega ? 'text-success font-medium' : 'text-muted-foreground'}`}>
-                <MapPin className="h-4 w-4" />
-                <span>Entrega</span>
-                {tieneEntrega && <Badge variant="outline" className="bg-success/10 text-success border-success">Incluido</Badge>}
-              </div>
+              {esRetiroAlmacenaje ? (
+                <div className="flex items-center gap-2 text-primary font-medium">
+                  <Package className="h-4 w-4" />
+                  <span>Almacenaje</span>
+                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary">En bodega</Badge>
+                </div>
+              ) : (
+                <div className={`flex items-center gap-2 ${tieneEntrega ? 'text-success font-medium' : 'text-muted-foreground'}`}>
+                  <MapPin className="h-4 w-4" />
+                  <span>Entrega</span>
+                  {tieneEntrega && <Badge variant="outline" className="bg-success/10 text-success border-success">Incluido</Badge>}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -1118,55 +1164,98 @@ export default function NewShipment() {
               <CreditCard className="h-5 w-5 text-primary" />
               Tipo de Pago
             </CardTitle>
-            <CardDescription>Selecciona cómo se realizará el pago</CardDescription>
+            <CardDescription>
+              {esRetiroAlmacenaje 
+                ? 'Para retiros de almacenaje se requiere cuenta corriente'
+                : 'Selecciona cómo se realizará el pago'}
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-3 gap-4">
-              <Button
-                type="button"
-                variant={formData.tipo_pago === 'contado' ? 'default' : 'outline'}
-                className={formData.tipo_pago === 'contado' ? 'bg-success hover:bg-success/90' : ''}
-                onClick={() => handleChange('tipo_pago', 'contado')}
-              >
-                Contado
-              </Button>
-              <Button
-                type="button"
-                variant={formData.tipo_pago === 'destino' ? 'default' : 'outline'}
-                className={formData.tipo_pago === 'destino' ? 'bg-warning hover:bg-warning/90' : ''}
-                onClick={() => handleChange('tipo_pago', 'destino')}
-              >
-                Pago en Destino
-              </Button>
-              <Button
-                type="button"
-                variant={formData.tipo_pago === 'cuenta_corriente' ? 'default' : 'outline'}
-                className={formData.tipo_pago === 'cuenta_corriente' ? 'bg-primary hover:bg-primary/90' : ''}
-                onClick={() => handleChange('tipo_pago', 'cuenta_corriente')}
-              >
-                Cuenta Corriente
-              </Button>
-            </div>
-
-            {formData.tipo_pago === 'cuenta_corriente' && (
-              <div className="mt-4 space-y-2">
-                <Label>Cliente con Cuenta Corriente *</Label>
-                <Select
-                  value={formData.cliente_cta_cte_id}
-                  onValueChange={(v) => handleChange('cliente_cta_cte_id', v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar cliente" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {clientesCtaCte?.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.nombre} {c.apellido} - Saldo: {formatCurrency(Number(c.saldo_cuenta_corriente) || 0)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            {esRetiroAlmacenaje ? (
+              // Para retiro almacenaje, solo mostrar selección de cliente con Cta Cte
+              <div className="space-y-4">
+                <Alert className="border-primary bg-primary/5">
+                  <Wallet className="h-4 w-4" />
+                  <AlertDescription>
+                    El retiro para almacenaje requiere un cliente con cuenta corriente activa.
+                  </AlertDescription>
+                </Alert>
+                <div className="space-y-2">
+                  <Label>Cliente con Cuenta Corriente *</Label>
+                  <Select
+                    value={formData.cliente_cta_cte_id}
+                    onValueChange={(v) => {
+                      handleChange('cliente_cta_cte_id', v);
+                      // Autocargar datos del cliente seleccionado como remitente
+                      const selectedClient = clientesCtaCte.find(c => c.id === v);
+                      if (selectedClient) {
+                        handleLoadSenderClient(selectedClient);
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar cliente" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {clientesCtaCte?.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.nombre} {c.apellido} - Saldo: {formatCurrency(Number(c.saldo_cuenta_corriente) || 0)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-3 gap-4">
+                  <Button
+                    type="button"
+                    variant={formData.tipo_pago === 'contado' ? 'default' : 'outline'}
+                    className={formData.tipo_pago === 'contado' ? 'bg-success hover:bg-success/90' : ''}
+                    onClick={() => handleChange('tipo_pago', 'contado')}
+                  >
+                    Contado
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={formData.tipo_pago === 'destino' ? 'default' : 'outline'}
+                    className={formData.tipo_pago === 'destino' ? 'bg-warning hover:bg-warning/90' : ''}
+                    onClick={() => handleChange('tipo_pago', 'destino')}
+                  >
+                    Pago en Destino
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={formData.tipo_pago === 'cuenta_corriente' ? 'default' : 'outline'}
+                    className={formData.tipo_pago === 'cuenta_corriente' ? 'bg-primary hover:bg-primary/90' : ''}
+                    onClick={() => handleChange('tipo_pago', 'cuenta_corriente')}
+                  >
+                    Cuenta Corriente
+                  </Button>
+                </div>
+
+                {formData.tipo_pago === 'cuenta_corriente' && (
+                  <div className="mt-4 space-y-2">
+                    <Label>Cliente con Cuenta Corriente *</Label>
+                    <Select
+                      value={formData.cliente_cta_cte_id}
+                      onValueChange={(v) => handleChange('cliente_cta_cte_id', v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar cliente" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {clientesCtaCte?.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.nombre} {c.apellido} - Saldo: {formatCurrency(Number(c.saldo_cuenta_corriente) || 0)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
@@ -1334,8 +1423,8 @@ export default function NewShipment() {
           </CardContent>
         </Card>
 
-        {/* Destinatario */}
-        {(formData.tipo_pago !== 'cuenta_corriente' || !formData.cliente_cta_cte_id) && (
+        {/* Destinatario - No mostrar para retiro_almacenaje */}
+        {!esRetiroAlmacenaje && (formData.tipo_pago !== 'cuenta_corriente' || !formData.cliente_cta_cte_id) && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -1524,6 +1613,34 @@ export default function NewShipment() {
                   </div>
                 </>
               )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Card informativa para retiro almacenaje */}
+        {esRetiroAlmacenaje && (
+          <Card className="border-primary/30 bg-primary/5">
+            <CardContent className="py-4">
+              <div className="flex items-center gap-3">
+                <Package className="h-5 w-5 text-primary" />
+                <div className="flex-1">
+                  <p className="text-sm text-muted-foreground">Destino del retiro</p>
+                  <p className="font-semibold">
+                    {sucursalUsuario ? (
+                      <>
+                        📦 Bodega de {sucursalUsuario.codigo && `${sucursalUsuario.codigo} - `}
+                        {sucursalUsuario.nombre}
+                        {sucursalUsuario.ciudad && ` (${sucursalUsuario.ciudad})`}
+                      </>
+                    ) : (
+                      'Bodega de tu sucursal'
+                    )}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    La mercadería quedará en almacenaje hasta que el cliente defina el destino
+                  </p>
+                </div>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -1749,6 +1866,11 @@ export default function NewShipment() {
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Creando...
+              </>
+            ) : esRetiroAlmacenaje ? (
+              <>
+                <Package className="mr-2 h-4 w-4" />
+                Crear Retiro para Almacenaje
               </>
             ) : (
               <>
