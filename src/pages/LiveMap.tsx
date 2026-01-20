@@ -3,13 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Building2, Package, Truck, RefreshCw, AlertCircle, Navigation, User, Clock } from "lucide-react";
+import { Building2, Package, Truck, RefreshCw, AlertCircle, Navigation, User, Clock, MapPin, Route } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import MapView from "@/components/maps/MapView";
 import { Link } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format } from "date-fns";
 import { es } from "date-fns/locale";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface SucursalConEnvios {
   id: string;
@@ -40,9 +41,21 @@ interface DriverLocation {
   } | null;
 }
 
+interface LocationHistoryPoint {
+  lat: number;
+  lng: number;
+  recorded_at: string;
+  speed?: number | null;
+}
+
 export default function LiveMap() {
   const [activeTab, setActiveTab] = useState("sucursales");
   const [driverLocations, setDriverLocations] = useState<DriverLocation[]>([]);
+  const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
+  const [, setSelectedRouteId] = useState<string | null>(null);
+  const [showRouteDialog, setShowRouteDialog] = useState(false);
+  const [routeHistory, setRouteHistory] = useState<LocationHistoryPoint[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   // Query para sucursales
   const { data: sucursalesData = [], isLoading, refetch } = useQuery({
@@ -187,6 +200,47 @@ export default function LiveMap() {
     if (diffMinutes < 15) return { color: "bg-yellow-500", label: "Reciente" };
     return { color: "bg-red-500", label: "Sin señal" };
   };
+
+  // Load route history for a driver
+  const loadRouteHistory = async (driverId: string, rutaId: string) => {
+    setLoadingHistory(true);
+    setSelectedDriverId(driverId);
+    setSelectedRouteId(rutaId);
+    setShowRouteDialog(true);
+
+    try {
+      const { data: history, error } = await supabase
+        .from('driver_location_history')
+        .select('lat, lng, recorded_at, speed')
+        .eq('chofer_id', driverId)
+        .eq('ruta_id', rutaId)
+        .order('recorded_at', { ascending: true });
+
+      if (error) throw error;
+
+      setRouteHistory(history?.map(h => ({
+        lat: Number(h.lat),
+        lng: Number(h.lng),
+        recorded_at: h.recorded_at,
+        speed: h.speed ? Number(h.speed) : null,
+      })) || []);
+    } catch (err) {
+      console.error('Error loading route history:', err);
+      setRouteHistory([]);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  // Generate polyline path from history
+  const routePolylinePath = useMemo(() => {
+    return routeHistory.map(point => ({ lat: point.lat, lng: point.lng }));
+  }, [routeHistory]);
+
+  // Get selected driver info
+  const selectedDriver = useMemo(() => {
+    return driverLocations.find(d => d.chofer_id === selectedDriverId);
+  }, [driverLocations, selectedDriverId]);
 
   // Stats
   const totalPendientes = sucursalesData.reduce((acc, s) => acc + s.envios_pendientes, 0);
@@ -514,17 +568,28 @@ export default function LiveMap() {
                                 )}
                               </div>
                             </div>
-                            <div className="text-right">
+                            <div className="text-right flex flex-col items-end gap-1">
                               <Badge variant="outline" className="text-xs">
                                 {status.label}
                               </Badge>
-                              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1 justify-end">
+                              <p className="text-xs text-muted-foreground flex items-center gap-1">
                                 <Clock className="h-3 w-3" />
                                 {formatDistanceToNow(new Date(driver.updated_at), { 
                                   addSuffix: true, 
                                   locale: es 
                                 })}
                               </p>
+                              {driver.ruta_activa && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 text-xs px-2"
+                                  onClick={() => loadRouteHistory(driver.chofer_id, driver.ruta_activa!.id)}
+                                >
+                                  <Route className="h-3 w-3 mr-1" />
+                                  Ver recorrido
+                                </Button>
+                              )}
                             </div>
                           </div>
                         );
@@ -574,6 +639,93 @@ export default function LiveMap() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Route History Dialog */}
+      <Dialog open={showRouteDialog} onOpenChange={setShowRouteDialog}>
+        <DialogContent className="max-w-4xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Route className="h-5 w-5" />
+              Recorrido de {selectedDriver?.nombre} {selectedDriver?.apellido}
+              {selectedDriver?.ruta_activa && (
+                <Badge variant="outline" className="ml-2">
+                  {selectedDriver.ruta_activa.numero}
+                </Badge>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {loadingHistory ? (
+              <div className="h-[400px] flex items-center justify-center">
+                <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : routeHistory.length === 0 ? (
+              <div className="h-[400px] flex flex-col items-center justify-center gap-4 border-2 border-dashed rounded-lg bg-muted/20">
+                <MapPin className="h-12 w-12 text-muted-foreground" />
+                <div className="text-center">
+                  <p className="font-medium">Sin datos de recorrido</p>
+                  <p className="text-sm text-muted-foreground">
+                    El chofer aún no ha registrado puntos de ubicación en esta ruta
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="h-[400px] rounded-lg overflow-hidden border">
+                  <MapView
+                    markers={[
+                      // Start point
+                      {
+                        position: routePolylinePath[0],
+                        title: "Inicio del recorrido",
+                        icon: "origin",
+                      },
+                      // Current/Last point
+                      {
+                        position: routePolylinePath[routePolylinePath.length - 1],
+                        title: "Posición actual",
+                        icon: "driver",
+                      },
+                    ]}
+                    center={routePolylinePath[Math.floor(routePolylinePath.length / 2)]}
+                    zoom={14}
+                    polylinePath={routePolylinePath}
+                  />
+                </div>
+                
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  <div className="bg-muted/50 rounded-lg p-3">
+                    <p className="text-muted-foreground text-xs">Puntos registrados</p>
+                    <p className="font-semibold text-lg">{routeHistory.length}</p>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-3">
+                    <p className="text-muted-foreground text-xs">Inicio</p>
+                    <p className="font-medium">
+                      {routeHistory[0] && format(new Date(routeHistory[0].recorded_at), "HH:mm", { locale: es })}
+                    </p>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-3">
+                    <p className="text-muted-foreground text-xs">Último registro</p>
+                    <p className="font-medium">
+                      {routeHistory[routeHistory.length - 1] && format(new Date(routeHistory[routeHistory.length - 1].recorded_at), "HH:mm", { locale: es })}
+                    </p>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-3">
+                    <p className="text-muted-foreground text-xs">Duración aprox.</p>
+                    <p className="font-medium">
+                      {routeHistory.length >= 2 && formatDistanceToNow(
+                        new Date(routeHistory[0].recorded_at),
+                        { locale: es }
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

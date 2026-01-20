@@ -55,10 +55,12 @@ export default function ActiveRouteNavigation() {
 
   const isPlannedRoute = routeType === 'planificada';
 
-  // Enable geolocation tracking
+  // Enable geolocation tracking with route context
   const { location, isTracking } = useGeolocation({ 
     enabled: !!routeId,
-    updateInterval: 30000 
+    updateInterval: 30000,
+    activeRouteId: isPlannedRoute ? routeId : null,
+    activeHojaRutaId: !isPlannedRoute ? routeId : null,
   });
 
   // Fetch hoja de ruta

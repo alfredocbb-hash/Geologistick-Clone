@@ -290,6 +290,70 @@ export type Database = {
           },
         ]
       }
+      driver_location_history: {
+        Row: {
+          accuracy: number | null
+          chofer_id: string
+          heading: number | null
+          hoja_ruta_id: string | null
+          id: string
+          lat: number
+          lng: number
+          recorded_at: string | null
+          ruta_id: string | null
+          speed: number | null
+          tenant_id: string | null
+        }
+        Insert: {
+          accuracy?: number | null
+          chofer_id: string
+          heading?: number | null
+          hoja_ruta_id?: string | null
+          id?: string
+          lat: number
+          lng: number
+          recorded_at?: string | null
+          ruta_id?: string | null
+          speed?: number | null
+          tenant_id?: string | null
+        }
+        Update: {
+          accuracy?: number | null
+          chofer_id?: string
+          heading?: number | null
+          hoja_ruta_id?: string | null
+          id?: string
+          lat?: number
+          lng?: number
+          recorded_at?: string | null
+          ruta_id?: string | null
+          speed?: number | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "driver_location_history_hoja_ruta_id_fkey"
+            columns: ["hoja_ruta_id"]
+            isOneToOne: false
+            referencedRelation: "hojas_ruta"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "driver_location_history_ruta_id_fkey"
+            columns: ["ruta_id"]
+            isOneToOne: false
+            referencedRelation: "rutas_planificadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "driver_location_history_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       driver_locations: {
         Row: {
           accuracy: number | null
