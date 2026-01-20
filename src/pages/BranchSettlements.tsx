@@ -32,7 +32,17 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Building2, Calculator, FileText, Check, DollarSign, Calendar, Eye, CreditCard, Download } from 'lucide-react';
+import { Building2, Calculator, FileText, Check, DollarSign, Calendar, Eye, CreditCard, Download, Trash2 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { downloadBranchSettlementPDF } from '@/lib/generateSettlementPDF';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -92,6 +102,8 @@ export default function BranchSettlements() {
   const [payingLiquidacion, setPayingLiquidacion] = useState<string | null>(null);
   const [metodoPago, setMetodoPago] = useState<PaymentMethod>('transferencia');
   const [referenciaPago, setReferenciaPago] = useState('');
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [liquidacionToCancel, setLiquidacionToCancel] = useState<LiquidacionSucursal | null>(null);
 
   // Fetch sucursales
   const { data: sucursales = [] } = useQuery({
@@ -290,6 +302,36 @@ export default function BranchSettlements() {
     },
     onError: (error) => {
       toast.error('Error: ' + error.message);
+    },
+  });
+
+  // Cancel/Delete liquidación mutation
+  const cancelMutation = useMutation({
+    mutationFn: async (liquidacionId: string) => {
+      // 1. Delete detalles first
+      const { error: detallesError } = await supabase
+        .from('liquidacion_sucursal_detalles')
+        .delete()
+        .eq('liquidacion_id', liquidacionId);
+
+      if (detallesError) throw detallesError;
+
+      // 2. Delete the liquidación
+      const { error } = await supabase
+        .from('liquidaciones_sucursal')
+        .delete()
+        .eq('id', liquidacionId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Liquidación cancelada correctamente');
+      queryClient.invalidateQueries({ queryKey: ['liquidaciones-sucursal'] });
+      setShowCancelDialog(false);
+      setLiquidacionToCancel(null);
+    },
+    onError: (error) => {
+      toast.error('Error al cancelar: ' + error.message);
     },
   });
 
@@ -524,25 +566,41 @@ export default function BranchSettlements() {
                         >
                           <Download className="h-4 w-4" />
                         </Button>
-                        {liq.estado === 'pendiente' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => approveMutation.mutate(liq.id)}
-                            disabled={approveMutation.isPending}
-                          >
-                            <Check className="h-4 w-4 mr-1" />
-                            Aprobar
-                          </Button>
-                        )}
-                        {liq.estado === 'aprobada' && (
-                          <Button
-                            size="sm"
-                            onClick={() => openPayDialog(liq.id)}
-                          >
-                            <CreditCard className="h-4 w-4 mr-1" />
-                            Pagar
-                          </Button>
+                        {liq.estado !== 'pagada' && (
+                          <>
+                            {liq.estado === 'pendiente' && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => approveMutation.mutate(liq.id)}
+                                disabled={approveMutation.isPending}
+                              >
+                                <Check className="h-4 w-4 mr-1" />
+                                Aprobar
+                              </Button>
+                            )}
+                            {liq.estado === 'aprobada' && (
+                              <Button
+                                size="sm"
+                                onClick={() => openPayDialog(liq.id)}
+                              >
+                                <CreditCard className="h-4 w-4 mr-1" />
+                                Pagar
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => {
+                                setLiquidacionToCancel(liq);
+                                setShowCancelDialog(true);
+                              }}
+                              title="Cancelar liquidación"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
                         )}
                         {liq.estado === 'pagada' && (
                           <Badge variant="outline" className="bg-success/10 text-success">
@@ -644,6 +702,40 @@ export default function BranchSettlements() {
         type="branch"
         settlement={detailLiquidacion}
       />
+
+      {/* Cancel Confirmation Dialog */}
+      <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Cancelar esta liquidación?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción eliminará la liquidación y todos sus detalles asociados.
+              {liquidacionToCancel && (
+                <div className="mt-4 p-3 bg-muted rounded-lg space-y-1">
+                  <p><strong>Sucursal:</strong> {liquidacionToCancel.sucursal?.nombre}</p>
+                  <p><strong>Saldo:</strong> ${(liquidacionToCancel.saldo || 0).toFixed(2)}</p>
+                  <p><strong>Total Cobrado:</strong> ${(liquidacionToCancel.total_cobrado || 0).toFixed(2)}</p>
+                  <p><strong>Período:</strong> {format(new Date(liquidacionToCancel.periodo_inicio), 'dd/MM/yy', { locale: es })} - {format(new Date(liquidacionToCancel.periodo_fin), 'dd/MM/yy', { locale: es })}</p>
+                </div>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No, mantener</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+              onClick={() => {
+                if (liquidacionToCancel) {
+                  cancelMutation.mutate(liquidacionToCancel.id);
+                }
+              }}
+              disabled={cancelMutation.isPending}
+            >
+              {cancelMutation.isPending ? 'Cancelando...' : 'Sí, cancelar liquidación'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
