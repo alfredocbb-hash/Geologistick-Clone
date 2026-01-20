@@ -41,7 +41,9 @@ import {
   Truck,
   Mail,
   Phone,
+  Key,
 } from 'lucide-react';
+import { ResetPasswordDialog } from '@/components/users/ResetPasswordDialog';
 import type { Database } from '@/integrations/supabase/types';
 
 type AppRole = Database['public']['Enums']['app_role'];
@@ -102,6 +104,8 @@ export default function Users() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isResetPasswordOpen, setIsResetPasswordOpen] = useState(false);
+  const [resetPasswordUser, setResetPasswordUser] = useState<Profile | null>(null);
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
   const [editingRoles, setEditingRoles] = useState<AppRole[]>([]);
   const [isCreating, setIsCreating] = useState(false);
@@ -567,13 +571,27 @@ export default function Users() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEdit(profile)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              setResetPasswordUser(profile);
+                              setIsResetPasswordOpen(true);
+                            }}
+                            title="Reiniciar contraseña"
+                          >
+                            <Key className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleEdit(profile)}
+                            title="Editar usuario"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -829,6 +847,13 @@ export default function Users() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Reset Password Dialog */}
+      <ResetPasswordDialog
+        open={isResetPasswordOpen}
+        onOpenChange={setIsResetPasswordOpen}
+        user={resetPasswordUser}
+      />
     </div>
   );
 }

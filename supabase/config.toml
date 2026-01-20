@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.customer-portal]
 verify_jwt = false
+
+[functions.reset-user-password]
+verify_jwt = false
