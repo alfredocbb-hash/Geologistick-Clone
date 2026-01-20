@@ -709,7 +709,6 @@ export default function NewShipment() {
             saldo_nuevo: saldoNuevo,
             descripcion: `Envío ${trackingData}`,
             created_by: user?.id,
-            tenant_id: profile?.tenant_id,
           });
 
         if (movError) throw movError;
