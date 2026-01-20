@@ -32,7 +32,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Truck, Calculator, FileText, Check, DollarSign, Calendar, CreditCard, Eye, Edit2, Package, Clock, Download } from 'lucide-react';
+import { Truck, Calculator, FileText, Check, DollarSign, Calendar, CreditCard, Eye, Edit2, Package, Clock, Download, Minus, Banknote } from 'lucide-react';
 import { downloadDriverSettlementPDF } from '@/lib/generateSettlementPDF';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -56,6 +56,7 @@ interface EnvioParaLiquidar {
   tracking_number: string;
   precio_total: number;
   fecha_entrega: string;
+  pago_contra_entrega: boolean;
   tarifa?: {
     comision_chofer_porcentaje: number | null;
     comision_chofer_fija: number | null;
@@ -126,6 +127,7 @@ export default function DriverSettlements() {
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [detailLiquidacion, setDetailLiquidacion] = useState<Liquidacion | null>(null);
   const [montosEditados, setMontosEditados] = useState<Record<string, number>>({});
+  const [descuentosCOD, setDescuentosCOD] = useState<Record<string, boolean>>({});
 
   // Fetch choferes with commission config
   const { data: choferes = [] } = useQuery({
@@ -195,7 +197,7 @@ export default function DriverSettlements() {
         .from('envios')
         .select(`
           id, tracking_number, precio_total, fecha_entrega, tarifa_id,
-          chofer_id, chofer_ultima_milla_id,
+          chofer_id, chofer_ultima_milla_id, pago_contra_entrega,
           tarifas:tarifas(comision_chofer_porcentaje, comision_chofer_fija)
         `)
         .eq('estado', 'entregado')
@@ -230,6 +232,7 @@ export default function DriverSettlements() {
           tracking_number: envio.tracking_number,
           precio_total: envio.precio_total,
           fecha_entrega: envio.fecha_entrega!,
+          pago_contra_entrega: envio.pago_contra_entrega || false,
           tarifa,
           comision_id: comision?.id || null,
           comision_monto: comision?.monto ?? null,
@@ -239,8 +242,9 @@ export default function DriverSettlements() {
         };
       });
 
-      // Reset edited amounts
+      // Reset edited amounts and COD discounts
       setMontosEditados({});
+      setDescuentosCOD({});
       
       return results;
     },
@@ -265,10 +269,24 @@ export default function DriverSettlements() {
       const chofer = choferes.find(c => c.id === selectedChofer);
       if (!chofer) throw new Error('Chofer no encontrado');
 
-      // Calculate total with edited amounts
-      const montoTotalFinal = aLiquidar.reduce((sum, e) => {
+      // Calculate total commissions with edited amounts
+      const totalComisiones = aLiquidar.reduce((sum, e) => {
         return sum + (montosEditados[e.id] ?? e.comision_calculada);
       }, 0);
+
+      // Calculate COD discounts
+      const totalDescuentosCOD = aLiquidar
+        .filter(e => e.pago_contra_entrega && descuentosCOD[e.id])
+        .reduce((sum, e) => sum + e.precio_total, 0);
+
+      // Final amount (commissions - COD)
+      const montoTotalFinal = totalComisiones - totalDescuentosCOD;
+
+      // Build notes with breakdown
+      const notasFinales = [
+        totalDescuentosCOD > 0 ? `Comisiones: $${totalComisiones.toFixed(2)} | Descuentos COD: -$${totalDescuentosCOD.toFixed(2)}` : null,
+        notas || null
+      ].filter(Boolean).join(' | ');
 
       // 1. Create liquidación
       const { data: liquidacion, error: liquidacionError } = await supabase
@@ -280,7 +298,7 @@ export default function DriverSettlements() {
           monto_total: montoTotalFinal,
           cantidad_envios: aLiquidar.length,
           estado: 'generada',
-          notas: notas || null,
+          notas: notasFinales || null,
           generado_por: user?.id,
           tenant_id: profile?.tenant_id,
         })
@@ -335,6 +353,7 @@ export default function DriverSettlements() {
       setEnviosParaLiquidar([]);
       setNotas('');
       setMontosEditados({});
+      setDescuentosCOD({});
     },
     onError: (error) => {
       toast.error('Error: ' + error.message);
@@ -391,8 +410,20 @@ export default function DriverSettlements() {
   // Stats
   const enviosALiquidar = enviosParaLiquidar.filter(e => e.estado_liquidacion === 'a_liquidar');
   const enviosLiquidados = enviosParaLiquidar.filter(e => e.estado_liquidacion === 'liquidado');
-  const totalALiquidar = enviosALiquidar.reduce((sum, e) => sum + (montosEditados[e.id] ?? e.comision_calculada), 0);
+  const totalComisiones = enviosALiquidar.reduce((sum, e) => sum + (montosEditados[e.id] ?? e.comision_calculada), 0);
+  const totalDescuentosCOD = enviosALiquidar
+    .filter(e => e.pago_contra_entrega && descuentosCOD[e.id])
+    .reduce((sum, e) => sum + e.precio_total, 0);
+  const saldoFinal = totalComisiones - totalDescuentosCOD;
   const totalLiquidados = enviosLiquidados.reduce((sum, e) => sum + e.comision_calculada, 0);
+  const enviosCOD = enviosALiquidar.filter(e => e.pago_contra_entrega);
+
+  const toggleDescuentoCOD = (envioId: string) => {
+    setDescuentosCOD(prev => ({
+      ...prev,
+      [envioId]: !prev[envioId]
+    }));
+  };
 
   return (
     <div className="space-y-6">
@@ -462,7 +493,7 @@ export default function DriverSettlements() {
           {enviosParaLiquidar.length > 0 && (
             <div className="mt-6 space-y-4">
               {/* Stats Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <Card className="bg-muted/50">
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-1">
@@ -472,25 +503,52 @@ export default function DriverSettlements() {
                     <p className="text-2xl font-bold">{enviosParaLiquidar.length}</p>
                   </CardContent>
                 </Card>
-                <Card className="bg-warning/5 border-warning/20">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Clock className="h-4 w-4 text-warning" />
-                      <span className="text-sm text-muted-foreground">A Liquidar</span>
-                    </div>
-                    <p className="text-2xl font-bold text-warning">
-                      {enviosALiquidar.length} <span className="text-sm font-normal">/ ${totalALiquidar.toFixed(2)}</span>
-                    </p>
-                  </CardContent>
-                </Card>
                 <Card className="bg-success/5 border-success/20">
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-1">
-                      <Check className="h-4 w-4 text-success" />
-                      <span className="text-sm text-muted-foreground">Ya Liquidados</span>
+                      <DollarSign className="h-4 w-4 text-success" />
+                      <span className="text-sm text-muted-foreground">Comisiones (+)</span>
                     </div>
                     <p className="text-2xl font-bold text-success">
-                      {enviosLiquidados.length} <span className="text-sm font-normal">/ ${totalLiquidados.toFixed(2)}</span>
+                      ${totalComisiones.toFixed(2)}
+                    </p>
+                  </CardContent>
+                </Card>
+                {enviosCOD.length > 0 && (
+                  <Card className="bg-destructive/5 border-destructive/20">
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Banknote className="h-4 w-4 text-destructive" />
+                        <span className="text-sm text-muted-foreground">Cobros COD (-)</span>
+                      </div>
+                      <p className="text-2xl font-bold text-destructive">
+                        -${totalDescuentosCOD.toFixed(2)}
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+                <Card className={`${saldoFinal >= 0 ? 'bg-primary/5 border-primary/20' : 'bg-warning/5 border-warning/20'}`}>
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Calculator className="h-4 w-4" />
+                      <span className="text-sm text-muted-foreground">Saldo Final</span>
+                    </div>
+                    <p className={`text-2xl font-bold ${saldoFinal >= 0 ? 'text-primary' : 'text-warning'}`}>
+                      ${saldoFinal.toFixed(2)}
+                    </p>
+                    {saldoFinal < 0 && (
+                      <p className="text-xs text-warning mt-1">Chofer debe dinero</p>
+                    )}
+                  </CardContent>
+                </Card>
+                <Card className="bg-muted/30">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Check className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">Ya Liquidados</span>
+                    </div>
+                    <p className="text-2xl font-bold text-muted-foreground">
+                      {enviosLiquidados.length}
                     </p>
                   </CardContent>
                 </Card>
@@ -528,8 +586,10 @@ export default function DriverSettlements() {
                       <TableHead>Tracking</TableHead>
                       <TableHead>Fecha Entrega</TableHead>
                       <TableHead>Monto Envío</TableHead>
+                      <TableHead>COD</TableHead>
                       <TableHead>Estado</TableHead>
                       <TableHead className="text-right">Comisión</TableHead>
+                      <TableHead className="text-center">Descuento</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -548,6 +608,16 @@ export default function DriverSettlements() {
                           </TableCell>
                           <TableCell>
                             ${envio.precio_total.toFixed(2)}
+                          </TableCell>
+                          <TableCell>
+                            {envio.pago_contra_entrega ? (
+                              <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500">
+                                <Banknote className="h-3 w-3 mr-1" />
+                                ${envio.precio_total.toFixed(2)}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
                           </TableCell>
                           <TableCell>
                             {isALiquidar ? (
@@ -581,6 +651,30 @@ export default function DriverSettlements() {
                               <span className="font-bold text-muted-foreground">
                                 ${envio.comision_calculada.toFixed(2)}
                               </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {envio.pago_contra_entrega && isALiquidar ? (
+                              <Button
+                                size="sm"
+                                variant={descuentosCOD[envio.id] ? "default" : "outline"}
+                                className={descuentosCOD[envio.id] ? "bg-destructive hover:bg-destructive/90" : ""}
+                                onClick={() => toggleDescuentoCOD(envio.id)}
+                              >
+                                {descuentosCOD[envio.id] ? (
+                                  <>
+                                    <Check className="h-3 w-3 mr-1" />
+                                    Descontado
+                                  </>
+                                ) : (
+                                  <>
+                                    <Minus className="h-3 w-3 mr-1" />
+                                    Descontar
+                                  </>
+                                )}
+                              </Button>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
                             )}
                           </TableCell>
                         </TableRow>
