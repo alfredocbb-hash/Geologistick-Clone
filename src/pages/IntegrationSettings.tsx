@@ -214,7 +214,7 @@ export default function IntegrationSettings() {
               
             if (error) throw error;
           } else {
-            // Insert new record (trigger will auto-set tenant_id)
+            // Insert new record with explicit tenant_id
             const { error } = await supabase
               .from('system_integrations')
               .insert({
@@ -223,6 +223,7 @@ export default function IntegrationSettings() {
                 config_value: value,
                 is_active: isActive,
                 environment: environment,
+                tenant_id: tenantId,
               });
 
             if (error) throw error;
