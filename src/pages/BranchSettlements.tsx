@@ -724,7 +724,8 @@ export default function BranchSettlements() {
             <AlertDialogCancel>No, mantener</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
-              onClick={() => {
+              onClick={(e) => {
+                e.preventDefault();
                 if (liquidacionToCancel) {
                   cancelMutation.mutate(liquidacionToCancel.id);
                 }
