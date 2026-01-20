@@ -32,7 +32,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Truck, Calculator, FileText, Check, DollarSign, Calendar, CreditCard, Eye, Edit2 } from 'lucide-react';
+import { Truck, Calculator, FileText, Check, DollarSign, Calendar, CreditCard, Eye, Edit2, Package, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Database } from '@/integrations/supabase/types';
@@ -45,19 +45,26 @@ interface Chofer {
   nombre: string;
   apellido: string | null;
   user_id: string;
+  comision_tipo: string | null;
+  comision_porcentaje: number | null;
+  comision_fija: number | null;
 }
 
-interface Comision {
+interface EnvioParaLiquidar {
   id: string;
-  envio_id: string;
-  monto: number;
-  monto_original?: number | null;
-  created_at: string;
-  envio?: {
-    tracking_number: string;
-    precio_total: number;
-    estado: string;
-  };
+  tracking_number: string;
+  precio_total: number;
+  fecha_entrega: string;
+  tarifa?: {
+    comision_chofer_porcentaje: number | null;
+    comision_chofer_fija: number | null;
+  } | null;
+  // Commission info
+  comision_id?: string | null;
+  comision_monto?: number | null;
+  liquidacion_id?: string | null;
+  estado_liquidacion: 'a_liquidar' | 'liquidado';
+  comision_calculada: number;
 }
 
 interface Liquidacion {
@@ -76,14 +83,40 @@ interface Liquidacion {
   chofer?: { nombre: string; apellido: string | null };
 }
 
+// Helper to calculate commission based on driver config
+function calcularComision(
+  precioEnvio: number,
+  choferConfig: Pick<Chofer, 'comision_tipo' | 'comision_porcentaje' | 'comision_fija'>,
+  tarifaConfig?: { comision_chofer_porcentaje: number | null; comision_chofer_fija: number | null } | null
+): number {
+  const tipo = choferConfig.comision_tipo || 'tarifa';
+
+  switch (tipo) {
+    case 'tarifa':
+      if (tarifaConfig) {
+        const porcentaje = tarifaConfig.comision_chofer_porcentaje || 0;
+        const fija = tarifaConfig.comision_chofer_fija || 0;
+        return (precioEnvio * porcentaje) / 100 + fija;
+      }
+      return 0;
+    case 'porcentaje':
+      return (precioEnvio * (choferConfig.comision_porcentaje || 0)) / 100;
+    case 'fija':
+      return choferConfig.comision_fija || 0;
+    case 'mixta':
+      return (precioEnvio * (choferConfig.comision_porcentaje || 0)) / 100 + (choferConfig.comision_fija || 0);
+    default:
+      return 0;
+  }
+}
+
 export default function DriverSettlements() {
   const { user, profile } = useAuth();
   const queryClient = useQueryClient();
   const [selectedChofer, setSelectedChofer] = useState<string>('');
   const [fechaInicio, setFechaInicio] = useState<string>('');
   const [fechaFin, setFechaFin] = useState<string>('');
-  const [comisionesPendientes, setComisionesPendientes] = useState<Comision[]>([]);
-  const [totalPendiente, setTotalPendiente] = useState(0);
+  const [enviosParaLiquidar, setEnviosParaLiquidar] = useState<EnvioParaLiquidar[]>([]);
   const [showPayDialog, setShowPayDialog] = useState(false);
   const [selectedLiquidacion, setSelectedLiquidacion] = useState<string | null>(null);
   const [metodoPago, setMetodoPago] = useState<PaymentMethod>('efectivo');
@@ -93,11 +126,10 @@ export default function DriverSettlements() {
   const [detailLiquidacion, setDetailLiquidacion] = useState<Liquidacion | null>(null);
   const [montosEditados, setMontosEditados] = useState<Record<string, number>>({});
 
-  // Fetch choferes - using separate queries to avoid join issues
+  // Fetch choferes with commission config
   const { data: choferes = [] } = useQuery({
     queryKey: ['choferes-for-settlements'],
     queryFn: async () => {
-      // First get all user_ids with chofer role
       const { data: roles, error: rolesError } = await supabase
         .from('user_roles')
         .select('user_id')
@@ -108,10 +140,9 @@ export default function DriverSettlements() {
       
       const userIds = roles.map(r => r.user_id);
       
-      // Then get profiles for those users
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
-        .select('id, nombre, apellido, user_id')
+        .select('id, nombre, apellido, user_id, comision_tipo, comision_porcentaje, comision_fija')
         .in('user_id', userIds)
         .eq('activo', true)
         .order('nombre');
@@ -132,7 +163,6 @@ export default function DriverSettlements() {
         .limit(50);
       if (error) throw error;
       
-      // Fetch chofer names separately
       const choferIds = [...new Set(data?.map(l => l.chofer_id) || [])];
       const { data: profiles } = await supabase
         .from('profiles')
@@ -146,77 +176,108 @@ export default function DriverSettlements() {
     },
   });
 
-  // Calculate pending commissions
+  // Calculate: fetch envíos completados por el chofer en el rango de fechas
   const calculateMutation = useMutation({
     mutationFn: async () => {
       if (!selectedChofer) {
         throw new Error('Seleccione un chofer');
       }
+      if (!fechaInicio || !fechaFin) {
+        throw new Error('Seleccione el rango de fechas');
+      }
 
       const chofer = choferes.find(c => c.id === selectedChofer);
       if (!chofer) throw new Error('Chofer no encontrado');
 
-      // Fetch comisiones pendientes (sin liquidacion_id)
-      let query = supabase
-        .from('comisiones')
+      // 1. Fetch envíos entregados por este chofer (como principal o última milla)
+      const { data: envios, error: enviosError } = await supabase
+        .from('envios')
         .select(`
-          id, envio_id, monto, created_at,
-          envio:envios(tracking_number, precio_total, estado)
+          id, tracking_number, precio_total, fecha_entrega, tarifa_id,
+          chofer_id, chofer_ultima_milla_id,
+          tarifas:tarifas(comision_chofer_porcentaje, comision_chofer_fija)
         `)
-        .eq('chofer_id', chofer.user_id)
-        .is('liquidacion_id', null);
+        .eq('estado', 'entregado')
+        .or(`chofer_id.eq.${chofer.user_id},chofer_ultima_milla_id.eq.${chofer.user_id}`)
+        .gte('fecha_entrega', fechaInicio)
+        .lte('fecha_entrega', fechaFin + 'T23:59:59')
+        .order('fecha_entrega', { ascending: false });
 
-      if (fechaInicio) {
-        query = query.gte('created_at', fechaInicio);
+      if (enviosError) throw enviosError;
+      if (!envios || envios.length === 0) {
+        return [];
       }
-      if (fechaFin) {
-        query = query.lte('created_at', fechaFin + 'T23:59:59');
-      }
 
-      const { data, error } = await query.order('created_at', { ascending: false });
-      if (error) throw error;
+      // 2. Fetch existing comisiones for these envíos
+      const envioIds = envios.map(e => e.id);
+      const { data: comisiones } = await supabase
+        .from('comisiones')
+        .select('id, envio_id, monto, liquidacion_id')
+        .in('envio_id', envioIds)
+        .eq('chofer_id', chofer.user_id);
 
-      const total = (data || []).reduce((sum, c) => sum + c.monto, 0);
-      
-      // Reset edited amounts when calculating new commissions
+      const comisionesMap = new Map(comisiones?.map(c => [c.envio_id, c]) || []);
+
+      // 3. Build results
+      const results: EnvioParaLiquidar[] = envios.map((envio) => {
+        const comision = comisionesMap.get(envio.id);
+        const tarifa = envio.tarifas as { comision_chofer_porcentaje: number | null; comision_chofer_fija: number | null } | null;
+        const comisionCalculada = calcularComision(envio.precio_total, chofer, tarifa);
+
+        return {
+          id: envio.id,
+          tracking_number: envio.tracking_number,
+          precio_total: envio.precio_total,
+          fecha_entrega: envio.fecha_entrega!,
+          tarifa,
+          comision_id: comision?.id || null,
+          comision_monto: comision?.monto ?? null,
+          liquidacion_id: comision?.liquidacion_id || null,
+          estado_liquidacion: comision?.liquidacion_id ? 'liquidado' : 'a_liquidar',
+          comision_calculada: comision?.monto ?? comisionCalculada,
+        };
+      });
+
+      // Reset edited amounts
       setMontosEditados({});
       
-      return { comisiones: data as Comision[], total };
+      return results;
     },
     onSuccess: (data) => {
-      setComisionesPendientes(data.comisiones);
-      setTotalPendiente(data.total);
-      toast.success(`Se encontraron ${data.comisiones.length} comisiones pendientes`);
+      setEnviosParaLiquidar(data);
+      const aLiquidar = data.filter(e => e.estado_liquidacion === 'a_liquidar');
+      toast.success(`Se encontraron ${data.length} envíos (${aLiquidar.length} pendientes de liquidar)`);
     },
     onError: (error) => {
       toast.error('Error: ' + error.message);
     },
   });
 
-  // Generate liquidacion
+  // Generate liquidación
   const generateMutation = useMutation({
     mutationFn: async () => {
-      if (comisionesPendientes.length === 0) {
-        throw new Error('No hay comisiones para liquidar');
+      const aLiquidar = enviosParaLiquidar.filter(e => e.estado_liquidacion === 'a_liquidar');
+      if (aLiquidar.length === 0) {
+        throw new Error('No hay envíos pendientes para liquidar');
       }
 
       const chofer = choferes.find(c => c.id === selectedChofer);
       if (!chofer) throw new Error('Chofer no encontrado');
 
       // Calculate total with edited amounts
-      const montoTotalFinal = comisionesPendientes.reduce((sum, c) => {
-        return sum + (montosEditados[c.id] ?? c.monto);
+      const montoTotalFinal = aLiquidar.reduce((sum, e) => {
+        return sum + (montosEditados[e.id] ?? e.comision_calculada);
       }, 0);
 
-      // Create liquidacion
+      // 1. Create liquidación
       const { data: liquidacion, error: liquidacionError } = await supabase
         .from('liquidaciones')
         .insert({
           chofer_id: chofer.user_id,
-          periodo_inicio: fechaInicio || format(new Date(comisionesPendientes[comisionesPendientes.length - 1].created_at), 'yyyy-MM-dd'),
-          periodo_fin: fechaFin || format(new Date(), 'yyyy-MM-dd'),
+          periodo_inicio: fechaInicio,
+          periodo_fin: fechaFin,
           monto_total: montoTotalFinal,
-          cantidad_envios: comisionesPendientes.length,
+          cantidad_envios: aLiquidar.length,
           estado: 'generada',
           notas: notas || null,
           generado_por: user?.id,
@@ -227,23 +288,42 @@ export default function DriverSettlements() {
 
       if (liquidacionError) throw liquidacionError;
 
-      // Update each commission with its final amount and audit fields
-      for (const comision of comisionesPendientes) {
-        const nuevoMonto = montosEditados[comision.id];
-        const wasEdited = nuevoMonto !== undefined && nuevoMonto !== comision.monto;
+      // 2. For each envío: create or update comisión
+      for (const envio of aLiquidar) {
+        const montoFinal = montosEditados[envio.id] ?? envio.comision_calculada;
+        const wasEdited = montosEditados[envio.id] !== undefined && montosEditados[envio.id] !== envio.comision_calculada;
 
-        await supabase
-          .from('comisiones')
-          .update({
-            liquidacion_id: liquidacion.id,
-            ...(wasEdited && {
-              monto: nuevoMonto,
-              monto_original: comision.monto,
-              editado_por: user?.id,
-              editado_at: new Date().toISOString(),
-            }),
-          })
-          .eq('id', comision.id);
+        if (envio.comision_id) {
+          // Update existing comisión
+          await supabase
+            .from('comisiones')
+            .update({
+              liquidacion_id: liquidacion.id,
+              ...(wasEdited && {
+                monto: montoFinal,
+                monto_original: envio.comision_monto,
+                editado_por: user?.id,
+                editado_at: new Date().toISOString(),
+              }),
+            })
+            .eq('id', envio.comision_id);
+        } else {
+          // Create new comisión
+          await supabase
+            .from('comisiones')
+            .insert({
+              chofer_id: chofer.user_id,
+              envio_id: envio.id,
+              monto: montoFinal,
+              liquidacion_id: liquidacion.id,
+              tenant_id: profile?.tenant_id,
+              ...(wasEdited && {
+                monto_original: envio.comision_calculada,
+                editado_por: user?.id,
+                editado_at: new Date().toISOString(),
+              }),
+            });
+        }
       }
 
       return liquidacion;
@@ -251,8 +331,7 @@ export default function DriverSettlements() {
     onSuccess: () => {
       toast.success('Liquidación generada correctamente');
       queryClient.invalidateQueries({ queryKey: ['liquidaciones-choferes'] });
-      setComisionesPendientes([]);
-      setTotalPendiente(0);
+      setEnviosParaLiquidar([]);
       setNotas('');
       setMontosEditados({});
     },
@@ -261,7 +340,7 @@ export default function DriverSettlements() {
     },
   });
 
-  // Pay liquidacion
+  // Pay liquidación
   const payMutation = useMutation({
     mutationFn: async () => {
       if (!selectedLiquidacion) throw new Error('No hay liquidación seleccionada');
@@ -308,6 +387,12 @@ export default function DriverSettlements() {
     setShowPayDialog(true);
   };
 
+  // Stats
+  const enviosALiquidar = enviosParaLiquidar.filter(e => e.estado_liquidacion === 'a_liquidar');
+  const enviosLiquidados = enviosParaLiquidar.filter(e => e.estado_liquidacion === 'liquidado');
+  const totalALiquidar = enviosALiquidar.reduce((sum, e) => sum + (montosEditados[e.id] ?? e.comision_calculada), 0);
+  const totalLiquidados = enviosLiquidados.reduce((sum, e) => sum + e.comision_calculada, 0);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -321,10 +406,10 @@ export default function DriverSettlements() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Calculator className="h-5 w-5" />
-            Calcular Comisiones Pendientes
+            Calcular Liquidación
           </CardTitle>
           <CardDescription>
-            Selecciona un chofer para ver sus comisiones pendientes de pago
+            Selecciona un chofer y el rango de fechas para ver los envíos entregados
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -345,7 +430,7 @@ export default function DriverSettlements() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Fecha Inicio (opcional)</Label>
+              <Label>Fecha Inicio</Label>
               <Input
                 type="date"
                 value={fechaInicio}
@@ -353,7 +438,7 @@ export default function DriverSettlements() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Fecha Fin (opcional)</Label>
+              <Label>Fecha Fin</Label>
               <Input
                 type="date"
                 value={fechaFin}
@@ -363,91 +448,139 @@ export default function DriverSettlements() {
             <div className="flex items-end">
               <Button
                 onClick={() => calculateMutation.mutate()}
-                disabled={calculateMutation.isPending || !selectedChofer}
+                disabled={calculateMutation.isPending || !selectedChofer || !fechaInicio || !fechaFin}
                 className="w-full"
               >
                 <Calculator className="h-4 w-4 mr-2" />
-                {calculateMutation.isPending ? 'Buscando...' : 'Buscar'}
+                {calculateMutation.isPending ? 'Buscando...' : 'Buscar Envíos'}
               </Button>
             </div>
           </div>
 
           {/* Results */}
-          {comisionesPendientes.length > 0 && (
+          {enviosParaLiquidar.length > 0 && (
             <div className="mt-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <Card className="bg-success/5 border-success/20">
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-2 mb-1">
-                        <DollarSign className="h-4 w-4 text-success" />
-                        <span className="text-sm text-muted-foreground">Total a Pagar</span>
-                      </div>
-                      <p className="text-2xl font-bold text-success">
-                        ${comisionesPendientes.reduce((sum, c) => sum + (montosEditados[c.id] ?? c.monto), 0).toFixed(2)}
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <div className="text-muted-foreground">
-                    {comisionesPendientes.length} comisiones pendientes
-                  </div>
-                </div>
-                <Button
-                  onClick={() => generateMutation.mutate()}
-                  disabled={generateMutation.isPending}
-                  className="bg-chofer hover:bg-chofer/90"
-                >
-                  <FileText className="h-4 w-4 mr-2" />
-                  Generar Liquidación
-                </Button>
+              {/* Stats Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card className="bg-muted/50">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Package className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">Total Envíos</span>
+                    </div>
+                    <p className="text-2xl font-bold">{enviosParaLiquidar.length}</p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-warning/5 border-warning/20">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Clock className="h-4 w-4 text-warning" />
+                      <span className="text-sm text-muted-foreground">A Liquidar</span>
+                    </div>
+                    <p className="text-2xl font-bold text-warning">
+                      {enviosALiquidar.length} <span className="text-sm font-normal">/ ${totalALiquidar.toFixed(2)}</span>
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-success/5 border-success/20">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Check className="h-4 w-4 text-success" />
+                      <span className="text-sm text-muted-foreground">Ya Liquidados</span>
+                    </div>
+                    <p className="text-2xl font-bold text-success">
+                      {enviosLiquidados.length} <span className="text-sm font-normal">/ ${totalLiquidados.toFixed(2)}</span>
+                    </p>
+                  </CardContent>
+                </Card>
               </div>
 
-              {/* Comisiones table */}
+              {/* Generate Button */}
+              {enviosALiquidar.length > 0 && (
+                <div className="flex items-center justify-between">
+                  <div className="space-y-2 flex-1 max-w-md">
+                    <Label>Notas (opcional)</Label>
+                    <Textarea
+                      value={notas}
+                      onChange={(e) => setNotas(e.target.value)}
+                      placeholder="Observaciones para esta liquidación..."
+                      rows={2}
+                    />
+                  </div>
+                  <Button
+                    onClick={() => generateMutation.mutate()}
+                    disabled={generateMutation.isPending}
+                    className="bg-chofer hover:bg-chofer/90 ml-4"
+                    size="lg"
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    Generar Liquidación ({enviosALiquidar.length} envíos)
+                  </Button>
+                </div>
+              )}
+
+              {/* Envíos table */}
               <div className="rounded-md border">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Tracking</TableHead>
-                      <TableHead>Fecha</TableHead>
+                      <TableHead>Fecha Entrega</TableHead>
                       <TableHead>Monto Envío</TableHead>
-                      <TableHead>Monto Original</TableHead>
-                      <TableHead className="text-right">Monto Final</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead className="text-right">Comisión</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {comisionesPendientes.map((comision) => {
-                      const montoFinal = montosEditados[comision.id] ?? comision.monto;
-                      const wasEdited = montosEditados[comision.id] !== undefined && montosEditados[comision.id] !== comision.monto;
+                    {enviosParaLiquidar.map((envio) => {
+                      const isALiquidar = envio.estado_liquidacion === 'a_liquidar';
+                      const montoFinal = montosEditados[envio.id] ?? envio.comision_calculada;
+                      const wasEdited = montosEditados[envio.id] !== undefined && montosEditados[envio.id] !== envio.comision_calculada;
                       
                       return (
-                        <TableRow key={comision.id}>
+                        <TableRow key={envio.id} className={!isALiquidar ? 'opacity-60' : ''}>
                           <TableCell className="font-mono">
-                            {comision.envio?.tracking_number || '-'}
+                            {envio.tracking_number}
                           </TableCell>
                           <TableCell>
-                            {format(new Date(comision.created_at), 'dd/MM/yy', { locale: es })}
+                            {format(new Date(envio.fecha_entrega), 'dd/MM/yy', { locale: es })}
                           </TableCell>
                           <TableCell>
-                            ${(comision.envio?.precio_total || 0).toFixed(2)}
+                            ${envio.precio_total.toFixed(2)}
                           </TableCell>
-                          <TableCell className={wasEdited ? 'text-muted-foreground line-through' : ''}>
-                            ${comision.monto.toFixed(2)}
+                          <TableCell>
+                            {isALiquidar ? (
+                              <Badge variant="outline" className="bg-warning/10 text-warning border-warning">
+                                A liquidar
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="bg-success/10 text-success border-success">
+                                <Check className="h-3 w-3 mr-1" />
+                                Liquidado
+                              </Badge>
+                            )}
                           </TableCell>
                           <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <Input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                className={`w-24 text-right font-bold ${wasEdited ? 'border-warning text-warning' : 'text-success'}`}
-                                value={montoFinal}
-                                onChange={(e) => setMontosEditados(prev => ({
-                                  ...prev,
-                                  [comision.id]: parseFloat(e.target.value) || 0
-                                }))}
-                              />
-                              {wasEdited && <Edit2 className="h-3 w-3 text-warning" />}
-                            </div>
+                            {isALiquidar ? (
+                              <div className="flex items-center justify-end gap-2">
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  className={`w-24 text-right font-bold ${wasEdited ? 'border-warning text-warning' : 'text-success'}`}
+                                  value={montoFinal}
+                                  onChange={(e) => setMontosEditados(prev => ({
+                                    ...prev,
+                                    [envio.id]: parseFloat(e.target.value) || 0
+                                  }))}
+                                />
+                                {wasEdited && <Edit2 className="h-3 w-3 text-warning" />}
+                              </div>
+                            ) : (
+                              <span className="font-bold text-muted-foreground">
+                                ${envio.comision_calculada.toFixed(2)}
+                              </span>
+                            )}
                           </TableCell>
                         </TableRow>
                       );
