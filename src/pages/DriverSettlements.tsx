@@ -32,7 +32,17 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Truck, Calculator, FileText, Check, DollarSign, Calendar, CreditCard, Eye, Edit2, Package, Clock, Download, Minus, Banknote } from 'lucide-react';
+import { Truck, Calculator, FileText, Check, DollarSign, Calendar, CreditCard, Eye, Edit2, Package, Clock, Download, Minus, Banknote, Trash2 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { downloadDriverSettlementPDF } from '@/lib/generateSettlementPDF';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -128,6 +138,8 @@ export default function DriverSettlements() {
   const [detailLiquidacion, setDetailLiquidacion] = useState<Liquidacion | null>(null);
   const [montosEditados, setMontosEditados] = useState<Record<string, number>>({});
   const [descuentosCOD, setDescuentosCOD] = useState<Record<string, boolean>>({});
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [liquidacionToCancel, setLiquidacionToCancel] = useState<Liquidacion | null>(null);
 
   // Fetch choferes with commission config
   const { data: choferes = [] } = useQuery({
@@ -388,6 +400,36 @@ export default function DriverSettlements() {
     },
     onError: (error) => {
       toast.error('Error: ' + error.message);
+    },
+  });
+
+  // Cancel/Delete liquidación mutation
+  const cancelMutation = useMutation({
+    mutationFn: async (liquidacionId: string) => {
+      // 1. Remove association from comisiones
+      const { error: comisionesError } = await supabase
+        .from('comisiones')
+        .update({ liquidacion_id: null })
+        .eq('liquidacion_id', liquidacionId);
+
+      if (comisionesError) throw comisionesError;
+
+      // 2. Delete the liquidación
+      const { error } = await supabase
+        .from('liquidaciones')
+        .delete()
+        .eq('id', liquidacionId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Liquidación cancelada correctamente');
+      queryClient.invalidateQueries({ queryKey: ['liquidaciones-choferes'] });
+      setShowCancelDialog(false);
+      setLiquidacionToCancel(null);
+    },
+    onError: (error) => {
+      toast.error('Error al cancelar: ' + error.message);
     },
   });
 
@@ -757,14 +799,30 @@ export default function DriverSettlements() {
                         >
                           <Download className="h-4 w-4" />
                         </Button>
-                        {liq.estado === 'generada' && (
-                          <Button
-                            size="sm"
-                            onClick={() => openPayDialog(liq.id)}
-                          >
-                            <CreditCard className="h-4 w-4 mr-1" />
-                            Pagar
-                          </Button>
+                        {liq.estado !== 'pagada' && (
+                          <>
+                            {liq.estado === 'generada' && (
+                              <Button
+                                size="sm"
+                                onClick={() => openPayDialog(liq.id)}
+                              >
+                                <CreditCard className="h-4 w-4 mr-1" />
+                                Pagar
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => {
+                                setLiquidacionToCancel(liq);
+                                setShowCancelDialog(true);
+                              }}
+                              title="Cancelar liquidación"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
                         )}
                         {liq.estado === 'pagada' && (
                           <Badge variant="outline" className="bg-success/10 text-success">
@@ -837,6 +895,41 @@ export default function DriverSettlements() {
         type="driver"
         settlement={detailLiquidacion}
       />
+
+      {/* Cancel Confirmation Dialog */}
+      <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Cancelar esta liquidación?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción eliminará la liquidación y las comisiones asociadas
+              quedarán disponibles para una nueva liquidación.
+              {liquidacionToCancel && (
+                <div className="mt-4 p-3 bg-muted rounded-lg space-y-1">
+                  <p><strong>Chofer:</strong> {liquidacionToCancel.chofer?.nombre} {liquidacionToCancel.chofer?.apellido}</p>
+                  <p><strong>Monto:</strong> ${liquidacionToCancel.monto_total.toFixed(2)}</p>
+                  <p><strong>Envíos:</strong> {liquidacionToCancel.cantidad_envios}</p>
+                  <p><strong>Período:</strong> {format(new Date(liquidacionToCancel.periodo_inicio), 'dd/MM/yy', { locale: es })} - {format(new Date(liquidacionToCancel.periodo_fin), 'dd/MM/yy', { locale: es })}</p>
+                </div>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No, mantener</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+              onClick={() => {
+                if (liquidacionToCancel) {
+                  cancelMutation.mutate(liquidacionToCancel.id);
+                }
+              }}
+              disabled={cancelMutation.isPending}
+            >
+              {cancelMutation.isPending ? 'Cancelando...' : 'Sí, cancelar liquidación'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
