@@ -418,6 +418,14 @@ export default function NewShipment() {
     }
 
     // 3. Solo si no existe, crear nuevo cliente
+    const tenantId = profile?.tenant_id ?? null;
+    if (!tenantId) {
+      throw new Error('No se pudo determinar el tenant del usuario. Cerrá sesión e ingresá nuevamente.');
+    }
+
+    // Si no viene sucursal, asignamos la del usuario para asegurar visibilidad y evitar bloqueos por RLS
+    const sucursalIdToUse = data.sucursal_id ?? profile?.sucursal_id ?? null;
+
     const { data: newClient, error: createError } = await supabase
       .from('clientes')
       .insert({
@@ -429,8 +437,8 @@ export default function NewShipment() {
         ciudad: data.ciudad,
         codigo_postal: data.codigo_postal,
         dni_cuit: data.dni_cuit,
-        sucursal_id: data.sucursal_id,
-        tenant_id: profile?.tenant_id,
+        sucursal_id: sucursalIdToUse,
+        tenant_id: tenantId,
       })
       .select()
       .single();
@@ -450,6 +458,10 @@ export default function NewShipment() {
     mutationFn: async () => {
       if (!sucursalOrigenId) {
         throw new Error('No tienes una sucursal asignada. Contacta al administrador.');
+      }
+
+      if (!profile?.tenant_id) {
+        throw new Error('No se pudo determinar tu empresa (tenant). Cerrá sesión e ingresá nuevamente.');
       }
 
       // Determinar la dirección del remitente
@@ -538,6 +550,7 @@ export default function NewShipment() {
           pago_contra_entrega: formData.pago_contra_entrega,
           notas: formData.notas,
           created_by: user?.id,
+          tenant_id: profile?.tenant_id,
           // Service type
           tipo_servicio_detalle: tipoServicioDetalle,
           cantidad_bultos: parseInt(formData.cantidad_bultos) || 1,
