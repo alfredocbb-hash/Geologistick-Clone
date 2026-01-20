@@ -68,7 +68,7 @@ interface TarifaConceptoPrecio {
 }
 
 export default function Rates() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, profile } = useAuth();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('tarifas');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -167,7 +167,10 @@ export default function Rates() {
           .eq('id', editingTarifa.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('tarifas').insert(tarifaData);
+        const { error } = await supabase.from('tarifas').insert({
+          ...tarifaData,
+          tenant_id: profile?.tenant_id,
+        });
         if (error) throw error;
       }
     },
@@ -200,7 +203,10 @@ export default function Rates() {
           .eq('id', editingConcept.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('tarifa_conceptos').insert(conceptData);
+        const { error } = await supabase.from('tarifa_conceptos').insert({
+          ...conceptData,
+          tenant_id: profile?.tenant_id,
+        });
         if (error) throw error;
       }
     },
