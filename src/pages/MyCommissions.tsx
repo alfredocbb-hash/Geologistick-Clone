@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -15,9 +16,11 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { DollarSign, Package, Clock, CheckCircle, Calendar, Truck } from 'lucide-react';
+import { DollarSign, Package, Clock, CheckCircle, Calendar, Truck, Eye, Download } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { SettlementDetailDialog } from '@/components/settlements/SettlementDetailDialog';
+import { downloadDriverSettlementPDF } from '@/lib/generateSettlementPDF';
 
 interface Comision {
   id: string;
@@ -35,12 +38,16 @@ interface Comision {
 
 interface Liquidacion {
   id: string;
+  chofer_id: string;
   periodo_inicio: string;
   periodo_fin: string;
   monto_total: number;
   cantidad_envios: number;
   estado: string;
+  notas: string | null;
   fecha_pago: string | null;
+  metodo_pago: string | null;
+  referencia_pago: string | null;
   created_at: string;
 }
 
@@ -48,6 +55,8 @@ export default function MyCommissions() {
   const { user } = useAuth();
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
+  const [showDetailDialog, setShowDetailDialog] = useState(false);
+  const [selectedLiquidacion, setSelectedLiquidacion] = useState<Liquidacion | null>(null);
 
   // Fetch my commissions
   const { data: comisiones = [], isLoading: loadingComisiones } = useQuery({
@@ -349,6 +358,7 @@ export default function MyCommissions() {
                       <TableHead>Monto</TableHead>
                       <TableHead>Estado</TableHead>
                       <TableHead>Fecha Pago</TableHead>
+                      <TableHead className="text-right">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -379,6 +389,32 @@ export default function MyCommissions() {
                             : '-'
                           }
                         </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setSelectedLiquidacion(liq);
+                                setShowDetailDialog(true);
+                              }}
+                              title="Ver detalle"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => downloadDriverSettlementPDF({
+                                ...liq,
+                                chofer: { nombre: user?.email?.split('@')[0] || 'Chofer', apellido: null }
+                              })}
+                              title="Descargar PDF"
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -388,6 +424,18 @@ export default function MyCommissions() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Detail Dialog */}
+      <SettlementDetailDialog
+        open={showDetailDialog}
+        onOpenChange={setShowDetailDialog}
+        settlementId={selectedLiquidacion?.id || null}
+        type="driver"
+        settlement={selectedLiquidacion ? {
+          ...selectedLiquidacion,
+          chofer: { nombre: user?.email?.split('@')[0] || 'Chofer', apellido: null }
+        } : null}
+      />
     </div>
   );
 }

@@ -32,7 +32,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Truck, Calculator, FileText, Check, DollarSign, Calendar, CreditCard, Eye, Edit2, Package, Clock } from 'lucide-react';
+import { Truck, Calculator, FileText, Check, DollarSign, Calendar, CreditCard, Eye, Edit2, Package, Clock, Download } from 'lucide-react';
+import { downloadDriverSettlementPDF } from '@/lib/generateSettlementPDF';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Database } from '@/integrations/supabase/types';
@@ -650,8 +651,17 @@ export default function DriverSettlements() {
                             setDetailLiquidacion(liq);
                             setShowDetailDialog(true);
                           }}
+                          title="Ver detalle"
                         >
                           <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => downloadDriverSettlementPDF(liq)}
+                          title="Descargar PDF"
+                        >
+                          <Download className="h-4 w-4" />
                         </Button>
                         {liq.estado === 'generada' && (
                           <Button
