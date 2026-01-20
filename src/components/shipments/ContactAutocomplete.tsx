@@ -30,6 +30,8 @@ interface Client {
   tiene_cuenta_corriente?: boolean | null;
   saldo_cuenta_corriente?: number | null;
   limite_credito?: number | null;
+  lat?: number | null;
+  lng?: number | null;
 }
 
 interface ContactAutocompleteProps {
