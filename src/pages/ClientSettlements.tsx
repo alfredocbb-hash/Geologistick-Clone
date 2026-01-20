@@ -132,7 +132,6 @@ export default function ClientSettlements() {
           saldo_nuevo: saldoNuevo,
           descripcion: descripcion || `Pago recibido - ${metodoPago}${referenciaPago ? ` - Ref: ${referenciaPago}` : ''}`,
           created_by: user?.id,
-          tenant_id: profile?.tenant_id,
         });
 
       if (movError) throw movError;
