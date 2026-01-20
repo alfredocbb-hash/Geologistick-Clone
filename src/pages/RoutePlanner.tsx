@@ -47,6 +47,7 @@ import {
   Edit,
   RefreshCw,
   Upload,
+  Star,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -57,6 +58,8 @@ import { BranchMapPopup } from "@/components/maps/BranchMapPopup";
 import EditRouteDialog from "@/components/routes/EditRouteDialog";
 import ImportShipmentsDialog from "@/components/import/ImportShipmentsDialog";
 import RescheduledShipmentsList from "@/components/routes/RescheduledShipmentsList";
+import SaveFrequentRouteDialog from "@/components/routes/SaveFrequentRouteDialog";
+import FrequentRoutesTab from "@/components/routes/FrequentRoutesTab";
 
 interface RouteStop {
   envio_id: string;
@@ -100,6 +103,7 @@ export default function RoutePlanner() {
   const [editingRoute, setEditingRoute] = useState<any | null>(null);
   const [selectedReprogramados, setSelectedReprogramados] = useState<string[]>([]);
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [showSaveFrequentDialog, setShowSaveFrequentDialog] = useState(false);
 
   // Fetch sucursal de origen del usuario
   const { data: sucursalOrigen } = useQuery({
@@ -783,6 +787,10 @@ export default function RoutePlanner() {
             <Navigation className="mr-2 h-4 w-4" />
             Crear Ruta
           </TabsTrigger>
+          <TabsTrigger value="frecuentes">
+            <Star className="mr-2 h-4 w-4" />
+            Frecuentes
+          </TabsTrigger>
           <TabsTrigger value="reprogramados">
             <CalendarClock className="mr-2 h-4 w-4" />
             Reprogramados
@@ -1216,23 +1224,44 @@ export default function RoutePlanner() {
                       </div>
                     </div>
 
-                    <Button
-                      className="w-full"
-                      size="lg"
-                      onClick={() => createRouteMutation.mutate()}
-                      disabled={!selectedChofer || createRouteMutation.isPending}
-                    >
-                      {createRouteMutation.isPending ? (
-                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Creando...</>
-                      ) : (
-                        <><Route className="mr-2 h-4 w-4" />Crear Ruta ({selectedOption.stops.length} paradas)</>
-                      )}
-                    </Button>
+                    <div className="flex gap-3">
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowSaveFrequentDialog(true)}
+                        disabled={createRouteMutation.isPending}
+                      >
+                        <Star className="mr-2 h-4 w-4" />
+                        Guardar como Frecuente
+                      </Button>
+                      <Button
+                        className="flex-1"
+                        size="lg"
+                        onClick={() => createRouteMutation.mutate()}
+                        disabled={!selectedChofer || createRouteMutation.isPending}
+                      >
+                        {createRouteMutation.isPending ? (
+                          <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Creando...</>
+                        ) : (
+                          <><Route className="mr-2 h-4 w-4" />Crear Ruta ({selectedOption.stops.length} paradas)</>
+                        )}
+                      </Button>
+                    </div>
                   </div>
                 )}
               </CardContent>
             </Card>
           )}
+        </TabsContent>
+
+        <TabsContent value="frecuentes">
+          <FrequentRoutesTab 
+            enviosPendientes={enviosPendientes}
+            onUseRoute={(envioIds, rutaNombre) => {
+              setSelectedEnvios(prev => [...new Set([...prev, ...envioIds])]);
+              setActiveTab("crear");
+              toast.success(`${envioIds.length} envío(s) cargados de "${rutaNombre}"`);
+            }}
+          />
         </TabsContent>
 
         <TabsContent value="reprogramados">
@@ -1364,6 +1393,16 @@ export default function RoutePlanner() {
           queryClient.invalidateQueries({ queryKey: ["envios-planificador"] });
         }}
       />
+
+      {/* Save Frequent Route Dialog */}
+      {selectedOption && (
+        <SaveFrequentRouteDialog
+          open={showSaveFrequentDialog}
+          onClose={() => setShowSaveFrequentDialog(false)}
+          stops={selectedOption.stops}
+          envios={selectedEnviosData}
+        />
+      )}
     </div>
   );
 }
