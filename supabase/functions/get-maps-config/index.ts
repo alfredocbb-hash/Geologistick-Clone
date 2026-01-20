@@ -31,11 +31,11 @@ serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    // Verify the token using getClaims
+    // Verify the token using getUser
     const token = authHeader.replace('Bearer ', '');
-    const { data: claimsData, error: authError } = await supabase.auth.getClaims(token);
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     
-    if (authError || !claimsData?.claims) {
+    if (authError || !user) {
       console.error('Auth error:', authError);
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
@@ -46,7 +46,7 @@ serve(async (req) => {
       );
     }
 
-    const userId = claimsData.claims.sub;
+    const userId = user.id;
     console.log('Authenticated user:', userId);
 
     // Get user's tenant from profile
