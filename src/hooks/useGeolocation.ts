@@ -8,34 +8,42 @@ interface Location {
   lat: number;
   lng: number;
   accuracy: number;
+  speed?: number | null;
+  heading?: number | null;
 }
 
 interface UseGeolocationOptions {
   enabled?: boolean;
   updateInterval?: number; // milliseconds
   enableHighAccuracy?: boolean;
+  activeRouteId?: string | null; // ID de ruta planificada activa
+  activeHojaRutaId?: string | null; // ID de hoja de ruta activa
 }
 
 export function useGeolocation(options: UseGeolocationOptions = {}) {
   const { 
     enabled = false, 
     updateInterval = 30000, // 30 seconds default
-    enableHighAccuracy = true 
+    enableHighAccuracy = true,
+    activeRouteId = null,
+    activeHojaRutaId = null,
   } = options;
   
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [location, setLocation] = useState<Location | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isTracking, setIsTracking] = useState(false);
   const watchIdRef = useRef<string | number | null>(null);
   const lastUpdateRef = useRef<number>(0);
+  const lastHistoryUpdateRef = useRef<number>(0);
   const isNative = Capacitor.isNativePlatform();
 
-  // Update location to Supabase
+  // Update location to Supabase (current position + history)
   const updateLocationToSupabase = useCallback(async (loc: Location) => {
     if (!user?.id) return;
 
     try {
+      // Update current location
       const { error: upsertError } = await supabase
         .from('driver_locations')
         .upsert({
@@ -51,10 +59,34 @@ export function useGeolocation(options: UseGeolocationOptions = {}) {
       if (upsertError) {
         console.error('Error updating location:', upsertError);
       }
+
+      // Add to location history (every 60 seconds when tracking)
+      const now = Date.now();
+      if (now - lastHistoryUpdateRef.current >= 60000) { // 60 seconds
+        lastHistoryUpdateRef.current = now;
+        
+        const { error: historyError } = await supabase
+          .from('driver_location_history')
+          .insert({
+            chofer_id: user.id,
+            ruta_id: activeRouteId,
+            hoja_ruta_id: activeHojaRutaId,
+            lat: loc.lat,
+            lng: loc.lng,
+            accuracy: loc.accuracy,
+            speed: loc.speed,
+            heading: loc.heading,
+            tenant_id: profile?.tenant_id,
+          });
+
+        if (historyError) {
+          console.error('Error saving location history:', historyError);
+        }
+      }
     } catch (err) {
       console.error('Error saving location:', err);
     }
-  }, [user?.id]);
+  }, [user?.id, profile?.tenant_id, activeRouteId, activeHojaRutaId]);
 
   // Handle position update (native)
   const handleNativePositionUpdate = useCallback((position: Position | null) => {
@@ -64,6 +96,8 @@ export function useGeolocation(options: UseGeolocationOptions = {}) {
       lat: position.coords.latitude,
       lng: position.coords.longitude,
       accuracy: position.coords.accuracy,
+      speed: position.coords.speed,
+      heading: position.coords.heading,
     };
     
     setLocation(newLocation);
@@ -83,6 +117,8 @@ export function useGeolocation(options: UseGeolocationOptions = {}) {
       lat: position.coords.latitude,
       lng: position.coords.longitude,
       accuracy: position.coords.accuracy,
+      speed: position.coords.speed,
+      heading: position.coords.heading,
     };
     
     setLocation(newLocation);
