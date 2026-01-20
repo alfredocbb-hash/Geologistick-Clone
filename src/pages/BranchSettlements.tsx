@@ -32,7 +32,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Building2, Calculator, FileText, Check, DollarSign, Calendar, Eye, CreditCard } from 'lucide-react';
+import { Building2, Calculator, FileText, Check, DollarSign, Calendar, Eye, CreditCard, Download } from 'lucide-react';
+import { downloadBranchSettlementPDF } from '@/lib/generateSettlementPDF';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { SettlementDetailDialog } from '@/components/settlements/SettlementDetailDialog';
@@ -511,8 +512,17 @@ export default function BranchSettlements() {
                             setDetailLiquidacion(liq);
                             setShowDetailDialog(true);
                           }}
+                          title="Ver detalle"
                         >
                           <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => downloadBranchSettlementPDF(liq)}
+                          title="Descargar PDF"
+                        >
+                          <Download className="h-4 w-4" />
                         </Button>
                         {liq.estado === 'pendiente' && (
                           <Button
