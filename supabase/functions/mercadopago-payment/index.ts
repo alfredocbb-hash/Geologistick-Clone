@@ -47,6 +47,23 @@ serve(async (req) => {
       );
     }
 
+    // Get user's tenant_id from profile
+    const { data: profile, error: profileError } = await supabaseClient
+      .from("profiles")
+      .select("tenant_id")
+      .eq("user_id", user.id)
+      .single();
+
+    if (profileError || !profile?.tenant_id) {
+      console.error("Error getting user profile:", profileError?.message || "No tenant found");
+      return new Response(
+        JSON.stringify({ error: "Usuario no tiene empresa asignada" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const tenantId = profile.tenant_id;
+
     const body: PaymentRequest = await req.json();
     const { envio_id, tracking_number, amount, description, payer_email, payer_name, environment = 'production' } = body;
 
@@ -57,17 +74,18 @@ serve(async (req) => {
       );
     }
 
-    // Get Mercado Pago configuration from database
+    // Get Mercado Pago configuration from database filtered by tenant
     const { data: mpConfigs, error: configError } = await supabaseClient
       .from("system_integrations")
       .select("config_key, config_value")
       .eq("integration_type", "mercado_pago")
       .eq("environment", environment)
-      .eq("is_active", true);
+      .eq("is_active", true)
+      .eq("tenant_id", tenantId);
 
     if (configError || !mpConfigs || mpConfigs.length === 0) {
       return new Response(
-        JSON.stringify({ error: "Mercado Pago no está configurado", code: "MP_NOT_CONFIGURED" }),
+        JSON.stringify({ error: "Mercado Pago no está configurado para tu empresa", code: "MP_NOT_CONFIGURED" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -135,7 +153,7 @@ serve(async (req) => {
 
     const preference = await mpResponse.json();
 
-    // Create pending payment record
+    // Create pending payment record with tenant_id
     const { error: paymentError } = await supabaseClient
       .from("pagos")
       .insert({
@@ -145,6 +163,7 @@ serve(async (req) => {
         estado: "pendiente",
         mercado_pago_id: preference.id,
         created_by: user.id,
+        tenant_id: tenantId,
       });
 
     if (paymentError) {

@@ -59,13 +59,14 @@ interface ARCAConfig {
 }
 
 // deno-lint-ignore no-explicit-any
-async function getARCAConfig(supabase: any, environment: 'sandbox' | 'production'): Promise<ARCAConfig | null> {
+async function getARCAConfig(supabase: any, tenantId: string, environment: 'sandbox' | 'production'): Promise<ARCAConfig | null> {
   const { data, error } = await supabase
     .from('system_integrations')
     .select('config_key, config_value')
     .eq('integration_type', 'arca')
     .eq('environment', environment)
-    .eq('is_active', true);
+    .eq('is_active', true)
+    .eq('tenant_id', tenantId);
 
   if (error || !data || data.length === 0) {
     return null;
@@ -90,13 +91,14 @@ async function getARCAConfig(supabase: any, environment: 'sandbox' | 'production
 }
 
 // deno-lint-ignore no-explicit-any
-async function getNextInvoiceNumber(supabase: any, tipo: 'A' | 'B' | 'C', _puntoVenta: number): Promise<number> {
+async function getNextInvoiceNumber(supabase: any, tenantId: string, tipo: 'A' | 'B' | 'C', _puntoVenta: number): Promise<number> {
   const field = `ultimo_numero_${tipo.toLowerCase()}`;
   
   const { data, error } = await supabase
     .from('arca_config')
     .select(field)
     .eq('is_active', true)
+    .eq('tenant_id', tenantId)
     .single();
 
   if (error || !data) {
@@ -107,13 +109,14 @@ async function getNextInvoiceNumber(supabase: any, tipo: 'A' | 'B' | 'C', _punto
 }
 
 // deno-lint-ignore no-explicit-any
-async function updateInvoiceNumber(supabase: any, tipo: 'A' | 'B' | 'C', numero: number): Promise<void> {
+async function updateInvoiceNumber(supabase: any, tenantId: string, tipo: 'A' | 'B' | 'C', numero: number): Promise<void> {
   const field = `ultimo_numero_${tipo.toLowerCase()}`;
   
   await supabase
     .from('arca_config')
     .update({ [field]: numero, updated_at: new Date().toISOString() })
-    .eq('is_active', true);
+    .eq('is_active', true)
+    .eq('tenant_id', tenantId);
 }
 
 // deno-lint-ignore no-explicit-any
@@ -121,6 +124,7 @@ async function createFacturaRecord(
   // deno-lint-ignore no-explicit-any
   supabase: any,
   envioId: string,
+  tenantId: string,
   tipoComprobante: 'A' | 'B' | 'C',
   puntoVenta: number,
   numeroComprobante: number,
@@ -135,6 +139,7 @@ async function createFacturaRecord(
     .from('facturas')
     .insert({
       envio_id: envioId,
+      tenant_id: tenantId,
       tipo_comprobante: tipoComprobante,
       punto_venta: puntoVenta,
       numero_comprobante: numeroComprobante,
@@ -206,11 +211,30 @@ serve(async (req) => {
 
     const authHeader = req.headers.get('Authorization');
     let userId: string | null = null;
+    let tenantId: string | null = null;
     
     if (authHeader) {
       const token = authHeader.replace('Bearer ', '');
       const { data: { user } } = await supabase.auth.getUser(token);
       userId = user?.id || null;
+      
+      if (userId) {
+        // Get user's tenant_id from profile
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('tenant_id')
+          .eq('user_id', userId)
+          .single();
+        
+        tenantId = profile?.tenant_id || null;
+      }
+    }
+
+    if (!tenantId) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Usuario no tiene empresa asignada' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const body: FacturaRequest = await req.json();
@@ -231,22 +255,24 @@ serve(async (req) => {
     }
 
     let environment: 'sandbox' | 'production' = 'production';
-    let arcaConfig = await getARCAConfig(supabase, 'production');
+    let arcaConfig = await getARCAConfig(supabase, tenantId, 'production');
     
     if (!arcaConfig) {
       environment = 'sandbox';
-      arcaConfig = await getARCAConfig(supabase, 'sandbox');
+      arcaConfig = await getARCAConfig(supabase, tenantId, 'sandbox');
     }
 
+    // Verify the envio belongs to this tenant
     const { data: envio, error: envioError } = await supabase
       .from('envios')
       .select('*')
       .eq('id', envio_id)
+      .eq('tenant_id', tenantId)
       .single();
 
     if (envioError || !envio) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Envío no encontrado' }),
+        JSON.stringify({ success: false, error: 'Envío no encontrado o no pertenece a tu empresa' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -267,6 +293,7 @@ serve(async (req) => {
       const factura = await createFacturaRecord(
         supabase,
         envio_id,
+        tenantId,
         tipo_comprobante,
         0,
         0,
@@ -297,11 +324,12 @@ serve(async (req) => {
     }
 
     const puntoVenta = parseInt(arcaConfig.punto_venta);
-    const numeroComprobante = await getNextInvoiceNumber(supabase, tipo_comprobante, puntoVenta);
+    const numeroComprobante = await getNextInvoiceNumber(supabase, tenantId, tipo_comprobante, puntoVenta);
 
     const factura = await createFacturaRecord(
       supabase,
       envio_id,
+      tenantId,
       tipo_comprobante,
       puntoVenta,
       numeroComprobante,
@@ -346,7 +374,7 @@ serve(async (req) => {
         })
         .eq('id', envio_id);
 
-      await updateInvoiceNumber(supabase, tipo_comprobante, numeroComprobante);
+      await updateInvoiceNumber(supabase, tenantId, tipo_comprobante, numeroComprobante);
 
       return new Response(
         JSON.stringify({

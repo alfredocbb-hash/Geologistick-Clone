@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useTenant } from '@/hooks/useTenant';
 
 type IntegrationType = 'mercado_pago' | 'google_maps' | 'whatsapp' | 'email_smtp' | 'sms';
 type IntegrationEnvironment = 'sandbox' | 'production';
@@ -13,16 +14,26 @@ interface IntegrationStatus {
 }
 
 /**
- * Hook to check if an integration is configured and active
+ * Hook to check if an integration is configured and active for the current tenant
  * Used in UI to show/hide or enable/disable integration features
  */
 export function useIntegrationConfig(
   integrationType: IntegrationType,
   preferredEnvironment: IntegrationEnvironment = 'production'
 ): IntegrationStatus {
+  const { tenantId, isLoading: tenantLoading } = useTenant();
+  
   const { data, isLoading, error } = useQuery({
-    queryKey: ['integration-status', integrationType, preferredEnvironment],
+    queryKey: ['integration-status', integrationType, preferredEnvironment, tenantId],
     queryFn: async () => {
+      if (!tenantId) {
+        return {
+          isConfigured: false,
+          isActive: false,
+          environment: preferredEnvironment,
+        };
+      }
+      
       // First try preferred environment, then fallback to the other
       const environments: IntegrationEnvironment[] = 
         preferredEnvironment === 'production' 
@@ -35,7 +46,8 @@ export function useIntegrationConfig(
           .select('*')
           .eq('integration_type', integrationType)
           .eq('environment', env)
-          .eq('is_active', true);
+          .eq('is_active', true)
+          .eq('tenant_id', tenantId);
 
         if (error) throw error;
 
@@ -57,13 +69,14 @@ export function useIntegrationConfig(
       };
     },
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+    enabled: !tenantLoading,
   });
 
   return {
     isConfigured: data?.isConfigured ?? false,
     isActive: data?.isActive ?? false,
     environment: data?.environment ?? preferredEnvironment,
-    isLoading,
+    isLoading: isLoading || tenantLoading,
     error: error as Error | null,
   };
 }

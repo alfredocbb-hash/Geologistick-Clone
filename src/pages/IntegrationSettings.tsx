@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useTenant } from '@/hooks/useTenant';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -132,16 +133,20 @@ export default function IntegrationSettings() {
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [isActive, setIsActive] = useState(true);
   const queryClient = useQueryClient();
+  const { tenantId, isLoading: tenantLoading } = useTenant();
 
-  // Fetch all configurations for current integration type and environment
+  // Fetch all configurations for current integration type and environment (filtered by tenant)
   const { data: configs, isLoading } = useQuery({
-    queryKey: ['integration-configs', activeTab, environment],
+    queryKey: ['integration-configs', activeTab, environment, tenantId],
     queryFn: async () => {
+      if (!tenantId) return {};
+      
       const { data, error } = await supabase
         .from('system_integrations')
         .select('*')
         .eq('integration_type', activeTab)
-        .eq('environment', environment);
+        .eq('environment', environment)
+        .eq('tenant_id', tenantId);
 
       if (error) throw error;
       
@@ -167,10 +172,15 @@ export default function IntegrationSettings() {
       
       return configMap;
     },
+    enabled: !!tenantId,
   });
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      if (!tenantId) {
+        throw new Error('No se encontró tu empresa. Por favor, cierra sesión y vuelve a entrar.');
+      }
+      
       const integrationConfig = INTEGRATIONS_CONFIG[activeTab];
       
       // Upsert each field
@@ -182,19 +192,41 @@ export default function IntegrationSettings() {
         }
         
         if (value) {
-          const { error } = await supabase
+          // Check if record exists for this tenant
+          const { data: existing } = await supabase
             .from('system_integrations')
-            .upsert({
-              integration_type: activeTab,
-              config_key: field.key,
-              config_value: value,
-              is_active: isActive,
-              environment: environment,
-            }, {
-              onConflict: 'integration_type,config_key,environment'
-            });
+            .select('id')
+            .eq('integration_type', activeTab)
+            .eq('config_key', field.key)
+            .eq('environment', environment)
+            .eq('tenant_id', tenantId)
+            .maybeSingle();
+          
+          if (existing) {
+            // Update existing record
+            const { error } = await supabase
+              .from('system_integrations')
+              .update({
+                config_value: value,
+                is_active: isActive,
+              })
+              .eq('id', existing.id);
+              
+            if (error) throw error;
+          } else {
+            // Insert new record (trigger will auto-set tenant_id)
+            const { error } = await supabase
+              .from('system_integrations')
+              .insert({
+                integration_type: activeTab,
+                config_key: field.key,
+                config_value: value,
+                is_active: isActive,
+                environment: environment,
+              });
 
-          if (error) throw error;
+            if (error) throw error;
+          }
         }
       }
     },
@@ -230,6 +262,27 @@ export default function IntegrationSettings() {
     const requiredFields = integrationConfig.fields.filter(f => f.required);
     return requiredFields.every(f => configs[f.key]?.config_value);
   };
+
+  if (tenantLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!tenantId) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Configuración de Integraciones</h1>
+          <p className="text-muted-foreground text-destructive">
+            No se encontró tu empresa. Por favor, cierra sesión y vuelve a entrar.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
