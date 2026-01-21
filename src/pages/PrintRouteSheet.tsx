@@ -40,6 +40,7 @@ export default function PrintRouteSheet() {
             cantidad_bultos,
             peso_kg,
             descripcion,
+            nombre_destinatario,
             destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, direccion, ciudad)
           )
         `)
@@ -230,7 +231,7 @@ export default function PrintRouteSheet() {
                 <td className="border p-2">{index + 1}</td>
                 <td className="border p-2 font-mono text-sm">{envio?.tracking_number}</td>
                 <td className="border p-2">
-                  {envio?.destinatario?.nombre} {envio?.destinatario?.apellido}
+                  {envio?.nombre_destinatario || `${envio?.destinatario?.nombre || ''} ${envio?.destinatario?.apellido || ''}`.trim()}
                 </td>
                 <td className="border p-2 text-sm">{envio?.destinatario?.ciudad}</td>
                 <td className="border p-2 text-center">{envio?.cantidad_bultos || 1}</td>
