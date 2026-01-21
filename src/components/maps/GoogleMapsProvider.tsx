@@ -1,5 +1,5 @@
 import { useJsApiLoader } from '@react-google-maps/api';
-import { ReactNode, createContext, useContext, useMemo, useEffect, useState } from 'react';
+import { ReactNode, createContext, useContext, useMemo } from 'react';
 import { useMapsApiKey } from '@/hooks/useMapsApiKey';
 
 const libraries: ("places" | "geometry" | "drawing")[] = ['places', 'geometry'];
@@ -64,13 +64,27 @@ export function GoogleMapsProvider({ children }: GoogleMapsProviderProps) {
     );
   }
 
-  // If there's an error or no API key, provide error context
-  if (error || !apiKey) {
+  // If there's an explicit error, provide error context
+  if (error) {
     return (
       <GoogleMapsContext.Provider value={{ 
         isLoaded: false, 
-        loadError: error || 'Google Maps API key not configured', 
+        loadError: error, 
         apiKey: null 
+      }}>
+        {children}
+      </GoogleMapsContext.Provider>
+    );
+  }
+
+  // No key yet (e.g. user not authenticated). Don't surface as an error;
+  // we'll retry when auth becomes available.
+  if (!apiKey) {
+    return (
+      <GoogleMapsContext.Provider value={{
+        isLoaded: false,
+        loadError: null,
+        apiKey: null,
       }}>
         {children}
       </GoogleMapsContext.Provider>
