@@ -403,7 +403,7 @@ export default function DriverSettlements() {
     },
   });
 
-  // Cancel/Delete liquidación mutation
+  // Cancel/Delete liquidación mutation with optimistic updates
   const cancelMutation = useMutation({
     mutationFn: async (liquidacionId: string) => {
       // 1. Remove association from comisiones
@@ -414,22 +414,53 @@ export default function DriverSettlements() {
 
       if (comisionesError) throw comisionesError;
 
-      // 2. Delete the liquidación
-      const { error } = await supabase
+      // 2. Delete the liquidación and verify it was actually deleted
+      const { data, error } = await supabase
         .from('liquidaciones')
         .delete()
-        .eq('id', liquidacionId);
+        .eq('id', liquidacionId)
+        .select('id');
 
       if (error) throw error;
+      
+      // Verify that a row was actually deleted
+      if (!data || data.length === 0) {
+        throw new Error('No se pudo eliminar la liquidación. Puede que no tengas permisos o ya fue eliminada.');
+      }
+      
+      return liquidacionId;
+    },
+    onMutate: async (liquidacionId) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['liquidaciones-choferes'] });
+      
+      // Snapshot the previous value
+      const previousLiquidaciones = queryClient.getQueryData(['liquidaciones-choferes']);
+      
+      // Optimistically remove from the list
+      queryClient.setQueryData(['liquidaciones-choferes'], (old: Liquidacion[] | undefined) => 
+        old?.filter((l) => l.id !== liquidacionId) ?? []
+      );
+      
+      return { previousLiquidaciones };
     },
     onSuccess: () => {
       toast.success('Liquidación cancelada correctamente');
-      queryClient.invalidateQueries({ queryKey: ['liquidaciones-choferes'] });
       setShowCancelDialog(false);
       setLiquidacionToCancel(null);
     },
-    onError: (error) => {
+    onError: (error, _liquidacionId, context) => {
+      // Rollback to the previous value on error
+      if (context?.previousLiquidaciones) {
+        queryClient.setQueryData(['liquidaciones-choferes'], context.previousLiquidaciones);
+      }
       toast.error('Error al cancelar: ' + error.message);
+      setShowCancelDialog(false);
+      setLiquidacionToCancel(null);
+    },
+    onSettled: () => {
+      // Always refetch after error or success to ensure consistency
+      queryClient.invalidateQueries({ queryKey: ['liquidaciones-choferes'] });
     },
   });
 
