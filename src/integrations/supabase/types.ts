@@ -246,6 +246,7 @@ export type Database = {
           monto_original: number | null
           porcentaje_aplicado: number | null
           tenant_id: string | null
+          tipo: string | null
         }
         Insert: {
           chofer_id: string
@@ -260,6 +261,7 @@ export type Database = {
           monto_original?: number | null
           porcentaje_aplicado?: number | null
           tenant_id?: string | null
+          tipo?: string | null
         }
         Update: {
           chofer_id?: string
@@ -274,6 +276,7 @@ export type Database = {
           monto_original?: number | null
           porcentaje_aplicado?: number | null
           tenant_id?: string | null
+          tipo?: string | null
         }
         Relationships: [
           {
@@ -1488,6 +1491,9 @@ export type Database = {
           comision_fija: number | null
           comision_notas: string | null
           comision_porcentaje: number | null
+          comision_retiro_fija: number | null
+          comision_retiro_porcentaje: number | null
+          comision_retiro_tipo: string | null
           comision_tipo: string | null
           created_at: string | null
           email: string
@@ -1506,6 +1512,9 @@ export type Database = {
           comision_fija?: number | null
           comision_notas?: string | null
           comision_porcentaje?: number | null
+          comision_retiro_fija?: number | null
+          comision_retiro_porcentaje?: number | null
+          comision_retiro_tipo?: string | null
           comision_tipo?: string | null
           created_at?: string | null
           email: string
@@ -1524,6 +1533,9 @@ export type Database = {
           comision_fija?: number | null
           comision_notas?: string | null
           comision_porcentaje?: number | null
+          comision_retiro_fija?: number | null
+          comision_retiro_porcentaje?: number | null
+          comision_retiro_tipo?: string | null
           comision_tipo?: string | null
           created_at?: string | null
           email?: string

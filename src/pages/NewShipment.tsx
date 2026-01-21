@@ -630,7 +630,7 @@ export default function NewShipment() {
           dimensiones: formData.dimensiones,
           valor_declarado: parseFloat(formData.valor_declarado) || null,
           precio_total: precioTotal,
-          pago_contra_entrega: formData.pago_contra_entrega,
+          pago_contra_entrega: formData.tipo_pago === 'destino' ? true : formData.pago_contra_entrega,
           notas: formData.notas,
           created_by: user?.id,
           tenant_id: profile?.tenant_id,
@@ -1721,16 +1721,7 @@ export default function NewShipment() {
                 </SelectContent>
               </Select>
             </div>
-            {formData.tipo_pago === 'destino' && (
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="pago_contra_entrega"
-                  checked={formData.pago_contra_entrega}
-                  onCheckedChange={(v) => handleChange('pago_contra_entrega', v)}
-                />
-                <Label htmlFor="pago_contra_entrega">Cobrar contra entrega</Label>
-              </div>
-            )}
+            {/* Note: pago_contra_entrega is now automatically set based on tipo_pago */}
             
             {/* Conceptos Adicionales */}
             {conceptosAdicionales.length > 0 && formData.tarifa_id && (

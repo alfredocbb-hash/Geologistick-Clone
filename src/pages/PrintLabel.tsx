@@ -350,9 +350,14 @@ export default function PrintLabel() {
                   <span>{envio.peso_kg} kg</span>
                 )}
               </div>
-              <Badge variant="outline" className="font-bold">
-                {TIPO_PAGO_LABELS[envio.tipo_pago || 'contado']}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="font-bold">
+                  {TIPO_PAGO_LABELS[envio.tipo_pago || 'contado']}
+                </Badge>
+                <span className="font-bold text-lg">
+                  ${envio.precio_total.toLocaleString('es-AR')}
+                </span>
+              </div>
             </div>
 
             {/* Notas */}

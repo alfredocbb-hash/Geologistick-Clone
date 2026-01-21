@@ -344,6 +344,11 @@ export default function ImportShipmentsDialog({
             );
           }
 
+          // Get tipo_pago from mapping if exists, default to 'contado'
+          const tipoPagoRaw = getRowValue(row, mapping.tipoPago);
+          const tipoPago = tipoPagoRaw?.toLowerCase().includes('destino') ? 'destino' : 
+                          tipoPagoRaw?.toLowerCase().includes('cuenta') ? 'cuenta_corriente' : 'contado';
+          
           // Create shipment
             const { error: envioError } = await supabase
               .from("envios")
@@ -364,6 +369,8 @@ export default function ImportShipmentsDialog({
               tenant_id: profile.tenant_id,
               sucursal_origen_id: profile.sucursal_id,
               created_by: profile.user_id,
+              tipo_pago: tipoPago,
+              pago_contra_entrega: tipoPago === 'destino',
             });
 
           if (envioError) throw envioError;
