@@ -2371,6 +2371,50 @@ export type Database = {
           },
         ]
       }
+      tenant_api_keys: {
+        Row: {
+          api_key_hash: string
+          api_key_prefix: string
+          created_at: string
+          id: string
+          is_active: boolean
+          last_used_at: string | null
+          name: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          api_key_hash: string
+          api_key_prefix: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_used_at?: string | null
+          name: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          api_key_hash?: string
+          api_key_prefix?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_used_at?: string | null
+          name?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_api_keys_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_branding: {
         Row: {
           color_acento: string | null
@@ -2880,6 +2924,7 @@ export type Database = {
         Args: { p_tenant_id: string }
         Returns: boolean
       }
+      validate_api_key: { Args: { p_api_key: string }; Returns: string }
     }
     Enums: {
       app_role:
