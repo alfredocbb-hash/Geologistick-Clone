@@ -29,6 +29,7 @@ export interface ColumnMapping {
   totalPrice: string;
   notes: string;
   orderNumber: string;
+  tipoPago: string;
 }
 
 // Default column mappings based on the CSV format
@@ -45,6 +46,7 @@ export const DEFAULT_COLUMN_MAPPING: ColumnMapping = {
   totalPrice: 'Total',
   notes: 'OBSERVACIONES',
   orderNumber: 'Hoja',
+  tipoPago: 'Tipo Pago',
 };
 
 // Alternative column names that might be used
@@ -61,6 +63,7 @@ export const COLUMN_ALIASES: Record<keyof ColumnMapping, string[]> = {
   totalPrice: ['Total', 'Precio', 'Price', 'Monto', 'precio_total'],
   notes: ['OBSERVACIONES', 'Observaciones', 'Notas', 'Notes', 'Comentarios', 'notas'],
   orderNumber: ['Hoja', 'Order', 'N° Orden', 'Numero'],
+  tipoPago: ['Tipo Pago', 'tipo_pago', 'Pago', 'Forma Pago', 'payment_type'],
 };
 
 /**

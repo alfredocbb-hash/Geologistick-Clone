@@ -25,6 +25,7 @@ interface Shipment {
   estado: string;
   precio_total: number;
   pago_contra_entrega: boolean;
+  tipo_pago?: string | null;
   direccion_entrega: string | null;
   ciudad_entrega: string | null;
   destinatario?: {
@@ -48,8 +49,11 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [signature, setSignature] = useState<string | null>(null);
+  // Check if payment is required - either by flag or tipo_pago
+  const requiresPayment = shipment.pago_contra_entrega || shipment.tipo_pago === 'destino';
+  
   const [amountCollected, setAmountCollected] = useState(
-    shipment.pago_contra_entrega ? shipment.precio_total.toString() : ''
+    requiresPayment ? shipment.precio_total.toString() : ''
   );
   const [notes, setNotes] = useState('');
   const [deliveryLocation, setDeliveryLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -185,6 +189,8 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
             id,
             precio_total,
             tarifa_id,
+            requiere_retiro,
+            chofer_id,
             tarifas:tarifas(comision_chofer_porcentaje, comision_chofer_fija)
           `)
           .eq('id', shipment.id)
@@ -217,12 +223,14 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
           montoTotal = (envioData.precio_total * porcentajeAplicado) / 100 + montoFijoAplicado;
         }
 
+        // Insert delivery commission
         if (montoTotal > 0) {
           const { data: existingCommission } = await supabase
             .from('comisiones')
             .select('id')
             .eq('envio_id', shipment.id)
             .eq('chofer_id', user.id)
+            .eq('tipo', 'entrega')
             .maybeSingle();
 
           if (!existingCommission) {
@@ -233,7 +241,61 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
               porcentaje_aplicado: porcentajeAplicado,
               monto_fijo_aplicado: montoFijoAplicado,
               tenant_id: profile?.tenant_id,
+              tipo: 'entrega',
             });
+          }
+        }
+
+        // Check if there was a pickup by a different driver and calculate their commission
+        if (envioData.requiere_retiro && envioData.chofer_id && envioData.chofer_id !== user.id) {
+          const pickupDriverId = envioData.chofer_id;
+          
+          // Get pickup driver's commission config
+          const { data: pickupDriverProfile } = await supabase
+            .from('profiles')
+            .select('comision_retiro_tipo, comision_retiro_porcentaje, comision_retiro_fija')
+            .eq('user_id', pickupDriverId)
+            .single();
+
+          if (pickupDriverProfile && pickupDriverProfile.comision_retiro_tipo !== 'ninguna') {
+            let montoRetiro = 0;
+            let porcentajeRetiro = 0;
+            let fijoRetiro = 0;
+
+            if (pickupDriverProfile.comision_retiro_tipo === 'porcentaje') {
+              porcentajeRetiro = pickupDriverProfile.comision_retiro_porcentaje || 0;
+              montoRetiro = (envioData.precio_total * porcentajeRetiro) / 100;
+            } else if (pickupDriverProfile.comision_retiro_tipo === 'fija') {
+              fijoRetiro = pickupDriverProfile.comision_retiro_fija || 0;
+              montoRetiro = fijoRetiro;
+            } else if (pickupDriverProfile.comision_retiro_tipo === 'mixta') {
+              porcentajeRetiro = pickupDriverProfile.comision_retiro_porcentaje || 0;
+              fijoRetiro = pickupDriverProfile.comision_retiro_fija || 0;
+              montoRetiro = (envioData.precio_total * porcentajeRetiro) / 100 + fijoRetiro;
+            }
+
+            if (montoRetiro > 0) {
+              // Check if pickup commission already exists
+              const { data: existingPickupCommission } = await supabase
+                .from('comisiones')
+                .select('id')
+                .eq('envio_id', shipment.id)
+                .eq('chofer_id', pickupDriverId)
+                .eq('tipo', 'retiro')
+                .maybeSingle();
+
+              if (!existingPickupCommission) {
+                await supabase.from('comisiones').insert({
+                  chofer_id: pickupDriverId,
+                  envio_id: shipment.id,
+                  monto: montoRetiro,
+                  porcentaje_aplicado: porcentajeRetiro,
+                  monto_fijo_aplicado: fijoRetiro,
+                  tenant_id: profile?.tenant_id,
+                  tipo: 'retiro',
+                });
+              }
+            }
           }
         }
       })();
@@ -298,7 +360,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
     },
   });
 
-  const canSubmit = !shipment.pago_contra_entrega || (amountCollected && parseFloat(amountCollected) > 0);
+  const canSubmit = !requiresPayment || (amountCollected && parseFloat(amountCollected) > 0);
 
   return (
     <Dialog open onOpenChange={onClose}>
@@ -391,10 +453,10 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
             <SignatureCanvas onSignatureChange={setSignature} />
           </div>
 
-          {/* Amount collected (if COD) */}
-          {shipment.pago_contra_entrega && (
+          {/* Amount collected (if COD or pago en destino) */}
+          {requiresPayment && (
             <div className="space-y-2">
-              <Label htmlFor="amount">💵 Monto Cobrado *</Label>
+              <Label htmlFor="amount" className="text-destructive font-medium">💵 Monto a Cobrar *</Label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
                 <Input
@@ -403,12 +465,12 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
                   step="0.01"
                   value={amountCollected}
                   onChange={(e) => setAmountCollected(e.target.value)}
-                  className="pl-8"
+                  className="pl-8 border-destructive"
                   placeholder={shipment.precio_total.toFixed(2)}
                 />
               </div>
-              <p className="text-xs text-muted-foreground">
-                Monto esperado: ${shipment.precio_total.toFixed(2)}
+              <p className="text-sm text-destructive font-medium">
+                ⚠️ COBRAR AL DESTINATARIO: ${shipment.precio_total.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
               </p>
             </div>
           )}

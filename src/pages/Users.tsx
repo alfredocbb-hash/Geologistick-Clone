@@ -44,6 +44,7 @@ import {
   Key,
   Percent,
   DollarSign,
+  Package,
 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { ResetPasswordDialog } from '@/components/users/ResetPasswordDialog';
@@ -62,11 +63,15 @@ interface Profile {
   sucursal_id: string | null;
   activo: boolean | null;
   created_at: string | null;
-  // Commission fields
+  // Delivery commission fields
   comision_tipo: string | null;
   comision_porcentaje: number | null;
   comision_fija: number | null;
   comision_notas: string | null;
+  // Pickup commission fields
+  comision_retiro_tipo: string | null;
+  comision_retiro_porcentaje: number | null;
+  comision_retiro_fija: number | null;
 }
 
 interface UserRole {
@@ -124,11 +129,15 @@ export default function Users() {
     sucursal_id: '',
     activo: true,
     newRole: '' as AppRole | '',
-    // Commission fields
+    // Delivery commission fields
     comision_tipo: 'tarifa' as string,
     comision_porcentaje: 0,
     comision_fija: 0,
     comision_notas: '',
+    // Pickup commission fields
+    comision_retiro_tipo: 'ninguna' as string,
+    comision_retiro_porcentaje: 0,
+    comision_retiro_fija: 0,
   });
   const [createFormData, setCreateFormData] = useState({
     email: '',
@@ -265,6 +274,9 @@ export default function Users() {
       comision_porcentaje: profile.comision_porcentaje || 0,
       comision_fija: profile.comision_fija || 0,
       comision_notas: profile.comision_notas || '',
+      comision_retiro_tipo: profile.comision_retiro_tipo || 'ninguna',
+      comision_retiro_porcentaje: profile.comision_retiro_porcentaje || 0,
+      comision_retiro_fija: profile.comision_retiro_fija || 0,
     });
     setIsDialogOpen(true);
   };
@@ -288,6 +300,10 @@ export default function Users() {
           comision_porcentaje: formData.comision_porcentaje,
           comision_fija: formData.comision_fija,
           comision_notas: formData.comision_notas || null,
+          // Pickup commission fields
+          comision_retiro_tipo: formData.comision_retiro_tipo,
+          comision_retiro_porcentaje: formData.comision_retiro_porcentaje,
+          comision_retiro_fija: formData.comision_retiro_fija,
         }),
       },
     });
@@ -811,6 +827,76 @@ export default function Users() {
                         rows={2}
                       />
                     </div>
+                  </div>
+                  
+                  {/* Pickup Commission Section */}
+                  <div className="border-t border-chofer/20 pt-4 mt-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Package className="h-4 w-4 text-chofer" />
+                      <Label className="text-chofer font-medium">Comisión por Retiro</Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Se paga solo si el paquete es finalmente entregado
+                    </p>
+                    
+                    <div className="space-y-2">
+                      <Label>Tipo de Comisión por Retiro</Label>
+                      <Select
+                        value={formData.comision_retiro_tipo}
+                        onValueChange={(value) =>
+                          setFormData({ ...formData, comision_retiro_tipo: value })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar tipo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ninguna">Sin comisión por retiro</SelectItem>
+                          <SelectItem value="porcentaje">Porcentaje del Envío</SelectItem>
+                          <SelectItem value="fija">Monto Fijo por Retiro</SelectItem>
+                          <SelectItem value="mixta">Mixta (Porcentaje + Fijo)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {(formData.comision_retiro_tipo === 'porcentaje' || formData.comision_retiro_tipo === 'mixta') && (
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-1">
+                          <Percent className="h-3 w-3" />
+                          Porcentaje por Retiro (%)
+                        </Label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="100"
+                          value={formData.comision_retiro_porcentaje}
+                          onChange={(e) =>
+                            setFormData({ ...formData, comision_retiro_porcentaje: parseFloat(e.target.value) || 0 })
+                          }
+                          placeholder="Ej: 5"
+                        />
+                      </div>
+                    )}
+
+                    {(formData.comision_retiro_tipo === 'fija' || formData.comision_retiro_tipo === 'mixta') && (
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-1">
+                          <DollarSign className="h-3 w-3" />
+                          Monto Fijo por Retiro ($)
+                        </Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={formData.comision_retiro_fija}
+                          onChange={(e) =>
+                            setFormData({ ...formData, comision_retiro_fija: parseFloat(e.target.value) || 0 })
+                          }
+                          placeholder="Ej: 100"
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
