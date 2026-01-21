@@ -620,9 +620,9 @@ export default function RoutePlanner() {
           : (e.direccion_entrega || e.destinatario?.direccion),
         lat: Number(e.coords.lat),
         lng: Number(e.coords.lng),
-        cliente_nombre: e.tipo === "retiro" 
-          ? `${e.remitente?.nombre || ''} ${e.remitente?.apellido || ''}`.trim()
-          : `${e.destinatario?.nombre || ''} ${e.destinatario?.apellido || ''}`.trim(),
+              cliente_nombre: e.tipo === "retiro" 
+                ? ((e as any).nombre_remitente || `${e.remitente?.nombre || ''} ${e.remitente?.apellido || ''}`.trim())
+                : ((e as any).nombre_destinatario || `${e.destinatario?.nombre || ''} ${e.destinatario?.apellido || ''}`.trim()),
         telefono: e.tipo === "retiro" ? e.remitente?.telefono : e.destinatario?.telefono,
         tracking: e.tracking_number,
       }));
@@ -637,9 +637,9 @@ export default function RoutePlanner() {
           : (e.direccion_entrega || e.destinatario?.direccion),
         lat: Number(e.coords.lat),
         lng: Number(e.coords.lng),
-        cliente_nombre: e.tipo === "retiro" 
-          ? `${e.remitente?.nombre || ''} ${e.remitente?.apellido || ''}`.trim()
-          : `${e.destinatario?.nombre || ''} ${e.destinatario?.apellido || ''}`.trim(),
+              cliente_nombre: e.tipo === "retiro" 
+                ? ((e as any).nombre_remitente || `${e.remitente?.nombre || ''} ${e.remitente?.apellido || ''}`.trim())
+                : ((e as any).nombre_destinatario || `${e.destinatario?.nombre || ''} ${e.destinatario?.apellido || ''}`.trim()),
         telefono: e.tipo === "retiro" ? e.remitente?.telefono : e.destinatario?.telefono,
         tracking: e.tracking_number,
       }));
