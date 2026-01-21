@@ -521,6 +521,8 @@ export type Database = {
           horario_preferido_entrega: string | null
           horario_retiro: string | null
           id: string
+          nombre_destinatario: string | null
+          nombre_remitente: string | null
           nombre_retira: string | null
           notas: string | null
           notas_retiro: string | null
@@ -596,6 +598,8 @@ export type Database = {
           horario_preferido_entrega?: string | null
           horario_retiro?: string | null
           id?: string
+          nombre_destinatario?: string | null
+          nombre_remitente?: string | null
           nombre_retira?: string | null
           notas?: string | null
           notas_retiro?: string | null
@@ -671,6 +675,8 @@ export type Database = {
           horario_preferido_entrega?: string | null
           horario_retiro?: string | null
           id?: string
+          nombre_destinatario?: string | null
+          nombre_remitente?: string | null
           nombre_retira?: string | null
           notas?: string | null
           notas_retiro?: string | null
