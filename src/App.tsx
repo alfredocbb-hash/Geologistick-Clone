@@ -48,8 +48,10 @@ import SystemSettings from "./pages/SystemSettings";
 import Payments from "./pages/Payments";
 import BrandingSettings from "./pages/BrandingSettings";
 import Subscription from "./pages/Subscription";
+import SubscriptionPlansAdmin from "./pages/SubscriptionPlansAdmin";
 import Profile from "./pages/Profile";
 import Tenants from "./pages/Tenants";
+import TrackingEmbed from "./pages/TrackingEmbed";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -121,6 +123,7 @@ function AppRoutes() {
       <Route path="/login" element={<Login />} />
       <Route path="/onboarding" element={<Onboarding />} />
       <Route path="/tracking" element={<Tracking />} />
+      <Route path="/tracking-embed" element={<TrackingEmbed />} />
       
       {/* Protected Routes */}
       <Route path="/dashboard" element={<DashboardLayout><Dashboard /></DashboardLayout>} />
@@ -164,6 +167,7 @@ function AppRoutes() {
       <Route path="/admin/integrations" element={<DashboardLayout><IntegrationSettings /></DashboardLayout>} />
       <Route path="/admin/branding" element={<BrandingSettings />} />
       <Route path="/subscription" element={<DashboardLayout><Subscription /></DashboardLayout>} />
+      <Route path="/admin/plans" element={<DashboardLayout><SubscriptionPlansAdmin /></DashboardLayout>} />
       <Route path="/admin/tenants" element={<DashboardLayout><Tenants /></DashboardLayout>} />
       
       {/* Profile */}
