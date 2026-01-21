@@ -345,13 +345,15 @@ export default function ImportShipmentsDialog({
           }
 
           // Create shipment
-          const { error: envioError } = await supabase
-            .from("envios")
-            .insert({
-              tracking_number: trackingNumber,
-              destinatario_id: destinatarioId,
-              remitente_id: remitenteId,
-              direccion_entrega: recipientAddress,
+            const { error: envioError } = await supabase
+              .from("envios")
+              .insert({
+                tracking_number: trackingNumber,
+                destinatario_id: destinatarioId,
+                remitente_id: remitenteId,
+                nombre_destinatario: recipientName,
+                nombre_remitente: senderName || null,
+                direccion_entrega: recipientAddress,
               ciudad_entrega: recipientCity,
               destinatario_lat: lat,
               destinatario_lng: lng,
