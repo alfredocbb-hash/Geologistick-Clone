@@ -1,12 +1,15 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { Building2, Users, Package, Calendar, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { Building2, Users, Package, Calendar, CheckCircle, XCircle, Loader2, Key } from 'lucide-react';
 import { format, differenceInDays, isPast } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { TenantApiKeysDialog } from './TenantApiKeysDialog';
 
 interface TenantDetailsDialogProps {
   open: boolean;
@@ -26,6 +29,8 @@ interface TenantDetailsDialogProps {
 }
 
 export function TenantDetailsDialog({ open, onOpenChange, tenant }: TenantDetailsDialogProps) {
+  const [showApiKeysDialog, setShowApiKeysDialog] = useState(false);
+
   const { data: stats, isLoading } = useQuery({
     queryKey: ['tenant-stats', tenant.id],
     queryFn: async () => {
@@ -223,6 +228,25 @@ export function TenantDetailsDialog({ open, onOpenChange, tenant }: TenantDetail
               </div>
             </div>
 
+            {/* API Keys Section */}
+            <Separator />
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold">Integraciones</h3>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowApiKeysDialog(true)}
+                >
+                  <Key className="h-4 w-4 mr-2" />
+                  Gestionar API Keys
+                </Button>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Configura API Keys para permitir que sistemas externos consulten el tracking de envíos.
+              </p>
+            </div>
+
             {/* Admin Users */}
             {stats?.admins && stats.admins.length > 0 && (
               <>
@@ -245,6 +269,13 @@ export function TenantDetailsDialog({ open, onOpenChange, tenant }: TenantDetail
           </div>
         )}
       </DialogContent>
+
+      {/* API Keys Dialog */}
+      <TenantApiKeysDialog
+        open={showApiKeysDialog}
+        onOpenChange={setShowApiKeysDialog}
+        tenant={{ id: tenant.id, nombre: tenant.nombre }}
+      />
     </Dialog>
   );
 }

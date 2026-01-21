@@ -869,37 +869,48 @@ export default function RoutePlanner() {
                           <TableHead className="w-10"></TableHead>
                           <TableHead>Tracking</TableHead>
                           <TableHead>Tipo</TableHead>
+                          <TableHead>Localidad</TableHead>
                           <TableHead>Dirección</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredEnvios.map(envio => (
-                          <TableRow key={envio.id}>
-                            <TableCell>
-                              <Checkbox
-                                checked={selectedEnvios.includes(envio.id)}
-                                onCheckedChange={() => toggleEnvio(envio.id)}
-                              />
-                            </TableCell>
-                            <TableCell className="font-mono text-xs">
-                              {envio.tracking_number}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={envio.tipo === "retiro" ? "secondary" : "default"}>
-                                {envio.tipo === "retiro" ? (
-                                  <><Home className="mr-1 h-3 w-3" />Retiro</>
-                                ) : (
-                                  <><Package className="mr-1 h-3 w-3" />Entrega</>
-                                )}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-xs">
-                              {envio.tipo === "retiro" 
-                                ? (envio.direccion_retiro || envio.remitente?.direccion)
-                                : (envio.direccion_entrega || envio.destinatario?.direccion)}
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                        {filteredEnvios.map(envio => {
+                          // Get localidad based on type
+                          const localidad = envio.tipo === "retiro"
+                            ? (envio.ciudad_retiro || envio.remitente?.ciudad || '-')
+                            : (envio.ciudad_entrega || envio.destinatario?.ciudad || '-');
+                          
+                          return (
+                            <TableRow key={envio.id}>
+                              <TableCell>
+                                <Checkbox
+                                  checked={selectedEnvios.includes(envio.id)}
+                                  onCheckedChange={() => toggleEnvio(envio.id)}
+                                />
+                              </TableCell>
+                              <TableCell className="font-mono text-xs">
+                                {envio.tracking_number}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant={envio.tipo === "retiro" ? "secondary" : "default"}>
+                                  {envio.tipo === "retiro" ? (
+                                    <><Home className="mr-1 h-3 w-3" />Retiro</>
+                                  ) : (
+                                    <><Package className="mr-1 h-3 w-3" />Entrega</>
+                                  )}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-xs font-medium">
+                                {localidad}
+                              </TableCell>
+                              <TableCell className="text-xs max-w-[150px] truncate">
+                                {envio.tipo === "retiro" 
+                                  ? (envio.direccion_retiro || envio.remitente?.direccion)
+                                  : (envio.direccion_entrega || envio.destinatario?.direccion)}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   </div>
