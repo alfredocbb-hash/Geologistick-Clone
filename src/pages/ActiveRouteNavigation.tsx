@@ -133,6 +133,8 @@ export default function ActiveRouteNavigation() {
             direccion_entrega,
             ciudad_entrega,
             notas,
+            nombre_destinatario,
+            nombre_remitente,
             destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, telefono, direccion, ciudad),
             remitente:clientes!envios_remitente_id_fkey(nombre, apellido, telefono, direccion, ciudad)
           )
@@ -169,6 +171,8 @@ export default function ActiveRouteNavigation() {
             direccion_entrega,
             ciudad_entrega,
             notas,
+            nombre_destinatario,
+            nombre_remitente,
             destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, telefono, direccion, ciudad),
             remitente:clientes!envios_remitente_id_fkey(nombre, apellido, telefono, direccion, ciudad)
           )
@@ -373,9 +377,10 @@ export default function ActiveRouteNavigation() {
   const nextEnvio = nextStop?.envio;
   const isPickup = nextEnvio?.requiere_retiro;
   const contact = isPickup ? nextEnvio?.remitente : nextEnvio?.destinatario;
+  const city = isPickup ? nextEnvio?.ciudad_retiro : (nextEnvio?.ciudad_entrega || contact?.ciudad);
   const address = isPickup 
-    ? `${nextEnvio?.direccion_retiro}, ${nextEnvio?.ciudad_retiro}`
-    : `${nextEnvio?.direccion_entrega || contact?.direccion}, ${nextEnvio?.ciudad_entrega || contact?.ciudad}`;
+    ? `${nextEnvio?.direccion_retiro}`
+    : `${nextEnvio?.direccion_entrega || contact?.direccion}`;
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -497,11 +502,14 @@ export default function ActiveRouteNavigation() {
               {/* Customer Info */}
               <div className="mb-3">
                 <p className="font-semibold text-lg">
-                  {contact?.nombre} {contact?.apellido}
+                  {isPickup 
+                    ? (nextEnvio.nombre_remitente || `${contact?.nombre || ''} ${contact?.apellido || ''}`.trim())
+                    : (nextEnvio.nombre_destinatario || `${contact?.nombre || ''} ${contact?.apellido || ''}`.trim())
+                  }
                 </p>
                 <div className="flex items-start gap-2 text-muted-foreground">
                   <MapPin className="h-4 w-4 mt-0.5 shrink-0" />
-                  <span className="text-sm">{address}</span>
+                  <span className="text-sm">{address}{city ? `, ${city}` : ''}</span>
                 </div>
               </div>
 
@@ -636,7 +644,20 @@ export default function ActiveRouteNavigation() {
                     )}
                   </div>
                   <p className="font-medium truncate">
-                    {itemContact?.nombre} {itemContact?.apellido}
+                    {isItemPickup 
+                      ? (envio.nombre_remitente || `${itemContact?.nombre || ''} ${itemContact?.apellido || ''}`.trim())
+                      : (envio.nombre_destinatario || `${itemContact?.nombre || ''} ${itemContact?.apellido || ''}`.trim())
+                    }
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
+                    <MapPin className="h-3 w-3 shrink-0" />
+                    {isItemPickup 
+                      ? (envio.direccion_retiro || itemContact?.direccion)
+                      : (envio.direccion_entrega || itemContact?.direccion)
+                    }
+                    {(isItemPickup ? envio.ciudad_retiro : envio.ciudad_entrega) && 
+                      `, ${isItemPickup ? envio.ciudad_retiro : envio.ciudad_entrega}`
+                    }
                   </p>
                   {envio.pago_contra_entrega && !isCompleted && (
                     <Badge variant="outline" className="text-xs mt-1 border-warning text-warning">

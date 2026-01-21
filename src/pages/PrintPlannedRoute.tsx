@@ -56,6 +56,8 @@ export default function PrintPlannedRoute() {
             pago_contra_entrega,
             descripcion,
             cantidad_bultos,
+            nombre_destinatario,
+            nombre_remitente,
             destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, telefono, direccion),
             remitente:clientes!envios_remitente_id_fkey(nombre, apellido, telefono, direccion)
           )
@@ -227,6 +229,9 @@ export default function PrintPlannedRoute() {
               const envio = parada.envio;
               const isRetiro = parada.tipo === 'retiro';
               const cliente = isRetiro ? envio?.remitente : envio?.destinatario;
+              const clienteName = isRetiro 
+                ? (envio?.nombre_remitente || `${cliente?.nombre || ''} ${cliente?.apellido || ''}`.trim())
+                : (envio?.nombre_destinatario || `${cliente?.nombre || ''} ${cliente?.apellido || ''}`.trim());
               const direccion = isRetiro 
                 ? (envio?.direccion_retiro || cliente?.direccion)
                 : (envio?.direccion_entrega || cliente?.direccion);
@@ -249,7 +254,7 @@ export default function PrintPlannedRoute() {
                   </td>
                   <td className="p-2 font-mono text-xs">{envio?.tracking_number}</td>
                   <td className="p-2">
-                    <div className="font-medium">{cliente?.nombre} {cliente?.apellido || ''}</div>
+                    <div className="font-medium">{clienteName}</div>
                     {envio?.cantidad_bultos && (
                       <div className="text-xs text-gray-500">{envio.cantidad_bultos} bulto(s)</div>
                     )}
