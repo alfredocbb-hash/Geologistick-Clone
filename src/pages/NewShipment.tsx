@@ -39,6 +39,7 @@ interface TarifaConceptoPrecio {
   monto: number;
   es_porcentaje?: boolean | null;
   porcentaje?: number | null;
+  multiplicar_por_bultos?: boolean | null;
   concepto?: TarifaConcepto;
 }
 
@@ -377,27 +378,43 @@ export default function NewShipment() {
   // Calcular total por conceptos básicos (considerando porcentaje para seguro)
   const calcularTotalConceptosBasicos = () => {
     const valorDeclarado = parseFloat(formData.valor_declarado) || 0;
+    const cantidadBultos = parseInt(formData.cantidad_bultos) || 1;
     
     return conceptosBasicos.reduce((sum, cp) => {
+      let montoConcepto = 0;
       // Si es porcentaje (seguro), calcular sobre valor declarado
       if (cp.es_porcentaje && cp.porcentaje) {
-        return sum + (valorDeclarado * Number(cp.porcentaje) / 100);
+        montoConcepto = valorDeclarado * Number(cp.porcentaje) / 100;
+      } else {
+        montoConcepto = Number(cp.monto);
       }
-      return sum + Number(cp.monto);
+      // Multiplicar por cantidad de bultos si aplica
+      if (cp.multiplicar_por_bultos) {
+        montoConcepto *= cantidadBultos;
+      }
+      return sum + montoConcepto;
     }, 0);
   };
 
   // Calcular total por conceptos adicionales seleccionados
   const calcularTotalConceptosAdicionales = () => {
     const valorDeclarado = parseFloat(formData.valor_declarado) || 0;
+    const cantidadBultos = parseInt(formData.cantidad_bultos) || 1;
     
     return conceptosAdicionales
       .filter(cp => conceptosSeleccionados.has(cp.concepto_id))
       .reduce((sum, cp) => {
+        let montoConcepto = 0;
         if (cp.es_porcentaje && cp.porcentaje) {
-          return sum + (valorDeclarado * Number(cp.porcentaje) / 100);
+          montoConcepto = valorDeclarado * Number(cp.porcentaje) / 100;
+        } else {
+          montoConcepto = Number(cp.monto);
         }
-        return sum + Number(cp.monto);
+        // Multiplicar por cantidad de bultos si aplica
+        if (cp.multiplicar_por_bultos) {
+          montoConcepto *= cantidadBultos;
+        }
+        return sum + montoConcepto;
       }, 0);
   };
 
