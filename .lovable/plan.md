@@ -1,152 +1,203 @@
 
-# Plan: Corregir Impresión de Etiquetas (3 por A4)
+# Plan: Permitir Cancelar y Editar Rutas en Reparto
 
-## Diagnóstico del Problema
+## Contexto del Problema
 
-Las etiquetas se cortan/parten entre páginas por dos razones principales:
-
-### 1. La página está envuelta en DashboardLayout
-
-En `App.tsx`, la ruta `/print-label` está dentro del layout con sidebar:
-
-```tsx
-// Línea 135
-<Route path="/print-label" element={<DashboardLayout><PrintLabel /></DashboardLayout>} />
-```
-
-Esto causa que el sidebar, header y otros elementos **se impriman también**, desplazando el contenido de las etiquetas.
-
-### 2. Las etiquetas no tienen altura fija
-
-Sin una altura calculada correctamente para que 3 etiquetas quepan exactamente en el área imprimible de A4, el navegador las divide donde considera apropiado.
+Actualmente cuando una ruta ya está "en reparto" (estado `confirmada` o `en_curso`), el administrador necesita poder:
+1. **Cancelar la ruta completa** - liberando todos los envíos para replanificar
+2. **Reprogramar envíos específicos** - cambiar la fecha de entrega para otro día
+3. **Editar rutas en progreso** - aunque el chofer ya haya iniciado
 
 ---
 
 ## Solución Propuesta
 
-### Paso 1: Remover DashboardLayout de la ruta de impresión
+### 1. Agregar Botón "Cancelar Ruta" en la Lista de Rutas Activas
 
-Modificar `src/App.tsx` para que la página de etiquetas se renderice sin el layout:
+Añadir un botón rojo de "Cancelar" junto al de "Editar" en cada ruta activa:
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/pages/RoutePlanner.tsx` | Agregar botón "Cancelar Ruta" con ícono de X |
+| `src/pages/RoutePlanner.tsx` | Agregar estado para diálogo de confirmación |
+
+### 2. Crear Diálogo de Confirmación de Cancelación
+
+Un nuevo componente `CancelRouteDialog` que:
+- Muestre un resumen de la ruta (número, chofer, cantidad de envíos)
+- Pregunte qué hacer con los envíos:
+  - **Liberar para replanificar hoy** (estado → `pendiente`)
+  - **Reprogramar todos para mañana** (estado → `reprogramado` + fecha)
+- Requiera confirmación antes de proceder
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/components/routes/CancelRouteDialog.tsx` | **Nuevo componente** |
+
+### 3. Agregar Opción de Reprogramación en EditRouteDialog
+
+Cuando el admin quita un envío de la ruta, dar la opción de:
+- Quitar y liberar (comportamiento actual)
+- Quitar y reprogramar para otra fecha
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/components/routes/EditRouteDialog.tsx` | Agregar selector de fecha al quitar envíos |
+| `src/components/routes/EditRouteDialog.tsx` | Actualizar lógica para marcar como `reprogramado` |
+
+### 4. Permitir Editar Rutas en Estado `en_curso`
+
+Actualmente si el chofer ya inició la ruta, no debería bloquearse la edición para el admin. Solo agregar una advertencia visual.
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/components/routes/EditRouteDialog.tsx` | Mostrar advertencia si ruta está `en_curso` |
+| `src/components/routes/EditRouteDialog.tsx` | Permitir modificaciones de todas formas |
+
+---
+
+## Flujo de Cancelación de Ruta
+
+```text
+Admin ve ruta activa → Click "Cancelar" → 
+
+Diálogo de Confirmación:
+┌─────────────────────────────────────────────┐
+│  ⚠️ Cancelar Ruta RUTA-2025-0045            │
+│                                             │
+│  Esta acción liberará los 8 envíos          │
+│  asignados a esta ruta.                     │
+│                                             │
+│  ¿Qué deseas hacer con los envíos?          │
+│                                             │
+│  ○ Liberar para replanificar hoy            │
+│  ○ Reprogramar todos para: [📅 24/01/2026]  │
+│                                             │
+│  Motivo: [_________________________]        │
+│                                             │
+│  [Cancelar]        [Confirmar Cancelación]  │
+└─────────────────────────────────────────────┘
+```
+
+---
+
+## Lógica de Backend (Cancelar Ruta)
+
+La mutación de cancelación hará:
+
+1. **Eliminar todas las paradas** de la tabla `ruta_paradas`
+2. **Actualizar cada envío**:
+   - `chofer_id` → `null`
+   - `estado` → `pendiente` o `reprogramado`
+   - `fecha_entrega` → nueva fecha (si se reprograma)
+3. **Registrar en historial** cada cambio de envío
+4. **Actualizar la ruta** con estado → `cancelada`
 
 ```tsx
-// Cambiar línea 135 de:
-<Route path="/print-label" element={<DashboardLayout><PrintLabel /></DashboardLayout>} />
-
-// A:
-<Route path="/print-label" element={<PrintLabel />} />
-```
-
-Esto es consistente con `PrintRouteSheet` (línea 141) y `PrintPlannedRoute` (línea 142) que tampoco usan DashboardLayout.
-
----
-
-### Paso 2: Actualizar estilos de impresión en PrintLabel.tsx
-
-Implementar la estrategia probada de `PrintRouteSheet.tsx` que oculta todo excepto el contenido de impresión:
-
-```css
-@media print {
-  @page {
-    size: A4 portrait;
-    margin: 5mm;
+// Pseudocódigo de la mutación
+const cancelRouteMutation = useMutation({
+  mutationFn: async ({ routeId, action, newDate, reason }) => {
+    // 1. Obtener todos los envíos de la ruta
+    const { data: paradas } = await supabase
+      .from('ruta_paradas')
+      .select('envio_id')
+      .eq('ruta_id', routeId);
+    
+    const envioIds = paradas.map(p => p.envio_id);
+    
+    // 2. Actualizar envíos según la acción
+    const newEstado = action === 'reschedule' ? 'reprogramado' : 'pendiente';
+    
+    await supabase
+      .from('envios')
+      .update({
+        chofer_id: null,
+        estado: newEstado,
+        fecha_entrega: action === 'reschedule' ? newDate : null,
+      })
+      .in('id', envioIds);
+    
+    // 3. Registrar historial
+    for (const envioId of envioIds) {
+      await supabase.from('envio_historial').insert({
+        envio_id: envioId,
+        estado_anterior: 'en_reparto',
+        estado_nuevo: newEstado,
+        notas: `Ruta ${routeNumber} cancelada. ${reason}`,
+        created_by: userId,
+      });
+    }
+    
+    // 4. Eliminar paradas
+    await supabase
+      .from('ruta_paradas')
+      .delete()
+      .eq('ruta_id', routeId);
+    
+    // 5. Marcar ruta como cancelada
+    await supabase
+      .from('rutas_planificadas')
+      .update({ 
+        estado: 'cancelada',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', routeId);
   }
-  
-  body * {
-    visibility: hidden;
-  }
-  
-  .print-content, .print-content * {
-    visibility: visible;
-  }
-  
-  .print-content {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-  }
-}
-```
-
----
-
-### Paso 3: Calcular altura fija para 3 etiquetas por página
-
-Una hoja A4 portrait tiene 297mm de alto. Con márgenes de 5mm arriba y abajo:
-
-- Altura útil: 297 - 10 = **287mm**
-- Altura por etiqueta: 287 / 3 = **~95mm**
-- Con gap entre etiquetas: **90mm por etiqueta + 2.3mm de margen**
-
-Aplicar altura fija a cada `.label-container`:
-
-```css
-.label-container {
-  height: 90mm !important;
-  max-height: 90mm !important;
-  overflow: hidden !important;
-  page-break-inside: avoid !important;
-  break-inside: avoid !important;
-}
+});
 ```
 
 ---
 
-### Paso 4: Agregar clase contenedora para print
+## Cambios en EditRouteDialog
 
-Envolver las etiquetas en un div con clase `print-content` para la estrategia de visibilidad:
+Agregar pestaña o sección para reprogramar:
 
 ```tsx
-<div className="print-content">
-  <div className="grid grid-cols-1 ...">
-    {labels.map(...)}
-  </div>
+// Al quitar un envío, mostrar opción de fecha
+<div className="flex items-center gap-2">
+  <Button onClick={() => toggleRemove(envioId)}>
+    Quitar
+  </Button>
+  
+  {envsToRemove.includes(envioId) && (
+    <div className="flex items-center gap-2">
+      <Label>Reprogramar para:</Label>
+      <Input 
+        type="date" 
+        min={format(new Date(), 'yyyy-MM-dd')}
+        onChange={(e) => setRescheduleDate(envioId, e.target.value)}
+      />
+    </div>
+  )}
 </div>
 ```
 
 ---
 
-## Resumen de Cambios
+## Resumen de Archivos a Modificar
 
-| Archivo | Cambio |
-|---------|--------|
-| `src/App.tsx` | Remover `DashboardLayout` de la ruta `/print-label` |
-| `src/pages/PrintLabel.tsx` | Actualizar estilos `@media print` con estrategia de visibilidad |
-| `src/pages/PrintLabel.tsx` | Agregar altura fija de 90mm por etiqueta |
-| `src/pages/PrintLabel.tsx` | Agregar clase `print-content` al contenedor de etiquetas |
+| Archivo | Acción | Descripción |
+|---------|--------|-------------|
+| `src/pages/RoutePlanner.tsx` | Modificar | Agregar botón "Cancelar" y estado del diálogo |
+| `src/components/routes/CancelRouteDialog.tsx` | **Crear** | Nuevo diálogo de confirmación de cancelación |
+| `src/components/routes/EditRouteDialog.tsx` | Modificar | Agregar opción de reprogramación al quitar envíos |
+
+---
+
+## Consideraciones Importantes
+
+1. **Permisos**: Solo usuarios con rol `admin` o `supervisor` podrán cancelar rutas
+2. **Notificación al chofer**: Si la ruta está `en_curso`, el chofer verá la ruta vacía/cancelada en su app
+3. **Auditoría**: Todos los cambios quedan registrados en `envio_historial` con el motivo
+4. **Estado `cancelada`**: Es un nuevo estado que se agregará a la ruta (no afecta otras funcionalidades)
 
 ---
 
 ## Resultado Esperado
 
-Al imprimir desde Chrome/Edge a 100%:
-- 3 etiquetas completas por hoja A4
-- Sin cortes ni particiones entre páginas
-- Sin elementos del sidebar/header en la impresión
-- Cada etiqueta mantiene todo su contenido visible (tracking, QR, destinatario, etc.)
-
----
-
-## Sección Técnica
-
-### Por qué la estrategia de visibilidad funciona mejor
-
-La técnica de `visibility: hidden` en todo el body y luego `visible` solo en el contenido de impresión es más robusta que `display: none` porque:
-
-1. **No afecta el layout**: `visibility: hidden` mantiene el espacio del elemento pero lo hace invisible
-2. **Herencia selectiva**: Los hijos pueden anular con `visibility: visible`
-3. **Posicionamiento absoluto**: Al usar `position: absolute` en el contenido de impresión, se desacopla completamente del flujo normal del documento
-
-### Cálculo de altura para A4
-
-```text
-A4 Portrait: 210mm x 297mm
-
-Con @page { margin: 5mm }:
-- Ancho útil: 210 - 10 = 200mm
-- Alto útil: 297 - 10 = 287mm
-
-Para 3 etiquetas:
-- 287mm / 3 = 95.67mm teórico
-- 90mm práctico (dejando margen para separación visual)
-```
+El administrador podrá:
+- ✅ Ver botón "Cancelar" en cada ruta activa
+- ✅ Elegir si liberar envíos para hoy o reprogramar para otra fecha
+- ✅ Ingresar un motivo de cancelación (para auditoría)
+- ✅ Ver los envíos liberados en la lista de pendientes o reprogramados
+- ✅ Replanificar la ruta con los cambios necesarios
