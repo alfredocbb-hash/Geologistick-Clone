@@ -1,60 +1,115 @@
 
 
-# Plan: Aumentar Frecuencia de Tracking a 30 Segundos
+# Plan: Corregir Visualización del Recorrido en Mapa
 
-## Situación Actual
+## Problema Identificado
 
-El archivo `src/hooks/useGeolocation.ts` tiene dos intervalos:
+El mapa muestra el diálogo correctamente y los datos existen (10+ puntos GPS, snap-to-roads funciona), pero **el polyline no se ve** porque:
 
-| Intervalo | Valor Actual | Propósito |
-|-----------|--------------|-----------|
-| `updateInterval` (línea 26) | 30 segundos | Actualizar posición actual en `driver_locations` |
-| Historial (línea 65) | 60 segundos | Guardar en `driver_location_history` |
-
-El intervalo de historial sigue en 60 segundos, que es el que afecta la precisión de las rutas.
+1. El `fitBounds` del `MapView` solo considera los **markers**, no el **polylinePath**
+2. El zoom inicial (14) es demasiado alto para rutas que abarcan 30+ km
+3. El mapa no ajusta sus límites para incluir todos los puntos del recorrido
 
 ---
 
-## Cambio Requerido
+## Solución
 
-Modificar la línea 65 de `src/hooks/useGeolocation.ts`:
+Modificar el `MapView.tsx` para incluir también los puntos del `polylinePath` en el cálculo de bounds, garantizando que toda la ruta sea visible.
 
-**Antes:**
+---
+
+## Cambios Técnicos
+
+### Archivo: `src/components/maps/MapView.tsx`
+
+#### 1. Actualizar el `useEffect` de fitBounds para incluir polylinePath
+
+**Antes (líneas 114-128):**
 ```typescript
-if (now - lastHistoryUpdateRef.current >= 60000) { // 60 seconds
+useEffect(() => {
+  if (!map || markers.length === 0) return;
+  // Solo considera markers
+}, [map, markers, zoom]);
 ```
 
 **Después:**
 ```typescript
-if (now - lastHistoryUpdateRef.current >= 30000) { // 30 seconds
+useEffect(() => {
+  if (!map) return;
+  
+  const hasMarkers = markers.length > 0;
+  const hasPolyline = polylinePath.length > 0;
+  
+  if (!hasMarkers && !hasPolyline) return;
+
+  const bounds = new google.maps.LatLngBounds();
+  
+  // Incluir markers en bounds
+  markers.forEach((marker) => {
+    bounds.extend(marker.position);
+  });
+  
+  // Incluir puntos del polyline en bounds
+  polylinePath.forEach((point) => {
+    bounds.extend(point);
+  });
+
+  // Si solo hay 1 punto total, centrar y hacer zoom
+  if (markers.length <= 1 && polylinePath.length <= 1) {
+    const singlePoint = markers[0]?.position || polylinePath[0];
+    if (singlePoint) {
+      map.setCenter(singlePoint);
+      map.setZoom(zoom);
+    }
+  } else {
+    // Ajustar a todos los puntos con padding
+    map.fitBounds(bounds, 50);
+  }
+}, [map, markers, polylinePath, zoom]);
 ```
 
 ---
 
-## Archivo a Modificar
+## Archivos a Modificar
 
-| Archivo | Línea | Cambio |
-|---------|-------|--------|
-| `src/hooks/useGeolocation.ts` | 65 | Cambiar `60000` a `30000` |
-
----
-
-## Impacto
-
-- **Más datos:** El doble de puntos GPS por minuto
-- **Rutas más precisas:** Menos interpolación necesaria con Snap to Roads
-- **Más almacenamiento:** Aproximadamente 2x más registros en `driver_location_history`
-- **Mejor trazabilidad:** Recorridos más detallados calle por calle
+| Archivo | Cambio |
+|---------|--------|
+| `src/components/maps/MapView.tsx` | Actualizar fitBounds para incluir polylinePath |
 
 ---
 
-## Prueba de Funcionamiento
+## Resultado Esperado
 
-Para verificar que funciona correctamente:
+1. Al abrir "Ver recorrido", el mapa ajustará automáticamente el zoom para mostrar **todo el trayecto**
+2. La línea azul (Polyline) será visible desde el punto de inicio hasta el punto final
+3. Los marcadores de inicio (verde) y posición actual (camión) estarán visibles
+4. El zoom se ajustará dinámicamente según la distancia del recorrido
 
-1. Inicia sesión como chofer
-2. Activa una ruta
-3. Muévete durante 2-3 minutos
-4. Verifica en el Mapa en Vivo que los puntos se registren cada 30 segundos
-5. Al ver el historial de recorrido, debería haber más puntos y la ruta snap-to-roads más detallada
+---
+
+## Diagrama de Antes vs Después
+
+```text
+ANTES:                              DESPUÉS:
+┌─────────────────────┐            ┌─────────────────────┐
+│                     │            │    ○ Inicio         │
+│    Buenos Aires     │            │    │                │
+│    (zoom muy alto)  │            │    ↓ ←─ Polyline    │
+│                     │            │    │    visible     │
+│  Sin polyline       │            │    ↓                │
+│  visible            │            │    ○ Actual         │
+│                     │            │                     │
+└─────────────────────┘            └─────────────────────┘
+     Markers y                          Mapa ajustado
+     polyline fuera                     a todo el
+     del viewport                       recorrido
+```
+
+---
+
+## Notas Adicionales
+
+- El cambio es retrocompatible: si no hay polyline, sigue funcionando solo con markers
+- El padding de 50px asegura que los puntos no queden en el borde del mapa
+- Esto también mejorará la visualización en otros usos del MapView
 
