@@ -1,81 +1,119 @@
 
 
-# Plan: Corregir Nombres Duplicados y Logo del Sidebar
+# Plan: Corregir Etiquetas de Impresión en Blanco
 
-## Problema 1: Nombres Duplicados en Envíos Importados
+## Diagnóstico del Problema
 
-### Diagnóstico
-Los envíos importados tienen los nombres correctos guardados en los campos directos de la tabla `envios`:
-- `nombre_remitente` = "KINGDOM VINTAGE", "GABRIEL SANABRIA", etc.
-- `nombre_destinatario` = "Gabriel Marrero", "Victor Orlando Ordoñez", etc.
+El CSS de impresión tiene un selector incorrecto en la línea 401-404:
 
-Sin embargo, la página de envíos lee los nombres desde la relación con `clientes`, donde TODOS los registros apuntan incorrectamente al mismo cliente "Alejandro Maximiliano Echavarria".
+```css
+body > *:not(.print-content) {
+  display: none !important;
+}
+```
 
-### Solución
-Modificar `Shipments.tsx` para priorizar los campos directos del envío sobre la relación con clientes:
+### ¿Por qué falla?
+- En React, toda la app está dentro de `<div id="root">`
+- La estructura real es: `body > #root > ... > .print-content`
+- El selector busca hijos **directos** de body con clase `.print-content`
+- Como `.print-content` no es hijo directo, TODO se oculta
 
-| Archivo | Cambio |
-|---------|--------|
-| `src/pages/Shipments.tsx` | Líneas 305-309: Usar `nombre_remitente`/`nombre_destinatario` primero, fallback a relación cliente |
+---
 
-**Lógica propuesta:**
-```tsx
-// Remitente
-{envio.nombre_remitente || 
-  (envio.remitente ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}` : '-')}
+## Solución
 
-// Destinatario
-{envio.nombre_destinatario || 
-  (envio.destinatario ? `${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}` : '-')}
+Modificar los estilos de impresión en `src/pages/PrintLabel.tsx` para usar una estrategia diferente:
+
+### Cambios en el CSS (líneas 394-425):
+
+**Antes:**
+```css
+@media print {
+  /* Ocultar todo excepto contenido de impresión */
+  body > *:not(.print-content) {
+    display: none !important;
+  }
+  
+  .no-print {
+    display: none !important;
+  }
+  ...
+}
+```
+
+**Después:**
+```css
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 5mm;
+  }
+  
+  /* Ocultar elementos que no se deben imprimir */
+  .no-print,
+  header,
+  nav,
+  footer,
+  [data-radix-portal] {
+    display: none !important;
+  }
+  
+  /* Reset del body y html */
+  html, body, #root {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 210mm !important;
+    background: white !important;
+  }
+  
+  /* Asegurar que print-content sea visible */
+  .print-content {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    width: 200mm !important;
+    padding: 0 !important;
+    margin: 0 auto !important;
+  }
+  
+  /* ... resto de estilos igual ... */
+}
 ```
 
 ---
 
-## Problema 2: Logo Sobresale al Cerrar Menú
+## Archivo a Modificar
 
-### Diagnóstico
-Cuando hay un logo personalizado (branding), el código siempre muestra la imagen completa sin verificar si el sidebar está colapsado.
-
-### Solución
-Modificar `AppSidebar.tsx` para ajustar el logo según el estado del sidebar:
-
-| Archivo | Cambio |
-|---------|--------|
-| `src/components/layout/AppSidebar.tsx` | Líneas 271-290: Ajustar tamaño del logo cuando `collapsed` |
-
-**Lógica propuesta:**
-```tsx
-{branding?.logo_light ? (
-  <img 
-    src={branding.logo_light} 
-    alt={branding.nombre_app || 'Logo'} 
-    className={cn(
-      "object-contain transition-all",
-      collapsed 
-        ? "h-8 w-8 max-w-[32px]"  // Logo pequeño cuando colapsado
-        : "h-10 w-auto max-w-[160px]"  // Logo normal cuando expandido
-    )}
-  />
-) : (
-  // ... código existente
-)}
-```
-
-Adicionalemente, agregar `overflow-hidden` al contenedor del header del sidebar para prevenir desbordamiento.
+| Archivo | Líneas | Cambio |
+|---------|--------|--------|
+| `src/pages/PrintLabel.tsx` | 394-425 | Reemplazar selector `body > *:not(.print-content)` por estrategia de clases específicas |
 
 ---
 
-## Resumen de Archivos a Modificar
+## Cambios Clave
 
-| Archivo | Cambio |
-|---------|--------|
-| `src/pages/Shipments.tsx` | Priorizar campos directos `nombre_remitente` y `nombre_destinatario` |
-| `src/components/layout/AppSidebar.tsx` | Ajustar tamaño del logo según estado `collapsed` |
+1. **Eliminar** el selector problemático `body > *:not(.print-content)`
+2. **Agregar** `#root` a los resets de html/body
+3. **Usar** `.no-print` en elementos específicos en lugar de ocultar todo
+4. **Asegurar** visibilidad explícita de `.print-content`
 
 ---
 
 ## Resultado Esperado
 
-1. **Envíos**: Mostrarán los nombres correctos importados desde el CSV (KINGDOM VINTAGE, Gabriel Marrero, etc.)
-2. **Sidebar**: El logo se redimensionará correctamente al cerrar el menú, sin sobresalir del área colapsada
+Las etiquetas se imprimirán correctamente mostrando:
+- Información del envío
+- Código QR
+- Datos del remitente/destinatario
+- Precio y tipo de pago
+
+---
+
+## Nota para el Usuario
+
+Después de aplicar el cambio, al imprimir seleccione:
+- **Escala**: 100% (no "Ajustar al ancho")
+- **Márgenes**: Mínimo o Ninguno
 
