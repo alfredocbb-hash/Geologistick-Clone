@@ -1,71 +1,104 @@
 
+# Plan: Corregir Estilos de Impresión de Etiquetas
 
-# Plan: Corregir Visualización del Recorrido en Mapa
+## Problemas Identificados
 
-## Problema Identificado
-
-El mapa muestra el diálogo correctamente y los datos existen (10+ puntos GPS, snap-to-roads funciona), pero **el polyline no se ve** porque:
-
-1. El `fitBounds` del `MapView` solo considera los **markers**, no el **polylinePath**
-2. El zoom inicial (14) es demasiado alto para rutas que abarcan 30+ km
-3. El mapa no ajusta sus límites para incluir todos los puntos del recorrido
+1. **Colores de fondo desaparecen**: Los badges con colores (verde, negro, violeta) no se imprimen porque los navegadores por defecto no imprimen fondos de color.
+2. **QR diminuto**: El código QR tiene un tamaño fijo en píxeles (`size={64}`) que se reduce al imprimir.
+3. **Cuadrícula no se mantiene**: Aunque hay estilos de grid, algunos navegadores requieren reforzar la propiedad `print-color-adjust`.
+4. **Cortes de etiquetas**: Necesita reforzar `break-inside: avoid` en todos los elementos internos.
 
 ---
 
-## Solución
+## Solución Propuesta
 
-Modificar el `MapView.tsx` para incluir también los puntos del `polylinePath` en el cálculo de bounds, garantizando que toda la ruta sea visible.
+### Archivo: `src/pages/PrintLabel.tsx`
 
----
+#### 1. Forzar colores de fondo en elementos específicos
 
-## Cambios Técnicos
+Agregar estilos explícitos para todos los elementos con fondo de color:
 
-### Archivo: `src/components/maps/MapView.tsx`
+```css
+/* Forzar impresión de colores de fondo */
+.label-container,
+.label-container * {
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+  color-adjust: exact !important;
+}
 
-#### 1. Actualizar el `useEffect` de fitBounds para incluir polylinePath
-
-**Antes (líneas 114-128):**
-```typescript
-useEffect(() => {
-  if (!map || markers.length === 0) return;
-  // Solo considera markers
-}, [map, markers, zoom]);
+/* Badges y elementos con fondo de color */
+.label-container [class*="bg-"] {
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+  color-adjust: exact !important;
+}
 ```
 
-**Después:**
-```typescript
-useEffect(() => {
-  if (!map) return;
-  
-  const hasMarkers = markers.length > 0;
-  const hasPolyline = polylinePath.length > 0;
-  
-  if (!hasMarkers && !hasPolyline) return;
+#### 2. Escalar el QR a tamaño físico fijo
 
-  const bounds = new google.maps.LatLngBounds();
-  
-  // Incluir markers en bounds
-  markers.forEach((marker) => {
-    bounds.extend(marker.position);
-  });
-  
-  // Incluir puntos del polyline en bounds
-  polylinePath.forEach((point) => {
-    bounds.extend(point);
-  });
+Cambiar el tamaño del QR en los estilos de impresión:
 
-  // Si solo hay 1 punto total, centrar y hacer zoom
-  if (markers.length <= 1 && polylinePath.length <= 1) {
-    const singlePoint = markers[0]?.position || polylinePath[0];
-    if (singlePoint) {
-      map.setCenter(singlePoint);
-      map.setZoom(zoom);
-    }
-  } else {
-    // Ajustar a todos los puntos con padding
-    map.fitBounds(bounds, 50);
-  }
-}, [map, markers, polylinePath, zoom]);
+```css
+/* QR Code a tamaño físico fijo */
+.label-container svg[viewBox] {
+  width: 25mm !important;
+  height: 25mm !important;
+  min-width: 25mm !important;
+  min-height: 25mm !important;
+}
+```
+
+#### 3. Reforzar ocultación de elementos no imprimibles
+
+Agregar más selectores para asegurar que solo las etiquetas se imprimen:
+
+```css
+/* Ocultar todo excepto las etiquetas */
+body > *:not(.print-content),
+.no-print,
+button,
+select,
+[data-radix-portal],
+header,
+nav,
+footer,
+.gradient-primary:not(.label-container *) {
+  display: none !important;
+  visibility: hidden !important;
+}
+```
+
+#### 4. Reforzar break-inside en elementos internos
+
+```css
+/* Evitar cortes dentro de etiquetas */
+.label-container,
+.label-container > * {
+  break-inside: avoid !important;
+  page-break-inside: avoid !important;
+}
+```
+
+#### 5. Estilos específicos para el badge de servicio y bulto
+
+Agregar reglas explícitas para preservar los colores de los badges:
+
+```css
+/* Preservar colores del badge de tipo de servicio */
+.label-container .bg-primary,
+.label-container .bg-success,
+.label-container .bg-warning,
+.label-container .bg-accent {
+  background-color: inherit !important;
+  -webkit-print-color-adjust: exact !important;
+}
+
+/* Preservar el badge negro de BULTO */
+.label-container .bg-foreground {
+  background-color: #1e293b !important;
+  color: white !important;
+}
 ```
 
 ---
@@ -74,42 +107,104 @@ useEffect(() => {
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/components/maps/MapView.tsx` | Actualizar fitBounds para incluir polylinePath |
+| `src/pages/PrintLabel.tsx` | Actualizar bloque `<style>` con las mejoras de impresión |
+
+---
+
+## Cambios Específicos en el CSS de Impresión
+
+### Bloque @media print actualizado:
+
+```css
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 5mm;
+  }
+  
+  /* NUEVO: Forzar impresión de colores */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+  
+  /* NUEVO: Ocultar header, botones, navegación */
+  .no-print,
+  header,
+  nav,
+  footer,
+  button,
+  select,
+  [data-radix-portal],
+  .min-h-screen > div:first-child {
+    display: none !important;
+    visibility: hidden !important;
+  }
+  
+  /* Container principal */
+  .print-content {
+    display: block !important;
+  }
+  
+  .print-content > div {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 3mm !important;
+  }
+  
+  /* NUEVO: QR a tamaño físico */
+  .label-container svg {
+    width: auto !important;
+    height: auto !important;
+  }
+  
+  .label-container .flex.justify-center.mb-2 svg {
+    width: 25mm !important;
+    height: 25mm !important;
+  }
+  
+  /* NUEVO: Evitar cortes */
+  .label-container {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+  
+  /* NUEVO: Colores específicos para badges */
+  .label-container .bg-foreground {
+    background-color: #1e293b !important;
+    color: white !important;
+  }
+  
+  .label-container .bg-success {
+    background-color: #16a34a !important;
+    color: white !important;
+  }
+  
+  .label-container .bg-primary {
+    background-color: #3b82f6 !important;
+    color: white !important;
+  }
+  
+  .label-container .bg-warning {
+    background-color: #f59e0b !important;
+    color: white !important;
+  }
+  
+  .label-container .bg-accent {
+    background-color: #8b5cf6 !important;
+    color: white !important;
+  }
+}
+```
 
 ---
 
 ## Resultado Esperado
 
-1. Al abrir "Ver recorrido", el mapa ajustará automáticamente el zoom para mostrar **todo el trayecto**
-2. La línea azul (Polyline) será visible desde el punto de inicio hasta el punto final
-3. Los marcadores de inicio (verde) y posición actual (camión) estarán visibles
-4. El zoom se ajustará dinámicamente según la distancia del recorrido
-
----
-
-## Diagrama de Antes vs Después
-
-```text
-ANTES:                              DESPUÉS:
-┌─────────────────────┐            ┌─────────────────────┐
-│                     │            │    ○ Inicio         │
-│    Buenos Aires     │            │    │                │
-│    (zoom muy alto)  │            │    ↓ ←─ Polyline    │
-│                     │            │    │    visible     │
-│  Sin polyline       │            │    ↓                │
-│  visible            │            │    ○ Actual         │
-│                     │            │                     │
-└─────────────────────┘            └─────────────────────┘
-     Markers y                          Mapa ajustado
-     polyline fuera                     a todo el
-     del viewport                       recorrido
-```
-
----
-
-## Notas Adicionales
-
-- El cambio es retrocompatible: si no hay polyline, sigue funcionando solo con markers
-- El padding de 50px asegura que los puntos no queden en el borde del mapa
-- Esto también mejorará la visualización en otros usos del MapView
-
+| Problema | Antes | Después |
+|----------|-------|---------|
+| Colores de fondo | Desaparecen | Verde, negro, azul visibles |
+| Tamaño del QR | Diminuto (64px) | 2.5cm fijo |
+| Cuadrícula | Se rompe | Grid 2×3 o 3×2 mantenido |
+| Cortes de página | Etiquetas cortadas | Cada etiqueta íntegra |
