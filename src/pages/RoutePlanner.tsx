@@ -48,6 +48,7 @@ import {
   RefreshCw,
   Upload,
   Star,
+  XCircle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -56,6 +57,7 @@ import MapView, { MarkerInfo } from "@/components/maps/MapView";
 import { ShipmentMapPopup } from "@/components/maps/ShipmentMapPopup";
 import { BranchMapPopup } from "@/components/maps/BranchMapPopup";
 import EditRouteDialog from "@/components/routes/EditRouteDialog";
+import CancelRouteDialog from "@/components/routes/CancelRouteDialog";
 import ImportShipmentsDialog from "@/components/import/ImportShipmentsDialog";
 import RescheduledShipmentsList from "@/components/routes/RescheduledShipmentsList";
 import SaveFrequentRouteDialog from "@/components/routes/SaveFrequentRouteDialog";
@@ -104,6 +106,7 @@ export default function RoutePlanner() {
   const [selectedReprogramados, setSelectedReprogramados] = useState<string[]>([]);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showSaveFrequentDialog, setShowSaveFrequentDialog] = useState(false);
+  const [cancellingRoute, setCancellingRoute] = useState<any | null>(null);
 
   // Fetch sucursal de origen del usuario
   const { data: sucursalOrigen } = useQuery({
@@ -1362,6 +1365,14 @@ export default function RoutePlanner() {
                             <Edit className="h-4 w-4 mr-1" />
                             Editar
                           </Button>
+                          <Button 
+                            variant="destructive" 
+                            size="sm"
+                            onClick={() => setCancellingRoute(ruta)}
+                          >
+                            <XCircle className="h-4 w-4 mr-1" />
+                            Cancelar
+                          </Button>
                         </div>
                       </div>
                       
@@ -1393,6 +1404,14 @@ export default function RoutePlanner() {
         <EditRouteDialog
           route={editingRoute}
           onClose={() => setEditingRoute(null)}
+        />
+      )}
+
+      {/* Cancel Route Dialog */}
+      {cancellingRoute && (
+        <CancelRouteDialog
+          route={cancellingRoute}
+          onClose={() => setCancellingRoute(null)}
         />
       )}
 
