@@ -111,21 +111,39 @@ function MapViewComponent({
     );
   }, [showRoute, origin, destination]);
 
-  // Fit bounds to markers
+  // Fit bounds to markers and polyline
   useEffect(() => {
-    if (!map || markers.length === 0) return;
+    if (!map) return;
+    
+    const hasMarkers = markers.length > 0;
+    const hasPolyline = polylinePath.length > 0;
+    
+    if (!hasMarkers && !hasPolyline) return;
 
-    if (markers.length === 1) {
-      map.setCenter(markers[0].position);
-      map.setZoom(zoom);
+    const bounds = new google.maps.LatLngBounds();
+    
+    // Include markers in bounds
+    markers.forEach((marker) => {
+      bounds.extend(marker.position);
+    });
+    
+    // Include polyline points in bounds
+    polylinePath.forEach((point) => {
+      bounds.extend(point);
+    });
+
+    // If only 1 point total, center and zoom
+    if (markers.length <= 1 && polylinePath.length <= 1) {
+      const singlePoint = markers[0]?.position || polylinePath[0];
+      if (singlePoint) {
+        map.setCenter(singlePoint);
+        map.setZoom(zoom);
+      }
     } else {
-      const bounds = new google.maps.LatLngBounds();
-      markers.forEach((marker) => {
-        bounds.extend(marker.position);
-      });
+      // Fit to all points with padding
       map.fitBounds(bounds, 50);
     }
-  }, [map, markers, zoom]);
+  }, [map, markers, polylinePath, zoom]);
 
   if (loadError) {
     return (
