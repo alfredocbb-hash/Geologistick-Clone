@@ -398,26 +398,11 @@ export default function PrintLabel() {
             margin: 5mm;
           }
           
-          /* Ocultar todo por defecto */
-          body * {
-            visibility: hidden;
+          /* Ocultar todo excepto contenido de impresión */
+          body > *:not(.print-content) {
+            display: none !important;
           }
           
-          /* Mostrar solo el contenido de impresión */
-          .print-content,
-          .print-content * {
-            visibility: visible;
-          }
-          
-          .print-content {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            padding: 0 !important;
-          }
-          
-          /* Ocultar header y elementos no-print */
           .no-print {
             display: none !important;
           }
@@ -427,38 +412,51 @@ export default function PrintLabel() {
             print-color-adjust: exact !important;
             margin: 0 !important;
             padding: 0 !important;
+            width: 210mm !important;
           }
           
-          /* Grid se convierte en bloque para impresión */
-          .print-content > div {
+          /* Contenedor principal - position static para flujo normal */
+          .print-content {
+            position: static !important;
+            width: 200mm !important;
+            padding: 0 !important;
+            margin: 0 auto !important;
             display: block !important;
           }
           
-          /* Cada etiqueta: altura fija de 90mm para 3 por página */
+          /* Grid a columna única */
+          .print-content > div {
+            display: flex !important;
+            flex-direction: column !important;
+            width: 200mm !important;
+            gap: 0 !important;
+          }
+          
+          /* Cada etiqueta ocupa el ancho completo */
           .label-container {
-            width: 100% !important;
-            max-width: 100% !important;
+            width: 200mm !important;
+            min-width: 200mm !important;
+            max-width: 200mm !important;
             height: 90mm !important;
             max-height: 90mm !important;
             overflow: hidden !important;
             page-break-inside: avoid !important;
             break-inside: avoid !important;
             margin-bottom: 2mm !important;
-            padding: 3mm !important;
+            padding: 4mm !important;
             box-sizing: border-box !important;
             border: 1px solid black !important;
             border-radius: 0 !important;
             background: white !important;
           }
           
-          /* Forzar salto de página después de cada 3 etiquetas */
+          /* Salto de página cada 3 etiquetas */
           .label-container:nth-child(3n) {
             page-break-after: always !important;
             break-after: page !important;
             margin-bottom: 0 !important;
           }
           
-          /* Última etiqueta no fuerza salto */
           .label-container:last-child {
             page-break-after: auto !important;
             break-after: auto !important;
