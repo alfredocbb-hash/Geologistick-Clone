@@ -303,10 +303,10 @@ export default function Shipments() {
                       {envio.tracking_number}
                     </TableCell>
                     <TableCell>
-                      {envio.remitente ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}` : '-'}
+                      {envio.nombre_remitente || (envio.remitente ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}` : '-')}
                     </TableCell>
                     <TableCell>
-                      {envio.destinatario ? `${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}` : '-'}
+                      {envio.nombre_destinatario || (envio.destinatario ? `${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}` : '-')}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {envio.sucursal_origen?.nombre || '-'}
