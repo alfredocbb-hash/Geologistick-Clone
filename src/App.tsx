@@ -132,7 +132,7 @@ function AppRoutes() {
       {/* Envíos */}
       <Route path="/shipments" element={<DashboardLayout><Shipments /></DashboardLayout>} />
       <Route path="/shipments/new" element={<DashboardLayout><NewShipment /></DashboardLayout>} />
-      <Route path="/print-label" element={<DashboardLayout><PrintLabel /></DashboardLayout>} />
+      <Route path="/print-label" element={<PrintLabel />} />
       
       {/* Operaciones */}
       <Route path="/scan" element={<DashboardLayout><ScanQR /></DashboardLayout>} />

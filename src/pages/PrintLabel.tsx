@@ -192,9 +192,9 @@ export default function PrintLabel() {
   const deliveryInfo = getDeliveryAddress();
 
   return (
-    <div className="print-labels-container">
+    <div className="min-h-screen bg-background">
       {/* Header - No se imprime */}
-      <div className="flex items-center justify-between print:hidden p-4">
+      <div className="flex items-center justify-between p-4 no-print">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-5 w-5" />
@@ -212,48 +212,48 @@ export default function PrintLabel() {
         </Button>
       </div>
 
-      {/* Labels Container */}
-      <div className="print:p-0 p-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 print:block">
+      {/* Labels Container - Clase print-content para estrategia de visibilidad */}
+      <div className="print-content p-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {labels.map((bultoNum) => (
             <div 
               key={bultoNum}
-              className="label-container bg-white border-2 border-foreground rounded-lg p-3 print:p-2 print:rounded-none print:border print:border-black"
+              className="label-container bg-white border-2 border-foreground rounded-lg p-3"
             >
               {/* Header: Sucursal Origen */}
               <div className="flex items-center justify-between border-b border-foreground pb-1 mb-2">
                 <div className="flex items-center gap-1">
-                  <Building2 className="h-4 w-4 print:h-3 print:w-3" />
+                  <Building2 className="h-4 w-4" />
                   <div>
-                    <p className="font-bold text-xs print:text-[10px]">
+                    <p className="font-bold text-xs">
                       {envio.sucursal_origen?.codigo || 'XXX'} - {envio.sucursal_origen?.nombre || 'Sin sucursal'}
                     </p>
                     {envio.sucursal_origen?.telefono && (
-                      <p className="text-[10px] print:text-[8px] text-muted-foreground">
+                      <p className="text-[10px] text-muted-foreground">
                         Tel: {envio.sucursal_origen.telefono}
                       </p>
                     )}
                   </div>
                 </div>
-                <div className="text-right text-[10px] print:text-[8px] text-muted-foreground">
+                <div className="text-right text-[10px] text-muted-foreground">
                   {format(new Date(envio.created_at), 'dd/MM/yyyy', { locale: es })}
                 </div>
               </div>
 
               {/* Tracking Number */}
               <div className="text-center mb-2">
-                <p className="font-mono font-bold text-sm print:text-xs tracking-wider">
+                <p className="font-mono font-bold text-sm tracking-wider">
                   {envio.tracking_number}
                 </p>
                 
                 {/* Bulto indicator */}
                 <div className="inline-flex items-center gap-1 bg-foreground text-background px-3 py-1 rounded my-1">
-                  <Package className="h-4 w-4 print:h-3 print:w-3" />
-                  <span className="font-bold text-sm print:text-xs">BULTO {bultoNum} / {bultos}</span>
+                  <Package className="h-4 w-4" />
+                  <span className="font-bold text-sm">BULTO {bultoNum} / {bultos}</span>
                 </div>
                 
                 {/* Individual package code */}
-                <p className="font-mono text-xs print:text-[9px] text-muted-foreground">
+                <p className="font-mono text-xs text-muted-foreground">
                   {envio.tracking_number}-{String(bultoNum).padStart(2, '0')}
                 </p>
               </div>
@@ -266,14 +266,13 @@ export default function PrintLabel() {
                     size={64}
                     level="M"
                     includeMargin={false}
-                    className="print:w-16 print:h-16"
                   />
                 </div>
               </div>
 
               {/* Tipo de Servicio Badge */}
               <div className="flex justify-center mb-2">
-                <div className={`${tipoConfig.color} px-2 py-1 rounded text-center text-xs print:text-[10px]`}>
+                <div className={`${tipoConfig.color} px-2 py-1 rounded text-center text-xs`}>
                   <span className="mr-1">{tipoConfig.icon}</span>
                   <span className="font-bold">{tipoConfig.label}</span>
                 </div>
@@ -283,19 +282,19 @@ export default function PrintLabel() {
 
               {/* Destinatario */}
               <div className="mb-2">
-                <p className="text-[10px] print:text-[8px] font-semibold text-muted-foreground">DESTINATARIO</p>
-                <p className="font-bold text-sm print:text-xs">
+                <p className="text-[10px] font-semibold text-muted-foreground">DESTINATARIO</p>
+                <p className="font-bold text-sm">
                   {envio.destinatario 
                     ? `${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}`
                     : 'Sin destinatario'}
                 </p>
                 {envio.dni_destinatario && (
-                  <p className="text-xs print:text-[9px]">DNI: {envio.dni_destinatario}</p>
+                  <p className="text-xs">DNI: {envio.dni_destinatario}</p>
                 )}
-                <div className="flex items-center gap-2 text-xs print:text-[9px]">
+                <div className="flex items-center gap-2 text-xs">
                   {envio.destinatario?.telefono && (
                     <span className="flex items-center gap-1">
-                      <Phone className="h-3 w-3 print:h-2 print:w-2" />
+                      <Phone className="h-3 w-3" />
                       {envio.destinatario.telefono}
                     </span>
                   )}
@@ -306,27 +305,27 @@ export default function PrintLabel() {
 
               {/* Dirección de entrega o sucursal de retiro */}
               <div className="mb-2">
-                <p className="text-[10px] print:text-[8px] font-semibold text-muted-foreground">
+                <p className="text-[10px] font-semibold text-muted-foreground">
                   {deliveryInfo?.type === 'sucursal' ? 'RETIRA EN SUCURSAL' : 'ENTREGAR EN'}
                 </p>
                 {deliveryInfo?.type === 'sucursal' ? (
                   <div className="flex items-start gap-1">
-                    <Building2 className="h-3 w-3 mt-0.5 print:h-2 print:w-2" />
+                    <Building2 className="h-3 w-3 mt-0.5" />
                     <div>
-                      <p className="font-bold text-xs print:text-[10px]">{deliveryInfo.nombre}</p>
-                      <p className="text-xs print:text-[9px]">{deliveryInfo.direccion}</p>
+                      <p className="font-bold text-xs">{deliveryInfo.nombre}</p>
+                      <p className="text-xs">{deliveryInfo.direccion}</p>
                       {deliveryInfo.ciudad && (
-                        <p className="text-xs print:text-[9px] text-muted-foreground">{deliveryInfo.ciudad}</p>
+                        <p className="text-xs text-muted-foreground">{deliveryInfo.ciudad}</p>
                       )}
                     </div>
                   </div>
                 ) : (
                   <div className="flex items-start gap-1">
-                    <Home className="h-3 w-3 mt-0.5 print:h-2 print:w-2" />
+                    <Home className="h-3 w-3 mt-0.5" />
                     <div>
-                      <p className="font-bold text-xs print:text-[10px]">{deliveryInfo?.direccion || 'Sin dirección'}</p>
+                      <p className="font-bold text-xs">{deliveryInfo?.direccion || 'Sin dirección'}</p>
                       {(deliveryInfo?.ciudad || deliveryInfo?.cp) && (
-                        <p className="text-xs print:text-[9px] text-muted-foreground">
+                        <p className="text-xs text-muted-foreground">
                           {deliveryInfo.ciudad} {deliveryInfo.cp && `• CP: ${deliveryInfo.cp}`}
                         </p>
                       )}
@@ -338,10 +337,10 @@ export default function PrintLabel() {
               <Separator className="my-2 bg-foreground" />
 
               {/* Info del paquete y precio */}
-              <div className="flex justify-between items-center mb-2 text-xs print:text-[10px]">
+              <div className="flex justify-between items-center mb-2 text-xs">
                 <div className="flex items-center gap-2">
                   <span className="flex items-center gap-1">
-                    <Package className="h-3 w-3 print:h-2 print:w-2" />
+                    <Package className="h-3 w-3" />
                     {bultos} {bultos === 1 ? 'bulto' : 'bultos'}
                   </span>
                   {envio.peso_kg && (
@@ -349,10 +348,10 @@ export default function PrintLabel() {
                   )}
                 </div>
                 <div className="flex items-center gap-1">
-                  <Badge variant="outline" className="font-bold text-[10px] print:text-[8px] px-1 py-0">
+                  <Badge variant="outline" className="font-bold text-[10px] px-1 py-0">
                     {TIPO_PAGO_LABELS[envio.tipo_pago || 'contado']}
                   </Badge>
-                  <span className="font-bold text-sm print:text-xs">
+                  <span className="font-bold text-sm">
                     ${envio.precio_total.toLocaleString('es-AR')}
                   </span>
                 </div>
@@ -362,8 +361,8 @@ export default function PrintLabel() {
               {(envio.descripcion || envio.notas) && (
                 <>
                   <Separator className="my-2 bg-foreground" />
-                  <div className="text-xs print:text-[9px]">
-                    <p className="text-[10px] print:text-[8px] font-semibold text-muted-foreground">OBS.</p>
+                  <div className="text-xs">
+                    <p className="text-[10px] font-semibold text-muted-foreground">OBS.</p>
                     <p className="line-clamp-2">{envio.descripcion || envio.notas}</p>
                   </div>
                 </>
@@ -372,8 +371,8 @@ export default function PrintLabel() {
               <Separator className="my-2 bg-foreground" />
 
               {/* Remitente */}
-              <div className="text-xs print:text-[9px]">
-                <p className="text-[10px] print:text-[8px] font-semibold text-muted-foreground">REMITENTE</p>
+              <div className="text-xs">
+                <p className="text-[10px] font-semibold text-muted-foreground">REMITENTE</p>
                 <p className="font-medium">
                   {envio.remitente 
                     ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}`.trim()
@@ -399,41 +398,118 @@ export default function PrintLabel() {
             margin: 5mm;
           }
           
-          html, body {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-            font-size: 12px !important;
+          /* Ocultar todo por defecto */
+          body * {
+            visibility: hidden;
           }
           
-          .print-labels-container {
+          /* Mostrar solo el contenido de impresión */
+          .print-content,
+          .print-content * {
+            visibility: visible;
+          }
+          
+          .print-content {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
             padding: 0 !important;
-            margin: 0 !important;
           }
           
-          .print\\:hidden {
+          /* Ocultar header y elementos no-print */
+          .no-print {
             display: none !important;
           }
           
+          html, body {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          
+          /* Grid se convierte en bloque para impresión */
+          .print-content > div {
+            display: block !important;
+          }
+          
+          /* Cada etiqueta: altura fija de 90mm para 3 por página */
           .label-container {
             width: 100% !important;
             max-width: 100% !important;
-            height: auto !important;
+            height: 90mm !important;
+            max-height: 90mm !important;
+            overflow: hidden !important;
             page-break-inside: avoid !important;
             break-inside: avoid !important;
-            margin-bottom: 5mm !important;
+            margin-bottom: 2mm !important;
             padding: 3mm !important;
             box-sizing: border-box !important;
+            border: 1px solid black !important;
+            border-radius: 0 !important;
+            background: white !important;
           }
           
-          /* 3 etiquetas por página A4 */
+          /* Forzar salto de página después de cada 3 etiquetas */
           .label-container:nth-child(3n) {
             page-break-after: always !important;
             break-after: page !important;
+            margin-bottom: 0 !important;
           }
           
+          /* Última etiqueta no fuerza salto */
           .label-container:last-child {
             page-break-after: auto !important;
             break-after: auto !important;
+          }
+          
+          /* Ajustar tamaños de fuente para impresión */
+          .label-container .text-xs {
+            font-size: 9px !important;
+          }
+          
+          .label-container .text-sm {
+            font-size: 11px !important;
+          }
+          
+          .label-container .text-\\[10px\\] {
+            font-size: 8px !important;
+          }
+          
+          /* Reducir espaciados para que quepa todo */
+          .label-container .mb-2 {
+            margin-bottom: 1.5mm !important;
+          }
+          
+          .label-container .my-2 {
+            margin-top: 1mm !important;
+            margin-bottom: 1mm !important;
+          }
+          
+          .label-container .pb-1 {
+            padding-bottom: 1mm !important;
+          }
+          
+          /* Iconos más pequeños */
+          .label-container svg {
+            width: 10px !important;
+            height: 10px !important;
+          }
+          
+          .label-container .h-4 {
+            height: 12px !important;
+            width: 12px !important;
+          }
+          
+          .label-container .h-3 {
+            height: 10px !important;
+            width: 10px !important;
+          }
+          
+          .label-container .h-2 {
+            height: 8px !important;
+            width: 8px !important;
           }
         }
       `}</style>
