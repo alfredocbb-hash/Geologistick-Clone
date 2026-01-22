@@ -1,144 +1,138 @@
 
 
-# Plan: Mostrar Logo del Tenant en Tracking Público
+# Plan: Agregar Botones de Compartir Tracking
 
 ## Objetivo
 
-Cuando un cliente rastrea su envío, mostrar el logo de la empresa (tenant) correspondiente en lugar del logo genérico.
+Añadir botones para copiar el enlace de tracking y compartir por WhatsApp en el diálogo de detalles del envío (`ShipmentDetailsDialog`), disponible para todas las empresas.
 
 ---
 
-## Situación Actual
+## Ubicación del Cambio
 
-| Página | URL | Logo | Estado |
-|--------|-----|------|--------|
-| Tracking público | `/tracking` | Icono genérico | ❌ Sin branding |
-| Tracking embed | `/tracking-embed?tenant_slug=X` | ✅ Logo del tenant | Funciona con parámetro |
+Los botones se agregarán junto a los existentes (EPOD y Etiqueta) en el header del diálogo:
 
-El problema es que en `/tracking` no sabemos el tenant hasta **después** de buscar el envío.
-
----
-
-## Solución Propuesta
-
-### 1. Modificar Edge Function `public-tracking`
-
-Incluir información del branding del tenant en la respuesta:
-
-```typescript
-// Agregar al query del envío
-const { data: envio } = await query.single();
-
-// Obtener branding del tenant
-const { data: branding } = await supabaseClient
-  .from("tenant_branding")
-  .select("nombre_app, logo_light, logo_dark, color_primario")
-  .eq("tenant_id", envio.tenant_id)
-  .single();
-
-// Incluir en respuesta
-const response = {
-  ...existingFields,
-  branding: branding ? {
-    nombre_app: branding.nombre_app,
-    logo: branding.logo_light || branding.logo_dark,
-    color_primario: branding.color_primario,
-  } : null,
-};
-```
-
-### 2. Modificar `src/pages/Tracking.tsx`
-
-Usar la Edge Function en lugar de consulta directa:
-
-```typescript
-// Cambiar queryFn para usar Edge Function
-const { data: envio, isLoading } = useQuery({
-  queryKey: ['tracking', searchedTracking],
-  queryFn: async () => {
-    const response = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/public-tracking?code=${searchedTracking}`
-    );
-    if (!response.ok) return null;
-    return response.json();
-  },
-  enabled: !!searchedTracking,
-});
-
-// Mostrar logo dinámicamente
-{envio?.branding?.logo && (
-  <img 
-    src={envio.branding.logo} 
-    alt={envio.branding.nombre_app}
-    className="h-16 mx-auto object-contain"
-  />
-)}
+```text
+┌─────────────────────────────────────────────────────────────────────────┐
+│  📦 Detalles del Envío                                                  │
+│                                                                         │
+│  [📋 Copiar Link] [📱 WhatsApp] [📥 EPOD] [🖨️ Etiqueta]                 │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Archivos a Modificar
+## Funcionalidad
+
+### 1. Botón "Copiar Link"
+- **Icono**: `Copy` o `Link` de Lucide
+- **Acción**: Copia la URL de tracking al portapapeles
+- **Formato URL**: `https://geologic.lovable.app/tracking?q={TRACKING_NUMBER}`
+- **Feedback**: Toast de confirmación "Enlace copiado al portapapeles"
+
+### 2. Botón "WhatsApp"
+- **Icono**: Icono de compartir o mensaje
+- **Acción**: Abre WhatsApp con mensaje predefinido
+- **Mensaje**:
+  ```
+  🚚 Rastrea tu envío:
+  
+  Número de seguimiento: {TRACKING_NUMBER}
+  
+  Sigue el estado aquí: {URL}
+  ```
+
+---
+
+## Archivo a Modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `supabase/functions/public-tracking/index.ts` | Incluir branding del tenant en respuesta |
-| `src/pages/Tracking.tsx` | Usar Edge Function y mostrar logo dinámico |
+| `src/components/shipments/ShipmentDetailsDialog.tsx` | Agregar botones de compartir |
 
 ---
 
-## Flujo Visual
+## Cambios Técnicos
+
+### Importar iconos adicionales
+
+```typescript
+import { 
+  // ... existentes ...
+  Copy,
+  Share2,
+} from 'lucide-react';
+```
+
+### Agregar funciones de compartir
+
+```typescript
+const getTrackingUrl = () => {
+  const baseUrl = window.location.origin;
+  return `${baseUrl}/tracking?q=${envio?.tracking_number}`;
+};
+
+const handleCopyLink = async () => {
+  try {
+    await navigator.clipboard.writeText(getTrackingUrl());
+    toast.success('Enlace copiado al portapapeles');
+  } catch (error) {
+    toast.error('Error al copiar el enlace');
+  }
+};
+
+const handleShareWhatsApp = () => {
+  const url = getTrackingUrl();
+  const message = encodeURIComponent(
+    `🚚 Rastrea tu envío:\n\n` +
+    `Número de seguimiento: ${envio?.tracking_number}\n\n` +
+    `Sigue el estado aquí: ${url}`
+  );
+  window.open(`https://wa.me/?text=${message}`, '_blank');
+};
+```
+
+### Agregar botones en el header (junto a EPOD y Etiqueta)
+
+```tsx
+<Button 
+  variant="outline" 
+  size="sm" 
+  onClick={handleCopyLink}
+  title="Copiar enlace de tracking"
+>
+  <Copy className="h-4 w-4" />
+</Button>
+<Button 
+  variant="outline" 
+  size="sm" 
+  onClick={handleShareWhatsApp}
+  title="Compartir por WhatsApp"
+>
+  <Share2 className="h-4 w-4" />
+</Button>
+```
+
+---
+
+## Resultado Visual
 
 ```text
-ANTES:                                    DESPUÉS:
-┌─────────────────────────────┐          ┌─────────────────────────────┐
-│      📍 Icono genérico      │          │     [LOGO EMPRESA]          │
-│                             │          │     Nombre de la App        │
-│   "Rastrea tu Envío"        │          │                             │
-│                             │          │   "Rastrea tu Envío"        │
-│   [___________________]     │          │                             │
-│                             │          │   [___________________]     │
-│   Tracking: XXX-123         │          │                             │
-│   Estado: En Tránsito       │          │   Tracking: XXX-123         │
-│                             │          │   Estado: En Tránsito       │
-└─────────────────────────────┘          └─────────────────────────────┘
-
-     Sin personalización                      Branding del tenant
+Antes:                          Después:
+┌────────────────────────┐     ┌────────────────────────────────────┐
+│  [📥 EPOD] [🖨️ Etiq]   │     │  [📋] [📤] [📥 EPOD] [🖨️ Etiqueta] │
+└────────────────────────┘     └────────────────────────────────────┘
+                                 │     │
+                                 │     └── Compartir WhatsApp
+                                 └──────── Copiar Link
 ```
-
----
-
-## Detalles de Implementación
-
-### Edge Function - Campos a agregar:
-
-```json
-{
-  "tracking_number": "SUC01-ENV-20260122-C86B88",
-  "estado": "en_transito",
-  "branding": {
-    "nombre_app": "TransExpress",
-    "logo": "https://storage.../logo.png",
-    "color_primario": "#2563eb"
-  },
-  "origen": { ... },
-  "destino": { ... },
-  "historial": [ ... ]
-}
-```
-
-### Tracking.tsx - Header dinámico:
-
-- Si hay logo → mostrar imagen centrada
-- Si hay `nombre_app` → mostrar como título
-- Si hay `color_primario` → aplicar al botón de búsqueda
-- Fallback al diseño actual si no hay branding
 
 ---
 
 ## Beneficios
 
-1. **White-label completo**: Cada empresa ve su propia marca
-2. **Sin configuración manual**: Se detecta automáticamente del envío
-3. **Consistencia**: Mismo branding que en otras partes del sistema
-4. **Seguridad**: La Edge Function bypasea RLS de forma segura
+1. **Fácil acceso**: Botones visibles directamente en el diálogo
+2. **Multi-empresa**: Funciona para todos los tenants usando `window.location.origin`
+3. **Feedback inmediato**: Toast confirma la acción
+4. **Compatible móvil**: WhatsApp se abre en la app nativa si está disponible
 
