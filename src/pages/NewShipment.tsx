@@ -1795,7 +1795,9 @@ export default function NewShipment() {
                         </Label>
                       </div>
                       <Badge variant="outline" className="bg-background">
-                        {formatCurrency(cp.monto)}
+                        {cp.es_porcentaje && cp.porcentaje 
+                          ? `${cp.porcentaje}%` 
+                          : formatCurrency(cp.monto)}
                       </Badge>
                     </div>
                   ))}
