@@ -30,6 +30,7 @@ interface TarifaConcepto {
   nombre: string;
   codigo: string;
   es_basico?: boolean | null;
+  activo?: boolean | null;
 }
 
 interface TarifaConceptoPrecio {
@@ -295,7 +296,7 @@ export default function NewShipment() {
       if (!formData.tarifa_id) return [];
       const { data, error } = await supabase
         .from('tarifa_concepto_precios')
-        .select('*, concepto:tarifa_conceptos(id, nombre, codigo, es_basico)')
+        .select('*, concepto:tarifa_conceptos(id, nombre, codigo, es_basico, activo)')
         .eq('tarifa_id', formData.tarifa_id);
       if (error) throw error;
       return data as (TarifaConceptoPrecio & { es_porcentaje?: boolean; porcentaje?: number })[];
@@ -305,8 +306,11 @@ export default function NewShipment() {
 
   // Clasificar conceptos en básicos y adicionales
   const { conceptosBasicos, conceptosAdicionales } = useMemo(() => {
-    // Primero aplicar el filtro por tipo de servicio
+    // Primero aplicar el filtro por tipo de servicio y excluir conceptos inactivos
     const filtradosPorServicio = conceptoPrecios.filter((cp) => {
+      // Excluir conceptos inactivos
+      if (cp.concepto?.activo === false) return false;
+      
       const codigo = cp.concepto?.codigo?.toLowerCase();
       if (codigo === 'retiro' && !tieneRetiro) return false;
       if (codigo === 'entrega' && !tieneEntrega) return false;
