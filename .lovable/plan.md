@@ -1,195 +1,71 @@
 
-# Plan de Solución: Bug de Recarga en NewShipment
+# Plan: Eliminar Duplicación del Flete en Resumen de Precio
 
-## Diagnóstico del Problema
+## Diagnóstico
 
-El usuario `Clientes@beraexpress.com` reporta que al cargar un envío, la página se **actualiza/recarga** antes de poder guardar, perdiendo todo el progreso.
+El resumen muestra **dos líneas de Flete**:
+- **Flete (CABA Y GBA) - $0.00**: Es el precio base de la tarifa (correcto)
+- **Flete - $7,000.00**: Es un concepto llamado "Flete" que está **desactivado** (`activo: false`) pero aún se muestra
 
-### Causas Identificadas
+### Causa del Problema
 
-Después de analizar el código, identifiqué **dos problemas principales**:
-
----
-
-### 1. Cálculos Pesados en Cada Render
-
-Las funciones `calcularPrecio()`, `calcularTotalConceptosBasicos()` y `calcularTotalConceptosAdicionales()` **se ejecutan en cada render** del componente (línea 1038):
+La query que obtiene los precios de conceptos **no filtra por conceptos activos**:
 
 ```tsx
-const precioCalculado = calcularPrecio();
-```
-
-Esto puede causar:
-- **Re-renders excesivos** cada vez que el usuario escribe algo
-- **Bloqueo del thread principal** si los cálculos son pesados
-- **Comportamiento impredecible** en navegadores más lentos
-
----
-
-### 2. Inconsistencia en la Visualización vs Cálculo
-
-En el **Resumen de Precio** (líneas 1874-1920), los cálculos para mostrar los conceptos **NO consideran** `multiplicar_por_bultos`:
-
-```tsx
-// En el JSX actual (incorrecto):
-const calculatedAmount = isPercentage 
-  ? valorDeclarado * Number(cp.porcentaje) / 100 
-  : Number(cp.monto);
-// ¡Falta multiplicar por cantidadBultos si aplica!
-```
-
-Mientras que las funciones de cálculo **SÍ lo consideran**:
-
-```tsx
-// En calcularTotalConceptosBasicos (correcto):
-if (cp.multiplicar_por_bultos) {
-  montoConcepto *= cantidadBultos;
-}
-```
-
-Esto causa una **inconsistencia visual** que puede confundir al usuario.
-
----
-
-## Plan de Solución
-
-### Paso 1: Memoizar el Cálculo de Precio
-
-Envolver `calcularPrecio()` en un `useMemo` para evitar recálculos innecesarios:
-
-```tsx
-const precioCalculado = useMemo(() => {
-  if (!selectedTarifa) return 0;
-  
-  const peso = parseFloat(formData.peso_kg) || 0;
-  const precioBase = Number(selectedTarifa.precio_base) || 0;
-  const rangos = (selectedTarifa as any).rangos_precios || {};
-  const valorDeclarado = parseFloat(formData.valor_declarado) || 0;
-  const cantidadBultos = parseInt(formData.cantidad_bultos) || 1;
-  
-  // ... resto del cálculo
-  
-}, [
-  selectedTarifa, 
-  formData.peso_kg, 
-  formData.valor_declarado, 
-  formData.cantidad_bultos,
-  formData.dimensiones,
-  conceptosBasicos, 
-  conceptosAdicionales,
-  conceptosSeleccionados,
-  distanciaKm
-]);
+// Línea 296-299 - Falta filtrar por activo
+.select('*, concepto:tarifa_conceptos(id, nombre, codigo, es_basico)')
+.eq('tarifa_id', formData.tarifa_id);
+// No hay .eq('concepto.activo', true)
 ```
 
 ---
 
-### Paso 2: Corregir Visualización en Resumen de Precio
+## Solución
 
-Actualizar el JSX del resumen para incluir la multiplicación por bultos:
+### Cambio 1: Filtrar conceptos inactivos en la clasificación
 
-```tsx
-{conceptosBasicos.map((cp) => {
-  const valorDeclarado = parseFloat(formData.valor_declarado) || 0;
-  const cantidadBultos = parseInt(formData.cantidad_bultos) || 1;
-  const isPercentage = cp.es_porcentaje && cp.porcentaje;
-  
-  let calculatedAmount = isPercentage 
-    ? valorDeclarado * Number(cp.porcentaje) / 100 
-    : Number(cp.monto);
-  
-  // Multiplicar por bultos si aplica
-  if (cp.multiplicar_por_bultos) {
-    calculatedAmount *= cantidadBultos;
-  }
-  
-  return (
-    <div key={cp.id} className="flex justify-between text-sm">
-      <span>
-        {cp.concepto?.nombre || 'Concepto'}
-        {/* Mostrar indicador de multiplicación por bultos */}
-        {cp.multiplicar_por_bultos && cantidadBultos > 1 && (
-          <span className="text-xs text-muted-foreground ml-1">
-            (x{cantidadBultos} bultos)
-          </span>
-        )}
-        {isPercentage && valorDeclarado > 0 && (
-          <span className="text-xs text-muted-foreground ml-1">
-            ({cp.porcentaje}% de {formatCurrency(valorDeclarado)})
-          </span>
-        )}
-      </span>
-      <span>{formatCurrency(calculatedAmount)}</span>
-    </div>
-  );
-})}
-```
-
-Hacer lo mismo para los conceptos adicionales.
-
----
-
-### Paso 3: Eliminar Funciones de Cálculo Duplicadas
-
-Convertir las funciones `calcularTotalConceptosBasicos`, `calcularTotalConceptosAdicionales` y `calcularTotalConceptos` en valores memoizados para evitar recrearlas en cada render:
+Modificar el `useMemo` que clasifica conceptos para excluir aquellos donde el concepto esté inactivo:
 
 ```tsx
-const totalConceptosBasicos = useMemo(() => {
-  const valorDeclarado = parseFloat(formData.valor_declarado) || 0;
-  const cantidadBultos = parseInt(formData.cantidad_bultos) || 1;
-  
-  return conceptosBasicos.reduce((sum, cp) => {
-    let montoConcepto = 0;
-    if (cp.es_porcentaje && cp.porcentaje) {
-      montoConcepto = valorDeclarado * Number(cp.porcentaje) / 100;
-    } else {
-      montoConcepto = Number(cp.monto);
-    }
-    if (cp.multiplicar_por_bultos) {
-      montoConcepto *= cantidadBultos;
-    }
-    return sum + montoConcepto;
-  }, 0);
-}, [conceptosBasicos, formData.valor_declarado, formData.cantidad_bultos]);
+// En la clasificación de conceptos básicos (línea 317)
+const basicos = filtradosPorServicio.filter(cp => {
+  // Excluir conceptos inactivos
+  if (cp.concepto?.activo === false) return false;
+  return cp.concepto?.es_basico !== false;
+});
 ```
+
+### Cambio 2: Agregar campo `activo` a la query
+
+Modificar la query de `tarifa_concepto_precios` para incluir el campo `activo`:
+
+```tsx
+// Línea 298
+.select('*, concepto:tarifa_conceptos(id, nombre, codigo, es_basico, activo)')
+```
+
+### Cambio 3: Actualizar la interface TypeScript
+
+Agregar el campo `activo` a la interface del concepto para evitar errores de tipo.
 
 ---
 
 ## Resumen de Cambios
 
-| Archivo | Cambio |
-|---------|--------|
-| `src/pages/NewShipment.tsx` | Memoizar `precioCalculado` con `useMemo` |
-| `src/pages/NewShipment.tsx` | Convertir funciones de cálculo a `useMemo` |
-| `src/pages/NewShipment.tsx` | Corregir visualización de conceptos en resumen (incluir `multiplicar_por_bultos`) |
-| `src/pages/NewShipment.tsx` | Mostrar indicador "(x3 bultos)" cuando aplique |
+| Archivo | Línea | Cambio |
+|---------|-------|--------|
+| `src/pages/NewShipment.tsx` | ~298 | Agregar `activo` al select del JOIN |
+| `src/pages/NewShipment.tsx` | ~317 | Filtrar conceptos donde `activo === false` |
+| `src/pages/NewShipment.tsx` | ~321-324 | Mismo filtro para conceptos adicionales |
 
 ---
 
-## Sección Técnica
+## Resultado Esperado
 
-### Por qué los cálculos en cada render causan problemas
+El resumen de precio mostrará:
+- **Flete (CABA Y GBA)** - Precio base de la tarifa
+- **Entrega a Domicilio** - $5,600.00
+- **Seguro** (5% de $5,000.00) - $250.00
+- **Distancia estimada** - 33.3 km
 
-React recalcula todo el componente cuando cambia cualquier estado. Con funciones como:
-
-```tsx
-const calcularPrecio = () => { ... }
-const precioCalculado = calcularPrecio(); // Se ejecuta en CADA render
-```
-
-Cada tecla presionada (que actualiza `formData`) dispara:
-1. Actualización del estado
-2. Re-render del componente
-3. Ejecución de `calcularPrecio()`
-4. Ejecución de `calcularTotalConceptos()`
-5. Ejecución de `calcularTotalConceptosBasicos()` 
-6. Ejecución de `calcularTotalConceptosAdicionales()`
-7. Iteraciones sobre arrays (`reduce`, `filter`)
-
-Con `useMemo`, React solo recalcula cuando cambian las dependencias específicas, no en cada keystroke.
-
-### Impacto Esperado
-
-- **Rendimiento**: Menos cálculos = menos bloqueo del UI
-- **Estabilidad**: Elimina posibles estados intermedios problemáticos
-- **Consistencia visual**: El resumen mostrará los mismos valores que se guardan
+Sin duplicar la línea "Flete" del concepto desactivado.
