@@ -422,19 +422,31 @@ export default function PrintLabel() {
             margin: 5mm;
           }
           
+          /* FORZAR impresión de colores de fondo */
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
+          
           /* Ocultar elementos que no se deben imprimir */
           .no-print,
           header,
           nav,
           footer,
-          [data-radix-portal] {
+          button,
+          select,
+          [data-radix-portal],
+          .min-h-screen > .no-print {
             display: none !important;
+            visibility: hidden !important;
           }
           
           /* Reset del body, html y root de React */
           html, body, #root {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+            color-adjust: exact !important;
             margin: 0 !important;
             padding: 0 !important;
             background: white !important;
@@ -580,6 +592,62 @@ export default function PrintLabel() {
             }
           `}
           
+          /* Evitar cortes dentro de elementos de la etiqueta */
+          .label-container,
+          .label-container > * {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
+          
+          /* QR Code a tamaño físico fijo - 25mm */
+          .label-container .flex.justify-center.mb-2 > div {
+            width: 25mm !important;
+            height: 25mm !important;
+          }
+          
+          .label-container .flex.justify-center.mb-2 svg[viewBox] {
+            width: 25mm !important;
+            height: 25mm !important;
+            min-width: 25mm !important;
+            min-height: 25mm !important;
+          }
+          
+          /* COLORES específicos para badges - forzar valores HSL a HEX */
+          .label-container .bg-foreground {
+            background-color: #1e293b !important;
+            color: white !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          
+          .label-container .bg-primary {
+            background-color: #3b82f6 !important;
+            color: white !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          
+          .label-container .bg-success {
+            background-color: #16a34a !important;
+            color: white !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          
+          .label-container .bg-warning {
+            background-color: #f59e0b !important;
+            color: white !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          
+          .label-container .bg-accent {
+            background-color: #8b5cf6 !important;
+            color: white !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          
           /* Ajustar tamaños de fuente para impresión */
           .label-container .text-xs {
             font-size: ${printFormat === 'grid-3x2' ? '8px' : '9px'} !important;
@@ -607,13 +675,13 @@ export default function PrintLabel() {
             padding-bottom: 1mm !important;
           }
           
-          /* Iconos más pequeños */
-          .label-container svg {
+          /* Iconos más pequeños (excepto el QR) */
+          .label-container svg:not([viewBox]) {
             width: ${printFormat === 'grid-3x2' ? '8px' : '10px'} !important;
             height: ${printFormat === 'grid-3x2' ? '8px' : '10px'} !important;
           }
           
-          .label-container .h-4 {
+          .label-container .h-4:not(svg[viewBox]) {
             height: ${printFormat === 'grid-3x2' ? '10px' : '12px'} !important;
             width: ${printFormat === 'grid-3x2' ? '10px' : '12px'} !important;
           }
