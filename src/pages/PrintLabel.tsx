@@ -398,30 +398,33 @@ export default function PrintLabel() {
             margin: 5mm;
           }
           
-          /* Ocultar todo excepto contenido de impresión */
-          body > *:not(.print-content) {
+          /* Ocultar elementos que no se deben imprimir */
+          .no-print,
+          header,
+          nav,
+          footer,
+          [data-radix-portal] {
             display: none !important;
           }
           
-          .no-print {
-            display: none !important;
-          }
-          
-          html, body {
+          /* Reset del body, html y root de React */
+          html, body, #root {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
             margin: 0 !important;
             padding: 0 !important;
             width: 210mm !important;
+            background: white !important;
           }
           
-          /* Contenedor principal - position static para flujo normal */
+          /* Asegurar que print-content sea visible */
           .print-content {
+            display: block !important;
+            visibility: visible !important;
             position: static !important;
             width: 200mm !important;
             padding: 0 !important;
             margin: 0 auto !important;
-            display: block !important;
           }
           
           /* Grid a columna única */
