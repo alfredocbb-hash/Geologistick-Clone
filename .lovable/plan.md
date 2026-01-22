@@ -1,118 +1,107 @@
 
-
-# Plan: Corregir Carga de Tarifas para el Usuario
+# Plan: Corregir Impresión de Etiquetas (3 por A4)
 
 ## Diagnóstico del Problema
 
-El usuario `clientes@beraexpress.com` (Maricel Bernard) tiene correctamente configurado:
-- **Tenant ID**: `94a9ea85-43c5-49ac-9bfa-86843072c2ce`
-- **Sucursal**: Berazategui
-- **Roles**: `sucursal`, `despachador`
-- **Tarifas activas en su tenant**: "CABA Y GBA" y "SOLO RETIRO"
+Las etiquetas se cortan/parten entre páginas por dos razones principales:
 
-Sin embargo, la tarifa no carga. El problema está en el **timing de la query**:
+### 1. La página está envuelta en DashboardLayout
 
-### Causa Raíz
-
-La query de tarifas se ejecuta **inmediatamente** al cargar el componente:
+En `App.tsx`, la ruta `/print-label` está dentro del layout con sidebar:
 
 ```tsx
-const { data: tarifas } = useQuery({
-  queryKey: ['tarifas'],
-  queryFn: async () => {
-    const { data, error } = await supabase
-      .from('tarifas')
-      .select('*')
-      .eq('activa', true)
-      .order('nombre');
-    if (error) throw error;
-    return data;
-  },
-  // ⚠️ NO HAY `enabled` - Se ejecuta antes de que el perfil esté listo
-});
+// Línea 135
+<Route path="/print-label" element={<DashboardLayout><PrintLabel /></DashboardLayout>} />
 ```
 
-La política RLS de tarifas usa `current_user_tenant()`:
-```sql
-qual: (tenant_id = current_user_tenant()) OR is_super_admin(auth.uid())
-```
+Esto causa que el sidebar, header y otros elementos **se impriman también**, desplazando el contenido de las etiquetas.
 
-Si la query se ejecuta **antes** de que el perfil del usuario esté completamente cargado en la sesión, `current_user_tenant()` puede devolver `NULL` y no retorna ninguna tarifa.
+### 2. Las etiquetas no tienen altura fija
+
+Sin una altura calculada correctamente para que 3 etiquetas quepan exactamente en el área imprimible de A4, el navegador las divide donde considera apropiado.
 
 ---
 
 ## Solución Propuesta
 
-### Paso 1: Agregar condición `enabled` a la query de tarifas
+### Paso 1: Remover DashboardLayout de la ruta de impresión
 
-Modificar la query para que solo se ejecute cuando el usuario y su perfil estén cargados:
+Modificar `src/App.tsx` para que la página de etiquetas se renderice sin el layout:
 
 ```tsx
-const { data: tarifas, isLoading: loadingTarifas, refetch: refetchTarifas } = useQuery({
-  queryKey: ['tarifas', profile?.tenant_id],
-  queryFn: async () => {
-    const { data, error } = await supabase
-      .from('tarifas')
-      .select('*')
-      .eq('activa', true)
-      .order('nombre');
-    if (error) throw error;
-    return data;
-  },
-  enabled: !!user && !!profile,  // Solo ejecutar cuando el usuario y perfil estén listos
-});
+// Cambiar línea 135 de:
+<Route path="/print-label" element={<DashboardLayout><PrintLabel /></DashboardLayout>} />
+
+// A:
+<Route path="/print-label" element={<PrintLabel />} />
 ```
 
-### Paso 2: Agregar indicador de carga en el selector de tarifas
+Esto es consistente con `PrintRouteSheet` (línea 141) y `PrintPlannedRoute` (línea 142) que tampoco usan DashboardLayout.
 
-Mostrar un estado de carga mientras las tarifas se están obteniendo:
+---
 
-```tsx
-<Select
-  value={formData.tarifa_id}
-  onValueChange={(v) => handleChange('tarifa_id', v)}
-  disabled={loadingTarifas}
->
-  <SelectTrigger>
-    <SelectValue placeholder={loadingTarifas ? "Cargando tarifas..." : "Seleccionar tarifa"} />
-  </SelectTrigger>
-  <SelectContent>
-    {loadingTarifas ? (
-      <div className="flex items-center justify-center py-4">
-        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-        <span>Cargando...</span>
-      </div>
-    ) : tarifas?.length === 0 ? (
-      <div className="py-4 text-center text-muted-foreground">
-        No hay tarifas disponibles
-      </div>
-    ) : (
-      tarifas?.map((t) => (
-        <SelectItem key={t.id} value={t.id}>
-          {t.nombre} - ${Number(t.precio_base).toLocaleString('es-AR')}
-        </SelectItem>
-      ))
-    )}
-  </SelectContent>
-</Select>
+### Paso 2: Actualizar estilos de impresión en PrintLabel.tsx
+
+Implementar la estrategia probada de `PrintRouteSheet.tsx` que oculta todo excepto el contenido de impresión:
+
+```css
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 5mm;
+  }
+  
+  body * {
+    visibility: hidden;
+  }
+  
+  .print-content, .print-content * {
+    visibility: visible;
+  }
+  
+  .print-content {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}
 ```
 
-### Paso 3: Agregar retry automático si no hay tarifas
+---
 
-Si las tarifas no cargan, permitir un botón de reintentar:
+### Paso 3: Calcular altura fija para 3 etiquetas por página
+
+Una hoja A4 portrait tiene 297mm de alto. Con márgenes de 5mm arriba y abajo:
+
+- Altura útil: 297 - 10 = **287mm**
+- Altura por etiqueta: 287 / 3 = **~95mm**
+- Con gap entre etiquetas: **90mm por etiqueta + 2.3mm de margen**
+
+Aplicar altura fija a cada `.label-container`:
+
+```css
+.label-container {
+  height: 90mm !important;
+  max-height: 90mm !important;
+  overflow: hidden !important;
+  page-break-inside: avoid !important;
+  break-inside: avoid !important;
+}
+```
+
+---
+
+### Paso 4: Agregar clase contenedora para print
+
+Envolver las etiquetas en un div con clase `print-content` para la estrategia de visibilidad:
 
 ```tsx
-{!loadingTarifas && tarifas?.length === 0 && (
-  <Button 
-    variant="outline" 
-    size="sm" 
-    onClick={() => refetchTarifas()}
-    className="mt-2"
-  >
-    <Loader2 className="h-4 w-4 mr-2" />
-    Reintentar carga de tarifas
-  </Button>
-)}
+<div className="print-content">
+  <div className="grid grid-cols-1 ...">
+    {labels.map(...)}
+  </div>
+</div>
 ```
 
 ---
@@ -121,31 +110,43 @@ Si las tarifas no cargan, permitir un botón de reintentar:
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/pages/NewShipment.tsx` | Agregar `enabled: !!user && !!profile` a la query de tarifas |
-| `src/pages/NewShipment.tsx` | Incluir `profile?.tenant_id` en el `queryKey` para invalidar cache al cambiar usuario |
-| `src/pages/NewShipment.tsx` | Agregar estado de carga (`isLoading`) al selector de tarifas |
-| `src/pages/NewShipment.tsx` | Mostrar mensaje cuando no hay tarifas disponibles |
-| `src/pages/NewShipment.tsx` | Agregar botón "Reintentar" si las tarifas no cargan |
+| `src/App.tsx` | Remover `DashboardLayout` de la ruta `/print-label` |
+| `src/pages/PrintLabel.tsx` | Actualizar estilos `@media print` con estrategia de visibilidad |
+| `src/pages/PrintLabel.tsx` | Agregar altura fija de 90mm por etiqueta |
+| `src/pages/PrintLabel.tsx` | Agregar clase `print-content` al contenedor de etiquetas |
+
+---
+
+## Resultado Esperado
+
+Al imprimir desde Chrome/Edge a 100%:
+- 3 etiquetas completas por hoja A4
+- Sin cortes ni particiones entre páginas
+- Sin elementos del sidebar/header en la impresión
+- Cada etiqueta mantiene todo su contenido visible (tracking, QR, destinatario, etc.)
 
 ---
 
 ## Sección Técnica
 
-### Por qué esto soluciona el problema
+### Por qué la estrategia de visibilidad funciona mejor
 
-1. **`enabled: !!user && !!profile`**: Garantiza que la query no se ejecute hasta que:
-   - El usuario esté autenticado (`user`)
-   - El perfil del usuario esté cargado (`profile`)
-   
-   Esto asegura que cuando la query llegue al backend, `auth.uid()` y `current_user_tenant()` devuelvan valores correctos.
+La técnica de `visibility: hidden` en todo el body y luego `visible` solo en el contenido de impresión es más robusta que `display: none` porque:
 
-2. **`queryKey: ['tarifas', profile?.tenant_id]`**: Si el usuario cambia de sesión o se actualiza el perfil, React Query invalida la cache y vuelve a ejecutar la query con los datos correctos.
+1. **No afecta el layout**: `visibility: hidden` mantiene el espacio del elemento pero lo hace invisible
+2. **Herencia selectiva**: Los hijos pueden anular con `visibility: visible`
+3. **Posicionamiento absoluto**: Al usar `position: absolute` en el contenido de impresión, se desacopla completamente del flujo normal del documento
 
-3. **Estados visuales**: El usuario ahora verá claramente si las tarifas están cargando, si no hay tarifas, o si puede reintentar.
+### Cálculo de altura para A4
 
-### Impacto Esperado
+```text
+A4 Portrait: 210mm x 297mm
 
-- Las tarifas cargarán correctamente para el usuario `clientes@beraexpress.com`
-- Se evitarán problemas similares para cualquier usuario
-- Mejor experiencia de usuario con indicadores de carga claros
+Con @page { margin: 5mm }:
+- Ancho útil: 210 - 10 = 200mm
+- Alto útil: 297 - 10 = 287mm
 
+Para 3 etiquetas:
+- 287mm / 3 = 95.67mm teórico
+- 90mm práctico (dejando margen para separación visual)
+```
