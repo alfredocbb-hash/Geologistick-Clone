@@ -37,6 +37,8 @@ interface TarifaConceptoPrecio {
   tarifa_id: string;
   concepto_id: string;
   monto: number;
+  es_porcentaje?: boolean | null;
+  porcentaje?: number | null;
   concepto?: TarifaConcepto;
 }
 
@@ -295,7 +297,7 @@ export default function NewShipment() {
         .select('*, concepto:tarifa_conceptos(id, nombre, codigo, es_basico)')
         .eq('tarifa_id', formData.tarifa_id);
       if (error) throw error;
-      return data as TarifaConceptoPrecio[];
+      return data as (TarifaConceptoPrecio & { es_porcentaje?: boolean; porcentaje?: number })[];
     },
     enabled: !!formData.tarifa_id,
   });
@@ -372,16 +374,31 @@ export default function NewShipment() {
 
   const selectedTarifa = tarifas?.find(t => t.id === formData.tarifa_id);
 
-  // Calcular total por conceptos básicos
+  // Calcular total por conceptos básicos (considerando porcentaje para seguro)
   const calcularTotalConceptosBasicos = () => {
-    return conceptosBasicos.reduce((sum, cp) => sum + Number(cp.monto), 0);
+    const valorDeclarado = parseFloat(formData.valor_declarado) || 0;
+    
+    return conceptosBasicos.reduce((sum, cp) => {
+      // Si es porcentaje (seguro), calcular sobre valor declarado
+      if (cp.es_porcentaje && cp.porcentaje) {
+        return sum + (valorDeclarado * Number(cp.porcentaje) / 100);
+      }
+      return sum + Number(cp.monto);
+    }, 0);
   };
 
   // Calcular total por conceptos adicionales seleccionados
   const calcularTotalConceptosAdicionales = () => {
+    const valorDeclarado = parseFloat(formData.valor_declarado) || 0;
+    
     return conceptosAdicionales
       .filter(cp => conceptosSeleccionados.has(cp.concepto_id))
-      .reduce((sum, cp) => sum + Number(cp.monto), 0);
+      .reduce((sum, cp) => {
+        if (cp.es_porcentaje && cp.porcentaje) {
+          return sum + (valorDeclarado * Number(cp.porcentaje) / 100);
+        }
+        return sum + Number(cp.monto);
+      }, 0);
   };
 
   // Calcular total (básicos siempre + adicionales seleccionados)
@@ -393,11 +410,36 @@ export default function NewShipment() {
     if (!selectedTarifa) return 0;
     const peso = parseFloat(formData.peso_kg) || 0;
     const precioBase = Number(selectedTarifa.precio_base) || 0;
-    const precioPorKg = Number(selectedTarifa.precio_por_kg) || 0;
+    const rangos = (selectedTarifa as any).rangos_precios || {};
+    
+    // Flete base (= precio_base de la tarifa)
+    let flete = precioBase;
+    
+    // Ajustar flete según tipo de tarifa
+    if (selectedTarifa.tipo_tarifa === 'peso') {
+      const pesoBaseHasta = rangos.peso_base_hasta || 0;
+      const adicionalPorKg = rangos.adicional_por_kg || 0;
+      
+      if (peso > pesoBaseHasta) {
+        flete += (peso - pesoBaseHasta) * adicionalPorKg;
+      }
+    } else if (selectedTarifa.tipo_tarifa === 'distancia') {
+      const distancia = distanciaKm || 0;
+      flete = distancia * (Number(selectedTarifa.precio_por_km) || 0);
+    } else if (selectedTarifa.tipo_tarifa === 'volumen') {
+      const volumen = parseFloat(formData.dimensiones) || 0;
+      const volBaseHasta = rangos.volumen_base_hasta || 0;
+      const adicionalPorM3 = rangos.adicional_por_m3 || 0;
+      
+      if (volumen > volBaseHasta) {
+        flete += (volumen - volBaseHasta) * adicionalPorM3;
+      }
+    }
+    
+    // Sumar conceptos (que incluyen seguro calculado por porcentaje)
     const totalConceptos = calcularTotalConceptos();
     
-    const baseTotal = totalConceptos > 0 ? totalConceptos : precioBase;
-    return baseTotal + (peso * precioPorKg);
+    return flete + totalConceptos;
   };
 
   // Toggle concepto adicional selection
@@ -1784,41 +1826,91 @@ export default function NewShipment() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
+                {/* Flete (Precio Base) */}
+                <div className="flex justify-between text-sm font-medium">
+                  <span>Flete ({selectedTarifa.nombre})</span>
+                  <span>{formatCurrency(selectedTarifa.precio_base)}</span>
+                </div>
+                
+                {/* Rangos adicionales por peso */}
+                {(() => {
+                  const rangos = (selectedTarifa as any).rangos_precios || {};
+                  const peso = parseFloat(formData.peso_kg) || 0;
+                  const pesoBaseHasta = rangos.peso_base_hasta || 0;
+                  const adicionalPorKg = rangos.adicional_por_kg || 0;
+                  
+                  if (selectedTarifa.tipo_tarifa === 'peso' && peso > pesoBaseHasta && adicionalPorKg > 0) {
+                    const kgExtra = peso - pesoBaseHasta;
+                    return (
+                      <div className="flex justify-between text-sm text-muted-foreground">
+                        <span>+ {kgExtra.toFixed(1)} kg extra (x {formatCurrency(adicionalPorKg)})</span>
+                        <span>{formatCurrency(kgExtra * adicionalPorKg)}</span>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+                
                 {/* Conceptos Básicos */}
-                {conceptosBasicos.length > 0 ? (
-                  conceptosBasicos.map((cp) => (
+                {conceptosBasicos.map((cp) => {
+                  const valorDeclarado = parseFloat(formData.valor_declarado) || 0;
+                  const isPercentage = cp.es_porcentaje && cp.porcentaje;
+                  const calculatedAmount = isPercentage 
+                    ? valorDeclarado * Number(cp.porcentaje) / 100 
+                    : Number(cp.monto);
+                  
+                  return (
                     <div key={cp.id} className="flex justify-between text-sm">
-                      <span>{cp.concepto?.nombre || 'Concepto'}</span>
-                      <span>{formatCurrency(cp.monto)}</span>
+                      <span>
+                        {cp.concepto?.nombre || 'Concepto'}
+                        {isPercentage && valorDeclarado > 0 && (
+                          <span className="text-xs text-muted-foreground ml-1">
+                            ({cp.porcentaje}% de {formatCurrency(valorDeclarado)})
+                          </span>
+                        )}
+                      </span>
+                      <span>{formatCurrency(calculatedAmount)}</span>
                     </div>
-                  ))
-                ) : (
-                  <div className="flex justify-between text-sm">
-                    <span>Precio base ({selectedTarifa.nombre})</span>
-                    <span>{formatCurrency(selectedTarifa.precio_base)}</span>
-                  </div>
-                )}
+                  );
+                })}
                 
                 {/* Conceptos Adicionales Seleccionados */}
                 {conceptosAdicionales
                   .filter(cp => conceptosSeleccionados.has(cp.concepto_id))
-                  .map((cp) => (
-                    <div key={cp.id} className="flex justify-between text-sm text-primary">
-                      <span className="flex items-center gap-1">
-                        <Plus className="h-3 w-3" />
-                        {cp.concepto?.nombre}
-                      </span>
-                      <span>{formatCurrency(cp.monto)}</span>
-                    </div>
-                  ))}
+                  .map((cp) => {
+                    const valorDeclarado = parseFloat(formData.valor_declarado) || 0;
+                    const isPercentage = cp.es_porcentaje && cp.porcentaje;
+                    const calculatedAmount = isPercentage 
+                      ? valorDeclarado * Number(cp.porcentaje) / 100 
+                      : Number(cp.monto);
+                    
+                    return (
+                      <div key={cp.id} className="flex justify-between text-sm text-primary">
+                        <span className="flex items-center gap-1">
+                          <Plus className="h-3 w-3" />
+                          {cp.concepto?.nombre}
+                          {isPercentage && valorDeclarado > 0 && (
+                            <span className="text-xs text-muted-foreground">
+                              ({cp.porcentaje}% de {formatCurrency(valorDeclarado)})
+                            </span>
+                          )}
+                        </span>
+                        <span>{formatCurrency(calculatedAmount)}</span>
+                      </div>
+                    );
+                  })}
                 
-                {parseFloat(formData.peso_kg) > 0 && selectedTarifa.precio_por_kg && (
+                {distanciaKm && selectedTarifa.tipo_tarifa === 'distancia' && (
                   <div className="flex justify-between text-sm">
-                    <span>Peso ({formData.peso_kg} kg x {formatCurrency(selectedTarifa.precio_por_kg)})</span>
-                    <span>{formatCurrency(parseFloat(formData.peso_kg) * selectedTarifa.precio_por_kg)}</span>
+                    <span className="flex items-center gap-1">
+                      <Navigation className="h-3 w-3" />
+                      Distancia ({distanciaKm.toFixed(1)} km x {formatCurrency(Number(selectedTarifa.precio_por_km) || 0)})
+                    </span>
+                    <span>{formatCurrency(distanciaKm * (Number(selectedTarifa.precio_por_km) || 0))}</span>
                   </div>
                 )}
-                {distanciaKm && (
+                
+                {distanciaKm && selectedTarifa.tipo_tarifa !== 'distancia' && (
                   <div className="flex justify-between text-sm text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <Navigation className="h-3 w-3" />

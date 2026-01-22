@@ -54,7 +54,12 @@ interface Tarifa {
   comision_chofer_fija: number | null;
   activa: boolean | null;
   tipo_tarifa: RateType;
-  rangos_precios: any[];
+  rangos_precios: {
+    peso_base_hasta?: number;
+    adicional_por_kg?: number;
+    volumen_base_hasta?: number;
+    adicional_por_m3?: number;
+  } | null;
   created_at: string | null;
 }
 
@@ -73,6 +78,8 @@ interface TarifaConceptoPrecio {
   tarifa_id: string;
   concepto_id: string;
   monto: number;
+  es_porcentaje?: boolean | null;
+  porcentaje?: number | null;
   concepto?: TarifaConcepto;
 }
 
@@ -101,6 +108,13 @@ export default function Rates() {
     comision_chofer_porcentaje: '',
     comision_chofer_fija: '',
     activa: true,
+    // Rangos para peso/volumen
+    peso_base_hasta: '',
+    adicional_por_kg: '',
+    volumen_base_hasta: '',
+    adicional_por_m3: '',
+    // Conceptos inline
+    conceptos: {} as Record<string, { monto: string; es_porcentaje: boolean; porcentaje: string }>,
   });
 
   const [conceptFormData, setConceptFormData] = useState({
@@ -112,7 +126,7 @@ export default function Rates() {
     es_basico: true,
   });
 
-  const [conceptPrices, setConceptPrices] = useState<Record<string, string>>({});
+  const [conceptPrices, setConceptPrices] = useState<Record<string, { monto: string; es_porcentaje: boolean; porcentaje: string }>>({});
 
   // Fetch tarifas
   const { data: tarifas = [], isLoading } = useQuery({
@@ -158,6 +172,20 @@ export default function Rates() {
   // Create/Update tarifa mutation
   const saveMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
+      // Build rangos_precios based on type
+      let rangosPrecios: any = {};
+      if (data.tipo_tarifa === 'peso') {
+        rangosPrecios = {
+          peso_base_hasta: parseFloat(data.peso_base_hasta) || 0,
+          adicional_por_kg: parseFloat(data.adicional_por_kg) || 0,
+        };
+      } else if (data.tipo_tarifa === 'volumen') {
+        rangosPrecios = {
+          volumen_base_hasta: parseFloat(data.volumen_base_hasta) || 0,
+          adicional_por_m3: parseFloat(data.adicional_por_m3) || 0,
+        };
+      }
+
       const tarifaData = {
         nombre: data.nombre,
         tipo_tarifa: data.tipo_tarifa,
@@ -167,6 +195,7 @@ export default function Rates() {
         precio_por_m3: data.precio_por_m3 ? parseFloat(data.precio_por_m3) : null,
         zona_origen: data.zona_origen || null,
         zona_destino: data.zona_destino || null,
+        rangos_precios: rangosPrecios,
         comision_chofer_porcentaje: data.comision_chofer_porcentaje
           ? parseFloat(data.comision_chofer_porcentaje)
           : null,
@@ -176,6 +205,8 @@ export default function Rates() {
         activa: data.activa,
       };
 
+      let tarifaId = editingTarifa?.id;
+
       if (editingTarifa) {
         const { error } = await supabase
           .from('tarifas')
@@ -183,15 +214,55 @@ export default function Rates() {
           .eq('id', editingTarifa.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('tarifas').insert({
+        const { data: newTarifa, error } = await supabase.from('tarifas').insert({
           ...tarifaData,
           tenant_id: profile?.tenant_id,
-        });
+        }).select('id').single();
         if (error) throw error;
+        tarifaId = newTarifa.id;
       }
+
+      // Save concept prices (upsert)
+      const conceptOperations = Object.entries(data.conceptos)
+        .filter(([_, val]) => (val.es_porcentaje && parseFloat(val.porcentaje) > 0) || (!val.es_porcentaje && parseFloat(val.monto) > 0))
+        .map(async ([conceptoId, val]) => {
+          const montoNum = parseFloat(val.monto) || 0;
+          const porcentajeNum = parseFloat(val.porcentaje) || null;
+
+          const { data: existing } = await supabase
+            .from('tarifa_concepto_precios')
+            .select('id')
+            .eq('tarifa_id', tarifaId!)
+            .eq('concepto_id', conceptoId)
+            .maybeSingle();
+
+          if (existing) {
+            return supabase
+              .from('tarifa_concepto_precios')
+              .update({ 
+                monto: montoNum, 
+                es_porcentaje: val.es_porcentaje,
+                porcentaje: porcentajeNum 
+              })
+              .eq('id', existing.id);
+          } else {
+            return supabase
+              .from('tarifa_concepto_precios')
+              .insert({ 
+                tarifa_id: tarifaId!, 
+                concepto_id: conceptoId, 
+                monto: montoNum,
+                es_porcentaje: val.es_porcentaje,
+                porcentaje: porcentajeNum 
+              });
+          }
+        });
+
+      await Promise.all(conceptOperations);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tarifas'] });
+      queryClient.invalidateQueries({ queryKey: ['tarifa_concepto_precios'] });
       toast.success(editingTarifa ? 'Tarifa actualizada' : 'Tarifa creada');
       resetForm();
       setIsDialogOpen(false);
@@ -261,27 +332,42 @@ export default function Rates() {
     mutationFn: async () => {
       if (!selectedTarifaForPricing) return;
 
-      const operations = Object.entries(conceptPrices).map(async ([conceptoId, monto]) => {
-        const montoNum = parseFloat(monto) || 0;
-        const existing = conceptoPrecios.find(p => p.concepto_id === conceptoId);
+      const operations = Object.entries(conceptPrices)
+        .filter(([_, val]) => (val.es_porcentaje && parseFloat(val.porcentaje) > 0) || (!val.es_porcentaje && parseFloat(val.monto) > 0))
+        .map(async ([conceptoId, val]) => {
+          const montoNum = parseFloat(val.monto) || 0;
+          const porcentajeNum = parseFloat(val.porcentaje) || null;
+          
+          const { data: existing } = await supabase
+            .from('tarifa_concepto_precios')
+            .select('id')
+            .eq('tarifa_id', selectedTarifaForPricing.id)
+            .eq('concepto_id', conceptoId)
+            .maybeSingle();
 
-        if (existing) {
-          const { error } = await supabase
-            .from('tarifa_concepto_precios')
-            .update({ monto: montoNum })
-            .eq('id', existing.id);
-          if (error) throw error;
-        } else if (montoNum > 0) {
-          const { error } = await supabase
-            .from('tarifa_concepto_precios')
-            .insert({
-              tarifa_id: selectedTarifaForPricing.id,
-              concepto_id: conceptoId,
-              monto: montoNum,
-            });
-          if (error) throw error;
-        }
-      });
+          if (existing) {
+            const { error } = await supabase
+              .from('tarifa_concepto_precios')
+              .update({ 
+                monto: montoNum,
+                es_porcentaje: val.es_porcentaje,
+                porcentaje: porcentajeNum
+              })
+              .eq('id', existing.id);
+            if (error) throw error;
+          } else {
+            const { error } = await supabase
+              .from('tarifa_concepto_precios')
+              .insert({
+                tarifa_id: selectedTarifaForPricing.id,
+                concepto_id: conceptoId,
+                monto: montoNum,
+                es_porcentaje: val.es_porcentaje,
+                porcentaje: porcentajeNum
+              });
+            if (error) throw error;
+          }
+        });
 
       await Promise.all(operations);
     },
@@ -326,6 +412,11 @@ export default function Rates() {
       comision_chofer_porcentaje: '',
       comision_chofer_fija: '',
       activa: true,
+      peso_base_hasta: '',
+      adicional_por_kg: '',
+      volumen_base_hasta: '',
+      adicional_por_m3: '',
+      conceptos: {},
     });
     setEditingTarifa(null);
   };
@@ -342,8 +433,26 @@ export default function Rates() {
     setEditingConcept(null);
   };
 
-  const handleEdit = (tarifa: Tarifa) => {
+  const handleEdit = async (tarifa: Tarifa) => {
     setEditingTarifa(tarifa);
+    
+    // Load existing concept prices
+    const { data: existingPrices } = await supabase
+      .from('tarifa_concepto_precios')
+      .select('concepto_id, monto, es_porcentaje, porcentaje')
+      .eq('tarifa_id', tarifa.id);
+
+    const conceptosMap: Record<string, { monto: string; es_porcentaje: boolean; porcentaje: string }> = {};
+    existingPrices?.forEach(p => {
+      conceptosMap[p.concepto_id] = {
+        monto: p.monto?.toString() || '0',
+        es_porcentaje: p.es_porcentaje || false,
+        porcentaje: p.porcentaje?.toString() || '',
+      };
+    });
+
+    const rangos = tarifa.rangos_precios || {};
+
     setFormData({
       nombre: tarifa.nombre,
       tipo_tarifa: tarifa.tipo_tarifa || 'peso',
@@ -356,6 +465,11 @@ export default function Rates() {
       comision_chofer_porcentaje: tarifa.comision_chofer_porcentaje?.toString() || '',
       comision_chofer_fija: tarifa.comision_chofer_fija?.toString() || '',
       activa: tarifa.activa ?? true,
+      peso_base_hasta: rangos.peso_base_hasta?.toString() || '',
+      adicional_por_kg: rangos.adicional_por_kg?.toString() || '',
+      volumen_base_hasta: rangos.volumen_base_hasta?.toString() || '',
+      adicional_por_m3: rangos.adicional_por_m3?.toString() || '',
+      conceptos: conceptosMap,
     });
     setIsDialogOpen(true);
   };
@@ -373,12 +487,26 @@ export default function Rates() {
     setIsConceptDialogOpen(true);
   };
 
-  const handleOpenPricing = (tarifa: Tarifa) => {
+  const handleOpenPricing = async (tarifa: Tarifa) => {
     setSelectedTarifaForPricing(tarifa);
+    
+    // Fetch prices for this specific tariff
+    const { data: pricesData } = await supabase
+      .from('tarifa_concepto_precios')
+      .select('concepto_id, monto, es_porcentaje, porcentaje')
+      .eq('tarifa_id', tarifa.id);
+    
     // Initialize prices from existing data
-    const prices: Record<string, string> = {};
-    conceptoPrecios.forEach(p => {
-      prices[p.concepto_id] = p.monto.toString();
+    const prices: Record<string, { monto: string; es_porcentaje: boolean; porcentaje: string }> = {};
+    conceptos.forEach(c => {
+      const existingPrice = pricesData?.find(p => p.concepto_id === c.id);
+      prices[c.id] = existingPrice 
+        ? { 
+            monto: existingPrice.monto?.toString() || '0',
+            es_porcentaje: existingPrice.es_porcentaje || false,
+            porcentaje: existingPrice.porcentaje?.toString() || '',
+          }
+        : { monto: '0', es_porcentaje: c.codigo?.toLowerCase() === 'seguro', porcentaje: '' };
     });
     setConceptPrices(prices);
     setIsPricingDialogOpen(true);
@@ -406,15 +534,7 @@ export default function Rates() {
     }).format(value);
   };
 
-  // Initialize concept prices when dialog opens
-  const initializePrices = () => {
-    const prices: Record<string, string> = {};
-    conceptos.forEach(c => {
-      const existingPrice = conceptoPrecios.find(p => p.concepto_id === c.id);
-      prices[c.id] = existingPrice ? existingPrice.monto.toString() : '0';
-    });
-    setConceptPrices(prices);
-  };
+  // Initialize concept prices when dialog opens - no longer needed, using handleOpenPricing
 
   // Get icon for rate type
   const getRateTypeIcon = (type: RateType) => {
@@ -433,77 +553,249 @@ export default function Rates() {
     switch (formData.tipo_tarifa) {
       case 'peso':
         return (
-          <div className="space-y-2">
-            <Label htmlFor="precio_por_kg">Precio por Kg</Label>
-            <Input
-              id="precio_por_kg"
-              type="number"
-              step="0.01"
-              value={formData.precio_por_kg}
-              onChange={(e) => setFormData({ ...formData, precio_por_kg: e.target.value })}
-              placeholder="0.00"
-            />
+          <div className="space-y-4 p-4 rounded-lg bg-muted/50 border">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Weight className="h-4 w-4" />
+              Configuración por Peso
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="peso_base_hasta">Peso incluido en base (Kg)</Label>
+                <Input
+                  id="peso_base_hasta"
+                  type="number"
+                  step="0.1"
+                  value={formData.peso_base_hasta}
+                  onChange={(e) => setFormData({ ...formData, peso_base_hasta: e.target.value })}
+                  placeholder="5"
+                />
+                <p className="text-xs text-muted-foreground">Kg incluidos en el precio base (Flete)</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="adicional_por_kg">Precio por Kg adicional</Label>
+                <Input
+                  id="adicional_por_kg"
+                  type="number"
+                  step="0.01"
+                  value={formData.adicional_por_kg}
+                  onChange={(e) => setFormData({ ...formData, adicional_por_kg: e.target.value })}
+                  placeholder="150"
+                />
+                <p className="text-xs text-muted-foreground">Se cobra por cada kg que exceda el base</p>
+              </div>
+            </div>
           </div>
         );
       case 'distancia':
         return (
-          <div className="space-y-2">
-            <Label htmlFor="precio_por_km">Precio por Km</Label>
+          <div className="space-y-2 p-4 rounded-lg bg-muted/50 border">
+            <div className="flex items-center gap-2 text-sm font-medium mb-2">
+              <Ruler className="h-4 w-4" />
+              Configuración por Distancia
+            </div>
+            <Label htmlFor="precio_por_km">Precio por Kilómetro</Label>
             <Input
               id="precio_por_km"
               type="number"
               step="0.01"
               value={formData.precio_por_km}
               onChange={(e) => setFormData({ ...formData, precio_por_km: e.target.value })}
-              placeholder="0.00"
+              placeholder="50"
             />
+            <p className="text-xs text-muted-foreground">Se multiplica por la distancia calculada entre origen y destino</p>
           </div>
         );
       case 'volumen':
         return (
-          <div className="space-y-2">
-            <Label htmlFor="precio_por_m3">Precio por m³</Label>
-            <Input
-              id="precio_por_m3"
-              type="number"
-              step="0.01"
-              value={formData.precio_por_m3}
-              onChange={(e) => setFormData({ ...formData, precio_por_m3: e.target.value })}
-              placeholder="0.00"
-            />
+          <div className="space-y-4 p-4 rounded-lg bg-muted/50 border">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Box className="h-4 w-4" />
+              Configuración por Volumen
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="volumen_base_hasta">Volumen incluido en base (m³)</Label>
+                <Input
+                  id="volumen_base_hasta"
+                  type="number"
+                  step="0.01"
+                  value={formData.volumen_base_hasta}
+                  onChange={(e) => setFormData({ ...formData, volumen_base_hasta: e.target.value })}
+                  placeholder="0.5"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="adicional_por_m3">Precio por m³ adicional</Label>
+                <Input
+                  id="adicional_por_m3"
+                  type="number"
+                  step="0.01"
+                  value={formData.adicional_por_m3}
+                  onChange={(e) => setFormData({ ...formData, adicional_por_m3: e.target.value })}
+                  placeholder="500"
+                />
+              </div>
+            </div>
           </div>
         );
       case 'zona':
       case 'codigo_postal':
         return (
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="zona_origen">
-                {formData.tipo_tarifa === 'codigo_postal' ? 'CP Origen' : 'Zona Origen'}
-              </Label>
-              <Input
-                id="zona_origen"
-                value={formData.zona_origen}
-                onChange={(e) => setFormData({ ...formData, zona_origen: e.target.value })}
-                placeholder={formData.tipo_tarifa === 'codigo_postal' ? 'Ej: 1000' : 'Ej: Capital'}
-              />
+          <div className="space-y-4 p-4 rounded-lg bg-muted/50 border">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <MapPin className="h-4 w-4" />
+              Configuración por {formData.tipo_tarifa === 'codigo_postal' ? 'Código Postal' : 'Zona'}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="zona_destino">
-                {formData.tipo_tarifa === 'codigo_postal' ? 'CP Destino' : 'Zona Destino'}
-              </Label>
-              <Input
-                id="zona_destino"
-                value={formData.zona_destino}
-                onChange={(e) => setFormData({ ...formData, zona_destino: e.target.value })}
-                placeholder={formData.tipo_tarifa === 'codigo_postal' ? 'Ej: 1900' : 'Ej: GBA'}
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="zona_origen">
+                  {formData.tipo_tarifa === 'codigo_postal' ? 'CP Origen' : 'Zona Origen'}
+                </Label>
+                <Input
+                  id="zona_origen"
+                  value={formData.zona_origen}
+                  onChange={(e) => setFormData({ ...formData, zona_origen: e.target.value })}
+                  placeholder={formData.tipo_tarifa === 'codigo_postal' ? 'Ej: 1000' : 'Ej: Capital'}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="zona_destino">
+                  {formData.tipo_tarifa === 'codigo_postal' ? 'CP Destino' : 'Zona Destino'}
+                </Label>
+                <Input
+                  id="zona_destino"
+                  value={formData.zona_destino}
+                  onChange={(e) => setFormData({ ...formData, zona_destino: e.target.value })}
+                  placeholder={formData.tipo_tarifa === 'codigo_postal' ? 'Ej: 1900' : 'Ej: GBA'}
+                />
+              </div>
             </div>
           </div>
         );
       default:
         return null;
     }
+  };
+
+  // Render concept prices inline in the form
+  const renderConceptPrices = () => {
+    const activeConceptos = conceptos.filter(c => c.activo);
+    if (activeConceptos.length === 0) return null;
+
+    return (
+      <div className="border-t pt-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <Layers className="h-4 w-4" />
+          <Label className="font-medium">Precios por Concepto</Label>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Define los montos para cada concepto. El precio base es el <strong>Flete</strong>.
+        </p>
+        
+        <div className="space-y-3">
+          {activeConceptos.map(concepto => {
+            const isSeguro = concepto.codigo?.toLowerCase() === 'seguro';
+            const currentValue = formData.conceptos[concepto.id] || { monto: '', es_porcentaje: isSeguro, porcentaje: '' };
+            
+            return (
+              <div key={concepto.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm truncate">{concepto.nombre}</span>
+                    <Badge variant="outline" className="text-xs shrink-0">
+                      {concepto.es_basico ? 'Básico' : 'Adicional'}
+                    </Badge>
+                  </div>
+                  {concepto.descripcion && (
+                    <p className="text-xs text-muted-foreground truncate">{concepto.descripcion}</p>
+                  )}
+                </div>
+                
+                {isSeguro ? (
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1">
+                      <Switch
+                        id={`porcentaje-${concepto.id}`}
+                        checked={currentValue.es_porcentaje}
+                        onCheckedChange={(checked) => {
+                          setFormData({
+                            ...formData,
+                            conceptos: {
+                              ...formData.conceptos,
+                              [concepto.id]: { ...currentValue, es_porcentaje: checked }
+                            }
+                          });
+                        }}
+                      />
+                      <Label htmlFor={`porcentaje-${concepto.id}`} className="text-xs">
+                        {currentValue.es_porcentaje ? '%' : '$'}
+                      </Label>
+                    </div>
+                    {currentValue.es_porcentaje ? (
+                      <div className="w-24">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="2.5"
+                          value={currentValue.porcentaje}
+                          onChange={(e) => {
+                            setFormData({
+                              ...formData,
+                              conceptos: {
+                                ...formData.conceptos,
+                                [concepto.id]: { ...currentValue, porcentaje: e.target.value }
+                              }
+                            });
+                          }}
+                          className="text-right"
+                        />
+                        <p className="text-[10px] text-muted-foreground mt-1">% del valor declarado</p>
+                      </div>
+                    ) : (
+                      <div className="w-28">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={currentValue.monto}
+                          onChange={(e) => {
+                            setFormData({
+                              ...formData,
+                              conceptos: {
+                                ...formData.conceptos,
+                                [concepto.id]: { ...currentValue, monto: e.target.value }
+                              }
+                            });
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="w-28">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={currentValue.monto}
+                      onChange={(e) => {
+                        setFormData({
+                          ...formData,
+                          conceptos: {
+                            ...formData.conceptos,
+                            [concepto.id]: { ...currentValue, monto: e.target.value, es_porcentaje: false }
+                          }
+                        });
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
   };
 
   if (!isAdmin()) {
@@ -594,6 +886,9 @@ export default function Rates() {
 
                   {/* Dynamic fields based on rate type */}
                   {renderRateTypeFields()}
+
+                  {/* Concept prices inline */}
+                  {renderConceptPrices()}
 
                   <div className="border-t pt-4">
                     <h4 className="text-sm font-medium mb-3">Comisión Chofer</h4>
@@ -767,11 +1062,7 @@ export default function Rates() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => {
-                              setSelectedTarifaForPricing(tarifa);
-                              initializePrices();
-                              setIsPricingDialogOpen(true);
-                            }}
+                            onClick={() => handleOpenPricing(tarifa)}
                             title="Configurar precios por concepto"
                           >
                             <Layers className="h-4 w-4" />
@@ -1106,40 +1397,90 @@ export default function Rates() {
             <p className="text-sm text-muted-foreground">
               Asigna un monto a cada concepto para esta tarifa.
             </p>
-            {conceptos.filter(c => c.activo).map((concepto) => (
-              <div key={concepto.id} className="flex items-center gap-4">
-                <div className="w-32 flex items-center gap-2">
-                  <Label>{concepto.nombre}</Label>
-                  {!concepto.es_basico && (
-                    <Badge variant="outline" className="text-xs border-warning text-warning">
-                      +
-                    </Badge>
-                  )}
+            {conceptos.filter(c => c.activo).map((concepto) => {
+              const isSeguro = concepto.codigo?.toLowerCase() === 'seguro';
+              const currentValue = conceptPrices[concepto.id] || { monto: '0', es_porcentaje: isSeguro, porcentaje: '' };
+              
+              return (
+                <div key={concepto.id} className="flex items-center gap-4">
+                  <div className="w-32 flex items-center gap-2">
+                    <Label>{concepto.nombre}</Label>
+                    {!concepto.es_basico && (
+                      <Badge variant="outline" className="text-xs border-warning text-warning">
+                        +
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    {isSeguro ? (
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={currentValue.es_porcentaje}
+                          onCheckedChange={(checked) =>
+                            setConceptPrices({
+                              ...conceptPrices,
+                              [concepto.id]: { ...currentValue, es_porcentaje: checked },
+                            })
+                          }
+                        />
+                        <span className="text-xs">{currentValue.es_porcentaje ? '%' : '$'}</span>
+                        {currentValue.es_porcentaje ? (
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={currentValue.porcentaje}
+                            onChange={(e) =>
+                              setConceptPrices({
+                                ...conceptPrices,
+                                [concepto.id]: { ...currentValue, porcentaje: e.target.value },
+                              })
+                            }
+                            placeholder="2.5"
+                            className="w-24"
+                          />
+                        ) : (
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={currentValue.monto}
+                            onChange={(e) =>
+                              setConceptPrices({
+                                ...conceptPrices,
+                                [concepto.id]: { ...currentValue, monto: e.target.value },
+                              })
+                            }
+                            placeholder="0.00"
+                          />
+                        )}
+                      </div>
+                    ) : (
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={currentValue.monto}
+                        onChange={(e) =>
+                          setConceptPrices({
+                            ...conceptPrices,
+                            [concepto.id]: { ...currentValue, monto: e.target.value },
+                          })
+                        }
+                        placeholder="0.00"
+                      />
+                    )}
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={conceptPrices[concepto.id] || '0'}
-                    onChange={(e) =>
-                      setConceptPrices({
-                        ...conceptPrices,
-                        [concepto.id]: e.target.value,
-                      })
-                    }
-                    placeholder="0.00"
-                  />
-                </div>
-              </div>
-            ))}
+              );
+            })}
             <div className="border-t pt-4">
               <div className="flex justify-between font-medium">
                 <span>Total por Conceptos:</span>
                 <span className="text-tarifas">
                   {formatCurrency(
                     Object.values(conceptPrices).reduce(
-                      (sum, val) => sum + (parseFloat(val) || 0),
+                      (sum, val) => sum + (parseFloat(val.monto) || 0),
                       0
                     )
                   )}

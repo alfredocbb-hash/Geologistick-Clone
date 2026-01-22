@@ -2242,22 +2242,28 @@ export type Database = {
         Row: {
           concepto_id: string
           created_at: string | null
+          es_porcentaje: boolean | null
           id: string
           monto: number
+          porcentaje: number | null
           tarifa_id: string
         }
         Insert: {
           concepto_id: string
           created_at?: string | null
+          es_porcentaje?: boolean | null
           id?: string
           monto?: number
+          porcentaje?: number | null
           tarifa_id: string
         }
         Update: {
           concepto_id?: string
           created_at?: string | null
+          es_porcentaje?: boolean | null
           id?: string
           monto?: number
+          porcentaje?: number | null
           tarifa_id?: string
         }
         Relationships: [
