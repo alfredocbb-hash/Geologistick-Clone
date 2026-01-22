@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { QRCodeSVG } from 'qrcode.react';
 import { 
   ArrowLeft, 
@@ -12,11 +14,11 @@ import {
   Home, 
   Package,
   Phone,
-  MapPin,
-  Truck,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+
+type PrintFormat = 'grid-2x3' | 'grid-3x2' | 'single-column';
 
 const TIPO_SERVICIO_CONFIG = {
   sucursal_sucursal: { 
@@ -98,6 +100,7 @@ interface Envio {
 export default function PrintLabel() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const [printFormat, setPrintFormat] = useState<PrintFormat>('grid-2x3');
   const envioId = searchParams.get('id');
 
   const { data: envio, isLoading, error } = useQuery({
@@ -191,10 +194,16 @@ export default function PrintLabel() {
 
   const deliveryInfo = getDeliveryAddress();
 
+  const formatLabels = {
+    'grid-2x3': 'Grid 2×3 (Horizontal - 6/página)',
+    'grid-3x2': 'Grid 3×2 (Horizontal - 6/página)',
+    'single-column': 'Una columna (Vertical - 3/página)',
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header - No se imprime */}
-      <div className="flex items-center justify-between p-4 no-print">
+      <div className="flex items-center justify-between p-4 no-print flex-wrap gap-4">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-5 w-5" />
@@ -206,10 +215,25 @@ export default function PrintLabel() {
             </p>
           </div>
         </div>
-        <Button onClick={handlePrint} className="gradient-primary">
-          <Printer className="h-4 w-4 mr-2" />
-          Imprimir
-        </Button>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Formato:</span>
+            <Select value={printFormat} onValueChange={(v) => setPrintFormat(v as PrintFormat)}>
+              <SelectTrigger className="w-[280px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="grid-2x3">Grid 2×3 (Horizontal - 6/página)</SelectItem>
+                <SelectItem value="grid-3x2">Grid 3×2 (Horizontal - 6/página)</SelectItem>
+                <SelectItem value="single-column">Una columna (Vertical - 3/página)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handlePrint} className="gradient-primary">
+            <Printer className="h-4 w-4 mr-2" />
+            Imprimir
+          </Button>
+        </div>
       </div>
 
       {/* Labels Container - Clase print-content para estrategia de visibilidad */}
@@ -390,11 +414,11 @@ export default function PrintLabel() {
         </div>
       </div>
 
-      {/* Print Styles - Optimizado para 3 etiquetas por hoja A4 */}
+      {/* Print Styles - Dinámico según formato seleccionado */}
       <style>{`
         @media print {
           @page {
-            size: A4 portrait;
+            size: ${printFormat === 'single-column' ? 'A4 portrait' : 'A4 landscape'};
             margin: 5mm;
           }
           
@@ -413,7 +437,6 @@ export default function PrintLabel() {
             print-color-adjust: exact !important;
             margin: 0 !important;
             padding: 0 !important;
-            width: 210mm !important;
             background: white !important;
           }
           
@@ -422,65 +445,157 @@ export default function PrintLabel() {
             display: block !important;
             visibility: visible !important;
             position: static !important;
-            width: 200mm !important;
             padding: 0 !important;
-            margin: 0 auto !important;
+            margin: 0 !important;
           }
           
-          /* Grid a columna única */
-          .print-content > div {
-            display: flex !important;
-            flex-direction: column !important;
-            width: 200mm !important;
-            gap: 0 !important;
-          }
-          
-          /* Cada etiqueta ocupa el ancho completo */
-          .label-container {
-            width: 200mm !important;
-            min-width: 200mm !important;
-            max-width: 200mm !important;
-            height: 90mm !important;
-            max-height: 90mm !important;
-            overflow: hidden !important;
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-            margin-bottom: 2mm !important;
-            padding: 4mm !important;
-            box-sizing: border-box !important;
-            border: 1px solid black !important;
-            border-radius: 0 !important;
-            background: white !important;
-          }
-          
-          /* Salto de página cada 3 etiquetas */
-          .label-container:nth-child(3n) {
-            page-break-after: always !important;
-            break-after: page !important;
-            margin-bottom: 0 !important;
-          }
-          
-          .label-container:last-child {
-            page-break-after: auto !important;
-            break-after: auto !important;
-          }
+          ${printFormat === 'grid-2x3' ? `
+            /* Grid 2×3: 2 columnas × 3 filas = 6 etiquetas por página */
+            html, body, #root {
+              width: 297mm !important;
+            }
+            
+            .print-content {
+              width: 287mm !important;
+            }
+            
+            .print-content > div {
+              display: grid !important;
+              grid-template-columns: repeat(2, 1fr) !important;
+              gap: 3mm !important;
+              width: 287mm !important;
+            }
+            
+            .label-container {
+              width: 140mm !important;
+              min-width: 140mm !important;
+              max-width: 140mm !important;
+              height: 90mm !important;
+              max-height: 90mm !important;
+              overflow: hidden !important;
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+              padding: 3mm !important;
+              box-sizing: border-box !important;
+              border: 1px solid black !important;
+              border-radius: 0 !important;
+              background: white !important;
+            }
+            
+            .label-container:nth-child(6n) {
+              page-break-after: always !important;
+              break-after: page !important;
+            }
+            
+            .label-container:last-child {
+              page-break-after: auto !important;
+              break-after: auto !important;
+            }
+          ` : printFormat === 'grid-3x2' ? `
+            /* Grid 3×2: 3 columnas × 2 filas = 6 etiquetas por página */
+            html, body, #root {
+              width: 297mm !important;
+            }
+            
+            .print-content {
+              width: 287mm !important;
+            }
+            
+            .print-content > div {
+              display: grid !important;
+              grid-template-columns: repeat(3, 1fr) !important;
+              gap: 3mm !important;
+              width: 287mm !important;
+            }
+            
+            .label-container {
+              width: 93mm !important;
+              min-width: 93mm !important;
+              max-width: 93mm !important;
+              height: 95mm !important;
+              max-height: 95mm !important;
+              overflow: hidden !important;
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+              padding: 2mm !important;
+              box-sizing: border-box !important;
+              border: 1px solid black !important;
+              border-radius: 0 !important;
+              background: white !important;
+            }
+            
+            .label-container:nth-child(6n) {
+              page-break-after: always !important;
+              break-after: page !important;
+            }
+            
+            .label-container:last-child {
+              page-break-after: auto !important;
+              break-after: auto !important;
+            }
+          ` : `
+            /* Una columna: 1 columna × 3 filas = 3 etiquetas por página */
+            html, body, #root {
+              width: 210mm !important;
+            }
+            
+            .print-content {
+              width: 200mm !important;
+              margin: 0 auto !important;
+            }
+            
+            .print-content > div {
+              display: flex !important;
+              flex-direction: column !important;
+              width: 200mm !important;
+              gap: 0 !important;
+            }
+            
+            .label-container {
+              width: 200mm !important;
+              min-width: 200mm !important;
+              max-width: 200mm !important;
+              height: 90mm !important;
+              max-height: 90mm !important;
+              overflow: hidden !important;
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+              margin-bottom: 2mm !important;
+              padding: 4mm !important;
+              box-sizing: border-box !important;
+              border: 1px solid black !important;
+              border-radius: 0 !important;
+              background: white !important;
+            }
+            
+            .label-container:nth-child(3n) {
+              page-break-after: always !important;
+              break-after: page !important;
+              margin-bottom: 0 !important;
+            }
+            
+            .label-container:last-child {
+              page-break-after: auto !important;
+              break-after: auto !important;
+            }
+          `}
           
           /* Ajustar tamaños de fuente para impresión */
           .label-container .text-xs {
-            font-size: 9px !important;
+            font-size: ${printFormat === 'grid-3x2' ? '8px' : '9px'} !important;
           }
           
           .label-container .text-sm {
-            font-size: 11px !important;
+            font-size: ${printFormat === 'grid-3x2' ? '9px' : '11px'} !important;
           }
           
           .label-container .text-\\[10px\\] {
-            font-size: 8px !important;
+            font-size: ${printFormat === 'grid-3x2' ? '7px' : '8px'} !important;
           }
           
           /* Reducir espaciados para que quepa todo */
           .label-container .mb-2 {
-            margin-bottom: 1.5mm !important;
+            margin-bottom: ${printFormat === 'grid-3x2' ? '1mm' : '1.5mm'} !important;
           }
           
           .label-container .my-2 {
@@ -494,18 +609,18 @@ export default function PrintLabel() {
           
           /* Iconos más pequeños */
           .label-container svg {
-            width: 10px !important;
-            height: 10px !important;
+            width: ${printFormat === 'grid-3x2' ? '8px' : '10px'} !important;
+            height: ${printFormat === 'grid-3x2' ? '8px' : '10px'} !important;
           }
           
           .label-container .h-4 {
-            height: 12px !important;
-            width: 12px !important;
+            height: ${printFormat === 'grid-3x2' ? '10px' : '12px'} !important;
+            width: ${printFormat === 'grid-3x2' ? '10px' : '12px'} !important;
           }
           
           .label-container .h-3 {
-            height: 10px !important;
-            width: 10px !important;
+            height: ${printFormat === 'grid-3x2' ? '8px' : '10px'} !important;
+            width: ${printFormat === 'grid-3x2' ? '8px' : '10px'} !important;
           }
           
           .label-container .h-2 {
