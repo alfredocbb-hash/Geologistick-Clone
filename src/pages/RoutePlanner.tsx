@@ -236,7 +236,7 @@ export default function RoutePlanner() {
           *,
           sucursal:sucursales(nombre)
         `)
-        .in("estado", ["confirmada", "en_progreso"])
+        .in("estado", ["confirmada", "en_curso"])
         .order("fecha", { ascending: true });
       
       if (error) throw error;
