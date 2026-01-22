@@ -1,104 +1,78 @@
 
-# Plan: Corregir Estilos de Impresión de Etiquetas
 
-## Problemas Identificados
+# Plan: Mostrar Logo del Tenant en Tracking Público
 
-1. **Colores de fondo desaparecen**: Los badges con colores (verde, negro, violeta) no se imprimen porque los navegadores por defecto no imprimen fondos de color.
-2. **QR diminuto**: El código QR tiene un tamaño fijo en píxeles (`size={64}`) que se reduce al imprimir.
-3. **Cuadrícula no se mantiene**: Aunque hay estilos de grid, algunos navegadores requieren reforzar la propiedad `print-color-adjust`.
-4. **Cortes de etiquetas**: Necesita reforzar `break-inside: avoid` en todos los elementos internos.
+## Objetivo
+
+Cuando un cliente rastrea su envío, mostrar el logo de la empresa (tenant) correspondiente en lugar del logo genérico.
+
+---
+
+## Situación Actual
+
+| Página | URL | Logo | Estado |
+|--------|-----|------|--------|
+| Tracking público | `/tracking` | Icono genérico | ❌ Sin branding |
+| Tracking embed | `/tracking-embed?tenant_slug=X` | ✅ Logo del tenant | Funciona con parámetro |
+
+El problema es que en `/tracking` no sabemos el tenant hasta **después** de buscar el envío.
 
 ---
 
 ## Solución Propuesta
 
-### Archivo: `src/pages/PrintLabel.tsx`
+### 1. Modificar Edge Function `public-tracking`
 
-#### 1. Forzar colores de fondo en elementos específicos
+Incluir información del branding del tenant en la respuesta:
 
-Agregar estilos explícitos para todos los elementos con fondo de color:
+```typescript
+// Agregar al query del envío
+const { data: envio } = await query.single();
 
-```css
-/* Forzar impresión de colores de fondo */
-.label-container,
-.label-container * {
-  -webkit-print-color-adjust: exact !important;
-  print-color-adjust: exact !important;
-  color-adjust: exact !important;
-}
+// Obtener branding del tenant
+const { data: branding } = await supabaseClient
+  .from("tenant_branding")
+  .select("nombre_app, logo_light, logo_dark, color_primario")
+  .eq("tenant_id", envio.tenant_id)
+  .single();
 
-/* Badges y elementos con fondo de color */
-.label-container [class*="bg-"] {
-  -webkit-print-color-adjust: exact !important;
-  print-color-adjust: exact !important;
-  color-adjust: exact !important;
-}
+// Incluir en respuesta
+const response = {
+  ...existingFields,
+  branding: branding ? {
+    nombre_app: branding.nombre_app,
+    logo: branding.logo_light || branding.logo_dark,
+    color_primario: branding.color_primario,
+  } : null,
+};
 ```
 
-#### 2. Escalar el QR a tamaño físico fijo
+### 2. Modificar `src/pages/Tracking.tsx`
 
-Cambiar el tamaño del QR en los estilos de impresión:
+Usar la Edge Function en lugar de consulta directa:
 
-```css
-/* QR Code a tamaño físico fijo */
-.label-container svg[viewBox] {
-  width: 25mm !important;
-  height: 25mm !important;
-  min-width: 25mm !important;
-  min-height: 25mm !important;
-}
-```
+```typescript
+// Cambiar queryFn para usar Edge Function
+const { data: envio, isLoading } = useQuery({
+  queryKey: ['tracking', searchedTracking],
+  queryFn: async () => {
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/public-tracking?code=${searchedTracking}`
+    );
+    if (!response.ok) return null;
+    return response.json();
+  },
+  enabled: !!searchedTracking,
+});
 
-#### 3. Reforzar ocultación de elementos no imprimibles
-
-Agregar más selectores para asegurar que solo las etiquetas se imprimen:
-
-```css
-/* Ocultar todo excepto las etiquetas */
-body > *:not(.print-content),
-.no-print,
-button,
-select,
-[data-radix-portal],
-header,
-nav,
-footer,
-.gradient-primary:not(.label-container *) {
-  display: none !important;
-  visibility: hidden !important;
-}
-```
-
-#### 4. Reforzar break-inside en elementos internos
-
-```css
-/* Evitar cortes dentro de etiquetas */
-.label-container,
-.label-container > * {
-  break-inside: avoid !important;
-  page-break-inside: avoid !important;
-}
-```
-
-#### 5. Estilos específicos para el badge de servicio y bulto
-
-Agregar reglas explícitas para preservar los colores de los badges:
-
-```css
-/* Preservar colores del badge de tipo de servicio */
-.label-container .bg-primary,
-.label-container .bg-success,
-.label-container .bg-warning,
-.label-container .bg-accent {
-  background-color: inherit !important;
-  -webkit-print-color-adjust: exact !important;
-}
-
-/* Preservar el badge negro de BULTO */
-.label-container .bg-foreground {
-  background-color: #1e293b !important;
-  color: white !important;
-}
+// Mostrar logo dinámicamente
+{envio?.branding?.logo && (
+  <img 
+    src={envio.branding.logo} 
+    alt={envio.branding.nombre_app}
+    className="h-16 mx-auto object-contain"
+  />
+)}
 ```
 
 ---
@@ -107,104 +81,64 @@ Agregar reglas explícitas para preservar los colores de los badges:
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/pages/PrintLabel.tsx` | Actualizar bloque `<style>` con las mejoras de impresión |
+| `supabase/functions/public-tracking/index.ts` | Incluir branding del tenant en respuesta |
+| `src/pages/Tracking.tsx` | Usar Edge Function y mostrar logo dinámico |
 
 ---
 
-## Cambios Específicos en el CSS de Impresión
+## Flujo Visual
 
-### Bloque @media print actualizado:
+```text
+ANTES:                                    DESPUÉS:
+┌─────────────────────────────┐          ┌─────────────────────────────┐
+│      📍 Icono genérico      │          │     [LOGO EMPRESA]          │
+│                             │          │     Nombre de la App        │
+│   "Rastrea tu Envío"        │          │                             │
+│                             │          │   "Rastrea tu Envío"        │
+│   [___________________]     │          │                             │
+│                             │          │   [___________________]     │
+│   Tracking: XXX-123         │          │                             │
+│   Estado: En Tránsito       │          │   Tracking: XXX-123         │
+│                             │          │   Estado: En Tránsito       │
+└─────────────────────────────┘          └─────────────────────────────┘
 
-```css
-@media print {
-  @page {
-    size: A4 landscape;
-    margin: 5mm;
-  }
-  
-  /* NUEVO: Forzar impresión de colores */
-  * {
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-    color-adjust: exact !important;
-  }
-  
-  /* NUEVO: Ocultar header, botones, navegación */
-  .no-print,
-  header,
-  nav,
-  footer,
-  button,
-  select,
-  [data-radix-portal],
-  .min-h-screen > div:first-child {
-    display: none !important;
-    visibility: hidden !important;
-  }
-  
-  /* Container principal */
-  .print-content {
-    display: block !important;
-  }
-  
-  .print-content > div {
-    display: grid !important;
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: 3mm !important;
-  }
-  
-  /* NUEVO: QR a tamaño físico */
-  .label-container svg {
-    width: auto !important;
-    height: auto !important;
-  }
-  
-  .label-container .flex.justify-center.mb-2 svg {
-    width: 25mm !important;
-    height: 25mm !important;
-  }
-  
-  /* NUEVO: Evitar cortes */
-  .label-container {
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
-  }
-  
-  /* NUEVO: Colores específicos para badges */
-  .label-container .bg-foreground {
-    background-color: #1e293b !important;
-    color: white !important;
-  }
-  
-  .label-container .bg-success {
-    background-color: #16a34a !important;
-    color: white !important;
-  }
-  
-  .label-container .bg-primary {
-    background-color: #3b82f6 !important;
-    color: white !important;
-  }
-  
-  .label-container .bg-warning {
-    background-color: #f59e0b !important;
-    color: white !important;
-  }
-  
-  .label-container .bg-accent {
-    background-color: #8b5cf6 !important;
-    color: white !important;
-  }
-}
+     Sin personalización                      Branding del tenant
 ```
 
 ---
 
-## Resultado Esperado
+## Detalles de Implementación
 
-| Problema | Antes | Después |
-|----------|-------|---------|
-| Colores de fondo | Desaparecen | Verde, negro, azul visibles |
-| Tamaño del QR | Diminuto (64px) | 2.5cm fijo |
-| Cuadrícula | Se rompe | Grid 2×3 o 3×2 mantenido |
-| Cortes de página | Etiquetas cortadas | Cada etiqueta íntegra |
+### Edge Function - Campos a agregar:
+
+```json
+{
+  "tracking_number": "SUC01-ENV-20260122-C86B88",
+  "estado": "en_transito",
+  "branding": {
+    "nombre_app": "TransExpress",
+    "logo": "https://storage.../logo.png",
+    "color_primario": "#2563eb"
+  },
+  "origen": { ... },
+  "destino": { ... },
+  "historial": [ ... ]
+}
+```
+
+### Tracking.tsx - Header dinámico:
+
+- Si hay logo → mostrar imagen centrada
+- Si hay `nombre_app` → mostrar como título
+- Si hay `color_primario` → aplicar al botón de búsqueda
+- Fallback al diseño actual si no hay branding
+
+---
+
+## Beneficios
+
+1. **White-label completo**: Cada empresa ve su propia marca
+2. **Sin configuración manual**: Se detecta automáticamente del envío
+3. **Consistencia**: Mismo branding que en otras partes del sistema
+4. **Seguridad**: La Edge Function bypasea RLS de forma segura
+
