@@ -41,3 +41,6 @@ verify_jwt = false
 
 [functions.public-tracking]
 verify_jwt = false
+
+[functions.snap-to-roads]
+verify_jwt = false
