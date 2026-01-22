@@ -2245,6 +2245,7 @@ export type Database = {
           es_porcentaje: boolean | null
           id: string
           monto: number
+          multiplicar_por_bultos: boolean
           porcentaje: number | null
           tarifa_id: string
         }
@@ -2254,6 +2255,7 @@ export type Database = {
           es_porcentaje?: boolean | null
           id?: string
           monto?: number
+          multiplicar_por_bultos?: boolean
           porcentaje?: number | null
           tarifa_id: string
         }
@@ -2263,6 +2265,7 @@ export type Database = {
           es_porcentaje?: boolean | null
           id?: string
           monto?: number
+          multiplicar_por_bultos?: boolean
           porcentaje?: number | null
           tarifa_id?: string
         }

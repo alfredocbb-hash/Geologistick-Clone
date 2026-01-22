@@ -80,6 +80,7 @@ interface TarifaConceptoPrecio {
   monto: number;
   es_porcentaje?: boolean | null;
   porcentaje?: number | null;
+  multiplicar_por_bultos?: boolean | null;
   concepto?: TarifaConcepto;
 }
 
@@ -114,7 +115,7 @@ export default function Rates() {
     volumen_base_hasta: '',
     adicional_por_m3: '',
     // Conceptos inline
-    conceptos: {} as Record<string, { monto: string; es_porcentaje: boolean; porcentaje: string }>,
+    conceptos: {} as Record<string, { monto: string; es_porcentaje: boolean; porcentaje: string; multiplicar_por_bultos: boolean }>,
   });
 
   const [conceptFormData, setConceptFormData] = useState({
@@ -126,7 +127,7 @@ export default function Rates() {
     es_basico: true,
   });
 
-  const [conceptPrices, setConceptPrices] = useState<Record<string, { monto: string; es_porcentaje: boolean; porcentaje: string }>>({});
+  const [conceptPrices, setConceptPrices] = useState<Record<string, { monto: string; es_porcentaje: boolean; porcentaje: string; multiplicar_por_bultos: boolean }>>({});
 
   // Fetch tarifas
   const { data: tarifas = [], isLoading } = useQuery({
@@ -351,7 +352,8 @@ export default function Rates() {
               .update({ 
                 monto: montoNum,
                 es_porcentaje: val.es_porcentaje,
-                porcentaje: porcentajeNum
+                porcentaje: porcentajeNum,
+                multiplicar_por_bultos: val.multiplicar_por_bultos
               })
               .eq('id', existing.id);
             if (error) throw error;
@@ -363,7 +365,8 @@ export default function Rates() {
                 concepto_id: conceptoId,
                 monto: montoNum,
                 es_porcentaje: val.es_porcentaje,
-                porcentaje: porcentajeNum
+                porcentaje: porcentajeNum,
+                multiplicar_por_bultos: val.multiplicar_por_bultos
               });
             if (error) throw error;
           }
@@ -439,15 +442,16 @@ export default function Rates() {
     // Load existing concept prices
     const { data: existingPrices } = await supabase
       .from('tarifa_concepto_precios')
-      .select('concepto_id, monto, es_porcentaje, porcentaje')
+      .select('concepto_id, monto, es_porcentaje, porcentaje, multiplicar_por_bultos')
       .eq('tarifa_id', tarifa.id);
 
-    const conceptosMap: Record<string, { monto: string; es_porcentaje: boolean; porcentaje: string }> = {};
+    const conceptosMap: Record<string, { monto: string; es_porcentaje: boolean; porcentaje: string; multiplicar_por_bultos: boolean }> = {};
     existingPrices?.forEach(p => {
       conceptosMap[p.concepto_id] = {
         monto: p.monto?.toString() || '0',
         es_porcentaje: p.es_porcentaje || false,
         porcentaje: p.porcentaje?.toString() || '',
+        multiplicar_por_bultos: p.multiplicar_por_bultos || false,
       };
     });
 
@@ -493,11 +497,11 @@ export default function Rates() {
     // Fetch prices for this specific tariff
     const { data: pricesData } = await supabase
       .from('tarifa_concepto_precios')
-      .select('concepto_id, monto, es_porcentaje, porcentaje')
+      .select('concepto_id, monto, es_porcentaje, porcentaje, multiplicar_por_bultos')
       .eq('tarifa_id', tarifa.id);
     
     // Initialize prices from existing data
-    const prices: Record<string, { monto: string; es_porcentaje: boolean; porcentaje: string }> = {};
+    const prices: Record<string, { monto: string; es_porcentaje: boolean; porcentaje: string; multiplicar_por_bultos: boolean }> = {};
     conceptos.forEach(c => {
       const existingPrice = pricesData?.find(p => p.concepto_id === c.id);
       prices[c.id] = existingPrice 
@@ -505,8 +509,9 @@ export default function Rates() {
             monto: existingPrice.monto?.toString() || '0',
             es_porcentaje: existingPrice.es_porcentaje || false,
             porcentaje: existingPrice.porcentaje?.toString() || '',
+            multiplicar_por_bultos: existingPrice.multiplicar_por_bultos || false,
           }
-        : { monto: '0', es_porcentaje: c.codigo?.toLowerCase() === 'seguro', porcentaje: '' };
+        : { monto: '0', es_porcentaje: c.codigo?.toLowerCase() === 'seguro', porcentaje: '', multiplicar_por_bultos: false };
     });
     setConceptPrices(prices);
     setIsPricingDialogOpen(true);
@@ -695,7 +700,7 @@ export default function Rates() {
         <div className="space-y-3">
           {activeConceptos.map(concepto => {
             const isSeguro = concepto.codigo?.toLowerCase() === 'seguro';
-            const currentValue = formData.conceptos[concepto.id] || { monto: '', es_porcentaje: isSeguro, porcentaje: '' };
+            const currentValue = formData.conceptos[concepto.id] || { monto: '', es_porcentaje: isSeguro, porcentaje: '', multiplicar_por_bultos: false };
             
             return (
               <div key={concepto.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
@@ -1399,77 +1404,95 @@ export default function Rates() {
             </p>
             {conceptos.filter(c => c.activo).map((concepto) => {
               const isSeguro = concepto.codigo?.toLowerCase() === 'seguro';
-              const currentValue = conceptPrices[concepto.id] || { monto: '0', es_porcentaje: isSeguro, porcentaje: '' };
+              const currentValue = conceptPrices[concepto.id] || { monto: '0', es_porcentaje: isSeguro, porcentaje: '', multiplicar_por_bultos: false };
               
               return (
-                <div key={concepto.id} className="flex items-center gap-4">
-                  <div className="w-32 flex items-center gap-2">
-                    <Label>{concepto.nombre}</Label>
-                    {!concepto.es_basico && (
-                      <Badge variant="outline" className="text-xs border-warning text-warning">
-                        +
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    {isSeguro ? (
-                      <div className="flex items-center gap-2">
-                        <Switch
-                          checked={currentValue.es_porcentaje}
-                          onCheckedChange={(checked) =>
+                <div key={concepto.id} className="space-y-2 border-b pb-3 last:border-b-0">
+                  <div className="flex items-center gap-4">
+                    <div className="w-32 flex items-center gap-2">
+                      <Label>{concepto.nombre}</Label>
+                      {!concepto.es_basico && (
+                        <Badge variant="outline" className="text-xs border-warning text-warning">
+                          +
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      {isSeguro ? (
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={currentValue.es_porcentaje}
+                            onCheckedChange={(checked) =>
+                              setConceptPrices({
+                                ...conceptPrices,
+                                [concepto.id]: { ...currentValue, es_porcentaje: checked },
+                              })
+                            }
+                          />
+                          <span className="text-xs">{currentValue.es_porcentaje ? '%' : '$'}</span>
+                          {currentValue.es_porcentaje ? (
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={currentValue.porcentaje}
+                              onChange={(e) =>
+                                setConceptPrices({
+                                  ...conceptPrices,
+                                  [concepto.id]: { ...currentValue, porcentaje: e.target.value },
+                                })
+                              }
+                              placeholder="2.5"
+                              className="w-24"
+                            />
+                          ) : (
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={currentValue.monto}
+                              onChange={(e) =>
+                                setConceptPrices({
+                                  ...conceptPrices,
+                                  [concepto.id]: { ...currentValue, monto: e.target.value },
+                                })
+                              }
+                              placeholder="0.00"
+                            />
+                          )}
+                        </div>
+                      ) : (
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={currentValue.monto}
+                          onChange={(e) =>
                             setConceptPrices({
                               ...conceptPrices,
-                              [concepto.id]: { ...currentValue, es_porcentaje: checked },
+                              [concepto.id]: { ...currentValue, monto: e.target.value },
                             })
                           }
+                          placeholder="0.00"
                         />
-                        <span className="text-xs">{currentValue.es_porcentaje ? '%' : '$'}</span>
-                        {currentValue.es_porcentaje ? (
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={currentValue.porcentaje}
-                            onChange={(e) =>
-                              setConceptPrices({
-                                ...conceptPrices,
-                                [concepto.id]: { ...currentValue, porcentaje: e.target.value },
-                              })
-                            }
-                            placeholder="2.5"
-                            className="w-24"
-                          />
-                        ) : (
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={currentValue.monto}
-                            onChange={(e) =>
-                              setConceptPrices({
-                                ...conceptPrices,
-                                [concepto.id]: { ...currentValue, monto: e.target.value },
-                              })
-                            }
-                            placeholder="0.00"
-                          />
-                        )}
-                      </div>
-                    ) : (
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={currentValue.monto}
-                        onChange={(e) =>
-                          setConceptPrices({
-                            ...conceptPrices,
-                            [concepto.id]: { ...currentValue, monto: e.target.value },
-                          })
-                        }
-                        placeholder="0.00"
-                      />
-                    )}
+                      )}
+                    </div>
+                  </div>
+                  {/* Toggle multiplicar por bultos */}
+                  <div className="flex items-center gap-2 ml-32 pl-1">
+                    <Switch
+                      id={`bultos-${concepto.id}`}
+                      checked={currentValue.multiplicar_por_bultos}
+                      onCheckedChange={(checked) =>
+                        setConceptPrices({
+                          ...conceptPrices,
+                          [concepto.id]: { ...currentValue, multiplicar_por_bultos: checked },
+                        })
+                      }
+                    />
+                    <Label htmlFor={`bultos-${concepto.id}`} className="text-xs text-muted-foreground cursor-pointer">
+                      × Cantidad de bultos
+                    </Label>
                   </div>
                 </div>
               );
