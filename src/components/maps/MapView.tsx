@@ -192,17 +192,41 @@ function MapViewComponent({
           />
         )}
 
-        {/* Render polyline path */}
+        {/* Render polyline path with navigation-style appearance */}
         {polylinePath.length > 1 && !directions && (
-          <Polyline
-            path={polylinePath}
-            options={{
-              strokeColor: '#3b82f6',
-              strokeWeight: 4,
-              strokeOpacity: 0.8,
-              geodesic: true,
-            }}
-          />
+          <>
+            {/* Shadow/outline polyline for better visibility */}
+            <Polyline
+              path={polylinePath}
+              options={{
+                strokeColor: '#1e3a5f',
+                strokeWeight: 7,
+                strokeOpacity: 0.4,
+                geodesic: true,
+              }}
+            />
+            {/* Main route polyline */}
+            <Polyline
+              path={polylinePath}
+              options={{
+                strokeColor: '#4285F4',
+                strokeWeight: 5,
+                strokeOpacity: 0.95,
+                geodesic: true,
+                icons: [{
+                  icon: {
+                    path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                    scale: 2.5,
+                    strokeColor: '#ffffff',
+                    strokeWeight: 1,
+                    fillColor: '#4285F4',
+                    fillOpacity: 1,
+                  },
+                  repeat: '150px',
+                }],
+              }}
+            />
+          </>
         )}
       </GoogleMap>
     </div>

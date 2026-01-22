@@ -56,6 +56,8 @@ export default function LiveMap() {
   const [showRouteDialog, setShowRouteDialog] = useState(false);
   const [routeHistory, setRouteHistory] = useState<LocationHistoryPoint[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [snappedRoute, setSnappedRoute] = useState<{ lat: number; lng: number }[]>([]);
+  const [isSnapping, setIsSnapping] = useState(false);
 
   // Query para sucursales
   const { data: sucursalesData = [], isLoading, refetch } = useQuery({
@@ -204,6 +206,8 @@ export default function LiveMap() {
   // Load route history for a driver
   const loadRouteHistory = async (driverId: string, rutaId: string) => {
     setLoadingHistory(true);
+    setIsSnapping(false);
+    setSnappedRoute([]);
     setSelectedDriverId(driverId);
     setSelectedRouteId(rutaId);
     setShowRouteDialog(true);
@@ -218,12 +222,41 @@ export default function LiveMap() {
 
       if (error) throw error;
 
-      setRouteHistory(history?.map(h => ({
+      const rawHistory = history?.map(h => ({
         lat: Number(h.lat),
         lng: Number(h.lng),
         recorded_at: h.recorded_at,
         speed: h.speed ? Number(h.speed) : null,
-      })) || []);
+      })) || [];
+
+      setRouteHistory(rawHistory);
+
+      // Process with Snap to Roads if we have enough points
+      if (rawHistory.length >= 2) {
+        setIsSnapping(true);
+        try {
+          const { data: snappedData, error: snapError } = await supabase.functions.invoke('snap-to-roads', {
+            body: {
+              points: rawHistory.map(p => ({ lat: p.lat, lng: p.lng })),
+              interpolate: true
+            }
+          });
+
+          if (snapError) {
+            console.error('Snap to roads error:', snapError);
+          } else if (snappedData?.snappedPoints && snappedData.snappedPoints.length > 0) {
+            setSnappedRoute(snappedData.snappedPoints.map((p: { lat: number; lng: number }) => ({
+              lat: p.lat,
+              lng: p.lng
+            })));
+            console.log(`Route snapped: ${rawHistory.length} → ${snappedData.snappedPoints.length} points`);
+          }
+        } catch (snapErr) {
+          console.error('Failed to snap route:', snapErr);
+        } finally {
+          setIsSnapping(false);
+        }
+      }
     } catch (err) {
       console.error('Error loading route history:', err);
       setRouteHistory([]);
@@ -232,10 +265,13 @@ export default function LiveMap() {
     }
   };
 
-  // Generate polyline path from history
+  // Generate polyline path from history - use snapped if available
   const routePolylinePath = useMemo(() => {
+    if (snappedRoute.length > 0) {
+      return snappedRoute;
+    }
     return routeHistory.map(point => ({ lat: point.lat, lng: point.lng }));
-  }, [routeHistory]);
+  }, [routeHistory, snappedRoute]);
 
   // Get selected driver info
   const selectedDriver = useMemo(() => {
@@ -657,8 +693,9 @@ export default function LiveMap() {
           
           <div className="space-y-4">
             {loadingHistory ? (
-              <div className="h-[400px] flex items-center justify-center">
+              <div className="h-[400px] flex flex-col items-center justify-center gap-3">
                 <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Cargando historial de ubicación...</p>
               </div>
             ) : routeHistory.length === 0 ? (
               <div className="h-[400px] flex flex-col items-center justify-center gap-4 border-2 border-dashed rounded-lg bg-muted/20">
@@ -672,7 +709,14 @@ export default function LiveMap() {
               </div>
             ) : (
               <>
-                <div className="h-[400px] rounded-lg overflow-hidden border">
+                {isSnapping && (
+                  <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-3 py-2 rounded-lg">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <span>Procesando ruta calle por calle...</span>
+                  </div>
+                )}
+                
+                <div className="h-[400px] rounded-lg overflow-hidden border relative">
                   <MapView
                     markers={[
                       // Start point
@@ -692,13 +736,39 @@ export default function LiveMap() {
                     zoom={14}
                     polylinePath={routePolylinePath}
                   />
+                  
+                  {/* Route type indicator */}
+                  <div className="absolute top-3 right-3 z-10">
+                    <Badge 
+                      variant={snappedRoute.length > 0 ? "default" : "secondary"}
+                      className="shadow-lg"
+                    >
+                      {snappedRoute.length > 0 ? (
+                        <>
+                          <Route className="h-3 w-3 mr-1" />
+                          Ruta sobre calles
+                        </>
+                      ) : (
+                        <>
+                          <MapPin className="h-3 w-3 mr-1" />
+                          Puntos GPS
+                        </>
+                      )}
+                    </Badge>
+                  </div>
                 </div>
                 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
                   <div className="bg-muted/50 rounded-lg p-3">
-                    <p className="text-muted-foreground text-xs">Puntos registrados</p>
+                    <p className="text-muted-foreground text-xs">Puntos GPS</p>
                     <p className="font-semibold text-lg">{routeHistory.length}</p>
                   </div>
+                  {snappedRoute.length > 0 && (
+                    <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
+                      <p className="text-blue-600 dark:text-blue-400 text-xs">Puntos ajustados</p>
+                      <p className="font-semibold text-lg text-blue-700 dark:text-blue-300">{snappedRoute.length}</p>
+                    </div>
+                  )}
                   <div className="bg-muted/50 rounded-lg p-3">
                     <p className="text-muted-foreground text-xs">Inicio</p>
                     <p className="font-medium">
