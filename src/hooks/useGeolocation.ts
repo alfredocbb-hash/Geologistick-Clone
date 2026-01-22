@@ -60,9 +60,9 @@ export function useGeolocation(options: UseGeolocationOptions = {}) {
         console.error('Error updating location:', upsertError);
       }
 
-      // Add to location history (every 60 seconds when tracking)
+      // Add to location history (every 30 seconds when tracking)
       const now = Date.now();
-      if (now - lastHistoryUpdateRef.current >= 60000) { // 60 seconds
+      if (now - lastHistoryUpdateRef.current >= 30000) { // 30 seconds
         lastHistoryUpdateRef.current = now;
         
         const { error: historyError } = await supabase
