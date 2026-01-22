@@ -74,6 +74,7 @@ serve(async (req) => {
       .from("envios")
       .select(`
         id,
+        tenant_id,
         tracking_number,
         estado,
         estado_retiro,
@@ -109,7 +110,28 @@ serve(async (req) => {
       );
     }
 
-    logStep("Shipment found", { id: envio.id });
+    logStep("Shipment found", { id: envio.id, tenant_id: envio.tenant_id });
+
+    // Fetch tenant branding
+    let branding = null;
+    if (envio.tenant_id) {
+      const { data: brandingData } = await supabaseClient
+        .from("tenant_branding")
+        .select("nombre_app, logo_light, logo_dark, color_primario")
+        .eq("tenant_id", envio.tenant_id)
+        .maybeSingle();
+
+      if (brandingData) {
+        branding = {
+          nombre_app: brandingData.nombre_app,
+          logo: brandingData.logo_light || brandingData.logo_dark,
+          color_primario: brandingData.color_primario,
+        };
+        logStep("Branding found", { nombre_app: branding.nombre_app });
+      } else {
+        logStep("No branding found for tenant");
+      }
+    }
 
     // Fetch history
     const { data: historial } = await supabaseClient
@@ -157,6 +179,7 @@ serve(async (req) => {
         nombre: destinatario.nombre,
         ciudad: destinatario.ciudad,
       } : null,
+      branding,
       historial: (historial || []).map((h) => ({
         id: h.id,
         estado_anterior: h.estado_anterior,
