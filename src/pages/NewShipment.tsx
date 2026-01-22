@@ -248,8 +248,8 @@ export default function NewShipment() {
     return sucursales.filter(s => s.puede_recibir !== false);
   }, [sucursales]);
 
-  const { data: tarifas } = useQuery({
-    queryKey: ['tarifas'],
+  const { data: tarifas, isLoading: loadingTarifas, refetch: refetchTarifas } = useQuery({
+    queryKey: ['tarifas', profile?.tenant_id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('tarifas')
@@ -259,6 +259,7 @@ export default function NewShipment() {
       if (error) throw error;
       return data;
     },
+    enabled: !!user && !!profile,
   });
 
   const { data: conceptos = [] } = useQuery({
@@ -1769,18 +1770,42 @@ export default function NewShipment() {
               <Select
                 value={formData.tarifa_id}
                 onValueChange={(v) => handleChange('tarifa_id', v)}
+                disabled={loadingTarifas}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar tarifa" />
+                  <SelectValue placeholder={loadingTarifas ? "Cargando tarifas..." : "Seleccionar tarifa"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {tarifas?.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.nombre} - ${Number(t.precio_base).toLocaleString('es-AR')}
-                    </SelectItem>
-                  ))}
+                  {loadingTarifas ? (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      <span>Cargando...</span>
+                    </div>
+                  ) : tarifas?.length === 0 ? (
+                    <div className="py-4 text-center text-muted-foreground">
+                      No hay tarifas disponibles
+                    </div>
+                  ) : (
+                    tarifas?.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.nombre} - ${Number(t.precio_base).toLocaleString('es-AR')}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
+              {!loadingTarifas && tarifas?.length === 0 && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => refetchTarifas()}
+                  className="mt-2"
+                  type="button"
+                >
+                  <Loader2 className="h-4 w-4 mr-2" />
+                  Reintentar carga de tarifas
+                </Button>
+              )}
             </div>
             {/* Note: pago_contra_entrega is now automatically set based on tipo_pago */}
             
