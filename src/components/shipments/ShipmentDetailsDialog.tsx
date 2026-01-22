@@ -34,6 +34,8 @@ import {
   ImageOff,
   Download,
   Loader2,
+  Copy,
+  Share2,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -181,6 +183,30 @@ export function ShipmentDetailsDialog({
     }
   };
 
+  const getTrackingUrl = () => {
+    const baseUrl = window.location.origin;
+    return `${baseUrl}/tracking?q=${envio?.tracking_number}`;
+  };
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(getTrackingUrl());
+      toast.success('Enlace copiado al portapapeles');
+    } catch (error) {
+      toast.error('Error al copiar el enlace');
+    }
+  };
+
+  const handleShareWhatsApp = () => {
+    const url = getTrackingUrl();
+    const message = encodeURIComponent(
+      `🚚 Rastrea tu envío:\n\n` +
+      `Número de seguimiento: ${envio?.tracking_number}\n\n` +
+      `Sigue el estado aquí: ${url}`
+    );
+    window.open(`https://wa.me/?text=${message}`, '_blank');
+  };
+
   const InfoRow = ({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: React.ReactNode }) => (
     <div className="flex items-start gap-3 py-2">
       <Icon className="h-4 w-4 text-muted-foreground mt-0.5" />
@@ -205,6 +231,22 @@ export function ShipmentDetailsDialog({
             </div>
             {envio && (
               <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleCopyLink}
+                  title="Copiar enlace de tracking"
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleShareWhatsApp}
+                  title="Compartir por WhatsApp"
+                >
+                  <Share2 className="h-4 w-4" />
+                </Button>
                 <Button 
                   variant="outline" 
                   size="sm" 
