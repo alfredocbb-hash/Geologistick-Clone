@@ -1,138 +1,171 @@
 
 
-# Plan: Agregar Botones de Compartir Tracking
+# Plan: Mejorar Sistema de Impresión de Etiquetas
 
-## Objetivo
+## Problema Identificado
 
-Añadir botones para copiar el enlace de tracking y compartir por WhatsApp en el diálogo de detalles del envío (`ShipmentDetailsDialog`), disponible para todas las empresas.
+El enfoque actual de impresión tiene varios problemas:
 
----
+1. **Usa `window.print()` directamente** sobre componentes React, lo cual causa problemas de renderizado
+2. **CSS de impresión incrustado** tiene conflictos con estilos de Tailwind
+3. **Componentes SVG de QR** pueden no renderizar correctamente en impresión
+4. **Variables CSS de Tailwind** (como `bg-foreground`) no se traducen bien a impresión
 
-## Ubicación del Cambio
+## Solución: Adoptar el Enfoque de Ventana Nueva
 
-Los botones se agregarán junto a los existentes (EPOD y Etiqueta) en el header del diálogo:
-
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│  📦 Detalles del Envío                                                  │
-│                                                                         │
-│  [📋 Copiar Link] [📱 WhatsApp] [📥 EPOD] [🖨️ Etiqueta]                 │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Funcionalidad
-
-### 1. Botón "Copiar Link"
-- **Icono**: `Copy` o `Link` de Lucide
-- **Acción**: Copia la URL de tracking al portapapeles
-- **Formato URL**: `https://geologic.lovable.app/tracking?q={TRACKING_NUMBER}`
-- **Feedback**: Toast de confirmación "Enlace copiado al portapapeles"
-
-### 2. Botón "WhatsApp"
-- **Icono**: Icono de compartir o mensaje
-- **Acción**: Abre WhatsApp con mensaje predefinido
-- **Mensaje**:
-  ```
-  🚚 Rastrea tu envío:
-  
-  Número de seguimiento: {TRACKING_NUMBER}
-  
-  Sigue el estado aquí: {URL}
-  ```
-
----
-
-## Archivo a Modificar
-
-| Archivo | Cambio |
-|---------|--------|
-| `src/components/shipments/ShipmentDetailsDialog.tsx` | Agregar botones de compartir |
+Siguiendo el patrón del código de referencia, cambiaremos a abrir una **ventana nueva con HTML estático puro** para la impresión.
 
 ---
 
 ## Cambios Técnicos
 
-### Importar iconos adicionales
+### Archivo: `src/pages/PrintLabel.tsx`
+
+#### 1. Agregar Selector de Tamaño de Etiqueta
 
 ```typescript
-import { 
-  // ... existentes ...
-  Copy,
-  Share2,
-} from 'lucide-react';
+const labelSizes = {
+  compact: {
+    name: "Compacta (10×15 cm)",
+    width: "10cm",
+    height: "15cm",
+    qrSize: 80,
+  },
+  standard: {
+    name: "Estándar (15×10 cm)",
+    width: "15cm", 
+    height: "10cm",
+    qrSize: 100,
+  },
+  large: {
+    name: "Grande (20×10 cm)",
+    width: "20cm",
+    height: "10cm",
+    qrSize: 120,
+  },
+};
 ```
 
-### Agregar funciones de compartir
+#### 2. Cambiar QR de SVG a Imagen Externa
 
 ```typescript
-const getTrackingUrl = () => {
-  const baseUrl = window.location.origin;
-  return `${baseUrl}/tracking?q=${envio?.tracking_number}`;
+// En lugar de QRCodeSVG
+const getQRCodeUrl = (data: string, size: number) => {
+  return `https://api.qrserver.com/v1/create-qr-code/?size=${size * 2}x${size * 2}&data=${encodeURIComponent(data)}&format=png&margin=3&ecc=M`;
 };
+```
 
-const handleCopyLink = async () => {
-  try {
-    await navigator.clipboard.writeText(getTrackingUrl());
-    toast.success('Enlace copiado al portapapeles');
-  } catch (error) {
-    toast.error('Error al copiar el enlace');
+#### 3. Nueva Función `handlePrint` con Ventana Nueva
+
+```typescript
+const handlePrint = () => {
+  const printWindow = window.open('', '_blank', 'width=800,height=600');
+  if (!printWindow) {
+    toast.error("Por favor permite ventanas emergentes para imprimir");
+    return;
   }
-};
 
-const handleShareWhatsApp = () => {
-  const url = getTrackingUrl();
-  const message = encodeURIComponent(
-    `🚚 Rastrea tu envío:\n\n` +
-    `Número de seguimiento: ${envio?.tracking_number}\n\n` +
-    `Sigue el estado aquí: ${url}`
-  );
-  window.open(`https://wa.me/?text=${message}`, '_blank');
+  const labelHTML = generateLabelHTML(envio, labels, labelSize, tipoConfig);
+  printWindow.document.write(labelHTML);
+  printWindow.document.close();
+  
+  printWindow.onload = () => {
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 500);
+  };
 };
 ```
 
-### Agregar botones en el header (junto a EPOD y Etiqueta)
+#### 4. Generar HTML Estático con CSS Inline
 
-```tsx
-<Button 
-  variant="outline" 
-  size="sm" 
-  onClick={handleCopyLink}
-  title="Copiar enlace de tracking"
->
-  <Copy className="h-4 w-4" />
-</Button>
-<Button 
-  variant="outline" 
-  size="sm" 
-  onClick={handleShareWhatsApp}
-  title="Compartir por WhatsApp"
->
-  <Share2 className="h-4 w-4" />
-</Button>
+La función `generateLabelHTML()` creará:
+
+- Documento HTML completo con `<!DOCTYPE html>`
+- CSS de `@page` con dimensiones exactas
+- Propiedades `print-color-adjust: exact` para colores
+- HTML estructurado con estilos inline (sin Tailwind)
+- Imágenes QR en lugar de SVG
+
+---
+
+## Estructura del HTML de Impresión
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Etiqueta - TRACKING</title>
+  <style>
+    @page {
+      size: 15cm 10cm;
+      margin: 0;
+    }
+    body {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+      color-adjust: exact;
+    }
+    /* Estilos específicos inline */
+  </style>
+</head>
+<body>
+  <!-- Etiquetas con HTML puro -->
+</body>
+</html>
 ```
 
 ---
 
-## Resultado Visual
+## Flujo Visual Comparativo
 
 ```text
-Antes:                          Después:
-┌────────────────────────┐     ┌────────────────────────────────────┐
-│  [📥 EPOD] [🖨️ Etiq]   │     │  [📋] [📤] [📥 EPOD] [🖨️ Etiqueta] │
-└────────────────────────┘     └────────────────────────────────────┘
-                                 │     │
-                                 │     └── Compartir WhatsApp
-                                 └──────── Copiar Link
+ANTES (Actual):                      DESPUÉS (Nuevo):
+┌────────────────────┐              ┌────────────────────┐
+│  Componentes React │              │  Preview React     │
+│  + CSS @media print│              │  (solo visual)     │
+│         ▼          │              │         ▼          │
+│  window.print()    │              │  Botón Imprimir    │
+│         ▼          │              │         ▼          │
+│  Problemas de      │              │  window.open()     │
+│  renderizado       │              │         ▼          │
+└────────────────────┘              │  HTML Estático     │
+                                    │  + CSS Inline      │
+                                    │         ▼          │
+                                    │  print() + close() │
+                                    └────────────────────┘
 ```
+
+---
+
+## Archivos a Modificar
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/pages/PrintLabel.tsx` | Reescribir función de impresión para usar ventana nueva con HTML estático |
+
+---
+
+## Características del Nuevo Sistema
+
+1. **Selector de tamaño de etiqueta**: Compacta, Estándar, Grande
+2. **QR como imagen PNG**: Más compatible que SVG para impresión
+3. **HTML estático puro**: Sin dependencia de Tailwind/React en impresión
+4. **CSS inline**: Colores forzados con valores HEX directos
+5. **Control de `@page`**: Tamaño exacto de etiqueta sin márgenes del navegador
+6. **Carga de imagen antes de imprimir**: Espera a que el QR cargue antes de llamar `print()`
 
 ---
 
 ## Beneficios
 
-1. **Fácil acceso**: Botones visibles directamente en el diálogo
-2. **Multi-empresa**: Funciona para todos los tenants usando `window.location.origin`
-3. **Feedback inmediato**: Toast confirma la acción
-4. **Compatible móvil**: WhatsApp se abre en la app nativa si está disponible
+| Aspecto | Antes | Después |
+|---------|-------|---------|
+| Compatibilidad | Variable entre navegadores | Consistente |
+| Colores | Pueden fallar | Forzados con HEX |
+| QR | SVG puede no renderizar | Imagen PNG garantizada |
+| Tamaño | Depende de CSS @media | Definido en @page |
+| Control | Limitado | Total sobre el HTML |
 
