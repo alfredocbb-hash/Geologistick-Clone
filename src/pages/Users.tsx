@@ -194,7 +194,7 @@ export default function Users() {
     },
   });
 
-  // Update profile mutation
+  // Update profile mutation with optimistic updates
   const updateProfileMutation = useMutation({
     mutationFn: async (data: {
       profileId: string;
@@ -206,12 +206,37 @@ export default function Users() {
         .eq('id', data.profileId);
       if (error) throw error;
     },
+    onMutate: async (newData) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['profiles'] });
+      
+      // Snapshot the previous value
+      const previousProfiles = queryClient.getQueryData(['profiles', searchTerm]);
+      
+      // Optimistically update the cache
+      queryClient.setQueryData(['profiles', searchTerm], (old: Profile[] | undefined) =>
+        old?.map(p =>
+          p.id === newData.profileId
+            ? { ...p, ...newData.updates }
+            : p
+        )
+      );
+      
+      return { previousProfiles };
+    },
+    onError: (error: Error, _newData, context) => {
+      // Rollback on error
+      if (context?.previousProfiles) {
+        queryClient.setQueryData(['profiles', searchTerm], context.previousProfiles);
+      }
+      toast.error('Error: ' + error.message);
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['profiles'] });
       toast.success('Perfil actualizado');
     },
-    onError: (error: Error) => {
-      toast.error('Error: ' + error.message);
+    onSettled: () => {
+      // Always refetch after error or success
+      queryClient.invalidateQueries({ queryKey: ['profiles'] });
     },
   });
 
@@ -281,11 +306,14 @@ export default function Users() {
     setIsDialogOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!editingProfile) return;
 
     const isChofer = editingRoles.includes('chofer');
 
+    // Close dialog immediately for better UX (optimistic update will show changes)
+    setIsDialogOpen(false);
+    
     updateProfileMutation.mutate({
       profileId: editingProfile.id,
       updates: {
@@ -307,7 +335,6 @@ export default function Users() {
         }),
       },
     });
-    setIsDialogOpen(false);
   };
 
   const handleAddRole = () => {

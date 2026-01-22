@@ -3,15 +3,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Shield, Loader2, Eye, EyeOff, CheckCircle } from 'lucide-react';
+import { Shield, Loader2, Eye, EyeOff, CheckCircle, AlertCircle, Info } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/lib/auth';
 import { toast } from 'sonner';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export function SecurityCard() {
+  const { user } = useAuth();
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showPasswords, setShowPasswords] = useState(false);
+  const [currentPasswordError, setCurrentPasswordError] = useState(false);
   const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
     newPassword: '',
     confirmPassword: '',
   });
@@ -38,6 +43,12 @@ export function SecurityCard() {
   };
 
   const handleChangePassword = async () => {
+    // Validar contraseña actual
+    if (!passwordData.currentPassword) {
+      toast.error('Ingresa tu contraseña actual');
+      return;
+    }
+
     if (passwordData.newPassword.length < 6) {
       toast.error('La contraseña debe tener al menos 6 caracteres');
       return;
@@ -49,15 +60,31 @@ export function SecurityCard() {
     }
 
     setIsSaving(true);
+    setCurrentPasswordError(false);
+    
     try {
+      // Primero verificar la contraseña actual
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: user?.email || '',
+        password: passwordData.currentPassword,
+      });
+
+      if (signInError) {
+        setCurrentPasswordError(true);
+        toast.error('La contraseña actual es incorrecta');
+        return;
+      }
+
+      // Si es correcta, proceder con el cambio
       const { error } = await supabase.auth.updateUser({
         password: passwordData.newPassword,
       });
 
       if (error) throw error;
 
-      setPasswordData({ newPassword: '', confirmPassword: '' });
+      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
       setIsChangingPassword(false);
+      setCurrentPasswordError(false);
       toast.success('Contraseña actualizada correctamente');
     } catch (error: any) {
       console.error('Error changing password:', error);
@@ -68,8 +95,9 @@ export function SecurityCard() {
   };
 
   const handleCancel = () => {
-    setPasswordData({ newPassword: '', confirmPassword: '' });
+    setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
     setIsChangingPassword(false);
+    setCurrentPasswordError(false);
   };
 
   const strength = passwordStrength();
@@ -98,6 +126,47 @@ export function SecurityCard() {
           </div>
         ) : (
           <div className="space-y-4">
+            {/* Current Password Field */}
+            <div className="space-y-2">
+              <Label htmlFor="currentPassword">Contraseña Actual</Label>
+              <div className="relative">
+                <Input
+                  id="currentPassword"
+                  type={showPasswords ? 'text' : 'password'}
+                  value={passwordData.currentPassword}
+                  onChange={(e) => {
+                    setPasswordData({ ...passwordData, currentPassword: e.target.value });
+                    setCurrentPasswordError(false);
+                  }}
+                  placeholder="Ingresa tu contraseña actual"
+                  className={currentPasswordError ? 'border-destructive' : ''}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full px-3"
+                  onClick={() => setShowPasswords(!showPasswords)}
+                >
+                  {showPasswords ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+              {currentPasswordError && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  La contraseña actual es incorrecta
+                </p>
+              )}
+            </div>
+
+            {/* Help message */}
+            <Alert variant="default" className="bg-muted/50">
+              <Info className="h-4 w-4" />
+              <AlertDescription className="text-xs">
+                ¿No recuerdas tu contraseña? Contacta a tu administrador para que la restablezca desde el panel de usuarios.
+              </AlertDescription>
+            </Alert>
+
             <div className="space-y-2">
               <Label htmlFor="newPassword">Nueva Contraseña</Label>
               <div className="relative">

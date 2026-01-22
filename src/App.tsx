@@ -52,6 +52,7 @@ import SubscriptionPlansAdmin from "./pages/SubscriptionPlansAdmin";
 import Profile from "./pages/Profile";
 import Tenants from "./pages/Tenants";
 import TrackingEmbed from "./pages/TrackingEmbed";
+import ShipmentStatusGuide from "./pages/ShipmentStatusGuide";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -169,6 +170,7 @@ function AppRoutes() {
       <Route path="/subscription" element={<DashboardLayout><Subscription /></DashboardLayout>} />
       <Route path="/admin/plans" element={<DashboardLayout><SubscriptionPlansAdmin /></DashboardLayout>} />
       <Route path="/admin/tenants" element={<DashboardLayout><Tenants /></DashboardLayout>} />
+      <Route path="/admin/status-guide" element={<DashboardLayout><ShipmentStatusGuide /></DashboardLayout>} />
       
       {/* Profile */}
       <Route path="/profile" element={<DashboardLayout><Profile /></DashboardLayout>} />

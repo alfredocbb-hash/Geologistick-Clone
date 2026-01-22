@@ -77,7 +77,7 @@ const defaultBranding: BrandingFormData = {
 };
 
 export default function BrandingSettings() {
-  const { profile, isAdmin } = useAuth();
+  const { profile, isAdmin, isSuperAdmin } = useAuth();
   const tenantId = (profile as { tenant_id?: string })?.tenant_id;
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState<BrandingFormData>(defaultBranding);
@@ -220,12 +220,14 @@ export default function BrandingSettings() {
 
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2">
-            <Tabs defaultValue="general" className="space-y-4">
+            <Tabs defaultValue={isSuperAdmin() ? "general" : "colors"} className="space-y-4">
               <TabsList>
-                <TabsTrigger value="general">
-                  <Type className="h-4 w-4 mr-2" />
-                  General
-                </TabsTrigger>
+                {isSuperAdmin() && (
+                  <TabsTrigger value="general">
+                    <Type className="h-4 w-4 mr-2" />
+                    General
+                  </TabsTrigger>
+                )}
                 <TabsTrigger value="colors">
                   <Palette className="h-4 w-4 mr-2" />
                   Colores
