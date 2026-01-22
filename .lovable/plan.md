@@ -1,154 +1,174 @@
 
-# Plan: Mejorar Impresión de Etiquetas para que Coincida con la Vista Previa
 
-## Problema Actual
+# Plan: Trazabilidad Calle por Calle con Snap to Roads
 
-La vista previa muestra las etiquetas en un **grid de 3 columnas** (tarjetas compactas lado a lado), pero el CSS de impresión actual fuerza:
-- Una sola columna vertical
-- Cada etiqueta ocupa todo el ancho (200mm)
-- 3 etiquetas por página en formato vertical
+## Situación Actual
 
-Esto hace que la impresión no coincida con lo que se ve en pantalla.
+El sistema actualmente:
+- **Registra ubicaciones cada 60 segundos** en la tabla `driver_location_history`
+- **Dibuja líneas rectas** entre puntos GPS usando un `Polyline` simple
+- El resultado son trazos geométricos que atraviesan edificios/manzanas
+
+## Solución Propuesta
+
+Implementar **Google Roads API (Snap to Roads)** para convertir las coordenadas GPS en rutas reales sobre calles.
 
 ---
 
-## Solución Propuesta: Selector de Formato de Impresión
+## Arquitectura de la Solución
 
-Agregar un selector que permita elegir entre diferentes formatos de impresión:
-
-### Opción 1: "Grid 2x3" (Horizontal - Recomendado)
-- **Orientación**: A4 Horizontal (Landscape)
-- **Disposición**: 2 columnas × 3 filas = 6 etiquetas por página
-- **Tamaño etiqueta**: ~140mm × 90mm cada una
-- **Ventaja**: Más cercano a la vista previa, aprovecha mejor el papel
-
-### Opción 2: "Grid 3 columnas" (Horizontal)
-- **Orientación**: A4 Horizontal (Landscape)
-- **Disposición**: 3 columnas × 2 filas = 6 etiquetas por página
-- **Tamaño etiqueta**: ~95mm × 140mm cada una
-- **Ventaja**: Exactamente igual a la vista previa
-
-### Opción 3: "Una columna" (Vertical - Actual)
-- **Orientación**: A4 Vertical (Portrait)
-- **Disposición**: 1 columna × 3 filas = 3 etiquetas por página
-- **Tamaño etiqueta**: 200mm × 90mm cada una
-- **Ventaja**: Etiquetas más grandes, mejor legibilidad
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│                   FLUJO DE DATOS                                │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. driver_location_history                                     │
+│     ├── lat, lng (puntos GPS cada 60s)                         │
+│     └── [sin procesar]                                          │
+│                                                                 │
+│              ▼                                                  │
+│                                                                 │
+│  2. Edge Function: snap-to-roads                                │
+│     ├── Recibe array de puntos                                  │
+│     ├── Llama a Google Roads API                                │
+│     └── Retorna coordenadas ajustadas a calles                  │
+│                                                                 │
+│              ▼                                                  │
+│                                                                 │
+│  3. MapView con Polyline detallado                              │
+│     ├── Traza suave sobre calles reales                         │
+│     └── Similar a Google Maps Navigation                        │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## Cambios Técnicos
 
-### Archivo: `src/pages/PrintLabel.tsx`
+### 1. Nueva Edge Function: `snap-to-roads`
 
-1. **Agregar estado para formato seleccionado**
-```tsx
-const [printFormat, setPrintFormat] = useState<'grid-2x3' | 'grid-3x2' | 'single-column'>('grid-2x3');
+Creará una función serverless que procesa los puntos GPS y los ajusta a las calles reales usando la **Google Roads API**.
+
+**Archivo:** `supabase/functions/snap-to-roads/index.ts`
+
+```typescript
+// Puntos de entrada
+interface SnapRequest {
+  points: { lat: number; lng: number; }[];
+  interpolate?: boolean; // Rellenar puntos entre coordenadas
+}
+
+// API de Google Roads
+const roadsUrl = `https://roads.googleapis.com/v1/snapToRoads?path=${path}&interpolate=${interpolate}&key=${apiKey}`;
 ```
 
-2. **Agregar selector de formato en el header (no-print)**
-```tsx
-<Select value={printFormat} onValueChange={setPrintFormat}>
-  <SelectItem value="grid-2x3">Grid 2×3 (Horizontal)</SelectItem>
-  <SelectItem value="grid-3x2">Grid 3×2 (Horizontal)</SelectItem>
-  <SelectItem value="single-column">Una columna (Vertical)</SelectItem>
-</Select>
-```
+**Características:**
+- Acepta hasta 100 puntos por solicitud (límite de Google)
+- Opción de `interpolate=true` para generar puntos intermedios
+- Usa la misma clave de API de Google Maps (por tenant o fallback)
+- Retorna puntos ajustados a calles reales
 
-3. **CSS dinámico según el formato seleccionado**
+---
 
-**Para Grid 2×3 (Landscape):**
-```css
-@page { size: A4 landscape; margin: 5mm; }
-.print-content > div {
-  display: grid !important;
-  grid-template-columns: repeat(2, 1fr) !important;
-  gap: 3mm !important;
-}
-.label-container {
-  width: 140mm !important;
-  height: 90mm !important;
-}
-/* Salto de página cada 6 etiquetas */
-.label-container:nth-child(6n) {
-  page-break-after: always !important;
-}
-```
+### 2. Actualizar LiveMap.tsx
 
-**Para Grid 3×2 (Landscape - igual a preview):**
-```css
-@page { size: A4 landscape; margin: 5mm; }
-.print-content > div {
-  display: grid !important;
-  grid-template-columns: repeat(3, 1fr) !important;
-  gap: 3mm !important;
-}
-.label-container {
-  width: 95mm !important;
-  height: 140mm !important;
-}
-```
+**Archivo:** `src/pages/LiveMap.tsx`
 
-4. **Aplicar clases condicionales al contenedor**
-```tsx
-<div className={cn("print-content p-4", `print-format-${printFormat}`)}>
-```
+Modificar la función `loadRouteHistory` para:
 
-5. **Generar estilos CSS condicionales**
-```tsx
-<style>{`
-  @media print {
-    ${printFormat === 'grid-2x3' ? gridStyles2x3 : 
-      printFormat === 'grid-3x2' ? gridStyles3x2 : 
-      singleColumnStyles}
+```typescript
+// Después de cargar el historial
+const { data: snappedPath } = await supabase.functions.invoke('snap-to-roads', {
+  body: { 
+    points: rawPoints,
+    interpolate: true 
   }
-`}</style>
+});
+
+setRouteHistory(snappedPath.snappedPoints);
 ```
 
 ---
 
-## Interfaz de Usuario
+### 3. Actualizar MapView.tsx (opcional mejora visual)
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│ ← Imprimir Etiquetas                                        │
-│   GEO-ABC123 • 4 bultos                                     │
-│                                                             │
-│   Formato: [Grid 2×3 (Horizontal) ▼]    [🖨️ Imprimir]      │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐                       │
-│  │ Bulto 1 │ │ Bulto 2 │ │ Bulto 3 │  ← Vista previa       │
-│  └─────────┘ └─────────┘ └─────────┘    adaptativa         │
-│                                                             │
-│  ┌─────────┐                                               │
-│  │ Bulto 4 │                                               │
-│  └─────────┘                                               │
-└─────────────────────────────────────────────────────────────┘
+**Archivo:** `src/components/maps/MapView.tsx`
+
+Mejorar el estilo del Polyline para rutas procesadas:
+
+```typescript
+// Polyline mejorado para rutas snapped
+<Polyline
+  path={polylinePath}
+  options={{
+    strokeColor: '#4285F4', // Azul Google Maps
+    strokeWeight: 5,
+    strokeOpacity: 0.9,
+    geodesic: true,
+    icons: [{ 
+      icon: { path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW },
+      repeat: '100px' 
+    }],
+  }}
+/>
 ```
 
 ---
 
-## Archivos a Modificar
+### 4. Consideraciones de Frecuencia de Muestreo
+
+**Opcional - Aumentar frecuencia de tracking:**
+
+Modificar `src/hooks/useGeolocation.ts`:
+
+```typescript
+// Cambiar de 60s a 30s para historial
+if (now - lastHistoryUpdateRef.current >= 30000) { // 30 segundos
+  // Guardar en historial
+}
+```
+
+> Nota: Esto aumenta el uso de datos y almacenamiento. Recomendado solo si el snap-to-roads no da resultados suficientemente detallados.
+
+---
+
+## Archivos a Crear/Modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/pages/PrintLabel.tsx` | Agregar estado, selector de formato, y CSS dinámico |
+| `supabase/functions/snap-to-roads/index.ts` | **NUEVO** - Edge Function para Roads API |
+| `src/pages/LiveMap.tsx` | Integrar llamada a snap-to-roads al cargar historial |
+| `src/components/maps/MapView.tsx` | Mejorar estilos de Polyline (opcional) |
+| `supabase/config.toml` | Agregar configuración de la nueva función |
+
+---
+
+## Flujo de Usuario Final
+
+1. **Admin hace clic en "Ver recorrido"** de un chofer
+2. **Se cargan los puntos GPS** del historial
+3. **Se llama a `snap-to-roads`** para procesar los puntos
+4. **El mapa muestra** la ruta ajustada a las calles reales
+5. **El resultado visual** es similar a una ruta de navegación GPS
+
+---
+
+## Limitaciones y Costos
+
+### Google Roads API
+- **Límite gratuito:** 2,500 solicitudes/día (con cuenta básica)
+- **Costo adicional:** $0.005 por solicitud después del límite
+- **Máximo 100 puntos** por solicitud (el código lo manejará en batches)
+
+### Alternativa sin costo adicional
+Si prefieres evitar costos de Roads API, puedo implementar un **algoritmo de suavizado local** usando Bezier curves que mejora visualmente sin llamar APIs externas (aunque no será "calle por calle" exacto).
 
 ---
 
 ## Resultado Esperado
 
-1. El usuario puede elegir el formato que mejor se adapte a sus necesidades
-2. **Grid 2×3** será el valor por defecto (6 etiquetas por hoja horizontal)
-3. **Grid 3×2** replica exactamente la vista previa de 3 columnas
-4. **Una columna** mantiene el comportamiento actual para quienes lo prefieran
-5. La vista previa se adapta al formato seleccionado antes de imprimir
+**Antes:** Líneas rectas entre puntos GPS (atraviesa edificios)
 
----
+**Después:** Trazado suave siguiendo calles reales, similar a Google Maps
 
-## Nota Importante
-
-Al imprimir, el usuario debe asegurarse de que la configuración del navegador coincida:
-- **Para formatos horizontales**: Orientación "Horizontal/Landscape"
-- **Escala**: 100%
-- **Márgenes**: Mínimo o Ninguno
