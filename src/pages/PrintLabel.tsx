@@ -192,9 +192,9 @@ export default function PrintLabel() {
   const deliveryInfo = getDeliveryAddress();
 
   return (
-    <div className="space-y-6">
+    <div className="print-labels-container">
       {/* Header - No se imprime */}
-      <div className="flex items-center justify-between print:hidden">
+      <div className="flex items-center justify-between print:hidden p-4">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-5 w-5" />
@@ -212,213 +212,228 @@ export default function PrintLabel() {
         </Button>
       </div>
 
-      {/* Labels */}
-      <div className="space-y-8 print:space-y-0">
-        {labels.map((bultoNum) => (
-          <div 
-            key={bultoNum}
-            className="bg-white border-2 border-foreground rounded-lg p-4 max-w-[400px] mx-auto print:break-after-page print:max-w-none print:mx-0 print:rounded-none print:border-0 print:shadow-none"
-            style={{ printColorAdjust: 'exact' }}
-          >
-            {/* Header: Sucursal Origen */}
-            <div className="flex items-center justify-between border-b-2 border-foreground pb-2 mb-3">
-              <div className="flex items-center gap-2">
-                <Building2 className="h-5 w-5" />
-                <div>
-                  <p className="font-bold text-sm">
-                    {envio.sucursal_origen?.codigo || 'XXX'} - {envio.sucursal_origen?.nombre || 'Sin sucursal'}
-                  </p>
-                  {envio.sucursal_origen?.telefono && (
-                    <p className="text-xs text-muted-foreground">
-                      Tel: {envio.sucursal_origen.telefono}
+      {/* Labels Container */}
+      <div className="print:p-0 p-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 print:block">
+          {labels.map((bultoNum) => (
+            <div 
+              key={bultoNum}
+              className="label-container bg-white border-2 border-foreground rounded-lg p-3 print:p-2 print:rounded-none print:border print:border-black"
+            >
+              {/* Header: Sucursal Origen */}
+              <div className="flex items-center justify-between border-b border-foreground pb-1 mb-2">
+                <div className="flex items-center gap-1">
+                  <Building2 className="h-4 w-4 print:h-3 print:w-3" />
+                  <div>
+                    <p className="font-bold text-xs print:text-[10px]">
+                      {envio.sucursal_origen?.codigo || 'XXX'} - {envio.sucursal_origen?.nombre || 'Sin sucursal'}
                     </p>
-                  )}
-                </div>
-              </div>
-              <div className="text-right text-xs text-muted-foreground">
-                {format(new Date(envio.created_at), 'dd/MM/yyyy', { locale: es })}
-              </div>
-            </div>
-
-            {/* Tracking Number */}
-            <div className="text-center mb-3">
-              <p className="font-mono font-bold text-lg tracking-wider">
-                {envio.tracking_number}
-              </p>
-              
-              {/* Bulto indicator */}
-              <div className="inline-flex items-center gap-2 bg-foreground text-background px-4 py-2 rounded-lg my-2">
-                <Package className="h-5 w-5" />
-                <span className="font-bold text-lg">BULTO {bultoNum} / {bultos}</span>
-              </div>
-              
-              {/* Individual package code */}
-              <p className="font-mono text-sm text-muted-foreground">
-                {envio.tracking_number}-{String(bultoNum).padStart(2, '0')}
-              </p>
-            </div>
-
-            {/* QR Code */}
-            <div className="flex justify-center mb-3">
-              <div className="bg-white p-2 rounded-lg">
-                <QRCodeSVG 
-                  value={`${window.location.origin}/tracking?q=${envio.tracking_number}-${String(bultoNum).padStart(2, '0')}`}
-                  size={96}
-                  level="M"
-                  includeMargin={false}
-                />
-              </div>
-            </div>
-
-            {/* Tipo de Servicio Badge */}
-            <div className="flex justify-center mb-3">
-              <div className={`${tipoConfig.color} px-4 py-2 rounded-lg text-center`}>
-                <span className="text-xl mr-2">{tipoConfig.icon}</span>
-                <span className="font-bold">{tipoConfig.label}</span>
-              </div>
-            </div>
-
-            <Separator className="my-3 bg-foreground" />
-
-            {/* Destinatario */}
-            <div className="mb-3">
-              <p className="text-xs font-semibold text-muted-foreground mb-1">DESTINATARIO</p>
-              <p className="font-bold">
-                {envio.destinatario 
-                  ? `${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}`
-                  : 'Sin destinatario'}
-              </p>
-              {envio.dni_destinatario && (
-                <p className="text-sm">DNI: {envio.dni_destinatario}</p>
-              )}
-              <div className="flex items-center gap-4 text-sm">
-                {envio.destinatario?.telefono && (
-                  <span className="flex items-center gap-1">
-                    <Phone className="h-3 w-3" />
-                    {envio.destinatario.telefono}
-                  </span>
-                )}
-                {envio.whatsapp_destinatario && (
-                  <span className="text-success">WA: {envio.whatsapp_destinatario}</span>
-                )}
-              </div>
-            </div>
-
-            <Separator className="my-3 bg-foreground" />
-
-            {/* Dirección de entrega o sucursal de retiro */}
-            <div className="mb-3">
-              <p className="text-xs font-semibold text-muted-foreground mb-1">
-                {deliveryInfo?.type === 'sucursal' ? 'RETIRA EN SUCURSAL' : 'ENTREGAR EN'}
-              </p>
-              {deliveryInfo?.type === 'sucursal' ? (
-                <div className="flex items-start gap-2">
-                  <Building2 className="h-4 w-4 mt-0.5" />
-                  <div>
-                    <p className="font-bold">{deliveryInfo.nombre}</p>
-                    <p className="text-sm">{deliveryInfo.direccion}</p>
-                    {deliveryInfo.ciudad && (
-                      <p className="text-sm text-muted-foreground">{deliveryInfo.ciudad}</p>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-start gap-2">
-                  <Home className="h-4 w-4 mt-0.5" />
-                  <div>
-                    <p className="font-bold">{deliveryInfo?.direccion || 'Sin dirección'}</p>
-                    {(deliveryInfo?.ciudad || deliveryInfo?.cp) && (
-                      <p className="text-sm text-muted-foreground">
-                        {deliveryInfo.ciudad} {deliveryInfo.cp && `• CP: ${deliveryInfo.cp}`}
+                    {envio.sucursal_origen?.telefono && (
+                      <p className="text-[10px] print:text-[8px] text-muted-foreground">
+                        Tel: {envio.sucursal_origen.telefono}
                       </p>
                     )}
                   </div>
                 </div>
-              )}
-            </div>
+                <div className="text-right text-[10px] print:text-[8px] text-muted-foreground">
+                  {format(new Date(envio.created_at), 'dd/MM/yyyy', { locale: es })}
+                </div>
+              </div>
 
-            <Separator className="my-3 bg-foreground" />
+              {/* Tracking Number */}
+              <div className="text-center mb-2">
+                <p className="font-mono font-bold text-sm print:text-xs tracking-wider">
+                  {envio.tracking_number}
+                </p>
+                
+                {/* Bulto indicator */}
+                <div className="inline-flex items-center gap-1 bg-foreground text-background px-3 py-1 rounded my-1">
+                  <Package className="h-4 w-4 print:h-3 print:w-3" />
+                  <span className="font-bold text-sm print:text-xs">BULTO {bultoNum} / {bultos}</span>
+                </div>
+                
+                {/* Individual package code */}
+                <p className="font-mono text-xs print:text-[9px] text-muted-foreground">
+                  {envio.tracking_number}-{String(bultoNum).padStart(2, '0')}
+                </p>
+              </div>
 
-            {/* Info del paquete */}
-            <div className="flex justify-between items-center mb-3 text-sm">
-              <div className="flex items-center gap-4">
-                <span className="flex items-center gap-1">
-                  <Package className="h-4 w-4" />
-                  {bultos} {bultos === 1 ? 'bulto' : 'bultos'}
-                </span>
-                {envio.peso_kg && (
-                  <span>{envio.peso_kg} kg</span>
+              {/* QR Code */}
+              <div className="flex justify-center mb-2">
+                <div className="bg-white p-1">
+                  <QRCodeSVG 
+                    value={`${window.location.origin}/tracking?q=${envio.tracking_number}-${String(bultoNum).padStart(2, '0')}`}
+                    size={64}
+                    level="M"
+                    includeMargin={false}
+                    className="print:w-16 print:h-16"
+                  />
+                </div>
+              </div>
+
+              {/* Tipo de Servicio Badge */}
+              <div className="flex justify-center mb-2">
+                <div className={`${tipoConfig.color} px-2 py-1 rounded text-center text-xs print:text-[10px]`}>
+                  <span className="mr-1">{tipoConfig.icon}</span>
+                  <span className="font-bold">{tipoConfig.label}</span>
+                </div>
+              </div>
+
+              <Separator className="my-2 bg-foreground" />
+
+              {/* Destinatario */}
+              <div className="mb-2">
+                <p className="text-[10px] print:text-[8px] font-semibold text-muted-foreground">DESTINATARIO</p>
+                <p className="font-bold text-sm print:text-xs">
+                  {envio.destinatario 
+                    ? `${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}`
+                    : 'Sin destinatario'}
+                </p>
+                {envio.dni_destinatario && (
+                  <p className="text-xs print:text-[9px]">DNI: {envio.dni_destinatario}</p>
+                )}
+                <div className="flex items-center gap-2 text-xs print:text-[9px]">
+                  {envio.destinatario?.telefono && (
+                    <span className="flex items-center gap-1">
+                      <Phone className="h-3 w-3 print:h-2 print:w-2" />
+                      {envio.destinatario.telefono}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <Separator className="my-2 bg-foreground" />
+
+              {/* Dirección de entrega o sucursal de retiro */}
+              <div className="mb-2">
+                <p className="text-[10px] print:text-[8px] font-semibold text-muted-foreground">
+                  {deliveryInfo?.type === 'sucursal' ? 'RETIRA EN SUCURSAL' : 'ENTREGAR EN'}
+                </p>
+                {deliveryInfo?.type === 'sucursal' ? (
+                  <div className="flex items-start gap-1">
+                    <Building2 className="h-3 w-3 mt-0.5 print:h-2 print:w-2" />
+                    <div>
+                      <p className="font-bold text-xs print:text-[10px]">{deliveryInfo.nombre}</p>
+                      <p className="text-xs print:text-[9px]">{deliveryInfo.direccion}</p>
+                      {deliveryInfo.ciudad && (
+                        <p className="text-xs print:text-[9px] text-muted-foreground">{deliveryInfo.ciudad}</p>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-1">
+                    <Home className="h-3 w-3 mt-0.5 print:h-2 print:w-2" />
+                    <div>
+                      <p className="font-bold text-xs print:text-[10px]">{deliveryInfo?.direccion || 'Sin dirección'}</p>
+                      {(deliveryInfo?.ciudad || deliveryInfo?.cp) && (
+                        <p className="text-xs print:text-[9px] text-muted-foreground">
+                          {deliveryInfo.ciudad} {deliveryInfo.cp && `• CP: ${deliveryInfo.cp}`}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="font-bold">
-                  {TIPO_PAGO_LABELS[envio.tipo_pago || 'contado']}
-                </Badge>
-                <span className="font-bold text-lg">
-                  ${envio.precio_total.toLocaleString('es-AR')}
-                </span>
+
+              <Separator className="my-2 bg-foreground" />
+
+              {/* Info del paquete y precio */}
+              <div className="flex justify-between items-center mb-2 text-xs print:text-[10px]">
+                <div className="flex items-center gap-2">
+                  <span className="flex items-center gap-1">
+                    <Package className="h-3 w-3 print:h-2 print:w-2" />
+                    {bultos} {bultos === 1 ? 'bulto' : 'bultos'}
+                  </span>
+                  {envio.peso_kg && (
+                    <span>{envio.peso_kg} kg</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  <Badge variant="outline" className="font-bold text-[10px] print:text-[8px] px-1 py-0">
+                    {TIPO_PAGO_LABELS[envio.tipo_pago || 'contado']}
+                  </Badge>
+                  <span className="font-bold text-sm print:text-xs">
+                    ${envio.precio_total.toLocaleString('es-AR')}
+                  </span>
+                </div>
+              </div>
+
+              {/* Notas */}
+              {(envio.descripcion || envio.notas) && (
+                <>
+                  <Separator className="my-2 bg-foreground" />
+                  <div className="text-xs print:text-[9px]">
+                    <p className="text-[10px] print:text-[8px] font-semibold text-muted-foreground">OBS.</p>
+                    <p className="line-clamp-2">{envio.descripcion || envio.notas}</p>
+                  </div>
+                </>
+              )}
+
+              <Separator className="my-2 bg-foreground" />
+
+              {/* Remitente */}
+              <div className="text-xs print:text-[9px]">
+                <p className="text-[10px] print:text-[8px] font-semibold text-muted-foreground">REMITENTE</p>
+                <p className="font-medium">
+                  {envio.remitente 
+                    ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}`.trim()
+                    : 'Sin remitente'}
+                </p>
+                {envio.remitente?.telefono && (
+                  <p className="flex items-center gap-1">
+                    <Phone className="h-2 w-2" />
+                    {envio.remitente.telefono}
+                  </p>
+                )}
               </div>
             </div>
-
-            {/* Notas */}
-            {(envio.descripcion || envio.notas) && (
-              <>
-                <Separator className="my-3 bg-foreground" />
-                <div className="text-sm">
-                  <p className="text-xs font-semibold text-muted-foreground mb-1">OBSERVACIONES</p>
-                  <p>{envio.descripcion || envio.notas}</p>
-                </div>
-              </>
-            )}
-
-            <Separator className="my-3 bg-foreground" />
-
-            {/* Remitente */}
-            <div className="text-sm">
-              <p className="text-xs font-semibold text-muted-foreground mb-1">REMITENTE</p>
-              <p className="font-medium">
-                {envio.remitente 
-                  ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}`.trim()
-                  : 'Sin remitente'}
-              </p>
-              {envio.dni_remitente && (
-                <p className="text-xs">DNI: {envio.dni_remitente}</p>
-              )}
-              {envio.remitente?.telefono && (
-                <p className="text-xs flex items-center gap-1">
-                  <Phone className="h-3 w-3" />
-                  {envio.remitente.telefono}
-                </p>
-              )}
-              {envio.sucursal_origen && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  {envio.sucursal_origen.codigo} - {envio.sucursal_origen.nombre}
-                </p>
-              )}
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
-      {/* Print Styles */}
+      {/* Print Styles - Optimizado para 3 etiquetas por hoja A4 */}
       <style>{`
         @media print {
           @page {
-            size: 100mm 150mm;
+            size: A4 portrait;
             margin: 5mm;
           }
           
-          body {
+          html, body {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+            font-size: 12px !important;
+          }
+          
+          .print-labels-container {
+            padding: 0 !important;
+            margin: 0 !important;
           }
           
           .print\\:hidden {
             display: none !important;
           }
           
-          .print\\:break-after-page {
-            break-after: page;
+          .label-container {
+            width: 100% !important;
+            max-width: 100% !important;
+            height: auto !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            margin-bottom: 5mm !important;
+            padding: 3mm !important;
+            box-sizing: border-box !important;
+          }
+          
+          /* 3 etiquetas por página A4 */
+          .label-container:nth-child(3n) {
+            page-break-after: always !important;
+            break-after: page !important;
+          }
+          
+          .label-container:last-child {
+            page-break-after: auto !important;
+            break-after: auto !important;
           }
         }
       `}</style>
