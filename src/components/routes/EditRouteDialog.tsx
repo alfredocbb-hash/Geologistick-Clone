@@ -13,6 +13,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Select,
   SelectContent,
@@ -32,9 +34,13 @@ import {
   Home,
   X,
   Plus,
-  MapPin
+  MapPin,
+  AlertTriangle,
+  Calendar
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { format, addDays } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 interface RouteData {
   id: string;
@@ -59,6 +65,9 @@ export default function EditRouteDialog({ route, onClose }: EditRouteDialogProps
   const [selectedVehiculo, setSelectedVehiculo] = useState<string>(route.vehiculo_id || '');
   const [envsToRemove, setEnvsToRemove] = useState<string[]>([]);
   const [envsToAdd, setEnvsToAdd] = useState<string[]>([]);
+  const [rescheduleDates, setRescheduleDates] = useState<Record<string, string>>({});
+
+  const isRouteInProgress = route.estado === 'en_curso' || route.estado === 'en_progreso';
 
   // Fetch route stops with shipment details
   const { data: paradas = [], isLoading: loadingParadas } = useQuery({
@@ -178,6 +187,14 @@ export default function EditRouteDialog({ route, onClose }: EditRouteDialogProps
     );
   };
 
+  // Set reschedule date for a shipment
+  const setRescheduleDate = (envioId: string, date: string) => {
+    setRescheduleDates(prev => ({
+      ...prev,
+      [envioId]: date
+    }));
+  };
+
   // Save changes mutation
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -204,24 +221,29 @@ export default function EditRouteDialog({ route, onClose }: EditRouteDialogProps
 
         if (deleteError) throw deleteError;
 
-        // Reset shipments to pending
-        const { error: resetError } = await supabase
-          .from('envios')
-          .update({
-            chofer_id: null,
-            estado: 'pendiente',
-          })
-          .in('id', envsToRemove);
-
-        if (resetError) throw resetError;
-
-        // Add history entries
+        // Reset shipments - check if they have reschedule dates
         for (const envioId of envsToRemove) {
+          const rescheduleDate = rescheduleDates[envioId];
+          
+          const { error: resetError } = await supabase
+            .from('envios')
+            .update({
+              chofer_id: null,
+              estado: 'pendiente',
+              ...(rescheduleDate && { ultima_reprogramacion: new Date().toISOString() })
+            })
+            .eq('id', envioId);
+
+          if (resetError) throw resetError;
+
+          // Add history entry
           await supabase.from('envio_historial').insert({
             envio_id: envioId,
-            estado_anterior: 'en_reparto',
-            estado_nuevo: 'pendiente',
-            notas: `Removido de ruta ${route.numero}`,
+            estado_anterior: 'en_reparto' as const,
+            estado_nuevo: 'pendiente' as const,
+            notas: rescheduleDate 
+              ? `Removido de ruta ${route.numero}. Reprogramado para ${format(new Date(rescheduleDate), 'dd/MM/yyyy', { locale: es })}`
+              : `Removido de ruta ${route.numero}`,
             created_by: user?.id,
           });
         }
@@ -303,9 +325,18 @@ export default function EditRouteDialog({ route, onClose }: EditRouteDialogProps
             Editar Ruta {route.numero}
           </DialogTitle>
           <DialogDescription>
-            Modifica los envíos, chofer o vehículo asignados a esta ruta
+          Modifica los envíos, chofer o vehículo asignados a esta ruta
           </DialogDescription>
         </DialogHeader>
+
+        {isRouteInProgress && (
+          <Alert variant="destructive" className="mt-2">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              Esta ruta está en progreso. Los cambios afectarán inmediatamente al chofer.
+            </AlertDescription>
+          </Alert>
+        )}
 
         <Tabs defaultValue="stops" className="mt-4">
           <TabsList className="w-full">
@@ -340,51 +371,79 @@ export default function EditRouteDialog({ route, onClose }: EditRouteDialogProps
                     return (
                       <div 
                         key={parada.id}
-                        className={`flex items-center gap-3 p-3 rounded-lg border ${
+                        className={`p-3 rounded-lg border ${
                           isRemoved 
-                            ? 'bg-destructive/10 border-destructive/50 opacity-60' 
+                            ? 'bg-destructive/10 border-destructive/50' 
                             : 'bg-muted/50'
                         }`}
                       >
-                        <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground font-bold text-xs">
-                          {parada.orden}
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground font-bold text-xs">
+                            {parada.orden}
+                          </div>
+                          
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <Badge variant={parada.tipo === 'retiro' ? 'secondary' : 'default'} className="text-xs">
+                                {parada.tipo === 'retiro' ? (
+                                  <><Home className="mr-1 h-3 w-3" />Retiro</>
+                                ) : (
+                                  <><Package className="mr-1 h-3 w-3" />Entrega</>
+                                )}
+                              </Badge>
+                              <span className="font-mono text-xs text-muted-foreground">
+                                {envio?.tracking_number}
+                              </span>
+                            </div>
+                            <p className="text-sm truncate">
+                              {parada.tipo === 'retiro' 
+                                ? `${envio?.remitente?.nombre} ${envio?.remitente?.apellido || ''}`
+                                : `${envio?.destinatario?.nombre} ${envio?.destinatario?.apellido || ''}`
+                              }
+                            </p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {parada.direccion}
+                            </p>
+                          </div>
+
+                          <Button
+                            variant={isRemoved ? 'outline' : 'ghost'}
+                            size="sm"
+                            onClick={() => toggleRemove(parada.envio_id)}
+                          >
+                            {isRemoved ? (
+                              <><Plus className="h-4 w-4 mr-1" />Restaurar</>
+                            ) : (
+                              <><X className="h-4 w-4 mr-1" />Quitar</>
+                            )}
+                          </Button>
                         </div>
                         
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <Badge variant={parada.tipo === 'retiro' ? 'secondary' : 'default'} className="text-xs">
-                              {parada.tipo === 'retiro' ? (
-                                <><Home className="mr-1 h-3 w-3" />Retiro</>
-                              ) : (
-                                <><Package className="mr-1 h-3 w-3" />Entrega</>
-                              )}
-                            </Badge>
-                            <span className="font-mono text-xs text-muted-foreground">
-                              {envio?.tracking_number}
-                            </span>
+                        {/* Reschedule date option when removed */}
+                        {isRemoved && (
+                          <div className="ml-9 mt-2 flex items-center gap-2 bg-muted/30 p-2 rounded">
+                            <Calendar className="h-4 w-4 text-muted-foreground" />
+                            <Label className="text-xs">Reprogramar para:</Label>
+                            <Input
+                              type="date"
+                              className="h-7 text-xs w-auto"
+                              min={format(addDays(new Date(), 1), 'yyyy-MM-dd')}
+                              value={rescheduleDates[parada.envio_id] || ''}
+                              onChange={(e) => setRescheduleDate(parada.envio_id, e.target.value)}
+                              placeholder="Opcional"
+                            />
+                            {rescheduleDates[parada.envio_id] && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2"
+                                onClick={() => setRescheduleDate(parada.envio_id, '')}
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            )}
                           </div>
-                          <p className="text-sm truncate">
-                            {parada.tipo === 'retiro' 
-                              ? `${envio?.remitente?.nombre} ${envio?.remitente?.apellido || ''}`
-                              : `${envio?.destinatario?.nombre} ${envio?.destinatario?.apellido || ''}`
-                            }
-                          </p>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {parada.direccion}
-                          </p>
-                        </div>
-
-                        <Button
-                          variant={isRemoved ? 'outline' : 'ghost'}
-                          size="sm"
-                          onClick={() => toggleRemove(parada.envio_id)}
-                        >
-                          {isRemoved ? (
-                            <><Plus className="h-4 w-4 mr-1" />Restaurar</>
-                          ) : (
-                            <><X className="h-4 w-4 mr-1" />Quitar</>
-                          )}
-                        </Button>
+                        )}
                       </div>
                     );
                   })}
