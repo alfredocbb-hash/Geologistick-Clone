@@ -375,29 +375,27 @@ export default function NewShipment() {
 
   const selectedTarifa = tarifas?.find(t => t.id === formData.tarifa_id);
 
-  // Calcular total por conceptos básicos (considerando porcentaje para seguro)
-  const calcularTotalConceptosBasicos = () => {
+  // Memoizar total de conceptos básicos (evitar recálculo en cada render)
+  const totalConceptosBasicos = useMemo(() => {
     const valorDeclarado = parseFloat(formData.valor_declarado) || 0;
     const cantidadBultos = parseInt(formData.cantidad_bultos) || 1;
     
     return conceptosBasicos.reduce((sum, cp) => {
       let montoConcepto = 0;
-      // Si es porcentaje (seguro), calcular sobre valor declarado
       if (cp.es_porcentaje && cp.porcentaje) {
         montoConcepto = valorDeclarado * Number(cp.porcentaje) / 100;
       } else {
         montoConcepto = Number(cp.monto);
       }
-      // Multiplicar por cantidad de bultos si aplica
       if (cp.multiplicar_por_bultos) {
         montoConcepto *= cantidadBultos;
       }
       return sum + montoConcepto;
     }, 0);
-  };
+  }, [conceptosBasicos, formData.valor_declarado, formData.cantidad_bultos]);
 
-  // Calcular total por conceptos adicionales seleccionados
-  const calcularTotalConceptosAdicionales = () => {
+  // Memoizar total de conceptos adicionales seleccionados
+  const totalConceptosAdicionales = useMemo(() => {
     const valorDeclarado = parseFloat(formData.valor_declarado) || 0;
     const cantidadBultos = parseInt(formData.cantidad_bultos) || 1;
     
@@ -410,21 +408,17 @@ export default function NewShipment() {
         } else {
           montoConcepto = Number(cp.monto);
         }
-        // Multiplicar por cantidad de bultos si aplica
         if (cp.multiplicar_por_bultos) {
           montoConcepto *= cantidadBultos;
         }
         return sum + montoConcepto;
       }, 0);
-  };
+  }, [conceptosAdicionales, conceptosSeleccionados, formData.valor_declarado, formData.cantidad_bultos]);
 
-  // Calcular total (básicos siempre + adicionales seleccionados)
-  const calcularTotalConceptos = () => {
-    return calcularTotalConceptosBasicos() + calcularTotalConceptosAdicionales();
-  };
-
-  const calcularPrecio = () => {
+  // Memoizar precio total calculado
+  const precioCalculado = useMemo(() => {
     if (!selectedTarifa) return 0;
+    
     const peso = parseFloat(formData.peso_kg) || 0;
     const precioBase = Number(selectedTarifa.precio_base) || 0;
     const rangos = (selectedTarifa as any).rangos_precios || {};
@@ -453,11 +447,16 @@ export default function NewShipment() {
       }
     }
     
-    // Sumar conceptos (que incluyen seguro calculado por porcentaje)
-    const totalConceptos = calcularTotalConceptos();
-    
-    return flete + totalConceptos;
-  };
+    // Sumar conceptos (básicos + adicionales seleccionados)
+    return flete + totalConceptosBasicos + totalConceptosAdicionales;
+  }, [
+    selectedTarifa,
+    formData.peso_kg,
+    formData.dimensiones,
+    distanciaKm,
+    totalConceptosBasicos,
+    totalConceptosAdicionales
+  ]);
 
   // Toggle concepto adicional selection
   const toggleConceptoAdicional = (conceptoId: string) => {
@@ -666,7 +665,7 @@ export default function NewShipment() {
 
       if (trackingError) throw trackingError;
 
-      const precioTotal = calcularPrecio();
+      const precioTotal = precioCalculado;
 
       // 4. Create shipment with all new fields
       // Estado inicial: si no requiere retiro (paquete ya en sucursal) → en_bodega
@@ -1035,7 +1034,6 @@ export default function NewShipment() {
   };
 
   const today = new Date().toISOString().split('T')[0];
-  const precioCalculado = calcularPrecio();
 
   // Si no tiene sucursal asignada, mostrar mensaje
   if (!loadingSucursalUsuario && !sucursalOrigenId) {
@@ -1873,15 +1871,27 @@ export default function NewShipment() {
                 {/* Conceptos Básicos */}
                 {conceptosBasicos.map((cp) => {
                   const valorDeclarado = parseFloat(formData.valor_declarado) || 0;
+                  const cantidadBultos = parseInt(formData.cantidad_bultos) || 1;
                   const isPercentage = cp.es_porcentaje && cp.porcentaje;
-                  const calculatedAmount = isPercentage 
+                  
+                  let calculatedAmount = isPercentage 
                     ? valorDeclarado * Number(cp.porcentaje) / 100 
                     : Number(cp.monto);
+                  
+                  // Multiplicar por cantidad de bultos si aplica
+                  if (cp.multiplicar_por_bultos) {
+                    calculatedAmount *= cantidadBultos;
+                  }
                   
                   return (
                     <div key={cp.id} className="flex justify-between text-sm">
                       <span>
                         {cp.concepto?.nombre || 'Concepto'}
+                        {cp.multiplicar_por_bultos && cantidadBultos > 1 && (
+                          <span className="text-xs text-muted-foreground ml-1">
+                            (x{cantidadBultos} bultos)
+                          </span>
+                        )}
                         {isPercentage && valorDeclarado > 0 && (
                           <span className="text-xs text-muted-foreground ml-1">
                             ({cp.porcentaje}% de {formatCurrency(valorDeclarado)})
@@ -1898,16 +1908,28 @@ export default function NewShipment() {
                   .filter(cp => conceptosSeleccionados.has(cp.concepto_id))
                   .map((cp) => {
                     const valorDeclarado = parseFloat(formData.valor_declarado) || 0;
+                    const cantidadBultos = parseInt(formData.cantidad_bultos) || 1;
                     const isPercentage = cp.es_porcentaje && cp.porcentaje;
-                    const calculatedAmount = isPercentage 
+                    
+                    let calculatedAmount = isPercentage 
                       ? valorDeclarado * Number(cp.porcentaje) / 100 
                       : Number(cp.monto);
+                    
+                    // Multiplicar por cantidad de bultos si aplica
+                    if (cp.multiplicar_por_bultos) {
+                      calculatedAmount *= cantidadBultos;
+                    }
                     
                     return (
                       <div key={cp.id} className="flex justify-between text-sm text-primary">
                         <span className="flex items-center gap-1">
                           <Plus className="h-3 w-3" />
                           {cp.concepto?.nombre}
+                          {cp.multiplicar_por_bultos && cantidadBultos > 1 && (
+                            <span className="text-xs text-muted-foreground">
+                              (x{cantidadBultos} bultos)
+                            </span>
+                          )}
                           {isPercentage && valorDeclarado > 0 && (
                             <span className="text-xs text-muted-foreground">
                               ({cp.porcentaje}% de {formatCurrency(valorDeclarado)})
