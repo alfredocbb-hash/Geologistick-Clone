@@ -116,9 +116,15 @@ export function ChangeStatusDialog({
     mutationFn: async () => {
       if (!envioId || !newStatus) throw new Error('Datos incompletos');
 
+      // Si vuelve a pendiente, limpiar chofer_id para que aparezca en planificador
+      const updateData: { estado: ShipmentStatus; chofer_id?: null } = { estado: newStatus };
+      if (newStatus === 'pendiente') {
+        updateData.chofer_id = null;
+      }
+
       const { error: updateError } = await supabase
         .from('envios')
-        .update({ estado: newStatus })
+        .update(updateData)
         .eq('id', envioId);
       
       if (updateError) throw updateError;
