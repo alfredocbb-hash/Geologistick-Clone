@@ -79,7 +79,7 @@ export function parseQRCode(data: string): ParsedQR {
   if (tracking && tracking.length >= 5) {
     return {
       type: 'tracking',
-      value: tracking.toUpperCase(),
+      value: tracking,
       originalData: data
     };
   }
