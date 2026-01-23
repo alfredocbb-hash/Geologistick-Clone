@@ -95,6 +95,13 @@ interface Envio {
   dni_destinatario: string | null;
   whatsapp_destinatario: string | null;
   created_at: string;
+  // Third-party shipment fields
+  es_terciarizado: boolean | null;
+  empresa_terciarizada: string | null;
+  tracking_externo: string | null;
+  codigo_cliente_externo: string | null;
+  codigo_orden_externo: string | null;
+  provincia: string | null;
   remitente: {
     nombre: string;
     apellido: string | null;
@@ -161,6 +168,17 @@ const generateLabelHTML = (
         <!-- Tracking -->
         <div class="tracking-section">
           <div class="tracking-number">${envio.tracking_number}</div>
+          ${envio.es_terciarizado && envio.tracking_externo ? `
+            <div class="external-tracking">
+              <span class="external-label">${
+                envio.empresa_terciarizada === 'correo_argentino' ? 'CORREO ARG.' :
+                envio.empresa_terciarizada === 'oca' ? 'OCA' :
+                envio.empresa_terciarizada === 'andreani' ? 'ANDREANI' :
+                envio.empresa_terciarizada?.toUpperCase() || 'EXTERNO'
+              }:</span>
+              <span class="external-code">${envio.tracking_externo}</span>
+            </div>
+          ` : ''}
           <div class="bulto-badge">BULTO ${bultoNum} / ${bultos}</div>
           <div class="tracking-code">${trackingCode}</div>
         </div>
@@ -363,6 +381,30 @@ const generateLabelHTML = (
     .tracking-code {
       font-family: monospace;
       font-size: ${labelSize === 'compact' ? '8px' : '9px'};
+      color: #000000;
+    }
+    
+    .external-tracking {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 2mm;
+      margin: 1mm 0;
+      padding: 1mm 2mm;
+      background-color: #f0f0f0;
+      border: 1px solid #000000;
+    }
+    
+    .external-label {
+      font-size: ${labelSize === 'compact' ? '7px' : '8px'};
+      font-weight: bold;
+      color: #000000;
+    }
+    
+    .external-code {
+      font-family: monospace;
+      font-size: ${labelSize === 'compact' ? '9px' : '10px'};
+      font-weight: bold;
       color: #000000;
     }
     

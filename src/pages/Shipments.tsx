@@ -163,8 +163,10 @@ export default function Shipments() {
     const searchLower = search.toLowerCase();
     return (
       envio.tracking_number?.toLowerCase().includes(searchLower) ||
+      envio.tracking_externo?.toLowerCase().includes(searchLower) ||
       envio.remitente?.nombre?.toLowerCase().includes(searchLower) ||
-      envio.destinatario?.nombre?.toLowerCase().includes(searchLower)
+      envio.destinatario?.nombre?.includes(searchLower) ||
+      envio.nombre_destinatario?.toLowerCase().includes(searchLower)
     );
   });
 
@@ -299,8 +301,25 @@ export default function Shipments() {
               <TableBody>
                 {filteredEnvios.map((envio) => (
                   <TableRow key={envio.id} className="cursor-pointer hover:bg-muted/50">
-                    <TableCell className="font-mono font-medium text-primary">
-                      {envio.tracking_number}
+                    <TableCell>
+                      <div className="font-mono font-medium text-primary">
+                        {envio.tracking_number}
+                      </div>
+                      {envio.es_terciarizado && (
+                        <div className="flex items-center gap-1 mt-1">
+                          <Badge variant="outline" className="text-xs px-1.5 py-0">
+                            {envio.empresa_terciarizada === 'correo_argentino' ? 'Correo Arg.' :
+                             envio.empresa_terciarizada === 'oca' ? 'OCA' :
+                             envio.empresa_terciarizada === 'andreani' ? 'Andreani' :
+                             envio.empresa_terciarizada}
+                          </Badge>
+                          {envio.tracking_externo && (
+                            <span className="text-xs text-muted-foreground font-mono">
+                              {envio.tracking_externo}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell>
                       {envio.nombre_remitente || (envio.remitente ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}` : '-')}
