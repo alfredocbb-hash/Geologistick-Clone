@@ -1,106 +1,148 @@
 
 
-# Plan: Corregir Nombres de Remitente/Destinatario en EPOD
+# Plan: Corregir Error RLS y Agregar Google Maps en Terciarizados
 
-## Problema Identificado
+## Problemas Identificados
 
-En el PDF EPOD, tanto el remitente como el destinatario muestran el mismo nombre "Alejandro Maximiliano Echavarria" porque el sistema usa únicamente los datos del cliente vinculado (tabla `clientes`) y NO los campos directos `nombre_remitente` y `nombre_destinatario` de la tabla `envios`.
+### 1. Error RLS al Crear Envio
+El error "new row violates row-level security policy for table 'envios'" ocurre porque el insert en la tabla `envios` no incluye el campo `tenant_id`, el cual es requerido por la politica RLS "Gestionar envios".
 
-Este problema ya fue corregido en otros componentes como:
-- `Shipments.tsx` (lista de envíos)
-- `RoutePlanner.tsx` (planificador de rutas)
-- `ActiveRouteNavigation.tsx` (navegación del chofer)
-- `PrintRouteSheet.tsx` / `PrintPlannedRoute.tsx` (impresión)
+**Linea del problema**: `ThirdPartyShipmentsTab.tsx:218-239`
 
-Pero **faltó aplicarlo en el EPOD**.
+### 2. Falta Autocompletado de Google Maps
+El usuario desea usar Google Maps autocomplete para el campo de direccion, similar a como funciona en "Nuevo Envio" y "Sucursales".
 
 ---
 
-## Patrón Correcto (ya usado en otros lugares)
+## Solucion
+
+### Archivo: `src/components/routes/ThirdPartyShipmentsTab.tsx`
+
+#### Cambio 1: Agregar imports necesarios
 
 ```typescript
-// Prioridad: campo directo primero, fallback al cliente vinculado
-envio.nombre_remitente || `${envio.remitente?.nombre || ''} ${envio.remitente?.apellido || ''}`.trim()
-envio.nombre_destinatario || `${envio.destinatario?.nombre || ''} ${envio.destinatario?.apellido || ''}`.trim()
+import { AddressAutocomplete, AddressDetails } from '@/components/maps/AddressAutocomplete';
 ```
 
----
-
-## Cambios Requeridos
-
-### Archivo: `src/lib/generateEPODPDF.ts`
-
-#### 1. Actualizar interface `Envio` (agregar campos faltantes)
-
-Agregar los campos directos a la interfaz:
+#### Cambio 2: Agregar campos lat/lng a la interface
 
 ```typescript
-interface Envio {
+interface ThirdPartyFormData {
   // ... campos existentes ...
-  nombre_remitente?: string | null;      // NUEVO
-  nombre_destinatario?: string | null;   // NUEVO
-  // ... resto de campos ...
+  entrega_lat: number | null;    // NUEVO
+  entrega_lng: number | null;    // NUEVO
 }
+
+const emptyForm: ThirdPartyFormData = {
+  // ... campos existentes ...
+  entrega_lat: null,
+  entrega_lng: null,
+};
 ```
 
-#### 2. Actualizar lógica de nombre del remitente (línea 259-261)
+#### Cambio 3: Agregar handler para seleccion de direccion
 
-**Antes:**
 ```typescript
-const senderName = envio.remitente 
-  ? sanitizeText(`${envio.remitente.nombre} ${envio.remitente.apellido || ''}`.trim())
-  : 'No especificado';
+const handleAddressSelect = (details: AddressDetails) => {
+  setFormData(prev => ({
+    ...prev,
+    direccion_entrega: details.address || details.formattedAddress,
+    ciudad_entrega: details.city || prev.ciudad_entrega,
+    provincia: details.province || prev.provincia,
+    cp_entrega: details.postalCode || prev.cp_entrega,
+    entrega_lat: details.lat,
+    entrega_lng: details.lng,
+  }));
+};
 ```
 
-**Después:**
+#### Cambio 4: Agregar `tenant_id` al insert (FIX CRITICO)
+
 ```typescript
-const senderName = sanitizeText(
-  envio.nombre_remitente || 
-  (envio.remitente ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}`.trim() : '') || 
-  'No especificado'
-);
+.insert({
+  tenant_id: profile?.tenant_id,  // AGREGAR - Requerido por RLS
+  tracking_number: trackingData,
+  // ... resto de campos existentes ...
+  entrega_lat: shipment.entrega_lat,  // AGREGAR
+  entrega_lng: shipment.entrega_lng,  // AGREGAR
+})
 ```
 
-#### 3. Actualizar lógica de nombre del destinatario (línea 279-281)
+#### Cambio 5: Reemplazar Input de direccion por AddressAutocomplete
 
-**Antes:**
-```typescript
-const recipientName = envio.destinatario
-  ? sanitizeText(`${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}`.trim())
-  : 'No especificado';
+**Antes (lineas 407-414):**
+```tsx
+<div className="space-y-2">
+  <Label>Calle y Numero *</Label>
+  <Input
+    placeholder="Ej: Av. Corrientes 1234"
+    value={formData.direccion_entrega}
+    onChange={(e) => handleInputChange("direccion_entrega", e.target.value)}
+  />
+</div>
 ```
 
-**Después:**
-```typescript
-const recipientName = sanitizeText(
-  envio.nombre_destinatario || 
-  (envio.destinatario ? `${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}`.trim() : '') || 
-  'No especificado'
-);
+**Despues:**
+```tsx
+<AddressAutocomplete
+  value={formData.direccion_entrega}
+  onChange={(value) => handleInputChange("direccion_entrega", value)}
+  onSelect={handleAddressSelect}
+  label="Calle y Numero"
+  placeholder="Buscar direccion..."
+  required
+/>
 ```
 
 ---
 
 ## Resumen de Cambios
 
-| Archivo | Cambio |
+| Seccion | Cambio |
 |---------|--------|
-| `src/lib/generateEPODPDF.ts` | Agregar `nombre_remitente` y `nombre_destinatario` a interface |
-| `src/lib/generateEPODPDF.ts` | Actualizar lógica de `senderName` con prioridad al campo directo |
-| `src/lib/generateEPODPDF.ts` | Actualizar lógica de `recipientName` con prioridad al campo directo |
+| Imports | Agregar `AddressAutocomplete` y `AddressDetails` |
+| Interface | Agregar `entrega_lat` y `entrega_lng` |
+| Handler | Nuevo `handleAddressSelect` para autocompletar campos |
+| Insert RLS | Agregar `tenant_id: profile?.tenant_id` (FIX CRITICO) |
+| Insert coords | Agregar `entrega_lat` y `entrega_lng` |
+| UI | Reemplazar Input por AddressAutocomplete |
 
 ---
 
-## Resultado Esperado
+## Flujo Despues del Cambio
 
-| Campo | Antes | Después |
-|-------|-------|---------|
-| Remitente | Alejandro Maximiliano Echavarria (del cliente genérico) | Nombre específico del envío |
-| Destinatario | Alejandro Maximiliano Echavarria (del cliente genérico) | Nombre específico del envío |
+```text
+Usuario escribe direccion
+        |
+        v
+Google Maps Autocomplete sugiere opciones
+        |
+        v
+Usuario selecciona direccion
+        |
+        v
+handleAddressSelect() autocompleta:
+  - direccion_entrega
+  - ciudad_entrega
+  - provincia
+  - cp_entrega
+  - entrega_lat/lng
+        |
+        v
+Usuario crea envio
+        |
+        v
+Insert incluye tenant_id
+        |
+        v
+RLS valida OK → Envio creado
+```
 
 ---
 
-## Notas Técnicas
+## Notas Tecnicas
 
-El campo `*` en la query de Supabase ya trae `nombre_remitente` y `nombre_destinatario` de la tabla `envios`, por lo que no es necesario modificar `ShipmentDetailsDialog.tsx`. Solo falta usar estos campos en el generador del PDF.
+- El componente `AddressAutocomplete` ya esta disponible en el proyecto y es utilizado en `NewShipment.tsx` y `Branches.tsx`
+- El campo `tenant_id` se obtiene de `profile?.tenant_id` que viene del hook `useAuth()`
+- Las coordenadas (`entrega_lat`, `entrega_lng`) se almacenan para uso futuro en rutas y mapas
 
