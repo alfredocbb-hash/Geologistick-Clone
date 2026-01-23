@@ -69,7 +69,7 @@ serve(async (req: Request) => {
       logStep("API key validated", { tenantId });
     }
 
-    // Build the query
+    // Build the query - use ilike for case-insensitive search
     let query = supabaseClient
       .from("envios")
       .select(`
@@ -93,7 +93,7 @@ serve(async (req: Request) => {
         remitente:clientes!envios_remitente_id_fkey(nombre, ciudad),
         destinatario:clientes!envios_destinatario_id_fkey(nombre, ciudad)
       `)
-      .eq("tracking_number", trackingCode.toUpperCase());
+      .ilike("tracking_number", trackingCode);
 
     // If tenant_id from API key, filter by tenant
     if (tenantId) {
