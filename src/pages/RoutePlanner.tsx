@@ -62,6 +62,7 @@ import ImportShipmentsDialog from "@/components/import/ImportShipmentsDialog";
 import RescheduledShipmentsList from "@/components/routes/RescheduledShipmentsList";
 import SaveFrequentRouteDialog from "@/components/routes/SaveFrequentRouteDialog";
 import FrequentRoutesTab from "@/components/routes/FrequentRoutesTab";
+import ThirdPartyShipmentsTab from "@/components/routes/ThirdPartyShipmentsTab";
 
 interface RouteStop {
   envio_id: string;
@@ -785,7 +786,7 @@ export default function RoutePlanner() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
+        <TabsList className="flex-wrap">
           <TabsTrigger value="crear">
             <Navigation className="mr-2 h-4 w-4" />
             Crear Ruta
@@ -793,6 +794,10 @@ export default function RoutePlanner() {
           <TabsTrigger value="frecuentes">
             <Star className="mr-2 h-4 w-4" />
             Frecuentes
+          </TabsTrigger>
+          <TabsTrigger value="terciarizados">
+            <Truck className="mr-2 h-4 w-4" />
+            Terciarizados
           </TabsTrigger>
           <TabsTrigger value="reprogramados">
             <CalendarClock className="mr-2 h-4 w-4" />
@@ -1276,6 +1281,10 @@ export default function RoutePlanner() {
               toast.success(`${envioIds.length} envío(s) cargados de "${rutaNombre}"`);
             }}
           />
+        </TabsContent>
+
+        <TabsContent value="terciarizados">
+          <ThirdPartyShipmentsTab />
         </TabsContent>
 
         <TabsContent value="reprogramados">

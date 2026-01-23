@@ -487,6 +487,8 @@ export type Database = {
           chofer_ultima_milla_id: string | null
           ciudad_entrega: string | null
           ciudad_retiro: string | null
+          codigo_cliente_externo: string | null
+          codigo_orden_externo: string | null
           codigo_postal_destino: string | null
           codigo_postal_origen: string | null
           cp_entrega: string | null
@@ -505,10 +507,13 @@ export type Database = {
           dni_destinatario: string | null
           dni_remitente: string | null
           dni_retira: string | null
+          duracion_estimada_minutos: number | null
+          empresa_terciarizada: string | null
           entrega_lat: number | null
           entrega_lng: number | null
           entregado_en_sucursal: boolean | null
           entregado_por: string | null
+          es_terciarizado: boolean | null
           estado: Database["public"]["Enums"]["shipment_status"] | null
           estado_retiro: string | null
           factura_cae: string | null
@@ -533,6 +538,7 @@ export type Database = {
           parentesco_retira: string | null
           peso_kg: number | null
           precio_total: number
+          provincia: string | null
           remitente_id: string | null
           remitente_lat: number | null
           remitente_lng: number | null
@@ -552,6 +558,7 @@ export type Database = {
           tipo_pago: string | null
           tipo_servicio: string | null
           tipo_servicio_detalle: string | null
+          tracking_externo: string | null
           tracking_number: string
           ultima_reprogramacion: string | null
           updated_at: string | null
@@ -564,6 +571,8 @@ export type Database = {
           chofer_ultima_milla_id?: string | null
           ciudad_entrega?: string | null
           ciudad_retiro?: string | null
+          codigo_cliente_externo?: string | null
+          codigo_orden_externo?: string | null
           codigo_postal_destino?: string | null
           codigo_postal_origen?: string | null
           cp_entrega?: string | null
@@ -582,10 +591,13 @@ export type Database = {
           dni_destinatario?: string | null
           dni_remitente?: string | null
           dni_retira?: string | null
+          duracion_estimada_minutos?: number | null
+          empresa_terciarizada?: string | null
           entrega_lat?: number | null
           entrega_lng?: number | null
           entregado_en_sucursal?: boolean | null
           entregado_por?: string | null
+          es_terciarizado?: boolean | null
           estado?: Database["public"]["Enums"]["shipment_status"] | null
           estado_retiro?: string | null
           factura_cae?: string | null
@@ -610,6 +622,7 @@ export type Database = {
           parentesco_retira?: string | null
           peso_kg?: number | null
           precio_total: number
+          provincia?: string | null
           remitente_id?: string | null
           remitente_lat?: number | null
           remitente_lng?: number | null
@@ -629,6 +642,7 @@ export type Database = {
           tipo_pago?: string | null
           tipo_servicio?: string | null
           tipo_servicio_detalle?: string | null
+          tracking_externo?: string | null
           tracking_number: string
           ultima_reprogramacion?: string | null
           updated_at?: string | null
@@ -641,6 +655,8 @@ export type Database = {
           chofer_ultima_milla_id?: string | null
           ciudad_entrega?: string | null
           ciudad_retiro?: string | null
+          codigo_cliente_externo?: string | null
+          codigo_orden_externo?: string | null
           codigo_postal_destino?: string | null
           codigo_postal_origen?: string | null
           cp_entrega?: string | null
@@ -659,10 +675,13 @@ export type Database = {
           dni_destinatario?: string | null
           dni_remitente?: string | null
           dni_retira?: string | null
+          duracion_estimada_minutos?: number | null
+          empresa_terciarizada?: string | null
           entrega_lat?: number | null
           entrega_lng?: number | null
           entregado_en_sucursal?: boolean | null
           entregado_por?: string | null
+          es_terciarizado?: boolean | null
           estado?: Database["public"]["Enums"]["shipment_status"] | null
           estado_retiro?: string | null
           factura_cae?: string | null
@@ -687,6 +706,7 @@ export type Database = {
           parentesco_retira?: string | null
           peso_kg?: number | null
           precio_total?: number
+          provincia?: string | null
           remitente_id?: string | null
           remitente_lat?: number | null
           remitente_lng?: number | null
@@ -706,6 +726,7 @@ export type Database = {
           tipo_pago?: string | null
           tipo_servicio?: string | null
           tipo_servicio_detalle?: string | null
+          tracking_externo?: string | null
           tracking_number?: string
           ultima_reprogramacion?: string | null
           updated_at?: string | null

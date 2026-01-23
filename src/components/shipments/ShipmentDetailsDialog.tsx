@@ -300,6 +300,41 @@ export function ShipmentDetailsDialog({
                   </Badge>
                 )}
               </div>
+              
+              {/* Third-party shipment info */}
+              {envio.es_terciarizado && (
+                <div className="mt-3 pt-3 border-t border-border">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge className="bg-orange-500 text-white">
+                      <Truck className="h-3 w-3 mr-1" />
+                      Terciarizado
+                    </Badge>
+                    <span className="text-sm font-medium">
+                      {envio.empresa_terciarizada === 'correo_argentino' ? 'Correo Argentino' :
+                       envio.empresa_terciarizada === 'oca' ? 'OCA' :
+                       envio.empresa_terciarizada === 'andreani' ? 'Andreani' :
+                       envio.empresa_terciarizada === 'dhl' ? 'DHL' :
+                       envio.empresa_terciarizada === 'fedex' ? 'FedEx' :
+                       envio.empresa_terciarizada || 'Otro'}
+                    </span>
+                    {envio.tracking_externo && (
+                      <span className="font-mono text-sm text-muted-foreground">
+                        • Tracking: {envio.tracking_externo}
+                      </span>
+                    )}
+                  </div>
+                  {(envio.codigo_cliente_externo || envio.codigo_orden_externo) && (
+                    <div className="flex gap-4 mt-2 text-sm text-muted-foreground">
+                      {envio.codigo_cliente_externo && (
+                        <span>Cód. Cliente: {envio.codigo_cliente_externo}</span>
+                      )}
+                      {envio.codigo_orden_externo && (
+                        <span>Cód. Orden: {envio.codigo_orden_externo}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <Tabs defaultValue="general" className="w-full">
