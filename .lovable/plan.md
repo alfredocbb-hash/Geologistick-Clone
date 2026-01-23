@@ -1,116 +1,67 @@
 
 
-# Plan: Corrección de Páginas Públicas de Tracking
+# Plan: Búsqueda de Tracking Insensible a Mayúsculas/Minúsculas
 
 ## Problema Identificado
 
-Las páginas públicas de tracking (`/tracking` y `/tracking-embed`) no funcionan para clientes externos debido a dos problemas:
+El tracking `a2100Rp1n268` no se encuentra porque:
 
-1. **Edge Function no desplegada**: La función `public-tracking` devuelve error 404 cuando se intenta acceder
-2. **TrackingEmbed usa acceso directo a BD**: Consulta directamente la tabla `envios` sin autenticación, lo cual es bloqueado por RLS
+1. **En base de datos**: Guardado como `a2100Rp1n268` (mixto)
+2. **Búsqueda actual**: Busca `A2100RP1N268` (todo mayúsculas)
+3. **PostgreSQL**: Comparación exacta (`=`) es case-sensitive
 
 ---
 
 ## Solución
 
-### Parte 1: Forzar redespliegue de Edge Function
-
-Modificar ligeramente el archivo de la función para forzar un redespliegue completo.
-
-### Parte 2: Corregir TrackingEmbed para usar la Edge Function
-
-Actualizar `TrackingEmbed.tsx` para usar la Edge Function `public-tracking` en lugar de consultar directamente la base de datos, igual que hace `Tracking.tsx`.
+Usar `ILIKE` (case-insensitive) o la función `UPPER()` en la consulta SQL para garantizar que la búsqueda funcione independientemente de cómo se guardó el tracking.
 
 ---
 
-## Cambios Requeridos
+## Cambio Requerido
 
-### Archivo 1: `supabase/functions/public-tracking/index.ts`
+### Archivo: `supabase/functions/public-tracking/index.ts`
 
-Agregar un comentario o timestamp para forzar el redespliegue:
-
+**Antes (línea 73-96):**
 ```typescript
-// Force redeploy: 2026-01-23
-import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-// ... resto del código
+let query = supabaseClient
+  .from("envios")
+  .select(`...`)
+  .eq("tracking_number", trackingCode.toUpperCase());
 ```
 
-### Archivo 2: `src/pages/TrackingEmbed.tsx`
-
-Reemplazar las consultas directas a Supabase por llamadas a la Edge Function:
-
-**Antes (problemático):**
+**Después (usando ilike para búsqueda case-insensitive):**
 ```typescript
-const { data: envio } = useQuery({
-  queryFn: async () => {
-    let query = supabase.from("envios").select(...)  // Bloqueado por RLS
-  }
-});
-```
-
-**Después (correcto):**
-```typescript
-const { data: envio } = useQuery({
-  queryFn: async () => {
-    const response = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/public-tracking?code=${searchedTracking}`
-    );
-    const data = await response.json();
-    if (!response.ok || data.error) return null;
-    return data;
-  }
-});
+let query = supabaseClient
+  .from("envios")
+  .select(`...`)
+  .ilike("tracking_number", trackingCode);
 ```
 
 ---
 
-## Archivos a Modificar
+## Archivo a Modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `supabase/functions/public-tracking/index.ts` | Agregar comentario para forzar redespliegue |
-| `src/pages/TrackingEmbed.tsx` | Usar Edge Function en lugar de acceso directo a BD |
+| `supabase/functions/public-tracking/index.ts` | Cambiar `.eq()` por `.ilike()` para búsqueda case-insensitive |
 
 ---
 
-## Flujo Corregido
+## Resultado Esperado
 
-```text
-Cliente externo busca tracking
-         │
-         ▼
-┌─────────────────────────────────────────────┐
-│  /tracking o /tracking-embed                │
-│  (páginas públicas sin autenticación)       │
-└─────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────┐
-│  Edge Function: public-tracking             │
-│  (usa SERVICE_ROLE_KEY para bypass RLS)     │
-└─────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────┐
-│  Devuelve datos del envío + branding        │
-│  (JSON público sin datos sensibles)         │
-└─────────────────────────────────────────────┘
-```
+| Búsqueda del usuario | Tracking en BD | Resultado |
+|---------------------|----------------|-----------|
+| `a2100Rp1n268` | `a2100Rp1n268` | ✅ Encontrado |
+| `A2100RP1N268` | `a2100Rp1n268` | ✅ Encontrado |
+| `a2100rp1n268` | `a2100Rp1n268` | ✅ Encontrado |
 
 ---
 
-## Beneficios
+## Consideración Adicional
 
-1. **Ambas páginas funcionarán** para clientes externos sin autenticación
-2. **Seguridad mantenida**: Solo se exponen datos de tracking públicos
-3. **Branding dinámico**: Cada empresa verá su logo y colores
-4. **Código unificado**: Ambas páginas usan la misma fuente de datos
-
----
-
-## Orden de Implementación
-
-1. Modificar y redesplegar la Edge Function `public-tracking`
-2. Actualizar `TrackingEmbed.tsx` para usar la Edge Function
-3. Verificar que ambas páginas funcionen correctamente
+Opcionalmente, también se puede normalizar los trackings al guardarlos (siempre en mayúsculas) para mantener consistencia en la base de datos. Esto sería un cambio adicional en:
+- `NewShipment.tsx` (al crear envíos)
+- `ThirdPartyShipmentsTab.tsx` (al crear envíos terciarizados)
+- `ImportShipmentsDialog.tsx` (al importar CSV)
 
