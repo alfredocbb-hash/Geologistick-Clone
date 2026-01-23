@@ -1,50 +1,65 @@
 
 
-# Plan: Corregir Visualización de Envíos Pendientes en Planificador
+# Plan: Corrección de Páginas Públicas de Tracking
 
 ## Problema Identificado
 
-Cuando un administrador cambia manualmente el estado de un envío a "pendiente" usando el diálogo de cambio de estado, el envío no aparece en el planificador de rutas porque:
+Las páginas públicas de tracking (`/tracking` y `/tracking-embed`) no funcionan para clientes externos debido a dos problemas:
 
-1. El `ChangeStatusDialog` solo actualiza el campo `estado` pero **no limpia el `chofer_id`**
-2. El planificador filtra con `.is("chofer_id", null)` - solo muestra envíos sin chofer asignado
-
-**Datos confirmados en base de datos:**
-- 2 envíos con estado `pendiente` que tienen `chofer_id` asignado
-- Por eso no aparecen en el planificador
+1. **Edge Function no desplegada**: La función `public-tracking` devuelve error 404 cuando se intenta acceder
+2. **TrackingEmbed usa acceso directo a BD**: Consulta directamente la tabla `envios` sin autenticación, lo cual es bloqueado por RLS
 
 ---
 
 ## Solución
 
-Modificar el `ChangeStatusDialog` para que cuando se cambie el estado a `pendiente`, también se limpie el `chofer_id`, siguiendo el mismo patrón usado en otros componentes.
+### Parte 1: Forzar redespliegue de Edge Function
+
+Modificar ligeramente el archivo de la función para forzar un redespliegue completo.
+
+### Parte 2: Corregir TrackingEmbed para usar la Edge Function
+
+Actualizar `TrackingEmbed.tsx` para usar la Edge Function `public-tracking` en lugar de consultar directamente la base de datos, igual que hace `Tracking.tsx`.
 
 ---
 
-## Cambio Requerido
+## Cambios Requeridos
 
-### Archivo: src/components/shipments/ChangeStatusDialog.tsx
+### Archivo 1: `supabase/functions/public-tracking/index.ts`
 
-**Antes:**
+Agregar un comentario o timestamp para forzar el redespliegue:
+
 ```typescript
-const { error: updateError } = await supabase
-  .from('envios')
-  .update({ estado: newStatus })
-  .eq('id', envioId);
+// Force redeploy: 2026-01-23
+import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+// ... resto del código
 ```
 
-**Después:**
-```typescript
-// Si vuelve a pendiente, limpiar chofer_id para que aparezca en planificador
-const updateData: any = { estado: newStatus };
-if (newStatus === 'pendiente') {
-  updateData.chofer_id = null;
-}
+### Archivo 2: `src/pages/TrackingEmbed.tsx`
 
-const { error: updateError } = await supabase
-  .from('envios')
-  .update(updateData)
-  .eq('id', envioId);
+Reemplazar las consultas directas a Supabase por llamadas a la Edge Function:
+
+**Antes (problemático):**
+```typescript
+const { data: envio } = useQuery({
+  queryFn: async () => {
+    let query = supabase.from("envios").select(...)  // Bloqueado por RLS
+  }
+});
+```
+
+**Después (correcto):**
+```typescript
+const { data: envio } = useQuery({
+  queryFn: async () => {
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/public-tracking?code=${searchedTracking}`
+    );
+    const data = await response.json();
+    if (!response.ok || data.error) return null;
+    return data;
+  }
+});
 ```
 
 ---
@@ -53,17 +68,49 @@ const { error: updateError } = await supabase
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/components/shipments/ChangeStatusDialog.tsx` | Limpiar `chofer_id` cuando estado = "pendiente" |
+| `supabase/functions/public-tracking/index.ts` | Agregar comentario para forzar redespliegue |
+| `src/pages/TrackingEmbed.tsx` | Usar Edge Function en lugar de acceso directo a BD |
 
 ---
 
-## Beneficio
+## Flujo Corregido
 
-Los envíos que el administrador revierta a "pendiente" aparecerán inmediatamente en el planificador de rutas, listos para ser asignados nuevamente a una ruta.
+```text
+Cliente externo busca tracking
+         │
+         ▼
+┌─────────────────────────────────────────────┐
+│  /tracking o /tracking-embed                │
+│  (páginas públicas sin autenticación)       │
+└─────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────┐
+│  Edge Function: public-tracking             │
+│  (usa SERVICE_ROLE_KEY para bypass RLS)     │
+└─────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────┐
+│  Devuelve datos del envío + branding        │
+│  (JSON público sin datos sensibles)         │
+└─────────────────────────────────────────────┘
+```
 
 ---
 
-## Nota
+## Beneficios
 
-Los 2 envíos actualmente afectados en la base de datos se corregirán automáticamente cuando se actualicen nuevamente, o se puede ejecutar una corrección directa si es necesario.
+1. **Ambas páginas funcionarán** para clientes externos sin autenticación
+2. **Seguridad mantenida**: Solo se exponen datos de tracking públicos
+3. **Branding dinámico**: Cada empresa verá su logo y colores
+4. **Código unificado**: Ambas páginas usan la misma fuente de datos
+
+---
+
+## Orden de Implementación
+
+1. Modificar y redesplegar la Edge Function `public-tracking`
+2. Actualizar `TrackingEmbed.tsx` para usar la Edge Function
+3. Verificar que ambas páginas funcionen correctamente
 
