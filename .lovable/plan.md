@@ -1,252 +1,230 @@
 
 
-# Plan: Adaptar Etiquetas para Impresoras Láser B&N
+# Plan: Nueva Pestaña "Terciarizados" en Planificador de Rutas
 
 ## Objetivo
 
-Modificar el estilo de las etiquetas existentes para que se impriman correctamente en impresoras láser blanco y negro, siguiendo el estilo visual de Correo Argentino.
+Crear una nueva pestaña dentro del Planificador de Rutas para agregar envíos de empresas terciarizadas (Correo Argentino, OCA, Andreani, etc.) con campos específicos diferentes al formulario estándar.
 
 ---
 
-## Análisis del Diseño de Referencia (Correo Argentino)
+## Vista de la Nueva Pestaña
 
 ```text
-┌─────────────────────────────────────────────────────────────┐
-│  ┌────────────┐  PAGADO 0000734304              ┌───────┐  │
-│  │            │  VENDEDOR 0000734304            │       │  │
-│  │   QR CODE  │  CLIENTE 00734304               │   C   │  │
-│  │            │  NOA-UAQI-JBA                   │  DOM  │  │
-│  └────────────┘                                 └───────┘  │
-│                                                             │
-│  REMITENTE                                                 │
-│  Barraza Cecilia                                           │
-│  C.130 1477                                                │
-│  CP: 1884                                                  │
-│  11 DE SEPTIEMBRE                                          │
-│  BUENOS AIRES                                              │
-├─────────────────────────────────────────────────────────────┤
-│  ║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║║  │
-│  TN 00007343049AL5353C41501                                │
-├─────────────────────────────────────────────────────────────┤
-│  DESTINATARIO                                              │
-│  YANINA DIAZ                                               │
-│  calle luna (barrio margarita ferra de bartol.casa 4       │
-│  manzana                                                   │
-│  CP: 5409                                                  │
-│  ULLUM                                                     │
-│  SAN JUAN                                                  │
-├─────────────────────────────────────────────────────────────┤
-│  ║║║║║║║║║║║║║║║║║                        1.100kg.         │
-│  T&T HC351728082AR                        10x30x30cm       │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  [Crear Ruta] [Frecuentes] [Terciarizados] [Reprogramados] [Rutas Activas]  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  ENVÍOS TERCIARIZADOS                                                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  AGREGAR NUEVO ENVÍO TERCIARIZADO                                   │   │
+│  ├─────────────────────────────────────────────────────────────────────┤   │
+│  │                                                                     │   │
+│  │  Empresa: [Seleccionar ▼]        Tracking Externo: [______________] │   │
+│  │           • Correo Argentino                                        │   │
+│  │           • OCA                                                     │   │
+│  │           • Andreani                                                │   │
+│  │           • Otro                                                    │   │
+│  │                                                                     │   │
+│  │  ─────────────────────────────────────────────────────────────────  │   │
+│  │                                                                     │   │
+│  │  Código de Cliente: [__________]   Código de Orden: [____________]  │   │
+│  │                                                                     │   │
+│  │  Nombre Destinatario: [________________________________]            │   │
+│  │                                                                     │   │
+│  │  Calle y Número: [_______________________________________]          │   │
+│  │                                                                     │   │
+│  │  Ciudad: [__________________]   Provincia: [Seleccionar ▼]          │   │
+│  │                                                                     │   │
+│  │  Código Postal: [________]                                          │   │
+│  │                                                                     │   │
+│  │  ─────────────────────────────────────────────────────────────────  │   │
+│  │                                                                     │   │
+│  │  Tipo de Operación:   ○ Entrega   ○ Retiro   ○ Cobro               │   │
+│  │                                                                     │   │
+│  │  Fecha: [📅 dd/mm/yyyy]           Duración Estimada: [30] minutos   │   │
+│  │                                                                     │   │
+│  │  Observaciones: [_______________________________________________]   │   │
+│  │                                                                     │   │
+│  │                                   [Agregar a Lista]  [Crear Envío]  │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  ENVÍOS AGREGADOS (pendientes de crear ruta)                        │   │
+│  ├────┬──────────────┬─────────────────┬────────────┬─────────┬────────┤   │
+│  │ □  │ Tracking     │ Destinatario    │ Dirección  │ Tipo    │ Acc.   │   │
+│  ├────┼──────────────┼─────────────────┼────────────┼─────────┼────────┤   │
+│  │ ☑  │ AR123456789  │ Juan Pérez      │ Av. Corr.  │ Entrega │ 🗑     │   │
+│  │ ☑  │ OCA98765432  │ María García    │ Belgrano   │ Retiro  │ 🗑     │   │
+│  └────┴──────────────┴─────────────────┴────────────┴─────────┴────────┘   │
+│                                                                             │
+│  [Importar CSV Terciarizados]    [Seleccionar y Crear Ruta →]              │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Cambios de Diseño para B&N
+## Cambios en Base de Datos
 
-| Elemento | Actual | Nuevo (B&N) |
-|----------|--------|-------------|
-| Colores de servicio | Azul, verde, naranja, violeta | Negro sólido |
-| Emojis | 🏢, 🏠, 📦, 📞 | Texto simple o iconos ASCII |
-| Badge de bulto | Fondo gris oscuro | Fondo negro sólido |
-| Separadores | Líneas finas | Líneas gruesas (2px) |
-| Bordes | Sutiles | Gruesos y definidos |
-| QR Code | Con borde gris | Borde negro |
+### Migración SQL
 
----
-
-## Estructura Visual Nueva
-
-```text
-┌══════════════════════════════════════════════════════════════┐
-║  SUCURSAL ORIGEN                           22/01/2026        ║
-║  CBA01 - Central Córdoba                                     ║
-║  Tel: 351-1234567                                            ║
-╠══════════════════════════════════════════════════════════════╣
-║                                                              ║
-║  ┌──────────────┐      SUC01-ENV-20260122-001                ║
-║  │              │                                            ║
-║  │   QR CODE    │      ██████████████████████████████████    ║
-║  │              │      BULTO 1 / 3                           ║
-║  └──────────────┘      SUC01-ENV-20260122-001-01             ║
-║                                                              ║
-║  ┌──────────────────────────────────────────────────────┐    ║
-║  │                ENTREGA A DOMICILIO                   │    ║
-║  └──────────────────────────────────────────────────────┘    ║
-╠══════════════════════════════════════════════════════════════╣
-║  DESTINATARIO                                                ║
-║  MARÍA GARCÍA PÉREZ                                          ║
-║  DNI: 12.345.678                                             ║
-║  Tel: 11-8765-4321                                           ║
-╠══════════════════════════════════════════════════════════════╣
-║  ENTREGAR EN                                                 ║
-║  Av. Corrientes 1234, Piso 5 Depto A                        ║
-║  CIUDAD DE BUENOS AIRES                CP: C1000AAA          ║
-╠══════════════════════════════════════════════════════════════╣
-║  3 bultos  •  15.5 kg          PAGO DESTINO  $12,500         ║
-╠══════════════════════════════════════════════════════════════╣
-║  OBS: Frágil - Manejar con cuidado                          ║
-╠══════════════════════════════════════════════════════════════╣
-║  REMITENTE: Juan Pérez • Tel: 11-1234-5678                  ║
-╚══════════════════════════════════════════════════════════════╝
+```sql
+ALTER TABLE envios 
+ADD COLUMN es_terciarizado BOOLEAN DEFAULT false,
+ADD COLUMN empresa_terciarizada TEXT,
+ADD COLUMN tracking_externo TEXT,
+ADD COLUMN codigo_cliente_externo TEXT,
+ADD COLUMN codigo_orden_externo TEXT,
+ADD COLUMN duracion_estimada_minutos INTEGER DEFAULT 30,
+ADD COLUMN provincia TEXT;
 ```
 
+**Campos nuevos:**
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `es_terciarizado` | BOOLEAN | Indica si es envío de terceros |
+| `empresa_terciarizada` | TEXT | Nombre de la empresa (correo_argentino, oca, andreani, otro) |
+| `tracking_externo` | TEXT | Número de seguimiento de la otra empresa |
+| `codigo_cliente_externo` | TEXT | Código de cliente de la empresa terciarizada |
+| `codigo_orden_externo` | TEXT | Código de orden de la empresa terciarizada |
+| `duracion_estimada_minutos` | INTEGER | Tiempo estimado de la operación |
+| `provincia` | TEXT | Provincia/Estado (complementa ciudad) |
+
 ---
 
-## Cambios Técnicos en `src/pages/PrintLabel.tsx`
+## Archivos a Crear/Modificar
 
-### 1. Modificar configuración de tipos de servicio
+| Archivo | Acción | Descripción |
+|---------|--------|-------------|
+| `src/components/routes/ThirdPartyShipmentsTab.tsx` | **Nuevo** | Componente de la nueva pestaña |
+| `src/pages/RoutePlanner.tsx` | Modificar | Agregar la nueva pestaña al TabsList |
+| `src/pages/Shipments.tsx` | Modificar | Mostrar badge de terciarizado y tracking externo |
+| `src/components/shipments/ShipmentDetailsDialog.tsx` | Modificar | Mostrar información de terciarizado |
+| `src/pages/PrintLabel.tsx` | Modificar | Incluir tracking externo en etiqueta |
+
+---
+
+## Nuevo Componente: ThirdPartyShipmentsTab.tsx
+
+### Funcionalidades
+
+1. **Formulario de captura** con todos los campos especificados
+2. **Lista temporal** de envíos agregados (estado local)
+3. **Creación individual** de envíos en la tabla `envios`
+4. **Selección múltiple** para crear ruta con los envíos terciarizados
+5. **Integración** con el flujo existente de creación de rutas
+
+### Campos del Formulario
+
+| Campo | Tipo de Input | Requerido |
+|-------|---------------|-----------|
+| Empresa terciarizada | Select | Sí |
+| Tracking externo | Input texto | Sí |
+| Código de cliente | Input texto | No |
+| Código de orden | Input texto | No |
+| Nombre destinatario | Input texto | Sí |
+| Calle y número | Input texto | Sí |
+| Ciudad | Input texto | Sí |
+| Provincia | Select (lista Argentina) | Sí |
+| Código postal | Input texto | No |
+| Tipo de operación | Radio (Entrega/Retiro/Cobro) | Sí |
+| Fecha | Date picker | Sí |
+| Duración estimada | Input numérico (minutos) | Sí |
+| Observaciones | Textarea | No |
+
+### Empresas Terciarizadas Disponibles
 
 ```typescript
-const TIPO_SERVICIO_CONFIG = {
-  sucursal_sucursal: { 
-    label: 'SUCURSAL A SUCURSAL', 
-    icon: '',  // Sin emoji
-    bgColor: '#000000',  // Negro sólido
-    textColor: '#ffffff',
-  },
-  sucursal_puerta: { 
-    label: 'ENTREGA A DOMICILIO', 
-    icon: '',
-    bgColor: '#000000',
-    textColor: '#ffffff',
-  },
-  puerta_sucursal: { 
-    label: 'RETIRO + ENTREGA SUCURSAL', 
-    icon: '',
-    bgColor: '#000000',
-    textColor: '#ffffff',
-  },
-  puerta_puerta: { 
-    label: 'PUERTA A PUERTA', 
-    icon: '',
-    bgColor: '#000000',
-    textColor: '#ffffff',
-  },
-};
+const EMPRESAS_TERCIARIZADAS = [
+  { value: "correo_argentino", label: "Correo Argentino" },
+  { value: "oca", label: "OCA" },
+  { value: "andreani", label: "Andreani" },
+  { value: "dhl", label: "DHL" },
+  { value: "fedex", label: "FedEx" },
+  { value: "otro", label: "Otro" },
+];
 ```
 
-### 2. Actualizar estilos CSS en `generateLabelHTML`
+### Provincias de Argentina
 
-**Bordes más gruesos:**
-```css
-.label {
-  border: 3px solid #000000;  /* Más grueso y negro puro */
-}
-
-.header {
-  border-bottom: 2px solid #000000;
-}
-
-.divider {
-  height: 2px;
-  background-color: #000000;
-}
-```
-
-**Badge de bulto en negro:**
-```css
-.bulto-badge {
-  background-color: #000000;
-  color: #ffffff;
-  border: none;
-}
-```
-
-**QR con borde negro:**
-```css
-.qr-container {
-  border: 2px solid #000000;
-}
-```
-
-**Textos sin emojis:**
-```css
-.icon {
-  display: none;  /* Ocultar emojis */
-}
-```
-
-### 3. Reemplazar emojis por texto
-
-En el HTML generado:
-- `🏢` → `[S]` o simplemente eliminarlo
-- `🏠` → `[D]` o eliminarlo
-- `📦` → eliminar
-- `📞` → `Tel:`
-
-### 4. Estilo de servicio tipo Correo Argentino
-
-```html
-<div class="service-badge">
-  <span class="service-label">${tipoConfig.label}</span>
-</div>
-```
-
-```css
-.service-badge {
-  background-color: #000000;
-  color: #ffffff;
-  padding: 3mm;
-  border-radius: 0;  /* Sin bordes redondeados */
-  text-align: center;
-  font-weight: bold;
-  letter-spacing: 1px;
-}
+```typescript
+const PROVINCIAS_ARGENTINA = [
+  "Buenos Aires", "CABA", "Catamarca", "Chaco", "Chubut",
+  "Córdoba", "Corrientes", "Entre Ríos", "Formosa", "Jujuy",
+  "La Pampa", "La Rioja", "Mendoza", "Misiones", "Neuquén",
+  "Río Negro", "Salta", "San Juan", "San Luis", "Santa Cruz",
+  "Santa Fe", "Santiago del Estero", "Tierra del Fuego", "Tucumán"
+];
 ```
 
 ---
 
-## Paleta de Colores B&N
-
-| Elemento | Color |
-|----------|-------|
-| Fondo principal | `#ffffff` (blanco) |
-| Bordes y líneas | `#000000` (negro) |
-| Texto principal | `#000000` (negro) |
-| Texto secundario | `#333333` (gris oscuro) |
-| Badges/Destacados | `#000000` fondo, `#ffffff` texto |
-
----
-
-## Consideraciones para Impresión Láser
-
-1. **Sin degradados**: Solo colores sólidos negro/blanco
-2. **Contraste máximo**: Negro sobre blanco y viceversa
-3. **Bordes definidos**: Líneas gruesas para buena definición
-4. **Sin grises medios**: Pueden verse mal en impresoras de baja resolución
-5. **Fuentes legibles**: Usar fuentes sans-serif claras
-6. **QR robusto**: Nivel de corrección de errores alto (M o H)
-
----
-
-## Archivo a Modificar
-
-| Archivo | Cambio |
-|---------|--------|
-| `src/pages/PrintLabel.tsx` | Actualizar estilos CSS y configuración de colores para B&N |
-
----
-
-## Vista Previa Antes/Después
+## Flujo de Trabajo
 
 ```text
-ANTES (Color):                    DESPUÉS (B&N):
-┌─────────────────────┐          ┌═════════════════════┐
-│ 🏢 Suc. Central     │          ║ SUCURSAL CENTRAL    ║
-│ ┌─────┐             │          ║ ┌─────┐             ║
-│ │ QR  │             │          ║ │ QR  │             ║
-│ └─────┘             │          ║ └─────┘             ║
-│ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  │          ║ ████████████████████║
-│ 📦 BULTO 1/3        │          ║ BULTO 1 / 3         ║
-│ ┌───────────────┐   │          ╠═════════════════════╣
-│ │ PUERTA A PUER │◀─ violeta   ║ │ PUERTA A PUERTA │◀─ negro
-│ └───────────────┘   │          ║ └───────────────────┘║
-│ 📍 Destinatario     │          ╠═════════════════════╣
-│ María García        │          ║ DESTINATARIO        ║
-│ 📞 11-8765-4321     │          ║ MARÍA GARCÍA        ║
-└─────────────────────┘          ║ Tel: 11-8765-4321   ║
-                                 ╚═════════════════════╝
+1. Usuario va a Planificador → Pestaña "Terciarizados"
+           │
+           ▼
+2. Completa formulario con datos del envío terciarizado
+           │
+           ▼
+3. Click "Agregar a Lista" → Se agrega a lista temporal
+           │         │
+           │         └── O "Crear Envío" → Se crea directo en DB
+           ▼
+4. Repite para más envíos (o importa CSV)
+           │
+           ▼
+5. Selecciona envíos de la lista
+           │
+           ▼
+6. Click "Crear Ruta" → Usa flujo existente de creación de rutas
 ```
+
+---
+
+## Visualización en Otros Lugares
+
+### Lista de Envíos (Shipments.tsx)
+
+```text
+┌──────────────────┬────────────────────────┬─────────────┐
+│ Tracking         │ Destinatario           │ Estado      │
+├──────────────────┼────────────────────────┼─────────────┤
+│ SUC01-ENV-001    │ Juan Pérez             │ Pendiente   │
+│ [📦 Andreani]    │                        │             │
+│ AR123456789      │ María García           │ En Reparto  │
+└──────────────────┴────────────────────────┴─────────────┘
+```
+
+### Detalle del Envío
+
+Sección adicional mostrando:
+- Empresa terciarizada
+- Tracking externo (clickeable para rastrear)
+- Código de cliente
+- Código de orden
+
+### Etiqueta de Impresión
+
+Incluir ambos trackings:
+```text
+TRACKING INTERNO: SUC01-ENV-20260123-001
+TRACKING EXTERNO: AR123456789 (Correo Argentino)
+```
+
+---
+
+## Orden de Implementación
+
+1. **Migración de base de datos** (agregar columnas nuevas)
+2. **Componente ThirdPartyShipmentsTab.tsx** (nueva pestaña)
+3. **Integrar pestaña en RoutePlanner.tsx**
+4. **Actualizar visualización en Shipments.tsx**
+5. **Actualizar ShipmentDetailsDialog.tsx**
+6. **Actualizar PrintLabel.tsx**
 
