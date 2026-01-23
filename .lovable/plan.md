@@ -1,118 +1,109 @@
 
-
-# Plan: Corregir Reconocimiento de QR para Tracking Case-Insensitive
+# Plan: Corregir EPOD con Caracteres Corruptos
 
 ## Problema Identificado
 
-El QR no es reconocido por la app del chofer debido a dos problemas:
+El PDF del EPOD muestra caracteres ilegibles como se ve en la imagen:
 
-1. **`qrParser.ts` (línea 82)**: Convierte el tracking extraído a mayúsculas (`tracking.toUpperCase()`)
-2. **`ActiveRouteNavigation.tsx` (línea 327)**: Usa `.eq()` (comparación exacta, case-sensitive)
+- `Ø=ÜÍ Ubicación GØR.S` → Debería decir "Ubicación GPS"
+- `Ituzaingÿÿ` → Debería decir "Ituzaingó"
 
-**Ejemplo del flujo actual:**
-```
-QR escaneado: "a2100Bp1n268"
-         ↓
-qrParser.ts → "A2100BP1N268" (convertido a mayúsculas)
-         ↓
-Búsqueda con .eq('tracking_number', 'A2100BP1N268')
-         ↓
-Base de datos tiene: "a2100Bp1n268" (mixto)
-         ↓
-❌ NO ENCONTRADO (PostgreSQL es case-sensitive con =)
-```
+### Causas
+
+1. **Emojis no soportados**: jsPDF con fuente `helvetica` NO renderiza emojis Unicode como `📍`
+2. **Encoding incorrecto**: Caracteres latinos extendidos (ó, í, á) se corrompen
 
 ---
 
 ## Solución
 
-### Opción A: Mantener la normalización y usar `.ilike()` en todas partes (Recomendado)
-Esto garantiza que cualquier búsqueda funcione sin importar el formato del tracking.
+### Cambios en `src/lib/generateEPODPDF.ts`
 
-### Archivos a Modificar
-
-| Archivo | Cambio |
-|---------|--------|
-| `src/pages/ActiveRouteNavigation.tsx` | Cambiar `.eq()` por `.ilike()` en línea 327 |
-| `src/lib/qrParser.ts` | **Opcional**: Remover `.toUpperCase()` para preservar el case original |
+| Línea | Problema | Solución |
+|-------|----------|----------|
+| 215 | `'📍 Ubicación GPS:'` | Cambiar a `'[GPS] Ubicación:'` |
+| 448 | `📍 ${item.ubicacion}` | Cambiar a `'Ubicacion: ${item.ubicacion}'` |
+| Varias | Tildes en texto (Tránsito, etc.) | Normalizar caracteres o reemplazar |
 
 ---
 
-## Cambio Principal
+## Cambios Específicos
 
-### Archivo: `src/pages/ActiveRouteNavigation.tsx`
+### 1. Reemplazar emojis por texto
 
-**Línea 327 - Antes:**
 ```typescript
-.eq('tracking_number', data)
+// Línea 215 - Antes:
+doc.text('📍 Ubicación GPS:', margin + 4, yPosition + 6);
+
+// Después:
+doc.text('[GPS] Ubicacion:', margin + 4, yPosition + 6);
 ```
 
-**Después:**
 ```typescript
-.ilike('tracking_number', data)
+// Línea 448 - Antes:
+doc.text(`   📍 ${item.ubicacion}`, margin + 10, yPosition + 5);
+
+// Después:
+doc.text(`   Ubicacion: ${item.ubicacion}`, margin + 10, yPosition + 5);
 ```
 
----
+### 2. Función para sanitizar caracteres especiales
 
-## Cambio Opcional (Normalización consistente)
+Crear una función helper para normalizar texto antes de enviarlo a jsPDF:
 
-### Archivo: `src/lib/qrParser.ts`
-
-**Líneas 79-84 - Antes:**
 ```typescript
-if (tracking && tracking.length >= 5) {
-  return {
-    type: 'tracking',
-    value: tracking.toUpperCase(),  // ← Convierte a mayúsculas
-    originalData: data
-  };
-}
+const sanitizeText = (text: string): string => {
+  if (!text) return '';
+  return text
+    .replace(/á/g, 'a').replace(/Á/g, 'A')
+    .replace(/é/g, 'e').replace(/É/g, 'E')
+    .replace(/í/g, 'i').replace(/Í/g, 'I')
+    .replace(/ó/g, 'o').replace(/Ó/g, 'O')
+    .replace(/ú/g, 'u').replace(/Ú/g, 'U')
+    .replace(/ñ/g, 'n').replace(/Ñ/g, 'N')
+    .replace(/ü/g, 'u').replace(/Ü/g, 'U');
+};
 ```
 
-**Después:**
+### 3. Actualizar labels sin tildes
+
 ```typescript
-if (tracking && tracking.length >= 5) {
-  return {
-    type: 'tracking',
-    value: tracking,  // ← Preserva el case original
-    originalData: data
-  };
-}
-```
-
-**Nota**: Este cambio es opcional si usamos `.ilike()` en todas las búsquedas, pero es más limpio preservar el case original.
-
----
-
-## Verificación de Consistencia
-
-Otros archivos que ya usan `.ilike()` correctamente:
-- `src/pages/ScanQR.tsx:189` ✅
-- `src/pages/ScanQR.tsx:210` ✅  
-- `src/components/mobile/MobileScanTab.tsx:111` ✅
-- `src/components/mobile/MobileScanTab.tsx:124` ✅
-- `supabase/functions/public-tracking/index.ts:96` ✅
-
----
-
-## Flujo Corregido
-
-```
-QR escaneado: "a2100Bp1n268"
-         ↓
-qrParser.ts → "a2100Bp1n268" (preservado) o "A2100BP1N268" (normalizado)
-         ↓
-Búsqueda con .ilike('tracking_number', 'a2100Bp1n268')
-         ↓
-Base de datos tiene: "a2100Bp1n268"
-         ↓
-✅ ENCONTRADO (ILIKE ignora mayúsculas/minúsculas)
+const STATUS_LABELS: Record<string, string> = {
+  pendiente: 'Pendiente',
+  recogido: 'Recogido',
+  en_bodega: 'En Bodega',
+  en_transito: 'En Transito',    // Sin tilde
+  en_reparto: 'En Reparto',
+  entregado: 'Entregado',
+  devuelto: 'Devuelto',
+  cancelado: 'Cancelado',
+};
 ```
 
 ---
 
-## Resumen de Cambios
+## Archivo a Modificar
 
-1. **Obligatorio**: Actualizar `ActiveRouteNavigation.tsx` para usar `.ilike()`
-2. **Opcional pero recomendado**: Remover `.toUpperCase()` de `qrParser.ts` para consistencia
+| Archivo | Cambios |
+|---------|---------|
+| `src/lib/generateEPODPDF.ts` | Remover emojis, agregar función sanitize, actualizar labels |
 
+---
+
+## Resultado Esperado
+
+| Antes | Después |
+|-------|---------|
+| `Ø=ÜÍ Ubicación GØR.S` | `[GPS] Ubicacion:` |
+| `Ituzaingÿÿ` | `Ituzaingo` |
+| `En Tránsito` con caracteres rotos | `En Transito` legible |
+
+---
+
+## Secciones Técnicas
+
+El problema fundamental es que jsPDF usa el subset de fuentes estándar de PDF (Helvetica) que solo soportan el encoding WinAnsiEncoding (Latin-1), que no incluye:
+- Emojis Unicode
+- Algunos caracteres latinos extendidos dependiendo del sistema
+
+La solución más robusta y liviana es sanitizar el texto antes de renderizarlo, eliminando emojis y normalizando caracteres con tildes a sus equivalentes ASCII.
