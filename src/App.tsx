@@ -33,6 +33,8 @@ import MyRoutes from "./pages/MyRoutes";
 import BranchSettlements from "./pages/BranchSettlements";
 import DriverSettlements from "./pages/DriverSettlements";
 import ClientSettlements from "./pages/ClientSettlements";
+import ThirdPartySettlements from "./pages/ThirdPartySettlements";
+import ThirdPartyCompanies from "./pages/ThirdPartyCompanies";
 import MyCommissions from "./pages/MyCommissions";
 import ScanQR from "./pages/ScanQR";
 import Vehicles from "./pages/Vehicles";
@@ -153,8 +155,12 @@ function AppRoutes() {
       <Route path="/settlements/branches" element={<DashboardLayout><BranchSettlements /></DashboardLayout>} />
       <Route path="/settlements/drivers" element={<DashboardLayout><DriverSettlements /></DashboardLayout>} />
       <Route path="/settlements/clients" element={<DashboardLayout><ClientSettlements /></DashboardLayout>} />
+      <Route path="/settlements/third-party" element={<DashboardLayout><ThirdPartySettlements /></DashboardLayout>} />
       <Route path="/my-commissions" element={<DashboardLayout><MyCommissions /></DashboardLayout>} />
       <Route path="/payments" element={<DashboardLayout><Payments /></DashboardLayout>} />
+      
+      {/* Terciarizados */}
+      <Route path="/admin/third-party-companies" element={<DashboardLayout><ThirdPartyCompanies /></DashboardLayout>} />
       
       {/* Clientes */}
       <Route path="/clients" element={<DashboardLayout><Clients /></DashboardLayout>} />

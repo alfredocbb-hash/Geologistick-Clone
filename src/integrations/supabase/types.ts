@@ -393,6 +393,83 @@ export type Database = {
         }
         Relationships: []
       }
+      empresas_terciarizadas: {
+        Row: {
+          activa: boolean | null
+          ciudad: string | null
+          codigo: string
+          codigo_postal: string | null
+          created_at: string | null
+          created_by: string | null
+          cuit: string | null
+          direccion: string | null
+          email: string | null
+          id: string
+          limite_credito: number | null
+          nombre: string
+          notas: string | null
+          provincia: string | null
+          razon_social: string | null
+          saldo_cuenta_corriente: number | null
+          telefono: string | null
+          tenant_id: string | null
+          tiene_cuenta_corriente: boolean | null
+          updated_at: string | null
+        }
+        Insert: {
+          activa?: boolean | null
+          ciudad?: string | null
+          codigo: string
+          codigo_postal?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          cuit?: string | null
+          direccion?: string | null
+          email?: string | null
+          id?: string
+          limite_credito?: number | null
+          nombre: string
+          notas?: string | null
+          provincia?: string | null
+          razon_social?: string | null
+          saldo_cuenta_corriente?: number | null
+          telefono?: string | null
+          tenant_id?: string | null
+          tiene_cuenta_corriente?: boolean | null
+          updated_at?: string | null
+        }
+        Update: {
+          activa?: boolean | null
+          ciudad?: string | null
+          codigo?: string
+          codigo_postal?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          cuit?: string | null
+          direccion?: string | null
+          email?: string | null
+          id?: string
+          limite_credito?: number | null
+          nombre?: string
+          notas?: string | null
+          provincia?: string | null
+          razon_social?: string | null
+          saldo_cuenta_corriente?: number | null
+          telefono?: string | null
+          tenant_id?: string | null
+          tiene_cuenta_corriente?: boolean | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "empresas_terciarizadas_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       envio_detalles: {
         Row: {
           concepto_id: string | null
@@ -509,6 +586,7 @@ export type Database = {
           dni_retira: string | null
           duracion_estimada_minutos: number | null
           empresa_terciarizada: string | null
+          empresa_terciarizada_id: string | null
           entrega_lat: number | null
           entrega_lng: number | null
           entregado_en_sucursal: boolean | null
@@ -593,6 +671,7 @@ export type Database = {
           dni_retira?: string | null
           duracion_estimada_minutos?: number | null
           empresa_terciarizada?: string | null
+          empresa_terciarizada_id?: string | null
           entrega_lat?: number | null
           entrega_lng?: number | null
           entregado_en_sucursal?: boolean | null
@@ -677,6 +756,7 @@ export type Database = {
           dni_retira?: string | null
           duracion_estimada_minutos?: number | null
           empresa_terciarizada?: string | null
+          empresa_terciarizada_id?: string | null
           entrega_lat?: number | null
           entrega_lng?: number | null
           entregado_en_sucursal?: boolean | null
@@ -739,6 +819,13 @@ export type Database = {
             columns: ["destinatario_id"]
             isOneToOne: false
             referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "envios_empresa_terciarizada_id_fkey"
+            columns: ["empresa_terciarizada_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_terciarizadas"
             referencedColumns: ["id"]
           },
           {
@@ -2739,6 +2826,66 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      terciarizado_cuenta_corriente: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          descripcion: string | null
+          empresa_id: string
+          envio_id: string | null
+          id: string
+          metodo_pago: string | null
+          monto: number
+          referencia: string | null
+          saldo_anterior: number
+          saldo_nuevo: number
+          tipo: string
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          descripcion?: string | null
+          empresa_id: string
+          envio_id?: string | null
+          id?: string
+          metodo_pago?: string | null
+          monto: number
+          referencia?: string | null
+          saldo_anterior?: number
+          saldo_nuevo?: number
+          tipo: string
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          descripcion?: string | null
+          empresa_id?: string
+          envio_id?: string | null
+          id?: string
+          metodo_pago?: string | null
+          monto?: number
+          referencia?: string | null
+          saldo_anterior?: number
+          saldo_nuevo?: number
+          tipo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "terciarizado_cuenta_corriente_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_terciarizadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "terciarizado_cuenta_corriente_envio_id_fkey"
+            columns: ["envio_id"]
+            isOneToOne: false
+            referencedRelation: "envios"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       transferencias: {
         Row: {

@@ -39,14 +39,13 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 
-const EMPRESAS_TERCIARIZADAS = [
-  { value: "correo_argentino", label: "Correo Argentino" },
-  { value: "oca", label: "OCA" },
-  { value: "andreani", label: "Andreani" },
-  { value: "dhl", label: "DHL" },
-  { value: "fedex", label: "FedEx" },
-  { value: "otro", label: "Otro" },
-];
+interface EmpresaTerciarizada {
+  id: string;
+  codigo: string;
+  nombre: string;
+  tiene_cuenta_corriente: boolean;
+  saldo_cuenta_corriente: number;
+}
 
 const PROVINCIAS_ARGENTINA = [
   "Buenos Aires",
@@ -124,13 +123,28 @@ export default function ThirdPartyShipmentsTab() {
   const [tempShipments, setTempShipments] = useState<TempShipment[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
+  // Fetch active third-party companies from database
+  const { data: empresas = [] } = useQuery({
+    queryKey: ["empresas-terciarizadas-activas"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("empresas_terciarizadas")
+        .select("id, codigo, nombre, tiene_cuenta_corriente, saldo_cuenta_corriente")
+        .eq("activa", true)
+        .order("nombre");
+
+      if (error) throw error;
+      return data as EmpresaTerciarizada[];
+    },
+  });
+
   // Fetch pending third-party shipments
   const { data: terciarizadosPendientes = [], isLoading } = useQuery({
     queryKey: ["envios-terciarizados-pendientes"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("envios")
-        .select("*")
+        .select("*, empresa:empresas_terciarizadas(id, codigo, nombre)")
         .eq("es_terciarizado", true)
         .in("estado", ["pendiente", "recogido", "en_bodega"])
         .is("chofer_id", null)
@@ -193,6 +207,9 @@ export default function ThirdPartyShipmentsTab() {
 
   const createShipmentMutation = useMutation({
     mutationFn: async (shipment: ThirdPartyFormData) => {
+      // Find selected company details
+      const selectedEmpresa = empresas.find((e) => e.id === shipment.empresa_terciarizada);
+      
       // Generate tracking number
       const { data: trackingData } = await supabase.rpc("generate_tracking_number");
 
@@ -201,7 +218,8 @@ export default function ThirdPartyShipmentsTab() {
         .insert({
           tracking_number: trackingData,
           es_terciarizado: true,
-          empresa_terciarizada: shipment.empresa_terciarizada,
+          empresa_terciarizada_id: shipment.empresa_terciarizada, // Store the UUID reference
+          empresa_terciarizada: selectedEmpresa?.nombre || shipment.empresa_terciarizada, // Keep text for display
           tracking_externo: shipment.tracking_externo,
           codigo_cliente_externo: shipment.codigo_cliente_externo || null,
           codigo_orden_externo: shipment.codigo_orden_externo || null,
@@ -223,11 +241,36 @@ export default function ThirdPartyShipmentsTab() {
         .single();
 
       if (error) throw error;
+
+      // If company has current account enabled, register a charge
+      if (selectedEmpresa?.tiene_cuenta_corriente && data) {
+        const nuevoSaldo = (selectedEmpresa.saldo_cuenta_corriente || 0) + (data.precio_total || 0);
+        
+        await supabase.from("terciarizado_cuenta_corriente").insert({
+          empresa_id: selectedEmpresa.id,
+          envio_id: data.id,
+          tipo: "cargo",
+          monto: data.precio_total || 0,
+          saldo_anterior: selectedEmpresa.saldo_cuenta_corriente || 0,
+          saldo_nuevo: nuevoSaldo,
+          descripcion: `Envío ${shipment.tracking_externo} - ${shipment.nombre_destinatario}`,
+          created_by: profile?.user_id,
+        });
+
+        // Update company balance
+        await supabase
+          .from("empresas_terciarizadas")
+          .update({ saldo_cuenta_corriente: nuevoSaldo })
+          .eq("id", selectedEmpresa.id);
+      }
+
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["envios-terciarizados-pendientes"] });
       queryClient.invalidateQueries({ queryKey: ["envios-planificador"] });
+      queryClient.invalidateQueries({ queryKey: ["empresas-terciarizadas-activas"] });
+      queryClient.invalidateQueries({ queryKey: ["terciarizado-cuenta-corriente"] });
     },
     onError: (error: Error) => {
       toast.error(`Error al crear envío: ${error.message}`);
@@ -284,8 +327,9 @@ export default function ThirdPartyShipmentsTab() {
     }
   };
 
-  const getEmpresaLabel = (value: string) => {
-    return EMPRESAS_TERCIARIZADAS.find((e) => e.value === value)?.label || value;
+  const getEmpresaLabel = (empresaId: string) => {
+    const empresa = empresas.find((e) => e.id === empresaId);
+    return empresa?.nombre || empresaId;
   };
 
   return (
@@ -311,9 +355,9 @@ export default function ThirdPartyShipmentsTab() {
                   <SelectValue placeholder="Seleccionar empresa" />
                 </SelectTrigger>
                 <SelectContent>
-                  {EMPRESAS_TERCIARIZADAS.map((e) => (
-                    <SelectItem key={e.value} value={e.value}>
-                      {e.label}
+                  {empresas.map((e) => (
+                    <SelectItem key={e.id} value={e.id}>
+                      {e.nombre} ({e.codigo})
                     </SelectItem>
                   ))}
                 </SelectContent>

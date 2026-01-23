@@ -122,6 +122,11 @@ const navigation: NavGroup[] = [{
     icon: FileText,
     permissionKey: 'settlements.client.view'
   }, {
+    title: 'Liq. Terciarizados',
+    url: '/settlements/third-party',
+    icon: FileText,
+    permissionKey: 'settlements.branch.view'
+  }, {
     title: 'Mis Comisiones',
     url: '/my-commissions',
     icon: DollarSign,
@@ -142,6 +147,15 @@ const navigation: NavGroup[] = [{
     permissionKey: 'clients.view'
   }],
   permissionKeys: ['clients.view', 'clients.manage']
+}, {
+  label: 'Terciarizados',
+  items: [{
+    title: 'Empresas',
+    url: '/admin/third-party-companies',
+    icon: Truck,
+    permissionKey: 'branches.manage'
+  }],
+  permissionKeys: ['branches.manage']
 }, {
   label: 'Administración',
   items: [{
