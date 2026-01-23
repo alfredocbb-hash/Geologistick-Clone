@@ -73,11 +73,25 @@ interface Incidente {
   foto_evidencia: string | null;
 }
 
+// Helper to sanitize text for jsPDF (removes emojis and normalizes accents)
+const sanitizeText = (text: string | null | undefined): string => {
+  if (!text) return '';
+  return text
+    .replace(/á/g, 'a').replace(/Á/g, 'A')
+    .replace(/é/g, 'e').replace(/É/g, 'E')
+    .replace(/í/g, 'i').replace(/Í/g, 'I')
+    .replace(/ó/g, 'o').replace(/Ó/g, 'O')
+    .replace(/ú/g, 'u').replace(/Ú/g, 'U')
+    .replace(/ñ/g, 'n').replace(/Ñ/g, 'N')
+    .replace(/ü/g, 'u').replace(/Ü/g, 'U')
+    .replace(/[^\x00-\x7F]/g, ''); // Remove any remaining non-ASCII chars
+};
+
 const STATUS_LABELS: Record<string, string> = {
   pendiente: 'Pendiente',
   recogido: 'Recogido',
   en_bodega: 'En Bodega',
-  en_transito: 'En Tránsito',
+  en_transito: 'En Transito',
   en_reparto: 'En Reparto',
   entregado: 'Entregado',
   devuelto: 'Devuelto',
@@ -212,7 +226,7 @@ export async function generateEPODPDF(
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
-    doc.text('📍 Ubicación GPS:', margin + 4, yPosition + 6);
+    doc.text('[GPS] Ubicacion:', margin + 4, yPosition + 6);
     
     doc.setFont('helvetica', 'normal');
     const coords = `${envio.entrega_lat.toFixed(6)}, ${envio.entrega_lng.toFixed(6)}`;
@@ -243,11 +257,11 @@ export async function generateEPODPDF(
 
   // Sender
   const senderName = envio.remitente 
-    ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}`.trim()
+    ? sanitizeText(`${envio.remitente.nombre} ${envio.remitente.apellido || ''}`.trim())
     : 'No especificado';
   const senderAddress = envio.remitente
-    ? `${envio.remitente.direccion}${envio.remitente.ciudad ? `, ${envio.remitente.ciudad}` : ''}`
-    : envio.direccion_retiro || '';
+    ? sanitizeText(`${envio.remitente.direccion}${envio.remitente.ciudad ? `, ${envio.remitente.ciudad}` : ''}`)
+    : sanitizeText(envio.direccion_retiro || '');
   const senderPhone = envio.remitente?.telefono || '';
 
   doc.text(senderName, margin, yPosition);
@@ -263,11 +277,11 @@ export async function generateEPODPDF(
 
   // Recipient
   const recipientName = envio.destinatario
-    ? `${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}`.trim()
+    ? sanitizeText(`${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}`.trim())
     : 'No especificado';
   const recipientAddress = envio.destinatario
-    ? `${envio.destinatario.direccion}${envio.destinatario.ciudad ? `, ${envio.destinatario.ciudad}` : ''}`
-    : envio.direccion_entrega || '';
+    ? sanitizeText(`${envio.destinatario.direccion}${envio.destinatario.ciudad ? `, ${envio.destinatario.ciudad}` : ''}`)
+    : sanitizeText(envio.direccion_entrega || '');
   const recipientPhone = envio.destinatario?.telefono || '';
 
   doc.text(recipientName, pageWidth / 2 + 5, yPosition);
@@ -318,7 +332,7 @@ export async function generateEPODPDF(
   yPosition += 18;
 
   if (envio.descripcion) {
-    doc.text(`Descripción: ${envio.descripcion}`, margin, yPosition);
+    doc.text(`Descripcion: ${sanitizeText(envio.descripcion)}`, margin, yPosition);
     yPosition += 6;
   }
 
@@ -445,7 +459,7 @@ export async function generateEPODPDF(
       
       if (item.ubicacion) {
         doc.setTextColor(128, 128, 128);
-        doc.text(`   📍 ${item.ubicacion}`, margin + 10, yPosition + 5);
+        doc.text(`   Ubicacion: ${sanitizeText(item.ubicacion)}`, margin + 10, yPosition + 5);
         doc.setTextColor(0, 0, 0);
         yPosition += 4;
       }
@@ -489,7 +503,7 @@ export async function generateEPODPDF(
 
       doc.setTextColor(0, 0, 0);
       if (incidente.descripcion) {
-        const wrapped = doc.splitTextToSize(incidente.descripcion, contentWidth - 8);
+        const wrapped = doc.splitTextToSize(sanitizeText(incidente.descripcion), contentWidth - 8);
         doc.text(wrapped[0] || '', margin + 4, yPosition + 11);
       }
 
