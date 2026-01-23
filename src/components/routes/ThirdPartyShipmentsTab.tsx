@@ -38,6 +38,7 @@ import {
   Clock,
 } from "lucide-react";
 import { format } from "date-fns";
+import { AddressAutocomplete, AddressDetails } from "@/components/maps/AddressAutocomplete";
 
 interface EmpresaTerciarizada {
   id: string;
@@ -94,6 +95,8 @@ interface ThirdPartyFormData {
   fecha: string;
   duracion_estimada_minutos: number;
   notas: string;
+  entrega_lat: number | null;
+  entrega_lng: number | null;
 }
 
 interface TempShipment extends ThirdPartyFormData {
@@ -114,6 +117,8 @@ const emptyForm: ThirdPartyFormData = {
   fecha: format(new Date(), "yyyy-MM-dd"),
   duracion_estimada_minutos: 30,
   notas: "",
+  entrega_lat: null,
+  entrega_lng: null,
 };
 
 export default function ThirdPartyShipmentsTab() {
@@ -157,6 +162,18 @@ export default function ThirdPartyShipmentsTab() {
 
   const handleInputChange = (field: keyof ThirdPartyFormData, value: string | number) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleAddressSelect = (details: AddressDetails) => {
+    setFormData((prev) => ({
+      ...prev,
+      direccion_entrega: details.address || details.formattedAddress,
+      ciudad_entrega: details.city || prev.ciudad_entrega,
+      provincia: details.province || prev.provincia,
+      cp_entrega: details.postalCode || prev.cp_entrega,
+      entrega_lat: details.lat,
+      entrega_lng: details.lng,
+    }));
   };
 
   const validateForm = (): boolean => {
@@ -216,10 +233,11 @@ export default function ThirdPartyShipmentsTab() {
       const { data, error } = await supabase
         .from("envios")
         .insert({
+          tenant_id: profile?.tenant_id,
           tracking_number: trackingData,
           es_terciarizado: true,
-          empresa_terciarizada_id: shipment.empresa_terciarizada, // Store the UUID reference
-          empresa_terciarizada: selectedEmpresa?.nombre || shipment.empresa_terciarizada, // Keep text for display
+          empresa_terciarizada_id: shipment.empresa_terciarizada,
+          empresa_terciarizada: selectedEmpresa?.nombre || shipment.empresa_terciarizada,
           tracking_externo: shipment.tracking_externo,
           codigo_cliente_externo: shipment.codigo_cliente_externo || null,
           codigo_orden_externo: shipment.codigo_orden_externo || null,
@@ -228,6 +246,8 @@ export default function ThirdPartyShipmentsTab() {
           ciudad_entrega: shipment.ciudad_entrega,
           provincia: shipment.provincia,
           cp_entrega: shipment.cp_entrega || null,
+          entrega_lat: shipment.entrega_lat,
+          entrega_lng: shipment.entrega_lng,
           tipo_servicio: "puerta_puerta",
           tipo_servicio_detalle: shipment.tipo_operacion === "retiro" ? "puerta_sucursal" : "sucursal_puerta",
           duracion_estimada_minutos: shipment.duracion_estimada_minutos,
@@ -404,14 +424,14 @@ export default function ThirdPartyShipmentsTab() {
           </div>
 
           {/* Address */}
-          <div className="space-y-2">
-            <Label>Calle y Número *</Label>
-            <Input
-              placeholder="Ej: Av. Corrientes 1234"
-              value={formData.direccion_entrega}
-              onChange={(e) => handleInputChange("direccion_entrega", e.target.value)}
-            />
-          </div>
+          <AddressAutocomplete
+            value={formData.direccion_entrega}
+            onChange={(value) => handleInputChange("direccion_entrega", value)}
+            onSelect={handleAddressSelect}
+            label="Calle y Número"
+            placeholder="Buscar dirección..."
+            required
+          />
 
           {/* City, Province, Postal Code */}
           <div className="grid md:grid-cols-3 gap-4">
