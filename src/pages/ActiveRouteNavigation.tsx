@@ -324,7 +324,7 @@ export default function ActiveRouteNavigation() {
         ciudad_retiro,
         remitente:clientes!envios_remitente_id_fkey(nombre, apellido, telefono)
       `)
-      .eq('tracking_number', data)
+      .ilike('tracking_number', data)
       .single();
 
     if (error || !envio) {
