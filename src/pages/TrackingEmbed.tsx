@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { useSearchParams } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -11,11 +10,55 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Package, MapPin, Search, Clock, CheckCircle2, Truck, AlertCircle, Calendar } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import type { Database } from "@/integrations/supabase/types";
 
-type ShipmentStatus = Database["public"]["Enums"]["shipment_status"];
+type ShipmentStatus = 'pendiente' | 'recogido' | 'en_bodega' | 'en_transito' | 'en_reparto' | 'entregado' | 'devuelto' | 'cancelado';
 
-const statusConfig: Record<string, { label: string; color: string; icon: React.ComponentType<any> }> = {
+interface TrackingResponse {
+  tracking_number: string;
+  estado: ShipmentStatus;
+  estado_retiro: string | null;
+  created_at: string;
+  updated_at: string;
+  fecha_entrega: string | null;
+  origen: {
+    ciudad: string | null;
+    direccion: string | null;
+    sucursal: string | null;
+  };
+  destino: {
+    ciudad: string | null;
+    direccion: string | null;
+    sucursal: string | null;
+  };
+  detalles: {
+    bultos: number | null;
+    peso_kg: number | null;
+    descripcion: string | null;
+  };
+  remitente: {
+    nombre: string;
+    ciudad: string | null;
+  } | null;
+  destinatario: {
+    nombre: string;
+    ciudad: string | null;
+  } | null;
+  branding: {
+    nombre_app: string | null;
+    logo: string | null;
+    color_primario: string | null;
+  } | null;
+  historial: Array<{
+    id: string;
+    estado_anterior: string | null;
+    estado_nuevo: string;
+    notas: string | null;
+    ubicacion: string | null;
+    fecha: string;
+  }>;
+}
+
+const statusConfig: Record<ShipmentStatus, { label: string; color: string; icon: React.ComponentType<any> }> = {
   pendiente: { label: "Pendiente", color: "bg-yellow-500", icon: Clock },
   recogido: { label: "Recogido", color: "bg-blue-500", icon: Package },
   en_transito: { label: "En Tránsito", color: "bg-purple-500", icon: Truck },
@@ -26,7 +69,7 @@ const statusConfig: Record<string, { label: string; color: string; icon: React.C
   cancelado: { label: "Cancelado", color: "bg-gray-500", icon: AlertCircle },
 };
 
-const statusOrder: string[] = [
+const statusOrder: ShipmentStatus[] = [
   "pendiente",
   "recogido", 
   "en_transito",
@@ -38,70 +81,27 @@ const statusOrder: string[] = [
 const TrackingEmbed = () => {
   const [searchParams] = useSearchParams();
   const initialTracking = searchParams.get("tracking") || "";
-  const tenantSlug = searchParams.get("tenant_slug");
   
   const [trackingInput, setTrackingInput] = useState(initialTracking);
   const [searchedTracking, setSearchedTracking] = useState(initialTracking);
 
-  // Fetch branding if tenant_slug is provided
-  const { data: branding } = useQuery({
-    queryKey: ["embed-branding", tenantSlug],
-    queryFn: async () => {
-      if (!tenantSlug) return null;
-      const { data: tenant } = await supabase
-        .from("tenants")
-        .select("id")
-        .eq("slug", tenantSlug)
-        .single();
-      
-      if (!tenant) return null;
-      
-      const { data } = await supabase
-        .from("tenant_branding")
-        .select("*")
-        .eq("tenant_id", tenant.id)
-        .single();
-      
-      return data;
-    },
-    enabled: !!tenantSlug,
-  });
-
-  // Fetch shipment
+  // Fetch shipment via Edge Function (bypasses RLS for public access)
   const { data: envio, isLoading, error } = useQuery({
     queryKey: ["tracking-embed", searchedTracking],
-    queryFn: async () => {
-      let query = supabase
-        .from("envios")
-        .select(`
-          *,
-          remitente:clientes!envios_remitente_id_fkey(nombre, ciudad),
-          destinatario:clientes!envios_destinatario_id_fkey(nombre, ciudad),
-          sucursal_origen:sucursales!envios_sucursal_origen_id_fkey(nombre, ciudad),
-          sucursal_destino:sucursales!envios_sucursal_destino_id_fkey(nombre, ciudad)
-        `)
-        .eq("tracking_number", searchedTracking)
-        .single();
-
-      const { data, error } = await query;
-      if (error) throw error;
+    queryFn: async (): Promise<TrackingResponse | null> => {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/public-tracking?code=${searchedTracking}`
+      );
+      
+      const data = await response.json();
+      
+      if (!response.ok || data.error) {
+        return null;
+      }
+      
       return data;
     },
     enabled: !!searchedTracking,
-  });
-
-  // Fetch history
-  const { data: historial } = useQuery({
-    queryKey: ["tracking-embed-history", envio?.id],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("envio_historial")
-        .select("*")
-        .eq("envio_id", envio!.id)
-        .order("created_at", { ascending: false });
-      return data || [];
-    },
-    enabled: !!envio?.id,
   });
 
   const handleSearch = (e: React.FormEvent) => {
@@ -109,19 +109,19 @@ const TrackingEmbed = () => {
     setSearchedTracking(trackingInput.trim().toUpperCase());
   };
 
-  const getStatusIndex = (status: string) => {
+  const getStatusIndex = (status: ShipmentStatus) => {
     return statusOrder.indexOf(status);
   };
 
-  const currentStatusIndex = envio?.estado ? getStatusIndex(envio.estado as string) : -1;
+  const currentStatusIndex = envio?.estado ? getStatusIndex(envio.estado) : -1;
   const progress = envio?.estado === "entregado" ? 100 : 
                    envio?.estado === "devuelto" || envio?.estado === "cancelado" ? 0 :
                    Math.max(0, ((currentStatusIndex + 1) / statusOrder.length) * 100);
 
-  // Apply custom branding
-  const primaryColor = (branding as any)?.color_primario || "#6366f1";
-  const logoUrl = (branding as any)?.logo_url;
-  const appName = (branding as any)?.nombre_app || "Tracking";
+  // Apply custom branding from API response
+  const primaryColor = envio?.branding?.color_primario || "#6366f1";
+  const logoUrl = envio?.branding?.logo;
+  const appName = envio?.branding?.nombre_app || "Tracking";
 
   return (
     <div 
@@ -194,11 +194,11 @@ const TrackingEmbed = () => {
                     <p className="text-sm text-muted-foreground">Tracking</p>
                     <p className="font-mono font-bold">{envio.tracking_number}</p>
                   </div>
-                  {envio.estado && statusConfig[envio.estado as string] && (
+                  {envio.estado && statusConfig[envio.estado] && (
                     <Badge 
-                      className={`${statusConfig[envio.estado as string].color} text-white`}
+                      className={`${statusConfig[envio.estado].color} text-white`}
                     >
-                      {statusConfig[envio.estado as ShipmentStatus].label}
+                      {statusConfig[envio.estado].label}
                     </Badge>
                   )}
                 </div>
@@ -226,7 +226,7 @@ const TrackingEmbed = () => {
                     <div>
                       <p className="text-xs text-muted-foreground">Origen</p>
                       <p className="font-medium text-sm">
-                        {envio.ciudad_retiro || envio.sucursal_origen?.ciudad || "N/A"}
+                        {envio.origen?.ciudad || "N/A"}
                       </p>
                     </div>
                   </div>
@@ -242,7 +242,7 @@ const TrackingEmbed = () => {
                     <div>
                       <p className="text-xs text-muted-foreground">Destino</p>
                       <p className="font-medium text-sm">
-                        {envio.ciudad_entrega || envio.sucursal_destino?.ciudad || "N/A"}
+                        {envio.destino?.ciudad || "N/A"}
                       </p>
                     </div>
                   </div>
@@ -251,31 +251,31 @@ const TrackingEmbed = () => {
             </div>
 
             {/* History */}
-            {historial && historial.length > 0 && (
+            {envio.historial && envio.historial.length > 0 && (
               <Card>
                 <CardContent className="p-4">
                   <h3 className="font-medium mb-4">Historial de movimientos</h3>
                   <div className="space-y-4">
-                    {historial.slice(0, 5).map((item, index) => (
+                    {envio.historial.slice(0, 5).map((item, index) => (
                       <div key={item.id} className="flex gap-3">
                         <div className="flex flex-col items-center">
                           <div 
                             className={`w-3 h-3 rounded-full ${index === 0 ? 'bg-primary' : 'bg-muted'}`}
                             style={index === 0 ? { backgroundColor: primaryColor } : {}}
                           />
-                          {index < Math.min(historial.length - 1, 4) && (
+                          {index < Math.min(envio.historial.length - 1, 4) && (
                             <div className="w-px h-full bg-muted flex-1" />
                           )}
                         </div>
                         <div className="flex-1 pb-4">
                           <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-xs">
-                              {statusConfig[item.estado_nuevo as string]?.label || item.estado_nuevo}
+                            <Badge variant="outline" className="text-xs">
+                              {statusConfig[item.estado_nuevo as ShipmentStatus]?.label || item.estado_nuevo}
                             </Badge>
                           </div>
                           <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                             <Calendar className="h-3 w-3" />
-                            {format(new Date(item.created_at), "dd MMM yyyy, HH:mm", { locale: es })}
+                            {format(new Date(item.fecha), "dd MMM yyyy, HH:mm", { locale: es })}
                           </p>
                           {item.notas && (
                             <p className="text-xs mt-1">{item.notas}</p>
