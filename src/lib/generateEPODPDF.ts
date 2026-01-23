@@ -26,6 +26,8 @@ interface Envio {
   entrega_lng: number | null;
   tipo_pago: string | null;
   valor_declarado: number | null;
+  nombre_remitente: string | null;
+  nombre_destinatario: string | null;
   remitente?: {
     nombre: string;
     apellido: string | null;
@@ -256,9 +258,11 @@ export async function generateEPODPDF(
   doc.setFontSize(9);
 
   // Sender
-  const senderName = envio.remitente 
-    ? sanitizeText(`${envio.remitente.nombre} ${envio.remitente.apellido || ''}`.trim())
-    : 'No especificado';
+  const senderName = sanitizeText(
+    envio.nombre_remitente || 
+    (envio.remitente ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}`.trim() : '') || 
+    'No especificado'
+  );
   const senderAddress = envio.remitente
     ? sanitizeText(`${envio.remitente.direccion}${envio.remitente.ciudad ? `, ${envio.remitente.ciudad}` : ''}`)
     : sanitizeText(envio.direccion_retiro || '');
@@ -276,9 +280,11 @@ export async function generateEPODPDF(
   }
 
   // Recipient
-  const recipientName = envio.destinatario
-    ? sanitizeText(`${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}`.trim())
-    : 'No especificado';
+  const recipientName = sanitizeText(
+    envio.nombre_destinatario || 
+    (envio.destinatario ? `${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}`.trim() : '') || 
+    'No especificado'
+  );
   const recipientAddress = envio.destinatario
     ? sanitizeText(`${envio.destinatario.direccion}${envio.destinatario.ciudad ? `, ${envio.destinatario.ciudad}` : ''}`)
     : sanitizeText(envio.direccion_entrega || '');
