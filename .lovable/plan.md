@@ -1,169 +1,240 @@
 
-# Plan: Integrar Rutas e-Commerce y Panel Super Admin
+
+# Plan: Portal de Sellers e-Commerce
 
 ## Resumen
 
-Voy a conectar las páginas e-Commerce ya creadas con el resto de la aplicación, agregando:
-1. Rutas en App.tsx
-2. Sección en el menú lateral (visible solo si el tenant tiene `ecommerce_enabled = true`)
-3. Toggle para Super Admin para habilitar el módulo por empresa
-4. Permisos nuevos para e-commerce
+Crear una interfaz dedicada para que los usuarios con rol `seller` puedan gestionar su relación con la empresa logística de forma autónoma, sin acceso al panel administrativo completo.
 
----
+## Arquitectura del Portal
 
-## Fase A: Registrar Rutas en App.tsx
-
-Agregar imports y rutas para las 3 páginas e-commerce:
-
-```typescript
-// Imports nuevos
-import EcommerceSellers from "./pages/ecommerce/Sellers";
-import EcommerceOrders from "./pages/ecommerce/Orders";
-import EcommerceSettlements from "./pages/ecommerce/Settlements";
-
-// Rutas nuevas (después de Clientes)
-<Route path="/ecommerce/sellers" element={<DashboardLayout><EcommerceSellers /></DashboardLayout>} />
-<Route path="/ecommerce/orders" element={<DashboardLayout><EcommerceOrders /></DashboardLayout>} />
-<Route path="/ecommerce/settlements" element={<DashboardLayout><EcommerceSettlements /></DashboardLayout>} />
+```text
+Usuario con rol 'seller'
+         |
+         v
+    /seller/* (rutas dedicadas)
+         |
+    +----+----+----+----+
+    |    |    |    |    |
+  Home  Pedidos  Envios  Cuenta
+         |
+    +----+----+
+    |         |
+Historial  Solicitar
+           Retiro
 ```
 
 ---
 
-## Fase B: Agregar Sección e-Commerce en Sidebar
+## Fase A: Crear Estructura Base del Portal
 
-Modificar `AppSidebar.tsx` para incluir una nueva sección "e-Commerce" que:
-- Solo se muestra si el tenant tiene `ecommerce_enabled = true`
-- Tiene ícono `ShoppingCart` de Lucide
-- Contiene: Sellers, Pedidos, Liquidaciones
+### 1. Layout Dedicado para Sellers
+Crear `src/components/seller/SellerLayout.tsx`:
+- Header simplificado con logo del tenant
+- Navegacion lateral minimalista
+- Solo 4 secciones: Inicio, Pedidos, Envios, Mi Cuenta
+- Sin acceso a rutas administrativas
 
-```typescript
-// Nueva sección en navigation[]
-{
-  label: 'e-Commerce',
-  items: [
-    { title: 'Tiendas', url: '/ecommerce/sellers', icon: Store, permissionKey: 'ecommerce.sellers.view' },
-    { title: 'Pedidos', url: '/ecommerce/orders', icon: ShoppingBag, permissionKey: 'ecommerce.orders.view' },
-    { title: 'Liquidaciones', url: '/ecommerce/settlements', icon: Receipt, permissionKey: 'ecommerce.settlements.view' },
-  ],
-  permissionKeys: ['ecommerce.sellers.view', 'ecommerce.orders.view'],
-  requiresEcommerce: true  // Nueva propiedad
-}
-```
-
-El hook `useTenantContext()` ya existe y provee info del tenant. Agregaremos lógica para filtrar por `ecommerce_enabled`.
+### 2. Redireccionar Sellers al Portal
+Modificar la logica de redireccion en `src/pages/Login.tsx`:
+- Si el usuario tiene SOLO el rol `seller` -> redirigir a `/seller`
+- Si tiene otros roles (admin, operador, etc.) -> comportamiento normal `/dashboard`
 
 ---
 
-## Fase C: Crear Permisos para e-Commerce
+## Fase B: Paginas del Portal
 
-Migración SQL para insertar permisos en `role_permissions`:
+### 1. Dashboard del Seller (`/seller`)
+Archivo: `src/pages/seller/SellerDashboard.tsx`
+
+Contenido:
+- Tarjetas resumen:
+  - Pedidos pendientes (del mes)
+  - Envios en transito
+  - Saldo cuenta corriente
+  - Ultimo movimiento
+- Grafico de envios por estado (pie chart)
+- Lista rapida de ultimos 5 pedidos
+
+### 2. Mis Pedidos (`/seller/orders`)
+Archivo: `src/pages/seller/SellerOrders.tsx`
+
+Contenido:
+- Tabla de pedidos de su tienda (`ecommerce_orders`)
+- Filtros por estado y fecha
+- Detalle de cada pedido
+- Estado de fulfillment vinculado
+
+### 3. Mis Envios (`/seller/shipments`)
+Archivo: `src/pages/seller/SellerShipments.tsx`
+
+Contenido:
+- Tabla de envios creados para el seller
+- Tracking en tiempo real
+- Historial de estados
+- Opcion de ver comprobante de entrega (EPOD)
+
+### 4. Mi Cuenta (`/seller/account`)
+Archivo: `src/pages/seller/SellerAccount.tsx`
+
+Contenido:
+- Datos de la tienda (solo lectura)
+- Estado de cuenta corriente
+- Historial de movimientos (`seller_cuenta_corriente`)
+- Boton "Solicitar Retiro" (abre dialog)
+
+---
+
+## Fase C: Componentes del Portal
+
+### 1. SellerHeader
+- Logo del tenant
+- Nombre de la tienda
+- Boton de cerrar sesion
+- Indicador de saldo
+
+### 2. SellerSidebar
+- Navegacion simple con iconos:
+  - Home
+  - ShoppingBag (Pedidos)
+  - Package (Envios)
+  - Wallet (Mi Cuenta)
+
+### 3. RequestWithdrawalDialog
+- Monto a retirar (validado contra saldo disponible)
+- Metodo de pago preferido
+- Datos bancarios (si aplica)
+- Registra movimiento en `seller_cuenta_corriente` con tipo "solicitud_retiro"
+
+---
+
+## Fase D: Seguridad y Permisos
+
+### 1. Vinculacion Seller-Usuario
+Modificar `CreateSellerDialog.tsx` para:
+- Agregar campo opcional `user_id` (selector de usuarios o input de email)
+- Crear usuario con rol `seller` automaticamente (via edge function)
+
+### 2. RLS para Portal Seller
+Los RLS existentes ya permiten que sellers vean sus propios datos:
 
 ```sql
--- Permisos e-commerce para admin y super_admin
-INSERT INTO role_permissions (role, permission_key, permission_name, description, enabled)
-VALUES 
-  ('admin', 'ecommerce.sellers.view', 'Ver Sellers e-Commerce', 'Consultar tiendas conectadas', true),
-  ('admin', 'ecommerce.sellers.manage', 'Gestionar Sellers', 'Crear y editar sellers', true),
-  ('admin', 'ecommerce.orders.view', 'Ver Pedidos e-Commerce', 'Consultar pedidos importados', true),
-  ('admin', 'ecommerce.orders.manage', 'Gestionar Pedidos', 'Crear envíos desde pedidos', true),
-  ('admin', 'ecommerce.settlements.view', 'Ver Liq. Sellers', 'Consultar cuenta corriente', true),
-  ('super_admin', 'ecommerce.sellers.view', 'Ver Sellers e-Commerce', 'Consultar tiendas conectadas', true),
-  -- ... (mismo para super_admin y supervisor)
-ON CONFLICT DO NOTHING;
+-- ecommerce_orders: seller puede ver sus pedidos
+(EXISTS ( SELECT 1
+   FROM ecommerce_sellers es
+  WHERE ((es.id = ecommerce_orders.seller_id) AND (es.user_id = auth.uid()))))
+
+-- ecommerce_sellers: seller puede ver su propia tienda
+(user_id = auth.uid())
+```
+
+### 3. Nueva politica para seller_cuenta_corriente
+
+```sql
+CREATE POLICY "Seller ve sus movimientos" ON seller_cuenta_corriente
+FOR SELECT USING (
+  EXISTS (
+    SELECT 1 FROM ecommerce_sellers es
+    WHERE es.id = seller_cuenta_corriente.seller_id
+    AND es.user_id = auth.uid()
+  )
+);
 ```
 
 ---
 
-## Fase D: Toggle e-Commerce en Panel Super Admin
+## Fase E: Rutas y Navegacion
 
-Modificar `EditTenantDialog.tsx` (usado por Super Admin) para agregar:
-- Switch "Habilitar Módulo e-Commerce"
-- Vinculado a `tenants.ecommerce_enabled`
+### 1. Registrar Rutas en App.tsx
 
 ```typescript
-<div className="flex items-center justify-between">
-  <div>
-    <Label>Módulo e-Commerce</Label>
-    <p className="text-sm text-muted-foreground">
-      Habilita gestión de sellers y sincronización con plataformas
-    </p>
-  </div>
-  <Switch 
-    checked={ecommerceEnabled} 
-    onCheckedChange={setEcommerceEnabled} 
-  />
-</div>
+// Imports
+import SellerLayout from './components/seller/SellerLayout';
+import SellerDashboard from './pages/seller/SellerDashboard';
+import SellerOrders from './pages/seller/SellerOrders';
+import SellerShipments from './pages/seller/SellerShipments';
+import SellerAccount from './pages/seller/SellerAccount';
+
+// Rutas del portal seller
+<Route path="/seller" element={<SellerLayout />}>
+  <Route index element={<SellerDashboard />} />
+  <Route path="orders" element={<SellerOrders />} />
+  <Route path="shipments" element={<SellerShipments />} />
+  <Route path="account" element={<SellerAccount />} />
+</Route>
 ```
+
+### 2. Proteger Rutas
+Crear `SellerRoute` wrapper que:
+- Verifica que el usuario tenga rol `seller`
+- Verifica que tenga un `ecommerce_seller` vinculado
+- Redirige a login si no esta autenticado
 
 ---
 
-## Fase E: Agregar Tiendanube a IntegrationSettings
+## Archivos a Crear
 
-Agregar nueva entrada en `INTEGRATIONS_CONFIG`:
-
-```typescript
-tiendanube: {
-  name: 'Tiendanube',
-  description: 'Sincronización de pedidos con Tiendanube',
-  icon: Store,
-  docsUrl: 'https://tiendanube.github.io/api-documentation',
-  fields: [
-    { key: 'client_id', label: 'Client ID', type: 'text', required: true },
-    { key: 'client_secret', label: 'Client Secret', type: 'password', required: true },
-  ],
-  webhookUrl: '/functions/v1/tiendanube-webhook',
-}
-```
-
----
+| Archivo | Descripcion |
+|---------|-------------|
+| `src/components/seller/SellerLayout.tsx` | Layout principal del portal |
+| `src/components/seller/SellerHeader.tsx` | Header con logo y saldo |
+| `src/components/seller/SellerSidebar.tsx` | Navegacion lateral |
+| `src/components/seller/RequestWithdrawalDialog.tsx` | Solicitud de retiro |
+| `src/pages/seller/SellerDashboard.tsx` | Dashboard con metricas |
+| `src/pages/seller/SellerOrders.tsx` | Lista de pedidos |
+| `src/pages/seller/SellerShipments.tsx` | Lista de envios |
+| `src/pages/seller/SellerAccount.tsx` | Estado de cuenta |
+| `src/hooks/useSellerData.ts` | Hook para datos del seller actual |
 
 ## Archivos a Modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/App.tsx` | Agregar imports y rutas e-commerce |
-| `src/components/layout/AppSidebar.tsx` | Nueva sección e-Commerce con filtro por tenant |
-| `src/pages/IntegrationSettings.tsx` | Agregar config Tiendanube |
-| `src/components/tenants/EditTenantDialog.tsx` | Toggle ecommerce_enabled |
-| Migración SQL | Insertar permisos ecommerce.* |
+| `src/App.tsx` | Agregar rutas /seller/* |
+| `src/pages/Login.tsx` | Redirigir sellers a /seller |
+| `src/components/ecommerce/CreateSellerDialog.tsx` | Agregar campo user_id |
+| Migracion SQL | RLS para seller_cuenta_corriente |
 
 ---
 
-## Diagrama de Flujo de Permisos
+## Flujo de Usuario
 
 ```text
-Super Admin
-    │
-    ├── Accede a /admin/tenants
-    │       │
-    │       └── Edita Tenant → Toggle "ecommerce_enabled"
-    │
-    └── Si ecommerce_enabled = true para el tenant:
-            │
-            ├── Sidebar muestra sección "e-Commerce"
-            │       │
-            │       ├── /ecommerce/sellers (admins con permiso)
-            │       ├── /ecommerce/orders
-            │       └── /ecommerce/settlements
-            │
-            └── IntegrationSettings muestra tab "Tiendanube"
+1. Admin crea seller en /ecommerce/sellers
+   -> Opcionalmente vincula user_id existente
+   -> O crea nuevo usuario con rol 'seller'
+
+2. Seller inicia sesion con su email
+   -> Sistema detecta rol 'seller'
+   -> Redirige a /seller (no /dashboard)
+
+3. En el portal seller:
+   -> Ve dashboard con metricas de su tienda
+   -> Consulta pedidos importados
+   -> Rastrea envios en transito
+   -> Revisa estado de cuenta
+   -> Solicita retiro de fondos
 ```
 
 ---
 
-## Orden de Implementación
+## Orden de Implementacion
 
-1. **Migración SQL** - Permisos ecommerce.*
-2. **App.tsx** - Registrar rutas
-3. **AppSidebar.tsx** - Sección e-Commerce con lógica condicional
-4. **EditTenantDialog.tsx** - Toggle para Super Admin
-5. **IntegrationSettings.tsx** - Tab Tiendanube
+1. **Migracion SQL** - RLS para seller_cuenta_corriente
+2. **Hook useSellerData** - Obtener seller vinculado al usuario
+3. **Layout y Componentes** - SellerLayout, Header, Sidebar
+4. **Paginas** - Dashboard, Orders, Shipments, Account
+5. **App.tsx** - Registrar rutas
+6. **Login.tsx** - Logica de redireccion por rol
+7. **CreateSellerDialog** - Campo para vincular usuario
 
 ---
 
-## Notas Técnicas
+## Detalles Tecnicos
 
-- El `useTenantContext()` ya provee datos del tenant incluyendo `ecommerce_enabled`
-- Los tipos en `types.ts` ya incluyen las nuevas tablas (auto-generados)
-- Las páginas ya manejan permisos internamente con checks de rol
-- Edge Functions se implementarán en una fase posterior (Tiendanube OAuth/Webhooks)
+- El rol `seller` ya existe en el enum `app_role`
+- La tabla `ecommerce_sellers` ya tiene columna `user_id`
+- Los RLS existentes ya soportan acceso por `user_id = auth.uid()`
+- El hook `useAuth()` ya provee `hasRole('seller')`
+- Usaremos el mismo sistema de branding del tenant
+
