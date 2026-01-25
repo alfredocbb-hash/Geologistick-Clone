@@ -40,6 +40,7 @@ const ROLE_LABELS: Record<AppRole, string> = {
   atencion_cliente: 'Atención Cliente',
   sucursal: 'Sucursal',
   cliente: 'Cliente',
+  seller: 'Seller e-Commerce',
 };
 
 const ROLE_ORDER: AppRole[] = [
