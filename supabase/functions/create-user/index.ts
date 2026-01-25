@@ -129,16 +129,18 @@ Deno.serve(async (req) => {
       // Don't fail, profile was created by trigger
     }
 
-    // Assign roles if provided
+    // Assign roles if provided (idempotent - ignores duplicates)
     if (roles && Array.isArray(roles) && roles.length > 0) {
-      const roleInserts = roles.map((role: string) => ({
+      // Deduplicate roles array
+      const uniqueRoles = [...new Set(roles)];
+      const roleInserts = uniqueRoles.map((role: string) => ({
         user_id: userId,
         role: role,
       }));
 
       const { error: rolesError } = await adminClient
         .from('user_roles')
-        .insert(roleInserts);
+        .upsert(roleInserts, { onConflict: 'user_id,role', ignoreDuplicates: true });
 
       if (rolesError) {
         console.error("Role assignment failed:", rolesError?.message || "Unknown error");

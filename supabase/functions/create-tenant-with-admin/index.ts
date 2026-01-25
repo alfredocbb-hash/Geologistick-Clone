@@ -231,13 +231,13 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 5. Assign admin role (CRITICAL - must succeed)
+    // 5. Assign admin role (CRITICAL - must succeed, idempotent)
     const { error: roleError } = await adminClient
       .from('user_roles')
-      .insert({
-        user_id: userId,
-        role: 'admin',
-      });
+      .upsert(
+        { user_id: userId, role: 'admin' },
+        { onConflict: 'user_id,role', ignoreDuplicates: true }
+      );
 
     if (roleError) {
       console.error("Role assignment failed:", roleError);

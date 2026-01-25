@@ -216,21 +216,15 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
     enabled: !!tenantId && open,
   });
 
-  // Function to ensure user has seller role
+  // Function to ensure user has seller role (idempotent using upsert)
   const ensureSellerRole = async (userId: string) => {
-    const { data: existingRole } = await supabase
+    const { error } = await supabase
       .from('user_roles')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('role', 'seller')
-      .maybeSingle();
-
-    if (!existingRole) {
-      const { error } = await supabase
-        .from('user_roles')
-        .insert({ user_id: userId, role: 'seller' });
-      if (error) throw error;
-    }
+      .upsert(
+        { user_id: userId, role: 'seller' },
+        { onConflict: 'user_id,role', ignoreDuplicates: true }
+      );
+    if (error) throw error;
   };
 
   const updateMutation = useMutation({
