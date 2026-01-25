@@ -156,7 +156,7 @@ export default function IntegrationSettings() {
       const { data, error } = await supabase
         .from('system_integrations')
         .select('*')
-        .eq('integration_type', activeTab)
+        .eq('integration_type', activeTab as any)
         .eq('environment', environment)
         .eq('tenant_id', tenantId);
 
@@ -208,7 +208,7 @@ export default function IntegrationSettings() {
           const { data: existing } = await supabase
             .from('system_integrations')
             .select('id')
-            .eq('integration_type', activeTab)
+            .eq('integration_type', activeTab as any)
             .eq('config_key', field.key)
             .eq('environment', environment)
             .eq('tenant_id', tenantId)
@@ -230,13 +230,13 @@ export default function IntegrationSettings() {
             const { error } = await supabase
               .from('system_integrations')
               .insert({
-                integration_type: activeTab,
+                integration_type: activeTab as any,
                 config_key: field.key,
                 config_value: value,
                 is_active: isActive,
                 environment: environment,
                 tenant_id: tenantId,
-              });
+              } as any);
 
             if (error) throw error;
           }
