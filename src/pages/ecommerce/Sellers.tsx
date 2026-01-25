@@ -1,16 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { useTenant } from '@/hooks/useTenant';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, Search, MoreHorizontal, Store, Settings, Eye, Trash2, RefreshCw, ShoppingCart, Users, DollarSign } from 'lucide-react';
+import { Plus, Search, MoreHorizontal, Store, Settings, Eye, Trash2, RefreshCw, ShoppingCart, Users, DollarSign, Link2, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from '@/hooks/use-toast';
@@ -30,7 +30,9 @@ interface Seller {
   codigo_postal: string | null;
   cuit: string | null;
   plataforma: string;
+  store_id: string | null;
   store_url: string | null;
+  access_token: string | null;
   sucursal_pickup_id: string | null;
   tarifa_id: string | null;
   activo: boolean;
@@ -59,6 +61,19 @@ export default function Sellers() {
   const [selectedSeller, setSelectedSeller] = useState<Seller | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [syncingSellerId, setSyncingSellerId] = useState<string | null>(null);
+
+  // Listen for OAuth success messages from popup
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'tiendanube-oauth-success') {
+        queryClient.invalidateQueries({ queryKey: ['ecommerce-sellers'] });
+        toast({ title: 'Tienda conectada exitosamente' });
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [queryClient]);
 
   // Fetch sellers
   const { data: sellers, isLoading } = useQuery({
@@ -111,6 +126,53 @@ export default function Sellers() {
     },
   });
 
+  // Sync mutation
+  const syncMutation = useMutation({
+    mutationFn: async (sellerId: string) => {
+      setSyncingSellerId(sellerId);
+      const { data, error } = await supabase.functions.invoke('tiendanube-sync', {
+        body: { seller_id: sellerId },
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['ecommerce-sellers'] });
+      queryClient.invalidateQueries({ queryKey: ['ecommerce-orders'] });
+      toast({ 
+        title: 'Sincronización completada',
+        description: `${data.created} nuevos, ${data.updated} actualizados, ${data.errors} errores`
+      });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: 'Error al sincronizar', 
+        description: error.message || 'Error desconocido',
+        variant: 'destructive' 
+      });
+    },
+    onSettled: () => {
+      setSyncingSellerId(null);
+    },
+  });
+
+  // Connect to Tiendanube
+  const handleConnectTiendanube = (seller: Seller) => {
+    const oauthUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tiendanube-oauth/authorize?seller_id=${seller.id}`;
+    
+    // Open popup for OAuth flow
+    const width = 600;
+    const height = 700;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+    
+    window.open(
+      oauthUrl,
+      'tiendanube-oauth',
+      `width=${width},height=${height},left=${left},top=${top},popup=yes`
+    );
+  };
+
   const filteredSellers = sellers?.filter(s =>
     s.nombre.toLowerCase().includes(search.toLowerCase()) ||
     s.email.toLowerCase().includes(search.toLowerCase())
@@ -123,6 +185,9 @@ export default function Sellers() {
     conCtaCte: sellers?.filter(s => s.tiene_cuenta_corriente).length || 0,
     saldoTotal: sellers?.reduce((acc, s) => acc + (s.saldo_cuenta_corriente || 0), 0) || 0,
   };
+
+  // Check if seller is connected
+  const isConnected = (seller: Seller) => !!seller.access_token && !!seller.store_id;
 
   if (!tenantId) {
     return (
@@ -230,6 +295,7 @@ export default function Sellers() {
                 <TableRow>
                   <TableHead>Seller</TableHead>
                   <TableHead>Plataforma</TableHead>
+                  <TableHead>Conexión</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead className="text-right">Saldo</TableHead>
                   <TableHead>Último Sync</TableHead>
@@ -249,6 +315,32 @@ export default function Sellers() {
                       <Badge className={PLATAFORMA_LABELS[seller.plataforma]?.color || 'bg-gray-500'}>
                         {PLATAFORMA_LABELS[seller.plataforma]?.label || seller.plataforma}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {seller.plataforma === 'tiendanube' ? (
+                        isConnected(seller) ? (
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="h-4 w-4 text-green-500" />
+                            <span className="text-xs text-green-600 dark:text-green-400">Conectado</span>
+                          </div>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleConnectTiendanube(seller)}
+                          >
+                            <Link2 className="mr-1 h-3 w-3" />
+                            Conectar
+                          </Button>
+                        )
+                      ) : seller.plataforma === 'manual' ? (
+                        <span className="text-xs text-muted-foreground">N/A</span>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <XCircle className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-xs text-muted-foreground">Pendiente</span>
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge variant={seller.activo ? 'default' : 'secondary'}>
@@ -286,6 +378,30 @@ export default function Sellers() {
                             <Settings className="mr-2 h-4 w-4" />
                             Configurar
                           </DropdownMenuItem>
+                          
+                          {seller.plataforma === 'tiendanube' && isConnected(seller) && (
+                            <DropdownMenuItem 
+                              onClick={() => syncMutation.mutate(seller.id)}
+                              disabled={syncingSellerId === seller.id}
+                            >
+                              {syncingSellerId === seller.id ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                <RefreshCw className="mr-2 h-4 w-4" />
+                              )}
+                              Sincronizar Ahora
+                            </DropdownMenuItem>
+                          )}
+                          
+                          {seller.plataforma === 'tiendanube' && !isConnected(seller) && (
+                            <DropdownMenuItem onClick={() => handleConnectTiendanube(seller)}>
+                              <Link2 className="mr-2 h-4 w-4" />
+                              Conectar Tiendanube
+                            </DropdownMenuItem>
+                          )}
+                          
+                          <DropdownMenuSeparator />
+                          
                           <DropdownMenuItem
                             onClick={() => toggleActiveMutation.mutate({ id: seller.id, activo: !seller.activo })}
                           >
@@ -310,7 +426,7 @@ export default function Sellers() {
                 ))}
                 {filteredSellers?.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       No hay sellers registrados
                     </TableCell>
                   </TableRow>
