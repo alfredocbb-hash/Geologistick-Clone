@@ -1,274 +1,225 @@
 
 
-# Plan: Edge Functions para Tiendanube
+# Plan: Vincular Sellers a Usuarios
 
 ## Resumen
 
-Implementar tres edge functions para integrar Tiendanube con el sistema logistico:
-1. **OAuth Callback** - Para conectar tiendas de sellers
-2. **Webhook** - Para recibir pedidos automaticamente
-3. **Sync Manual** - Para sincronizar pedidos bajo demanda
+Agregar la funcionalidad para vincular sellers de e-commerce con usuarios del sistema. Esto permitira que los sellers puedan acceder al Portal de Sellers creado anteriormente, autenticandose con su email/password y viendo solo los datos de su tienda.
 
-## Arquitectura de la Integracion
+## Arquitectura de la Vinculacion
 
 ```text
-                     Tiendanube
-                          |
-         +----------------+----------------+
-         |                |                |
-    OAuth Flow       Webhooks         API Sync
-         |                |                |
-         v                v                v
-  tiendanube-oauth  tiendanube-webhook  tiendanube-sync
-         |                |                |
-         +--------> ecommerce_sellers <----+
-                          |
-                          v
-                   ecommerce_orders
++-------------------+         +-------------------+
+|  ecommerce_sellers |  <-->  |     profiles      |
+|-------------------|         |-------------------|
+| user_id (FK)      |-------->| user_id           |
+| email             |         | email             |
+| nombre            |         | nombre            |
++-------------------+         +-------------------+
+                                      |
+                                      v
+                              +---------------+
+                              |  user_roles   |
+                              |---------------|
+                              | user_id       |
+                              | role='seller' |
+                              +---------------+
 ```
 
 ---
 
-## Edge Function 1: tiendanube-oauth
+## Opcion 1: Vincular Usuario Existente
 
-### Proposito
-Manejar el flujo OAuth cuando un seller conecta su tienda de Tiendanube.
+### Flujo
+1. Admin selecciona "Vincular usuario existente" en CreateSellerDialog
+2. Se muestra un selector/autocomplete de usuarios del tenant
+3. Al seleccionar, se guarda el `user_id` en `ecommerce_sellers`
+4. Se verifica que el usuario tenga rol `seller`, si no lo tiene se agrega
 
-### Endpoints
-- `GET /authorize?seller_id={uuid}` - Redirige al usuario a Tiendanube
-- `GET /callback?code={code}&state={seller_id}` - Recibe el token y lo guarda
-
-### Flujo Detallado
-
-1. **Iniciar conexion** (desde el admin panel):
-   - El admin hace clic en "Conectar Tiendanube" en el seller
-   - Frontend llama a `/authorize?seller_id=xxx`
-   - Edge function genera URL de autorizacion y redirige
-
-2. **Callback de Tiendanube**:
-   - Usuario autoriza la app en Tiendanube
-   - Tiendanube redirige a `/callback?code=xxx&state=seller_id`
-   - Edge function intercambia `code` por `access_token`
-   - Guarda `access_token`, `store_id` en `ecommerce_sellers`
-   - Registra webhook automaticamente en la tienda
-   - Redirige al usuario de vuelta al panel
-
-### Datos Almacenados en ecommerce_sellers
-
-| Campo | Valor |
-|-------|-------|
-| access_token | Token OAuth de Tiendanube |
-| store_id | ID de la tienda en Tiendanube |
-| store_url | URL de la tienda |
-| webhook_secret | HMAC secret generado para validar webhooks |
-| ultimo_sync | Timestamp de ultima sincronizacion |
+### Implementacion
+- Agregar campo de busqueda de usuarios en el formulario
+- Query para buscar usuarios del mismo tenant
+- Al guardar, actualizar `user_id` en el seller
+- Agregar rol `seller` si no existe
 
 ---
 
-## Edge Function 2: tiendanube-webhook
+## Opcion 2: Crear Usuario Nuevo
 
-### Proposito
-Recibir notificaciones en tiempo real cuando se crea o actualiza un pedido.
+### Flujo
+1. Admin selecciona "Crear usuario nuevo" en CreateSellerDialog
+2. Se muestran campos adicionales: email de acceso, password
+3. Se crea el usuario via edge function `create-user`
+4. Se asigna automaticamente rol `seller`
+5. Se vincula el `user_id` retornado al seller
 
-### Eventos Soportados
-- `order/created` - Nuevo pedido
-- `order/updated` - Actualizacion de pedido
-- `order/paid` - Pedido pagado
-- `order/fulfilled` - Pedido despachado
-- `order/cancelled` - Pedido cancelado
+### Implementacion
+- Agregar toggle/tabs para elegir modo
+- Campos de email/password para nuevo usuario
+- Llamar al edge function existente `create-user` con rol `seller`
+- Actualizar el seller con el `user_id` retornado
 
-### Flujo de Procesamiento
+---
 
-1. **Recibir webhook**:
-   - Tiendanube envia POST con `store_id`, `event`, `id`
-   - Validar firma HMAC en header `x-linkedstore-hmac-sha256`
+## Cambios en CreateSellerDialog
 
-2. **Identificar seller**:
-   - Buscar seller por `store_id` en `ecommerce_sellers`
-   - Obtener `tenant_id` del seller
-
-3. **Procesar evento**:
-   - Para `order/created` o `order/paid`:
-     - Obtener datos completos del pedido via API
-     - Insertar/actualizar en `ecommerce_orders`
-   - Para otros eventos:
-     - Actualizar `order_status` o `payment_status`
-
-4. **Responder rapidamente**:
-   - Retornar 200 OK inmediatamente
-   - Procesar en background si es necesario
-
-### Seguridad: Validacion HMAC
+### Nuevo Schema del Formulario
 
 ```typescript
-const hmac = createHmac('sha256', seller.webhook_secret);
-hmac.update(rawBody);
-const calculatedSignature = hmac.digest('hex');
-const receivedSignature = req.headers.get('x-linkedstore-hmac-sha256');
+const formSchema = z.object({
+  // ... campos existentes ...
+  
+  // Vinculacion de usuario
+  vincular_usuario: z.enum(['ninguno', 'existente', 'nuevo']).default('ninguno'),
+  user_id: z.string().optional(),  // Para usuario existente
+  
+  // Para crear usuario nuevo
+  user_email: z.string().email().optional(),
+  user_password: z.string().min(6).optional(),
+});
+```
 
-if (calculatedSignature !== receivedSignature) {
-  return new Response('Invalid signature', { status: 401 });
-}
+### Nueva Seccion en UI
+
+```text
++------------------------------------------+
+|  Acceso al Portal de Sellers             |
+|------------------------------------------|
+|  ( ) Sin acceso                          |
+|  ( ) Vincular usuario existente          |
+|      [Buscar usuario... ▼]               |
+|  ( ) Crear usuario nuevo                 |
+|      Email: [________________]           |
+|      Password: [________________]        |
++------------------------------------------+
 ```
 
 ---
 
-## Edge Function 3: tiendanube-sync
+## Modificaciones al Edge Function create-user
 
-### Proposito
-Sincronizar pedidos manualmente desde el panel de administracion.
-
-### Endpoints
-- `POST /` - Sincronizar pedidos de un seller especifico
-  - Body: `{ seller_id: uuid, since?: date }`
-
-### Flujo de Sincronizacion
-
-1. **Autenticar request**:
-   - Verificar JWT del usuario
-   - Verificar que el usuario pertenece al mismo tenant que el seller
-
-2. **Obtener pedidos**:
-   - Llamar a API de Tiendanube: `GET /{store_id}/orders`
-   - Filtrar por `updated_at_min` si se especifica `since`
-   - Paginar hasta obtener todos los pedidos
-
-3. **Procesar cada pedido**:
-   - Mapear campos de Tiendanube a `ecommerce_orders`
-   - Upsert en base de datos (por `external_order_id`)
-
-4. **Actualizar seller**:
-   - Actualizar `ultimo_sync` en `ecommerce_sellers`
-   - Retornar resumen: pedidos nuevos, actualizados, errores
-
-### Mapeo de Datos Tiendanube -> ecommerce_orders
-
-| Tiendanube | ecommerce_orders |
-|------------|------------------|
-| id | external_order_id |
-| number | external_order_number |
-| status | order_status |
-| payment_status | payment_status |
-| customer.name | buyer_name |
-| customer.email | buyer_email |
-| customer.phone | buyer_phone |
-| customer.identification | buyer_dni |
-| shipping_address.address | shipping_address |
-| shipping_address.city | shipping_city |
-| shipping_address.province | shipping_province |
-| shipping_address.zipcode | shipping_postal_code |
-| subtotal | subtotal |
-| shipping_cost_owner | shipping_cost |
-| total | total |
-| products | items (JSON) |
+No se requieren modificaciones. El edge function ya:
+- Acepta `roles` como array
+- Crea el usuario con el tenant del admin
+- Retorna el `user_id` del usuario creado
 
 ---
 
-## Cambios en Frontend
+## Cambios en EditSellerDialog
 
-### 1. Boton "Conectar Tiendanube" en Sellers
+### Mostrar Estado de Vinculacion
+- Si tiene `user_id`: mostrar email del usuario vinculado + boton "Desvincular"
+- Si no tiene `user_id`: mostrar opciones para vincular/crear
 
-En `EditSellerDialog.tsx` o en la tabla de sellers, agregar:
-- Boton "Conectar Tiendanube" (visible si `plataforma === 'tiendanube'` y no hay `access_token`)
-- Badge "Conectado" con icono verde si ya tiene `access_token`
-- Boton "Sincronizar Ahora" para llamar a tiendanube-sync
-
-### 2. Estado de Conexion
-
-Mostrar en la tabla de sellers:
-- Icono de estado de conexion (conectado/desconectado)
-- Fecha de ultima sincronizacion
-- Cantidad de pedidos sincronizados
+### Desvincular Usuario
+- Boton "Desvincular Usuario"
+- Confirmacion antes de desvincular
+- Al desvincular: 
+  - Setear `user_id = null` en seller
+  - Opcionalmente: remover rol `seller` del usuario
 
 ---
 
-## Configuracion en supabase/config.toml
+## Flujo Completo de Creacion
 
-```toml
-[functions.tiendanube-oauth]
-verify_jwt = false
-
-[functions.tiendanube-webhook]
-verify_jwt = false
-
-[functions.tiendanube-sync]
-verify_jwt = false
+```text
+1. Admin abre CreateSellerDialog
+   |
+   v
+2. Completa datos del seller (nombre, email, etc.)
+   |
+   v
+3. Selecciona opcion de acceso:
+   |
+   +---> Sin acceso: Seller sin usuario vinculado
+   |
+   +---> Usuario existente: 
+   |     - Busca y selecciona usuario
+   |     - Se vincula el user_id
+   |     - Se agrega rol 'seller' si falta
+   |
+   +---> Crear usuario nuevo:
+         - Ingresa email/password
+         - Se crea usuario via edge function
+         - Se vincula automaticamente
+         - Rol 'seller' asignado automaticamente
 ```
 
-Todas las funciones manejan autenticacion manualmente:
-- oauth: No requiere auth (flujo OAuth)
-- webhook: Valida via HMAC
-- sync: Valida JWT del usuario logueado
-
 ---
-
-## Archivos a Crear
-
-| Archivo | Descripcion |
-|---------|-------------|
-| `supabase/functions/tiendanube-oauth/index.ts` | Flujo OAuth completo |
-| `supabase/functions/tiendanube-webhook/index.ts` | Receptor de webhooks |
-| `supabase/functions/tiendanube-sync/index.ts` | Sincronizacion manual |
 
 ## Archivos a Modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `supabase/config.toml` | Agregar configuracion de las 3 funciones |
-| `src/pages/ecommerce/Sellers.tsx` | Agregar boton de conexion y sync |
-| `src/components/ecommerce/EditSellerDialog.tsx` | Mostrar estado de conexion |
+| `src/components/ecommerce/CreateSellerDialog.tsx` | Agregar seccion de vinculacion de usuario |
+| `src/components/ecommerce/EditSellerDialog.tsx` | Mostrar estado de vinculacion y opcion de desvincular |
 
 ---
 
-## URLs de las Edge Functions
+## Queries Necesarias
 
-Las URLs finales seran:
-- OAuth: `https://uhlgimnmfifmrxraorrl.supabase.co/functions/v1/tiendanube-oauth`
-- Webhook: `https://uhlgimnmfifmrxraorrl.supabase.co/functions/v1/tiendanube-webhook`
-- Sync: `https://uhlgimnmfifmrxraorrl.supabase.co/functions/v1/tiendanube-sync`
+### Buscar usuarios del tenant para vincular
 
----
-
-## Flujo de Usuario Completo
-
-```text
-1. Admin configura Tiendanube en Integraciones
-   -> Ingresa client_id y client_secret
-
-2. Admin crea seller con plataforma "Tiendanube"
-   -> Guarda datos basicos del seller
-
-3. Admin hace clic en "Conectar Tiendanube"
-   -> Redirige a Tiendanube para autorizar
-   -> Seller de Tiendanube acepta permisos
-   -> Callback guarda tokens y registra webhook
-
-4. Nuevo pedido en Tiendanube
-   -> Tiendanube envia webhook
-   -> Sistema valida y guarda en ecommerce_orders
-
-5. Admin puede sincronizar manualmente
-   -> Clic en "Sincronizar"
-   -> Sistema obtiene pedidos recientes via API
+```typescript
+const { data: availableUsers } = useQuery({
+  queryKey: ['users-for-seller', tenantId],
+  queryFn: async () => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('user_id, email, nombre, apellido')
+      .eq('tenant_id', tenantId)
+      .eq('activo', true)
+      .order('nombre');
+    if (error) throw error;
+    return data;
+  },
+  enabled: !!tenantId && open,
+});
 ```
 
----
+### Verificar/agregar rol seller
 
-## Orden de Implementacion
+```typescript
+// Verificar si ya tiene rol seller
+const { data: existingRole } = await supabase
+  .from('user_roles')
+  .select('id')
+  .eq('user_id', selectedUserId)
+  .eq('role', 'seller')
+  .maybeSingle();
 
-1. **tiendanube-oauth** - Base del flujo de conexion
-2. **tiendanube-webhook** - Recepcion automatica de pedidos
-3. **tiendanube-sync** - Sincronizacion manual
-4. **UI Updates** - Botones de conexion y estado
-5. **Testing** - Probar flujo completo con tienda de prueba
+// Si no tiene, agregarlo
+if (!existingRole) {
+  await supabase
+    .from('user_roles')
+    .insert({ user_id: selectedUserId, role: 'seller' });
+}
+```
 
 ---
 
 ## Consideraciones de Seguridad
 
-- Los `access_token` se almacenan encriptados en la base de datos
-- Los webhooks se validan con HMAC-SHA256
-- Cada seller tiene su propio `webhook_secret` unico
-- Las funciones de sync requieren autenticacion del usuario
-- Los datos estan aislados por `tenant_id`
+1. **Aislamiento por tenant**: Solo se pueden vincular usuarios del mismo tenant
+2. **Validacion de permisos**: Solo admins pueden vincular usuarios a sellers
+3. **Rol seller**: Se asigna automaticamente al vincular, garantizando acceso correcto al portal
+4. **Password seguro**: Minimo 6 caracteres al crear usuario nuevo
+
+---
+
+## Orden de Implementacion
+
+1. **CreateSellerDialog**: Agregar seccion de vinculacion con las 3 opciones
+2. **EditSellerDialog**: Mostrar estado actual y opcion de desvincular
+3. **Testing**: Probar flujo completo de vinculacion y acceso al portal
+
+---
+
+## Resultado Esperado
+
+Despues de implementar:
+- El admin puede crear un seller y simultaneamente crear su acceso al portal
+- Los sellers vinculados pueden hacer login y ver `/seller/*`
+- Los sellers sin vincular no tienen acceso al sistema
+- La tabla de sellers muestra el estado de vinculacion de cada uno
 
