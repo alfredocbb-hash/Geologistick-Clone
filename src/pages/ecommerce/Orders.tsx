@@ -36,12 +36,19 @@ interface Order {
   shipping_postal_code: string | null;
   shipping_lat: number | null;
   shipping_lng: number | null;
+  shipping_notes: string | null;
+  items: any[] | null;
+  subtotal: number | null;
+  shipping_cost: number | null;
   total: number;
   envio_id: string | null;
   created_at: string;
   seller?: {
     id: string;
     nombre: string;
+    tarifa_id: string | null;
+    sucursal_pickup_id: string | null;
+    tiene_cuenta_corriente: boolean;
   };
 }
 
@@ -79,7 +86,7 @@ export default function Orders() {
         .from('ecommerce_orders')
         .select(`
           *,
-          seller:ecommerce_sellers(id, nombre)
+          seller:ecommerce_sellers(id, nombre, tarifa_id, sucursal_pickup_id, tiene_cuenta_corriente)
         `)
         .order('created_at', { ascending: false })
         .limit(200);
