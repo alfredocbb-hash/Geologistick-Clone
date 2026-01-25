@@ -126,7 +126,7 @@ const navigation: NavGroup[] = [{
     title: 'Liq. Terciarizados',
     url: '/settlements/third-party',
     icon: FileText,
-    permissionKey: 'settlements.branch.view'
+    permissionKey: 'third_party.settlements'
   }, {
     title: 'Mis Comisiones',
     url: '/my-commissions',
@@ -179,9 +179,9 @@ const navigation: NavGroup[] = [{
     title: 'Empresas',
     url: '/admin/third-party-companies',
     icon: Truck,
-    permissionKey: 'branches.manage'
+    permissionKey: 'third_party.view'
   }],
-  permissionKeys: ['branches.manage']
+  permissionKeys: ['third_party.view', 'third_party.manage']
 }, {
   label: 'Administración',
   items: [{
@@ -232,6 +232,12 @@ const navigation: NavGroup[] = [{
     title: 'Empresas',
     url: '/admin/tenants',
     icon: Building2,
+    permissionKey: 'tenants.view'
+  }, {
+    title: 'Planes',
+    url: '/admin/subscription-plans',
+    icon: Crown,
+    permissionKey: 'subscription_plans.manage'
   }],
   superAdminOnly: true
 }];

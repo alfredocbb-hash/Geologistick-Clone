@@ -54,6 +54,7 @@ const ROLE_ORDER: AppRole[] = [
   'sucursal',
   'atencion_cliente',
   'cliente',
+  'seller',
 ];
 
 // Group permissions by category for better organization
@@ -80,6 +81,10 @@ const PERMISSION_CATEGORIES: Record<string, string> = {
   'users': 'Usuarios',
   'roles': 'Roles',
   'invoicing': 'Facturación',
+  'tenants': 'Empresas (Tenants)',
+  'third_party': 'Terciarizados',
+  'ecommerce': 'e-Commerce',
+  'subscription_plans': 'Planes de Suscripción',
 };
 
 const getPermissionCategory = (key: string): string => {
