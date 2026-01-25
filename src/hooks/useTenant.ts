@@ -19,6 +19,7 @@ export interface Tenant {
   max_envios_mes: number;
   configuracion: Record<string, unknown>;
   created_at: string;
+  ecommerce_enabled?: boolean;
 }
 
 export interface TenantBranding {
