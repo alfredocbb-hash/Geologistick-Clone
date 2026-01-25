@@ -47,6 +47,20 @@ export default function SellerShipments() {
     queryFn: async () => {
       if (!seller?.id) return [];
       
+      // First get envio_ids from ecommerce_orders linked to this seller
+      const { data: orders, error: ordersError } = await supabase
+        .from('ecommerce_orders')
+        .select('envio_id')
+        .eq('seller_id', seller.id)
+        .not('envio_id', 'is', null);
+      
+      if (ordersError) throw ordersError;
+      
+      const envioIds = orders?.map(o => o.envio_id).filter(Boolean) as string[];
+      
+      if (envioIds.length === 0) return [];
+      
+      // Now fetch only the shipments linked to this seller's orders
       const { data, error } = await supabase
         .from('envios')
         .select(`
@@ -60,7 +74,7 @@ export default function SellerShipments() {
           created_at,
           fecha_entrega
         `)
-        .eq('remitente_id', seller.id)
+        .in('id', envioIds)
         .order('created_at', { ascending: false })
         .limit(100);
       

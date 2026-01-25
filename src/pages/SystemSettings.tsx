@@ -67,7 +67,7 @@ const SystemSettings = () => {
                   <Badge variant="secondary">PDF</Badge>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Manual completo con instrucciones detalladas para todas las funciones del sistema LogiTrack.
+                  Manual completo con instrucciones detalladas para todas las funciones del sistema Geologistick.
                 </p>
                 <ul className="text-xs text-muted-foreground space-y-1 mt-2">
                   <li>• Gestión de envíos y tracking</li>
@@ -114,7 +114,7 @@ const SystemSettings = () => {
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">Aplicación</span>
-                <span className="font-medium">LogiTrack</span>
+                <span className="font-medium">Geologistick</span>
               </div>
               <Separator />
               <div className="flex justify-between items-center">

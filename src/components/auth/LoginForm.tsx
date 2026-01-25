@@ -82,7 +82,7 @@ export function LoginForm() {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl gradient-primary shadow-colored">
             <Package className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-3xl font-bold tracking-tight">LogiTrack</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Geologistick</h1>
           <p className="text-muted-foreground">Sistema de Gestión Logística</p>
         </div>
 

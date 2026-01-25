@@ -34,7 +34,7 @@ const Navbar = () => {
             <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center shadow-lg shadow-primary/25 group-hover:shadow-primary/40 transition-shadow">
               <Package className="h-5 w-5 text-white" />
             </div>
-            <span className="text-xl font-bold text-white">LogiTrack</span>
+            <span className="text-xl font-bold text-white">Geologistick</span>
           </Link>
 
           {/* Desktop Navigation */}

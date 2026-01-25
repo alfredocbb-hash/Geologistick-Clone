@@ -194,7 +194,7 @@ Deno.serve(async (req) => {
       const storeResponse = await fetch(`${TIENDANUBE_API_ENDPOINT}/${storeId}/store`, {
         headers: {
           "Authentication": `bearer ${accessToken}`,
-          "User-Agent": "LogiTrack (alfredocbb@gmail.com)",
+          "User-Agent": "Geologistick (alfredocbb@gmail.com)",
         },
       });
 
@@ -238,7 +238,7 @@ Deno.serve(async (req) => {
             headers: {
               "Authentication": `bearer ${accessToken}`,
               "Content-Type": "application/json",
-              "User-Agent": "LogiTrack (alfredocbb@gmail.com)",
+              "User-Agent": "Geologistick (alfredocbb@gmail.com)",
             },
             body: JSON.stringify({
               url: webhookUrl,
