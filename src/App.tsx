@@ -57,6 +57,13 @@ import TrackingEmbed from "./pages/TrackingEmbed";
 import ShipmentStatusGuide from "./pages/ShipmentStatusGuide";
 import NotFound from "./pages/NotFound";
 
+// Seller Portal Pages
+import { SellerLayout } from "./components/seller/SellerLayout";
+import SellerDashboard from "./pages/seller/SellerDashboard";
+import SellerOrders from "./pages/seller/SellerOrders";
+import SellerShipments from "./pages/seller/SellerShipments";
+import SellerAccount from "./pages/seller/SellerAccount";
+
 // e-Commerce Pages
 import EcommerceSellers from "./pages/ecommerce/Sellers";
 import EcommerceOrders from "./pages/ecommerce/Orders";
@@ -190,6 +197,14 @@ function AppRoutes() {
       
       {/* Profile */}
       <Route path="/profile" element={<DashboardLayout><Profile /></DashboardLayout>} />
+      
+      {/* Seller Portal */}
+      <Route path="/seller" element={<SellerLayout />}>
+        <Route index element={<SellerDashboard />} />
+        <Route path="orders" element={<SellerOrders />} />
+        <Route path="shipments" element={<SellerShipments />} />
+        <Route path="account" element={<SellerAccount />} />
+      </Route>
       
       {/* 404 */}
       <Route path="*" element={<NotFound />} />
