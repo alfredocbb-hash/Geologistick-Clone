@@ -57,6 +57,11 @@ import TrackingEmbed from "./pages/TrackingEmbed";
 import ShipmentStatusGuide from "./pages/ShipmentStatusGuide";
 import NotFound from "./pages/NotFound";
 
+// e-Commerce Pages
+import EcommerceSellers from "./pages/ecommerce/Sellers";
+import EcommerceOrders from "./pages/ecommerce/Orders";
+import EcommerceSettlements from "./pages/ecommerce/Settlements";
+
 const queryClient = new QueryClient();
 
 // Native app wrapper - handles native platform detection and auth
@@ -164,6 +169,11 @@ function AppRoutes() {
       
       {/* Clientes */}
       <Route path="/clients" element={<DashboardLayout><Clients /></DashboardLayout>} />
+      
+      {/* e-Commerce */}
+      <Route path="/ecommerce/sellers" element={<DashboardLayout><EcommerceSellers /></DashboardLayout>} />
+      <Route path="/ecommerce/orders" element={<DashboardLayout><EcommerceOrders /></DashboardLayout>} />
+      <Route path="/ecommerce/settlements" element={<DashboardLayout><EcommerceSettlements /></DashboardLayout>} />
       
       {/* Administración */}
       <Route path="/admin/branches" element={<DashboardLayout><Branches /></DashboardLayout>} />
