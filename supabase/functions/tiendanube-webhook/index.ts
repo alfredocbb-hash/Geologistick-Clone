@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
       const orderResponse = await fetch(`${TIENDANUBE_API_ENDPOINT}/${storeId}/orders/${orderId}`, {
         headers: {
           "Authentication": `bearer ${seller.access_token}`,
-          "User-Agent": "LogiTrack (alfredocbb@gmail.com)",
+          "User-Agent": "Geologistick (alfredocbb@gmail.com)",
         },
       });
 

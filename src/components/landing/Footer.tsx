@@ -6,9 +6,9 @@ const Footer = () => {
   const { branding } = useTenant();
 
   // Get values from branding or use defaults
-  const appName = branding?.nombre_app || "LogiTrack";
+  const appName = branding?.nombre_app || "Geologistick";
   const description = branding?.company_description || "Plataforma líder en gestión de logística y envíos para empresas de courier en Argentina.";
-  const supportEmail = branding?.support_email || "soporte@logitrack.com";
+  const supportEmail = branding?.support_email || "soporte@geologistick.com";
   const supportPhone = branding?.support_phone || "+54 11 5555-4444";
   const address = branding?.company_address;
   const city = branding?.company_city || "Buenos Aires";

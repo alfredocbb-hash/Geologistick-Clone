@@ -46,7 +46,7 @@ interface BrandingFormData {
 }
 
 const defaultBranding: BrandingFormData = {
-  nombre_app: 'LogiTrack',
+  nombre_app: 'Geologistick',
   logo_light: '',
   logo_dark: '',
   favicon: '',
@@ -258,7 +258,7 @@ export default function BrandingSettings() {
                       <Input
                         value={formData.nombre_app}
                         onChange={(e) => handleChange('nombre_app', e.target.value)}
-                        placeholder="LogiTrack"
+                        placeholder="Geologistick"
                       />
                     </div>
                     <div className="space-y-2">
@@ -266,7 +266,7 @@ export default function BrandingSettings() {
                       <Input
                         value={formData.meta_title}
                         onChange={(e) => handleChange('meta_title', e.target.value)}
-                        placeholder="LogiTrack - Sistema de Gestión Logística"
+                        placeholder="Geologistick - Sistema de Gestión Logística"
                       />
                     </div>
                     <div className="space-y-2">

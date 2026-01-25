@@ -309,7 +309,7 @@ export function AppSidebar() {
               <Package className="h-5 w-5 text-white" />
             </div>
             {!collapsed && <div className="flex flex-col">
-                <span className="text-lg font-bold text-sidebar-foreground">LogiTrack</span>
+                <span className="text-lg font-bold text-sidebar-foreground">Geologistick</span>
                 <span className="text-xs text-sidebar-foreground/60">Cargando...</span>
               </div>}
           </div>
@@ -343,7 +343,7 @@ export function AppSidebar() {
                 <Package className="h-5 w-5 text-white" />
               </div>
               {!collapsed && <div className="flex flex-col">
-                  <span className="text-lg font-bold text-sidebar-foreground">{branding?.nombre_app || 'LogiTrack'}</span>
+                  <span className="text-lg font-bold text-sidebar-foreground">{branding?.nombre_app || 'Geologistick'}</span>
                   <span className="text-xs text-sidebar-foreground/60">Gestión Logística</span>
                 </div>}
             </>

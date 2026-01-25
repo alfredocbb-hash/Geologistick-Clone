@@ -292,7 +292,7 @@ const TrackingEmbed = () => {
 
         {/* Footer */}
         <p className="text-center text-xs text-muted-foreground">
-          Powered by LogiTrack
+          Powered by Geologistick
         </p>
       </div>
     </div>

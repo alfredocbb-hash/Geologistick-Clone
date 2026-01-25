@@ -329,7 +329,7 @@ export default function Tracking() {
 
         {/* Footer */}
         <p className="text-center text-sm text-muted-foreground">
-          © {new Date().getFullYear()} {envio?.branding?.nombre_app || 'LogiTrack'}. Sistema de Gestión Logística.
+          © {new Date().getFullYear()} {envio?.branding?.nombre_app || 'Geologistick'}. Sistema de Gestión Logística.
         </p>
       </div>
     </div>

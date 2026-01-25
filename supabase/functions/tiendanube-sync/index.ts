@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
       const response = await fetch(`${apiUrl}&page=${page}`, {
         headers: {
           "Authentication": `bearer ${seller.access_token}`,
-          "User-Agent": "LogiTrack (alfredocbb@gmail.com)",
+          "User-Agent": "Geologistick (alfredocbb@gmail.com)",
         },
       });
 
