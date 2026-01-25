@@ -1,8 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -12,7 +12,9 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Loader2 } from 'lucide-react';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Loader2, User, UserPlus, UserX, Link2Off, CheckCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
 const formSchema = z.object({
@@ -32,6 +34,35 @@ const formSchema = z.object({
   tiene_cuenta_corriente: z.boolean(),
   limite_credito: z.number(),
   activo: z.boolean(),
+  // User linking fields
+  vincular_usuario: z.enum(['ninguno', 'existente', 'nuevo', 'mantener']).default('mantener'),
+  user_id: z.string().optional(),
+  user_email: z.string().email('Email inválido').optional().or(z.literal('')),
+  user_password: z.string().min(6, 'Mínimo 6 caracteres').optional().or(z.literal('')),
+}).refine((data) => {
+  if (data.vincular_usuario === 'existente' && !data.user_id) {
+    return false;
+  }
+  return true;
+}, {
+  message: 'Selecciona un usuario',
+  path: ['user_id'],
+}).refine((data) => {
+  if (data.vincular_usuario === 'nuevo' && !data.user_email) {
+    return false;
+  }
+  return true;
+}, {
+  message: 'Email requerido',
+  path: ['user_email'],
+}).refine((data) => {
+  if (data.vincular_usuario === 'nuevo' && (!data.user_password || data.user_password.length < 6)) {
+    return false;
+  }
+  return true;
+}, {
+  message: 'Contraseña requerida (mínimo 6 caracteres)',
+  path: ['user_password'],
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -54,6 +85,7 @@ interface Seller {
   tiene_cuenta_corriente: boolean;
   limite_credito: number;
   activo: boolean;
+  user_id?: string | null;
 }
 
 interface EditSellerDialogProps {
@@ -65,6 +97,8 @@ interface EditSellerDialogProps {
 
 export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: EditSellerDialogProps) {
   const { tenantId } = useTenant();
+  const queryClient = useQueryClient();
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -85,8 +119,14 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
       tiene_cuenta_corriente: seller.tiene_cuenta_corriente,
       limite_credito: seller.limite_credito || 0,
       activo: seller.activo,
+      vincular_usuario: seller.user_id ? 'mantener' : 'ninguno',
+      user_id: '',
+      user_email: '',
+      user_password: '',
     },
   });
+
+  const vincularUsuario = form.watch('vincular_usuario');
 
   useEffect(() => {
     if (seller) {
@@ -107,9 +147,45 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
         tiene_cuenta_corriente: seller.tiene_cuenta_corriente,
         limite_credito: seller.limite_credito || 0,
         activo: seller.activo,
+        vincular_usuario: seller.user_id ? 'mantener' : 'ninguno',
+        user_id: '',
+        user_email: '',
+        user_password: '',
       });
     }
   }, [seller, form]);
+
+  // Fetch linked user info
+  const { data: linkedUser } = useQuery({
+    queryKey: ['linked-user', seller.user_id],
+    queryFn: async () => {
+      if (!seller.user_id) return null;
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('user_id, email, nombre, apellido')
+        .eq('user_id', seller.user_id)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!seller.user_id && open,
+  });
+
+  // Fetch available users for linking
+  const { data: availableUsers } = useQuery({
+    queryKey: ['users-for-seller', tenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('user_id, email, nombre, apellido')
+        .eq('tenant_id', tenantId)
+        .eq('activo', true)
+        .order('nombre');
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!tenantId && open,
+  });
 
   // Fetch sucursales and tarifas
   const { data: sucursales } = useQuery({
@@ -140,8 +216,56 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
     enabled: !!tenantId && open,
   });
 
+  // Function to ensure user has seller role
+  const ensureSellerRole = async (userId: string) => {
+    const { data: existingRole } = await supabase
+      .from('user_roles')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('role', 'seller')
+      .maybeSingle();
+
+    if (!existingRole) {
+      const { error } = await supabase
+        .from('user_roles')
+        .insert({ user_id: userId, role: 'seller' });
+      if (error) throw error;
+    }
+  };
+
   const updateMutation = useMutation({
     mutationFn: async (values: FormValues) => {
+      let newUserId: string | null = seller.user_id || null;
+
+      // Handle user linking changes
+      if (values.vincular_usuario === 'ninguno') {
+        newUserId = null;
+      } else if (values.vincular_usuario === 'existente' && values.user_id) {
+        newUserId = values.user_id;
+        await ensureSellerRole(newUserId);
+      } else if (values.vincular_usuario === 'nuevo' && values.user_email && values.user_password) {
+        setIsCreatingUser(true);
+        try {
+          // Create user via edge function
+          const { data, error } = await supabase.functions.invoke('create-user', {
+            body: {
+              email: values.user_email,
+              password: values.user_password,
+              nombre: values.nombre,
+              roles: ['seller'],
+            },
+          });
+
+          if (error) throw error;
+          if (data?.error) throw new Error(data.error);
+          
+          newUserId = data.user_id;
+        } finally {
+          setIsCreatingUser(false);
+        }
+      }
+      // If 'mantener', keep the current user_id
+
       const { error } = await supabase
         .from('ecommerce_sellers')
         .update({
@@ -161,12 +285,14 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
           tiene_cuenta_corriente: values.tiene_cuenta_corriente,
           limite_credito: values.limite_credito,
           activo: values.activo,
+          user_id: newUserId,
         })
         .eq('id', seller.id);
       if (error) throw error;
     },
     onSuccess: () => {
       toast({ title: 'Seller actualizado' });
+      queryClient.invalidateQueries({ queryKey: ['ecommerce-sellers'] });
       onSuccess();
     },
     onError: (error: any) => {
@@ -355,12 +481,164 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
               />
             )}
 
+            {/* User Linking Section */}
+            <div className="rounded-lg border p-4 space-y-4">
+              <div className="space-y-1">
+                <Label className="text-base font-medium">Acceso al Portal de Sellers</Label>
+                <p className="text-sm text-muted-foreground">
+                  Vincula un usuario para que el seller pueda acceder al portal y ver sus pedidos
+                </p>
+              </div>
+
+              {/* Show current linked user if exists */}
+              {seller.user_id && linkedUser && vincularUsuario === 'mantener' && (
+                <Alert className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <AlertDescription className="text-green-800 dark:text-green-200">
+                    <span className="font-medium">Usuario vinculado:</span> {linkedUser.nombre} {linkedUser.apellido} ({linkedUser.email})
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <FormField
+                control={form.control}
+                name="vincular_usuario"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <RadioGroup
+                        onValueChange={field.onChange}
+                        value={field.value}
+                        className="space-y-3"
+                      >
+                        {seller.user_id && (
+                          <div className="flex items-center space-x-3 rounded-md border p-3">
+                            <RadioGroupItem value="mantener" id="mantener" />
+                            <Label htmlFor="mantener" className="flex items-center gap-2 cursor-pointer flex-1">
+                              <CheckCircle className="h-4 w-4 text-green-600" />
+                              <div>
+                                <p className="font-medium">Mantener usuario actual</p>
+                                <p className="text-sm text-muted-foreground">Conservar la vinculación existente</p>
+                              </div>
+                            </Label>
+                          </div>
+                        )}
+
+                        <div className="flex items-center space-x-3 rounded-md border p-3">
+                          <RadioGroupItem value="ninguno" id="ninguno" />
+                          <Label htmlFor="ninguno" className="flex items-center gap-2 cursor-pointer flex-1">
+                            {seller.user_id ? (
+                              <Link2Off className="h-4 w-4 text-destructive" />
+                            ) : (
+                              <UserX className="h-4 w-4 text-muted-foreground" />
+                            )}
+                            <div>
+                              <p className="font-medium">{seller.user_id ? 'Desvincular usuario' : 'Sin acceso'}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {seller.user_id ? 'Quitar el acceso del usuario actual' : 'El seller no tendrá acceso al portal'}
+                              </p>
+                            </div>
+                          </Label>
+                        </div>
+                        
+                        <div className="flex items-start space-x-3 rounded-md border p-3">
+                          <RadioGroupItem value="existente" id="existente" className="mt-1" />
+                          <Label htmlFor="existente" className="flex items-start gap-2 cursor-pointer flex-1">
+                            <User className="h-4 w-4 text-muted-foreground mt-0.5" />
+                            <div className="flex-1">
+                              <p className="font-medium">{seller.user_id ? 'Cambiar a otro usuario' : 'Vincular usuario existente'}</p>
+                              <p className="text-sm text-muted-foreground mb-2">Selecciona un usuario del sistema</p>
+                              {vincularUsuario === 'existente' && (
+                                <FormField
+                                  control={form.control}
+                                  name="user_id"
+                                  render={({ field: userField }) => (
+                                    <FormItem>
+                                      <Select onValueChange={userField.onChange} value={userField.value}>
+                                        <FormControl>
+                                          <SelectTrigger>
+                                            <SelectValue placeholder="Seleccionar usuario..." />
+                                          </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                          {availableUsers?.filter(u => u.user_id !== seller.user_id).map((u) => (
+                                            <SelectItem key={u.user_id} value={u.user_id}>
+                                              {u.nombre} {u.apellido} ({u.email})
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                              )}
+                            </div>
+                          </Label>
+                        </div>
+                        
+                        <div className="flex items-start space-x-3 rounded-md border p-3">
+                          <RadioGroupItem value="nuevo" id="nuevo" className="mt-1" />
+                          <Label htmlFor="nuevo" className="flex items-start gap-2 cursor-pointer flex-1">
+                            <UserPlus className="h-4 w-4 text-muted-foreground mt-0.5" />
+                            <div className="flex-1">
+                              <p className="font-medium">Crear usuario nuevo</p>
+                              <p className="text-sm text-muted-foreground mb-2">Crea una cuenta nueva para el seller</p>
+                              {vincularUsuario === 'nuevo' && (
+                                <div className="space-y-3">
+                                  <FormField
+                                    control={form.control}
+                                    name="user_email"
+                                    render={({ field: emailField }) => (
+                                      <FormItem>
+                                        <FormLabel>Email de acceso</FormLabel>
+                                        <FormControl>
+                                          <Input 
+                                            type="email" 
+                                            placeholder="usuario@email.com" 
+                                            {...emailField} 
+                                          />
+                                        </FormControl>
+                                        <FormMessage />
+                                      </FormItem>
+                                    )}
+                                  />
+                                  <FormField
+                                    control={form.control}
+                                    name="user_password"
+                                    render={({ field: passField }) => (
+                                      <FormItem>
+                                        <FormLabel>Contraseña</FormLabel>
+                                        <FormControl>
+                                          <Input 
+                                            type="password" 
+                                            placeholder="Mínimo 6 caracteres" 
+                                            {...passField} 
+                                          />
+                                        </FormControl>
+                                        <FormMessage />
+                                      </FormItem>
+                                    )}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          </Label>
+                        </div>
+                      </RadioGroup>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={updateMutation.isPending}>
-                {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <Button type="submit" disabled={updateMutation.isPending || isCreatingUser}>
+                {(updateMutation.isPending || isCreatingUser) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Guardar
               </Button>
             </DialogFooter>

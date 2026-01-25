@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, Search, MoreHorizontal, Store, Settings, Eye, Trash2, RefreshCw, ShoppingCart, Users, DollarSign, Link2, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { Plus, Search, MoreHorizontal, Store, Settings, Eye, Trash2, RefreshCw, ShoppingCart, Users, DollarSign, Link2, CheckCircle2, XCircle, Loader2, UserCheck, UserX } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from '@/hooks/use-toast';
@@ -41,6 +41,7 @@ interface Seller {
   limite_credito: number;
   ultimo_sync: string | null;
   created_at: string;
+  user_id: string | null;
 }
 
 const PLATAFORMA_LABELS: Record<string, { label: string; color: string }> = {
@@ -296,6 +297,7 @@ export default function Sellers() {
                   <TableHead>Seller</TableHead>
                   <TableHead>Plataforma</TableHead>
                   <TableHead>Conexión</TableHead>
+                  <TableHead>Acceso</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead className="text-right">Saldo</TableHead>
                   <TableHead>Último Sync</TableHead>
@@ -339,6 +341,19 @@ export default function Sellers() {
                         <div className="flex items-center gap-2">
                           <XCircle className="h-4 w-4 text-muted-foreground" />
                           <span className="text-xs text-muted-foreground">Pendiente</span>
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {seller.user_id ? (
+                        <div className="flex items-center gap-2">
+                          <UserCheck className="h-4 w-4 text-green-500" />
+                          <span className="text-xs text-green-600 dark:text-green-400">Vinculado</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <UserX className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-xs text-muted-foreground">Sin acceso</span>
                         </div>
                       )}
                     </TableCell>
@@ -426,7 +441,7 @@ export default function Sellers() {
                 ))}
                 {filteredSellers?.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                       No hay sellers registrados
                     </TableCell>
                   </TableRow>
