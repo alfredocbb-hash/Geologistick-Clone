@@ -151,6 +151,11 @@ const navigation: NavGroup[] = [{
 }, {
   label: 'e-Commerce',
   items: [{
+    title: 'Dashboard',
+    url: '/ecommerce/dashboard',
+    icon: LayoutDashboard,
+    permissionKey: 'ecommerce.sellers.view'
+  }, {
     title: 'Tiendas',
     url: '/ecommerce/sellers',
     icon: Store,
