@@ -1,0 +1,354 @@
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/lib/auth';
+import { useTenant } from '@/hooks/useTenant';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Plus, Search, MoreHorizontal, Store, Settings, Eye, Trash2, RefreshCw, ShoppingCart, Users, DollarSign } from 'lucide-react';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
+import { toast } from '@/hooks/use-toast';
+import { CreateSellerDialog } from '@/components/ecommerce/CreateSellerDialog';
+import { SellerDetailsDialog } from '@/components/ecommerce/SellerDetailsDialog';
+import { EditSellerDialog } from '@/components/ecommerce/EditSellerDialog';
+
+interface Seller {
+  id: string;
+  nombre: string;
+  razon_social: string | null;
+  email: string;
+  telefono: string | null;
+  direccion: string | null;
+  ciudad: string | null;
+  provincia: string | null;
+  codigo_postal: string | null;
+  cuit: string | null;
+  plataforma: string;
+  store_url: string | null;
+  sucursal_pickup_id: string | null;
+  tarifa_id: string | null;
+  activo: boolean;
+  tiene_cuenta_corriente: boolean;
+  saldo_cuenta_corriente: number;
+  limite_credito: number;
+  ultimo_sync: string | null;
+  created_at: string;
+}
+
+const PLATAFORMA_LABELS: Record<string, { label: string; color: string }> = {
+  tiendanube: { label: 'Tiendanube', color: 'bg-blue-500' },
+  mercadolibre: { label: 'MercadoLibre', color: 'bg-yellow-500' },
+  shopify: { label: 'Shopify', color: 'bg-green-500' },
+  woocommerce: { label: 'WooCommerce', color: 'bg-purple-500' },
+  manual: { label: 'Manual', color: 'bg-gray-500' },
+};
+
+export default function Sellers() {
+  const { isSuperAdmin } = useAuth();
+  const { tenantId } = useTenant();
+  const queryClient = useQueryClient();
+  
+  const [search, setSearch] = useState('');
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [selectedSeller, setSelectedSeller] = useState<Seller | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+
+  // Fetch sellers
+  const { data: sellers, isLoading } = useQuery({
+    queryKey: ['ecommerce-sellers', tenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('ecommerce_sellers')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data as Seller[];
+    },
+    enabled: !!tenantId,
+  });
+
+  // Toggle active mutation
+  const toggleActiveMutation = useMutation({
+    mutationFn: async ({ id, activo }: { id: string; activo: boolean }) => {
+      const { error } = await supabase
+        .from('ecommerce_sellers')
+        .update({ activo })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ecommerce-sellers'] });
+      toast({ title: 'Estado actualizado' });
+    },
+    onError: () => {
+      toast({ title: 'Error al actualizar', variant: 'destructive' });
+    },
+  });
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('ecommerce_sellers')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ecommerce-sellers'] });
+      toast({ title: 'Seller eliminado' });
+    },
+    onError: () => {
+      toast({ title: 'Error al eliminar', variant: 'destructive' });
+    },
+  });
+
+  const filteredSellers = sellers?.filter(s =>
+    s.nombre.toLowerCase().includes(search.toLowerCase()) ||
+    s.email.toLowerCase().includes(search.toLowerCase())
+  );
+
+  // Stats
+  const stats = {
+    total: sellers?.length || 0,
+    activos: sellers?.filter(s => s.activo).length || 0,
+    conCtaCte: sellers?.filter(s => s.tiene_cuenta_corriente).length || 0,
+    saldoTotal: sellers?.reduce((acc, s) => acc + (s.saldo_cuenta_corriente || 0), 0) || 0,
+  };
+
+  if (!tenantId) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Cargando...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Sellers e-Commerce</h1>
+          <p className="text-muted-foreground">Gestiona las tiendas online conectadas</p>
+        </div>
+        <Button onClick={() => setCreateDialogOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Agregar Seller
+        </Button>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                <Store className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{stats.total}</p>
+                <p className="text-xs text-muted-foreground">Total Sellers</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                <ShoppingCart className="h-5 w-5 text-green-600 dark:text-green-400" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{stats.activos}</p>
+                <p className="text-xs text-muted-foreground">Activos</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+                <Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{stats.conCtaCte}</p>
+                <p className="text-xs text-muted-foreground">Con Cta. Cte.</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
+                <DollarSign className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">${stats.saldoTotal.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">Saldo Total</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Search */}
+      <div className="flex items-center gap-4">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar seller..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+      </div>
+
+      {/* Table */}
+      <Card>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="p-6 space-y-4">
+              {[...Array(5)].map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Seller</TableHead>
+                  <TableHead>Plataforma</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead className="text-right">Saldo</TableHead>
+                  <TableHead>Último Sync</TableHead>
+                  <TableHead className="w-[70px]"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredSellers?.map((seller) => (
+                  <TableRow key={seller.id}>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{seller.nombre}</span>
+                        <span className="text-xs text-muted-foreground">{seller.email}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={PLATAFORMA_LABELS[seller.plataforma]?.color || 'bg-gray-500'}>
+                        {PLATAFORMA_LABELS[seller.plataforma]?.label || seller.plataforma}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={seller.activo ? 'default' : 'secondary'}>
+                        {seller.activo ? 'Activo' : 'Inactivo'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      ${seller.saldo_cuenta_corriente?.toLocaleString() || '0'}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {seller.ultimo_sync 
+                        ? format(new Date(seller.ultimo_sync), 'dd/MM/yy HH:mm', { locale: es })
+                        : '-'
+                      }
+                    </TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => {
+                            setSelectedSeller(seller);
+                            setDetailsOpen(true);
+                          }}>
+                            <Eye className="mr-2 h-4 w-4" />
+                            Ver Detalles
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => {
+                            setSelectedSeller(seller);
+                            setEditOpen(true);
+                          }}>
+                            <Settings className="mr-2 h-4 w-4" />
+                            Configurar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => toggleActiveMutation.mutate({ id: seller.id, activo: !seller.activo })}
+                          >
+                            <RefreshCw className="mr-2 h-4 w-4" />
+                            {seller.activo ? 'Desactivar' : 'Activar'}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => {
+                              if (confirm('¿Eliminar este seller?')) {
+                                deleteMutation.mutate(seller.id);
+                              }
+                            }}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Eliminar
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {filteredSellers?.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                      No hay sellers registrados
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Dialogs */}
+      <CreateSellerDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['ecommerce-sellers'] });
+          setCreateDialogOpen(false);
+        }}
+      />
+      
+      {selectedSeller && (
+        <>
+          <SellerDetailsDialog
+            open={detailsOpen}
+            onOpenChange={setDetailsOpen}
+            seller={selectedSeller}
+          />
+          <EditSellerDialog
+            open={editOpen}
+            onOpenChange={setEditOpen}
+            seller={selectedSeller}
+            onSuccess={() => {
+              queryClient.invalidateQueries({ queryKey: ['ecommerce-sellers'] });
+              setEditOpen(false);
+            }}
+          />
+        </>
+      )}
+    </div>
+  );
+}

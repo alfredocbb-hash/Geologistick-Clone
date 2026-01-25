@@ -393,6 +393,241 @@ export type Database = {
         }
         Relationships: []
       }
+      ecommerce_orders: {
+        Row: {
+          buyer_dni: string | null
+          buyer_email: string | null
+          buyer_name: string
+          buyer_phone: string | null
+          created_at: string | null
+          envio_id: string | null
+          external_order_id: string
+          external_order_number: string | null
+          fulfillment_status: string | null
+          id: string
+          items: Json | null
+          order_status: string | null
+          payment_status: string | null
+          plataforma: string
+          raw_data: Json | null
+          seller_id: string
+          shipping_address: string
+          shipping_city: string | null
+          shipping_cost: number | null
+          shipping_lat: number | null
+          shipping_lng: number | null
+          shipping_notes: string | null
+          shipping_postal_code: string | null
+          shipping_province: string | null
+          subtotal: number | null
+          synced_at: string | null
+          tenant_id: string
+          total: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          buyer_dni?: string | null
+          buyer_email?: string | null
+          buyer_name: string
+          buyer_phone?: string | null
+          created_at?: string | null
+          envio_id?: string | null
+          external_order_id: string
+          external_order_number?: string | null
+          fulfillment_status?: string | null
+          id?: string
+          items?: Json | null
+          order_status?: string | null
+          payment_status?: string | null
+          plataforma: string
+          raw_data?: Json | null
+          seller_id: string
+          shipping_address: string
+          shipping_city?: string | null
+          shipping_cost?: number | null
+          shipping_lat?: number | null
+          shipping_lng?: number | null
+          shipping_notes?: string | null
+          shipping_postal_code?: string | null
+          shipping_province?: string | null
+          subtotal?: number | null
+          synced_at?: string | null
+          tenant_id: string
+          total?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          buyer_dni?: string | null
+          buyer_email?: string | null
+          buyer_name?: string
+          buyer_phone?: string | null
+          created_at?: string | null
+          envio_id?: string | null
+          external_order_id?: string
+          external_order_number?: string | null
+          fulfillment_status?: string | null
+          id?: string
+          items?: Json | null
+          order_status?: string | null
+          payment_status?: string | null
+          plataforma?: string
+          raw_data?: Json | null
+          seller_id?: string
+          shipping_address?: string
+          shipping_city?: string | null
+          shipping_cost?: number | null
+          shipping_lat?: number | null
+          shipping_lng?: number | null
+          shipping_notes?: string | null
+          shipping_postal_code?: string | null
+          shipping_province?: string | null
+          subtotal?: number | null
+          synced_at?: string | null
+          tenant_id?: string
+          total?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ecommerce_orders_envio_id_fkey"
+            columns: ["envio_id"]
+            isOneToOne: false
+            referencedRelation: "envios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ecommerce_orders_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "ecommerce_sellers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ecommerce_sellers: {
+        Row: {
+          access_token: string | null
+          activo: boolean | null
+          ciudad: string | null
+          codigo_postal: string | null
+          created_at: string | null
+          created_by: string | null
+          cuit: string | null
+          dias_retiro: string[] | null
+          direccion: string | null
+          email: string
+          horario_retiro: string | null
+          id: string
+          limite_credito: number | null
+          nombre: string
+          plataforma: string
+          provincia: string | null
+          razon_social: string | null
+          refresh_token: string | null
+          saldo_cuenta_corriente: number | null
+          store_id: string | null
+          store_url: string | null
+          sucursal_pickup_id: string | null
+          tarifa_id: string | null
+          telefono: string | null
+          tenant_id: string
+          tiene_cuenta_corriente: boolean | null
+          token_expires_at: string | null
+          ultimo_sync: string | null
+          updated_at: string | null
+          user_id: string | null
+          webhook_secret: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          activo?: boolean | null
+          ciudad?: string | null
+          codigo_postal?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          cuit?: string | null
+          dias_retiro?: string[] | null
+          direccion?: string | null
+          email: string
+          horario_retiro?: string | null
+          id?: string
+          limite_credito?: number | null
+          nombre: string
+          plataforma?: string
+          provincia?: string | null
+          razon_social?: string | null
+          refresh_token?: string | null
+          saldo_cuenta_corriente?: number | null
+          store_id?: string | null
+          store_url?: string | null
+          sucursal_pickup_id?: string | null
+          tarifa_id?: string | null
+          telefono?: string | null
+          tenant_id: string
+          tiene_cuenta_corriente?: boolean | null
+          token_expires_at?: string | null
+          ultimo_sync?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          webhook_secret?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          activo?: boolean | null
+          ciudad?: string | null
+          codigo_postal?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          cuit?: string | null
+          dias_retiro?: string[] | null
+          direccion?: string | null
+          email?: string
+          horario_retiro?: string | null
+          id?: string
+          limite_credito?: number | null
+          nombre?: string
+          plataforma?: string
+          provincia?: string | null
+          razon_social?: string | null
+          refresh_token?: string | null
+          saldo_cuenta_corriente?: number | null
+          store_id?: string | null
+          store_url?: string | null
+          sucursal_pickup_id?: string | null
+          tarifa_id?: string | null
+          telefono?: string | null
+          tenant_id?: string
+          tiene_cuenta_corriente?: boolean | null
+          token_expires_at?: string | null
+          ultimo_sync?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          webhook_secret?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ecommerce_sellers_sucursal_pickup_id_fkey"
+            columns: ["sucursal_pickup_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ecommerce_sellers_tarifa_id_fkey"
+            columns: ["tarifa_id"]
+            isOneToOne: false
+            referencedRelation: "tarifas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ecommerce_sellers_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       empresas_terciarizadas: {
         Row: {
           activa: boolean | null
@@ -1958,6 +2193,76 @@ export type Database = {
           },
         ]
       }
+      seller_cuenta_corriente: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          descripcion: string | null
+          envio_id: string | null
+          id: string
+          metodo_pago: string | null
+          monto: number
+          order_id: string | null
+          referencia: string | null
+          saldo_anterior: number | null
+          saldo_nuevo: number
+          seller_id: string
+          tipo: string
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          descripcion?: string | null
+          envio_id?: string | null
+          id?: string
+          metodo_pago?: string | null
+          monto: number
+          order_id?: string | null
+          referencia?: string | null
+          saldo_anterior?: number | null
+          saldo_nuevo: number
+          seller_id: string
+          tipo: string
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          descripcion?: string | null
+          envio_id?: string | null
+          id?: string
+          metodo_pago?: string | null
+          monto?: number
+          order_id?: string | null
+          referencia?: string | null
+          saldo_anterior?: number | null
+          saldo_nuevo?: number
+          seller_id?: string
+          tipo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "seller_cuenta_corriente_envio_id_fkey"
+            columns: ["envio_id"]
+            isOneToOne: false
+            referencedRelation: "envios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "seller_cuenta_corriente_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "ecommerce_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "seller_cuenta_corriente_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "ecommerce_sellers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sesiones_caja: {
         Row: {
           aprobado_por: string | null
@@ -2769,6 +3074,8 @@ export type Database = {
           color_secundario: string | null
           configuracion: Json | null
           created_at: string | null
+          ecommerce_config: Json | null
+          ecommerce_enabled: boolean | null
           favicon_url: string | null
           id: string
           logo_url: string | null
@@ -2790,6 +3097,8 @@ export type Database = {
           color_secundario?: string | null
           configuracion?: Json | null
           created_at?: string | null
+          ecommerce_config?: Json | null
+          ecommerce_enabled?: boolean | null
           favicon_url?: string | null
           id?: string
           logo_url?: string | null
@@ -2811,6 +3120,8 @@ export type Database = {
           color_secundario?: string | null
           configuracion?: Json | null
           created_at?: string | null
+          ecommerce_config?: Json | null
+          ecommerce_enabled?: boolean | null
           favicon_url?: string | null
           id?: string
           logo_url?: string | null
@@ -3133,6 +3444,7 @@ export type Database = {
         | "atencion_cliente"
         | "despachador"
         | "super_admin"
+        | "seller"
       cash_session_status: "abierta" | "cerrada" | "pendiente_aprobacion"
       integration_environment: "sandbox" | "production"
       integration_type:
@@ -3292,6 +3604,7 @@ export const Constants = {
         "atencion_cliente",
         "despachador",
         "super_admin",
+        "seller",
       ],
       cash_session_status: ["abierta", "cerrada", "pendiente_aprobacion"],
       integration_environment: ["sandbox", "production"],

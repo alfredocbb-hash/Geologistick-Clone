@@ -96,6 +96,7 @@ const ROLE_LABELS: Record<AppRole, string> = {
   atencion_cliente: 'Atención Cliente',
   sucursal: 'Sucursal',
   cliente: 'Cliente',
+  seller: 'Seller e-Commerce',
 };
 
 const ROLE_COLORS: Record<AppRole, string> = {
@@ -103,6 +104,7 @@ const ROLE_COLORS: Record<AppRole, string> = {
   admin: 'bg-red-500/10 text-red-500',
   supervisor: 'bg-orange-500/10 text-orange-500',
   operador: 'bg-blue-500/10 text-blue-500',
+  seller: 'bg-purple-500/10 text-purple-500',
   chofer: 'bg-chofer/10 text-chofer',
   bodega: 'bg-purple-500/10 text-purple-500',
   despachador: 'bg-cyan-500/10 text-cyan-500',
