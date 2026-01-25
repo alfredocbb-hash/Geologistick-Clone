@@ -1,13 +1,13 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/lib/auth';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Package, Loader2, Mail, Lock, User } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/lib/auth";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Package, Loader2, Mail, Lock, User } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
@@ -20,23 +20,23 @@ export function LoginForm() {
     setIsLoading(true);
 
     const formData = new FormData(e.currentTarget);
-    const email = formData.get('email') as string;
-    const password = formData.get('password') as string;
+    const email = formData.get("email") as string;
+    const password = formData.get("password") as string;
 
     const { error } = await signIn(email, password);
 
     if (error) {
       toast({
-        title: 'Error al iniciar sesión',
+        title: "Error al iniciar sesión",
         description: error.message,
-        variant: 'destructive',
+        variant: "destructive",
       });
     } else {
       toast({
-        title: '¡Bienvenido!',
-        description: 'Has iniciado sesión correctamente.',
+        title: "¡Bienvenido!",
+        description: "Has iniciado sesión correctamente.",
       });
-      navigate('/dashboard');
+      navigate("/dashboard");
     }
 
     setIsLoading(false);
@@ -47,28 +47,28 @@ export function LoginForm() {
     setIsLoading(true);
 
     const formData = new FormData(e.currentTarget);
-    const email = formData.get('email') as string;
-    const password = formData.get('password') as string;
-    const nombre = formData.get('nombre') as string;
+    const email = formData.get("email") as string;
+    const password = formData.get("password") as string;
+    const nombre = formData.get("nombre") as string;
 
     const { error } = await signUp(email, password, nombre);
 
     if (error) {
       toast({
-        title: 'Error al registrarse',
+        title: "Error al registrarse",
         description: error.message,
-        variant: 'destructive',
+        variant: "destructive",
       });
       setIsLoading(false);
     } else {
       toast({
-        title: '¡Cuenta creada!',
-        description: 'Redirigiendo a configuración...',
+        title: "¡Cuenta creada!",
+        description: "Redirigiendo a configuración...",
       });
       // Auto-login and redirect to onboarding
       const { error: loginError } = await signIn(email, password);
       if (!loginError) {
-        navigate('/onboarding');
+        navigate("/onboarding");
       }
       setIsLoading(false);
     }
@@ -136,7 +136,7 @@ export function LoginForm() {
                         Iniciando...
                       </>
                     ) : (
-                      'Iniciar Sesión'
+                      "Iniciar Sesión"
                     )}
                   </Button>
                 </CardFooter>
@@ -198,7 +198,7 @@ export function LoginForm() {
                         Creando cuenta...
                       </>
                     ) : (
-                      'Crear Cuenta'
+                      "Crear Cuenta"
                     )}
                   </Button>
                 </CardFooter>
@@ -207,9 +207,7 @@ export function LoginForm() {
           </Tabs>
         </Card>
 
-        <p className="text-center text-sm text-muted-foreground">
-          © 2024 LogiTrack. Sistema de Gestión Logística.
-        </p>
+        <p className="text-center text-sm text-muted-foreground">© 2026 Geologistick. Sistema de Gestión Logística.</p>
       </div>
     </div>
   );
