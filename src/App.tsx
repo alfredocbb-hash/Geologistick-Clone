@@ -65,6 +65,7 @@ import SellerShipments from "./pages/seller/SellerShipments";
 import SellerAccount from "./pages/seller/SellerAccount";
 
 // e-Commerce Pages
+import EcommerceDashboard from "./pages/ecommerce/Dashboard";
 import EcommerceSellers from "./pages/ecommerce/Sellers";
 import EcommerceOrders from "./pages/ecommerce/Orders";
 import EcommerceSettlements from "./pages/ecommerce/Settlements";
@@ -178,6 +179,7 @@ function AppRoutes() {
       <Route path="/clients" element={<DashboardLayout><Clients /></DashboardLayout>} />
       
       {/* e-Commerce */}
+      <Route path="/ecommerce/dashboard" element={<DashboardLayout><EcommerceDashboard /></DashboardLayout>} />
       <Route path="/ecommerce/sellers" element={<DashboardLayout><EcommerceSellers /></DashboardLayout>} />
       <Route path="/ecommerce/orders" element={<DashboardLayout><EcommerceOrders /></DashboardLayout>} />
       <Route path="/ecommerce/settlements" element={<DashboardLayout><EcommerceSettlements /></DashboardLayout>} />
