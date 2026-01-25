@@ -3454,6 +3454,7 @@ export type Database = {
         | "email_smtp"
         | "sms"
         | "arca"
+        | "tiendanube"
       payment_method: "efectivo" | "mercado_pago" | "transferencia" | "tarjeta"
       payment_status: "pendiente" | "pagado" | "fallido" | "reembolsado"
       settlement_status: "generada" | "enviada" | "pagada" | "rechazada"
@@ -3615,6 +3616,7 @@ export const Constants = {
         "email_smtp",
         "sms",
         "arca",
+        "tiendanube",
       ],
       payment_method: ["efectivo", "mercado_pago", "transferencia", "tarjeta"],
       payment_status: ["pendiente", "pagado", "fallido", "reembolsado"],
