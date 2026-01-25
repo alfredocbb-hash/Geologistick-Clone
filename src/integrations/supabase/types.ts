@@ -1580,6 +1580,90 @@ export type Database = {
           },
         ]
       }
+      liquidaciones_seller: {
+        Row: {
+          aprobado_por: string | null
+          cantidad_movimientos: number | null
+          created_at: string | null
+          estado: string | null
+          fecha_pago: string | null
+          generado_por: string | null
+          id: string
+          metodo_pago: string | null
+          notas: string | null
+          periodo_fin: string
+          periodo_inicio: string
+          referencia_pago: string | null
+          saldo_anterior: number | null
+          saldo_final: number | null
+          saldo_periodo: number | null
+          seller_id: string
+          tenant_id: string | null
+          total_cargos: number | null
+          total_pagos: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          aprobado_por?: string | null
+          cantidad_movimientos?: number | null
+          created_at?: string | null
+          estado?: string | null
+          fecha_pago?: string | null
+          generado_por?: string | null
+          id?: string
+          metodo_pago?: string | null
+          notas?: string | null
+          periodo_fin: string
+          periodo_inicio: string
+          referencia_pago?: string | null
+          saldo_anterior?: number | null
+          saldo_final?: number | null
+          saldo_periodo?: number | null
+          seller_id: string
+          tenant_id?: string | null
+          total_cargos?: number | null
+          total_pagos?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          aprobado_por?: string | null
+          cantidad_movimientos?: number | null
+          created_at?: string | null
+          estado?: string | null
+          fecha_pago?: string | null
+          generado_por?: string | null
+          id?: string
+          metodo_pago?: string | null
+          notas?: string | null
+          periodo_fin?: string
+          periodo_inicio?: string
+          referencia_pago?: string | null
+          saldo_anterior?: number | null
+          saldo_final?: number | null
+          saldo_periodo?: number | null
+          seller_id?: string
+          tenant_id?: string | null
+          total_cargos?: number | null
+          total_pagos?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "liquidaciones_seller_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "ecommerce_sellers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "liquidaciones_seller_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       liquidaciones_sucursal: {
         Row: {
           aprobado_por: string | null
@@ -2200,6 +2284,7 @@ export type Database = {
           descripcion: string | null
           envio_id: string | null
           id: string
+          liquidacion_id: string | null
           metodo_pago: string | null
           monto: number
           order_id: string | null
@@ -2215,6 +2300,7 @@ export type Database = {
           descripcion?: string | null
           envio_id?: string | null
           id?: string
+          liquidacion_id?: string | null
           metodo_pago?: string | null
           monto: number
           order_id?: string | null
@@ -2230,6 +2316,7 @@ export type Database = {
           descripcion?: string | null
           envio_id?: string | null
           id?: string
+          liquidacion_id?: string | null
           metodo_pago?: string | null
           monto?: number
           order_id?: string | null
@@ -2245,6 +2332,13 @@ export type Database = {
             columns: ["envio_id"]
             isOneToOne: false
             referencedRelation: "envios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "seller_cuenta_corriente_liquidacion_id_fkey"
+            columns: ["liquidacion_id"]
+            isOneToOne: false
+            referencedRelation: "liquidaciones_seller"
             referencedColumns: ["id"]
           },
           {
