@@ -24,10 +24,11 @@ import {
   Loader2,
   Copy,
   ExternalLink,
-  FileText
+  FileText,
+  Store
 } from 'lucide-react';
 
-type IntegrationType = 'mercado_pago' | 'google_maps' | 'whatsapp' | 'email_smtp' | 'sms' | 'arca';
+type IntegrationType = 'mercado_pago' | 'google_maps' | 'whatsapp' | 'email_smtp' | 'sms' | 'arca' | 'tiendanube';
 type IntegrationEnvironment = 'sandbox' | 'production';
 
 interface IntegrationConfig {
@@ -122,6 +123,17 @@ const INTEGRATIONS_CONFIG: Record<IntegrationType, {
       { key: 'punto_venta', label: 'Punto de Venta', placeholder: '1', type: 'text', required: true, helpText: 'Número de punto de venta electrónico habilitado en AFIP' },
       { key: 'cert_pem', label: 'Certificado X.509 (PEM)', placeholder: '-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----', type: 'password', required: true, helpText: 'Certificado digital emitido por AFIP en formato PEM' },
       { key: 'private_key', label: 'Clave Privada (PEM)', placeholder: '-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----', type: 'password', required: true, helpText: 'Clave privada correspondiente al certificado' },
+    ],
+  },
+  tiendanube: {
+    name: 'Tiendanube',
+    description: 'Sincronización de pedidos con Tiendanube',
+    icon: Store,
+    docsUrl: 'https://tiendanube.github.io/api-documentation',
+    webhookUrl: '/functions/v1/tiendanube-webhook',
+    fields: [
+      { key: 'client_id', label: 'Client ID', placeholder: 'Tu Client ID de Tiendanube', type: 'text', required: true, helpText: 'ID de la aplicación creada en Tiendanube Partners' },
+      { key: 'client_secret', label: 'Client Secret', placeholder: 'Tu Client Secret', type: 'password', required: true, helpText: 'Secret de la aplicación de Tiendanube' },
     ],
   },
 };
@@ -295,7 +307,7 @@ export default function IntegrationSettings() {
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as IntegrationType)}>
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-7">
           {(Object.entries(INTEGRATIONS_CONFIG) as [IntegrationType, typeof INTEGRATIONS_CONFIG[IntegrationType]][]).map(([key, config]) => {
             const Icon = config.icon;
             const configured = configs && Object.keys(configs).length > 0;

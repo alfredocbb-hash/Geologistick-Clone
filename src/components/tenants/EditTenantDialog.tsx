@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -39,12 +40,14 @@ interface EditTenantDialogProps {
     max_sucursales: number;
     max_envios_mes: number;
     trial_ends_at: string | null;
+    ecommerce_enabled?: boolean;
   };
   onSuccess: () => void;
 }
 
 export function EditTenantDialog({ open, onOpenChange, tenant, onSuccess }: EditTenantDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [ecommerceEnabled, setEcommerceEnabled] = useState(tenant.ecommerce_enabled ?? false);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -71,6 +74,7 @@ export function EditTenantDialog({ open, onOpenChange, tenant, onSuccess }: Edit
       max_envios_mes: tenant.max_envios_mes,
       trial_ends_at: tenant.trial_ends_at ? format(new Date(tenant.trial_ends_at), 'yyyy-MM-dd') : ''
     });
+    setEcommerceEnabled(tenant.ecommerce_enabled ?? false);
   }, [tenant, form]);
 
   const extendTrial = (days: number) => {
@@ -94,7 +98,8 @@ export function EditTenantDialog({ open, onOpenChange, tenant, onSuccess }: Edit
           max_envios_mes: values.max_envios_mes,
           trial_ends_at: values.plan === 'trial' && values.trial_ends_at
             ? new Date(values.trial_ends_at).toISOString()
-            : null
+            : null,
+          ecommerce_enabled: ecommerceEnabled
         })
         .eq('id', tenant.id);
 
@@ -280,6 +285,20 @@ export function EditTenantDialog({ open, onOpenChange, tenant, onSuccess }: Edit
                 </FormItem>
               )}
             />
+
+            {/* e-Commerce Module Toggle */}
+            <div className="flex items-center justify-between rounded-lg border p-4">
+              <div>
+                <Label className="text-base font-medium">Módulo e-Commerce</Label>
+                <p className="text-sm text-muted-foreground">
+                  Habilita gestión de sellers y sincronización con plataformas
+                </p>
+              </div>
+              <Switch 
+                checked={ecommerceEnabled} 
+                onCheckedChange={setEcommerceEnabled} 
+              />
+            </div>
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

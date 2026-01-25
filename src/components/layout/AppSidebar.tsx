@@ -5,7 +5,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useBranchConfig } from '@/hooks/useBranchConfig';
 import { useTenantContext } from '@/components/providers/TenantProvider';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from '@/components/ui/sidebar';
-import { Package, LayoutDashboard, Truck, Users, DollarSign, CreditCard, Settings, Building2, Tags, UserCog, Wallet, FileText, PackagePlus, MapPin, ClipboardList, LogOut, ChevronLeft, ChevronRight, QrCode, Route, Map, Car, Plug, Home, Palette, Crown, GitBranch } from 'lucide-react';
+import { Package, LayoutDashboard, Truck, Users, DollarSign, CreditCard, Settings, Building2, Tags, UserCog, Wallet, FileText, PackagePlus, MapPin, ClipboardList, LogOut, ChevronLeft, ChevronRight, QrCode, Route, Map, Car, Plug, Home, Palette, Crown, GitBranch, ShoppingCart, Store, ShoppingBag, Receipt } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -21,6 +21,7 @@ interface NavGroup {
   items: NavItem[];
   permissionKeys?: string[]; // Any of these permissions shows the group
   superAdminOnly?: boolean; // Only show to super_admin users
+  requiresEcommerce?: boolean; // Only show if tenant has ecommerce_enabled = true
 }
 const navigation: NavGroup[] = [{
   label: 'Principal',
@@ -148,6 +149,26 @@ const navigation: NavGroup[] = [{
   }],
   permissionKeys: ['clients.view', 'clients.manage']
 }, {
+  label: 'e-Commerce',
+  items: [{
+    title: 'Tiendas',
+    url: '/ecommerce/sellers',
+    icon: Store,
+    permissionKey: 'ecommerce.sellers.view'
+  }, {
+    title: 'Pedidos',
+    url: '/ecommerce/orders',
+    icon: ShoppingBag,
+    permissionKey: 'ecommerce.orders.view'
+  }, {
+    title: 'Liquidaciones',
+    url: '/ecommerce/settlements',
+    icon: Receipt,
+    permissionKey: 'ecommerce.settlements.view'
+  }],
+  permissionKeys: ['ecommerce.sellers.view', 'ecommerce.orders.view', 'ecommerce.settlements.view'],
+  requiresEcommerce: true
+}, {
   label: 'Terciarizados',
   items: [{
     title: 'Empresas',
@@ -227,6 +248,7 @@ export function AppSidebar() {
     realizaEntregas,
     isLoading: branchLoading
   } = useBranchConfig();
+  const { tenant } = useTenantContext();
   const { branding } = useTenantContext();
   const location = useLocation();
   const collapsed = state === 'collapsed';
@@ -236,6 +258,10 @@ export function AppSidebar() {
     // Super Admin only section
     if (group.superAdminOnly) {
       return isSuperAdmin();
+    }
+    // e-Commerce section requires tenant to have ecommerce_enabled
+    if (group.requiresEcommerce && !tenant?.ecommerce_enabled) {
+      return false;
     }
     if (isSuperAdmin()) return true;
     if (!group.permissionKeys || group.permissionKeys.length === 0) return true;
