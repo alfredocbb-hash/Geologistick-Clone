@@ -1,225 +1,279 @@
 
 
-# Plan: Vincular Sellers a Usuarios
+# Plan: Dashboard Métricas e-Commerce
 
 ## Resumen
 
-Agregar la funcionalidad para vincular sellers de e-commerce con usuarios del sistema. Esto permitira que los sellers puedan acceder al Portal de Sellers creado anteriormente, autenticandose con su email/password y viendo solo los datos de su tienda.
+Crear una pagina de dashboard especifica para el modulo e-Commerce que muestre metricas clave para administradores: pedidos del mes, sellers activos, ingresos totales, pedidos pendientes de envio, y montos pendientes de liquidar.
 
-## Arquitectura de la Vinculacion
+## Arquitectura de la Pagina
 
 ```text
-+-------------------+         +-------------------+
-|  ecommerce_sellers |  <-->  |     profiles      |
-|-------------------|         |-------------------|
-| user_id (FK)      |-------->| user_id           |
-| email             |         | email             |
-| nombre            |         | nombre            |
-+-------------------+         +-------------------+
-                                      |
-                                      v
-                              +---------------+
-                              |  user_roles   |
-                              |---------------|
-                              | user_id       |
-                              | role='seller' |
-                              +---------------+
++----------------------------------------------------------+
+|  Dashboard e-Commerce                                      |
++----------------------------------------------------------+
+|                                                           |
+|  [Stats Cards - 4 columnas]                               |
+|  +-----------+ +-----------+ +-----------+ +-----------+ |
+|  | Pedidos   | | Sellers   | | Ingresos  | | Pendiente | |
+|  | del Mes   | | Activos   | | del Mes   | | Liquidar  | |
+|  |    156    | |    12     | | $485,230  | | $42,500   | |
+|  +-----------+ +-----------+ +-----------+ +-----------+ |
+|                                                           |
+|  [Contenido Principal - 2 columnas]                       |
+|  +-------------------------+ +---------------------------+ |
+|  | Pedidos por Estado      | | Ultimos Pedidos           | |
+|  | [Pie Chart]             | | - Orden #1234 - $2,500   | |
+|  | - Pendientes: 45        | | - Orden #1235 - $1,800   | |
+|  | - Enviados: 89          | | - Orden #1236 - $3,200   | |
+|  | - Entregados: 22        | | [Ver todos ->]           | |
+|  +-------------------------+ +---------------------------+ |
+|                                                           |
+|  +-------------------------+ +---------------------------+ |
+|  | Top Sellers del Mes     | | Saldos por Seller         | |
+|  | 1. Tienda A - 45 pedidos| | - Tienda A: -$15,000     | |
+|  | 2. Tienda B - 38 pedidos| | - Tienda B: +$8,500      | |
+|  | 3. Tienda C - 25 pedidos| | - Tienda C: -$12,000     | |
+|  +-------------------------+ +---------------------------+ |
++----------------------------------------------------------+
 ```
 
 ---
 
-## Opcion 1: Vincular Usuario Existente
+## Componentes del Dashboard
 
-### Flujo
-1. Admin selecciona "Vincular usuario existente" en CreateSellerDialog
-2. Se muestra un selector/autocomplete de usuarios del tenant
-3. Al seleccionar, se guarda el `user_id` en `ecommerce_sellers`
-4. Se verifica que el usuario tenga rol `seller`, si no lo tiene se agrega
+### 1. Stats Cards (4 tarjetas principales)
 
-### Implementacion
-- Agregar campo de busqueda de usuarios en el formulario
-- Query para buscar usuarios del mismo tenant
-- Al guardar, actualizar `user_id` en el seller
-- Agregar rol `seller` si no existe
+| Metrica | Icono | Descripcion |
+|---------|-------|-------------|
+| Pedidos del Mes | ShoppingBag | Total de pedidos `ecommerce_orders` del mes actual |
+| Sellers Activos | Store | Cantidad de `ecommerce_sellers` con `activo = true` |
+| Ingresos del Mes | DollarSign | Suma de `total` de todos los pedidos del mes |
+| Pendiente Liquidar | Wallet | Suma de saldos negativos de sellers (deudas) |
+
+### 2. Grafico de Pedidos por Estado
+
+- Grafico de dona/pie mostrando distribucion de `fulfillment_status`:
+  - `pending` - Pendientes de envio
+  - `shipped` - Enviados
+  - `delivered` - Entregados
+  - `cancelled` - Cancelados
+
+### 3. Ultimos Pedidos
+
+- Lista de los 5 pedidos mas recientes
+- Mostrar: numero de orden, seller, comprador, monto, estado
+- Link "Ver todos" que lleva a `/ecommerce/orders`
+
+### 4. Top Sellers del Mes
+
+- Ranking de los 5 sellers con mas pedidos en el mes
+- Mostrar: nombre, cantidad de pedidos, monto total
+
+### 5. Saldos por Seller
+
+- Lista de sellers con cuenta corriente
+- Mostrar saldo actual (positivo = a favor, negativo = deuda)
+- Ordenados por monto absoluto (mayores primero)
 
 ---
 
-## Opcion 2: Crear Usuario Nuevo
+## Queries de Datos
 
-### Flujo
-1. Admin selecciona "Crear usuario nuevo" en CreateSellerDialog
-2. Se muestran campos adicionales: email de acceso, password
-3. Se crea el usuario via edge function `create-user`
-4. Se asigna automaticamente rol `seller`
-5. Se vincula el `user_id` retornado al seller
-
-### Implementacion
-- Agregar toggle/tabs para elegir modo
-- Campos de email/password para nuevo usuario
-- Llamar al edge function existente `create-user` con rol `seller`
-- Actualizar el seller con el `user_id` retornado
-
----
-
-## Cambios en CreateSellerDialog
-
-### Nuevo Schema del Formulario
+### Stats del Mes
 
 ```typescript
-const formSchema = z.object({
-  // ... campos existentes ...
-  
-  // Vinculacion de usuario
-  vincular_usuario: z.enum(['ninguno', 'existente', 'nuevo']).default('ninguno'),
-  user_id: z.string().optional(),  // Para usuario existente
-  
-  // Para crear usuario nuevo
-  user_email: z.string().email().optional(),
-  user_password: z.string().min(6).optional(),
+const { data: monthStats } = useQuery({
+  queryKey: ['ecommerce-dashboard-stats', tenantId],
+  queryFn: async () => {
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    // Pedidos del mes
+    const { data: orders } = await supabase
+      .from('ecommerce_orders')
+      .select('total, fulfillment_status')
+      .eq('tenant_id', tenantId)
+      .gte('created_at', startOfMonth.toISOString());
+
+    // Sellers activos
+    const { count: activeSellers } = await supabase
+      .from('ecommerce_sellers')
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .eq('activo', true);
+
+    // Saldos pendientes (deudas)
+    const { data: sellers } = await supabase
+      .from('ecommerce_sellers')
+      .select('saldo_cuenta_corriente')
+      .eq('tenant_id', tenantId)
+      .eq('tiene_cuenta_corriente', true)
+      .lt('saldo_cuenta_corriente', 0);
+
+    const pendingSettlement = sellers?.reduce(
+      (sum, s) => sum + Math.abs(s.saldo_cuenta_corriente), 0
+    ) || 0;
+
+    return {
+      totalOrders: orders?.length || 0,
+      totalRevenue: orders?.reduce((sum, o) => sum + (o.total || 0), 0) || 0,
+      activeSellers: activeSellers || 0,
+      pendingSettlement,
+      ordersByStatus: countByStatus(orders),
+    };
+  },
 });
 ```
 
-### Nueva Seccion en UI
+### Top Sellers
 
-```text
-+------------------------------------------+
-|  Acceso al Portal de Sellers             |
-|------------------------------------------|
-|  ( ) Sin acceso                          |
-|  ( ) Vincular usuario existente          |
-|      [Buscar usuario... ▼]               |
-|  ( ) Crear usuario nuevo                 |
-|      Email: [________________]           |
-|      Password: [________________]        |
-+------------------------------------------+
+```typescript
+const { data: topSellers } = useQuery({
+  queryKey: ['ecommerce-top-sellers', tenantId],
+  queryFn: async () => {
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+
+    const { data } = await supabase
+      .from('ecommerce_orders')
+      .select('seller_id, total, seller:ecommerce_sellers(nombre)')
+      .eq('tenant_id', tenantId)
+      .gte('created_at', startOfMonth.toISOString());
+
+    // Agrupar por seller_id
+    const grouped = data?.reduce((acc, order) => {
+      const id = order.seller_id;
+      if (!acc[id]) {
+        acc[id] = { 
+          nombre: order.seller?.nombre, 
+          count: 0, 
+          total: 0 
+        };
+      }
+      acc[id].count++;
+      acc[id].total += order.total || 0;
+      return acc;
+    }, {});
+
+    return Object.entries(grouped)
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, 5);
+  },
+});
 ```
 
 ---
 
-## Modificaciones al Edge Function create-user
+## Navegacion
 
-No se requieren modificaciones. El edge function ya:
-- Acepta `roles` como array
-- Crea el usuario con el tenant del admin
-- Retorna el `user_id` del usuario creado
+### Agregar al Sidebar
 
----
+En `AppSidebar.tsx`, agregar item "Dashboard" al grupo e-Commerce:
 
-## Cambios en EditSellerDialog
+```typescript
+{
+  title: 'Dashboard',
+  url: '/ecommerce/dashboard',
+  icon: LayoutDashboard,
+  permissionKey: 'ecommerce.sellers.view'
+},
+```
 
-### Mostrar Estado de Vinculacion
-- Si tiene `user_id`: mostrar email del usuario vinculado + boton "Desvincular"
-- Si no tiene `user_id`: mostrar opciones para vincular/crear
+### Nueva Ruta
 
-### Desvincular Usuario
-- Boton "Desvincular Usuario"
-- Confirmacion antes de desvincular
-- Al desvincular: 
-  - Setear `user_id = null` en seller
-  - Opcionalmente: remover rol `seller` del usuario
+En `App.tsx`, agregar:
 
----
-
-## Flujo Completo de Creacion
-
-```text
-1. Admin abre CreateSellerDialog
-   |
-   v
-2. Completa datos del seller (nombre, email, etc.)
-   |
-   v
-3. Selecciona opcion de acceso:
-   |
-   +---> Sin acceso: Seller sin usuario vinculado
-   |
-   +---> Usuario existente: 
-   |     - Busca y selecciona usuario
-   |     - Se vincula el user_id
-   |     - Se agrega rol 'seller' si falta
-   |
-   +---> Crear usuario nuevo:
-         - Ingresa email/password
-         - Se crea usuario via edge function
-         - Se vincula automaticamente
-         - Rol 'seller' asignado automaticamente
+```typescript
+<Route 
+  path="/ecommerce/dashboard" 
+  element={<DashboardLayout><EcommerceDashboard /></DashboardLayout>} 
+/>
 ```
 
 ---
+
+## Archivos a Crear
+
+| Archivo | Descripcion |
+|---------|-------------|
+| `src/pages/ecommerce/Dashboard.tsx` | Pagina principal del dashboard e-commerce |
 
 ## Archivos a Modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/components/ecommerce/CreateSellerDialog.tsx` | Agregar seccion de vinculacion de usuario |
-| `src/components/ecommerce/EditSellerDialog.tsx` | Mostrar estado de vinculacion y opcion de desvincular |
+| `src/App.tsx` | Agregar ruta `/ecommerce/dashboard` |
+| `src/components/layout/AppSidebar.tsx` | Agregar item "Dashboard" al grupo e-Commerce |
 
 ---
 
-## Queries Necesarias
+## UI Components Utilizados
 
-### Buscar usuarios del tenant para vincular
+- `Card`, `CardHeader`, `CardTitle`, `CardContent` - Tarjetas de stats
+- `Badge` - Estados de pedidos
+- `Skeleton` - Estados de carga
+- `PieChart` de Recharts - Grafico de distribucion
+- Iconos de Lucide: `ShoppingBag`, `Store`, `DollarSign`, `Wallet`, `TrendingUp`
 
-```typescript
-const { data: availableUsers } = useQuery({
-  queryKey: ['users-for-seller', tenantId],
-  queryFn: async () => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('user_id, email, nombre, apellido')
-      .eq('tenant_id', tenantId)
-      .eq('activo', true)
-      .order('nombre');
-    if (error) throw error;
-    return data;
-  },
-  enabled: !!tenantId && open,
-});
-```
+---
 
-### Verificar/agregar rol seller
+## Seccion Tecnica: Estructura del Componente
 
 ```typescript
-// Verificar si ya tiene rol seller
-const { data: existingRole } = await supabase
-  .from('user_roles')
-  .select('id')
-  .eq('user_id', selectedUserId)
-  .eq('role', 'seller')
-  .maybeSingle();
+export default function EcommerceDashboard() {
+  const { tenantId } = useTenant();
 
-// Si no tiene, agregarlo
-if (!existingRole) {
-  await supabase
-    .from('user_roles')
-    .insert({ user_id: selectedUserId, role: 'seller' });
+  // Queries
+  const { data: stats, isLoading: statsLoading } = useQuery({ ... });
+  const { data: recentOrders, isLoading: ordersLoading } = useQuery({ ... });
+  const { data: topSellers } = useQuery({ ... });
+  const { data: sellerBalances } = useQuery({ ... });
+
+  // Formatear moneda
+  const formatCurrency = (amount: number) => { ... };
+
+  // Render stats cards
+  const statsConfig = [
+    { title: 'Pedidos del Mes', value: stats?.totalOrders, icon: ShoppingBag },
+    { title: 'Sellers Activos', value: stats?.activeSellers, icon: Store },
+    { title: 'Ingresos del Mes', value: formatCurrency(stats?.totalRevenue), icon: DollarSign },
+    { title: 'Pendiente Liquidar', value: formatCurrency(stats?.pendingSettlement), icon: Wallet },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <Header />
+      <StatsGrid statsConfig={statsConfig} loading={statsLoading} />
+      <div className="grid lg:grid-cols-2 gap-6">
+        <OrdersByStatusChart data={stats?.ordersByStatus} />
+        <RecentOrdersList orders={recentOrders} loading={ordersLoading} />
+      </div>
+      <div className="grid lg:grid-cols-2 gap-6">
+        <TopSellersCard sellers={topSellers} />
+        <SellerBalancesCard balances={sellerBalances} />
+      </div>
+    </div>
+  );
 }
 ```
 
 ---
 
-## Consideraciones de Seguridad
+## Consideraciones
 
-1. **Aislamiento por tenant**: Solo se pueden vincular usuarios del mismo tenant
-2. **Validacion de permisos**: Solo admins pueden vincular usuarios a sellers
-3. **Rol seller**: Se asigna automaticamente al vincular, garantizando acceso correcto al portal
-4. **Password seguro**: Minimo 6 caracteres al crear usuario nuevo
-
----
-
-## Orden de Implementacion
-
-1. **CreateSellerDialog**: Agregar seccion de vinculacion con las 3 opciones
-2. **EditSellerDialog**: Mostrar estado actual y opcion de desvincular
-3. **Testing**: Probar flujo completo de vinculacion y acceso al portal
+1. **Permisos**: El dashboard usa el mismo permiso `ecommerce.sellers.view` que las otras paginas e-commerce
+2. **Tenant isolation**: Todas las queries filtran por `tenant_id`
+3. **Performance**: Se usan queries separadas para permitir carga progresiva
+4. **Responsive**: Grid de 4 columnas en desktop, 2 en tablet, 1 en movil
 
 ---
 
 ## Resultado Esperado
 
 Despues de implementar:
-- El admin puede crear un seller y simultaneamente crear su acceso al portal
-- Los sellers vinculados pueden hacer login y ver `/seller/*`
-- Los sellers sin vincular no tienen acceso al sistema
-- La tabla de sellers muestra el estado de vinculacion de cada uno
+- Los administradores tendran una vista general del modulo e-commerce
+- Podran ver rapidamente metricas clave sin navegar a cada seccion
+- El dashboard sera el punto de entrada principal para el modulo e-commerce
 
