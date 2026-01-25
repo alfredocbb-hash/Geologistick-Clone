@@ -242,19 +242,27 @@ export default function Users() {
     },
   });
 
-  // Add role mutation
+  // Add role mutation (idempotent - ignores if already exists)
   const addRoleMutation = useMutation({
     mutationFn: async ({ userId, role }: { userId: string; role: AppRole }) => {
       const { error } = await supabase
         .from('user_roles')
-        .insert({ user_id: userId, role });
+        .upsert(
+          { user_id: userId, role },
+          { onConflict: 'user_id,role', ignoreDuplicates: true }
+        );
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['all-user-roles'] });
       toast.success('Rol agregado');
     },
-    onError: (error: Error) => {
+    onError: (error: any) => {
+      // Handle unique constraint violation gracefully
+      if (error?.code === '23505' || error?.message?.includes('duplicate key')) {
+        toast.info('El usuario ya tiene este rol asignado');
+        return;
+      }
       toast.error('Error: ' + error.message);
     },
   });
@@ -341,6 +349,14 @@ export default function Users() {
 
   const handleAddRole = () => {
     if (!editingProfile || !formData.newRole) return;
+    
+    // Check if role already exists in local state
+    if (editingRoles.includes(formData.newRole)) {
+      toast.info('El usuario ya tiene este rol asignado');
+      setFormData({ ...formData, newRole: '' });
+      return;
+    }
+    
     addRoleMutation.mutate({
       userId: editingProfile.user_id,
       role: formData.newRole,
