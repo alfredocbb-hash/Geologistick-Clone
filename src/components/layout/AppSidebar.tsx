@@ -270,11 +270,16 @@ export function AppSidebar() {
     if (group.superAdminOnly) {
       return isSuperAdmin();
     }
+    
+    // Super Admin can see everything (moved BEFORE ecommerce check)
+    if (isSuperAdmin()) return true;
+    
     // e-Commerce section requires tenant to have ecommerce_enabled
+    // (only applies to non-super-admin users now)
     if (group.requiresEcommerce && !tenant?.ecommerce_enabled) {
       return false;
     }
-    if (isSuperAdmin()) return true;
+    
     if (!group.permissionKeys || group.permissionKeys.length === 0) return true;
     return group.permissionKeys.some(key => hasPermission(key));
   };
