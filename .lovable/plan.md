@@ -1,174 +1,204 @@
 
 
-# Plan: Portal de Sellers e-Commerce
+# Plan: Edge Functions para Tiendanube
 
 ## Resumen
 
-Crear una interfaz dedicada para que los usuarios con rol `seller` puedan gestionar su relación con la empresa logística de forma autónoma, sin acceso al panel administrativo completo.
+Implementar tres edge functions para integrar Tiendanube con el sistema logistico:
+1. **OAuth Callback** - Para conectar tiendas de sellers
+2. **Webhook** - Para recibir pedidos automaticamente
+3. **Sync Manual** - Para sincronizar pedidos bajo demanda
 
-## Arquitectura del Portal
+## Arquitectura de la Integracion
 
 ```text
-Usuario con rol 'seller'
-         |
-         v
-    /seller/* (rutas dedicadas)
-         |
-    +----+----+----+----+
-    |    |    |    |    |
-  Home  Pedidos  Envios  Cuenta
-         |
-    +----+----+
-    |         |
-Historial  Solicitar
-           Retiro
+                     Tiendanube
+                          |
+         +----------------+----------------+
+         |                |                |
+    OAuth Flow       Webhooks         API Sync
+         |                |                |
+         v                v                v
+  tiendanube-oauth  tiendanube-webhook  tiendanube-sync
+         |                |                |
+         +--------> ecommerce_sellers <----+
+                          |
+                          v
+                   ecommerce_orders
 ```
 
 ---
 
-## Fase A: Crear Estructura Base del Portal
+## Edge Function 1: tiendanube-oauth
 
-### 1. Layout Dedicado para Sellers
-Crear `src/components/seller/SellerLayout.tsx`:
-- Header simplificado con logo del tenant
-- Navegacion lateral minimalista
-- Solo 4 secciones: Inicio, Pedidos, Envios, Mi Cuenta
-- Sin acceso a rutas administrativas
+### Proposito
+Manejar el flujo OAuth cuando un seller conecta su tienda de Tiendanube.
 
-### 2. Redireccionar Sellers al Portal
-Modificar la logica de redireccion en `src/pages/Login.tsx`:
-- Si el usuario tiene SOLO el rol `seller` -> redirigir a `/seller`
-- Si tiene otros roles (admin, operador, etc.) -> comportamiento normal `/dashboard`
+### Endpoints
+- `GET /authorize?seller_id={uuid}` - Redirige al usuario a Tiendanube
+- `GET /callback?code={code}&state={seller_id}` - Recibe el token y lo guarda
 
----
+### Flujo Detallado
 
-## Fase B: Paginas del Portal
+1. **Iniciar conexion** (desde el admin panel):
+   - El admin hace clic en "Conectar Tiendanube" en el seller
+   - Frontend llama a `/authorize?seller_id=xxx`
+   - Edge function genera URL de autorizacion y redirige
 
-### 1. Dashboard del Seller (`/seller`)
-Archivo: `src/pages/seller/SellerDashboard.tsx`
+2. **Callback de Tiendanube**:
+   - Usuario autoriza la app en Tiendanube
+   - Tiendanube redirige a `/callback?code=xxx&state=seller_id`
+   - Edge function intercambia `code` por `access_token`
+   - Guarda `access_token`, `store_id` en `ecommerce_sellers`
+   - Registra webhook automaticamente en la tienda
+   - Redirige al usuario de vuelta al panel
 
-Contenido:
-- Tarjetas resumen:
-  - Pedidos pendientes (del mes)
-  - Envios en transito
-  - Saldo cuenta corriente
-  - Ultimo movimiento
-- Grafico de envios por estado (pie chart)
-- Lista rapida de ultimos 5 pedidos
+### Datos Almacenados en ecommerce_sellers
 
-### 2. Mis Pedidos (`/seller/orders`)
-Archivo: `src/pages/seller/SellerOrders.tsx`
-
-Contenido:
-- Tabla de pedidos de su tienda (`ecommerce_orders`)
-- Filtros por estado y fecha
-- Detalle de cada pedido
-- Estado de fulfillment vinculado
-
-### 3. Mis Envios (`/seller/shipments`)
-Archivo: `src/pages/seller/SellerShipments.tsx`
-
-Contenido:
-- Tabla de envios creados para el seller
-- Tracking en tiempo real
-- Historial de estados
-- Opcion de ver comprobante de entrega (EPOD)
-
-### 4. Mi Cuenta (`/seller/account`)
-Archivo: `src/pages/seller/SellerAccount.tsx`
-
-Contenido:
-- Datos de la tienda (solo lectura)
-- Estado de cuenta corriente
-- Historial de movimientos (`seller_cuenta_corriente`)
-- Boton "Solicitar Retiro" (abre dialog)
+| Campo | Valor |
+|-------|-------|
+| access_token | Token OAuth de Tiendanube |
+| store_id | ID de la tienda en Tiendanube |
+| store_url | URL de la tienda |
+| webhook_secret | HMAC secret generado para validar webhooks |
+| ultimo_sync | Timestamp de ultima sincronizacion |
 
 ---
 
-## Fase C: Componentes del Portal
+## Edge Function 2: tiendanube-webhook
 
-### 1. SellerHeader
-- Logo del tenant
-- Nombre de la tienda
-- Boton de cerrar sesion
-- Indicador de saldo
+### Proposito
+Recibir notificaciones en tiempo real cuando se crea o actualiza un pedido.
 
-### 2. SellerSidebar
-- Navegacion simple con iconos:
-  - Home
-  - ShoppingBag (Pedidos)
-  - Package (Envios)
-  - Wallet (Mi Cuenta)
+### Eventos Soportados
+- `order/created` - Nuevo pedido
+- `order/updated` - Actualizacion de pedido
+- `order/paid` - Pedido pagado
+- `order/fulfilled` - Pedido despachado
+- `order/cancelled` - Pedido cancelado
 
-### 3. RequestWithdrawalDialog
-- Monto a retirar (validado contra saldo disponible)
-- Metodo de pago preferido
-- Datos bancarios (si aplica)
-- Registra movimiento en `seller_cuenta_corriente` con tipo "solicitud_retiro"
+### Flujo de Procesamiento
 
----
+1. **Recibir webhook**:
+   - Tiendanube envia POST con `store_id`, `event`, `id`
+   - Validar firma HMAC en header `x-linkedstore-hmac-sha256`
 
-## Fase D: Seguridad y Permisos
+2. **Identificar seller**:
+   - Buscar seller por `store_id` en `ecommerce_sellers`
+   - Obtener `tenant_id` del seller
 
-### 1. Vinculacion Seller-Usuario
-Modificar `CreateSellerDialog.tsx` para:
-- Agregar campo opcional `user_id` (selector de usuarios o input de email)
-- Crear usuario con rol `seller` automaticamente (via edge function)
+3. **Procesar evento**:
+   - Para `order/created` o `order/paid`:
+     - Obtener datos completos del pedido via API
+     - Insertar/actualizar en `ecommerce_orders`
+   - Para otros eventos:
+     - Actualizar `order_status` o `payment_status`
 
-### 2. RLS para Portal Seller
-Los RLS existentes ya permiten que sellers vean sus propios datos:
+4. **Responder rapidamente**:
+   - Retornar 200 OK inmediatamente
+   - Procesar en background si es necesario
 
-```sql
--- ecommerce_orders: seller puede ver sus pedidos
-(EXISTS ( SELECT 1
-   FROM ecommerce_sellers es
-  WHERE ((es.id = ecommerce_orders.seller_id) AND (es.user_id = auth.uid()))))
-
--- ecommerce_sellers: seller puede ver su propia tienda
-(user_id = auth.uid())
-```
-
-### 3. Nueva politica para seller_cuenta_corriente
-
-```sql
-CREATE POLICY "Seller ve sus movimientos" ON seller_cuenta_corriente
-FOR SELECT USING (
-  EXISTS (
-    SELECT 1 FROM ecommerce_sellers es
-    WHERE es.id = seller_cuenta_corriente.seller_id
-    AND es.user_id = auth.uid()
-  )
-);
-```
-
----
-
-## Fase E: Rutas y Navegacion
-
-### 1. Registrar Rutas en App.tsx
+### Seguridad: Validacion HMAC
 
 ```typescript
-// Imports
-import SellerLayout from './components/seller/SellerLayout';
-import SellerDashboard from './pages/seller/SellerDashboard';
-import SellerOrders from './pages/seller/SellerOrders';
-import SellerShipments from './pages/seller/SellerShipments';
-import SellerAccount from './pages/seller/SellerAccount';
+const hmac = createHmac('sha256', seller.webhook_secret);
+hmac.update(rawBody);
+const calculatedSignature = hmac.digest('hex');
+const receivedSignature = req.headers.get('x-linkedstore-hmac-sha256');
 
-// Rutas del portal seller
-<Route path="/seller" element={<SellerLayout />}>
-  <Route index element={<SellerDashboard />} />
-  <Route path="orders" element={<SellerOrders />} />
-  <Route path="shipments" element={<SellerShipments />} />
-  <Route path="account" element={<SellerAccount />} />
-</Route>
+if (calculatedSignature !== receivedSignature) {
+  return new Response('Invalid signature', { status: 401 });
+}
 ```
 
-### 2. Proteger Rutas
-Crear `SellerRoute` wrapper que:
-- Verifica que el usuario tenga rol `seller`
-- Verifica que tenga un `ecommerce_seller` vinculado
-- Redirige a login si no esta autenticado
+---
+
+## Edge Function 3: tiendanube-sync
+
+### Proposito
+Sincronizar pedidos manualmente desde el panel de administracion.
+
+### Endpoints
+- `POST /` - Sincronizar pedidos de un seller especifico
+  - Body: `{ seller_id: uuid, since?: date }`
+
+### Flujo de Sincronizacion
+
+1. **Autenticar request**:
+   - Verificar JWT del usuario
+   - Verificar que el usuario pertenece al mismo tenant que el seller
+
+2. **Obtener pedidos**:
+   - Llamar a API de Tiendanube: `GET /{store_id}/orders`
+   - Filtrar por `updated_at_min` si se especifica `since`
+   - Paginar hasta obtener todos los pedidos
+
+3. **Procesar cada pedido**:
+   - Mapear campos de Tiendanube a `ecommerce_orders`
+   - Upsert en base de datos (por `external_order_id`)
+
+4. **Actualizar seller**:
+   - Actualizar `ultimo_sync` en `ecommerce_sellers`
+   - Retornar resumen: pedidos nuevos, actualizados, errores
+
+### Mapeo de Datos Tiendanube -> ecommerce_orders
+
+| Tiendanube | ecommerce_orders |
+|------------|------------------|
+| id | external_order_id |
+| number | external_order_number |
+| status | order_status |
+| payment_status | payment_status |
+| customer.name | buyer_name |
+| customer.email | buyer_email |
+| customer.phone | buyer_phone |
+| customer.identification | buyer_dni |
+| shipping_address.address | shipping_address |
+| shipping_address.city | shipping_city |
+| shipping_address.province | shipping_province |
+| shipping_address.zipcode | shipping_postal_code |
+| subtotal | subtotal |
+| shipping_cost_owner | shipping_cost |
+| total | total |
+| products | items (JSON) |
+
+---
+
+## Cambios en Frontend
+
+### 1. Boton "Conectar Tiendanube" en Sellers
+
+En `EditSellerDialog.tsx` o en la tabla de sellers, agregar:
+- Boton "Conectar Tiendanube" (visible si `plataforma === 'tiendanube'` y no hay `access_token`)
+- Badge "Conectado" con icono verde si ya tiene `access_token`
+- Boton "Sincronizar Ahora" para llamar a tiendanube-sync
+
+### 2. Estado de Conexion
+
+Mostrar en la tabla de sellers:
+- Icono de estado de conexion (conectado/desconectado)
+- Fecha de ultima sincronizacion
+- Cantidad de pedidos sincronizados
+
+---
+
+## Configuracion en supabase/config.toml
+
+```toml
+[functions.tiendanube-oauth]
+verify_jwt = false
+
+[functions.tiendanube-webhook]
+verify_jwt = false
+
+[functions.tiendanube-sync]
+verify_jwt = false
+```
+
+Todas las funciones manejan autenticacion manualmente:
+- oauth: No requiere auth (flujo OAuth)
+- webhook: Valida via HMAC
+- sync: Valida JWT del usuario logueado
 
 ---
 
@@ -176,65 +206,69 @@ Crear `SellerRoute` wrapper que:
 
 | Archivo | Descripcion |
 |---------|-------------|
-| `src/components/seller/SellerLayout.tsx` | Layout principal del portal |
-| `src/components/seller/SellerHeader.tsx` | Header con logo y saldo |
-| `src/components/seller/SellerSidebar.tsx` | Navegacion lateral |
-| `src/components/seller/RequestWithdrawalDialog.tsx` | Solicitud de retiro |
-| `src/pages/seller/SellerDashboard.tsx` | Dashboard con metricas |
-| `src/pages/seller/SellerOrders.tsx` | Lista de pedidos |
-| `src/pages/seller/SellerShipments.tsx` | Lista de envios |
-| `src/pages/seller/SellerAccount.tsx` | Estado de cuenta |
-| `src/hooks/useSellerData.ts` | Hook para datos del seller actual |
+| `supabase/functions/tiendanube-oauth/index.ts` | Flujo OAuth completo |
+| `supabase/functions/tiendanube-webhook/index.ts` | Receptor de webhooks |
+| `supabase/functions/tiendanube-sync/index.ts` | Sincronizacion manual |
 
 ## Archivos a Modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/App.tsx` | Agregar rutas /seller/* |
-| `src/pages/Login.tsx` | Redirigir sellers a /seller |
-| `src/components/ecommerce/CreateSellerDialog.tsx` | Agregar campo user_id |
-| Migracion SQL | RLS para seller_cuenta_corriente |
+| `supabase/config.toml` | Agregar configuracion de las 3 funciones |
+| `src/pages/ecommerce/Sellers.tsx` | Agregar boton de conexion y sync |
+| `src/components/ecommerce/EditSellerDialog.tsx` | Mostrar estado de conexion |
 
 ---
 
-## Flujo de Usuario
+## URLs de las Edge Functions
+
+Las URLs finales seran:
+- OAuth: `https://uhlgimnmfifmrxraorrl.supabase.co/functions/v1/tiendanube-oauth`
+- Webhook: `https://uhlgimnmfifmrxraorrl.supabase.co/functions/v1/tiendanube-webhook`
+- Sync: `https://uhlgimnmfifmrxraorrl.supabase.co/functions/v1/tiendanube-sync`
+
+---
+
+## Flujo de Usuario Completo
 
 ```text
-1. Admin crea seller en /ecommerce/sellers
-   -> Opcionalmente vincula user_id existente
-   -> O crea nuevo usuario con rol 'seller'
+1. Admin configura Tiendanube en Integraciones
+   -> Ingresa client_id y client_secret
 
-2. Seller inicia sesion con su email
-   -> Sistema detecta rol 'seller'
-   -> Redirige a /seller (no /dashboard)
+2. Admin crea seller con plataforma "Tiendanube"
+   -> Guarda datos basicos del seller
 
-3. En el portal seller:
-   -> Ve dashboard con metricas de su tienda
-   -> Consulta pedidos importados
-   -> Rastrea envios en transito
-   -> Revisa estado de cuenta
-   -> Solicita retiro de fondos
+3. Admin hace clic en "Conectar Tiendanube"
+   -> Redirige a Tiendanube para autorizar
+   -> Seller de Tiendanube acepta permisos
+   -> Callback guarda tokens y registra webhook
+
+4. Nuevo pedido en Tiendanube
+   -> Tiendanube envia webhook
+   -> Sistema valida y guarda en ecommerce_orders
+
+5. Admin puede sincronizar manualmente
+   -> Clic en "Sincronizar"
+   -> Sistema obtiene pedidos recientes via API
 ```
 
 ---
 
 ## Orden de Implementacion
 
-1. **Migracion SQL** - RLS para seller_cuenta_corriente
-2. **Hook useSellerData** - Obtener seller vinculado al usuario
-3. **Layout y Componentes** - SellerLayout, Header, Sidebar
-4. **Paginas** - Dashboard, Orders, Shipments, Account
-5. **App.tsx** - Registrar rutas
-6. **Login.tsx** - Logica de redireccion por rol
-7. **CreateSellerDialog** - Campo para vincular usuario
+1. **tiendanube-oauth** - Base del flujo de conexion
+2. **tiendanube-webhook** - Recepcion automatica de pedidos
+3. **tiendanube-sync** - Sincronizacion manual
+4. **UI Updates** - Botones de conexion y estado
+5. **Testing** - Probar flujo completo con tienda de prueba
 
 ---
 
-## Detalles Tecnicos
+## Consideraciones de Seguridad
 
-- El rol `seller` ya existe en el enum `app_role`
-- La tabla `ecommerce_sellers` ya tiene columna `user_id`
-- Los RLS existentes ya soportan acceso por `user_id = auth.uid()`
-- El hook `useAuth()` ya provee `hasRole('seller')`
-- Usaremos el mismo sistema de branding del tenant
+- Los `access_token` se almacenan encriptados en la base de datos
+- Los webhooks se validan con HMAC-SHA256
+- Cada seller tiene su propio `webhook_secret` unico
+- Las funciones de sync requieren autenticacion del usuario
+- Los datos estan aislados por `tenant_id`
 
