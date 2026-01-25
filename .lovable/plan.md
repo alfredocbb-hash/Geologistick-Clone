@@ -1,89 +1,258 @@
 
-## Diagnóstico (por qué pasa)
-- El error `duplicate key value violates unique constraint "user_roles_user_id_role_key"` significa que **ese usuario ya tiene el rol `seller` en la tabla `user_roles`**.
-- En `/admin/users`, al agregar un rol, el frontend hace un `.insert()` directo a `user_roles`. Si el rol ya existe (o si ocurre un “doble click” / estado desactualizado / condición de carrera), Postgres lo rechaza por la restricción `UNIQUE (user_id, role)` y aparece ese mensaje técnico.
+# Plan: Actualizar Gestión de Permisos para Super Admin
 
-Objetivo: que “asignar rol” sea **idempotente** (si ya lo tiene, no debe explotar) y mostrar un mensaje claro.
+## Resumen
 
----
-
-## Cambios a realizar (sin cambios de base de datos)
-### 1) Hacer que la asignación de roles sea “ON CONFLICT DO NOTHING”
-**Archivo:** `src/pages/Users.tsx`
-
-- Cambiar `addRoleMutation` para usar `upsert` con:
-  - `onConflict: 'user_id,role'`
-  - `ignoreDuplicates: true`
-- Esto evita el error por duplicado sin requerir políticas UPDATE en `user_roles` (porque no hace merge, hace “do nothing”).
-
-**Además (UI):**
-- Evitar duplicados en el estado local `editingRoles`:
-  - Antes de mutar, si `editingRoles.includes(newRole)` → mostrar toast tipo “El usuario ya tiene este rol” y no ejecutar nada.
-  - Actualizar `editingRoles` **solo si** la mutación terminó OK (o tratar “duplicate” como OK, pero sin duplicar el badge).
-
-**Mensajes al usuario:**
-- Si el backend devuelve código/indicador de `23505` (unique violation), mostrar:
-  - “El usuario ya tenía asignado ese rol”
-  - y no mostrar el mensaje técnico.
+Completar el sistema de permisos agregando:
+1. El rol **Seller e-Commerce** a la página de gestión de roles
+2. Nuevos permisos para **Gestión de Tenants** (Super Admin)
+3. Nuevos permisos para **Terciarizados** (independientes de sucursales)
+4. Crear los registros de permisos en la base de datos para el rol Seller
 
 ---
 
-### 2) Blindar las asignaciones automáticas de rol seller (e-Commerce) contra carreras
-Actualmente `ensureSellerRole` hace “select y luego insert”, lo que puede fallar si dos flujos lo ejecutan casi al mismo tiempo.
+## Cambios en Base de Datos
 
-**Archivos:**
-- `src/components/ecommerce/CreateSellerDialog.tsx`
-- `src/components/ecommerce/EditSellerDialog.tsx`
+### 1. Crear permisos para el rol Seller
 
-**Cambio:**
-- Reemplazar la lógica `select + insert` por un `upsert` con `ignoreDuplicates: true` (igual que arriba).
-- Esto hace la operación atómica e idempotente.
+```sql
+INSERT INTO role_permissions (role, permission_key, permission_name, description, enabled)
+VALUES
+  -- Permisos que el Seller puede tener
+  ('seller', 'dashboard.view', 'Ver Dashboard', 'Ver panel principal del vendedor', true),
+  ('seller', 'shipments.view', 'Ver Envíos', 'Ver envíos de sus pedidos', true),
+  ('seller', 'tracking.view', 'Ver Tracking', 'Ver seguimiento de envíos', true),
+  ('seller', 'ecommerce.orders.view', 'Ver Pedidos e-Commerce', 'Ver pedidos de su tienda', true),
+  ('seller', 'ecommerce.settlements.view', 'Ver Liq. Sellers', 'Ver sus liquidaciones', true),
+  
+  -- Permisos deshabilitados por defecto para seller
+  ('seller', 'shipments.create', 'Crear Envíos', 'Crear envíos manualmente', false),
+  ('seller', 'clients.view', 'Ver Clientes', 'Ver información de clientes', false),
+  ('seller', 'commissions.view', 'Ver Mis Comisiones', 'Ver comisiones', false)
+ON CONFLICT (role, permission_key) DO NOTHING;
+```
 
----
+### 2. Crear nuevos permisos para Tenants y Terciarizados
 
-### 3) Robustecer la asignación de roles en la función backend de creación de usuario
-**Archivo:** `supabase/functions/create-user/index.ts`
+```sql
+-- Nuevos permisos que se agregan al catálogo
+-- Tenants (solo para super_admin)
+INSERT INTO role_permissions (role, permission_key, permission_name, description, enabled)
+VALUES
+  ('super_admin', 'tenants.view', 'Ver Empresas', 'Ver listado de empresas/tenants', true),
+  ('super_admin', 'tenants.manage', 'Gestionar Empresas', 'Crear, editar y eliminar empresas', true),
+  ('super_admin', 'subscription_plans.manage', 'Gestionar Planes', 'Administrar planes de suscripción', true)
+ON CONFLICT (role, permission_key) DO NOTHING;
 
-- Cambiar el insert masivo de roles:
-  - de `.insert(roleInserts)`
-  - a `.upsert(roleInserts, { onConflict: 'user_id,role', ignoreDuplicates: true })`
-- Extra: deduplicar el array de roles antes de insertar (por seguridad) para evitar repetir el mismo rol en el payload.
+-- Terciarizados (para admin y supervisor)
+INSERT INTO role_permissions (role, permission_key, permission_name, description, enabled)
+SELECT role, 'third_party.view', 'Ver Terciarizados', 'Ver empresas terciarizadas', 
+  CASE WHEN role IN ('admin', 'supervisor', 'super_admin') THEN true ELSE false END
+FROM unnest(ARRAY['super_admin', 'admin', 'supervisor', 'operador', 'chofer', 'despachador', 'bodega', 'sucursal', 'atencion_cliente', 'cliente']::app_role[]) as role
+ON CONFLICT (role, permission_key) DO NOTHING;
 
----
+INSERT INTO role_permissions (role, permission_key, permission_name, description, enabled)
+SELECT role, 'third_party.manage', 'Gestionar Terciarizados', 'Crear y editar empresas terciarizadas',
+  CASE WHEN role IN ('admin', 'supervisor', 'super_admin') THEN true ELSE false END
+FROM unnest(ARRAY['super_admin', 'admin', 'supervisor', 'operador', 'chofer', 'despachador', 'bodega', 'sucursal', 'atencion_cliente', 'cliente']::app_role[]) as role
+ON CONFLICT (role, permission_key) DO NOTHING;
 
-### 4) (Opcional) Hacer lo mismo en `create-tenant-with-admin`
-**Archivo:** `supabase/functions/create-tenant-with-admin/index.ts`
-- Cambiar la inserción del rol `admin` a `upsert` ignoreDuplicates para evitar problemas si la función se reintenta.
-- No es estrictamente necesario para tu caso, pero deja todo consistente.
-
----
-
-## Verificación (pasos para probar)
-1) Ir a **Administración → Usuarios** (`/admin/users`).
-2) Editar un usuario que ya tenga “Seller e-Commerce”.
-3) Intentar asignar “Seller e-Commerce” de nuevo:
-   - Resultado esperado: **no error técnico**, solo un mensaje tipo “ya estaba asignado” (o silencio) y sin duplicar badges.
-4) Crear/editar un Seller y vincularlo a un usuario existente:
-   - Resultado esperado: si ya tenía rol seller, no falla; si no lo tenía, lo asigna.
-5) Crear usuario nuevo con rol seller desde el flujo e-Commerce:
-   - Resultado esperado: se asigna rol sin errores.
-
----
-
-## Beneficio inmediato
-- Desaparece el error y queda un comportamiento “a prueba de doble click / estado desfasado / condiciones de carrera”.
-- Se mantiene la seguridad: roles siguen estando en `user_roles` con `UNIQUE (user_id, role)` y sin almacenar roles en perfiles.
-
----
-
-## Archivos a tocar
-- `src/pages/Users.tsx` (mutación de agregar rol + manejo de UI/estado)
-- `src/components/ecommerce/CreateSellerDialog.tsx` (ensureSellerRole idempotente)
-- `src/components/ecommerce/EditSellerDialog.tsx` (ensureSellerRole idempotente)
-- `supabase/functions/create-user/index.ts` (asignación de roles idempotente)
-- (Opcional) `supabase/functions/create-tenant-with-admin/index.ts`
+INSERT INTO role_permissions (role, permission_key, permission_name, description, enabled)
+SELECT role, 'third_party.settlements', 'Liquidaciones Terciarizados', 'Ver y gestionar liquidaciones de terciarizados',
+  CASE WHEN role IN ('admin', 'supervisor', 'super_admin') THEN true ELSE false END
+FROM unnest(ARRAY['super_admin', 'admin', 'supervisor', 'operador', 'chofer', 'despachador', 'bodega', 'sucursal', 'atencion_cliente', 'cliente']::app_role[]) as role
+ON CONFLICT (role, permission_key) DO NOTHING;
+```
 
 ---
 
-## Nota para tu caso puntual (lo que muestra tu captura)
-En tu captura el rol “Seller e-Commerce” ya aparece asignado. El error aparece porque el sistema intenta volver a insertarlo. Con estos cambios, si ya estaba asignado, no se rompe nada y lo trata como OK.
+## Cambios en Código
+
+### 1. Actualizar RolePermissions.tsx
+
+**Archivo:** `src/pages/RolePermissions.tsx`
+
+| Cambio | Descripción |
+|--------|-------------|
+| Agregar 'seller' a ROLE_ORDER | Incluir el rol en la lista de tabs |
+| Actualizar PERMISSION_CATEGORIES | Agregar categorías 'tenants' y 'third_party' |
+
+```typescript
+// Agregar 'seller' al array ROLE_ORDER
+const ROLE_ORDER: AppRole[] = [
+  'super_admin',
+  'admin',
+  'supervisor',
+  'operador',
+  'despachador',
+  'chofer',
+  'bodega',
+  'sucursal',
+  'atencion_cliente',
+  'cliente',
+  'seller',  // <-- Nuevo
+];
+
+// Agregar nuevas categorías
+const PERMISSION_CATEGORIES: Record<string, string> = {
+  // ... existentes ...
+  'tenants': 'Empresas (Tenants)',
+  'third_party': 'Terciarizados',
+  'ecommerce': 'e-Commerce',
+  'subscription_plans': 'Planes de Suscripción',
+};
+```
+
+### 2. Actualizar AppSidebar.tsx
+
+**Archivo:** `src/components/layout/AppSidebar.tsx`
+
+| Cambio | Descripción |
+|--------|-------------|
+| Cambiar permiso de Terciarizados | Usar 'third_party.view' en vez de 'branches.manage' |
+| Agregar permisos a Super Admin | Usar permisos específicos para items de Super Admin |
+
+```typescript
+// Sección Terciarizados - cambiar permisos
+{
+  label: 'Terciarizados',
+  items: [{
+    title: 'Empresas',
+    url: '/admin/third-party-companies',
+    icon: Truck,
+    permissionKey: 'third_party.view',  // Cambiar de 'branches.manage'
+  }],
+  permissionKeys: ['third_party.view', 'third_party.manage']
+},
+
+// Agregar Liq. Terciarizados a Finanzas con su propio permiso
+{
+  title: 'Liq. Terciarizados',
+  url: '/settlements/third-party',
+  icon: FileText,
+  permissionKey: 'third_party.settlements'  // Cambiar de 'settlements.branch.view'
+},
+
+// Sección Super Admin con permisos específicos
+{
+  label: 'Super Admin',
+  items: [{
+    title: 'Empresas',
+    url: '/admin/tenants',
+    icon: Building2,
+    permissionKey: 'tenants.view',  // Agregar permiso específico
+  }, {
+    title: 'Planes',
+    url: '/admin/subscription-plans',
+    icon: Crown,
+    permissionKey: 'subscription_plans.manage',
+  }],
+  superAdminOnly: true
+},
+```
+
+---
+
+## Estructura de Permisos Resultante
+
+### Nuevos Permisos Agregados
+
+| Permission Key | Nombre | Roles con acceso |
+|---------------|--------|------------------|
+| `tenants.view` | Ver Empresas | super_admin |
+| `tenants.manage` | Gestionar Empresas | super_admin |
+| `subscription_plans.manage` | Gestionar Planes | super_admin |
+| `third_party.view` | Ver Terciarizados | admin, supervisor, super_admin |
+| `third_party.manage` | Gestionar Terciarizados | admin, supervisor, super_admin |
+| `third_party.settlements` | Liq. Terciarizados | admin, supervisor, super_admin |
+
+### Permisos del Rol Seller
+
+| Permission Key | Estado Default |
+|---------------|----------------|
+| `dashboard.view` | Activo |
+| `shipments.view` | Activo |
+| `tracking.view` | Activo |
+| `ecommerce.orders.view` | Activo |
+| `ecommerce.settlements.view` | Activo |
+| `shipments.create` | Inactivo |
+| `clients.view` | Inactivo |
+| `commissions.view` | Inactivo |
+
+---
+
+## Diagrama de Categorías de Permisos
+
+```text
++----------------------+     +----------------------+     +----------------------+
+|   Panel Principal    |     |       Envíos         |     |    Operaciones       |
+|----------------------|     |----------------------|     |----------------------|
+| dashboard.view       |     | shipments.view       |     | shipments.scan       |
+|                      |     | shipments.create     |     | routes.plan          |
+|                      |     | shipments.edit       |     | route_sheets.view    |
+|                      |     | tracking.view        |     | route_sheets.create  |
+|                      |     |                      |     | live_map.view        |
+|                      |     |                      |     | drivers.manage       |
+|                      |     |                      |     | vehicles.manage      |
+|                      |     |                      |     | my_routes.view       |
++----------------------+     +----------------------+     +----------------------+
+
++----------------------+     +----------------------+     +----------------------+
+|      Finanzas        |     |      Clientes        |     |    e-Commerce        |
+|----------------------|     |----------------------|     |----------------------|
+| cash.manage          |     | clients.view         |     | ecommerce.orders.view|
+| settlements.branch.* |     | clients.manage       |     | ecommerce.orders.manage|
+| settlements.driver.* |     |                      |     | ecommerce.sellers.view|
+| settlements.client.* |     |                      |     | ecommerce.sellers.manage|
+| commissions.view     |     |                      |     | ecommerce.settlements.view|
++----------------------+     +----------------------+     +----------------------+
+
++----------------------+     +----------------------+     +----------------------+
+|   Terciarizados      |     |   Administración     |     |     Super Admin      |
+|----------------------|     |----------------------|     |----------------------|
+| third_party.view     |     | branches.manage      |     | tenants.view         |
+| third_party.manage   |     | rates.manage         |     | tenants.manage       |
+| third_party.settlements|   | users.manage         |     | subscription_plans.manage|
+|                      |     | roles.manage         |     |                      |
+|                      |     | integrations.manage  |     |                      |
+|                      |     | invoicing.*          |     |                      |
++----------------------+     +----------------------+     +----------------------+
+```
+
+---
+
+## Archivos a Modificar
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/pages/RolePermissions.tsx` | Agregar 'seller' a ROLE_ORDER y nuevas categorías |
+| `src/components/layout/AppSidebar.tsx` | Actualizar permisos de Terciarizados y Super Admin |
+
+## Archivos NO Modificados (solo SQL)
+
+| Tabla | Registros Agregados |
+|-------|---------------------|
+| `role_permissions` | ~20 nuevos registros para seller y nuevos permisos |
+
+---
+
+## Orden de Implementación
+
+1. **Ejecutar migración SQL** para crear los nuevos permisos en `role_permissions`
+2. **Actualizar `RolePermissions.tsx`** para incluir seller y nuevas categorías
+3. **Actualizar `AppSidebar.tsx`** con los nuevos permission keys
+4. **Probar** que el rol Seller aparece en la gestión de permisos
+5. **Verificar** que los permisos de Terciarizados y Tenants funcionan correctamente
+
+---
+
+## Resultado Esperado
+
+Después de implementar:
+
+- El rol **Seller e-Commerce** aparece en la página de Gestión de Permisos con 8 permisos configurables
+- Los permisos de **Terciarizados** son independientes de Sucursales
+- Los **Super Admins** tienen permisos específicos para gestión de Empresas y Planes
+- Todas las categorías de permisos están organizadas y son configurables
+- El sistema de permisos queda completo y listo para escalar
+
