@@ -1,142 +1,143 @@
 
 
-# Plan: Corregir Diálogo de Creación de Envío desde Pedido
+# Plan: Habilitar Creación de Envíos desde Pedidos
 
 ## Problemas Identificados
 
-### 1. Bug crítico: useState mal usado (línea 88-92)
+### 1. Botón "Crear X Envíos" del header - Solo para masivos
+El botón naranja en el header (que aparece cuando se seleccionan checkboxes) está configurado para mostrar "Funcionalidad próximamente":
+
 ```typescript
-useState(() => {
-  if (seller?.sucursal_pickup_id) {
-    setSucursalOrigenId(seller.sucursal_pickup_id);
-  }
-});
+// Línea 151-157 de Orders.tsx
+{selectedOrders.length > 0 && (
+  <Button onClick={() => {
+    toast({ title: 'Funcionalidad próximamente', description: 'Crear envíos masivos' });
+  }}>
+    <Truck className="mr-2 h-4 w-4" />
+    Crear {selectedOrders.length} Envíos
+  </Button>
+)}
 ```
-Esto **nunca funciona** porque:
-- `useState` no es para efectos secundarios (debería ser `useEffect`)
-- `seller` es `undefined` en el primer render
 
-### 2. El precio no se calcula automáticamente
-El seller tiene una tarifa asignada (`tarifa_id`) pero el precio empieza en `$0` y requiere ingreso manual.
+### 2. Opción "Crear Envío" solo para pedidos "paid"
+La opción individual en el menú de tres puntos solo aparece para pedidos con estado `paid`:
 
----
+```typescript
+// Línea 293 de Orders.tsx
+{!order.envio_id && order.order_status === 'paid' && (
+```
 
-## Solución
+El pedido muestra estado **"Pendiente"** aunque el usuario indica que ya está pagado en Tiendanube.
 
-### Archivo a modificar
-`src/components/ecommerce/CreateShipmentFromOrderDialog.tsx`
+## Solución Propuesta
+
+### Archivo a Modificar
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/pages/ecommerce/Orders.tsx` | Implementar creación de envíos (individual y masiva) |
 
 ---
 
 ## Cambios Técnicos
 
-### 1. Importar useEffect
+### 1. Permitir crear envío desde cualquier estado (excepto cancelado)
+
+Cambiar la condición de la línea 293:
+
+**Antes:**
 ```typescript
-import { useState, useEffect } from 'react';
+{!order.envio_id && order.order_status === 'paid' && (
 ```
 
-### 2. Corregir inicialización de sucursal
-
-**Reemplazar líneas 87-92:**
+**Después:**
 ```typescript
-// Set default origin branch from seller
-useEffect(() => {
-  if (seller?.sucursal_pickup_id && !sucursalOrigenId) {
-    setSucursalOrigenId(seller.sucursal_pickup_id);
-  }
-}, [seller?.sucursal_pickup_id]);
+{!order.envio_id && order.order_status !== 'cancelled' && (
 ```
 
-### 3. Agregar query para obtener tarifa y conceptos
+Esto permite crear envíos para pedidos pendientes, pagados, etc.
 
-Después del query de sucursales (línea 85), agregar:
+### 2. Implementar creación masiva de envíos (botón header)
+
+Reemplazar el toast "próximamente" con lógica funcional:
 
 ```typescript
-// Fetch tarifa and calculate price
-const { data: tarifaData } = useQuery({
-  queryKey: ['tarifa-precios', seller?.tarifa_id],
-  queryFn: async () => {
-    if (!seller?.tarifa_id) return null;
-    
-    const { data: tarifa, error: tarifaError } = await supabase
-      .from('tarifas')
-      .select('id, nombre, precio_base')
-      .eq('id', seller.tarifa_id)
-      .single();
-    
-    if (tarifaError) throw tarifaError;
-    
-    const { data: conceptos, error: conceptosError } = await supabase
-      .from('tarifa_concepto_precios')
-      .select(`
-        monto,
-        concepto:tarifa_conceptos(codigo, nombre, es_basico)
-      `)
-      .eq('tarifa_id', seller.tarifa_id);
-    
-    if (conceptosError) throw conceptosError;
-    
-    return { tarifa, conceptos };
-  },
-  enabled: !!seller?.tarifa_id && open,
-});
-```
-
-### 4. Auto-calcular precio cuando se carga la tarifa
-
-Agregar después de la query:
-```typescript
-// Auto-calculate price from tarifa
-useEffect(() => {
-  if (tarifaData?.tarifa && precio === 0) {
-    let precioCalculado = Number(tarifaData.tarifa.precio_base) || 0;
-    
-    // Add basic concepts (like "entrega")
-    const conceptosBasicos = tarifaData.conceptos?.filter(
-      cp => cp.concepto?.es_basico
+{selectedOrders.length > 0 && (
+  <Button onClick={() => {
+    // Get selected orders that don't have envio_id
+    const ordersToShip = filteredOrders?.filter(
+      o => selectedOrders.includes(o.id) && !o.envio_id && o.order_status !== 'cancelled'
     ) || [];
     
-    conceptosBasicos.forEach(cp => {
-      precioCalculado += Number(cp.monto) || 0;
-    });
+    if (ordersToShip.length === 0) {
+      toast({ 
+        title: 'Sin pedidos válidos', 
+        description: 'Los pedidos seleccionados ya tienen envío o están cancelados',
+        variant: 'destructive'
+      });
+      return;
+    }
     
-    setPrecio(precioCalculado);
-  }
-}, [tarifaData]);
+    if (ordersToShip.length === 1) {
+      // For single order, open individual dialog
+      setCreateShipmentOrder(ordersToShip[0]);
+    } else {
+      // For multiple orders, show coming soon (or implement bulk)
+      toast({ 
+        title: 'Funcionalidad próximamente', 
+        description: `Crear ${ordersToShip.length} envíos masivos` 
+      });
+    }
+  }}>
+    <Truck className="mr-2 h-4 w-4" />
+    Crear {selectedOrders.length} Envíos
+  </Button>
+)}
 ```
 
-### 5. Mostrar desglose en la UI (opcional pero recomendado)
+### 3. Agregar botón de acción rápida en la fila (opcional)
 
-Agregar después del grid de Bultos/Precio (después de línea 270):
+Para mejorar la UX, agregar un botón visible directamente en la celda "Envío" cuando el envío está pendiente:
+
 ```typescript
-{tarifaData?.tarifa && (
-  <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-3 text-sm">
-    <p className="font-medium text-blue-700 dark:text-blue-300 mb-2">
-      Tarifa: {tarifaData.tarifa.nombre}
-    </p>
-    <div className="text-blue-600 dark:text-blue-400 space-y-1">
-      <div className="flex justify-between">
-        <span>Flete base:</span>
-        <span>${Number(tarifaData.tarifa.precio_base || 0).toLocaleString()}</span>
-      </div>
-      {tarifaData.conceptos?.filter(c => c.concepto?.es_basico).map((cp, idx) => (
-        <div key={idx} className="flex justify-between">
-          <span>{cp.concepto?.nombre}:</span>
-          <span>${Number(cp.monto || 0).toLocaleString()}</span>
-        </div>
-      ))}
-    </div>
-  </div>
-)}
+<TableCell>
+  {order.envio_id ? (
+    <Badge variant="default">Creado</Badge>
+  ) : order.order_status !== 'cancelled' ? (
+    <Button 
+      variant="outline" 
+      size="sm"
+      onClick={() => setCreateShipmentOrder(order)}
+    >
+      <Truck className="mr-1 h-3 w-3" />
+      Crear
+    </Button>
+  ) : (
+    <Badge variant="secondary">-</Badge>
+  )}
+</TableCell>
+```
+
+---
+
+## Resumen de Cambios
+
+```text
+┌───────────────────────────────────────────────────────────────┐
+│ Pedidos e-Commerce                    [Crear 1 Envíos] ← Ahora│
+│                                        funciona para 1 pedido │
+├───────────────────────────────────────────────────────────────┤
+│ ☑ #100 | Brysha Siempre | ... | Pendiente | [Crear] ← Botón  │
+│                                              visible en tabla │
+└───────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Resultado Esperado
 
-1. Al abrir el diálogo, la **sucursal de origen** se selecciona automáticamente si el seller tiene una configurada
-2. El **precio se calcula automáticamente** basándose en la tarifa del seller
-3. Se muestra un **desglose visual** de cómo se compone el precio
-4. El usuario puede **modificar el precio** manualmente si es necesario
-5. El botón "Crear Envío" funciona correctamente
+1. El botón header "Crear X Envíos" abrirá el diálogo si hay 1 pedido seleccionado
+2. La opción "Crear Envío" aparecerá para pedidos pendientes y pagados
+3. Se puede crear envíos directamente desde la columna "Envío" sin ir al menú
+4. Para creación masiva (2+ pedidos) mostrará "próximamente" hasta implementarla
 
