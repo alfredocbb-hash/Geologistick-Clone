@@ -34,14 +34,34 @@ Deno.serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
+    // Helper function for friendly error pages
+    const errorPage = (title: string, message: string) => `<!DOCTYPE html>
+      <html>
+      <head>
+        <title>Error - Conexión Tiendanube</title>
+        <style>
+          body { font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f5f5f5; }
+          .card { background: white; padding: 40px; border-radius: 12px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 400px; }
+          h1 { color: #ef4444; margin-bottom: 16px; font-size: 24px; }
+          p { color: #666; line-height: 1.6; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <h1>⚠️ ${title}</h1>
+          <p>${message}</p>
+        </div>
+      </body>
+      </html>`;
+
     // GET /authorize - Start OAuth flow
     if (req.method === "GET" && (path === "/authorize" || path === "")) {
       const sellerId = url.searchParams.get("seller_id");
       
       if (!sellerId) {
         return new Response(
-          JSON.stringify({ error: "seller_id is required" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          errorPage("Link inválido", "Este enlace no es válido. Por favor solicita un nuevo enlace de conexión a tu proveedor logístico."),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html" } }
         );
       }
 
@@ -55,15 +75,15 @@ Deno.serve(async (req) => {
       if (sellerError || !seller) {
         console.error("Seller not found:", sellerError);
         return new Response(
-          JSON.stringify({ error: "Seller not found" }),
-          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          errorPage("Tienda no encontrada", "No pudimos encontrar tu tienda. Por favor contacta a tu proveedor logístico para obtener un nuevo enlace."),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "text/html" } }
         );
       }
 
       if (seller.plataforma !== "tiendanube") {
         return new Response(
-          JSON.stringify({ error: "Seller is not a Tiendanube store" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          errorPage("Plataforma incorrecta", "Esta tienda no está configurada como Tiendanube. Por favor contacta a tu proveedor logístico."),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html" } }
         );
       }
 
@@ -78,8 +98,8 @@ Deno.serve(async (req) => {
       if (intError || !integrations || integrations.length === 0) {
         console.error("Tiendanube not configured:", intError);
         return new Response(
-          JSON.stringify({ error: "Tiendanube integration not configured. Please set up client_id and client_secret in Integraciones." }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          errorPage("Integración no configurada", "La integración con Tiendanube aún no está configurada. Por favor contacta a tu proveedor logístico."),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html" } }
         );
       }
 
@@ -88,15 +108,14 @@ Deno.serve(async (req) => {
 
       if (!clientId) {
         return new Response(
-          JSON.stringify({ error: "client_id not configured for Tiendanube" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          errorPage("Configuración incompleta", "Falta el Client ID de Tiendanube. Por favor contacta a tu proveedor logístico."),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html" } }
         );
       }
 
-      // Build authorization URL
+      // Build authorization URL - CORRECTED: Use /apps/{client_id}/authorize path
       const redirectUri = `${supabaseUrl}/functions/v1/tiendanube-oauth/callback`;
-      const authUrl = new URL(`${TIENDANUBE_API_BASE}/apps/authorize/token`);
-      authUrl.searchParams.set("client_id", clientId);
+      const authUrl = new URL(`${TIENDANUBE_API_BASE}/apps/${clientId}/authorize`);
       authUrl.searchParams.set("redirect_uri", redirectUri);
       authUrl.searchParams.set("response_type", "code");
       authUrl.searchParams.set("state", sellerId);
