@@ -1,150 +1,156 @@
 
-# Plan: Solucionar Redirect Persistente del APK
 
-## Diagnóstico del Problema
+# Plan: Enviar Link de Conexión por Email/WhatsApp al Seller
 
-La búsqueda en el código confirma que:
-- ✅ `capacitor.config.ts` está **correcto** (sin `server.url`)
-- ✅ No hay referencias a `lovableproject.com` en el código fuente
-- ❌ **Pero el APK sigue redirigiendo**
+## Resumen del Problema
 
-### Causa Raíz Identificada
+Actualmente, cuando un admin quiere que un seller conecte su tienda Tiendanube:
+1. El admin hace clic en "Conectar" desde el panel
+2. Se abre un popup que requiere que el admin tenga las credenciales del seller
+3. El seller no puede completar esto por su cuenta
 
-Cuando ejecutas `npx cap sync android`, Capacitor copia la configuración TypeScript a un archivo JSON dentro de la carpeta Android:
+**Solución propuesta:** Permitir al admin enviar un link de conexión por Email o WhatsApp para que el seller complete la sincronización desde su propio dispositivo.
 
-```
-android/app/src/main/assets/capacitor.config.json
-```
+## Arquitectura de la Solución
 
-**El problema:** Este archivo JSON puede contener una configuración obsoleta de cuando `server.url` SÍ existía. Aunque hayas actualizado el `.ts`, el `.json` dentro de `android/` mantiene la URL antigua.
-
-## Solución: Regenerar Completamente la Plataforma Android
-
-### Opción 1: Eliminar y Recrear Android (Recomendado)
-
-Desde la raíz del proyecto:
-
-```bash
-# 1. Eliminar la carpeta android completamente
-rm -rf android
-
-# 2. Volver a agregar la plataforma
-npx cap add android
-
-# 3. Construir el proyecto web
-npm run build
-
-# 4. Sincronizar con la nueva plataforma
-npx cap sync android
-
-# 5. Abrir en Android Studio
-npx cap open android
+```text
++------------------+     +-------------------+     +------------------+
+|  Panel Admin     | --> | Edge Function     | --> | Email/WhatsApp   |
+|  (Sellers.tsx)   |     | send-seller-link  |     | al Seller        |
++------------------+     +-------------------+     +------------------+
+                                                          |
+                                                          v
+                                              +----------------------+
+                                              | Seller abre link     |
+                                              | en su dispositivo    |
+                                              +----------------------+
+                                                          |
+                                                          v
+                                              +----------------------+
+                                              | OAuth Tiendanube     |
+                                              | Página de éxito      |
+                                              +----------------------+
 ```
 
-En Android Studio:
-- **Build → Clean Project**
-- **Build → Rebuild Project**
-- **Build → Build Bundle(s) / APK(s) → Build APK(s)**
+## Implementación
 
-### Opción 2: Verificar y Editar Manualmente el JSON (Más Rápido)
+### 1. Nueva Edge Function: `send-seller-connection-link`
 
-1. Navega a: `android/app/src/main/assets/`
-2. Abre: `capacitor.config.json`
-3. **Verifica** si contiene algo como:
+Crear una función que:
+- Reciba el `seller_id` y el método de envío (`email` o `whatsapp`)
+- Genere el link de OAuth: `https://[supabase_url]/functions/v1/tiendanube-oauth/authorize?seller_id=[id]`
+- Envíe por Email (usando integración SMTP) o WhatsApp (usando WhatsApp Business API)
 
-```json
-{
-  "appId": "com.geologic.choferapp",
-  "appName": "ChoferApp",
-  "webDir": "dist",
-  "server": {
-    "url": "https://53354d35-df09-4ff7-9101-b454344485d4.lovableproject.com/?forceHideBadge=true",
-    "cleartext": true
+```typescript
+// supabase/functions/send-seller-connection-link/index.ts
+// - Obtener datos del seller (email, telefono)
+// - Obtener credenciales de integración (SMTP o WhatsApp)
+// - Construir el link de OAuth
+// - Enviar email/WhatsApp con el link
+```
+
+### 2. Actualizar UI en Sellers.tsx
+
+Agregar un nuevo menú desplegable o diálogo con opciones:
+- **Conectar directamente** (comportamiento actual)
+- **Enviar link por Email**
+- **Enviar link por WhatsApp**
+
+```typescript
+// Nuevo componente o diálogo para enviar invitación
+<DropdownMenuItem onClick={() => handleSendInvitation(seller, 'email')}>
+  <Mail className="mr-2 h-4 w-4" />
+  Enviar invitación por Email
+</DropdownMenuItem>
+<DropdownMenuItem onClick={() => handleSendInvitation(seller, 'whatsapp')}>
+  <MessageSquare className="mr-2 h-4 w-4" />
+  Enviar invitación por WhatsApp
+</DropdownMenuItem>
+```
+
+### 3. Opción Simplificada (Sin Edge Function)
+
+Alternativamente, para una implementación más rápida sin backend:
+- Generar el link en el frontend
+- Abrir cliente de email/WhatsApp del navegador con mensaje pre-armado
+- Similar a como ya funciona `handleShareWhatsApp` para tracking
+
+```typescript
+const handleSendConnectionLink = (seller: Seller, method: 'email' | 'whatsapp') => {
+  const oauthUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tiendanube-oauth/authorize?seller_id=${seller.id}`;
+  
+  const message = `Hola ${seller.nombre},\n\nPara conectar tu tienda Tiendanube, haz clic en el siguiente enlace:\n\n${oauthUrl}\n\nEste link te permitirá autorizar la sincronización de pedidos.`;
+  
+  if (method === 'whatsapp') {
+    const cleanPhone = seller.telefono?.replace(/\D/g, '');
+    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
+  } else {
+    window.open(`mailto:${seller.email}?subject=Conecta tu tienda&body=${encodeURIComponent(message)}`, '_blank');
   }
-}
+};
 ```
 
-4. **Elimina completamente** la sección `"server": { ... }`
-5. El archivo debe quedar así:
+## Archivos a Modificar/Crear
 
-```json
-{
-  "appId": "com.geologic.choferapp",
-  "appName": "ChoferApp",
-  "webDir": "dist",
-  "plugins": {
-    "StatusBar": {
-      "style": "DARK",
-      "overlaysWebView": false
-    },
-    "SplashScreen": {
-      "launchShowDuration": 2000,
-      "backgroundColor": "#1e293b",
-      "showSpinner": true,
-      "spinnerColor": "#3b82f6"
-    },
-    "BarcodeScanner": {
-      "enableGoogleBarcodeScanning": true
-    }
-  }
-}
+| Archivo | Acción | Descripción |
+|---------|--------|-------------|
+| `src/pages/ecommerce/Sellers.tsx` | Modificar | Agregar opciones de envío de link en el dropdown |
+| `supabase/functions/send-seller-connection-link/index.ts` | Crear (opcional) | Edge function para envío automático |
+
+## Recomendación
+
+**Opción A (Rápida):** Implementar la solución frontend-only que abre el cliente de email/WhatsApp del navegador. No requiere configuración adicional y funciona inmediatamente.
+
+**Opción B (Completa):** Crear Edge Function que envíe automáticamente usando las integraciones SMTP/WhatsApp configuradas. Más profesional pero requiere que las integraciones estén configuradas.
+
+## Flujo del Seller
+
+1. Admin selecciona "Enviar invitación por Email/WhatsApp"
+2. Se abre el cliente de correo/WhatsApp con mensaje pre-armado
+3. Admin envía el mensaje
+4. Seller recibe el link en su dispositivo
+5. Seller hace clic en el link
+6. Se abre Tiendanube y el seller autoriza con SU cuenta
+7. Conexión completada
+8. El panel del admin se actualiza automáticamente
+
+## Consideraciones de Seguridad
+
+- El link de OAuth es seguro porque solo funciona para el seller_id específico
+- El link no expone credenciales ni tokens
+- La autorización requiere que el seller inicie sesión en SU cuenta de Tiendanube
+
+## Detalles Técnicos
+
+### Estructura del mensaje sugerido
+
+**Email:**
+```
+Asunto: Conecta tu tienda a [NombreEmpresa]
+
+Hola [NombreSeller],
+
+Para sincronizar automáticamente tus pedidos de Tiendanube, 
+necesitamos que autorices la conexión.
+
+Haz clic en el siguiente enlace:
+[LINK]
+
+Este proceso es seguro y solo toma unos segundos.
+
+Saludos,
+[NombreEmpresa]
 ```
 
-6. Guarda el archivo
-7. En Android Studio: **Build → Clean Project → Rebuild Project**
-8. Genera el APK
+**WhatsApp:**
+```
+Hola [NombreSeller] 👋
 
-### Opción 3: Comando de Windows para Limpiar (Si no funciona lo anterior)
+Para conectar tu tienda y sincronizar tus pedidos automáticamente, 
+haz clic aquí:
 
-Si estás en Windows y `rm -rf` no funciona, usa:
+[LINK]
 
-```cmd
-# Desde la raíz del proyecto
-rmdir /s /q android
-npx cap add android
-npm run build
-npx cap sync android
-npx cap open android
+Solo toma unos segundos 🚀
 ```
 
-## Por Qué Esto Sucede
-
-El flujo de Capacitor es:
-
-```
-capacitor.config.ts (tu código)
-        ↓
-   npx cap sync
-        ↓
-android/app/src/main/assets/capacitor.config.json (usado por el APK)
-```
-
-El problema es que `npx cap sync` a veces **no sobrescribe completamente** el JSON si ya existe, especialmente si hubo cambios en la estructura del objeto de configuración.
-
-## Verificación Post-Implementación
-
-Después de regenerar el Android y construir el APK:
-
-1. Instala el nuevo APK en el dispositivo
-2. Abre la app
-3. Verifica que NO redirija a ninguna URL web
-4. Verifica que cargue desde archivos locales (debería funcionar sin internet)
-
-## Archivos a Verificar
-
-- `android/app/src/main/assets/capacitor.config.json` ← **Este es el culpable**
-- `capacitor.config.ts` ← Ya está correcto
-
-## Notas Importantes
-
-- **No** necesitas modificar código TypeScript/React
-- **No** necesitas cambiar configuraciones de Gradle
-- El problema está 100% en la configuración nativa de Capacitor
-- Una vez regenerado, el APK usará los archivos del `dist/` localmente
-
-## Próximos Pasos Recomendados
-
-1. Usar **Opción 1** (eliminar y recrear) para garantizar limpieza total
-2. Si prefieres más rápido, usar **Opción 2** (editar el JSON manualmente)
-3. Después de generar el nuevo APK, probar en un dispositivo físico o emulador
-4. Confirmar que la app funciona sin conexión a internet (prueba en modo avión)
