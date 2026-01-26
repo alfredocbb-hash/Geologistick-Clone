@@ -15,7 +15,19 @@ Deno.serve(async (req) => {
   }
 
   const url = new URL(req.url);
-  const path = url.pathname.replace("/tiendanube-oauth", "");
+  
+  // Extraer el sub-path de forma robusta (funciona con /functions/v1/tiendanube-oauth/authorize)
+  const pathname = url.pathname;
+  let path = "";
+  if (pathname.endsWith("/authorize")) {
+    path = "/authorize";
+  } else if (pathname.endsWith("/callback")) {
+    path = "/callback";
+  } else if (pathname.endsWith("/tiendanube-oauth") || pathname.endsWith("/tiendanube-oauth/")) {
+    path = "";
+  }
+  
+  console.log("Request path:", pathname, "-> Parsed as:", path || "(root)");
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
