@@ -1,65 +1,69 @@
 
+## Qué está pasando (por qué “sigue sin funcionar”)
 
-# Plan: Corregir el Parsing de Rutas en tiendanube-oauth
+El 404 que ve el seller **ya no es de nuestro backend**, es de **Tiendanube**.
 
-## Diagnóstico del Problema
+En la captura se ve que el navegador termina en:
 
-El error 404 ocurre porque la Edge Function `tiendanube-oauth` tiene un bug en cómo parsea el path de la URL.
+`https://www.tiendanube.com/apps/authorize/token?...`
 
-### Código Problemático (Línea 18)
+Ese endpoint **/apps/authorize/token** es el de **intercambio de token (POST)**, y **no sirve** como página de autorización (GET). Por eso Tiendanube responde “No encontramos lo que estás buscando”.
 
-```javascript
-const path = url.pathname.replace("/tiendanube-oauth", "");
-```
+## Objetivo
 
-### Por Qué Falla
+Cuando el seller abre el link (desde WhatsApp o email), nuestro backend debe redirigirlo a la URL correcta de autorización:
 
-| URL que llega | Path después de replace | Esperado |
-|---------------|------------------------|----------|
-| `/functions/v1/tiendanube-oauth/authorize` | `/functions/v1/authorize` | `/authorize` |
-| `/tiendanube-oauth/authorize` | `/authorize` | `/authorize` |
+`https://www.tiendanube.com/apps/{client_id}/authorize?...`
 
-El replace solo quita la primera ocurrencia de `/tiendanube-oauth`, pero si la URL incluye el prefijo `/functions/v1/`, el resultado no es el esperado.
+Ejemplo esperado con tu client_id:
+`https://www.tiendanube.com/apps/25408/authorize?redirect_uri=...&response_type=code&state=...`
 
-## Solución
+## Cambios a implementar
 
-Cambiar el método de extracción del path para que sea más robusto, buscando `/authorize` o `/callback` en cualquier parte del pathname.
+### 1) Corregir la URL de autorización (Edge Function tiendanube-oauth)
+**Archivo:** `supabase/functions/tiendanube-oauth/index.ts`
 
-### Código Corregido
+**Cambio puntual:**
+- Reemplazar esta línea (incorrecta para GET):
+  - `new URL(`${TIENDANUBE_API_BASE}/apps/authorize/token`)`
+- Por la ruta correcta:
+  - `new URL(`${TIENDANUBE_API_BASE}/apps/${clientId}/authorize`)`
 
-```typescript
-const url = new URL(req.url);
-// Extraer el sub-path de forma más robusta
-const pathname = url.pathname;
-let path = "";
-if (pathname.endsWith("/authorize")) {
-  path = "/authorize";
-} else if (pathname.endsWith("/callback")) {
-  path = "/callback";
-} else if (pathname.endsWith("/tiendanube-oauth") || pathname.endsWith("/tiendanube-oauth/")) {
-  path = "";
-}
-```
+**Además:**
+- Mantener `redirect_uri`, `response_type=code` y `state` como query params.
+- Quitar `client_id` como query param (no es necesario para el authorize; va en el path).
 
-Esto funciona independientemente del prefijo de la URL (`/functions/v1/`, etc.).
+### 2) Mejorar el mensaje de error cuando falte config (UX)
+Ya que este flujo lo usa un seller externo, cambiaremos las respuestas de error “JSON crudo” por una **página HTML amigable** cuando:
+- Falte `seller_id`
+- No exista seller
+- No esté configurado `client_id / client_secret`
+- El seller no sea plataforma `tiendanube`
 
-## Archivos a Modificar
+(Esto evita que el seller vea errores técnicos.)
 
-| Archivo | Cambio |
-|---------|--------|
-| `supabase/functions/tiendanube-oauth/index.ts` | Corregir parsing del path en líneas 17-18 |
+### 3) Verificación / Prueba rápida
+Después del cambio:
 
-## Cambios Detallados
+**Prueba técnica (sin Tiendanube):**
+- Llamar al endpoint `/tiendanube-oauth/authorize?seller_id=...` y verificar que responda `302`
+- Confirmar que el header `Location` apunte a:
+  - `/apps/25408/authorize?...`
 
-1. **Líneas 17-18**: Reemplazar el método de parsing actual con uno basado en `endsWith()`
-2. **Agregar logging** del path recibido para debug futuro
+**Prueba real (con seller):**
+- Reenviar el link por WhatsApp
+- El seller debe caer en pantalla de autorización de Tiendanube (no 404)
+- Luego de “Autorizar”, debe volver al callback y mostrar “✓ Tienda conectada exitosamente”
 
-## Verificación Post-Implementación
+## Posibles causas adicionales (por si aún fallara luego)
+Si tras corregir el endpoint aún falla, las dos causas más comunes son:
+1) En Tiendanube Partners, la “Página de la aplicación / Redirect URI” no coincide exactamente con el callback que usamos.
+2) El client_id que está guardado en Integraciones no coincide con el de la app (aunque por tu captura parece que sí: 25408).
 
-1. El link enviado por WhatsApp: `https://uhlgimnmfifmrxraorrl.supabase.co/functions/v1/tiendanube-oauth/authorize?seller_id=...` debería redirigir correctamente a Tiendanube
-2. El callback de Tiendanube debería procesar correctamente y mostrar la página de éxito
+## Archivos involucrados
+- `supabase/functions/tiendanube-oauth/index.ts` (modificar)
 
-## Beneficio Adicional
-
-También mejoraré los mensajes de error para que si algo falla, el seller vea una página HTML amigable en lugar de JSON crudo.
-
+## Resultado esperado para el negocio
+- El admin envía link por WhatsApp/email
+- El seller abre desde su propio dispositivo y autoriza sin compartir credenciales
+- Conexión y sincronización quedan listas sin intervención del admin
