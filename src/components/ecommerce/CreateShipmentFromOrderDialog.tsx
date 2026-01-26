@@ -240,9 +240,10 @@ export function CreateShipmentFromOrderDialog({
   });
 
   const handleClose = () => {
+    const wasCreated = !!createdEnvio;
     setCreatedEnvio(null);
     onOpenChange(false);
-    if (createdEnvio) {
+    if (wasCreated) {
       onSuccess();
     }
   };
