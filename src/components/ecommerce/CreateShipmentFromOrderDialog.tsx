@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
@@ -8,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, MapPin, User, Package, DollarSign } from 'lucide-react';
+import { Loader2, MapPin, User, Package, DollarSign, Printer, CheckCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
 interface Order {
@@ -50,9 +51,11 @@ export function CreateShipmentFromOrderDialog({
   onSuccess 
 }: CreateShipmentFromOrderDialogProps) {
   const { tenantId } = useTenant();
+  const navigate = useNavigate();
   const [precio, setPrecio] = useState<number>(0);
   const [sucursalOrigenId, setSucursalOrigenId] = useState<string>('');
   const [cantidadBultos, setCantidadBultos] = useState<number>(1);
+  const [createdEnvio, setCreatedEnvio] = useState<any>(null);
 
   // Fetch seller details
   const { data: seller } = useQuery({
@@ -221,11 +224,11 @@ export function CreateShipmentFromOrderDialog({
       return envio;
     },
     onSuccess: (envio) => {
+      setCreatedEnvio(envio);
       toast({ 
         title: 'Envío creado correctamente',
         description: `Tracking: ${envio.tracking_number}`,
       });
-      onSuccess();
     },
     onError: (error: any) => {
       toast({ 
@@ -236,17 +239,58 @@ export function CreateShipmentFromOrderDialog({
     },
   });
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Crear Envío desde Pedido</DialogTitle>
-          <DialogDescription>
-            Pedido #{order.external_order_number || order.external_order_id}
-          </DialogDescription>
-        </DialogHeader>
+  const handleClose = () => {
+    setCreatedEnvio(null);
+    onOpenChange(false);
+    if (createdEnvio) {
+      onSuccess();
+    }
+  };
 
-        <div className="space-y-4">
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="max-w-lg">
+        {createdEnvio ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>Envío Creado Exitosamente</DialogTitle>
+            </DialogHeader>
+            <div className="text-center py-6 space-y-4">
+              <div className="flex justify-center">
+                <CheckCircle className="h-16 w-16 text-green-500" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-lg">¡Listo!</h3>
+                <p className="text-muted-foreground font-mono text-lg mt-1">
+                  {createdEnvio.tracking_number}
+                </p>
+              </div>
+              <div className="flex gap-2 justify-center pt-4">
+                <Button 
+                  variant="outline" 
+                  onClick={handleClose}
+                >
+                  Cerrar
+                </Button>
+                <Button 
+                  onClick={() => navigate(`/print-label?id=${createdEnvio.id}`)}
+                >
+                  <Printer className="mr-2 h-4 w-4" />
+                  Imprimir Etiqueta
+                </Button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle>Crear Envío desde Pedido</DialogTitle>
+              <DialogDescription>
+                Pedido #{order.external_order_number || order.external_order_id}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
           {/* Order Summary */}
           <Card>
             <CardHeader className="pb-2">
@@ -346,18 +390,20 @@ export function CreateShipmentFromOrderDialog({
           </div>
         </div>
 
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
-          <Button 
-            onClick={() => createShipmentMutation.mutate()} 
-            disabled={createShipmentMutation.isPending || !sucursalOrigenId || !precio}
-          >
-            {createShipmentMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Crear Envío
-          </Button>
-        </DialogFooter>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={handleClose}>
+                Cancelar
+              </Button>
+              <Button 
+                onClick={() => createShipmentMutation.mutate()} 
+                disabled={createShipmentMutation.isPending || !sucursalOrigenId || !precio}
+              >
+                {createShipmentMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Crear Envío
+              </Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

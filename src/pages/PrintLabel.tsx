@@ -95,6 +95,9 @@ interface Envio {
   dni_destinatario: string | null;
   whatsapp_destinatario: string | null;
   created_at: string;
+  // Direct text fields for e-commerce shipments
+  nombre_remitente: string | null;
+  nombre_destinatario: string | null;
   // Third-party shipment fields
   es_terciarizado: boolean | null;
   empresa_terciarizada: string | null;
@@ -203,10 +206,12 @@ const generateLabelHTML = (
           <div class="recipient-name">
             ${envio.destinatario 
               ? `${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}`
-              : 'Sin destinatario'}
+              : (envio.nombre_destinatario || 'Sin destinatario')}
           </div>
           ${envio.dni_destinatario ? `<div class="recipient-dni">DNI: ${envio.dni_destinatario}</div>` : ''}
-          ${envio.destinatario?.telefono ? `<div class="recipient-phone">Tel: ${envio.destinatario.telefono}</div>` : ''}
+          ${envio.destinatario?.telefono 
+            ? `<div class="recipient-phone">Tel: ${envio.destinatario.telefono}</div>` 
+            : (envio.whatsapp_destinatario ? `<div class="recipient-phone">Tel: ${envio.whatsapp_destinatario}</div>` : '')}
         </div>
 
         <div class="divider"></div>
@@ -266,7 +271,7 @@ const generateLabelHTML = (
           <div class="sender-name">
             ${envio.remitente 
               ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}`.trim()
-              : 'Sin remitente'}
+              : (envio.nombre_remitente || 'Sin remitente')}
           </div>
           ${envio.remitente?.telefono ? `<div class="sender-phone">Tel: ${envio.remitente.telefono}</div>` : ''}
         </div>
@@ -608,7 +613,8 @@ export default function PrintLabel() {
 
     // Determine delivery address
     const getDeliveryAddress = () => {
-      if (tipoServicio === 'sucursal_puerta' || tipoServicio === 'puerta_puerta') {
+      // Include domicilio_domicilio for e-commerce shipments
+      if (['sucursal_puerta', 'puerta_puerta', 'domicilio_domicilio'].includes(tipoServicio)) {
         if (envio.direccion_entrega) {
           return {
             type: 'domicilio',
@@ -689,7 +695,8 @@ export default function PrintLabel() {
 
   // Determine delivery address for preview
   const getDeliveryAddress = () => {
-    if (tipoServicio === 'sucursal_puerta' || tipoServicio === 'puerta_puerta') {
+    // Include domicilio_domicilio for e-commerce shipments
+    if (['sucursal_puerta', 'puerta_puerta', 'domicilio_domicilio'].includes(tipoServicio)) {
       if (envio.direccion_entrega) {
         return {
           type: 'domicilio',
@@ -833,13 +840,13 @@ export default function PrintLabel() {
                 <p className="font-bold text-sm uppercase">
                   {envio.destinatario 
                     ? `${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}`
-                    : 'Sin destinatario'}
+                    : (envio.nombre_destinatario || 'Sin destinatario')}
                 </p>
                 {envio.dni_destinatario && (
                   <p className="text-xs">DNI: {envio.dni_destinatario}</p>
                 )}
-                {envio.destinatario?.telefono && (
-                  <p className="text-xs">Tel: {envio.destinatario.telefono}</p>
+                {(envio.destinatario?.telefono || envio.whatsapp_destinatario) && (
+                  <p className="text-xs">Tel: {envio.destinatario?.telefono || envio.whatsapp_destinatario}</p>
                 )}
               </div>
 
@@ -914,7 +921,7 @@ export default function PrintLabel() {
                 <p className="font-medium">
                   {envio.remitente 
                     ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}`.trim()
-                    : 'Sin remitente'}
+                    : (envio.nombre_remitente || 'Sin remitente')}
                 </p>
                 {envio.remitente?.telefono && (
                   <p>Tel: {envio.remitente.telefono}</p>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
@@ -11,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Search, MoreHorizontal, Package, Eye, Truck, ShoppingBag, Clock, CheckCircle, XCircle } from 'lucide-react';
+import { Search, MoreHorizontal, Package, Eye, Truck, ShoppingBag, Clock, CheckCircle, XCircle, Printer } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from '@/hooks/use-toast';
@@ -71,6 +72,7 @@ const FULFILLMENT_CONFIG: Record<string, { label: string; className: string }> =
 export default function Orders() {
   const { tenantId } = useTenant();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -293,7 +295,18 @@ export default function Orders() {
                       </TableCell>
                       <TableCell>
                         {order.envio_id ? (
-                          <Badge variant="default">Creado</Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="default">Creado</Badge>
+                            <Button 
+                              variant="ghost" 
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => navigate(`/print-label?id=${order.envio_id}`)}
+                              title="Imprimir etiqueta"
+                            >
+                              <Printer className="h-3 w-3" />
+                            </Button>
+                          </div>
                         ) : order.order_status !== 'cancelled' ? (
                           <Button 
                             variant="outline" 
