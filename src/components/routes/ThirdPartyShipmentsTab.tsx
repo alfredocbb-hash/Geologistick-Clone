@@ -227,8 +227,17 @@ export default function ThirdPartyShipmentsTab() {
       // Find selected company details
       const selectedEmpresa = empresas.find((e) => e.id === shipment.empresa_terciarizada);
       
-      // Generate tracking number
-      const { data: trackingData } = await supabase.rpc("generate_tracking_number");
+      // Generate tracking number with branch code
+      const { data: trackingData, error: trackingError } = await supabase
+        .rpc("generate_tracking_number", { p_sucursal_id: profile?.sucursal_id });
+
+      if (trackingError) {
+        throw new Error(`Error al generar tracking: ${trackingError.message}`);
+      }
+
+      if (!trackingData) {
+        throw new Error("No se pudo generar el número de tracking");
+      }
 
       const { data, error } = await supabase
         .from("envios")
