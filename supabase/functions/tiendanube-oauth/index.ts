@@ -258,6 +258,15 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Get tenant branding for carrier name
+      const { data: branding } = await supabase
+        .from("tenant_branding")
+        .select("nombre_app")
+        .eq("tenant_id", seller.tenant_id)
+        .maybeSingle();
+
+      const companyName = branding?.nombre_app || "Envío Express";
+
       // Register shipping carrier in Tiendanube
       try {
         const carrierResponse = await fetch(
@@ -270,7 +279,7 @@ Deno.serve(async (req) => {
               "User-Agent": "Geologistick (alfredocbb@gmail.com)",
             },
             body: JSON.stringify({
-              name: "Geologistick",
+              name: companyName,
               callback_url: `${supabaseUrl}/functions/v1/tiendanube-shipping-rates`,
               types: "ship",
               active: true,

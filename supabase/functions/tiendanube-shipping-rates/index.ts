@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
     // Find seller by store_id
     const { data: seller, error: sellerError } = await supabase
       .from("ecommerce_sellers")
-      .select("id, nombre, tarifa_id, min_delivery_days, max_delivery_days, activo")
+      .select("id, nombre, tarifa_id, min_delivery_days, max_delivery_days, activo, tenant_id")
       .eq("store_id", storeId)
       .maybeSingle();
 
@@ -53,6 +53,15 @@ Deno.serve(async (req) => {
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Get tenant branding for company name
+    const { data: branding } = await supabase
+      .from("tenant_branding")
+      .select("nombre_app")
+      .eq("tenant_id", seller.tenant_id)
+      .maybeSingle();
+
+    const companyName = branding?.nombre_app || "Envío Express";
 
     // Get tarifa with basic info
     const { data: tarifa, error: tarifaError } = await supabase
@@ -113,8 +122,8 @@ Deno.serve(async (req) => {
     // Build response with rate
     const rates = [
       {
-        code: "geologistick_standard",
-        name: "Geologistick - Envío Estándar",
+        code: "custom_shipping",
+        name: `${companyName} - Envío Estándar`,
         price: precio.toFixed(2),
         currency: "ARS",
         min_delivery_days: seller.min_delivery_days || 3,
