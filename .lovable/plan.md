@@ -1,190 +1,142 @@
 
 
-# Plan: Corregir Errores de Sincronización y Mejorar Páginas OAuth
+# Plan: Corregir Diálogo de Creación de Envío desde Pedido
 
-## Problema 1: Error de Sincronización (404 "Last page is 0")
+## Problemas Identificados
 
-### Diagnóstico
-Los logs muestran:
-```
-Failed to fetch orders: {
-  "code": 404,
-  "message": "Not Found", 
-  "description": "Last page is 0"
-}
-```
-
-Cuando una tienda **no tiene pedidos**, Tiendanube devuelve un 404 en lugar de un array vacío. El código actual (líneas 118-132 de `tiendanube-sync`) interpreta esto como error fatal cuando debería ser un caso válido.
-
-### Solución
-Detectar el error 404 con "Last page is 0" y tratarlo como "sin pedidos" en lugar de error:
-
+### 1. Bug crítico: useState mal usado (línea 88-92)
 ```typescript
-if (!response.ok) {
-  const errorText = await response.text();
-  
-  // Tiendanube returns 404 when store has no orders ("Last page is 0")
-  if (response.status === 404 && errorText.includes("Last page is 0")) {
-    console.log("Store has no orders yet");
-    hasMore = false;
-    break; // Exit loop gracefully
+useState(() => {
+  if (seller?.sucursal_pickup_id) {
+    setSucursalOrigenId(seller.sucursal_pickup_id);
   }
-  
-  // ... resto del manejo de errores
-}
+});
 ```
+Esto **nunca funciona** porque:
+- `useState` no es para efectos secundarios (debería ser `useEffect`)
+- `seller` es `undefined` en el primer render
+
+### 2. El precio no se calcula automáticamente
+El seller tiene una tarifa asignada (`tarifa_id`) pero el precio empieza en `$0` y requiere ingreso manual.
 
 ---
 
-## Problema 2: Página de Éxito OAuth Muestra Código
+## Solución
 
-### Diagnóstico
-La página de éxito no incluye `charset=utf-8` en los headers ni en el meta tag, causando que algunos navegadores móviles muestren el HTML crudo.
-
-### Solución
-Mejorar el HTML con charset correcto y diseño profesional.
+### Archivo a modificar
+`src/components/ecommerce/CreateShipmentFromOrderDialog.tsx`
 
 ---
 
-## Archivos a Modificar
+## Cambios Técnicos
 
-| Archivo | Cambio |
-|---------|--------|
-| `supabase/functions/tiendanube-sync/index.ts` | Manejar 404 "Last page is 0" como caso válido |
-| `supabase/functions/tiendanube-oauth/index.ts` | Mejorar página de éxito con charset UTF-8 |
-
----
-
-## Cambios Detallados
-
-### 1. tiendanube-sync/index.ts (líneas 118-133)
-
-**Antes:**
+### 1. Importar useEffect
 ```typescript
-if (!response.ok) {
-  const errorText = await response.text();
-  console.error("Failed to fetch orders:", errorText);
-  
-  if (response.status === 401) {
-    return new Response(...);
-  }
-  
-  return new Response(
-    JSON.stringify({ error: "Failed to fetch orders from Tiendanube" }),
-    { status: 500, ... }
-  );
-}
+import { useState, useEffect } from 'react';
 ```
 
-**Después:**
+### 2. Corregir inicialización de sucursal
+
+**Reemplazar líneas 87-92:**
 ```typescript
-if (!response.ok) {
-  const errorText = await response.text();
-  
-  // Tiendanube returns 404 when store has no orders ("Last page is 0")
-  if (response.status === 404 && errorText.includes("Last page is 0")) {
-    console.log("Store has no orders yet - this is normal for new stores");
-    hasMore = false;
-    break;
+// Set default origin branch from seller
+useEffect(() => {
+  if (seller?.sucursal_pickup_id && !sucursalOrigenId) {
+    setSucursalOrigenId(seller.sucursal_pickup_id);
   }
-  
-  console.error("Failed to fetch orders:", errorText);
-  
-  if (response.status === 401) {
-    return new Response(...);
-  }
-  
-  return new Response(
-    JSON.stringify({ error: "Failed to fetch orders from Tiendanube" }),
-    { status: 500, ... }
-  );
-}
+}, [seller?.sucursal_pickup_id]);
 ```
 
-### 2. tiendanube-oauth/index.ts (líneas 286-315)
+### 3. Agregar query para obtener tarifa y conceptos
 
-Reemplazar la página de éxito actual con una versión mejorada:
+Después del query de sucursales (línea 85), agregar:
 
-```html
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Conexion Exitosa - Tiendanube</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { 
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      display: flex; 
-      align-items: center; 
-      justify-content: center; 
-      min-height: 100vh; 
-      padding: 20px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    }
-    .card { 
-      background: white; 
-      padding: 48px 40px; 
-      border-radius: 16px; 
-      text-align: center; 
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-      max-width: 420px;
-      width: 100%;
-      animation: slideUp 0.5s ease-out;
-    }
-    @keyframes slideUp {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    .icon { font-size: 64px; margin-bottom: 20px; }
-    h1 { color: #1a1a1a; margin-bottom: 12px; font-size: 24px; font-weight: 600; }
-    .subtitle { color: #666; font-size: 16px; margin-bottom: 24px; line-height: 1.6; }
-    .hint { font-size: 13px; color: #999; margin-top: 24px; }
-    .loader { 
-      width: 24px; height: 24px; 
-      border: 3px solid #eee; 
-      border-top-color: #667eea; 
-      border-radius: 50%; 
-      animation: spin 1s linear infinite;
-      margin: 20px auto 0;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="icon">✅</div>
-    <h1>Tienda Conectada</h1>
-    <p class="subtitle">Tu tienda de Tiendanube se ha vinculado correctamente con el sistema de envios.</p>
-    <p class="hint">Esta ventana se cerrara automaticamente...</p>
-    <div class="loader"></div>
+```typescript
+// Fetch tarifa and calculate price
+const { data: tarifaData } = useQuery({
+  queryKey: ['tarifa-precios', seller?.tarifa_id],
+  queryFn: async () => {
+    if (!seller?.tarifa_id) return null;
+    
+    const { data: tarifa, error: tarifaError } = await supabase
+      .from('tarifas')
+      .select('id, nombre, precio_base')
+      .eq('id', seller.tarifa_id)
+      .single();
+    
+    if (tarifaError) throw tarifaError;
+    
+    const { data: conceptos, error: conceptosError } = await supabase
+      .from('tarifa_concepto_precios')
+      .select(`
+        monto,
+        concepto:tarifa_conceptos(codigo, nombre, es_basico)
+      `)
+      .eq('tarifa_id', seller.tarifa_id);
+    
+    if (conceptosError) throw conceptosError;
+    
+    return { tarifa, conceptos };
+  },
+  enabled: !!seller?.tarifa_id && open,
+});
+```
+
+### 4. Auto-calcular precio cuando se carga la tarifa
+
+Agregar después de la query:
+```typescript
+// Auto-calculate price from tarifa
+useEffect(() => {
+  if (tarifaData?.tarifa && precio === 0) {
+    let precioCalculado = Number(tarifaData.tarifa.precio_base) || 0;
+    
+    // Add basic concepts (like "entrega")
+    const conceptosBasicos = tarifaData.conceptos?.filter(
+      cp => cp.concepto?.es_basico
+    ) || [];
+    
+    conceptosBasicos.forEach(cp => {
+      precioCalculado += Number(cp.monto) || 0;
+    });
+    
+    setPrecio(precioCalculado);
+  }
+}, [tarifaData]);
+```
+
+### 5. Mostrar desglose en la UI (opcional pero recomendado)
+
+Agregar después del grid de Bultos/Precio (después de línea 270):
+```typescript
+{tarifaData?.tarifa && (
+  <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-3 text-sm">
+    <p className="font-medium text-blue-700 dark:text-blue-300 mb-2">
+      Tarifa: {tarifaData.tarifa.nombre}
+    </p>
+    <div className="text-blue-600 dark:text-blue-400 space-y-1">
+      <div className="flex justify-between">
+        <span>Flete base:</span>
+        <span>${Number(tarifaData.tarifa.precio_base || 0).toLocaleString()}</span>
+      </div>
+      {tarifaData.conceptos?.filter(c => c.concepto?.es_basico).map((cp, idx) => (
+        <div key={idx} className="flex justify-between">
+          <span>{cp.concepto?.nombre}:</span>
+          <span>${Number(cp.monto || 0).toLocaleString()}</span>
+        </div>
+      ))}
+    </div>
   </div>
-  <script>
-    setTimeout(function() {
-      if (window.opener) {
-        window.opener.postMessage({ type: 'tiendanube-oauth-success', sellerId: '${sellerId}' }, '*');
-      }
-      window.close();
-    }, 3000);
-  </script>
-</body>
-</html>
+)}
 ```
-
-**Nota importante:** El HTML usa caracteres ASCII simples (sin tildes) para evitar problemas de encoding en algunos navegadores.
 
 ---
 
 ## Resultado Esperado
 
-1. **Sincronización:** Cuando una tienda no tiene pedidos, mostrará:
-   - Mensaje de éxito: "Sincronizado: 0 pedidos (tienda sin pedidos aún)"
-   - En lugar de error 500
-
-2. **Página OAuth:** Los sellers verán una página profesional con:
-   - Fondo gradiente
-   - Animación de entrada
-   - Loader mientras se cierra
-   - Mensaje claro de éxito
+1. Al abrir el diálogo, la **sucursal de origen** se selecciona automáticamente si el seller tiene una configurada
+2. El **precio se calcula automáticamente** basándose en la tarifa del seller
+3. Se muestra un **desglose visual** de cómo se compone el precio
+4. El usuario puede **modificar el precio** manualmente si es necesario
+5. El botón "Crear Envío" funciona correctamente
 
