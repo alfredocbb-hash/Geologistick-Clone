@@ -1,191 +1,190 @@
 
-# Plan: Corregir Desfase de Fechas en Toda la App
 
-## Diagnóstico del Problema
+# Plan: Corregir Errores de Sincronización y Mejorar Páginas OAuth
 
-El sistema muestra **"25/01/2026"** cuando la fecha real es **"26/01/2026"**. Esto ocurre porque:
+## Problema 1: Error de Sincronización (404 "Last page is 0")
 
-1. **La base de datos almacena timestamps en UTC** (ej: `2026-01-26T02:00:00Z`)
-2. **Al parsear con `new Date(string)`** en Argentina (UTC-3), se convierte a hora local
-3. **Si el timestamp es temprano en UTC** (ej: 02:00 UTC = 23:00 del día anterior en Argentina), la fecha cambia
-
-### Ejemplo del Bug
+### Diagnóstico
+Los logs muestran:
 ```
-Base de datos: 2026-01-26T02:00:00Z (UTC)
-Argentina:     2026-01-25T23:00:00 (UTC-3) ← ¡Día anterior!
+Failed to fetch orders: {
+  "code": 404,
+  "message": "Not Found", 
+  "description": "Last page is 0"
+}
 ```
 
-## Solución Propuesta
+Cuando una tienda **no tiene pedidos**, Tiendanube devuelve un 404 en lugar de un array vacío. El código actual (líneas 118-132 de `tiendanube-sync`) interpreta esto como error fatal cuando debería ser un caso válido.
 
-Crear una **función helper centralizada** que extraiga la fecha sin conversión timezone, y usarla en todos los lugares que muestran fechas de la base de datos.
-
-### Helper Functions (nuevo archivo)
+### Solución
+Detectar el error 404 con "Last page is 0" y tratarlo como "sin pedidos" en lugar de error:
 
 ```typescript
-// src/lib/dateUtils.ts
-
-/**
- * Parsea una fecha ISO string preservando la fecha original (sin shift de timezone)
- * Útil para campos tipo DATE o cuando solo importa el día, no la hora
- */
-export function parseDateString(dateStr: string): Date {
-  // Para fechas YYYY-MM-DD
-  if (dateStr.length === 10 && dateStr.includes('-')) {
-    const [year, month, day] = dateStr.split('-').map(Number);
-    return new Date(year, month - 1, day);
+if (!response.ok) {
+  const errorText = await response.text();
+  
+  // Tiendanube returns 404 when store has no orders ("Last page is 0")
+  if (response.status === 404 && errorText.includes("Last page is 0")) {
+    console.log("Store has no orders yet");
+    hasMore = false;
+    break; // Exit loop gracefully
   }
   
-  // Para timestamps ISO, extraer solo la parte de fecha
-  const datePart = dateStr.split('T')[0];
-  const [year, month, day] = datePart.split('-').map(Number);
-  return new Date(year, month - 1, day);
-}
-
-/**
- * Formatea una fecha Date a string YYYY-MM-DD sin conversión UTC
- */
-export function formatDateString(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-/**
- * Obtiene la fecha de hoy en formato YYYY-MM-DD (hora local)
- */
-export function getTodayString(): string {
-  return formatDateString(new Date());
+  // ... resto del manejo de errores
 }
 ```
+
+---
+
+## Problema 2: Página de Éxito OAuth Muestra Código
+
+### Diagnóstico
+La página de éxito no incluye `charset=utf-8` en los headers ni en el meta tag, causando que algunos navegadores móviles muestren el HTML crudo.
+
+### Solución
+Mejorar el HTML con charset correcto y diseño profesional.
+
+---
 
 ## Archivos a Modificar
 
-| Archivo | Problema | Solución |
-|---------|----------|----------|
-| `src/lib/dateUtils.ts` | No existe | **Crear** con helpers |
-| `src/pages/PrintRouteSheet.tsx` | `new Date(hojaRuta.created_at)` | Usar `parseDateString()` |
-| `src/pages/PrintPlannedRoute.tsx` | `new Date(ruta.fecha)` | Usar `parseDateString()` |
-| `src/pages/Shipments.tsx` | `new Date(envio.created_at)` | Usar `parseDateString()` |
-| `src/pages/Dashboard.tsx` | `toISOString().split('T')[0]` | Usar `getTodayString()` |
-| `src/pages/ecommerce/Orders.tsx` | `new Date(order.created_at)` | Usar `parseDateString()` |
-| `src/pages/MyRoutes.tsx` | `new Date(hoja.created_at)` | Usar `parseDateString()` |
-| `src/components/mobile/MobileHomeTab.tsx` | `toISOString().split('T')[0]` | Usar `getTodayString()` |
-| `src/components/mobile/MobileRoutesTab.tsx` | Si tiene fechas | Revisar y corregir |
-| `src/components/routes/RescheduledShipmentsList.tsx` | `new Date(envio.fecha_entrega)` | Usar `parseDateString()` |
-| `src/components/driver/RescheduleDialog.tsx` | `new Date(shipment.fecha_entrega)` | Usar `parseDateString()` |
-| `src/pages/RoutePlanner.tsx` | Display de fechas en tab "Activas" | Usar `parseDateString()` |
+| Archivo | Cambio |
+|---------|--------|
+| `supabase/functions/tiendanube-sync/index.ts` | Manejar 404 "Last page is 0" como caso válido |
+| `supabase/functions/tiendanube-oauth/index.ts` | Mejorar página de éxito con charset UTF-8 |
+
+---
 
 ## Cambios Detallados
 
-### 1. Crear `src/lib/dateUtils.ts`
-Archivo nuevo con los 3 helpers descritos arriba.
+### 1. tiendanube-sync/index.ts (líneas 118-133)
 
-### 2. PrintRouteSheet.tsx (línea 136)
+**Antes:**
 ```typescript
-// Antes
-format(new Date(hojaRuta.created_at), "dd/MM/yyyy HH:mm", { locale: es })
-
-// Después
-import { parseDateString } from '@/lib/dateUtils';
-format(parseDateString(hojaRuta.created_at), "dd/MM/yyyy", { locale: es })
+if (!response.ok) {
+  const errorText = await response.text();
+  console.error("Failed to fetch orders:", errorText);
+  
+  if (response.status === 401) {
+    return new Response(...);
+  }
+  
+  return new Response(
+    JSON.stringify({ error: "Failed to fetch orders from Tiendanube" }),
+    { status: 500, ... }
+  );
+}
 ```
 
-### 3. PrintPlannedRoute.tsx (línea 145)
+**Después:**
 ```typescript
-// Antes
-format(new Date(ruta.fecha), "EEEE dd/MM/yyyy", { locale: es })
-
-// Después
-import { parseDateString } from '@/lib/dateUtils';
-format(parseDateString(ruta.fecha), "EEEE dd/MM/yyyy", { locale: es })
+if (!response.ok) {
+  const errorText = await response.text();
+  
+  // Tiendanube returns 404 when store has no orders ("Last page is 0")
+  if (response.status === 404 && errorText.includes("Last page is 0")) {
+    console.log("Store has no orders yet - this is normal for new stores");
+    hasMore = false;
+    break;
+  }
+  
+  console.error("Failed to fetch orders:", errorText);
+  
+  if (response.status === 401) {
+    return new Response(...);
+  }
+  
+  return new Response(
+    JSON.stringify({ error: "Failed to fetch orders from Tiendanube" }),
+    { status: 500, ... }
+  );
+}
 ```
 
-### 4. Dashboard.tsx (líneas 22 y 91)
-```typescript
-// Antes
-const today = new Date().toISOString().split('T')[0];
+### 2. tiendanube-oauth/index.ts (líneas 286-315)
 
-// Después
-import { getTodayString } from '@/lib/dateUtils';
-const today = getTodayString();
+Reemplazar la página de éxito actual con una versión mejorada:
+
+```html
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Conexion Exitosa - Tiendanube</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex; 
+      align-items: center; 
+      justify-content: center; 
+      min-height: 100vh; 
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    .card { 
+      background: white; 
+      padding: 48px 40px; 
+      border-radius: 16px; 
+      text-align: center; 
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      max-width: 420px;
+      width: 100%;
+      animation: slideUp 0.5s ease-out;
+    }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .icon { font-size: 64px; margin-bottom: 20px; }
+    h1 { color: #1a1a1a; margin-bottom: 12px; font-size: 24px; font-weight: 600; }
+    .subtitle { color: #666; font-size: 16px; margin-bottom: 24px; line-height: 1.6; }
+    .hint { font-size: 13px; color: #999; margin-top: 24px; }
+    .loader { 
+      width: 24px; height: 24px; 
+      border: 3px solid #eee; 
+      border-top-color: #667eea; 
+      border-radius: 50%; 
+      animation: spin 1s linear infinite;
+      margin: 20px auto 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">✅</div>
+    <h1>Tienda Conectada</h1>
+    <p class="subtitle">Tu tienda de Tiendanube se ha vinculado correctamente con el sistema de envios.</p>
+    <p class="hint">Esta ventana se cerrara automaticamente...</p>
+    <div class="loader"></div>
+  </div>
+  <script>
+    setTimeout(function() {
+      if (window.opener) {
+        window.opener.postMessage({ type: 'tiendanube-oauth-success', sellerId: '${sellerId}' }, '*');
+      }
+      window.close();
+    }, 3000);
+  </script>
+</body>
+</html>
 ```
 
-### 5. Shipments.tsx (línea 343)
-```typescript
-// Antes
-format(new Date(envio.created_at), 'dd MMM yyyy', { locale: es })
+**Nota importante:** El HTML usa caracteres ASCII simples (sin tildes) para evitar problemas de encoding en algunos navegadores.
 
-// Después
-import { parseDateString } from '@/lib/dateUtils';
-format(parseDateString(envio.created_at), 'dd MMM yyyy', { locale: es })
-```
-
-### 6. Orders.tsx (línea 244)
-```typescript
-// Antes
-format(new Date(order.created_at), 'dd/MM/yy HH:mm', { locale: es })
-
-// Después
-import { parseDateString } from '@/lib/dateUtils';
-format(parseDateString(order.created_at), 'dd/MM/yy', { locale: es })
-```
-
-### 7. MobileHomeTab.tsx (línea 64)
-```typescript
-// Antes
-const today = new Date().toISOString().split('T')[0];
-
-// Después
-import { getTodayString } from '@/lib/dateUtils';
-const today = getTodayString();
-```
-
-### 8. MyRoutes.tsx (líneas 262 y 364)
-```typescript
-// Antes
-format(new Date(hoja.created_at), 'dd/MM/yy HH:mm', { locale: es })
-format(new Date(ruta.fecha), 'dd/MM/yy', { locale: es })
-
-// Después
-import { parseDateString } from '@/lib/dateUtils';
-format(parseDateString(hoja.created_at), 'dd/MM/yy', { locale: es })
-format(parseDateString(ruta.fecha), 'dd/MM/yy', { locale: es })
-```
-
-### 9. RescheduledShipmentsList.tsx (líneas 172 y 177)
-```typescript
-// Antes
-format(new Date(envio.fecha_entrega), 'dd/MM/yyyy', { locale: es })
-format(new Date(envio.ultima_reprogramacion), 'dd/MM HH:mm', { locale: es })
-
-// Después
-import { parseDateString } from '@/lib/dateUtils';
-format(parseDateString(envio.fecha_entrega), 'dd/MM/yyyy', { locale: es })
-// Para ultima_reprogramacion mantener new Date() si necesita hora exacta
-```
-
-### 10. RescheduleDialog.tsx (línea 158)
-```typescript
-// Antes
-format(new Date(shipment.fecha_entrega), 'dd/MM/yyyy', { locale: es })
-
-// Después
-import { parseDateString } from '@/lib/dateUtils';
-format(parseDateString(shipment.fecha_entrega), 'dd/MM/yyyy', { locale: es })
-```
-
-## Nota sobre Horas
-
-Para campos donde **sí importa la hora** (como `ultima_reprogramacion` o logs de actividad), se debe:
-- Mantener `new Date()` para parsear
-- Pero considerar que la hora mostrada será la local del usuario (que es lo esperado)
-
-Para campos donde **solo importa la fecha** (como `fecha`, `fecha_entrega`, `created_at` cuando se muestra sin hora), usar `parseDateString()`.
+---
 
 ## Resultado Esperado
 
-- Las fechas se mostrarán correctamente en la zona horaria del usuario
-- La hoja de ruta mostrará "26/01/2026" cuando la ruta es del día 26
-- El dashboard filtrará correctamente los envíos "de hoy"
-- Los listados de envíos mostrarán la fecha correcta de creación
+1. **Sincronización:** Cuando una tienda no tiene pedidos, mostrará:
+   - Mensaje de éxito: "Sincronizado: 0 pedidos (tienda sin pedidos aún)"
+   - En lugar de error 500
+
+2. **Página OAuth:** Los sellers verán una página profesional con:
+   - Fondo gradiente
+   - Animación de entrada
+   - Loader mientras se cierra
+   - Mensaje claro de éxito
+
