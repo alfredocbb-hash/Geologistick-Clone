@@ -53,3 +53,6 @@ verify_jwt = false
 
 [functions.tiendanube-sync]
 verify_jwt = false
+
+[functions.tiendanube-shipping-rates]
+verify_jwt = false

@@ -258,7 +258,43 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Register webhook in Tiendanube
+      // Register shipping carrier in Tiendanube
+      try {
+        const carrierResponse = await fetch(
+          `${TIENDANUBE_API_ENDPOINT}/${storeId}/shipping_carriers`,
+          {
+            method: "POST",
+            headers: {
+              "Authentication": `bearer ${accessToken}`,
+              "Content-Type": "application/json",
+              "User-Agent": "Geologistick (alfredocbb@gmail.com)",
+            },
+            body: JSON.stringify({
+              name: "Geologistick",
+              callback_url: `${supabaseUrl}/functions/v1/tiendanube-shipping-rates`,
+              types: "ship",
+              active: true,
+            }),
+          }
+        );
+
+        if (carrierResponse.ok) {
+          const carrierData = await carrierResponse.json();
+          // Save carrier_id to seller
+          await supabase
+            .from("ecommerce_sellers")
+            .update({ shipping_carrier_id: String(carrierData.id) })
+            .eq("id", sellerId);
+          console.log("Shipping carrier registered:", carrierData.id);
+        } else {
+          const errorText = await carrierResponse.text();
+          console.error("Failed to register shipping carrier:", errorText);
+        }
+      } catch (e) {
+        console.error("Error registering shipping carrier:", e);
+      }
+
+      // Register webhooks in Tiendanube
       const webhookUrl = `${supabaseUrl}/functions/v1/tiendanube-webhook`;
       const webhookEvents = ["order/created", "order/paid", "order/fulfilled", "order/cancelled"];
 
