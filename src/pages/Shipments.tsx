@@ -29,6 +29,7 @@ import type { Database } from '@/integrations/supabase/types';
 import { ShipmentHistoryDialog } from '@/components/shipments/ShipmentHistoryDialog';
 import { ShipmentDetailsDialog } from '@/components/shipments/ShipmentDetailsDialog';
 import { ChangeStatusDialog } from '@/components/shipments/ChangeStatusDialog';
+import { parseDateString } from '@/lib/dateUtils';
 
 type ShipmentStatus = Database['public']['Enums']['shipment_status'];
 
@@ -340,7 +341,7 @@ export default function Shipments() {
                       ${envio.precio_total?.toLocaleString('es-AR')}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {envio.created_at ? format(new Date(envio.created_at), 'dd MMM yyyy', { locale: es }) : '-'}
+                      {envio.created_at ? format(parseDateString(envio.created_at), 'dd MMM yyyy', { locale: es }) : '-'}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-center gap-1">

@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Package, Truck, DollarSign, Users, TrendingUp, Clock, CheckCircle, AlertCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { getTodayString } from '@/lib/dateUtils';
 
 export default function Dashboard() {
   const { profile, roles } = useAuth();
@@ -19,7 +20,7 @@ export default function Dashboard() {
     queryFn: async () => {
       if (!tenantId) return null;
       
-      const today = new Date().toISOString().split('T')[0];
+      const today = getTodayString();
       
       // Envíos de hoy
       const { count: todayShipments } = await supabase
@@ -88,7 +89,7 @@ export default function Dashboard() {
     queryFn: async () => {
       if (!tenantId) return null;
       
-      const today = new Date().toISOString().split('T')[0];
+      const today = getTodayString();
       
       // Entregas completadas hoy
       const { count: deliveredToday } = await supabase

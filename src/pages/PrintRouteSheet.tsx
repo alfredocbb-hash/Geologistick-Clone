@@ -6,6 +6,7 @@ import { ArrowLeft, Printer } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { QRCodeSVG } from "qrcode.react";
+import { parseDateString } from "@/lib/dateUtils";
 
 export default function PrintRouteSheet() {
   const [searchParams] = useSearchParams();
@@ -133,7 +134,7 @@ export default function PrintRouteSheet() {
             <h1 className="text-3xl font-bold">HOJA DE RUTA</h1>
             <p className="text-2xl font-mono mt-2">{hojaRuta.numero}</p>
             <p className="text-sm text-gray-600 mt-1">
-              Fecha: {format(new Date(hojaRuta.created_at), "dd/MM/yyyy HH:mm", { locale: es })}
+              Fecha: {format(parseDateString(hojaRuta.created_at), "dd/MM/yyyy", { locale: es })}
             </p>
           </div>
           

@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
+import { getTodayString } from '@/lib/dateUtils';
 
 interface MobileHomeTabProps {
   onNavigateToRoutes: () => void;
@@ -61,7 +62,7 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
   const { data: todayStats } = useQuery({
     queryKey: ['mobile-today-stats', user?.id],
     queryFn: async () => {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getTodayString();
       
       const { data: deliveries, error } = await supabase
         .from('envios')

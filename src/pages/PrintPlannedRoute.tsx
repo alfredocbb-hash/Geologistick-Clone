@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { QRCodeSVG } from 'qrcode.react';
 import { Loader2, MapPin, User, Truck, Package, Home, Calendar, Clock } from 'lucide-react';
+import { parseDateString } from '@/lib/dateUtils';
 
 export default function PrintPlannedRoute() {
   const [searchParams] = useSearchParams();
@@ -142,7 +143,7 @@ export default function PrintPlannedRoute() {
           <div className="space-y-1 text-sm">
             <div className="flex justify-between">
               <span className="font-medium">Fecha:</span>
-              <span>{format(new Date(ruta.fecha), "EEEE dd/MM/yyyy", { locale: es })}</span>
+              <span>{format(parseDateString(ruta.fecha), "EEEE dd/MM/yyyy", { locale: es })}</span>
             </div>
             <div className="flex justify-between">
               <span className="font-medium">Hora inicio:</span>
