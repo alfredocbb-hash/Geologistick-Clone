@@ -519,12 +519,15 @@ export type Database = {
           horario_retiro: string | null
           id: string
           limite_credito: number | null
+          max_delivery_days: number | null
+          min_delivery_days: number | null
           nombre: string
           plataforma: string
           provincia: string | null
           razon_social: string | null
           refresh_token: string | null
           saldo_cuenta_corriente: number | null
+          shipping_carrier_id: string | null
           store_id: string | null
           store_url: string | null
           sucursal_pickup_id: string | null
@@ -552,12 +555,15 @@ export type Database = {
           horario_retiro?: string | null
           id?: string
           limite_credito?: number | null
+          max_delivery_days?: number | null
+          min_delivery_days?: number | null
           nombre: string
           plataforma?: string
           provincia?: string | null
           razon_social?: string | null
           refresh_token?: string | null
           saldo_cuenta_corriente?: number | null
+          shipping_carrier_id?: string | null
           store_id?: string | null
           store_url?: string | null
           sucursal_pickup_id?: string | null
@@ -585,12 +591,15 @@ export type Database = {
           horario_retiro?: string | null
           id?: string
           limite_credito?: number | null
+          max_delivery_days?: number | null
+          min_delivery_days?: number | null
           nombre?: string
           plataforma?: string
           provincia?: string | null
           razon_social?: string | null
           refresh_token?: string | null
           saldo_cuenta_corriente?: number | null
+          shipping_carrier_id?: string | null
           store_id?: string | null
           store_url?: string | null
           sucursal_pickup_id?: string | null
