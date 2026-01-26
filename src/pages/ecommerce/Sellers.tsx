@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, Search, MoreHorizontal, Store, Settings, Eye, Trash2, RefreshCw, ShoppingCart, Users, DollarSign, Link2, CheckCircle2, XCircle, Loader2, UserCheck, UserX } from 'lucide-react';
+import { Plus, Search, MoreHorizontal, Store, Settings, Eye, Trash2, RefreshCw, ShoppingCart, Users, DollarSign, Link2, CheckCircle2, XCircle, Loader2, UserCheck, UserX, Mail, MessageSquare, Send } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from '@/hooks/use-toast';
@@ -172,6 +172,49 @@ export default function Sellers() {
       'tiendanube-oauth',
       `width=${width},height=${height},left=${left},top=${top},popup=yes`
     );
+  };
+
+  // Send connection link via Email or WhatsApp
+  const handleSendConnectionLink = (seller: Seller, method: 'email' | 'whatsapp') => {
+    const oauthUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tiendanube-oauth/authorize?seller_id=${seller.id}`;
+    
+    if (method === 'whatsapp') {
+      if (!seller.telefono) {
+        toast({ 
+          title: 'Sin teléfono', 
+          description: 'Este seller no tiene teléfono configurado',
+          variant: 'destructive' 
+        });
+        return;
+      }
+      
+      const cleanPhone = seller.telefono.replace(/\D/g, '');
+      const message = `Hola ${seller.nombre} 👋
+
+Para conectar tu tienda y sincronizar tus pedidos automáticamente, haz clic aquí:
+
+${oauthUrl}
+
+Solo toma unos segundos 🚀`;
+      
+      window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
+      toast({ title: 'WhatsApp abierto', description: 'Envía el mensaje al seller' });
+    } else {
+      const subject = 'Conecta tu tienda Tiendanube';
+      const body = `Hola ${seller.nombre},
+
+Para sincronizar automáticamente tus pedidos de Tiendanube, necesitamos que autorices la conexión.
+
+Haz clic en el siguiente enlace:
+${oauthUrl}
+
+Este proceso es seguro y solo toma unos segundos.
+
+Saludos`;
+      
+      window.open(`mailto:${seller.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank');
+      toast({ title: 'Email abierto', description: 'Envía el correo al seller' });
+    }
   };
 
   const filteredSellers = sellers?.filter(s =>
@@ -409,10 +452,21 @@ export default function Sellers() {
                           )}
                           
                           {seller.plataforma === 'tiendanube' && !isConnected(seller) && (
-                            <DropdownMenuItem onClick={() => handleConnectTiendanube(seller)}>
-                              <Link2 className="mr-2 h-4 w-4" />
-                              Conectar Tiendanube
-                            </DropdownMenuItem>
+                            <>
+                              <DropdownMenuItem onClick={() => handleConnectTiendanube(seller)}>
+                                <Link2 className="mr-2 h-4 w-4" />
+                                Conectar Tiendanube
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => handleSendConnectionLink(seller, 'email')}>
+                                <Mail className="mr-2 h-4 w-4" />
+                                Enviar link por Email
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleSendConnectionLink(seller, 'whatsapp')}>
+                                <MessageSquare className="mr-2 h-4 w-4" />
+                                Enviar link por WhatsApp
+                              </DropdownMenuItem>
+                            </>
                           )}
                           
                           <DropdownMenuSeparator />
