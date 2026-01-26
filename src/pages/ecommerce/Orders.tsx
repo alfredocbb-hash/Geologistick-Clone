@@ -149,7 +149,27 @@ export default function Orders() {
         </div>
         {selectedOrders.length > 0 && (
           <Button onClick={() => {
-            toast({ title: 'Funcionalidad próximamente', description: 'Crear envíos masivos' });
+            const ordersToShip = filteredOrders?.filter(
+              o => selectedOrders.includes(o.id) && !o.envio_id && o.order_status !== 'cancelled'
+            ) || [];
+            
+            if (ordersToShip.length === 0) {
+              toast({ 
+                title: 'Sin pedidos válidos', 
+                description: 'Los pedidos seleccionados ya tienen envío o están cancelados',
+                variant: 'destructive'
+              });
+              return;
+            }
+            
+            if (ordersToShip.length === 1) {
+              setCreateShipmentOrder(ordersToShip[0]);
+            } else {
+              toast({ 
+                title: 'Funcionalidad próximamente', 
+                description: `Crear ${ordersToShip.length} envíos masivos` 
+              });
+            }
           }}>
             <Truck className="mr-2 h-4 w-4" />
             Crear {selectedOrders.length} Envíos
@@ -274,8 +294,17 @@ export default function Orders() {
                       <TableCell>
                         {order.envio_id ? (
                           <Badge variant="default">Creado</Badge>
+                        ) : order.order_status !== 'cancelled' ? (
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => setCreateShipmentOrder(order)}
+                          >
+                            <Truck className="mr-1 h-3 w-3" />
+                            Crear
+                          </Button>
                         ) : (
-                          <Badge variant="secondary">Pendiente</Badge>
+                          <Badge variant="secondary">-</Badge>
                         )}
                       </TableCell>
                       <TableCell>
@@ -290,7 +319,7 @@ export default function Orders() {
                               <Eye className="mr-2 h-4 w-4" />
                               Ver Detalles
                             </DropdownMenuItem>
-                            {!order.envio_id && order.order_status === 'paid' && (
+                            {!order.envio_id && order.order_status !== 'cancelled' && (
                               <DropdownMenuItem onClick={() => setCreateShipmentOrder(order)}>
                                 <Truck className="mr-2 h-4 w-4" />
                                 Crear Envío
