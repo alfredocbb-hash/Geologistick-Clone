@@ -1,175 +1,150 @@
 
-# Plan: Corrección de 3 Problemas
+# Plan: Solucionar Redirect Persistente del APK
 
-## Problema 1: APK redirige al dominio
+## Diagnóstico del Problema
 
-### Causa
-La configuración de Capacitor (`capacitor.config.ts`) tiene definida la URL remota apuntando a:
-```typescript
-server: {
-  url: 'https://geologic.lovable.app?forceHideBadge=true',
-  cleartext: true
+La búsqueda en el código confirma que:
+- ✅ `capacitor.config.ts` está **correcto** (sin `server.url`)
+- ✅ No hay referencias a `lovableproject.com` en el código fuente
+- ❌ **Pero el APK sigue redirigiendo**
+
+### Causa Raíz Identificada
+
+Cuando ejecutas `npx cap sync android`, Capacitor copia la configuración TypeScript a un archivo JSON dentro de la carpeta Android:
+
+```
+android/app/src/main/assets/capacitor.config.json
+```
+
+**El problema:** Este archivo JSON puede contener una configuración obsoleta de cuando `server.url` SÍ existía. Aunque hayas actualizado el `.ts`, el `.json` dentro de `android/` mantiene la URL antigua.
+
+## Solución: Regenerar Completamente la Plataforma Android
+
+### Opción 1: Eliminar y Recrear Android (Recomendado)
+
+Desde la raíz del proyecto:
+
+```bash
+# 1. Eliminar la carpeta android completamente
+rm -rf android
+
+# 2. Volver a agregar la plataforma
+npx cap add android
+
+# 3. Construir el proyecto web
+npm run build
+
+# 4. Sincronizar con la nueva plataforma
+npx cap sync android
+
+# 5. Abrir en Android Studio
+npx cap open android
+```
+
+En Android Studio:
+- **Build → Clean Project**
+- **Build → Rebuild Project**
+- **Build → Build Bundle(s) / APK(s) → Build APK(s)**
+
+### Opción 2: Verificar y Editar Manualmente el JSON (Más Rápido)
+
+1. Navega a: `android/app/src/main/assets/`
+2. Abre: `capacitor.config.json`
+3. **Verifica** si contiene algo como:
+
+```json
+{
+  "appId": "com.geologic.choferapp",
+  "appName": "ChoferApp",
+  "webDir": "dist",
+  "server": {
+    "url": "https://53354d35-df09-4ff7-9101-b454344485d4.lovableproject.com/?forceHideBadge=true",
+    "cleartext": true
+  }
 }
 ```
 
-Esta configuración hace que el APK cargue la aplicación desde el dominio publicado en lugar de los archivos locales. Si el dominio cambió recientemente o hay problemas de red, la app no funcionará correctamente.
+4. **Elimina completamente** la sección `"server": { ... }`
+5. El archivo debe quedar así:
 
-### Solución
-Actualizar la URL en `capacitor.config.ts` para que apunte a la URL correcta o eliminarla para usar los archivos locales empaquetados.
-
-**Opción A**: Usar archivos locales (recomendado para producción):
-```typescript
-const config: CapacitorConfig = {
-  appId: 'com.geologic.choferapp',
-  appName: 'ChoferApp',
-  webDir: 'dist',
-  // Sin server.url = usa archivos locales
-  plugins: { ... }
-};
-```
-
-**Opción B**: Mantener URL remota pero actualizar al dominio correcto:
-```typescript
-server: {
-  url: 'https://TU-DOMINIO-CORRECTO.com?forceHideBadge=true',
-  cleartext: true
+```json
+{
+  "appId": "com.geologic.choferapp",
+  "appName": "ChoferApp",
+  "webDir": "dist",
+  "plugins": {
+    "StatusBar": {
+      "style": "DARK",
+      "overlaysWebView": false
+    },
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "backgroundColor": "#1e293b",
+      "showSpinner": true,
+      "spinnerColor": "#3b82f6"
+    },
+    "BarcodeScanner": {
+      "enableGoogleBarcodeScanning": true
+    }
+  }
 }
 ```
 
-### Archivo a modificar
-- `capacitor.config.ts` (líneas 7-10)
+6. Guarda el archivo
+7. En Android Studio: **Build → Clean Project → Rebuild Project**
+8. Genera el APK
 
----
+### Opción 3: Comando de Windows para Limpiar (Si no funciona lo anterior)
 
-## Problema 2: Cambiar nombre de LogiTrack a Geologistick
+Si estás en Windows y `rm -rf` no funciona, usa:
 
-### Archivos a modificar
-
-| Archivo | Línea | Cambio |
-|---------|-------|--------|
-| `src/components/landing/Navbar.tsx` | 37 | `"LogiTrack"` → `"Geologistick"` |
-| `src/components/landing/Footer.tsx` | 9-11 | Valores por defecto |
-| `src/components/auth/LoginForm.tsx` | 85 | Título del login |
-| `src/components/layout/AppSidebar.tsx` | 312, 346 | Fallback del sidebar |
-| `src/pages/BrandingSettings.tsx` | 49 | Default del formulario |
-| `src/pages/SystemSettings.tsx` | 117 | Nombre en información |
-| `src/pages/TrackingEmbed.tsx` | 295 | "Powered by..." |
-| `src/pages/Tracking.tsx` | 332 | Footer de tracking |
-
-### Edge Functions (User-Agent)
-| Archivo | Línea |
-|---------|-------|
-| `supabase/functions/tiendanube-oauth/index.ts` | 197, 241 |
-| `supabase/functions/tiendanube-webhook/index.ts` | 80 |
-| `supabase/functions/tiendanube-sync/index.ts` | 114 |
-
-### Migración SQL necesaria
-Actualizar valores por defecto en la base de datos:
-```sql
--- Actualizar default en tenant_branding
-ALTER TABLE tenant_branding 
-  ALTER COLUMN nombre_app SET DEFAULT 'Geologistick';
-
--- Actualizar branding existente que use LogiTrack
-UPDATE tenant_branding 
-SET nombre_app = 'Geologistick' 
-WHERE nombre_app = 'LogiTrack';
-
--- Actualizar nombres de planes de suscripción
-UPDATE subscription_plans 
-SET name = REPLACE(name, 'LogiTrack', 'Geologistick');
+```cmd
+# Desde la raíz del proyecto
+rmdir /s /q android
+npx cap add android
+npm run build
+npx cap sync android
+npx cap open android
 ```
 
----
+## Por Qué Esto Sucede
 
-## Problema 3: Seller ve todos los envíos de la sucursal
+El flujo de Capacitor es:
 
-### Causa raíz
-La consulta en `SellerShipments.tsx` usa:
-```typescript
-.eq('remitente_id', seller.id)
+```
+capacitor.config.ts (tu código)
+        ↓
+   npx cap sync
+        ↓
+android/app/src/main/assets/capacitor.config.json (usado por el APK)
 ```
 
-Pero `remitente_id` es un UUID que referencia a la tabla `clientes`, NO a `ecommerce_sellers`. Por lo tanto, el filtro no funciona y las políticas RLS devuelven todos los envíos del tenant.
+El problema es que `npx cap sync` a veces **no sobrescribe completamente** el JSON si ya existe, especialmente si hubo cambios en la estructura del objeto de configuración.
 
-### Solución
-Filtrar los envíos a través de la tabla `ecommerce_orders` que SÍ tiene la relación correcta:
-- `ecommerce_orders.seller_id` → vincula al seller
-- `ecommerce_orders.envio_id` → vincula al envío
+## Verificación Post-Implementación
 
-### Cambio en `src/pages/seller/SellerShipments.tsx`
+Después de regenerar el Android y construir el APK:
 
-**Antes (incorrecto):**
-```typescript
-const { data, error } = await supabase
-  .from('envios')
-  .select(`...`)
-  .eq('remitente_id', seller.id)  // ❌ remitente_id es de clientes, no sellers
-```
+1. Instala el nuevo APK en el dispositivo
+2. Abre la app
+3. Verifica que NO redirija a ninguna URL web
+4. Verifica que cargue desde archivos locales (debería funcionar sin internet)
 
-**Después (correcto):**
-```typescript
-// Primero obtener los envio_ids vinculados a este seller
-const { data: orders } = await supabase
-  .from('ecommerce_orders')
-  .select('envio_id')
-  .eq('seller_id', seller.id)
-  .not('envio_id', 'is', null);
+## Archivos a Verificar
 
-const envioIds = orders?.map(o => o.envio_id).filter(Boolean) || [];
+- `android/app/src/main/assets/capacitor.config.json` ← **Este es el culpable**
+- `capacitor.config.ts` ← Ya está correcto
 
-if (envioIds.length === 0) return [];
+## Notas Importantes
 
-const { data, error } = await supabase
-  .from('envios')
-  .select(`...`)
-  .in('id', envioIds)  // ✓ Filtrar solo envíos vinculados
-```
+- **No** necesitas modificar código TypeScript/React
+- **No** necesitas cambiar configuraciones de Gradle
+- El problema está 100% en la configuración nativa de Capacitor
+- Una vez regenerado, el APK usará los archivos del `dist/` localmente
 
-### Alternativa: Agregar columna seller_id a envios
-Para una solución más robusta a futuro, se puede agregar una columna `seller_id` directamente en la tabla `envios` y actualizar las políticas RLS. Esto permitiría:
-- Consultas más simples
-- Políticas RLS que incluyan al seller
+## Próximos Pasos Recomendados
 
-```sql
--- Agregar columna
-ALTER TABLE envios ADD COLUMN seller_id UUID REFERENCES ecommerce_sellers(id);
-
--- Política RLS para sellers
-CREATE POLICY "Sellers pueden ver sus propios envíos"
-ON envios FOR SELECT
-USING (
-  seller_id IS NOT NULL 
-  AND seller_id = (
-    SELECT id FROM ecommerce_sellers WHERE user_id = auth.uid()
-  )
-);
-```
-
----
-
-## Resumen de archivos a modificar
-
-### Componentes React (7 archivos)
-1. `src/components/landing/Navbar.tsx`
-2. `src/components/landing/Footer.tsx`
-3. `src/components/auth/LoginForm.tsx`
-4. `src/components/layout/AppSidebar.tsx`
-5. `src/pages/BrandingSettings.tsx`
-6. `src/pages/SystemSettings.tsx`
-7. `src/pages/seller/SellerShipments.tsx`
-
-### Páginas de tracking (2 archivos)
-8. `src/pages/TrackingEmbed.tsx`
-9. `src/pages/Tracking.tsx`
-
-### Edge Functions (3 archivos)
-10. `supabase/functions/tiendanube-oauth/index.ts`
-11. `supabase/functions/tiendanube-webhook/index.ts`
-12. `supabase/functions/tiendanube-sync/index.ts`
-
-### Configuración Capacitor (1 archivo)
-13. `capacitor.config.ts`
-
-### Migración SQL (1 migración)
-14. Actualizar defaults y datos existentes
+1. Usar **Opción 1** (eliminar y recrear) para garantizar limpieza total
+2. Si prefieres más rápido, usar **Opción 2** (editar el JSON manualmente)
+3. Después de generar el nuevo APK, probar en un dispositivo físico o emulador
+4. Confirmar que la app funciona sin conexión a internet (prueba en modo avión)
