@@ -117,6 +117,14 @@ Deno.serve(async (req) => {
 
       if (!response.ok) {
         const errorText = await response.text();
+        
+        // Tiendanube returns 404 when store has no orders ("Last page is 0")
+        if (response.status === 404 && errorText.includes("Last page is 0")) {
+          console.log("Store has no orders yet - this is normal for new stores");
+          hasMore = false;
+          break;
+        }
+        
         console.error("Failed to fetch orders:", errorText);
         
         if (response.status === 401) {
