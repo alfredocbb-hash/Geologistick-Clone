@@ -282,36 +282,73 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Success page
+      // Success page with proper charset and professional design
       return new Response(
         `<!DOCTYPE html>
-        <html>
-        <head>
-          <title>Conexión exitosa</title>
-          <style>
-            body { font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f5f5f5; }
-            .card { background: white; padding: 40px; border-radius: 12px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-            h1 { color: #22c55e; margin-bottom: 16px; }
-            p { color: #666; }
-          </style>
-        </head>
-        <body>
-          <div class="card">
-            <h1>✓ Tienda conectada exitosamente</h1>
-            <p>Puedes cerrar esta ventana y volver al panel de administración.</p>
-            <p style="font-size: 12px; margin-top: 20px;">Esta ventana se cerrará automáticamente...</p>
-          </div>
-          <script>
-            setTimeout(() => {
-              if (window.opener) {
-                window.opener.postMessage({ type: 'tiendanube-oauth-success', sellerId: '${sellerId}' }, '*');
-              }
-              window.close();
-            }, 2000);
-          </script>
-        </body>
-        </html>`,
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "text/html" } }
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Conexion Exitosa - Tiendanube</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex; 
+      align-items: center; 
+      justify-content: center; 
+      min-height: 100vh; 
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    .card { 
+      background: white; 
+      padding: 48px 40px; 
+      border-radius: 16px; 
+      text-align: center; 
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      max-width: 420px;
+      width: 100%;
+      animation: slideUp 0.5s ease-out;
+    }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .icon { font-size: 64px; margin-bottom: 20px; }
+    h1 { color: #1a1a1a; margin-bottom: 12px; font-size: 24px; font-weight: 600; }
+    .subtitle { color: #666; font-size: 16px; margin-bottom: 24px; line-height: 1.6; }
+    .hint { font-size: 13px; color: #999; margin-top: 24px; }
+    .loader { 
+      width: 24px; height: 24px; 
+      border: 3px solid #eee; 
+      border-top-color: #667eea; 
+      border-radius: 50%; 
+      animation: spin 1s linear infinite;
+      margin: 20px auto 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">✅</div>
+    <h1>Tienda Conectada</h1>
+    <p class="subtitle">Tu tienda de Tiendanube se ha vinculado correctamente con el sistema de envios.</p>
+    <p class="hint">Esta ventana se cerrara automaticamente...</p>
+    <div class="loader"></div>
+  </div>
+  <script>
+    setTimeout(function() {
+      if (window.opener) {
+        window.opener.postMessage({ type: 'tiendanube-oauth-success', sellerId: '${sellerId}' }, '*');
+      }
+      window.close();
+    }, 3000);
+  </script>
+</body>
+</html>`,
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
       );
     }
 
