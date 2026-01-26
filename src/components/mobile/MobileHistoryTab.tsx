@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useState } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { parseDateString } from '@/lib/dateUtils';
 
 export function MobileHistoryTab() {
   const { profile } = useAuth();
@@ -135,7 +136,7 @@ export function MobileHistoryTab() {
                       {getStatusLabel(item.estado_nuevo)}
                     </Badge>
                     <span className="text-xs text-slate-500">
-                      {format(new Date(item.created_at), "dd MMM HH:mm", { locale: es })}
+                      {format(parseDateString(item.created_at), "dd MMM", { locale: es })}
                     </span>
                   </div>
 

@@ -28,6 +28,7 @@ import { es } from 'date-fns/locale';
 import QRScanner from '@/components/qr/QRScanner';
 import { ReceiveRouteSheetDialog } from '@/components/scan/ReceiveRouteSheetDialog';
 import { CollectRouteSheetDialog } from '@/components/scan/CollectRouteSheetDialog';
+import { parseDateString } from '@/lib/dateUtils';
 
 interface HojaRuta {
   id: string;
@@ -259,7 +260,7 @@ export default function MyRoutes() {
               <span className="font-mono font-bold text-lg">{hoja.numero}</span>
               <div className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
                 <Calendar className="h-3 w-3" />
-                {format(new Date(hoja.created_at), 'dd/MM/yy HH:mm', { locale: es })}
+                {format(parseDateString(hoja.created_at), 'dd/MM/yy', { locale: es })}
               </div>
             </div>
             <div className="text-right">
@@ -361,7 +362,7 @@ export default function MyRoutes() {
               <span className="font-mono font-bold text-lg">{ruta.numero}</span>
               <div className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
                 <Calendar className="h-3 w-3" />
-                {format(new Date(ruta.fecha), 'dd/MM/yy', { locale: es })}
+                {format(parseDateString(ruta.fecha), 'dd/MM/yy', { locale: es })}
                 {ruta.hora_inicio && ` ${ruta.hora_inicio.slice(0, 5)}`}
               </div>
             </div>

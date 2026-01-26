@@ -17,6 +17,7 @@ import { es } from 'date-fns/locale';
 import { toast } from '@/hooks/use-toast';
 import { OrderDetailsDialog } from '@/components/ecommerce/OrderDetailsDialog';
 import { CreateShipmentFromOrderDialog } from '@/components/ecommerce/CreateShipmentFromOrderDialog';
+import { parseDateString } from '@/lib/dateUtils';
 
 interface Order {
   id: string;
@@ -241,7 +242,7 @@ export default function Orders() {
                         <div className="flex flex-col">
                           <span className="font-medium">#{order.external_order_number || order.external_order_id}</span>
                           <span className="text-xs text-muted-foreground">
-                            {format(new Date(order.created_at), 'dd/MM/yy HH:mm', { locale: es })}
+                            {format(parseDateString(order.created_at), 'dd/MM/yy', { locale: es })}
                           </span>
                         </div>
                       </TableCell>

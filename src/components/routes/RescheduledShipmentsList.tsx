@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { parseDateString } from '@/lib/dateUtils';
 
 interface RescheduledShipmentsListProps {
   selectedEnvios: string[];
@@ -169,12 +170,12 @@ export default function RescheduledShipmentsList({
                       {envio.fecha_entrega && (
                         <span className="flex items-center gap-1">
                           <CalendarClock className="h-3 w-3" />
-                          Nueva fecha: {format(new Date(envio.fecha_entrega), 'dd/MM/yyyy', { locale: es })}
+                          Nueva fecha: {format(parseDateString(envio.fecha_entrega), 'dd/MM/yyyy', { locale: es })}
                         </span>
                       )}
                       {envio.ultima_reprogramacion && (
                         <span>
-                          Última reprog: {format(new Date(envio.ultima_reprogramacion), 'dd/MM HH:mm', { locale: es })}
+                          Última reprog: {format(parseDateString(envio.ultima_reprogramacion), 'dd/MM HH:mm', { locale: es })}
                         </span>
                       )}
                     </div>

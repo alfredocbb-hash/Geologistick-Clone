@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 import { format, addDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { parseDateString } from '@/lib/dateUtils';
 
 interface Shipment {
   id: string;
@@ -155,7 +156,7 @@ export default function RescheduleDialog({ shipment, onClose, onSuccess }: Resch
             <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 p-3 rounded-lg">
               <Clock className="h-4 w-4" />
               <span>
-                Fecha actual: {format(new Date(shipment.fecha_entrega), 'dd/MM/yyyy', { locale: es })}
+                Fecha actual: {format(parseDateString(shipment.fecha_entrega), 'dd/MM/yyyy', { locale: es })}
               </span>
             </div>
           )}
