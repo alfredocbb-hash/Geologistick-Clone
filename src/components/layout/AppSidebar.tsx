@@ -5,10 +5,11 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useBranchConfig } from '@/hooks/useBranchConfig';
 import { useTenantContext } from '@/components/providers/TenantProvider';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from '@/components/ui/sidebar';
-import { Package, LayoutDashboard, Truck, Users, DollarSign, CreditCard, Settings, Building2, Tags, UserCog, Wallet, FileText, PackagePlus, MapPin, ClipboardList, LogOut, ChevronLeft, ChevronRight, QrCode, Route, Map, Car, Plug, Home, Palette, Crown, GitBranch, ShoppingCart, Store, ShoppingBag, Receipt } from 'lucide-react';
+import { LayoutDashboard, Truck, Users, DollarSign, CreditCard, Settings, Building2, Tags, UserCog, Wallet, FileText, PackagePlus, MapPin, ClipboardList, LogOut, ChevronLeft, ChevronRight, QrCode, Route, Map, Car, Plug, Home, Palette, Crown, GitBranch, ShoppingCart, Store, ShoppingBag, Receipt, Package } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import geologistickLogo from '@/assets/geologistick-logo.png';
 interface NavItem {
   title: string;
   url: string;
@@ -339,9 +340,11 @@ export function AppSidebar() {
             />
           ) : (
             <>
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl gradient-primary shadow-lg shrink-0">
-                <Package className="h-5 w-5 text-white" />
-              </div>
+              <img 
+                src={geologistickLogo} 
+                alt="Geologistick" 
+                className="h-10 w-10 rounded-xl object-contain shadow-lg shrink-0"
+              />
               {!collapsed && <div className="flex flex-col">
                   <span className="text-lg font-bold text-sidebar-foreground">{branding?.nombre_app || 'Geologistick'}</span>
                   <span className="text-xs text-sidebar-foreground/60">Gestión Logística</span>

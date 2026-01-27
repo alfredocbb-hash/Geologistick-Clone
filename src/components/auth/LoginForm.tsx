@@ -6,8 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Package, Loader2, Mail, Lock, User } from "lucide-react";
+import { Loader2, Mail, Lock, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import geologistickLogo from "@/assets/geologistick-logo.png";
 
 export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
@@ -79,9 +80,11 @@ export function LoginForm() {
       <div className="w-full max-w-md space-y-6">
         {/* Logo & Title */}
         <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl gradient-primary shadow-colored">
-            <Package className="w-8 h-8 text-white" />
-          </div>
+          <img 
+            src={geologistickLogo} 
+            alt="Geologistick" 
+            className="w-16 h-16 mx-auto rounded-2xl object-contain shadow-colored"
+          />
           <h1 className="text-3xl font-bold tracking-tight">Geologistick</h1>
           <p className="text-muted-foreground">Sistema de Gestión Logística</p>
         </div>

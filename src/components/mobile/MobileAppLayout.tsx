@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
+import geologistickLogo from '@/assets/geologistick-logo.png';
 import { useQueryClient } from '@tanstack/react-query';
 import { MobileHeader } from './MobileHeader';
 import { MobileBottomNav, MobileTab } from './MobileBottomNav';
@@ -69,9 +70,11 @@ export function MobileAppLayout() {
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center">
         <div className="relative mb-6">
           <div className="absolute inset-0 bg-primary/30 rounded-3xl blur-xl animate-pulse" />
-          <div className="relative w-24 h-24 bg-gradient-to-br from-primary via-primary to-emerald-500 rounded-3xl flex items-center justify-center shadow-2xl shadow-primary/40">
-            <span className="text-5xl">🚚</span>
-          </div>
+          <img 
+            src={geologistickLogo} 
+            alt="Geologistick" 
+            className="relative w-24 h-24 rounded-3xl object-contain shadow-2xl shadow-primary/40"
+          />
         </div>
         <h1 className="text-2xl font-bold text-white mb-2">ChoferApp</h1>
         <p className="text-slate-400 text-sm mb-6">Cargando...</p>

@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useTenant } from '@/hooks/useTenant';
 import { useState, useEffect } from 'react';
+import geologistickLogo from '@/assets/geologistick-logo.png';
 
 interface MobileHeaderProps {
   onMenuClick?: () => void;
@@ -60,9 +61,11 @@ export function MobileHeader({ onMenuClick, onNotificationsClick, onProfileClick
             <div className="flex items-center gap-2.5">
               <div className="relative">
                 <div className="absolute inset-0 bg-primary/30 rounded-xl blur-sm" />
-                <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-emerald-500 flex items-center justify-center shadow-lg shadow-primary/20">
-                  <span className="text-lg">🚚</span>
-                </div>
+                <img 
+                  src={geologistickLogo} 
+                  alt="Geologistick" 
+                  className="relative w-9 h-9 rounded-xl object-contain shadow-lg shadow-primary/20"
+                />
               </div>
               <span className="font-bold text-white text-lg tracking-tight">
                 {branding?.nombre_app || 'ChoferApp'}
