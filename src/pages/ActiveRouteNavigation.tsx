@@ -27,7 +27,8 @@ import {
   List,
   Map as MapIcon,
   DollarSign,
-  ChevronRight
+  ChevronRight,
+  CalendarClock
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -560,7 +561,7 @@ export default function ActiveRouteNavigation() {
               </div>
 
               {/* Action Buttons - Row 2 */}
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <Button 
                   variant="outline"
                   className="border-destructive/30 text-destructive"
@@ -571,6 +572,17 @@ export default function ActiveRouteNavigation() {
                 >
                   <AlertTriangle className="h-4 w-4 mr-1" />
                   Problema
+                </Button>
+                <Button 
+                  variant="outline"
+                  className="border-amber-500/30 text-amber-600"
+                  onClick={() => {
+                    setSelectedShipment(nextEnvio);
+                    setDialogType('reschedule');
+                  }}
+                >
+                  <CalendarClock className="h-4 w-4 mr-1" />
+                  Reprogramar
                 </Button>
                 <Button 
                   className={isPickup ? 'bg-chofer hover:bg-chofer/90' : 'bg-success hover:bg-success/90'}
