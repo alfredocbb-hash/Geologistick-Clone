@@ -1,70 +1,145 @@
 
+# Plan: Habilitar Reprogramación de Envíos por Choferes
 
-# Plan: Regenerar Logo Manteniendo el Estilo Original
-
-## Objetivo
-Regenerar el logo de Geologistick con fondo transparente, manteniendo fielmente el estilo original: un **pin de ubicación** combinado con un **paquete/caja 3D** en gradiente **azul a teal**.
-
----
-
-## Problema Actual
-La última generación de imagen creó un logo con un estilo diferente al original. El usuario quiere preservar la estética que tenía antes.
+## Resumen
+Agregar un botón visible para que los choferes puedan reprogramar envíos desde su app móvil, y resetear el envío 46332044050 para que pueda ser re-planificado.
 
 ---
 
-## Solución
+## Cambios a Realizar
 
-### 1. Regenerar el Logo con Prompt Mejorado
-Usar un prompt más específico que capture el estilo original:
+### 1. Agregar Botón "Reprogramar" en la Interfaz del Chofer
 
-**Prompt propuesto:**
+**Archivo:** `src/pages/ActiveRouteNavigation.tsx`
+
+Actualmente los choferes solo tienen dos botones de acción:
+- "Problema" → Abre ReportIncidentDialog
+- "Entrega OK" / "Retiro OK" → Abre DeliveryConfirmation / PickupConfirmation
+
+Se agregará un tercer botón "Reprogramar" que abrirá el RescheduleDialog existente.
+
+```text
+Diseño actual (Row 2):
+┌─────────────────┬─────────────────┐
+│    Problema     │   Entrega OK    │
+└─────────────────┴─────────────────┘
+
+Nuevo diseño (Row 2):
+┌──────────┬───────────┬───────────┐
+│ Problema │Reprogramar│ Entrega OK│
+└──────────┴───────────┴───────────┘
 ```
-"Professional logistics company logo icon. A 3D location pin marker with a cardboard shipping box/package integrated into the pin design. 
-The pin has a blue to teal/cyan gradient color scheme. 
-Modern, clean, minimalist style with subtle 3D depth and shadows.
-MUST have completely transparent background (PNG with alpha channel).
-No text, no circles around it, just the icon itself.
-High quality, crisp edges, suitable for app icon use."
-```
-
-### 2. Mantener los Tamaños Ya Actualizados
-Los tamaños que ya se ajustaron en el paso anterior se mantienen:
-
-| Componente | Tamaño |
-|------------|--------|
-| Navbar | `h-12 w-12` |
-| Footer | `h-12 w-12` |
-| LoginForm | `w-20 h-20` |
-| AppSidebar | `h-12 w-12` |
-| MobileHeader | `w-10 h-10` |
-| MobileLoginScreen | `w-32 h-32` |
-| MobileAppLayout | `w-28 h-28` |
 
 ---
 
-## Archivo a Modificar
+### 2. Resetear Envío 46332044050 para Re-planificación
+
+**Cambio de datos en base de datos:**
+
+| Campo | Valor Actual | Nuevo Valor |
+|-------|--------------|-------------|
+| `estado` | `entregado` | `pendiente` |
+| `chofer_id` | `d6a5a65d-...` | `null` |
+| `reprogramado_count` | `0` | `1` |
+| `ultima_reprogramacion` | `null` | `now()` |
+
+Se agregará también un registro en `envio_historial` documentando el cambio.
+
+---
+
+## Archivos a Modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/assets/geologistick-logo.png` | Regenerar con estilo original + fondo transparente |
+| `src/pages/ActiveRouteNavigation.tsx` | Agregar botón "Reprogramar" en grid de acciones (líneas 562-585) |
+
+---
+
+## Migración de Base de Datos
+
+Se ejecutará una migración SQL para:
+
+1. Actualizar el envío 46332044050 a estado `pendiente`
+2. Limpiar `chofer_id` para que pueda ser re-asignado
+3. Incrementar contador de reprogramaciones
+4. Agregar registro en historial
+
+```sql
+-- Resetear envío 46332044050 para reprogramación
+UPDATE envios SET 
+  estado = 'pendiente',
+  chofer_id = null,
+  reprogramado_count = COALESCE(reprogramado_count, 0) + 1,
+  ultima_reprogramacion = now()
+WHERE tracking_number = '46332044050';
+
+-- Agregar historial
+INSERT INTO envio_historial (envio_id, estado_anterior, estado_nuevo, notas)
+SELECT id, 'entregado', 'pendiente', 'Reprogramado manualmente para re-entrega'
+FROM envios WHERE tracking_number = '46332044050';
+```
 
 ---
 
 ## Seccion Tecnica
 
-### Modelo de Generacion
-Se usara el modelo `google/gemini-2.5-flash-image` para mejor calidad y fidelidad al prompt.
+### Cambios en ActiveRouteNavigation.tsx
 
-### Caracteristicas del Logo Original a Preservar
-- Pin de ubicacion (location marker) como forma base
-- Paquete/caja de envio integrado en el diseño
-- Gradiente de azul a teal/cyan
-- Estilo moderno y minimalista
-- Apariencia 3D con profundidad sutil
-- Sin texto en la imagen
-- Sin circulos o fondos adicionales
+La grid de botones de acción pasará de 2 columnas a 3 columnas:
 
-### Consideraciones
-- El fondo transparente permitira que el logo se vea bien tanto en fondos claros como oscuros
-- Se mantendran los bordes redondeados (`rounded-xl`, `rounded-2xl`, `rounded-3xl`) en los contenedores para consistencia visual
+```tsx
+// Cambiar de grid-cols-2 a grid-cols-3
+<div className="grid grid-cols-3 gap-2">
+  {/* Botón Problema */}
+  <Button variant="outline" className="border-destructive/30 text-destructive" ...>
+    <AlertTriangle className="h-4 w-4 mr-1" />
+    Problema
+  </Button>
+  
+  {/* NUEVO: Botón Reprogramar */}
+  <Button 
+    variant="outline" 
+    className="border-warning/30 text-warning"
+    onClick={() => {
+      setSelectedShipment(nextEnvio);
+      setDialogType('reschedule');
+    }}
+  >
+    <CalendarClock className="h-4 w-4 mr-1" />
+    Reprogramar
+  </Button>
+  
+  {/* Botón Entrega/Retiro OK */}
+  <Button className={isPickup ? 'bg-chofer' : 'bg-success'} ...>
+    <CheckCircle className="h-4 w-4 mr-1" />
+    {isPickup ? 'Retiro OK' : 'Entrega OK'}
+  </Button>
+</div>
+```
 
+### Importación necesaria
+Se debe agregar `CalendarClock` a los imports de lucide-react.
+
+### Flujo de Reprogramación
+1. Chofer toca "Reprogramar" en un envío
+2. Se abre RescheduleDialog (ya existente)
+3. Chofer selecciona nueva fecha y motivo
+4. El envío se actualiza a `estado: 'pendiente'`, `chofer_id: null`
+5. Aparece en "Envíos Reprogramados" del planificador de rutas para re-asignación
+
+### Permisos RLS
+Los permisos actuales ya permiten que un chofer:
+- Actualice envíos donde es el `chofer_id` asignado
+- Inserte historial para esos envíos
+
+No se requieren cambios en las políticas RLS.
+
+---
+
+## Resultado Final
+
+Después de implementar estos cambios:
+
+1. Los choferes verán un botón "Reprogramar" en cada parada de su ruta
+2. El envío 46332044050 aparecerá en "Envíos Reprogramados" del planificador
+3. Los administradores podrán re-asignarlo a una nueva ruta
