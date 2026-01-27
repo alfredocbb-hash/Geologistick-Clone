@@ -31,11 +31,11 @@ serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    // Verify the token using getUser
+    // Verify the token using getClaims (correct method for Lovable Cloud)
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    const { data, error: authError } = await supabase.auth.getClaims(token);
     
-    if (authError || !user) {
+    if (authError || !data?.claims) {
       console.error('Auth error:', authError);
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
@@ -46,7 +46,7 @@ serve(async (req) => {
       );
     }
 
-    const userId = user.id;
+    const userId = data.claims.sub;
     console.log('Authenticated user:', userId);
 
     // Get user's tenant from profile
