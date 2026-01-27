@@ -3,18 +3,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Download, FileText, Info, Loader2, Settings } from "lucide-react";
+import { Download, FileText, Info, Loader2, Settings, ShoppingCart } from "lucide-react";
 import { generateUserGuidePDF } from "@/lib/generateUserGuidePDF";
+import { generateEcommerceGuidePDF } from "@/lib/generateEcommerceGuidePDF";
 import { useToast } from "@/hooks/use-toast";
 
 const SystemSettings = () => {
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [isGeneratingEcommercePDF, setIsGeneratingEcommercePDF] = useState(false);
   const { toast } = useToast();
 
   const handleDownloadGuide = async () => {
     setIsGeneratingPDF(true);
     try {
-      // Small delay for UX
       await new Promise(resolve => setTimeout(resolve, 500));
       generateUserGuidePDF();
       toast({
@@ -32,6 +33,26 @@ const SystemSettings = () => {
     }
   };
 
+  const handleDownloadEcommerceGuide = async () => {
+    setIsGeneratingEcommercePDF(true);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      generateEcommerceGuidePDF();
+      toast({
+        title: "PDF generado",
+        description: "La guía de e-Commerce se ha descargado correctamente.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo generar el PDF. Intente nuevamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingEcommercePDF(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -44,16 +65,16 @@ const SystemSettings = () => {
         </p>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Documentation Section */}
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {/* User Guide */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5" />
-              Documentación
+              Guía de Usuario
             </CardTitle>
             <CardDescription>
-              Recursos y manuales del sistema
+              Manual general del sistema
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -63,18 +84,17 @@ const SystemSettings = () => {
               </div>
               <div className="flex-1 space-y-2">
                 <div className="flex items-center gap-2">
-                  <h3 className="font-semibold">Guía de Usuario</h3>
+                  <h3 className="font-semibold">Manual Completo</h3>
                   <Badge variant="secondary">PDF</Badge>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Manual completo con instrucciones detalladas para todas las funciones del sistema Geologistick.
+                  Instrucciones para todas las funciones del sistema Geologistick.
                 </p>
                 <ul className="text-xs text-muted-foreground space-y-1 mt-2">
                   <li>• Gestión de envíos y tracking</li>
                   <li>• Hojas de ruta y planificación</li>
                   <li>• Navegación para choferes</li>
                   <li>• Finanzas y liquidaciones</li>
-                  <li>• Administración del sistema</li>
                 </ul>
               </div>
             </div>
@@ -99,7 +119,61 @@ const SystemSettings = () => {
           </CardContent>
         </Card>
 
-        {/* System Info Section */}
+        {/* e-Commerce Guide */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShoppingCart className="h-5 w-5" />
+              Guía de e-Commerce
+            </CardTitle>
+            <CardDescription>
+              Manual del módulo de tiendas online
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-start gap-4 p-4 rounded-lg border bg-card">
+              <div className="p-3 rounded-lg bg-purple-500/10">
+                <ShoppingCart className="h-6 w-6 text-purple-600" />
+              </div>
+              <div className="flex-1 space-y-2">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold">Módulo e-Commerce</h3>
+                  <Badge variant="secondary">PDF</Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Guía completa para gestionar tiendas online conectadas.
+                </p>
+                <ul className="text-xs text-muted-foreground space-y-1 mt-2">
+                  <li>• Gestión de Sellers</li>
+                  <li>• Integración con Tiendanube</li>
+                  <li>• Relación con sucursales</li>
+                  <li>• Liquidaciones de sellers</li>
+                </ul>
+              </div>
+            </div>
+            
+            <Button 
+              onClick={handleDownloadEcommerceGuide} 
+              className="w-full"
+              variant="outline"
+              disabled={isGeneratingEcommercePDF}
+            >
+              {isGeneratingEcommercePDF ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Generando PDF...
+                </>
+              ) : (
+                <>
+                  <Download className="mr-2 h-4 w-4" />
+                  Descargar Guía e-Commerce
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* System Info */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
