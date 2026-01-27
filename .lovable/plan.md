@@ -1,154 +1,371 @@
 
 
-# Plan: Verificar y Mejorar Fotos, Firmas y Mapa en EPOD
+# Plan: Completar Integración TiendaNube para Aprobación del Marketplace
 
-## Problema Identificado
+## Estado Actual del Sistema
 
-### 1. Bucket de Storage Privado (CRITICO)
-El bucket `delivery-photos` esta configurado como **privado** (`public: false`), lo que significa que:
-- Las URLs generadas con `getPublicUrl()` **no funcionaran** para usuarios no autenticados
-- Las imagenes no se mostraran correctamente en el EPOD (que intenta cargar las imagenes via fetch)
-- La visualizacion en el dialogo de detalles podria fallar en ciertos contextos
-
-**Solucion**: Hacer el bucket publico para que las fotos y firmas sean accesibles.
-
-### 2. Mapa Estatico en EPOD (MEJORA)
-Actualmente el EPOD solo muestra:
-- Coordenadas GPS como texto
-- Un enlace a Google Maps
-
-El usuario solicito que se incluya **una imagen de mapa** con la geolocalizacion de la entrega.
-
-**Solucion**: Agregar un mapa estatico de Google Maps en el EPOD.
+| Componente | Estado | Detalles |
+|------------|--------|----------|
+| OAuth 2.0 (`/authorize`, `/callback`) | Completo | Flujo funcional con intercambio de tokens |
+| Almacenamiento de Credenciales | Completo | `access_token`, `refresh_token`, `token_expires_at` en BD |
+| Headers API (User-Agent, Authentication) | Completo | Correctamente configurados |
+| UI de Configuración | Completo | `/admin/integrations` y `/ecommerce/sellers` |
+| Webhooks de Órdenes | Completo | `order/created`, `order/paid`, etc. |
+| Webhook `app/uninstalled` | FALTANTE | Obligatorio para aprobación |
+| Refresh Token Logic | FALTANTE | Token expira y no se renueva |
+| Panel de Estado de Integración | FALTANTE | Mejoría UX solicitada |
 
 ---
 
-## Archivos a Modificar
+## Cambios a Implementar
 
-| Archivo | Cambio |
-|---------|--------|
-| Nueva migracion SQL | Hacer el bucket `delivery-photos` publico |
-| `src/lib/generateEPODPDF.ts` | Agregar mapa estatico con la ubicacion GPS |
+### 1. Handler para Webhook `app/uninstalled`
 
----
+TiendaNube exige que cuando un usuario desinstala la app, se eliminen todas las credenciales sensibles.
 
-## Cambios Tecnicos
+**Archivo**: `supabase/functions/tiendanube-webhook/index.ts`
 
-### 1. Migracion SQL: Hacer Bucket Publico
-
-```sql
-UPDATE storage.buckets 
-SET public = true 
-WHERE name = 'delivery-photos';
-```
-
-### 2. Agregar Mapa Estatico en EPOD
-
-Modificar `generateEPODPDF.ts` para:
-
-1. Cargar imagen de mapa estatico desde Google Static Maps API
-2. Mostrar el mapa junto a las coordenadas GPS
-3. Mantener el enlace a Google Maps como respaldo
-
+**Lógica**:
 ```text
-ANTES (solo texto):
-+--------------------------------+
-| [GPS] Ubicacion:               |
-| -34.123456, -58.654321         |
-| maps.google.com/?q=...         |
-+--------------------------------+
-
-DESPUES (con mapa):
-+--------------------------------+
-| [GPS] Ubicacion de Entrega     |
-| -34.123456, -58.654321         |
-+--------------------------------+
-| [IMAGEN DEL MAPA ESTATICO]     |
-| (marcador en la ubicacion)     |
-+--------------------------------+
-| Ver en Google Maps: link       |
-+--------------------------------+
+SI event === "app/uninstalled":
+  1. Buscar seller por store_id
+  2. Limpiar credenciales sensibles:
+     - access_token = null
+     - refresh_token = null
+     - token_expires_at = null
+     - webhook_secret = null
+     - shipping_carrier_id = null
+  3. Mantener datos históricos (nombre, email, ordenes)
+  4. Responder 200 OK
 ```
 
-### Implementacion del Mapa Estatico
+**Registro automático del webhook** en `tiendanube-oauth/index.ts`:
+```typescript
+const webhookEvents = [
+  "order/created", 
+  "order/paid", 
+  "order/fulfilled", 
+  "order/cancelled",
+  "app/uninstalled"  // AGREGAR
+];
+```
+
+### 2. Lógica de Refresh Token
+
+TiendaNube emite tokens con expiración. Si el `access_token` expira, debemos usar el `refresh_token` para obtener uno nuevo.
+
+**Archivo nuevo**: `supabase/functions/tiendanube-refresh-token/index.ts`
+
+**Flujo**:
+```text
+1. Recibe seller_id
+2. Obtiene refresh_token y tenant credentials
+3. Llama a TiendaNube /apps/authorize/token con grant_type=refresh_token
+4. Guarda nuevo access_token, refresh_token, token_expires_at
+5. Retorna éxito o error
+```
+
+**Integración automática** en `tiendanube-sync` y `tiendanube-webhook`:
+```typescript
+// Antes de hacer cualquier request a la API
+if (seller.token_expires_at && new Date(seller.token_expires_at) < new Date()) {
+  // Token expirado, intentar refresh
+  const refreshResult = await refreshToken(seller);
+  if (!refreshResult.success) {
+    return { error: "Token expirado, reconectar tienda" };
+  }
+  accessToken = refreshResult.newToken;
+}
+```
+
+### 3. Panel de Estado de Integración
+
+**Nuevo componente**: `src/components/ecommerce/SellerIntegrationStatus.tsx`
+
+**Ubicación**: Tab en `SellerDetailsDialog` o sección expandida en la tabla
+
+**Contenido**:
+```text
+┌────────────────────────────────────────────────────────┐
+│  Estado de Conexión Tiendanube                         │
+├────────────────────────────────────────────────────────┤
+│  ✅ Conectado           Store ID: 1234567              │
+│  Token expira: 15/02/2026 14:30                        │
+│  Último sync: hace 2 horas (45 pedidos)                │
+│                                                        │
+│  Webhooks registrados:                                 │
+│  ✅ order/created    ✅ order/paid                     │
+│  ✅ order/fulfilled  ✅ order/cancelled                │
+│  ✅ app/uninstalled                                    │
+│                                                        │
+│  [Sincronizar Ahora] [Reconectar] [Desconectar]       │
+└────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Archivos a Modificar/Crear
+
+| Archivo | Acción | Descripción |
+|---------|--------|-------------|
+| `supabase/functions/tiendanube-webhook/index.ts` | Modificar | Agregar handler para `app/uninstalled` |
+| `supabase/functions/tiendanube-oauth/index.ts` | Modificar | Guardar `refresh_token` y `token_expires_at`, registrar webhook uninstall |
+| `supabase/functions/tiendanube-sync/index.ts` | Modificar | Agregar verificación de token expirado |
+| `supabase/functions/tiendanube-shipping-rates/index.ts` | Modificar | Agregar verificación de token expirado |
+| `supabase/config.toml` | Ya configurado | `verify_jwt = false` para todos los endpoints TN |
+| `src/components/ecommerce/SellerIntegrationStatus.tsx` | Crear | Panel visual de estado de conexión |
+| `src/components/ecommerce/SellerDetailsDialog.tsx` | Modificar | Integrar panel de estado |
+
+---
+
+## Detalles Técnicos
+
+### 1. Handler `app/uninstalled` (webhook)
 
 ```typescript
-// Generar URL del mapa estatico
-const generateStaticMapUrl = (lat: number, lng: number, apiKey: string): string => {
-  return `https://maps.googleapis.com/maps/api/staticmap?` +
-    `center=${lat},${lng}` +
-    `&zoom=16` +
-    `&size=400x200` +
-    `&markers=color:red%7C${lat},${lng}` +
-    `&key=${apiKey}`;
-};
+// En tiendanube-webhook/index.ts - agregar después de order/cancelled
 
-// Cargar el mapa junto con foto y firma
-const [photoBase64, signatureBase64, mapBase64] = await Promise.all([
-  envio.foto_entrega ? loadImageAsBase64(envio.foto_entrega) : null,
-  envio.firma_destinatario ? loadImageAsBase64(envio.firma_destinatario) : null,
-  (envio.entrega_lat && envio.entrega_lng) 
-    ? loadStaticMapImage(envio.entrega_lat, envio.entrega_lng) 
-    : null,
-]);
+else if (event === "app/uninstalled") {
+  console.log("App uninstalled for store:", storeId);
+  
+  // Limpiar credenciales sensibles (GDPR compliance)
+  const { error } = await supabase
+    .from("ecommerce_sellers")
+    .update({ 
+      access_token: null,
+      refresh_token: null,
+      token_expires_at: null,
+      webhook_secret: null,
+      shipping_carrier_id: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("store_id", storeId);
+
+  if (error) {
+    console.error("Failed to clean credentials:", error);
+  } else {
+    console.log("Credentials cleaned successfully");
+  }
+  
+  // Siempre responder 200 para que TiendaNube no reintente
+}
 ```
 
-### Obtencion de API Key
+### 2. Guardar Token Expiry en OAuth Callback
 
-El mapa estatico requiere la Google Maps API Key. Opciones:
+```typescript
+// En tiendanube-oauth/index.ts - después de recibir tokenData
 
-1. **Usar Edge Function existente** (`get-maps-config`): Llamar desde el frontend antes de generar el EPOD
-2. **Pasar API Key como parametro**: La funcion `generateEPODPDF` recibe la key opcionalmente
-3. **Fallback sin mapa**: Si no hay API Key, mostrar solo coordenadas (comportamiento actual)
+// TiendaNube devuelve expires_in en segundos
+const expiresAt = tokenData.expires_in 
+  ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
+  : null;
+
+const { error: updateError } = await supabase
+  .from("ecommerce_sellers")
+  .update({
+    access_token: accessToken,
+    refresh_token: tokenData.refresh_token || null,  // NUEVO
+    token_expires_at: expiresAt,                      // NUEVO
+    store_id: storeId,
+    store_url: storeUrl,
+    webhook_secret: webhookSecret,
+    updated_at: new Date().toISOString(),
+  })
+  .eq("id", sellerId);
+```
+
+### 3. Función de Refresh Token (inline helper)
+
+```typescript
+// Helper function para usar en sync/webhook/shipping-rates
+async function refreshAccessToken(
+  supabase: any,
+  seller: { id: string; refresh_token: string; tenant_id: string }
+): Promise<{ success: boolean; newToken?: string; error?: string }> {
+  
+  // Obtener credenciales del tenant
+  const { data: integrations } = await supabase
+    .from("system_integrations")
+    .select("config_key, config_value")
+    .eq("tenant_id", seller.tenant_id)
+    .eq("integration_type", "tiendanube")
+    .eq("is_active", true);
+
+  const configMap = Object.fromEntries(
+    (integrations || []).map(i => [i.config_key, i.config_value])
+  );
+
+  if (!configMap.client_id || !configMap.client_secret) {
+    return { success: false, error: "Missing credentials" };
+  }
+
+  // Solicitar nuevo token
+  const response = await fetch("https://www.tiendanube.com/apps/authorize/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: configMap.client_id,
+      client_secret: configMap.client_secret,
+      grant_type: "refresh_token",
+      refresh_token: seller.refresh_token,
+    }),
+  });
+
+  if (!response.ok) {
+    return { success: false, error: "Refresh failed" };
+  }
+
+  const tokenData = await response.json();
+  const expiresAt = tokenData.expires_in 
+    ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
+    : null;
+
+  // Actualizar en BD
+  await supabase
+    .from("ecommerce_sellers")
+    .update({
+      access_token: tokenData.access_token,
+      refresh_token: tokenData.refresh_token || seller.refresh_token,
+      token_expires_at: expiresAt,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", seller.id);
+
+  return { success: true, newToken: tokenData.access_token };
+}
+```
+
+### 4. Panel de Estado (React Component)
+
+```typescript
+interface IntegrationStatusProps {
+  seller: Seller;
+  onRefresh: () => void;
+}
+
+function SellerIntegrationStatus({ seller, onRefresh }: IntegrationStatusProps) {
+  const isConnected = !!seller.access_token && !!seller.store_id;
+  const isTokenExpired = seller.token_expires_at 
+    && new Date(seller.token_expires_at) < new Date();
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Link2 className="h-5 w-5" />
+          Estado de Conexión
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Connection Status */}
+        <div className="flex items-center gap-3">
+          {isConnected ? (
+            <>
+              <CheckCircle2 className="h-5 w-5 text-green-500" />
+              <div>
+                <p className="font-medium text-green-700">Conectado</p>
+                <p className="text-sm text-muted-foreground">
+                  Store ID: {seller.store_id}
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <XCircle className="h-5 w-5 text-red-500" />
+              <p className="font-medium text-red-700">Desconectado</p>
+            </>
+          )}
+        </div>
+
+        {/* Token Expiry Warning */}
+        {isTokenExpired && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              El token ha expirado. Reconecta la tienda.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Last Sync */}
+        {seller.ultimo_sync && (
+          <div className="text-sm">
+            <span className="text-muted-foreground">Último sync: </span>
+            {formatDistanceToNow(new Date(seller.ultimo_sync), { 
+              addSuffix: true, 
+              locale: es 
+            })}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex gap-2">
+          <Button size="sm" onClick={onRefresh}>
+            <RefreshCw className="mr-1 h-3 w-3" />
+            Sincronizar
+          </Button>
+          {!isConnected && (
+            <Button size="sm" variant="outline">
+              <Link2 className="mr-1 h-3 w-3" />
+              Conectar
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+```
 
 ---
 
-## Flujo de Verificacion Actual
+## Flujo Post-Implementación
 
 ```text
-CAPTURA DE EVIDENCIA
-1. Chofer confirma entrega en app movil
-2. GPS se captura automaticamente via navigator.geolocation
-3. Foto se toma con camara del dispositivo
-4. Firma se dibuja en canvas
-5. Todo se sube a bucket "delivery-photos"
-6. URLs se guardan en tabla "envios"
+INSTALACIÓN (ya funciona)
+1. Admin crea seller en Geologistick
+2. Envía link de conexión al seller
+3. Seller autoriza en TiendaNube
+4. OAuth callback guarda tokens + expiry
+5. Webhooks se registran (incluyendo app/uninstalled)
 
-VISUALIZACION
-1. Usuario abre detalle del envio
-2. Tab "Evidencia" muestra:
-   - Ubicacion GPS con boton "Ver en Mapa"
-   - Foto de entrega (clickeable)
-   - Firma del destinatario (clickeable)
+OPERACIÓN NORMAL
+1. Webhook recibe order/created
+2. Sistema verifica si token está por expirar
+3. Si expirado → refresh automático
+4. Procesa el pedido normalmente
 
-GENERACION EPOD
-1. Usuario hace clic en "EPOD"
-2. Sistema carga foto y firma via fetch
-3. Se genera PDF con toda la evidencia
-4. PDF se descarga automaticamente
+DESINSTALACIÓN
+1. Seller desinstala app desde TiendaNube
+2. TiendaNube envía webhook app/uninstalled
+3. Sistema limpia credenciales sensibles
+4. Datos históricos se mantienen
+5. Admin ve "Desconectado" en el panel
 ```
 
 ---
 
-## Resultado Esperado
+## Checklist para Aprobación TiendaNube
 
-| Elemento | Estado Actual | Despues del Cambio |
-|----------|--------------|-------------------|
-| Fotos en UI | Podrian fallar (bucket privado) | Funcionan correctamente |
-| Firmas en UI | Podrian fallar (bucket privado) | Funcionan correctamente |
-| Fotos en EPOD | Podrian fallar al cargar | Cargan correctamente |
-| Firmas en EPOD | Podrian fallar al cargar | Cargan correctamente |
-| Mapa en EPOD | Solo texto/coordenadas | Imagen de mapa estatico |
-| GPS en EPOD | Coordenadas + link | Coordenadas + mapa + link |
+| Requisito | Estado |
+|-----------|--------|
+| OAuth 2.0 funcional | Listo |
+| Almacenamiento seguro de tokens | Listo |
+| Headers correctos (User-Agent) | Listo |
+| Webhook `app/uninstalled` | Por implementar |
+| Manejo de token expirado | Por implementar |
+| UI de estado para el admin | Por implementar |
+| GDPR: Limpieza de datos en uninstall | Por implementar |
 
 ---
 
-## Consideraciones de Seguridad
+## Orden de Implementación
 
-Hacer el bucket publico significa que cualquiera con la URL puede ver las fotos. Sin embargo:
-- Las URLs son dificiles de adivinar (incluyen UUID del envio + timestamp)
-- Las fotos de entrega no contienen informacion sensible adicional
-- Es el comportamiento estandar para sistemas de EPOD
-
-Si se prefiere mantener el bucket privado, se deberia usar **signed URLs** en lugar de public URLs, lo cual requiere cambios mas extensos en el flujo de carga y visualizacion.
+1. **Modificar `tiendanube-oauth`**: Guardar `refresh_token` y `token_expires_at`, registrar webhook `app/uninstalled`
+2. **Modificar `tiendanube-webhook`**: Agregar handler para `app/uninstalled`
+3. **Modificar `tiendanube-sync`**: Agregar lógica de refresh antes de requests
+4. **Modificar `tiendanube-shipping-rates`**: Agregar verificación de token (opcional, menos crítico)
+5. **Crear `SellerIntegrationStatus`**: Panel visual de estado
+6. **Integrar en `SellerDetailsDialog`**: Mostrar el panel
 
