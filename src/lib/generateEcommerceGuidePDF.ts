@@ -1,4 +1,11 @@
 import { jsPDF } from 'jspdf';
+import { 
+  loadLogoAsBase64, 
+  addPageHeader, 
+  addPageFooter, 
+  drawCoverPage, 
+  drawSectionHeader 
+} from './pdfHelpers';
 
 const ECOMMERCE_GUIDE_CONTENT = {
   title: 'Guia de e-Commerce',
@@ -107,26 +114,7 @@ Paso 4: Crea Envio
 Al crear envio desde el pedido, la sucursal_origen se asigna automaticamente como "Casa Central".
 
 Paso 5: Operatoria Normal
-El envio entra en el flujo normal: puede incluirse en hojas de ruta o rutas de reparto.
-
-DIAGRAMA: FLUJO CON SUCURSALES
-
-Seller "Mi Tienda"
-        |
-        v
-Sucursal Pickup: "Casa Central"
-        |
-        v
-Pedido de Tiendanube --> ecommerce_orders
-        |
-        v
-Operador en "Casa Central" ve pedido
-        |
-        v
-Crea envio --> sucursal_origen = "Casa Central"
-        |
-        v
-Envio en hoja de ruta o ruta de reparto`
+El envio entra en el flujo normal: puede incluirse en hojas de ruta o rutas de reparto.`
     },
     {
       title: '5. GESTION DE PEDIDOS',
@@ -385,32 +373,7 @@ Estado cambia a "entregado".
 
 Paso 9: Liquidacion
 Fin de mes: se genera liquidacion del seller.
-Seller paga el total adeudado.
-
-DIAGRAMA RESUMIDO
-
-Compra en Tiendanube
-        |
-        v
-Webhook --> ecommerce_orders
-        |
-        v
-Operador crea envio
-        |
-        v
-Cargo en cuenta corriente
-        |
-        v
-Imprime etiqueta
-        |
-        v
-Hoja de ruta o Ruta de reparto
-        |
-        v
-Entrega completada
-        |
-        v
-Liquidacion mensual`
+Seller paga el total adeudado.`
     },
     {
       title: '12. CONSEJOS OPERATIVOS',
@@ -482,7 +445,9 @@ Acciones:
   ]
 };
 
-export const generateEcommerceGuidePDF = (): void => {
+const PRIMARY_COLOR: [number, number, number] = [147, 51, 234]; // Purple for e-Commerce
+
+export const generateEcommerceGuidePDF = async (): Promise<void> => {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -490,121 +455,91 @@ export const generateEcommerceGuidePDF = (): void => {
   const contentWidth = pageWidth - margin * 2;
   let yPosition = margin;
 
-  // Helper function to add page number
-  const addPageNumber = () => {
-    const pageCount = doc.getNumberOfPages();
-    doc.setFontSize(10);
-    doc.setTextColor(128, 128, 128);
-    doc.text(
-      `Pagina ${pageCount}`,
-      pageWidth / 2,
-      pageHeight - 10,
-      { align: 'center' }
-    );
+  // Load logo
+  const logoBase64 = await loadLogoAsBase64();
+
+  // Date for footer
+  const generatedDate = new Date().toLocaleDateString('es-AR', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+
+  // Helper function to add footer
+  const addFooter = () => {
+    addPageFooter(doc, pageWidth, pageHeight, generatedDate);
+  };
+
+  // Helper function to add header (for content pages)
+  const addHeader = () => {
+    addPageHeader(doc, logoBase64, 'Guía e-Commerce - Geologistick', pageWidth, margin);
   };
 
   // Helper function to check if we need a new page
-  const checkNewPage = (neededHeight: number) => {
+  const checkNewPage = (neededHeight: number, withHeader = true) => {
     if (yPosition + neededHeight > pageHeight - 30) {
-      addPageNumber();
+      addFooter();
       doc.addPage();
-      yPosition = margin;
+      if (withHeader) {
+        addHeader();
+      }
+      yPosition = withHeader ? 28 : margin;
       return true;
     }
     return false;
   };
 
-  // Cover Page - Purple theme for e-Commerce
-  doc.setFillColor(147, 51, 234); // Purple
-  doc.rect(0, 0, pageWidth, 80, 'F');
-  
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(32);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Geologistick', pageWidth / 2, 40, { align: 'center' });
-  
-  doc.setFontSize(16);
-  doc.setFont('helvetica', 'normal');
-  doc.text('Modulo e-Commerce', pageWidth / 2, 55, { align: 'center' });
+  // ===== COVER PAGE =====
+  drawCoverPage(
+    doc,
+    logoBase64,
+    'GEOLOGISTICK',
+    'Módulo e-Commerce',
+    'GUÍA DE E-COMMERCE',
+    'Manual para Administradores',
+    pageWidth,
+    PRIMARY_COLOR
+  );
 
-  doc.setTextColor(0, 0, 0);
-  doc.setFontSize(24);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Guia de Usuario', pageWidth / 2, 110, { align: 'center' });
-  
-  doc.setFontSize(14);
-  doc.text('para Administradores', pageWidth / 2, 125, { align: 'center' });
-  
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(100, 100, 100);
-  doc.text('Manual completo del modulo de tiendas online', pageWidth / 2, 145, { align: 'center' });
-  
-  const date = new Date().toLocaleDateString('es-AR', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
-  doc.text(`Generado: ${date}`, pageWidth / 2, 165, { align: 'center' });
-
-  // Topics summary box
-  doc.setFillColor(245, 245, 245);
-  doc.rect(margin, 180, contentWidth, 60, 'F');
-  doc.setTextColor(80, 80, 80);
-  doc.setFontSize(11);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Contenido:', margin + 10, 195);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  const topics = [
-    'Gestion de Sellers y Tiendas Online',
-    'Integracion con Tiendanube',
-    'Relacion con Sucursales',
-    'Cuenta Corriente y Liquidaciones',
-    'Portal de Sellers'
-  ];
-  topics.forEach((topic, i) => {
-    doc.text(`• ${topic}`, margin + 10, 208 + (i * 8));
-  });
-
-  // Table of Contents
-  addPageNumber();
+  // ===== TABLE OF CONTENTS =====
   doc.addPage();
-  yPosition = margin;
-  
-  doc.setFillColor(147, 51, 234);
-  doc.rect(0, 0, pageWidth, 25, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(16);
+  addHeader();
+  yPosition = 32;
+
+  doc.setTextColor(PRIMARY_COLOR[0], PRIMARY_COLOR[1], PRIMARY_COLOR[2]);
+  doc.setFontSize(18);
   doc.setFont('helvetica', 'bold');
-  doc.text('Indice de Contenidos', margin, 17);
-  
-  yPosition = 40;
-  doc.setTextColor(0, 0, 0);
-  doc.setFontSize(11);
+  doc.text('Índice de Contenidos', margin, yPosition);
+  yPosition += 12;
+
+  // Línea decorativa
+  doc.setDrawColor(PRIMARY_COLOR[0], PRIMARY_COLOR[1], PRIMARY_COLOR[2]);
+  doc.setLineWidth(0.5);
+  doc.line(margin, yPosition, margin + 60, yPosition);
+  yPosition += 10;
+
+  doc.setTextColor(50, 50, 50);
+  doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
 
   ECOMMERCE_GUIDE_CONTENT.sections.forEach((section) => {
-    checkNewPage(10);
-    doc.text(section.title, margin, yPosition);
-    yPosition += 10;
+    checkNewPage(8);
+    // Bullet decorativo
+    doc.setFillColor(PRIMARY_COLOR[0], PRIMARY_COLOR[1], PRIMARY_COLOR[2]);
+    doc.circle(margin + 2, yPosition - 2, 1.5, 'F');
+    doc.text(section.title, margin + 8, yPosition);
+    yPosition += 8;
   });
 
-  // Content Sections
-  ECOMMERCE_GUIDE_CONTENT.sections.forEach((section) => {
-    addPageNumber();
-    doc.addPage();
-    yPosition = margin;
+  addFooter();
 
-    // Section Title with purple header
-    doc.setFillColor(147, 51, 234);
-    doc.rect(0, 0, pageWidth, 25, 'F');
-    
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text(section.title, margin, 17);
-    
+  // ===== CONTENT SECTIONS =====
+  ECOMMERCE_GUIDE_CONTENT.sections.forEach((section) => {
+    doc.addPage();
+
+    // Section header
+    drawSectionHeader(doc, section.title, pageWidth, PRIMARY_COLOR);
+
     yPosition = 40;
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(10);
@@ -612,7 +547,7 @@ export const generateEcommerceGuidePDF = (): void => {
 
     // Split content into lines
     const lines = section.content.split('\n');
-    
+
     lines.forEach((line) => {
       if (line.trim() === '') {
         yPosition += 4;
@@ -620,27 +555,27 @@ export const generateEcommerceGuidePDF = (): void => {
       }
 
       // Check if it's a subsection header or diagram header
-      const isHeader = !line.startsWith('•') && 
-                       !line.startsWith(' ') && 
-                       !line.startsWith('1.') &&
-                       !line.startsWith('2.') &&
-                       !line.startsWith('3.') &&
-                       !line.startsWith('4.') &&
-                       !line.startsWith('5.') &&
-                       !line.startsWith('6.') &&
-                       !line.startsWith('7.') &&
-                       !line.startsWith('8.') &&
-                       !line.startsWith('9.') &&
-                       line.length < 50;
-      
+      const isHeader = !line.startsWith('•') &&
+        !line.startsWith(' ') &&
+        !line.startsWith('1.') &&
+        !line.startsWith('2.') &&
+        !line.startsWith('3.') &&
+        !line.startsWith('4.') &&
+        !line.startsWith('5.') &&
+        !line.startsWith('6.') &&
+        !line.startsWith('7.') &&
+        !line.startsWith('8.') &&
+        !line.startsWith('9.') &&
+        line.length < 50;
+
       const isDiagram = line.includes('-->') || line.includes('|') || line.startsWith('        ');
 
       if (isHeader && !isDiagram) {
-        checkNewPage(14);
-        yPosition += 4;
+        checkNewPage(14, false);
+        yPosition += 5;
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(11);
-        doc.setTextColor(147, 51, 234);
+        doc.setTextColor(PRIMARY_COLOR[0], PRIMARY_COLOR[1], PRIMARY_COLOR[2]);
       } else if (isDiagram) {
         doc.setFont('courier', 'normal');
         doc.setFontSize(9);
@@ -648,27 +583,26 @@ export const generateEcommerceGuidePDF = (): void => {
       } else {
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(10);
-        doc.setTextColor(0, 0, 0);
+        doc.setTextColor(50, 50, 50);
       }
 
       // Word wrap
       const wrappedLines = doc.splitTextToSize(line, contentWidth);
-      
+
       wrappedLines.forEach((wrappedLine: string) => {
-        checkNewPage(7);
+        checkNewPage(7, false);
         doc.text(wrappedLine, margin, yPosition);
         yPosition += 6;
       });
 
       if (isHeader && !isDiagram) {
         yPosition += 2;
-        doc.setTextColor(0, 0, 0);
+        doc.setTextColor(50, 50, 50);
       }
     });
-  });
 
-  // Add final page number
-  addPageNumber();
+    addFooter();
+  });
 
   // Download
   doc.save('guia-ecommerce-geologistick.pdf');
