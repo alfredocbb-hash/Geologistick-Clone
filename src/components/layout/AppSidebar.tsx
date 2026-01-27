@@ -343,7 +343,7 @@ export function AppSidebar() {
               <img 
                 src={geologistickLogo} 
                 alt="Geologistick" 
-                className="h-10 w-10 rounded-xl object-contain shadow-lg shrink-0"
+                className="h-12 w-12 rounded-xl object-contain shadow-lg shrink-0"
               />
               {!collapsed && <div className="flex flex-col">
                   <span className="text-lg font-bold text-sidebar-foreground">{branding?.nombre_app || 'Geologistick'}</span>

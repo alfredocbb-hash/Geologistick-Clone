@@ -35,7 +35,7 @@ const Navbar = () => {
             <img 
               src={geologistickLogo} 
               alt="Geologistick" 
-              className="h-10 w-10 rounded-xl object-contain shadow-lg shadow-primary/25 group-hover:shadow-primary/40 transition-shadow"
+              className="h-12 w-12 rounded-xl object-contain shadow-lg shadow-primary/25 group-hover:shadow-primary/40 transition-shadow"
             />
             <span className="text-xl font-bold text-white">Geologistick</span>
           </Link>

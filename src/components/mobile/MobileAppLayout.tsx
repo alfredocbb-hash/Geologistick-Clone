@@ -73,7 +73,7 @@ export function MobileAppLayout() {
           <img 
             src={geologistickLogo} 
             alt="Geologistick" 
-            className="relative w-24 h-24 rounded-3xl object-contain shadow-2xl shadow-primary/40"
+            className="relative w-28 h-28 rounded-3xl object-contain shadow-2xl shadow-primary/40"
           />
         </div>
         <h1 className="text-2xl font-bold text-white mb-2">ChoferApp</h1>
