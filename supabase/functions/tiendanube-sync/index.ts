@@ -73,14 +73,25 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Verify user belongs to same tenant
+    // Verify user belongs to same tenant OR is super_admin
     const { data: profile } = await supabase
       .from("profiles")
       .select("tenant_id")
       .eq("user_id", userId)
       .single();
 
-    if (!profile || profile.tenant_id !== seller.tenant_id) {
+    // Check if user is super_admin
+    const { data: isSuperAdmin } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("role", "super_admin")
+      .maybeSingle();
+
+    const canAccess = isSuperAdmin || (profile && profile.tenant_id === seller.tenant_id);
+
+    if (!canAccess) {
+      console.log("Access denied - user tenant:", profile?.tenant_id, "seller tenant:", seller.tenant_id, "is super_admin:", !!isSuperAdmin);
       return new Response(
         JSON.stringify({ error: "Access denied" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
