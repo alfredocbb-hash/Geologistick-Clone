@@ -123,10 +123,23 @@ async function loadImageAsBase64(url: string): Promise<string | null> {
   }
 }
 
+// Generate static map URL for delivery location
+const generateStaticMapUrl = (lat: number, lng: number, apiKey: string): string => {
+  return `https://maps.googleapis.com/maps/api/staticmap?` +
+    `center=${lat},${lng}` +
+    `&zoom=16` +
+    `&size=400x200` +
+    `&scale=2` +
+    `&maptype=roadmap` +
+    `&markers=color:red%7Csize:mid%7C${lat},${lng}` +
+    `&key=${apiKey}`;
+};
+
 export async function generateEPODPDF(
   envio: Envio,
   historial: HistorialItem[] = [],
-  incidentes: Incidente[] = []
+  incidentes: Incidente[] = [],
+  mapsApiKey?: string
 ): Promise<void> {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -135,10 +148,16 @@ export async function generateEPODPDF(
   const contentWidth = pageWidth - margin * 2;
   let yPosition = margin;
 
-  // Load images in parallel
-  const [photoBase64, signatureBase64] = await Promise.all([
+  // Generate static map URL if we have coordinates and API key
+  const staticMapUrl = (envio.entrega_lat && envio.entrega_lng && mapsApiKey)
+    ? generateStaticMapUrl(envio.entrega_lat, envio.entrega_lng, mapsApiKey)
+    : null;
+
+  // Load images in parallel (photo, signature, and map)
+  const [photoBase64, signatureBase64, mapBase64] = await Promise.all([
     envio.foto_entrega ? loadImageAsBase64(envio.foto_entrega) : Promise.resolve(null),
     envio.firma_destinatario ? loadImageAsBase64(envio.firma_destinatario) : Promise.resolve(null),
+    staticMapUrl ? loadImageAsBase64(staticMapUrl) : Promise.resolve(null),
   ]);
 
   // Helper function to add page number
@@ -220,25 +239,50 @@ export async function generateEPODPDF(
 
   yPosition += 28;
 
-  // ===== GEOLOCATION =====
+  // ===== GEOLOCATION WITH MAP =====
   if (envio.entrega_lat && envio.entrega_lng) {
+    // Header with coordinates
     doc.setFillColor(240, 240, 240);
     doc.roundedRect(margin, yPosition, contentWidth, 14, 2, 2, 'F');
     
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
-    doc.text('[GPS] Ubicacion:', margin + 4, yPosition + 6);
+    doc.text('[GPS] Ubicacion de Entrega:', margin + 4, yPosition + 6);
     
     doc.setFont('helvetica', 'normal');
     const coords = `${envio.entrega_lat.toFixed(6)}, ${envio.entrega_lng.toFixed(6)}`;
-    doc.text(coords, margin + 40, yPosition + 6);
+    doc.text(coords, margin + 55, yPosition + 6);
     
     doc.setTextColor(59, 130, 246);
     const mapsUrl = `maps.google.com/?q=${envio.entrega_lat},${envio.entrega_lng}`;
     doc.text(mapsUrl, margin + 4, yPosition + 12);
+    doc.setTextColor(0, 0, 0);
     
-    yPosition += 20;
+    yPosition += 18;
+
+    // Static map image (if available)
+    if (mapBase64) {
+      try {
+        // Map takes full width
+        const mapHeight = 50;
+        doc.addImage(mapBase64, 'PNG', margin, yPosition, contentWidth, mapHeight);
+        
+        // Add border around map
+        doc.setDrawColor(200, 200, 200);
+        doc.rect(margin, yPosition, contentWidth, mapHeight, 'S');
+        
+        yPosition += mapHeight + 5;
+      } catch {
+        // Fallback: just show text if map fails to load
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'italic');
+        doc.setTextColor(128, 128, 128);
+        doc.text('Mapa no disponible', margin, yPosition + 5);
+        doc.setTextColor(0, 0, 0);
+        yPosition += 10;
+      }
+    }
   }
 
   // ===== SENDER & RECIPIENT =====
