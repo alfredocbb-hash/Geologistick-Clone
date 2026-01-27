@@ -15,6 +15,11 @@ import { Loader2 } from "lucide-react";
 // Pages
 import Index from "./pages/Index";
 import Login from "./pages/Login";
+import Privacy from "./pages/Privacy";
+import Terms from "./pages/Terms";
+import Cookies from "./pages/Cookies";
+import Support from "./pages/Support";
+import TiendanubeConfig from "./pages/TiendanubeConfig";
 import Onboarding from "./pages/Onboarding";
 import Dashboard from "./pages/Dashboard";
 import Shipments from "./pages/Shipments";
@@ -137,6 +142,12 @@ function AppRoutes() {
       {/* Public Routes */}
       <Route path="/" element={<Index />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/terms" element={<Terms />} />
+      <Route path="/cookies" element={<Cookies />} />
+      <Route path="/support" element={<Support />} />
+      <Route path="/tiendanube/config" element={<TiendanubeConfig />} />
+      <Route path="/onboarding" element={<Onboarding />} />
       <Route path="/onboarding" element={<Onboarding />} />
       <Route path="/tracking" element={<Tracking />} />
       <Route path="/tracking-embed" element={<TrackingEmbed />} />
