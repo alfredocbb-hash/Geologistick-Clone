@@ -39,6 +39,7 @@ Deno.serve(async (req) => {
       <html>
       <head>
         <title>Error - Conexión Tiendanube</title>
+        <meta charset="UTF-8">
         <style>
           body { font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f5f5f5; }
           .card { background: white; padding: 40px; border-radius: 12px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 400px; }
@@ -61,7 +62,7 @@ Deno.serve(async (req) => {
       if (!sellerId) {
         return new Response(
           errorPage("Link inválido", "Este enlace no es válido. Por favor solicita un nuevo enlace de conexión a tu proveedor logístico."),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html" } }
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
         );
       }
 
@@ -76,14 +77,14 @@ Deno.serve(async (req) => {
         console.error("Seller not found:", sellerError);
         return new Response(
           errorPage("Tienda no encontrada", "No pudimos encontrar tu tienda. Por favor contacta a tu proveedor logístico para obtener un nuevo enlace."),
-          { status: 404, headers: { ...corsHeaders, "Content-Type": "text/html" } }
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
         );
       }
 
       if (seller.plataforma !== "tiendanube") {
         return new Response(
           errorPage("Plataforma incorrecta", "Esta tienda no está configurada como Tiendanube. Por favor contacta a tu proveedor logístico."),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html" } }
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
         );
       }
 
@@ -99,7 +100,7 @@ Deno.serve(async (req) => {
         console.error("Tiendanube not configured:", intError);
         return new Response(
           errorPage("Integración no configurada", "La integración con Tiendanube aún no está configurada. Por favor contacta a tu proveedor logístico."),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html" } }
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
         );
       }
 
@@ -109,7 +110,7 @@ Deno.serve(async (req) => {
       if (!clientId) {
         return new Response(
           errorPage("Configuración incompleta", "Falta el Client ID de Tiendanube. Por favor contacta a tu proveedor logístico."),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html" } }
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
         );
       }
 
@@ -141,15 +142,15 @@ Deno.serve(async (req) => {
       if (error) {
         console.error("OAuth error:", error);
         return new Response(
-          `<html><body><h1>Error de autorizacion</h1><p>${error}</p><script>setTimeout(() => window.close(), 3000)</script></body></html>`,
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html" } }
+          errorPage("Error de autorización", `Tiendanube respondió con un error: ${error}`),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
         );
       }
 
       if (!code || !state) {
         return new Response(
-          JSON.stringify({ error: "Missing code or state" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          errorPage("Parámetros faltantes", "La respuesta de Tiendanube no incluyó los parámetros necesarios."),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
         );
       }
 
@@ -165,8 +166,8 @@ Deno.serve(async (req) => {
       if (sellerError || !seller) {
         console.error("Seller not found in callback:", sellerError);
         return new Response(
-          `<html><body><h1>Error</h1><p>Seller no encontrado</p></body></html>`,
-          { status: 404, headers: { ...corsHeaders, "Content-Type": "text/html" } }
+          errorPage("Seller no encontrado", "No pudimos encontrar la tienda asociada a esta conexión."),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
         );
       }
 
@@ -184,8 +185,8 @@ Deno.serve(async (req) => {
 
       if (!clientId || !clientSecret) {
         return new Response(
-          `<html><body><h1>Error</h1><p>Credenciales de Tiendanube no configuradas</p></body></html>`,
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html" } }
+          errorPage("Credenciales faltantes", "Las credenciales de Tiendanube no están configuradas correctamente."),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
         );
       }
 
@@ -210,16 +211,22 @@ Deno.serve(async (req) => {
         const errorText = await tokenResponse.text();
         console.error("Token exchange failed:", errorText);
         return new Response(
-          `<html><body><h1>Error</h1><p>Error al obtener token: ${errorText}</p></body></html>`,
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html" } }
+          errorPage("Error de token", `No se pudo obtener el token de acceso: ${errorText}`),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
         );
       }
 
       const tokenData = await tokenResponse.json();
-      console.log("Token received:", { store_id: tokenData.user_id, scope: tokenData.scope });
+      console.log("Token received:", { store_id: tokenData.user_id, scope: tokenData.scope, expires_in: tokenData.expires_in });
 
       const accessToken = tokenData.access_token;
+      const refreshToken = tokenData.refresh_token || null;
       const storeId = String(tokenData.user_id); // Tiendanube uses user_id as store_id
+      
+      // Calculate token expiry (Tiendanube returns expires_in in seconds)
+      const tokenExpiresAt = tokenData.expires_in 
+        ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
+        : null;
 
       // Get store info
       const storeResponse = await fetch(`${TIENDANUBE_API_ENDPOINT}/${storeId}/store`, {
@@ -238,11 +245,13 @@ Deno.serve(async (req) => {
       // Generate webhook secret
       const webhookSecret = crypto.randomUUID().replace(/-/g, '');
 
-      // Update seller with OAuth data
+      // Update seller with OAuth data including refresh token and expiry
       const { error: updateError } = await supabase
         .from("ecommerce_sellers")
         .update({
           access_token: accessToken,
+          refresh_token: refreshToken,
+          token_expires_at: tokenExpiresAt,
           store_id: storeId,
           store_url: storeUrl,
           webhook_secret: webhookSecret,
@@ -253,8 +262,8 @@ Deno.serve(async (req) => {
       if (updateError) {
         console.error("Failed to update seller:", updateError);
         return new Response(
-          `<html><body><h1>Error</h1><p>Error al guardar credenciales</p></body></html>`,
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "text/html" } }
+          errorPage("Error al guardar", "No se pudieron guardar las credenciales de conexión."),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
         );
       }
 
@@ -303,13 +312,19 @@ Deno.serve(async (req) => {
         console.error("Error registering shipping carrier:", e);
       }
 
-      // Register webhooks in Tiendanube
+      // Register webhooks in Tiendanube (including app/uninstalled for marketplace approval)
       const webhookUrl = `${supabaseUrl}/functions/v1/tiendanube-webhook`;
-      const webhookEvents = ["order/created", "order/paid", "order/fulfilled", "order/cancelled"];
+      const webhookEvents = [
+        "order/created", 
+        "order/paid", 
+        "order/fulfilled", 
+        "order/cancelled",
+        "app/uninstalled"  // Required for TiendaNube marketplace approval
+      ];
 
       for (const event of webhookEvents) {
         try {
-          await fetch(`${TIENDANUBE_API_ENDPOINT}/${storeId}/webhooks`, {
+          const webhookResponse = await fetch(`${TIENDANUBE_API_ENDPOINT}/${storeId}/webhooks`, {
             method: "POST",
             headers: {
               "Authentication": `bearer ${accessToken}`,
@@ -321,7 +336,13 @@ Deno.serve(async (req) => {
               event: event,
             }),
           });
-          console.log(`Webhook registered for ${event}`);
+          
+          if (webhookResponse.ok) {
+            console.log(`Webhook registered for ${event}`);
+          } else {
+            const errorText = await webhookResponse.text();
+            console.error(`Failed to register webhook for ${event}:`, errorText);
+          }
         } catch (e) {
           console.error(`Failed to register webhook for ${event}:`, e);
         }
@@ -334,7 +355,7 @@ Deno.serve(async (req) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Conexion Exitosa - Tiendanube</title>
+  <title>Conexión Exitosa - Tiendanube</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { 
@@ -379,8 +400,8 @@ Deno.serve(async (req) => {
   <div class="card">
     <div class="icon">✅</div>
     <h1>Tienda Conectada</h1>
-    <p class="subtitle">Tu tienda de Tiendanube se ha vinculado correctamente con el sistema de envios.</p>
-    <p class="hint">Esta ventana se cerrara automaticamente...</p>
+    <p class="subtitle">Tu tienda de Tiendanube se ha vinculado correctamente con el sistema de envíos.</p>
+    <p class="hint">Esta ventana se cerrará automáticamente...</p>
     <div class="loader"></div>
   </div>
   <script>
