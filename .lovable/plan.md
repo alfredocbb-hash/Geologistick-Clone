@@ -1,59 +1,233 @@
 
-
-# Plan: Reemplazar Logo con la Imagen Proporcionada
+# Plan: Mejorar PDFs Descargables con Diseño Profesional e Imágenes
 
 ## Objetivo
-Usar la imagen subida como el nuevo logo oficial de Geologistick en toda la aplicación.
+Transformar los PDFs de las guías de usuario descargables desde "Configuración del Sistema" en documentos profesionales que incluyan:
+- Logo oficial de Geologistick
+- Diseño visual mejorado con íconos y gráficos
+- Portada más atractiva
+- Encabezados/pies de página consistentes
+- Mejor tipografía y espaciado
 
 ---
 
-## Cambio a Realizar
+## Estado Actual
 
-### Reemplazar Archivo de Logo
+Los archivos de generación de PDFs (`generateUserGuidePDF.ts` y `generateEcommerceGuidePDF.ts`) actualmente:
 
-| Acción | Detalle |
-|--------|---------|
-| **Origen** | `user-uploads://Gemini_Generated_Image_zb4jcnzb4jcnzb4j.png` |
-| **Destino** | `src/assets/geologistick-logo.png` |
-| **Método** | Copiar y reemplazar el archivo existente |
-
----
-
-## Componentes que Usarán el Nuevo Logo Automáticamente
-
-Dado que todos los componentes ya importan el logo desde `src/assets/geologistick-logo.png`, el cambio se reflejará automáticamente en:
-
-| Componente | Ubicación |
-|------------|-----------|
-| Landing Navbar | `src/components/landing/Navbar.tsx` |
-| Landing Footer | `src/components/landing/Footer.tsx` |
-| Login Principal | `src/components/auth/LoginForm.tsx` |
-| Dashboard Sidebar | `src/components/layout/AppSidebar.tsx` |
-| Mobile Header (APK) | `src/components/mobile/MobileHeader.tsx` |
-| Mobile Login (APK) | `src/components/mobile/MobileLoginScreen.tsx` |
-| Mobile Splash (APK) | `src/components/mobile/MobileAppLayout.tsx` |
+| Característica | Estado |
+|----------------|--------|
+| Logo | No incluido |
+| Portada | Solo texto con fondo azul |
+| Encabezados | Texto simple |
+| Pies de página | Solo número de página |
+| Imágenes/Íconos | Ninguno |
 
 ---
 
-## Consideraciones
+## Mejoras Propuestas
 
-- **Sin cambios de código necesarios**: Solo se reemplaza el archivo de imagen
-- **Tamaños conservados**: Los tamaños actualizados anteriormente (`h-12 w-12`, `w-20 h-20`, etc.) se mantienen
-- **Fondo oscuro en la imagen**: El logo incluye un fondo azul oscuro, lo cual puede verse bien en interfaces claras pero podría necesitar ajustes en fondos oscuros
+### 1. Agregar Logo en Portada y Encabezados
 
----
+El logo se cargará como base64 y se incluirá en:
+- Portada central (tamaño grande)
+- Encabezado de cada página (tamaño pequeño)
 
-## Seccion Tecnica
+### 2. Portada Profesional Mejorada
 
-### Comando de Copia
+```text
+┌─────────────────────────────────────┐
+│           [Fondo Azul]              │
+│                                     │
+│         ┌─────────────┐             │
+│         │   [LOGO]    │             │
+│         └─────────────┘             │
+│                                     │
+│         GEOLOGISTICK                │
+│   Sistema de Gestión Logística      │
+│                                     │
+└─────────────────────────────────────┘
+│                                     │
+│                                     │
+│       GUÍA DE USUARIO               │
+│    ─────────────────────            │
+│    Manual Completo del Sistema      │
+│                                     │
+│                                     │
+│    Generado: 27 de enero, 2026      │
+│    Versión: 1.0                     │
+│                                     │
+└─────────────────────────────────────┘
 ```
-lov-copy user-uploads://Gemini_Generated_Image_zb4jcnzb4jcnzb4j.png src/assets/geologistick-logo.png
-```
 
-### Import Existente (sin cambios)
-```tsx
+### 3. Encabezados de Página Consistentes
+
+Cada página incluirá:
+- Logo pequeño (izquierda)
+- Nombre del documento (centro)
+- Número de página (derecha)
+
+### 4. Mejoras Visuales Adicionales
+
+| Elemento | Mejora |
+|----------|--------|
+| Títulos de sección | Barra de color con ícono representativo |
+| Listas | Bullets con diseño consistente |
+| Tablas | Bordes y alternancia de colores en filas |
+| Índice | Links navegables (si es soportado) |
+
+---
+
+## Archivos a Modificar
+
+| Archivo | Cambios |
+|---------|---------|
+| `src/lib/generateUserGuidePDF.ts` | Agregar logo, mejorar portada y encabezados |
+| `src/lib/generateEcommerceGuidePDF.ts` | Mismo tratamiento visual |
+| `src/pages/SystemSettings.tsx` | Pasar logo a las funciones de generación |
+
+---
+
+## Sección Técnica
+
+### Cargar Logo como Base64
+
+Se creará una función helper para convertir el logo importado a base64:
+
+```typescript
 import geologistickLogo from '@/assets/geologistick-logo.png';
+
+// Función para convertir imagen a base64
+async function loadLogoAsBase64(): Promise<string | null> {
+  try {
+    const response = await fetch(geologistickLogo);
+    const blob = await response.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
 ```
 
-El bundler de Vite procesará automáticamente la nueva imagen y la incluirá en el build.
+### Modificar Portada con Logo
 
+```typescript
+export const generateUserGuidePDF = async (): Promise<void> => {
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  
+  // Cargar logo
+  const logoBase64 = await loadLogoAsBase64();
+  
+  // Portada con fondo
+  doc.setFillColor(59, 130, 246);
+  doc.rect(0, 0, pageWidth, 80, 'F');
+  
+  // Logo centrado en portada
+  if (logoBase64) {
+    const logoSize = 40;
+    doc.addImage(
+      logoBase64, 
+      'PNG', 
+      (pageWidth - logoSize) / 2, 
+      15, 
+      logoSize, 
+      logoSize
+    );
+  }
+  
+  // Título debajo del logo
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(24);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Geologistick', pageWidth / 2, 65, { align: 'center' });
+  
+  // ... resto del contenido
+};
+```
+
+### Encabezado con Logo en Cada Página
+
+```typescript
+const addHeader = (logoBase64: string | null) => {
+  // Logo pequeño
+  if (logoBase64) {
+    doc.addImage(logoBase64, 'PNG', margin, 5, 12, 12);
+  }
+  
+  // Línea separadora
+  doc.setDrawColor(59, 130, 246);
+  doc.setLineWidth(0.5);
+  doc.line(margin, 18, pageWidth - margin, 18);
+  
+  // Título del documento
+  doc.setFontSize(8);
+  doc.setTextColor(128, 128, 128);
+  doc.text('Guía de Usuario - Geologistick', pageWidth / 2, 14, { align: 'center' });
+};
+```
+
+### Cambio de Firma de Funciones
+
+Las funciones pasarán a ser asíncronas para cargar el logo:
+
+```typescript
+// Antes
+export const generateUserGuidePDF = (): void => { ... }
+
+// Después
+export const generateUserGuidePDF = async (): Promise<void> => { ... }
+```
+
+### Actualizar SystemSettings.tsx
+
+```typescript
+const handleDownloadGuide = async () => {
+  setIsGeneratingPDF(true);
+  try {
+    await generateUserGuidePDF(); // Ya es async
+    toast({
+      title: "PDF generado",
+      description: "La guía se ha descargado correctamente.",
+    });
+  } catch (error) {
+    // ... error handling
+  } finally {
+    setIsGeneratingPDF(false);
+  }
+};
+```
+
+### Diseño Visual de Secciones
+
+Cada sección tendrá un encabezado mejorado:
+
+```typescript
+// Encabezado de sección con diseño
+doc.setFillColor(59, 130, 246);
+doc.roundedRect(margin, yPosition, contentWidth, 12, 2, 2, 'F');
+
+doc.setTextColor(255, 255, 255);
+doc.setFontSize(12);
+doc.setFont('helvetica', 'bold');
+doc.text(section.title, margin + 5, yPosition + 8);
+```
+
+---
+
+## Resultado Esperado
+
+Después de implementar estos cambios, los PDFs descargados tendrán:
+
+1. **Portada profesional** con logo centrado y diseño corporativo
+2. **Encabezados consistentes** en todas las páginas con mini-logo
+3. **Pies de página** con numeración y fecha de generación
+4. **Secciones visuales** con barras de color y mejor espaciado
+5. **Aspecto corporativo** que refuerza la marca Geologistick
+
+Los usuarios verán un documento de calidad profesional que pueden compartir con clientes o usar como material de capacitación.
