@@ -1,112 +1,73 @@
 
-# Plan: Integrar Logo de Geologistick en Toda la Aplicación
+
+# Plan: Logo Más Grande y Sin Fondo Blanco
 
 ## Objetivo
-Reemplazar todos los iconos genéricos (Package, Truck) con el logo oficial de Geologistick (`src/assets/geologistick-logo.png`) en toda la aplicación web y la APK de choferes.
+Generar un nuevo logo de Geologistick con fondo transparente y aumentar su tamaño en toda la aplicación.
 
 ---
 
-## Ubicaciones a Modificar
+## Cambios a Realizar
 
-| Componente | Ubicación del Logo Actual | Cambio |
-|------------|---------------------------|--------|
-| **Landing Navbar** | Icono Package en div con gradiente | Imagen del logo |
-| **Landing Footer** | Icono Package en div con gradiente | Imagen del logo |
-| **Login Form** | Icono Package en div con gradiente | Imagen del logo |
-| **Dashboard Sidebar** | Icono Package (fallback cuando no hay branding) | Imagen del logo |
-| **Mobile Header (APK)** | Emoji 🚚 en div con gradiente | Imagen del logo |
-| **Mobile Login (APK)** | Icono Truck en div con gradiente | Imagen del logo |
-| **Mobile Splash (APK)** | Emoji 🚚 en MobileAppLayout | Imagen del logo |
+### 1. Generar Nuevo Logo
+Usar la herramienta de generación de imágenes para crear un nuevo logo con fondo transparente, manteniendo el diseño actual (pin de ubicación + paquete 3D con gradiente azul-teal).
+
+**Archivo:** `src/assets/geologistick-logo.png`
+
+---
+
+### 2. Actualizar Tamaños en Componentes
+
+| Componente | Tamaño Actual | Tamaño Nuevo | Archivo |
+|------------|---------------|--------------|---------|
+| **Landing Navbar** | `h-10 w-10` | `h-12 w-12` | `Navbar.tsx` |
+| **Landing Footer** | `h-10 w-10` | `h-12 w-12` | `Footer.tsx` |
+| **Login Principal** | `w-16 h-16` | `w-20 h-20` | `LoginForm.tsx` |
+| **Dashboard Sidebar** | `h-10 w-10` | `h-12 w-12` | `AppSidebar.tsx` |
+| **Mobile Header (APK)** | `w-9 h-9` | `w-10 h-10` | `MobileHeader.tsx` |
+| **Mobile Login (APK)** | `w-28 h-28` | `w-32 h-32` | `MobileLoginScreen.tsx` |
+| **Mobile Splash (APK)** | `w-24 h-24` | `w-28 h-28` | `MobileAppLayout.tsx` |
 
 ---
 
 ## Archivos a Modificar
 
-### 1. `src/components/landing/Navbar.tsx`
-- Importar el logo desde assets
-- Reemplazar el div con icono Package por una etiqueta `<img>` con el logo
-
-### 2. `src/components/landing/Footer.tsx`
-- Importar el logo desde assets
-- Reemplazar el div con icono Package por una etiqueta `<img>` con el logo
-
-### 3. `src/components/auth/LoginForm.tsx`
-- Importar el logo desde assets
-- Reemplazar el div con icono Package por una etiqueta `<img>` con el logo
-
-### 4. `src/components/layout/AppSidebar.tsx`
-- Importar el logo desde assets
-- En el fallback (cuando no hay `branding.logo_light`), usar la imagen del logo en lugar del icono Package
-
-### 5. `src/components/mobile/MobileHeader.tsx`
-- Importar el logo desde assets
-- En el fallback (cuando no hay `branding.logo_dark`), usar la imagen del logo en lugar del emoji 🚚
-
-### 6. `src/components/mobile/MobileLoginScreen.tsx`
-- Importar el logo desde assets
-- Reemplazar el icono Truck por la imagen del logo
-
-### 7. `src/components/mobile/MobileAppLayout.tsx`
-- Importar el logo desde assets
-- Reemplazar el emoji 🚚 en el splash screen por la imagen del logo
+| Archivo | Cambio |
+|---------|--------|
+| `src/assets/geologistick-logo.png` | Reemplazar con versión transparente |
+| `src/components/landing/Navbar.tsx` | `h-10 w-10` → `h-12 w-12` |
+| `src/components/landing/Footer.tsx` | `h-10 w-10` → `h-12 w-12` |
+| `src/components/auth/LoginForm.tsx` | `w-16 h-16` → `w-20 h-20` |
+| `src/components/layout/AppSidebar.tsx` | `h-10 w-10` → `h-12 w-12` |
+| `src/components/mobile/MobileHeader.tsx` | `w-9 h-9` → `w-10 h-10` |
+| `src/components/mobile/MobileLoginScreen.tsx` | `w-28 h-28` → `w-32 h-32` |
+| `src/components/mobile/MobileAppLayout.tsx` | `w-24 h-24` → `w-28 h-28` |
 
 ---
 
-## Diseño Visual del Logo
+## Seccion Tecnica
 
-El logo se integrará manteniendo el estilo actual:
-- Contenedor con bordes redondeados y sombra
-- Fondo con gradiente cuando sea apropiado
-- Tamaño adaptable según el contexto (navbar, sidebar, mobile)
+### Generacion del Logo Transparente
+Se utilizara el modelo de generacion de imagenes especificando explicitamente fondo transparente en el prompt:
 
-```text
-Antes (Navbar):
-┌──────────────────────────────────────┐
-│ [📦]  Geologistick    Nav Links...   │
-│  ↑ Icono Package                     │
-└──────────────────────────────────────┘
-
-Después (Navbar):
-┌──────────────────────────────────────┐
-│ [LOGO] Geologistick   Nav Links...   │
-│  ↑ Imagen real                       │
-└──────────────────────────────────────┘
+```
+"Modern minimalist logo for logistics company 'Geologistick'. 
+Design: Location pin marker combined with 3D package/box. 
+Colors: Blue to teal gradient.
+IMPORTANT: Transparent background, PNG with alpha channel.
+Clean vector-style, no text in the image."
 ```
 
----
+### Clases Tailwind Actualizadas
+Ejemplo de cambio en Navbar:
+```tsx
+// Antes
+className="h-10 w-10 rounded-xl object-contain shadow-lg"
 
-## Sección Tecnica
-
-### Importacion del Logo
-```typescript
-import geologistickLogo from '@/assets/geologistick-logo.png';
+// Despues  
+className="h-12 w-12 rounded-xl object-contain shadow-lg"
 ```
 
-### Componente de Logo Reutilizable (Opcional)
-Podria crear un componente `<GeologistickLogo size="sm|md|lg" />` para estandarizar el uso, pero dado que cada ubicacion tiene estilos ligeramente diferentes, se usara la imagen directamente con clases Tailwind apropiadas para cada contexto.
+### Consideraciones de Fondo Transparente
+Al remover el fondo blanco, algunos contenedores pueden necesitar ajustes de sombra o bordes para mantener la visibilidad del logo en fondos claros y oscuros.
 
-### Tamaños por Contexto
-- **Navbar**: `h-10 w-10` (40x40px)
-- **Footer**: `h-10 w-10` (40x40px)
-- **Login**: `w-16 h-16` (64x64px)
-- **Sidebar**: `h-10 w-10` (40x40px)
-- **Mobile Header**: `h-9 w-9` (36x36px)
-- **Mobile Login**: `w-28 h-28` (112x112px)
-- **Mobile Splash**: `w-24 h-24` (96x96px)
-
-### Consideraciones para la APK
-- El logo se cargara desde los assets bundleados en la APK
-- No depende de URLs externas, funcionara offline
-- Mantendra la consistencia visual con la version web
-
----
-
-## Orden de Implementacion
-
-1. **Navbar.tsx** - Pagina principal, primera impresion
-2. **Footer.tsx** - Consistencia en landing
-3. **LoginForm.tsx** - Pantalla de acceso principal
-4. **AppSidebar.tsx** - Dashboard admin
-5. **MobileHeader.tsx** - Header de la APK
-6. **MobileLoginScreen.tsx** - Login de la APK
-7. **MobileAppLayout.tsx** - Splash screen de la APK
