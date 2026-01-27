@@ -138,6 +138,14 @@ export function BranchDeliveryDialog({
   const handleConfirmDelivery = async () => {
     if (!shipment || !validateForm()) return;
 
+    // Validar que el usuario esté autenticado
+    if (!user?.id) {
+      toast.error('Sesión expirada', {
+        description: 'Por favor, inicia sesión nuevamente'
+      });
+      return;
+    }
+
     setIsProcessing(true);
 
     try {
@@ -152,7 +160,7 @@ export function BranchDeliveryDialog({
           parentesco_retira: parentesco,
           retira_firma: signature,
           entregado_en_sucursal: true,
-          entregado_por: user?.id,
+          entregado_por: user.id,
           requiere_factura: requiereFactura,
           factura_tipo: requiereFactura ? facturaTipo : null,
         })
@@ -166,7 +174,7 @@ export function BranchDeliveryDialog({
         estado_anterior: 'en_transito',
         estado_nuevo: 'entregado',
         notas: `Entregado en sucursal a ${nombreRetira} (DNI: ${dniRetira})${requiereFactura ? ` - Requiere Factura ${facturaTipo}` : ''}`,
-        created_by: user?.id,
+        created_by: user.id,
       }]);
 
       // 3. Record payment if pago destino
@@ -178,7 +186,7 @@ export function BranchDeliveryDialog({
           metodo: paymentMethod as 'efectivo' | 'mercado_pago' | 'transferencia' | 'tarjeta',
           referencia: paymentReference,
           estado: 'pagado',
-          created_by: user?.id,
+          created_by: user.id,
         }]);
 
         // Check for open cash session and add movement
@@ -199,7 +207,7 @@ export function BranchDeliveryDialog({
               concepto: `Cobro envío ${shipment.tracking_number} (destino)`,
               metodo_pago: paymentMethod as 'efectivo' | 'mercado_pago' | 'transferencia' | 'tarjeta',
               referencia: paymentReference,
-              created_by: user?.id,
+              created_by: user.id,
             }]);
           }
         }
