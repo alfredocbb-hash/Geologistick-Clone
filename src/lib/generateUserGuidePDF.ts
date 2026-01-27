@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 
 const GUIDE_CONTENT = {
-  title: 'Guía de Usuario - LogiTrack',
+  title: 'Guía de Usuario - Geologistick',
   subtitle: 'Sistema de Gestión Logística',
   sections: [
     {
@@ -145,7 +145,13 @@ El sistema sugiere el mejor orden considerando:
 • Tiempo estimado
 
 Reordenar Paradas
-Arrastrar y soltar para cambiar el orden`
+Arrastrar y soltar para cambiar el orden
+
+Rutas Frecuentes
+El planificador incluye un tab de "Rutas Frecuentes" donde puedes:
+• Ver plantillas guardadas
+• Usar una ruta para pre-cargar envíos pendientes
+• Crear nuevas plantillas desde rutas exitosas`
     },
     {
       title: '7. MIS RUTAS (Para Choferes)',
@@ -192,12 +198,20 @@ Próxima Parada
 • Dirección y teléfono
 • Botones: Navegar (Google Maps), Llamar, WhatsApp
 
-Confirmar Entrega
+Confirmar Entrega (EPOD)
 1. Presionar en la parada actual
-2. Tomar foto de comprobante
-3. Capturar firma digital
-4. Agregar notas opcionales
-5. Confirmar
+2. Tomar foto del paquete entregado o comprobante
+3. Capturar firma digital del receptor
+4. Agregar nombre de quien recibe (opcional)
+5. Incluir notas adicionales si es necesario
+6. Confirmar - se genera el EPOD automáticamente
+
+El EPOD (Electronic Proof of Delivery) incluye:
+• Foto del comprobante
+• Firma digital
+• Fecha y hora exacta
+• Coordenadas GPS de entrega
+• Nombre del receptor
 
 Reportar Problema
 • Ausente en domicilio
@@ -238,6 +252,11 @@ Choferes (/settlements/drivers):
 Clientes (/settlements/clients):
 • Gestionar cuentas corrientes
 • Ver saldos pendientes
+
+Terciarizados (/third-party-settlements):
+• Gestionar cuentas con proveedores externos
+• Registrar pagos a Correo Argentino, OCA, etc.
+• Ver historial de movimientos por empresa
 
 Mis Comisiones (/my-commissions)
 • Ver comisiones ganadas
@@ -338,6 +357,103 @@ No puedo cambiar estado
 Mapa no carga
 • Verificar conexión a internet
 • Revisar configuración de API Key de Google Maps`
+    },
+    {
+      title: '16. RUTAS FRECUENTES',
+      content: `Qué son las Rutas Frecuentes
+Plantillas de rutas guardadas que agilizan la planificación diaria.
+El sistema identifica automáticamente envíos pendientes de los clientes habituales.
+
+Cómo Guardar una Ruta Frecuente
+1. Crear ruta en el Planificador
+2. Una vez optimizada, clic en "Guardar como Frecuente"
+3. Asignar nombre descriptivo
+4. Confirmar paradas y clientes
+
+Usar Ruta Frecuente
+1. Ir a Planificador de Rutas > tab "Rutas Frecuentes"
+2. Seleccionar la ruta deseada
+3. El sistema busca envíos pendientes de esos clientes
+4. Clic "Usar Ruta" para pre-cargar los envíos encontrados
+5. Ajustar si es necesario y crear la ruta
+
+Beneficios
+• Acelera la planificación diaria
+• Mantiene consistencia en zonas de reparto
+• Reduce errores de asignación`
+    },
+    {
+      title: '17. EMPRESAS TERCIARIZADAS (3PL)',
+      content: `Qué son las Empresas Terciarizadas
+Proveedores logísticos externos (ej: Correo Argentino, OCA) para envíos fuera de la zona de cobertura.
+
+Gestión de Empresas (/third-party-companies)
+• Crear empresas con datos de contacto
+• Configurar tipos de servicio disponibles
+• Habilitar cuenta corriente para cada empresa
+• Ver historial de envíos asignados
+
+Cuenta Corriente de Terciarizados
+Si la empresa tiene cuenta corriente habilitada:
+• Cada envío genera un cargo automático
+• Se pueden registrar pagos parciales o totales
+• Ver saldo y movimientos en tiempo real
+
+Crear Envíos Terciarizados
+Desde el Planificador > tab "Envíos Terciarizados":
+1. Seleccionar empresa terciarizada
+2. Ingresar datos del destinatario
+3. Agregar tracking externo (opcional)
+4. El sistema registra el cargo en cuenta corriente
+
+Liquidaciones de Terciarizados (/third-party-settlements)
+• Ver saldos por empresa
+• Registrar pagos con referencia
+• Consultar historial de movimientos`
+    },
+    {
+      title: '18. WIDGET DE TRACKING EMBEBIBLE',
+      content: `Qué es el Widget de Tracking
+Página minimalista para integrar en sitios web de clientes vía iframe.
+Permite a los compradores rastrear sus envíos sin salir del sitio del vendedor.
+
+URL del Widget
+/tracking-embed
+
+Parámetros URL
+• tracking: Código de envío pre-cargado
+• tenant_slug: Identificador del tenant para branding
+
+Ejemplo de Integración
+<iframe src="https://geologistick.app/tracking-embed?tenant_slug=miempresa" width="100%" height="600" />
+
+Características
+• Sin header ni navegación (ideal para iframe)
+• Muestra branding del tenant (logo, colores)
+• Barra de progreso visual
+• Historial completo de movimientos
+• Búsqueda por código de tracking`
+    },
+    {
+      title: '19. MÓDULO E-COMMERCE (Referencia)',
+      content: `Acceso
+El módulo completo se encuentra en e-Commerce en el menú lateral.
+
+Funciones Principales
+• Sellers: Gestionar tiendas online conectadas
+• Pedidos: Ver órdenes sincronizadas de Tiendanube
+• Liquidaciones: Cierre periódico de cuentas de sellers
+
+Integración con Tiendanube
+• Sincronización automática de pedidos
+• Cotización de envíos en el checkout
+• Actualización de estados de fulfillment
+
+Portal de Sellers
+Los vendedores acceden en /seller con dashboard, pedidos, envíos y cuenta.
+
+Documentación Completa
+Descargar la "Guía de e-Commerce" desde Configuración del Sistema para el manual detallado.`
     }
   ]
 };
@@ -381,7 +497,7 @@ export const generateUserGuidePDF = (): void => {
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(32);
   doc.setFont('helvetica', 'bold');
-  doc.text('LogiTrack', pageWidth / 2, 40, { align: 'center' });
+  doc.text('Geologistick', pageWidth / 2, 40, { align: 'center' });
   
   doc.setFontSize(16);
   doc.setFont('helvetica', 'normal');
@@ -486,5 +602,5 @@ export const generateUserGuidePDF = (): void => {
   addPageNumber();
 
   // Download
-  doc.save('guia-usuario-logitrack.pdf');
+  doc.save('guia-usuario-geologistick.pdf');
 };
