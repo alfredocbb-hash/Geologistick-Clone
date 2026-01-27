@@ -34,10 +34,50 @@ Deno.serve(async (req) => {
     const event = payload.event;
     const orderId = payload.id;
 
+    // Handle GDPR/Privacy requests (required for Tiendanube Partners portal)
+    if (event === "store/redact" || event === "customers/redact" || event === "customers/data_request") {
+      console.log("GDPR request received:", event);
+      // Acknowledge the request - actual data handling would depend on requirements
+      return new Response(
+        JSON.stringify({ success: true, message: `${event} acknowledged` }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Handle app/uninstalled event (REQUIRED for TiendaNube marketplace approval)
+    if (event === "app/uninstalled") {
+      console.log("App uninstalled for store:", storeId);
+      
+      // Clean up sensitive credentials (GDPR compliance)
+      const { error } = await supabase
+        .from("ecommerce_sellers")
+        .update({ 
+          access_token: null,
+          refresh_token: null,
+          token_expires_at: null,
+          webhook_secret: null,
+          shipping_carrier_id: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("store_id", storeId);
+
+      if (error) {
+        console.error("Failed to clean credentials:", error);
+      } else {
+        console.log("Credentials cleaned successfully for store:", storeId);
+      }
+      
+      // Always respond 200 OK so TiendaNube doesn't retry
+      return new Response(
+        JSON.stringify({ success: true }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Find the seller by store_id
     const { data: seller, error: sellerError } = await supabase
       .from("ecommerce_sellers")
-      .select("id, tenant_id, access_token, webhook_secret, tarifa_id, sucursal_pickup_id, tiene_cuenta_corriente")
+      .select("id, tenant_id, access_token, webhook_secret, tarifa_id, sucursal_pickup_id, tiene_cuenta_corriente, refresh_token, token_expires_at")
       .eq("store_id", storeId)
       .single();
 
@@ -71,12 +111,26 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Check if token needs refresh before making API calls
+    let accessToken = seller.access_token;
+    if (seller.token_expires_at && new Date(seller.token_expires_at) < new Date()) {
+      console.log("Token expired, attempting refresh...");
+      const refreshResult = await refreshAccessToken(supabase, seller);
+      if (refreshResult.success && refreshResult.newToken) {
+        accessToken = refreshResult.newToken;
+        console.log("Token refreshed successfully");
+      } else {
+        console.warn("Token refresh failed:", refreshResult.error);
+        // Continue with old token, it might still work
+      }
+    }
+
     // Process based on event type
     if (event === "order/created" || event === "order/paid") {
       // Fetch full order details from Tiendanube API
       const orderResponse = await fetch(`${TIENDANUBE_API_ENDPOINT}/${storeId}/orders/${orderId}`, {
         headers: {
-          "Authentication": `bearer ${seller.access_token}`,
+          "Authentication": `bearer ${accessToken}`,
           "User-Agent": "Geologistick (alfredocbb@gmail.com)",
         },
       });
@@ -190,6 +244,73 @@ Deno.serve(async (req) => {
     );
   }
 });
+
+// Helper function to refresh access token
+async function refreshAccessToken(
+  supabase: any,
+  seller: { id: string; refresh_token: string | null; tenant_id: string }
+): Promise<{ success: boolean; newToken?: string; error?: string }> {
+  
+  if (!seller.refresh_token) {
+    return { success: false, error: "No refresh token available" };
+  }
+
+  // Get tenant credentials
+  const { data: integrations } = await supabase
+    .from("system_integrations")
+    .select("config_key, config_value")
+    .eq("tenant_id", seller.tenant_id)
+    .eq("integration_type", "tiendanube")
+    .eq("is_active", true);
+
+  const configMap = Object.fromEntries(
+    (integrations || []).map((i: { config_key: string; config_value: string }) => [i.config_key, i.config_value])
+  );
+
+  if (!configMap.client_id || !configMap.client_secret) {
+    return { success: false, error: "Missing tenant credentials" };
+  }
+
+  try {
+    const response = await fetch("https://www.tiendanube.com/apps/authorize/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: configMap.client_id,
+        client_secret: configMap.client_secret,
+        grant_type: "refresh_token",
+        refresh_token: seller.refresh_token,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Token refresh failed:", errorText);
+      return { success: false, error: "Refresh request failed" };
+    }
+
+    const tokenData = await response.json();
+    const expiresAt = tokenData.expires_in 
+      ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
+      : null;
+
+    // Update tokens in database
+    await supabase
+      .from("ecommerce_sellers")
+      .update({
+        access_token: tokenData.access_token,
+        refresh_token: tokenData.refresh_token || seller.refresh_token,
+        token_expires_at: expiresAt,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", seller.id);
+
+    return { success: true, newToken: tokenData.access_token };
+  } catch (e) {
+    console.error("Error refreshing token:", e);
+    return { success: false, error: "Refresh exception" };
+  }
+}
 
 // Map Tiendanube order status to our status
 function mapOrderStatus(status: string): string {

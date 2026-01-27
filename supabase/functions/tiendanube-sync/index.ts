@@ -58,10 +58,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get seller info
+    // Get seller info including refresh token
     const { data: seller, error: sellerError } = await supabase
       .from("ecommerce_sellers")
-      .select("id, tenant_id, store_id, access_token, tarifa_id, sucursal_pickup_id, tiene_cuenta_corriente")
+      .select("id, tenant_id, store_id, access_token, refresh_token, token_expires_at, tarifa_id, sucursal_pickup_id, tiene_cuenta_corriente")
       .eq("id", seller_id)
       .single();
 
@@ -105,6 +105,23 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Check if token needs refresh
+    let accessToken = seller.access_token;
+    if (seller.token_expires_at && new Date(seller.token_expires_at) < new Date()) {
+      console.log("Token expired, attempting refresh...");
+      const refreshResult = await refreshAccessToken(supabase, seller);
+      if (refreshResult.success && refreshResult.newToken) {
+        accessToken = refreshResult.newToken;
+        console.log("Token refreshed successfully");
+      } else {
+        console.warn("Token refresh failed:", refreshResult.error);
+        return new Response(
+          JSON.stringify({ error: "Token expirado. Por favor, reconecta la tienda." }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     // Build API URL with filters
     let apiUrl = `${TIENDANUBE_API_ENDPOINT}/${seller.store_id}/orders?per_page=50`;
     if (since) {
@@ -121,7 +138,7 @@ Deno.serve(async (req) => {
     while (hasMore) {
       const response = await fetch(`${apiUrl}&page=${page}`, {
         headers: {
-          "Authentication": `bearer ${seller.access_token}`,
+          "Authentication": `bearer ${accessToken}`,
           "User-Agent": "Geologistick (alfredocbb@gmail.com)",
         },
       });
@@ -264,6 +281,73 @@ Deno.serve(async (req) => {
     );
   }
 });
+
+// Helper function to refresh access token
+async function refreshAccessToken(
+  supabase: any,
+  seller: { id: string; refresh_token: string | null; tenant_id: string }
+): Promise<{ success: boolean; newToken?: string; error?: string }> {
+  
+  if (!seller.refresh_token) {
+    return { success: false, error: "No refresh token available" };
+  }
+
+  // Get tenant credentials
+  const { data: integrations } = await supabase
+    .from("system_integrations")
+    .select("config_key, config_value")
+    .eq("tenant_id", seller.tenant_id)
+    .eq("integration_type", "tiendanube")
+    .eq("is_active", true);
+
+  const configMap = Object.fromEntries(
+    (integrations || []).map((i: { config_key: string; config_value: string }) => [i.config_key, i.config_value])
+  );
+
+  if (!configMap.client_id || !configMap.client_secret) {
+    return { success: false, error: "Missing tenant credentials" };
+  }
+
+  try {
+    const response = await fetch("https://www.tiendanube.com/apps/authorize/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: configMap.client_id,
+        client_secret: configMap.client_secret,
+        grant_type: "refresh_token",
+        refresh_token: seller.refresh_token,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Token refresh failed:", errorText);
+      return { success: false, error: "Refresh request failed" };
+    }
+
+    const tokenData = await response.json();
+    const expiresAt = tokenData.expires_in 
+      ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
+      : null;
+
+    // Update tokens in database
+    await supabase
+      .from("ecommerce_sellers")
+      .update({
+        access_token: tokenData.access_token,
+        refresh_token: tokenData.refresh_token || seller.refresh_token,
+        token_expires_at: expiresAt,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", seller.id);
+
+    return { success: true, newToken: tokenData.access_token };
+  } catch (e) {
+    console.error("Error refreshing token:", e);
+    return { success: false, error: "Refresh exception" };
+  }
+}
 
 // Map Tiendanube order status to our status
 function mapOrderStatus(status: string): string {
