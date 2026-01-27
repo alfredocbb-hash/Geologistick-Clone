@@ -1,233 +1,160 @@
 
-# Plan: Mejorar PDFs Descargables con Diseño Profesional e Imágenes
+# Plan: Corregir Error de UUID Undefined en Entrega desde APK
 
-## Objetivo
-Transformar los PDFs de las guías de usuario descargables desde "Configuración del Sistema" en documentos profesionales que incluyan:
-- Logo oficial de Geologistick
-- Diseño visual mejorado con íconos y gráficos
-- Portada más atractiva
-- Encabezados/pies de página consistentes
-- Mejor tipografía y espaciado
+## Problema Identificado
 
----
+El error **"invalid input syntax for type uuid: 'undefined'"** ocurre cuando el usuario Lucas intenta confirmar una entrega desde la APK móvil. Esto sucede porque:
 
-## Estado Actual
-
-Los archivos de generación de PDFs (`generateUserGuidePDF.ts` y `generateEcommerceGuidePDF.ts`) actualmente:
-
-| Característica | Estado |
-|----------------|--------|
-| Logo | No incluido |
-| Portada | Solo texto con fondo azul |
-| Encabezados | Texto simple |
-| Pies de página | Solo número de página |
-| Imágenes/Íconos | Ninguno |
+1. El componente intenta insertar registros con `user?.id` cuando el usuario no está completamente autenticado
+2. Si la sesión expiró o hay problemas de sincronización, `user` es `null` y `user?.id` se convierte en la cadena `"undefined"` que PostgreSQL rechaza
 
 ---
 
-## Mejoras Propuestas
+## Archivos Afectados
 
-### 1. Agregar Logo en Portada y Encabezados
+| Archivo | Problema |
+|---------|----------|
+| `src/components/scan/BranchDeliveryDialog.tsx` | Usa `user?.id` sin validación previa |
+| `src/components/delivery/DeliveryConfirmation.tsx` | Usa `user?.id` sin validación previa |
 
-El logo se cargará como base64 y se incluirá en:
-- Portada central (tamaño grande)
-- Encabezado de cada página (tamaño pequeño)
+---
 
-### 2. Portada Profesional Mejorada
+## Solución Propuesta
 
-```text
-┌─────────────────────────────────────┐
-│           [Fondo Azul]              │
-│                                     │
-│         ┌─────────────┐             │
-│         │   [LOGO]    │             │
-│         └─────────────┘             │
-│                                     │
-│         GEOLOGISTICK                │
-│   Sistema de Gestión Logística      │
-│                                     │
-└─────────────────────────────────────┘
-│                                     │
-│                                     │
-│       GUÍA DE USUARIO               │
-│    ─────────────────────            │
-│    Manual Completo del Sistema      │
-│                                     │
-│                                     │
-│    Generado: 27 de enero, 2026      │
-│    Versión: 1.0                     │
-│                                     │
-└─────────────────────────────────────┘
+### 1. Agregar Validación de Autenticación Antes de Procesar
+
+En ambos componentes, agregar verificación temprana de que el usuario está autenticado antes de proceder con la operación:
+
+```typescript
+// En handleConfirmDelivery y confirmMutation
+if (!user?.id) {
+  toast.error('Sesión expirada', {
+    description: 'Por favor, inicia sesión nuevamente'
+  });
+  return;
+}
 ```
 
-### 3. Encabezados de Página Consistentes
+### 2. Modificar BranchDeliveryDialog.tsx
 
-Cada página incluirá:
-- Logo pequeño (izquierda)
-- Nombre del documento (centro)
-- Número de página (derecha)
+**Línea ~138**: Agregar validación al inicio de `handleConfirmDelivery`:
 
-### 4. Mejoras Visuales Adicionales
+```typescript
+const handleConfirmDelivery = async () => {
+  if (!shipment || !validateForm()) return;
+  
+  // NUEVA VALIDACIÓN
+  if (!user?.id) {
+    toast.error('Sesión expirada', {
+      description: 'Por favor, inicia sesión nuevamente'
+    });
+    return;
+  }
 
-| Elemento | Mejora |
-|----------|--------|
-| Títulos de sección | Barra de color con ícono representativo |
-| Listas | Bullets con diseño consistente |
-| Tablas | Bordes y alternancia de colores en filas |
-| Índice | Links navegables (si es soportado) |
+  setIsProcessing(true);
+  // ... resto del código
+```
 
----
+**Líneas 155-170**: Cambiar usos de `user?.id` por `user.id` (ya validado):
 
-## Archivos a Modificar
+```typescript
+entregado_por: user.id, // Antes: user?.id
+// ...
+created_by: user.id, // Antes: user?.id
+```
 
-| Archivo | Cambios |
-|---------|---------|
-| `src/lib/generateUserGuidePDF.ts` | Agregar logo, mejorar portada y encabezados |
-| `src/lib/generateEcommerceGuidePDF.ts` | Mismo tratamiento visual |
-| `src/pages/SystemSettings.tsx` | Pasar logo a las funciones de generación |
+### 3. Modificar DeliveryConfirmation.tsx
+
+**Línea ~133 en mutationFn**: Agregar validación temprana:
+
+```typescript
+mutationFn: async () => {
+  // NUEVA VALIDACIÓN
+  if (!user?.id) {
+    throw new Error('Sesión expirada. Por favor, inicia sesión nuevamente.');
+  }
+
+  const timestamp = Date.now();
+  // ... resto del código
+```
+
+**Líneas donde usa user?.id**: Cambiar a `user.id` después de la validación.
 
 ---
 
 ## Sección Técnica
 
-### Cargar Logo como Base64
-
-Se creará una función helper para convertir el logo importado a base64:
+### Cambios en BranchDeliveryDialog.tsx
 
 ```typescript
-import geologistickLogo from '@/assets/geologistick-logo.png';
-
-// Función para convertir imagen a base64
-async function loadLogoAsBase64(): Promise<string | null> {
-  try {
-    const response = await fetch(geologistickLogo);
-    const blob = await response.blob();
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(blob);
+// Línea 138 - Agregar validación
+const handleConfirmDelivery = async () => {
+  if (!shipment || !validateForm()) return;
+  
+  if (!user?.id) {
+    toast.error('Sesión expirada', {
+      description: 'Por favor, inicia sesión nuevamente'
     });
-  } catch {
-    return null;
+    return;
   }
-}
+
+  setIsProcessing(true);
+  // ...
 ```
 
-### Modificar Portada con Logo
+```typescript
+// Línea 155-156 - Cambiar user?.id por user.id
+entregado_por: user.id,
+
+// Línea 169 - Cambiar user?.id por user.id  
+created_by: user.id,
+
+// Línea 181 - Cambiar user?.id por user.id
+created_by: user.id,
+
+// Línea 195 - Cambiar user?.id por user.id
+created_by: user.id,
+```
+
+### Cambios en DeliveryConfirmation.tsx
 
 ```typescript
-export const generateUserGuidePDF = async (): Promise<void> => {
-  const doc = new jsPDF();
-  const pageWidth = doc.internal.pageSize.getWidth();
-  
-  // Cargar logo
-  const logoBase64 = await loadLogoAsBase64();
-  
-  // Portada con fondo
-  doc.setFillColor(59, 130, 246);
-  doc.rect(0, 0, pageWidth, 80, 'F');
-  
-  // Logo centrado en portada
-  if (logoBase64) {
-    const logoSize = 40;
-    doc.addImage(
-      logoBase64, 
-      'PNG', 
-      (pageWidth - logoSize) / 2, 
-      15, 
-      logoSize, 
-      logoSize
-    );
+// Línea 133 - Agregar validación en mutationFn
+mutationFn: async () => {
+  if (!user?.id) {
+    throw new Error('Sesión expirada. Por favor, inicia sesión nuevamente.');
   }
   
-  // Título debajo del logo
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(24);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Geologistick', pageWidth / 2, 65, { align: 'center' });
+  const timestamp = Date.now();
+  // ...
+```
+
+```typescript
+// Línea 173 - Cambiar user?.id por user.id
+created_by: user.id,
+```
+
+### Cambios Adicionales de Seguridad
+
+También agregar validación en el cálculo de comisiones:
+
+```typescript
+// Línea 176-177 ya tiene if (!user?.id) return; pero el tipo sigue siendo opcional
+// Después de la validación, usar user.id directamente
+const commissionPromise = (async () => {
+  if (!user?.id) return;
   
-  // ... resto del contenido
-};
-```
-
-### Encabezado con Logo en Cada Página
-
-```typescript
-const addHeader = (logoBase64: string | null) => {
-  // Logo pequeño
-  if (logoBase64) {
-    doc.addImage(logoBase64, 'PNG', margin, 5, 12, 12);
-  }
-  
-  // Línea separadora
-  doc.setDrawColor(59, 130, 246);
-  doc.setLineWidth(0.5);
-  doc.line(margin, 18, pageWidth - margin, 18);
-  
-  // Título del documento
-  doc.setFontSize(8);
-  doc.setTextColor(128, 128, 128);
-  doc.text('Guía de Usuario - Geologistick', pageWidth / 2, 14, { align: 'center' });
-};
-```
-
-### Cambio de Firma de Funciones
-
-Las funciones pasarán a ser asíncronas para cargar el logo:
-
-```typescript
-// Antes
-export const generateUserGuidePDF = (): void => { ... }
-
-// Después
-export const generateUserGuidePDF = async (): Promise<void> => { ... }
-```
-
-### Actualizar SystemSettings.tsx
-
-```typescript
-const handleDownloadGuide = async () => {
-  setIsGeneratingPDF(true);
-  try {
-    await generateUserGuidePDF(); // Ya es async
-    toast({
-      title: "PDF generado",
-      description: "La guía se ha descargado correctamente.",
-    });
-  } catch (error) {
-    // ... error handling
-  } finally {
-    setIsGeneratingPDF(false);
-  }
-};
-```
-
-### Diseño Visual de Secciones
-
-Cada sección tendrá un encabezado mejorado:
-
-```typescript
-// Encabezado de sección con diseño
-doc.setFillColor(59, 130, 246);
-doc.roundedRect(margin, yPosition, contentWidth, 12, 2, 2, 'F');
-
-doc.setTextColor(255, 255, 255);
-doc.setFontSize(12);
-doc.setFont('helvetica', 'bold');
-doc.text(section.title, margin + 5, yPosition + 8);
+  // user.id está garantizado aquí
+  // ...
 ```
 
 ---
 
 ## Resultado Esperado
 
-Después de implementar estos cambios, los PDFs descargados tendrán:
+Después de aplicar estos cambios:
 
-1. **Portada profesional** con logo centrado y diseño corporativo
-2. **Encabezados consistentes** en todas las páginas con mini-logo
-3. **Pies de página** con numeración y fecha de generación
-4. **Secciones visuales** con barras de color y mejor espaciado
-5. **Aspecto corporativo** que refuerza la marca Geologistick
-
-Los usuarios verán un documento de calidad profesional que pueden compartir con clientes o usar como material de capacitación.
+1. Si el usuario no está autenticado, verá un mensaje claro: **"Sesión expirada - Por favor, inicia sesión nuevamente"**
+2. No se intentarán operaciones de base de datos con valores `undefined`
+3. El usuario podrá refrescar su sesión y volver a intentar la entrega
+4. Se evitarán errores de PostgreSQL relacionados con UUIDs inválidos
