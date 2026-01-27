@@ -3,8 +3,9 @@ import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Truck, Mail, Lock, Loader2, MapPin } from 'lucide-react';
+import { Mail, Lock, Loader2, MapPin, Truck } from 'lucide-react';
 import { toast } from 'sonner';
+import geologistickLogo from '@/assets/geologistick-logo.png';
 
 export function MobileLoginScreen() {
   const [email, setEmail] = useState('');
@@ -76,9 +77,11 @@ export function MobileLoginScreen() {
         {/* Glowing logo container */}
         <div className="relative mb-6">
           <div className="absolute inset-0 bg-primary/30 rounded-3xl blur-xl animate-pulse" />
-          <div className="relative w-28 h-28 bg-gradient-to-br from-primary via-primary/80 to-emerald-500 rounded-3xl flex items-center justify-center shadow-2xl shadow-primary/40 transform hover:scale-105 transition-transform">
-            <Truck className="w-14 h-14 text-white" strokeWidth={1.5} />
-          </div>
+          <img 
+            src={geologistickLogo} 
+            alt="Geologistick" 
+            className="relative w-28 h-28 rounded-3xl object-contain shadow-2xl shadow-primary/40 transform hover:scale-105 transition-transform"
+          />
         </div>
         
         <h1 className="text-4xl font-bold text-white mb-2 tracking-tight">

@@ -1,6 +1,7 @@
-import { Package, Mail, Phone, MapPin, Linkedin, Twitter, Instagram, Facebook } from "lucide-react";
+import { Mail, Phone, MapPin, Linkedin, Twitter, Instagram, Facebook } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useTenant } from "@/hooks/useTenant";
+import geologistickLogo from "@/assets/geologistick-logo.png";
 
 const Footer = () => {
   const { branding } = useTenant();
@@ -36,9 +37,11 @@ const Footer = () => {
           {/* Brand */}
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center">
-                <Package className="h-5 w-5 text-white" />
-              </div>
+              <img 
+                src={geologistickLogo} 
+                alt="Geologistick" 
+                className="h-10 w-10 rounded-xl object-contain"
+              />
               <span className="text-xl font-bold text-white">{appName}</span>
             </div>
             <p className="text-gray-400 text-sm leading-relaxed">

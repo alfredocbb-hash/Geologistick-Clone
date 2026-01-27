@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Package, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { Link } from "react-router-dom";
+import geologistickLogo from "@/assets/geologistick-logo.png";
 
 const Navbar = () => {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -31,9 +32,11 @@ const Navbar = () => {
         <div className="flex items-center justify-between">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-3 group">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center shadow-lg shadow-primary/25 group-hover:shadow-primary/40 transition-shadow">
-              <Package className="h-5 w-5 text-white" />
-            </div>
+            <img 
+              src={geologistickLogo} 
+              alt="Geologistick" 
+              className="h-10 w-10 rounded-xl object-contain shadow-lg shadow-primary/25 group-hover:shadow-primary/40 transition-shadow"
+            />
             <span className="text-xl font-bold text-white">Geologistick</span>
           </Link>
 
