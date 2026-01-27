@@ -64,7 +64,7 @@ export function MobileHeader({ onMenuClick, onNotificationsClick, onProfileClick
                 <img 
                   src={geologistickLogo} 
                   alt="Geologistick" 
-                  className="relative w-9 h-9 rounded-xl object-contain shadow-lg shadow-primary/20"
+                  className="relative w-10 h-10 rounded-xl object-contain shadow-lg shadow-primary/20"
                 />
               </div>
               <span className="font-bold text-white text-lg tracking-tight">

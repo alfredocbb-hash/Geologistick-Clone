@@ -80,7 +80,7 @@ export function MobileLoginScreen() {
           <img 
             src={geologistickLogo} 
             alt="Geologistick" 
-            className="relative w-28 h-28 rounded-3xl object-contain shadow-2xl shadow-primary/40 transform hover:scale-105 transition-transform"
+            className="relative w-32 h-32 rounded-3xl object-contain shadow-2xl shadow-primary/40 transform hover:scale-105 transition-transform"
           />
         </div>
         

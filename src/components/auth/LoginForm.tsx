@@ -83,7 +83,7 @@ export function LoginForm() {
           <img 
             src={geologistickLogo} 
             alt="Geologistick" 
-            className="w-16 h-16 mx-auto rounded-2xl object-contain shadow-colored"
+            className="w-20 h-20 mx-auto rounded-2xl object-contain shadow-colored"
           />
           <h1 className="text-3xl font-bold tracking-tight">Geologistick</h1>
           <p className="text-muted-foreground">Sistema de Gestión Logística</p>
