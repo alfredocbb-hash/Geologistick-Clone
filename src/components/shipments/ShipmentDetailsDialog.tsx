@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useGoogleMaps } from '@/components/maps/GoogleMapsProvider';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Dialog,
@@ -168,12 +169,15 @@ export function ShipmentDetailsDialog({
     enabled: open && !!envioId,
   });
 
+  // Get Google Maps API key for static map in EPOD
+  const { apiKey: mapsApiKey } = useGoogleMaps();
+
   const handleDownloadEPOD = async () => {
     if (!envio) return;
     
     setIsGeneratingEPOD(true);
     try {
-      await generateEPODPDF(envio as any, historial || [], incidentes || []);
+      await generateEPODPDF(envio as any, historial || [], incidentes || [], mapsApiKey || undefined);
       toast.success('EPOD descargado exitosamente');
     } catch (error) {
       console.error('Error generating EPOD:', error);
