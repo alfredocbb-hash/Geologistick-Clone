@@ -131,6 +131,11 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
 
   const confirmMutation = useMutation({
     mutationFn: async () => {
+      // Validar que el usuario esté autenticado
+      if (!user?.id) {
+        throw new Error('Sesión expirada. Por favor, inicia sesión nuevamente.');
+      }
+
       const timestamp = Date.now();
       
       // Upload photo and signature in parallel
@@ -170,7 +175,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
           estado_nuevo: 'entregado',
           notas: notes || 'Entrega confirmada con foto y firma',
           ubicacion: shipment.direccion_entrega || null,
-          created_by: user?.id,
+          created_by: user.id,
         });
 
       const commissionPromise = (async () => {
