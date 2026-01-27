@@ -1,4 +1,11 @@
 import { jsPDF } from 'jspdf';
+import { 
+  loadLogoAsBase64, 
+  addPageHeader, 
+  addPageFooter, 
+  drawCoverPage, 
+  drawSectionHeader 
+} from './pdfHelpers';
 
 const GUIDE_CONTENT = {
   title: 'Guía de Usuario - Geologistick',
@@ -458,7 +465,9 @@ Descargar la "Guía de e-Commerce" desde Configuración del Sistema para el manu
   ]
 };
 
-export const generateUserGuidePDF = (): void => {
+const PRIMARY_COLOR: [number, number, number] = [59, 130, 246]; // Blue
+
+export const generateUserGuidePDF = async (): Promise<void> => {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -466,95 +475,90 @@ export const generateUserGuidePDF = (): void => {
   const contentWidth = pageWidth - margin * 2;
   let yPosition = margin;
 
-  // Helper function to add page number
-  const addPageNumber = () => {
-    const pageCount = doc.getNumberOfPages();
-    doc.setFontSize(10);
-    doc.setTextColor(128, 128, 128);
-    doc.text(
-      `Página ${pageCount}`,
-      pageWidth / 2,
-      pageHeight - 10,
-      { align: 'center' }
-    );
+  // Load logo
+  const logoBase64 = await loadLogoAsBase64();
+
+  // Date for footer
+  const generatedDate = new Date().toLocaleDateString('es-AR', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+
+  // Helper function to add footer
+  const addFooter = () => {
+    addPageFooter(doc, pageWidth, pageHeight, generatedDate);
+  };
+
+  // Helper function to add header (for content pages)
+  const addHeader = () => {
+    addPageHeader(doc, logoBase64, 'Guía de Usuario - Geologistick', pageWidth, margin);
   };
 
   // Helper function to check if we need a new page
-  const checkNewPage = (neededHeight: number) => {
+  const checkNewPage = (neededHeight: number, withHeader = true) => {
     if (yPosition + neededHeight > pageHeight - 30) {
-      addPageNumber();
+      addFooter();
       doc.addPage();
-      yPosition = margin;
+      if (withHeader) {
+        addHeader();
+      }
+      yPosition = withHeader ? 28 : margin;
       return true;
     }
     return false;
   };
 
-  // Cover Page
-  doc.setFillColor(59, 130, 246); // Blue
-  doc.rect(0, 0, pageWidth, 80, 'F');
-  
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(32);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Geologistick', pageWidth / 2, 40, { align: 'center' });
-  
-  doc.setFontSize(16);
-  doc.setFont('helvetica', 'normal');
-  doc.text('Sistema de Gestión Logística', pageWidth / 2, 55, { align: 'center' });
+  // ===== COVER PAGE =====
+  drawCoverPage(
+    doc,
+    logoBase64,
+    'GEOLOGISTICK',
+    'Sistema de Gestión Logística',
+    'GUÍA DE USUARIO',
+    'Manual Completo del Sistema',
+    pageWidth,
+    PRIMARY_COLOR
+  );
 
-  doc.setTextColor(0, 0, 0);
-  doc.setFontSize(24);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Guía de Usuario', pageWidth / 2, 110, { align: 'center' });
-  
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(100, 100, 100);
-  doc.text('Manual Completo del Sistema', pageWidth / 2, 125, { align: 'center' });
-  
-  const date = new Date().toLocaleDateString('es-AR', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
-  doc.text(`Generado: ${date}`, pageWidth / 2, 145, { align: 'center' });
-
-  // Table of Contents
-  addPageNumber();
+  // ===== TABLE OF CONTENTS =====
   doc.addPage();
-  yPosition = margin;
-  
-  doc.setTextColor(59, 130, 246);
-  doc.setFontSize(20);
+  addHeader();
+  yPosition = 32;
+
+  doc.setTextColor(PRIMARY_COLOR[0], PRIMARY_COLOR[1], PRIMARY_COLOR[2]);
+  doc.setFontSize(18);
   doc.setFont('helvetica', 'bold');
   doc.text('Índice de Contenidos', margin, yPosition);
-  yPosition += 15;
+  yPosition += 12;
 
-  doc.setTextColor(0, 0, 0);
-  doc.setFontSize(11);
+  // Línea decorativa
+  doc.setDrawColor(PRIMARY_COLOR[0], PRIMARY_COLOR[1], PRIMARY_COLOR[2]);
+  doc.setLineWidth(0.5);
+  doc.line(margin, yPosition, margin + 60, yPosition);
+  yPosition += 10;
+
+  doc.setTextColor(50, 50, 50);
+  doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
 
-  GUIDE_CONTENT.sections.forEach((section, index) => {
+  GUIDE_CONTENT.sections.forEach((section) => {
     checkNewPage(8);
-    doc.text(`${section.title}`, margin, yPosition);
+    // Bullet decorativo
+    doc.setFillColor(PRIMARY_COLOR[0], PRIMARY_COLOR[1], PRIMARY_COLOR[2]);
+    doc.circle(margin + 2, yPosition - 2, 1.5, 'F');
+    doc.text(section.title, margin + 8, yPosition);
     yPosition += 8;
   });
 
-  // Content Sections
-  GUIDE_CONTENT.sections.forEach((section) => {
-    addPageNumber();
-    doc.addPage();
-    yPosition = margin;
+  addFooter();
 
-    // Section Title
-    doc.setFillColor(59, 130, 246);
-    doc.rect(0, 0, pageWidth, 25, 'F');
+  // ===== CONTENT SECTIONS =====
+  GUIDE_CONTENT.sections.forEach((section) => {
+    doc.addPage();
     
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.text(section.title, margin, 17);
+    // Section header
+    drawSectionHeader(doc, section.title, pageWidth, PRIMARY_COLOR);
     
     yPosition = 40;
     doc.setTextColor(0, 0, 0);
@@ -563,7 +567,7 @@ export const generateUserGuidePDF = (): void => {
 
     // Split content into lines
     const lines = section.content.split('\n');
-    
+
     lines.forEach((line) => {
       if (line.trim() === '') {
         yPosition += 4;
@@ -572,34 +576,36 @@ export const generateUserGuidePDF = (): void => {
 
       // Check if it's a subsection header (no bullet, not indented)
       const isBold = !line.startsWith('•') && !line.startsWith(' ') && line.length < 60;
-      
+
       if (isBold) {
-        checkNewPage(12);
-        yPosition += 4;
+        checkNewPage(14, false);
+        yPosition += 5;
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(11);
+        doc.setTextColor(PRIMARY_COLOR[0], PRIMARY_COLOR[1], PRIMARY_COLOR[2]);
       } else {
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(10);
+        doc.setTextColor(50, 50, 50);
       }
 
       // Word wrap
       const wrappedLines = doc.splitTextToSize(line, contentWidth);
-      
+
       wrappedLines.forEach((wrappedLine: string) => {
-        checkNewPage(7);
+        checkNewPage(7, false);
         doc.text(wrappedLine, margin, yPosition);
         yPosition += 6;
       });
 
       if (isBold) {
         yPosition += 2;
+        doc.setTextColor(50, 50, 50);
       }
     });
-  });
 
-  // Add final page number
-  addPageNumber();
+    addFooter();
+  });
 
   // Download
   doc.save('guia-usuario-geologistick.pdf');
