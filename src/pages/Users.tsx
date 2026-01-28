@@ -61,6 +61,7 @@ interface Profile {
   telefono: string | null;
   avatar_url: string | null;
   sucursal_id: string | null;
+  tenant_id: string | null;
   activo: boolean | null;
   created_at: string | null;
   // Delivery commission fields
@@ -81,6 +82,12 @@ interface UserRole {
 }
 
 interface Sucursal {
+  id: string;
+  nombre: string;
+  tenant_id: string | null;
+}
+
+interface Tenant {
   id: string;
   nombre: string;
 }
@@ -128,6 +135,7 @@ export default function Users() {
     nombre: '',
     apellido: '',
     telefono: '',
+    tenant_id: '',
     sucursal_id: '',
     activo: true,
     newRole: '' as AppRole | '',
@@ -151,19 +159,39 @@ export default function Users() {
     selectedRoles: [] as AppRole[],
   });
 
+  // Fetch all tenants (only for super_admin)
+  const { data: tenants = [] } = useQuery({
+    queryKey: ['tenants'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('tenants')
+        .select('id, nombre')
+        .eq('activo', true)
+        .order('nombre');
+      if (error) throw error;
+      return data as Tenant[];
+    },
+    enabled: isSuperAdmin(),
+  });
+
   // Fetch sucursales
   const { data: sucursales = [] } = useQuery({
     queryKey: ['sucursales'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('sucursales')
-        .select('id, nombre')
+        .select('id, nombre, tenant_id')
         .eq('activa', true)
         .order('nombre');
       if (error) throw error;
       return data as Sucursal[];
     },
   });
+
+  // Filter sucursales based on selected tenant (for super admin editing)
+  const filteredSucursales = formData.tenant_id
+    ? sucursales.filter(s => s.tenant_id === formData.tenant_id)
+    : sucursales;
 
   // Fetch profiles
   const { data: profiles = [], isLoading } = useQuery({
@@ -302,6 +330,7 @@ export default function Users() {
       nombre: profile.nombre,
       apellido: profile.apellido || '',
       telefono: profile.telefono || '',
+      tenant_id: profile.tenant_id || '',
       sucursal_id: profile.sucursal_id || '',
       activo: profile.activo ?? true,
       newRole: '',
@@ -332,6 +361,10 @@ export default function Users() {
         telefono: formData.telefono || null,
         sucursal_id: formData.sucursal_id === 'none' ? null : (formData.sucursal_id || null),
         activo: formData.activo,
+        // Only super admin can change tenant_id
+        ...(isSuperAdmin() && formData.tenant_id && {
+          tenant_id: formData.tenant_id,
+        }),
         // Only save commission fields if user is a driver
         ...(isChofer && {
           comision_tipo: formData.comision_tipo,
@@ -726,6 +759,39 @@ export default function Users() {
                   }
                 />
               </div>
+
+              {/* Tenant selector - Only for Super Admin */}
+              {isSuperAdmin() && (
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1">
+                    <Building2 className="h-3 w-3" />
+                    Empresa
+                  </Label>
+                  <Select
+                    value={formData.tenant_id}
+                    onValueChange={(value) => {
+                      setFormData({ 
+                        ...formData, 
+                        tenant_id: value,
+                        // Reset sucursal when tenant changes
+                        sucursal_id: '' 
+                      });
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar empresa" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tenants.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          {t.nombre}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Label>Sucursal</Label>
                 <Select
@@ -739,7 +805,7 @@ export default function Users() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Sin asignar</SelectItem>
-                    {sucursales.map((s) => (
+                    {filteredSucursales.map((s) => (
                       <SelectItem key={s.id} value={s.id}>
                         {s.nombre}
                       </SelectItem>
