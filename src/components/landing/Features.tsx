@@ -10,6 +10,7 @@ import {
   Building2,
   Sparkles
 } from "lucide-react";
+import { useLandingContent, defaultLandingContent } from "@/hooks/useLandingContent";
 
 const features = [
   {
@@ -69,6 +70,15 @@ const features = [
 ];
 
 const Features = () => {
+  const { data: content } = useLandingContent();
+  const featuresContent = content?.features || defaultLandingContent.features!;
+  const generalContent = content?.general || defaultLandingContent.general!;
+
+  // Split the title to highlight part after "para"
+  const titleParts = featuresContent.title.split(" para ");
+  const titleMain = titleParts[0] + " para";
+  const titleHighlight = titleParts[1] || "escalar tu operación";
+
   return (
     <section id="features" className="relative py-32 overflow-hidden">
       {/* Background */}
@@ -80,16 +90,16 @@ const Features = () => {
         <div className="text-center max-w-3xl mx-auto mb-20">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-6">
             <Sparkles className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium text-primary">Potenciado por tecnología de punta</span>
+            <span className="text-sm font-medium text-primary">{featuresContent.badge_text}</span>
           </div>
           <h2 className="text-4xl lg:text-5xl font-bold text-foreground mb-6">
-            Todo lo que necesitas para{" "}
+            {titleMain}{" "}
             <span className="bg-gradient-to-r from-primary to-purple-500 bg-clip-text text-transparent">
-              escalar tu operación
+              {titleHighlight}
             </span>
           </h2>
           <p className="text-xl text-muted-foreground">
-            Herramientas profesionales diseñadas para empresas que quieren dominar la logística del futuro.
+            {featuresContent.subtitle}
           </p>
         </div>
 
@@ -132,13 +142,13 @@ const Features = () => {
         {/* Bottom CTA */}
         <div className="text-center mt-16">
           <p className="text-muted-foreground mb-4">
-            ¿Necesitas una integración especial?
+            {featuresContent.contact_text}
           </p>
           <a 
-            href="mailto:soporte@tuapp.com" 
+            href={`mailto:${generalContent.contact_email}`} 
             className="inline-flex items-center gap-2 text-primary hover:underline font-medium"
           >
-            Hablemos de tu caso
+            {featuresContent.contact_cta}
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
             </svg>

@@ -60,6 +60,7 @@ import Profile from "./pages/Profile";
 import Tenants from "./pages/Tenants";
 import TrackingEmbed from "./pages/TrackingEmbed";
 import ShipmentStatusGuide from "./pages/ShipmentStatusGuide";
+import LandingContentAdmin from "./pages/LandingContentAdmin";
 import NotFound from "./pages/NotFound";
 
 // Seller Portal Pages
@@ -207,6 +208,7 @@ function AppRoutes() {
       <Route path="/subscription" element={<DashboardLayout><Subscription /></DashboardLayout>} />
       <Route path="/admin/plans" element={<DashboardLayout><SubscriptionPlansAdmin /></DashboardLayout>} />
       <Route path="/admin/tenants" element={<DashboardLayout><Tenants /></DashboardLayout>} />
+      <Route path="/admin/landing" element={<LandingContentAdmin />} />
       <Route path="/admin/status-guide" element={<DashboardLayout><ShipmentStatusGuide /></DashboardLayout>} />
       
       {/* Profile */}

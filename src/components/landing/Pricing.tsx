@@ -3,6 +3,7 @@ import { Check, Sparkles, Zap, Loader2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useLandingContent, defaultLandingContent } from "@/hooks/useLandingContent";
 
 interface SubscriptionPlan {
   id: string;
@@ -25,6 +26,9 @@ const gradients: Record<string, string> = {
 };
 
 const Pricing = () => {
+  const { data: landingContent } = useLandingContent();
+  const generalContent = landingContent?.general || defaultLandingContent.general!;
+
   const { data: plans, isLoading } = useQuery({
     queryKey: ["public-subscription-plans"],
     queryFn: async () => {
@@ -68,16 +72,16 @@ const Pricing = () => {
         <div className="text-center max-w-3xl mx-auto mb-20">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-6">
             <Zap className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium text-primary">14 días gratis en todos los planes</span>
+            <span className="text-sm font-medium text-primary">{generalContent.trial_text}</span>
           </div>
           <h2 className="text-4xl lg:text-5xl font-bold text-white mb-6">
-            Precios{" "}
+            {generalContent.pricing_title.split(" ")[0]}{" "}
             <span className="bg-gradient-to-r from-primary to-purple-500 bg-clip-text text-transparent">
-              transparentes
+              {generalContent.pricing_title.split(" ").slice(1).join(" ") || "transparentes"}
             </span>
           </h2>
           <p className="text-xl text-gray-400">
-            Sin sorpresas ni costos ocultos. Escala cuando lo necesites.
+            {generalContent.pricing_subtitle}
           </p>
         </div>
 
@@ -133,7 +137,7 @@ const Pricing = () => {
                           {formatPrice(plan.price_monthly)}
                         </span>
                       </div>
-                      <span className="text-gray-500 text-sm">/mes · ARS</span>
+                      <span className="text-gray-500 text-sm">/mes · {generalContent.currency_label}</span>
                     </div>
 
                     {/* Dynamic limits */}
@@ -188,11 +192,11 @@ const Pricing = () => {
         {/* Bottom text */}
         <div className="text-center mt-16">
           <p className="text-gray-500 mb-2">
-            Todos los precios en pesos argentinos. Facturamos mensualmente.
+            Todos los precios en {generalContent.currency_label}. Facturamos mensualmente.
           </p>
           <p className="text-gray-400">
             ¿Necesitas un plan personalizado?{" "}
-            <a href="mailto:ventas@tuapp.com" className="text-primary hover:underline font-medium">
+            <a href={`mailto:${generalContent.contact_email}`} className="text-primary hover:underline font-medium">
               Hablemos
             </a>
           </p>
