@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, MapPin, User, Package, DollarSign, Printer, CheckCircle } from 'lucide-react';
+import { Loader2, MapPin, User, Package, DollarSign, Printer, CheckCircle, XCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
 interface Order {
@@ -28,6 +28,7 @@ interface Order {
   shipping_lat: number | null;
   shipping_lng: number | null;
   total: number;
+  envio_id?: string | null;
   seller?: {
     id: string;
     nombre: string;
@@ -57,6 +58,23 @@ export function CreateShipmentFromOrderDialog({
   const [cantidadBultos, setCantidadBultos] = useState<number>(1);
   const [createdEnvio, setCreatedEnvio] = useState<any>(null);
 
+  // Check if order already has a shipment (fresh data)
+  const { data: orderStatus, isLoading: checkingOrder } = useQuery({
+    queryKey: ['order-envio-check', order.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('ecommerce_orders')
+        .select('envio_id')
+        .eq('id', order.id)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: open,
+  });
+
+  const alreadyHasShipment = !!orderStatus?.envio_id;
+
   // Fetch seller details
   const { data: seller } = useQuery({
     queryKey: ['seller-details', order.seller_id],
@@ -69,7 +87,7 @@ export function CreateShipmentFromOrderDialog({
       if (error) throw error;
       return data;
     },
-    enabled: open,
+    enabled: open && !alreadyHasShipment,
   });
 
   // Fetch sucursales
@@ -84,7 +102,7 @@ export function CreateShipmentFromOrderDialog({
       if (error) throw error;
       return data;
     },
-    enabled: !!tenantId && open,
+    enabled: !!tenantId && open && !alreadyHasShipment,
   });
 
   // Fetch tarifa and calculate price
@@ -113,7 +131,7 @@ export function CreateShipmentFromOrderDialog({
       
       return { tarifa, conceptos };
     },
-    enabled: !!seller?.tarifa_id && open,
+    enabled: !!seller?.tarifa_id && open && !alreadyHasShipment,
   });
 
   // Set default origin branch from seller
@@ -145,6 +163,17 @@ export function CreateShipmentFromOrderDialog({
     mutationFn: async () => {
       if (!sucursalOrigenId) throw new Error('Selecciona sucursal de origen');
       if (!precio) throw new Error('Ingresa el precio del envío');
+
+      // Double-check: verify order doesn't already have a shipment (prevent race condition)
+      const { data: currentOrder } = await supabase
+        .from('ecommerce_orders')
+        .select('envio_id')
+        .eq('id', order.id)
+        .single();
+
+      if (currentOrder?.envio_id) {
+        throw new Error('Este pedido ya tiene un envío creado');
+      }
 
       // Get origin branch code for tracking
       const { data: originBranch } = await supabase
@@ -251,7 +280,31 @@ export function CreateShipmentFromOrderDialog({
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-lg">
-        {createdEnvio ? (
+        {checkingOrder ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : alreadyHasShipment ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>Envío Ya Existe</DialogTitle>
+            </DialogHeader>
+            <div className="text-center py-6 space-y-4">
+              <div className="flex justify-center">
+                <XCircle className="h-16 w-16 text-red-500" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-lg">Este pedido ya tiene un envío asociado</h3>
+                <p className="text-muted-foreground mt-1">
+                  No es posible crear otro envío para este pedido.
+                </p>
+              </div>
+              <Button onClick={handleClose} className="mt-4">
+                Cerrar
+              </Button>
+            </div>
+          </>
+        ) : createdEnvio ? (
           <>
             <DialogHeader>
               <DialogTitle>Envío Creado Exitosamente</DialogTitle>
