@@ -34,6 +34,14 @@ const formSchema = z.object({
   tiene_cuenta_corriente: z.boolean(),
   limite_credito: z.number(),
   activo: z.boolean(),
+  // Shipping options
+  min_delivery_days: z.number().min(1).default(3),
+  max_delivery_days: z.number().min(1).default(5),
+  tarifa_express_id: z.string().optional(),
+  express_delivery_days: z.number().min(1).default(1),
+  express_surcharge: z.number().default(0),
+  permite_pickup: z.boolean().default(false),
+  pickup_surcharge: z.number().default(0),
   // User linking fields
   vincular_usuario: z.enum(['ninguno', 'existente', 'nuevo', 'mantener']).default('mantener'),
   user_id: z.string().optional(),
@@ -86,6 +94,14 @@ interface Seller {
   limite_credito: number;
   activo: boolean;
   user_id?: string | null;
+  // Shipping options
+  min_delivery_days?: number | null;
+  max_delivery_days?: number | null;
+  tarifa_express_id?: string | null;
+  express_delivery_days?: number | null;
+  express_surcharge?: number | null;
+  permite_pickup?: boolean | null;
+  pickup_surcharge?: number | null;
 }
 
 interface EditSellerDialogProps {
@@ -119,6 +135,15 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
       tiene_cuenta_corriente: seller.tiene_cuenta_corriente,
       limite_credito: seller.limite_credito || 0,
       activo: seller.activo,
+      // Shipping options
+      min_delivery_days: seller.min_delivery_days || 3,
+      max_delivery_days: seller.max_delivery_days || 5,
+      tarifa_express_id: seller.tarifa_express_id || '',
+      express_delivery_days: seller.express_delivery_days || 1,
+      express_surcharge: seller.express_surcharge || 0,
+      permite_pickup: seller.permite_pickup || false,
+      pickup_surcharge: seller.pickup_surcharge || 0,
+      // User linking
       vincular_usuario: seller.user_id ? 'mantener' : 'ninguno',
       user_id: '',
       user_email: '',
@@ -147,6 +172,15 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
         tiene_cuenta_corriente: seller.tiene_cuenta_corriente,
         limite_credito: seller.limite_credito || 0,
         activo: seller.activo,
+        // Shipping options
+        min_delivery_days: seller.min_delivery_days || 3,
+        max_delivery_days: seller.max_delivery_days || 5,
+        tarifa_express_id: seller.tarifa_express_id || '',
+        express_delivery_days: seller.express_delivery_days || 1,
+        express_surcharge: seller.express_surcharge || 0,
+        permite_pickup: seller.permite_pickup || false,
+        pickup_surcharge: seller.pickup_surcharge || 0,
+        // User linking
         vincular_usuario: seller.user_id ? 'mantener' : 'ninguno',
         user_id: '',
         user_email: '',
@@ -279,6 +313,14 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
           tiene_cuenta_corriente: values.tiene_cuenta_corriente,
           limite_credito: values.limite_credito,
           activo: values.activo,
+          // Shipping options
+          min_delivery_days: values.min_delivery_days,
+          max_delivery_days: values.max_delivery_days,
+          tarifa_express_id: values.tarifa_express_id || null,
+          express_delivery_days: values.express_delivery_days,
+          express_surcharge: values.express_surcharge,
+          permite_pickup: values.permite_pickup,
+          pickup_surcharge: values.pickup_surcharge,
           user_id: newUserId,
         })
         .eq('id', seller.id);
@@ -474,6 +516,168 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
                 )}
               />
             )}
+
+            {/* Shipping Options Section */}
+            <div className="rounded-lg border p-4 space-y-4">
+              <div className="space-y-1">
+                <Label className="text-base font-medium">Opciones de Envío (Tiendanube)</Label>
+                <p className="text-sm text-muted-foreground">
+                  Configuración de tarifas para el checkout de Tiendanube
+                </p>
+              </div>
+
+              {/* Standard Delivery Days */}
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="min_delivery_days"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Días mínimos entrega</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min={1}
+                          {...field}
+                          onChange={(e) => field.onChange(parseInt(e.target.value) || 3)}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="max_delivery_days"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Días máximos entrega</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min={1}
+                          {...field}
+                          onChange={(e) => field.onChange(parseInt(e.target.value) || 5)}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* Express Shipping */}
+              <div className="space-y-3 pt-2 border-t">
+                <Label className="text-sm font-medium">Envío Express (opcional)</Label>
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="tarifa_express_id"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tarifa Express</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Sin express" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="">Sin express</SelectItem>
+                            {tarifas?.map((t) => (
+                              <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="express_delivery_days"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Días entrega express</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={1}
+                            {...field}
+                            onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <FormField
+                  control={form.control}
+                  name="express_surcharge"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Recargo Express ($)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="0"
+                          {...field}
+                          onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                        />
+                      </FormControl>
+                      <p className="text-xs text-muted-foreground">Monto adicional sobre la tarifa express</p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* Pickup Option */}
+              <div className="space-y-3 pt-2 border-t">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Retiro en Sucursal</Label>
+                    <p className="text-sm text-muted-foreground">Permitir retiro en sucursales habilitadas</p>
+                  </div>
+                  <FormField
+                    control={form.control}
+                    name="permite_pickup"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormControl>
+                          <Switch checked={field.value} onCheckedChange={field.onChange} />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                
+                {form.watch('permite_pickup') && (
+                  <FormField
+                    control={form.control}
+                    name="pickup_surcharge"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Descuento/Recargo Pickup ($)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="0"
+                            {...field}
+                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                          />
+                        </FormControl>
+                        <p className="text-xs text-muted-foreground">Valor negativo = descuento, positivo = recargo</p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+              </div>
+            </div>
 
             {/* User Linking Section */}
             <div className="rounded-lg border p-4 space-y-4">

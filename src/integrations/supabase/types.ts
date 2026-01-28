@@ -516,12 +516,16 @@ export type Database = {
           dias_retiro: string[] | null
           direccion: string | null
           email: string
+          express_delivery_days: number | null
+          express_surcharge: number | null
           horario_retiro: string | null
           id: string
           limite_credito: number | null
           max_delivery_days: number | null
           min_delivery_days: number | null
           nombre: string
+          permite_pickup: boolean | null
+          pickup_surcharge: number | null
           plataforma: string
           provincia: string | null
           razon_social: string | null
@@ -531,6 +535,7 @@ export type Database = {
           store_id: string | null
           store_url: string | null
           sucursal_pickup_id: string | null
+          tarifa_express_id: string | null
           tarifa_id: string | null
           telefono: string | null
           tenant_id: string
@@ -552,12 +557,16 @@ export type Database = {
           dias_retiro?: string[] | null
           direccion?: string | null
           email: string
+          express_delivery_days?: number | null
+          express_surcharge?: number | null
           horario_retiro?: string | null
           id?: string
           limite_credito?: number | null
           max_delivery_days?: number | null
           min_delivery_days?: number | null
           nombre: string
+          permite_pickup?: boolean | null
+          pickup_surcharge?: number | null
           plataforma?: string
           provincia?: string | null
           razon_social?: string | null
@@ -567,6 +576,7 @@ export type Database = {
           store_id?: string | null
           store_url?: string | null
           sucursal_pickup_id?: string | null
+          tarifa_express_id?: string | null
           tarifa_id?: string | null
           telefono?: string | null
           tenant_id: string
@@ -588,12 +598,16 @@ export type Database = {
           dias_retiro?: string[] | null
           direccion?: string | null
           email?: string
+          express_delivery_days?: number | null
+          express_surcharge?: number | null
           horario_retiro?: string | null
           id?: string
           limite_credito?: number | null
           max_delivery_days?: number | null
           min_delivery_days?: number | null
           nombre?: string
+          permite_pickup?: boolean | null
+          pickup_surcharge?: number | null
           plataforma?: string
           provincia?: string | null
           razon_social?: string | null
@@ -603,6 +617,7 @@ export type Database = {
           store_id?: string | null
           store_url?: string | null
           sucursal_pickup_id?: string | null
+          tarifa_express_id?: string | null
           tarifa_id?: string | null
           telefono?: string | null
           tenant_id?: string
@@ -619,6 +634,13 @@ export type Database = {
             columns: ["sucursal_pickup_id"]
             isOneToOne: false
             referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ecommerce_sellers_tarifa_express_id_fkey"
+            columns: ["tarifa_express_id"]
+            isOneToOne: false
+            referencedRelation: "tarifas"
             referencedColumns: ["id"]
           },
           {
@@ -2633,6 +2655,7 @@ export type Database = {
           lat: number | null
           lng: number | null
           nombre: string
+          permite_retiro_clientes: boolean | null
           puede_despachar: boolean | null
           puede_recibir: boolean | null
           realiza_entregas: boolean | null
@@ -2656,6 +2679,7 @@ export type Database = {
           lat?: number | null
           lng?: number | null
           nombre: string
+          permite_retiro_clientes?: boolean | null
           puede_despachar?: boolean | null
           puede_recibir?: boolean | null
           realiza_entregas?: boolean | null
@@ -2679,6 +2703,7 @@ export type Database = {
           lat?: number | null
           lng?: number | null
           nombre?: string
+          permite_retiro_clientes?: boolean | null
           puede_despachar?: boolean | null
           puede_recibir?: boolean | null
           realiza_entregas?: boolean | null
