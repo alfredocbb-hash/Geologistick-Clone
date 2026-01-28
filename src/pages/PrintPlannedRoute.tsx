@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -46,7 +46,7 @@ export default function PrintPlannedRoute() {
         .from('ruta_paradas')
         .select(`
           *,
-          envio:envios(
+        envio:envios(
             tracking_number,
             direccion_entrega,
             direccion_retiro,
@@ -56,6 +56,7 @@ export default function PrintPlannedRoute() {
             tipo_pago,
             pago_contra_entrega,
             descripcion,
+            notas,
             cantidad_bultos,
             nombre_destinatario,
             nombre_remitente,
@@ -240,42 +241,52 @@ export default function PrintPlannedRoute() {
               const isCOD = envio?.pago_contra_entrega && envio?.tipo_pago === 'contra_entrega';
 
               return (
-                <tr key={parada.id} className={`border-b ${index % 2 === 1 ? 'bg-gray-50' : ''}`}>
-                  <td className="p-2 font-bold">{index + 1}</td>
-                  <td className="p-2">
-                    {isRetiro ? (
-                      <span className="inline-flex items-center gap-1 text-xs bg-blue-100 px-1.5 py-0.5 rounded">
-                        <Home className="h-3 w-3" />R
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-xs bg-green-100 px-1.5 py-0.5 rounded">
-                        <Package className="h-3 w-3" />E
-                      </span>
-                    )}
-                  </td>
-                  <td className="p-2 font-mono text-xs">{envio?.tracking_number}</td>
-                  <td className="p-2">
-                    <div className="font-medium">{clienteName}</div>
-                    {envio?.cantidad_bultos && (
-                      <div className="text-xs text-gray-500">{envio.cantidad_bultos} bulto(s)</div>
-                    )}
-                  </td>
-                  <td className="p-2">
-                    <div>{direccion}</div>
-                    {ciudad && <div className="text-xs text-gray-500">{ciudad}</div>}
-                  </td>
-                  <td className="p-2 text-xs">{cliente?.telefono || '-'}</td>
-                  <td className="p-2 text-center">
-                    {isCOD && (
-                      <span className="inline-block bg-yellow-200 text-yellow-800 text-xs font-bold px-1.5 py-0.5 rounded">
-                        ${envio?.precio_total}
-                      </span>
-                    )}
-                  </td>
-                  <td className="p-2 text-center">
-                    <div className="w-5 h-5 border-2 border-black mx-auto"></div>
-                  </td>
-                </tr>
+                <React.Fragment key={parada.id}>
+                  <tr className={`border-b ${index % 2 === 1 ? 'bg-gray-50' : ''}`}>
+                    <td className="p-2 font-bold">{index + 1}</td>
+                    <td className="p-2">
+                      {isRetiro ? (
+                        <span className="inline-flex items-center gap-1 text-xs bg-blue-100 px-1.5 py-0.5 rounded">
+                          <Home className="h-3 w-3" />R
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-xs bg-green-100 px-1.5 py-0.5 rounded">
+                          <Package className="h-3 w-3" />E
+                        </span>
+                      )}
+                    </td>
+                    <td className="p-2 font-mono text-xs">{envio?.tracking_number}</td>
+                    <td className="p-2">
+                      <div className="font-medium">{clienteName}</div>
+                      {envio?.cantidad_bultos && (
+                        <div className="text-xs text-gray-500">{envio.cantidad_bultos} bulto(s)</div>
+                      )}
+                    </td>
+                    <td className="p-2">
+                      <div>{direccion}</div>
+                      {ciudad && <div className="text-xs text-gray-500">{ciudad}</div>}
+                    </td>
+                    <td className="p-2 text-xs">{cliente?.telefono || '-'}</td>
+                    <td className="p-2 text-center">
+                      {isCOD && (
+                        <span className="inline-block bg-yellow-200 text-yellow-800 text-xs font-bold px-1.5 py-0.5 rounded">
+                          ${envio?.precio_total}
+                        </span>
+                      )}
+                    </td>
+                    <td className="p-2 text-center">
+                      <div className="w-5 h-5 border-2 border-black mx-auto"></div>
+                    </td>
+                  </tr>
+                  {envio?.notas && (
+                    <tr className="bg-amber-50 border-b">
+                      <td></td>
+                      <td colSpan={7} className="px-2 py-1 text-xs italic text-amber-800">
+                        📝 {envio.notas}
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               );
             })}
           </tbody>

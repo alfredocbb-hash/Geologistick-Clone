@@ -1485,7 +1485,7 @@ export default function NewShipment() {
         </Card>
 
         {/* Destinatario - No mostrar para retiro_almacenaje */}
-        {!esRetiroAlmacenaje && (formData.tipo_pago !== 'cuenta_corriente' || !formData.cliente_cta_cte_id) && (
+        {!esRetiroAlmacenaje && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">

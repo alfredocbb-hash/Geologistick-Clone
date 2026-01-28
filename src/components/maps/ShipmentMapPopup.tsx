@@ -9,6 +9,8 @@ interface EnvioData {
   tipo: "retiro" | "entrega";
   estado: string;
   coords?: { lat: number | null; lng: number | null };
+  nombre_remitente?: string;
+  nombre_destinatario?: string;
   remitente?: {
     nombre: string;
     apellido: string;
@@ -50,8 +52,8 @@ export function ShipmentMapPopup({
 
   const hasCoords = envio.coords?.lat && envio.coords?.lng;
   const clienteNombre = envio.tipo === "retiro"
-    ? `${envio.remitente?.nombre || ''} ${envio.remitente?.apellido || ''}`.trim() || "Sin nombre"
-    : `${envio.destinatario?.nombre || ''} ${envio.destinatario?.apellido || ''}`.trim() || "Sin nombre";
+    ? (envio.nombre_remitente || `${envio.remitente?.nombre || ''} ${envio.remitente?.apellido || ''}`.trim() || "Sin nombre")
+    : (envio.nombre_destinatario || `${envio.destinatario?.nombre || ''} ${envio.destinatario?.apellido || ''}`.trim() || "Sin nombre");
   
   const direccion = envio.tipo === "retiro"
     ? envio.direccion_retiro || envio.remitente?.direccion || "Sin dirección"
