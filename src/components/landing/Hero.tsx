@@ -1,8 +1,19 @@
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Package, Truck, MapPin, Zap, Shield, Globe } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useLandingContent, defaultLandingContent } from "@/hooks/useLandingContent";
+
+// Icon mapping for dynamic rendering
+const iconMap: Record<string, React.ElementType> = {
+  Package,
+  Shield,
+  Zap,
+};
 
 const Hero = () => {
+  const { data: content } = useLandingContent();
+  const hero = content?.hero || defaultLandingContent.hero!;
+
   return (
     <section className="relative min-h-screen flex items-center overflow-hidden bg-[#0a0a0f]">
       {/* Animated grid background */}
@@ -20,49 +31,47 @@ const Hero = () => {
             {/* Badge */}
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-primary/50 bg-primary/10 backdrop-blur-sm">
               <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-              <span className="text-sm font-medium text-primary">Plataforma #1 de Logística en Argentina</span>
+              <span className="text-sm font-medium text-primary">{hero.badge_text}</span>
             </div>
             
             <h1 className="text-5xl lg:text-7xl font-bold leading-tight">
-              <span className="text-white">El futuro de la</span>
+              <span className="text-white">{hero.title_line1}</span>
               <br />
               <span className="bg-gradient-to-r from-primary via-purple-400 to-cyan-400 bg-clip-text text-transparent">
-                logística inteligente
+                {hero.title_line2}
               </span>
             </h1>
             
             <p className="text-xl text-gray-400 max-w-xl leading-relaxed">
-              Transforma tu operación con tecnología de punta. Optimización de rutas con IA, 
-              tracking en tiempo real y automatización total.
+              {hero.description}
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4">
               <Button asChild size="lg" className="text-lg px-8 py-6 bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 border-0 shadow-lg shadow-primary/25">
                 <Link to="/login">
-                  Comenzar gratis
+                  {hero.cta_primary}
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Link>
               </Button>
               <Button asChild variant="outline" size="lg" className="text-lg px-8 py-6 border-gray-700 bg-white/5 hover:bg-white/10 text-white backdrop-blur-sm">
-                <a href="#features">Explorar features</a>
+                <a href="#features">{hero.cta_secondary}</a>
               </Button>
             </div>
 
             {/* Stats */}
             <div className="flex gap-8 pt-8">
-              {[
-                { value: "+50K", label: "Envíos/mes", icon: Package },
-                { value: "99.9%", label: "Uptime", icon: Shield },
-                { value: "< 2s", label: "Tiempo respuesta", icon: Zap },
-              ].map((stat, i) => (
-                <div key={i} className="group">
-                  <div className="flex items-center gap-2 mb-1">
-                    <stat.icon className="h-4 w-4 text-primary" />
-                    <p className="text-2xl lg:text-3xl font-bold text-white group-hover:text-primary transition-colors">{stat.value}</p>
+              {hero.stats.map((stat, i) => {
+                const StatIcon = iconMap[stat.icon] || Package;
+                return (
+                  <div key={i} className="group">
+                    <div className="flex items-center gap-2 mb-1">
+                      <StatIcon className="h-4 w-4 text-primary" />
+                      <p className="text-2xl lg:text-3xl font-bold text-white group-hover:text-primary transition-colors">{stat.value}</p>
+                    </div>
+                    <p className="text-sm text-gray-500">{stat.label}</p>
                   </div>
-                  <p className="text-sm text-gray-500">{stat.label}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 

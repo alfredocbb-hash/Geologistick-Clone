@@ -1435,6 +1435,30 @@ export type Database = {
           },
         ]
       }
+      landing_content: {
+        Row: {
+          content: Json
+          id: string
+          section: string
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          content?: Json
+          id?: string
+          section: string
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          content?: Json
+          id?: string
+          section?: string
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       liquidacion_sucursal_detalles: {
         Row: {
           comision_aplicada: number
