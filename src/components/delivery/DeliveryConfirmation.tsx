@@ -305,7 +305,19 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
         }
       })();
 
-      await Promise.all([historyPromise, commissionPromise]);
+      // Notify Tiendanube fulfillment (fire and forget)
+      const fulfillPromise = (async () => {
+        try {
+          await supabase.functions.invoke('tiendanube-fulfill', {
+            body: { envio_id: shipment.id }
+          });
+        } catch (e) {
+          // Log but don't fail the delivery confirmation
+          console.log('Tiendanube fulfillment notification skipped or failed:', e);
+        }
+      })();
+
+      await Promise.all([historyPromise, commissionPromise, fulfillPromise]);
     },
     onMutate: async () => {
       // Cancel any outgoing refetches

@@ -1,18 +1,15 @@
 
 # Plan: Mejoras de Integración Tiendanube
 
-## Resumen Ejecutivo
+## ✅ IMPLEMENTADO
 
-Implementar las funcionalidades faltantes para cumplir con los requisitos de Tiendanube y mejorar la experiencia del comprador.
+### Resumen de Cambios Realizados
 
-## Análisis de Brechas
-
-| Funcionalidad | Estado Actual | Estado Objetivo |
-|---------------|---------------|-----------------|
-| Múltiples opciones de envío | Solo 1 tarifa fija | Estándar + Express |
-| Puntos de retiro | No implementado | Soporte para pickup |
-| Fulfillment sync | No notifica a TN | Notificar cuando se entrega |
-| Versión de API | v1 | 2025-03 (opcional) |
+| Funcionalidad | Estado | Detalles |
+|---------------|--------|----------|
+| Múltiples opciones de envío | ✅ Completado | Estándar + Express con tarifas separadas |
+| Puntos de retiro | ✅ Completado | Soporte para pickup en sucursales |
+| Fulfillment sync | ✅ Completado | Notifica a TN cuando se entrega |
 
 ## Fase 1: Múltiples Opciones de Envío
 
