@@ -1,202 +1,78 @@
 
 
-# Plan: Landing Page Editable por Super Admin
+# Plan: Cambiar Logo de la APK a Geologistick
 
-## Resumen
+## Situación Actual
 
-Crear un sistema que permita al Super Admin editar todo el contenido de la página principal (landing page) desde un panel de administración, incluyendo textos del Hero, secciones de Features, y configuraciones generales.
+- El logo de Geologistick ya existe en: `src/assets/geologistick-logo.png`
+- Los íconos de la APK de Android se generan en la carpeta nativa `android/` después de ejecutar `npx cap add android`
+- Actualmente no hay íconos configurados en el proyecto web para la APK
 
-## Estado Actual
+## Solución
 
-| Componente | Estado | Fuente de Datos |
-|------------|--------|-----------------|
-| Precios | Dinámico | `subscription_plans` (ya implementado) |
-| Hero | Hardcodeado | Código |
-| Features | Hardcodeado | Código |
-| Navbar | Hardcodeado | Código |
-| Footer | Parcialmente dinámico | `tenant_branding` |
+Para cambiar el ícono de la APK, necesitas seguir estos pasos **en tu entorno local** después de exportar el proyecto:
 
-## Solución Propuesta
+### Paso 1: Preparar los Íconos
 
-### Parte 1: Nueva Tabla `landing_content`
-
-Crear una tabla para almacenar el contenido de la landing page:
-
-```sql
-CREATE TABLE landing_content (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  section text NOT NULL UNIQUE, -- 'hero', 'features', 'general'
-  content jsonb NOT NULL DEFAULT '{}',
-  updated_at timestamptz DEFAULT now(),
-  updated_by uuid REFERENCES auth.users(id)
-);
-
--- RLS: Lectura pública, escritura solo super_admin
-```
-
-Estructura del contenido por sección:
+Los íconos de Android requieren múltiples tamaños. Los archivos deben colocarse en:
 
 ```text
-┌─────────────────────────────────────────────────────────────────┐
-│                    Estructura de Datos                          │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  section: 'hero'                                                │
-│  ├── badge_text: "Plataforma #1 de Logística"                   │
-│  ├── title_line1: "El futuro de la"                             │
-│  ├── title_line2: "logística inteligente"                       │
-│  ├── description: "Transforma tu operación..."                  │
-│  ├── cta_primary: "Comenzar gratis"                             │
-│  ├── cta_secondary: "Explorar features"                         │
-│  └── stats: [{ value: "+50K", label: "Envíos/mes" }, ...]       │
-│                                                                 │
-│  section: 'features'                                            │
-│  ├── badge_text: "Potenciado por tecnología..."                 │
-│  ├── title: "Todo lo que necesitas..."                          │
-│  ├── subtitle: "Herramientas profesionales..."                  │
-│  └── items: [{ icon: "Package", title: "...", desc: "..." }]    │
-│                                                                 │
-│  section: 'general'                                             │
-│  ├── trial_days: 14                                             │
-│  ├── trial_text: "14 días gratis en todos los planes"          │
-│  ├── contact_email: "soporte@..."                               │
-│  └── currency_label: "ARS"                                      │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+android/app/src/main/res/
+├── mipmap-hdpi/       (72x72 px)
+│   ├── ic_launcher.png
+│   └── ic_launcher_round.png
+├── mipmap-mdpi/       (48x48 px)
+│   ├── ic_launcher.png
+│   └── ic_launcher_round.png
+├── mipmap-xhdpi/      (96x96 px)
+│   ├── ic_launcher.png
+│   └── ic_launcher_round.png
+├── mipmap-xxhdpi/     (144x144 px)
+│   ├── ic_launcher.png
+│   └── ic_launcher_round.png
+├── mipmap-xxxhdpi/    (192x192 px)
+│   ├── ic_launcher.png
+│   └── ic_launcher_round.png
+└── mipmap-anydpi-v26/ (Adaptive icons XML)
 ```
 
-### Parte 2: Panel de Administración
+### Paso 2: Usar una Herramienta de Generación
 
-Crear `LandingContentAdmin.tsx` con pestañas para editar cada sección:
+La forma más fácil es usar un generador online:
 
-- **Hero**: Textos, badge, CTAs, estadísticas
-- **Features**: Lista de características con iconos
-- **General**: Configuraciones de trial, moneda, emails
+1. **Android Asset Studio**: https://romannurik.github.io/AndroidAssetStudio/icons-launcher.html
+2. Subir el logo `geologistick-logo.png`
+3. Descargar el paquete de íconos generado
+4. Copiar los archivos a `android/app/src/main/res/`
 
-### Parte 3: Actualizar Componentes de Landing
+### Paso 3: Recompilar la APK
 
-Modificar los componentes para que lean del hook `useLandingContent()`:
-
-- `Hero.tsx` - leer contenido dinámico
-- `Features.tsx` - leer lista de features dinámico
-- `Pricing.tsx` - ya lee de BD, agregar textos editables
-
-## Archivos a Crear/Modificar
-
-| Archivo | Accion | Descripcion |
-|---------|--------|-------------|
-| Migracion SQL | Crear | Tabla `landing_content` con RLS |
-| `src/hooks/useLandingContent.ts` | Crear | Hook para leer contenido de landing |
-| `src/pages/LandingContentAdmin.tsx` | Crear | Panel de edicion para super admin |
-| `src/components/landing/Hero.tsx` | Modificar | Leer contenido dinamico |
-| `src/components/landing/Features.tsx` | Modificar | Leer features dinamicos |
-| `src/components/landing/Pricing.tsx` | Modificar | Leer textos editables |
-| `src/App.tsx` | Modificar | Agregar ruta `/admin/landing` |
-| `src/components/layout/AppSidebar.tsx` | Modificar | Agregar enlace para super admin |
-
-## Detalles Tecnicos
-
-### Migracion SQL
-
-```sql
--- Tabla para contenido de landing page
-CREATE TABLE IF NOT EXISTS landing_content (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  section text NOT NULL UNIQUE,
-  content jsonb NOT NULL DEFAULT '{}',
-  updated_at timestamptz DEFAULT now(),
-  updated_by uuid REFERENCES auth.users(id)
-);
-
--- Habilitar RLS
-ALTER TABLE landing_content ENABLE ROW LEVEL SECURITY;
-
--- Lectura publica (landing es publica)
-CREATE POLICY "Anyone can view landing content"
-  ON landing_content FOR SELECT
-  USING (true);
-
--- Solo super_admin puede modificar
-CREATE POLICY "Super admins can manage landing content"
-  ON landing_content FOR ALL
-  USING (is_super_admin(auth.uid()))
-  WITH CHECK (is_super_admin(auth.uid()));
-
--- Insertar contenido inicial
-INSERT INTO landing_content (section, content) VALUES
-('hero', '{
-  "badge_text": "Plataforma #1 de Logística en Argentina",
-  "title_line1": "El futuro de la",
-  "title_line2": "logística inteligente",
-  "description": "Transforma tu operación con tecnología de punta. Optimización de rutas con IA, tracking en tiempo real y automatización total.",
-  "cta_primary": "Comenzar gratis",
-  "cta_secondary": "Explorar features",
-  "stats": [
-    { "value": "+50K", "label": "Envíos/mes", "icon": "Package" },
-    { "value": "99.9%", "label": "Uptime", "icon": "Shield" },
-    { "value": "< 2s", "label": "Tiempo respuesta", "icon": "Zap" }
-  ]
-}'::jsonb),
-('features', '{
-  "badge_text": "Potenciado por tecnología de punta",
-  "title": "Todo lo que necesitas para escalar tu operación",
-  "subtitle": "Herramientas profesionales diseñadas para empresas que quieren dominar la logística del futuro.",
-  "contact_text": "¿Necesitas una integración especial?",
-  "contact_cta": "Hablemos de tu caso"
-}'::jsonb),
-('general', '{
-  "trial_days": 14,
-  "trial_text": "14 días gratis en todos los planes",
-  "pricing_title": "Precios transparentes",
-  "pricing_subtitle": "Sin sorpresas ni costos ocultos. Escala cuando lo necesites.",
-  "currency_label": "ARS"
-}'::jsonb);
+```bash
+npx cap sync android
+npx cap build android
 ```
 
-### Hook useLandingContent
+## Alternativa: Instalar @capacitor/assets
 
-```typescript
-// src/hooks/useLandingContent.ts
-export function useLandingContent() {
-  return useQuery({
-    queryKey: ['landing-content'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('landing_content')
-        .select('*');
-      if (error) throw error;
-      
-      // Convertir array a objeto por seccion
-      return data.reduce((acc, row) => {
-        acc[row.section] = row.content;
-        return acc;
-      }, {} as Record<string, any>);
-    },
-    staleTime: 5 * 60 * 1000, // Cache 5 minutos
-  });
-}
+Capacitor tiene un plugin oficial para generar assets automáticamente:
+
+```bash
+npm install @capacitor/assets --save-dev
 ```
 
-### Panel de Administracion
+Luego crear un archivo de configuración y ejecutar:
 
-El panel tendra 3 tabs:
-1. **Hero**: Editar badge, titulos, descripcion, CTAs
-2. **Features**: Ver lista y poder editar textos de header (features individuales quedan en codigo por iconos)
-3. **General**: Dias de trial, textos de pricing, moneda
+```bash
+npx capacitor-assets generate
+```
 
-## Beneficios
+## Lo que Puedo Hacer Ahora
 
-- Super Admin puede cambiar textos sin deploy
-- Precios ya estan dinamicos en BD
-- Features principales mantienen iconos consistentes
-- RLS garantiza que solo super_admin puede editar
+Puedo agregar instrucciones claras en un archivo README o script que documente este proceso para cuando generes la APK.
 
-## Complejidad
+## Nota Importante
 
-| Aspecto | Valor |
-|---------|-------|
-| Riesgo | Bajo |
-| Archivos nuevos | 2 |
-| Archivos modificados | 5 |
-| Tiempo estimado | 45 minutos |
+Los íconos de la APK no se pueden configurar desde el código web de Lovable, ya que son archivos nativos que deben existir en la carpeta `android/` que se genera localmente después de ejecutar `npx cap add android`.
+
+**Resumen**: El cambio del ícono de la APK requiere trabajo manual en tu entorno local con Android Studio o mediante herramientas de generación de assets.
 
