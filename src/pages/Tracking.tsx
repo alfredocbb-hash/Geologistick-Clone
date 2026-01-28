@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -70,8 +71,22 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; bgCol
 const statusOrder: ShipmentStatus[] = ['pendiente', 'recogido', 'en_bodega', 'en_transito', 'en_reparto', 'entregado'];
 
 export default function Tracking() {
+  const { code: codeFromPath } = useParams();
+  const [searchParams] = useSearchParams();
+  const codeFromQuery = searchParams.get('code');
+  
   const [trackingNumber, setTrackingNumber] = useState('');
   const [searchedTracking, setSearchedTracking] = useState('');
+
+  // Initialize search from URL path or query parameter
+  useEffect(() => {
+    const initialCode = codeFromPath || codeFromQuery;
+    if (initialCode) {
+      const normalizedCode = initialCode.toUpperCase();
+      setTrackingNumber(normalizedCode);
+      setSearchedTracking(normalizedCode);
+    }
+  }, [codeFromPath, codeFromQuery]);
 
   const { data: envio, isLoading, error } = useQuery({
     queryKey: ['tracking', searchedTracking],

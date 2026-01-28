@@ -127,7 +127,7 @@ Deno.serve(async (req) => {
       .single();
 
     const trackingNumber = envio?.tracking_number || envio_id;
-    const trackingUrlFinal = tracking_url || `https://geologic.lovable.app/tracking/${trackingNumber}`;
+    const trackingUrlFinal = tracking_url || `https://geologic.lovable.app/tracking/${encodeURIComponent(trackingNumber)}`;
 
     // Call Tiendanube fulfill API
     const fulfillUrl = `https://api.tiendanube.com/v1/${seller.store_id}/orders/${ecommerceOrder.external_order_id}/fulfill`;
