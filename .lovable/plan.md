@@ -1,240 +1,144 @@
 
-# Plan: Corregir 3 Problemas en Hoja de Reparto, Planificador y Envíos
+# Plan: Corregir RLS para Permitir a Choferes Escanear Envíos de su Tenant
 
-## Resumen de Problemas Identificados
+## Problema Identificado
 
-| # | Problema | Archivo Afectado | Causa Raíz |
-|---|----------|------------------|------------|
-| 1 | Observaciones no aparecen en hoja de reparto | `PrintPlannedRoute.tsx` | El campo `notas` del envío no se consulta ni muestra |
-| 2 | Nombre "Echevarria" aparece incorrectamente en mapa del planificador | `ShipmentMapPopup.tsx` | No usa `nombre_remitente`/`nombre_destinatario` del envío |
-| 3 | Campos del destinatario desaparecen al seleccionar cuenta corriente | `NewShipment.tsx` | Condición lógica incorrecta oculta la sección |
+El chofer **Alfred Bernard** intenta escanear el envío `ADMIN-ENV-20260128-897A99` pero recibe "Envío no encontrado".
 
----
+### Análisis de la Situación
 
-## Problema 1: Observaciones en Hoja de Reparto
+| Dato | Valor |
+|------|-------|
+| Tracking escaneado | `ADMIN-ENV-20260128-897A99` |
+| Envío existe en BD | ✅ Sí |
+| Tenant del envío | `Beraexpress` |
+| Sucursal origen del envío | `Administración` |
+| Sucursal del chofer | `Berazategui (SUC01)` |
+| Chofer asignado al envío | ❌ Ninguno (`chofer_id = NULL`) |
 
-### Situación Actual
-- El query obtiene `descripcion` pero NO obtiene el campo `notas` del envío
-- La tabla de paradas no tiene columna para mostrar observaciones
+### Política RLS Actual para SELECT en `envios`
 
-### Solución
-1. Agregar `notas` al select del query de envíos
-2. Agregar una fila debajo de cada parada para mostrar las notas cuando existan
-
-### Cambio en Query
-
-Se modificará la consulta para incluir el campo:
-
-```
-envio:envios(
-  tracking_number,
-  ...
-  descripcion,
-  notas,          ← AGREGAR
-  cantidad_bultos,
-  ...
+```text
+tenant_id = current_user_tenant() 
+AND (
+    is_admin() 
+    OR has_role('supervisor') 
+    OR sucursal_origen_id = get_user_sucursal()  ← FALLA (diferente sucursal)
+    OR sucursal_destino_id = get_user_sucursal() ← FALLA (NULL)
+    OR chofer_id = auth.uid()                     ← FALLA (NULL)
+    OR created_by = auth.uid()                    ← FALLA (otro usuario)
 )
 ```
 
-### Cambio en Renderizado
+**Resultado**: El chofer no cumple ninguna condición, por lo tanto RLS bloquea la lectura.
 
-Agregar una fila adicional debajo de cada parada para mostrar observaciones:
+---
 
+## Contexto de Negocio
+
+Los choferes necesitan poder escanear CUALQUIER envío de su empresa para:
+
+1. **En bodega**: Cargar envíos a su ruta (aún sin asignar)
+2. **En sucursal partner**: Recibir envíos para última milla
+3. **En la calle**: Verificar datos de un paquete encontrado
+
+La restricción actual impide que un chofer escanee envíos que:
+- Fueron creados en otra sucursal
+- No tienen chofer asignado todavía
+- Están destinados a sucursales diferentes
+
+---
+
+## Solución Propuesta
+
+### Opción A: Agregar rol `chofer` a la política RLS (Recomendado)
+
+Modificar la política para que los choferes puedan ver todos los envíos de su tenant:
+
+```sql
+ALTER POLICY "Ver envíos de su tenant" ON envios
+USING (
+  (
+    tenant_id = current_user_tenant() 
+    AND (
+      is_admin(auth.uid()) 
+      OR has_role(auth.uid(), 'supervisor')
+      OR has_role(auth.uid(), 'chofer')        -- ← AGREGAR
+      OR has_role(auth.uid(), 'operador')      -- ← AGREGAR
+      OR has_role(auth.uid(), 'bodega')        -- ← AGREGAR
+      OR sucursal_origen_id = get_user_sucursal(auth.uid()) 
+      OR sucursal_destino_id = get_user_sucursal(auth.uid()) 
+      OR chofer_id = auth.uid() 
+      OR created_by = auth.uid()
+    )
+  ) 
+  OR is_super_admin(auth.uid())
+);
 ```
-┌────────────────────────────────────────────────────────────────────┐
-│ # │ Tipo │ Tracking │ Cliente │ Dirección │ Tel │ COD │ ✓ │
-├───┼──────┼──────────┼─────────┼───────────┼─────┼─────┼───┤
-│ 1 │  E   │ GEO-001  │ Juan    │ Calle 123 │ ... │ $50 │ □ │
-│   │      │ 📝 Dejar en portería, tocar timbre 3          │
-├───┼──────┼──────────┼─────────┼───────────┼─────┼─────┼───┤
-│ 2 │  R   │ GEO-002  │ María   │ Av. 456   │ ... │     │ □ │
-└───┴──────┴──────────┴─────────┴───────────┴─────┴─────┴───┘
+
+### Justificación
+
+Los roles que necesitan ver todos los envíos del tenant son:
+- **chofer**: Para cargar y escanear en bodega
+- **operador**: Para gestionar operaciones
+- **bodega**: Para recibir y despachar
+
+Esto alinea con la memoria existente que indica que los choferes deben poder ver todos los envíos de su empresa.
+
+---
+
+## Migración SQL Requerida
+
+```sql
+-- Actualizar política RLS para envios (SELECT)
+DROP POLICY IF EXISTS "Ver envíos de su tenant" ON envios;
+
+CREATE POLICY "Ver envíos de su tenant" ON envios
+FOR SELECT
+USING (
+  (
+    (tenant_id = current_user_tenant())
+    AND (
+      is_admin(auth.uid())
+      OR has_role(auth.uid(), 'supervisor'::app_role)
+      OR has_role(auth.uid(), 'chofer'::app_role)
+      OR has_role(auth.uid(), 'operador'::app_role)
+      OR has_role(auth.uid(), 'bodega'::app_role)
+      OR (sucursal_origen_id = get_user_sucursal(auth.uid()))
+      OR (sucursal_destino_id = get_user_sucursal(auth.uid()))
+      OR (chofer_id = auth.uid())
+      OR (created_by = auth.uid())
+    )
+  )
+  OR is_super_admin(auth.uid())
+);
 ```
 
 ---
 
-## Problema 2: Nombre Incorrecto en Mapa del Planificador
+## Impacto
 
-### Situación Actual
+### Antes del Cambio
+- Choferes solo ven envíos de su sucursal o asignados a ellos
+- No pueden escanear envíos de otras sucursales del mismo tenant
+- Error "Envío no encontrado" al escanear paquetes sin asignar
 
-El componente `ShipmentMapPopup.tsx` construye el nombre del cliente así:
+### Después del Cambio
+- Choferes pueden ver todos los envíos de su empresa (tenant)
+- Pueden escanear cualquier paquete en bodega para cargarlo a su ruta
+- Pueden verificar datos de cualquier envío de la empresa
 
-```typescript
-const clienteNombre = envio.tipo === "retiro"
-  ? `${envio.remitente?.nombre || ''} ${envio.remitente?.apellido || ''}`.trim()
-  : `${envio.destinatario?.nombre || ''} ${envio.destinatario?.apellido || ''}`.trim();
-```
-
-Este código usa los datos de la relación FK con `clientes`, que puede tener datos diferentes a los del envío mismo.
-
-### Causa del Bug
-
-Cuando un envío se importa masivamente o viene del e-commerce:
-- Los campos `nombre_remitente` y `nombre_destinatario` del envío tienen el nombre correcto
-- Pero el FK apunta a un cliente diferente (posiblemente un registro antiguo como "Echevarria")
-
-### Solución
-
-Modificar la lógica para usar primero los campos directos del envío:
-
-```typescript
-const clienteNombre = envio.tipo === "retiro"
-  ? (envio.nombre_remitente || 
-     `${envio.remitente?.nombre || ''} ${envio.remitente?.apellido || ''}`.trim() || 
-     "Sin nombre")
-  : (envio.nombre_destinatario || 
-     `${envio.destinatario?.nombre || ''} ${envio.destinatario?.apellido || ''}`.trim() || 
-     "Sin nombre");
-```
-
-### Actualizar Interface
-
-También se debe actualizar la interfaz `EnvioData` para incluir:
-
-```typescript
-interface EnvioData {
-  // ... campos existentes
-  nombre_remitente?: string;
-  nombre_destinatario?: string;
-}
-```
-
----
-
-## Problema 3: Destinatario Desaparece con Cuenta Corriente
-
-### Situación Actual
-
-La condición en línea 1488 de `NewShipment.tsx`:
-
-```typescript
-{!esRetiroAlmacenaje && (formData.tipo_pago !== 'cuenta_corriente' || !formData.cliente_cta_cte_id) && (
-  <Card> {/* Datos del Destinatario */} </Card>
-)}
-```
-
-Esta lógica significa:
-- Si es retiro almacenaje → NO mostrar destinatario (correcto)
-- Si tipo_pago es cuenta_corriente Y cliente_cta_cte_id está seleccionado → NO mostrar destinatario (INCORRECTO)
-
-### Por qué está mal
-
-Al seleccionar cuenta corriente:
-1. Usuario elige "Cuenta Corriente" como método de pago
-2. Usuario selecciona el cliente con cta cte
-3. Los campos del destinatario desaparecen
-4. El usuario no puede ingresar datos del destinatario (que puede ser diferente al cliente con cta cte)
-
-### Solución
-
-Cambiar la condición para SOLO ocultar el destinatario en caso de retiro almacenaje:
-
-```typescript
-{!esRetiroAlmacenaje && (
-  <Card> {/* Datos del Destinatario */} </Card>
-)}
-```
-
-La cuenta corriente es solo un método de pago y no debe afectar si se muestra o no el destinatario.
-
----
-
-## Resumen de Archivos a Modificar
-
-| Archivo | Cambios |
-|---------|---------|
-| `src/pages/PrintPlannedRoute.tsx` | Agregar `notas` al query + mostrar observaciones en tabla |
-| `src/components/maps/ShipmentMapPopup.tsx` | Usar `nombre_remitente`/`nombre_destinatario` como prioridad |
-| `src/pages/NewShipment.tsx` | Corregir condición para mostrar destinatario |
-
----
-
-## Sección Técnica
-
-### Cambio 1: PrintPlannedRoute.tsx
-
-**Query modificado (líneas 47-64):**
-
-```typescript
-envio:envios(
-  tracking_number,
-  direccion_entrega,
-  direccion_retiro,
-  ciudad_entrega,
-  ciudad_retiro,
-  precio_total,
-  tipo_pago,
-  pago_contra_entrega,
-  descripcion,
-  notas,              // ← AGREGAR
-  cantidad_bultos,
-  nombre_destinatario,
-  nombre_remitente,
-  destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, telefono, direccion),
-  remitente:clientes!envios_remitente_id_fkey(nombre, apellido, telefono, direccion)
-)
-```
-
-**Renderizado de observaciones (después de cada fila de parada):**
-
-```typescript
-{envio?.notas && (
-  <tr className="bg-amber-50">
-    <td></td>
-    <td colSpan={7} className="px-2 py-1 text-xs italic text-amber-800">
-      📝 {envio.notas}
-    </td>
-  </tr>
-)}
-```
-
-### Cambio 2: ShipmentMapPopup.tsx
-
-**Actualizar interfaz (líneas 6-30):**
-
-```typescript
-interface EnvioData {
-  id: string;
-  tracking_number: string;
-  tipo: "retiro" | "entrega";
-  estado: string;
-  coords?: { lat: number | null; lng: number | null };
-  nombre_remitente?: string;    // ← AGREGAR
-  nombre_destinatario?: string; // ← AGREGAR
-  remitente?: { ... };
-  destinatario?: { ... };
-  // ... resto igual
-}
-```
-
-**Actualizar lógica de nombre (líneas 52-54):**
-
-```typescript
-const clienteNombre = envio.tipo === "retiro"
-  ? (envio.nombre_remitente || 
-     `${envio.remitente?.nombre || ''} ${envio.remitente?.apellido || ''}`.trim() || 
-     "Sin nombre")
-  : (envio.nombre_destinatario || 
-     `${envio.destinatario?.nombre || ''} ${envio.destinatario?.apellido || ''}`.trim() || 
-     "Sin nombre");
-```
-
-### Cambio 3: NewShipment.tsx
-
-**Simplificar condición (línea 1488):**
-
-```typescript
-// ANTES:
-{!esRetiroAlmacenaje && (formData.tipo_pago !== 'cuenta_corriente' || !formData.cliente_cta_cte_id) && (
-
-// DESPUÉS:
-{!esRetiroAlmacenaje && (
-```
+### Seguridad
+- Los choferes siguen sin poder ver envíos de OTROS tenants
+- Solo afecta la visibilidad, no la capacidad de modificar
+- La política de UPDATE sigue requiriendo ser admin o ser el chofer asignado
 
 ---
 
 ## Resultado Esperado
 
-1. **Hoja de reparto**: Mostrará las observaciones/notas de cada envío debajo de su fila correspondiente
-2. **Planificador**: Mostrará el nombre correcto del cliente usando los campos directos del envío
-3. **Nuevo envío**: Los campos del destinatario permanecerán visibles al seleccionar cuenta corriente como método de pago
+Después de aplicar la migración:
+
+1. El chofer Alfred Bernard podrá escanear `ADMIN-ENV-20260128-897A99`
+2. El sistema mostrará los datos del envío correctamente
+3. Podrá proceder con la operación de colecta o entrega según corresponda
