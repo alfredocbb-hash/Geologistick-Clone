@@ -12,12 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Search, MoreHorizontal, Package, Eye, Truck, ShoppingBag, Clock, CheckCircle, XCircle, Printer } from 'lucide-react';
+import { Search, MoreHorizontal, Package, Eye, Truck, ShoppingBag, Clock, CheckCircle, XCircle, Printer, Edit } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from '@/hooks/use-toast';
 import { OrderDetailsDialog } from '@/components/ecommerce/OrderDetailsDialog';
 import { CreateShipmentFromOrderDialog } from '@/components/ecommerce/CreateShipmentFromOrderDialog';
+import { EditOrderAddressDialog } from '@/components/ecommerce/EditOrderAddressDialog';
 import { parseDateString } from '@/lib/dateUtils';
 
 interface Order {
@@ -80,6 +81,7 @@ export default function Orders() {
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [detailsOrder, setDetailsOrder] = useState<Order | null>(null);
   const [createShipmentOrder, setCreateShipmentOrder] = useState<Order | null>(null);
+  const [editOrder, setEditOrder] = useState<Order | null>(null);
 
   // Fetch orders with seller info
   const { data: orders, isLoading } = useQuery({
@@ -332,6 +334,10 @@ export default function Orders() {
                               <Eye className="mr-2 h-4 w-4" />
                               Ver Detalles
                             </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setEditOrder(order)}>
+                              <Edit className="mr-2 h-4 w-4" />
+                              Editar Pedido
+                            </DropdownMenuItem>
                             {!order.envio_id && order.order_status !== 'cancelled' && (
                               <DropdownMenuItem onClick={() => setCreateShipmentOrder(order)}>
                                 <Truck className="mr-2 h-4 w-4" />
@@ -374,6 +380,18 @@ export default function Orders() {
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ['ecommerce-orders'] });
             setCreateShipmentOrder(null);
+          }}
+        />
+      )}
+
+      {editOrder && (
+        <EditOrderAddressDialog
+          open={!!editOrder}
+          onOpenChange={() => setEditOrder(null)}
+          order={editOrder}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['ecommerce-orders'] });
+            setEditOrder(null);
           }}
         />
       )}
