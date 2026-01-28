@@ -1,146 +1,99 @@
 
-# Plan: Corregir Error al Crear Empresa desde Edge Function
+# Plan: Super Admin puede asignar empresa a usuarios
 
-## Problema Identificado
+## Resumen
 
-Al crear una empresa desde el panel de administración, aparece el error:
-**"Edge Function returned a non-2xx status code"**
+Agregar la funcionalidad para que el Super Admin pueda asignar o cambiar la empresa (tenant) de cualquier usuario desde la página de Usuarios.
 
-### Causa Raíz
+## Cambios Necesarios
 
-El trigger `set_sucursal_tenant_id` en la tabla `sucursales` está bloqueando la inserción de la sucursal "Administración" porque:
+### 1. Actualizar Política RLS de Profiles (UPDATE)
 
-1. La Edge Function `create-tenant-with-admin` usa **service role key** para crear la sucursal
-2. Con service role, no hay usuario autenticado en el contexto de Supabase
-3. El trigger intenta verificar si el usuario es super_admin usando `auth.uid()`, que retorna NULL
-4. Como `current_user_is_super_admin()` falla, el trigger sobrescribe `tenant_id` con `current_user_tenant()` (que también es NULL)
-5. El trigger rechaza la operación: `"tenant_id is required for sucursales"`
+La política actual solo permite `is_admin()`, pero necesitamos agregar `is_super_admin()` para que pueda modificar el `tenant_id`:
 
-### Flujo del Error
+| Política Actual | Política Nueva |
+|-----------------|----------------|
+| `is_admin(auth.uid())` | `is_admin(auth.uid()) OR is_super_admin(auth.uid())` |
+
+### 2. Modificar Interfaz de Usuarios (Users.tsx)
+
+Agregar un selector de empresa visible **solo para Super Admins**:
 
 ```text
-Edge Function (service role)
-    ↓
-INSERT INTO sucursales (tenant_id = 'xxx-xxx', ...)
-    ↓
-Trigger: set_sucursal_tenant_id_trigger
-    ↓
-auth.uid() = NULL (no hay usuario en contexto de service role)
-    ↓
-current_user_is_super_admin() = FALSE
-    ↓
-NEW.tenant_id := current_user_tenant() → NULL
-    ↓
-ERROR: tenant_id is required for sucursales
+┌─────────────────────────────────────────┐
+│ Editar Usuario                          │
+├─────────────────────────────────────────┤
+│ Nombre: [___________]                   │
+│ Apellido: [___________]                 │
+│ Teléfono: [___________]                 │
+│                                         │
+│ 🏢 Empresa: [Beraexpress ▼]  ← NUEVO    │
+│    (Solo visible para Super Admin)      │
+│                                         │
+│ Sucursal: [Administración ▼]            │
+│ Roles: [admin] [operador] [+]           │
+│                                         │
+│ [Cancelar] [Guardar]                    │
+└─────────────────────────────────────────┘
 ```
 
----
+## Detalles Técnicos
 
-## Solución Propuesta
-
-Modificar el trigger `set_sucursal_tenant_id` para que **respete el tenant_id proporcionado** cuando ya viene con un valor, independientemente del contexto de autenticación.
-
-### Lógica Actualizada
+### Migración SQL
 
 ```sql
-CREATE OR REPLACE FUNCTION public.set_sucursal_tenant_id()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  -- Si ya viene con tenant_id, respetarlo (permite Edge Functions con service role)
-  IF NEW.tenant_id IS NOT NULL THEN
-    -- Si hay un usuario autenticado y no es super_admin, verificar que pertenezca al tenant
-    IF auth.uid() IS NOT NULL AND NOT public.current_user_is_super_admin() THEN
-      IF NEW.tenant_id != public.current_user_tenant() THEN
-        RAISE EXCEPTION 'No puede crear sucursales en otro tenant';
-      END IF;
-    END IF;
-    RETURN NEW;
-  END IF;
-  
-  -- Si no viene tenant_id, intentar obtenerlo del usuario actual
-  IF auth.uid() IS NOT NULL THEN
-    NEW.tenant_id := public.current_user_tenant();
-  END IF;
-  
-  -- Validación final
-  IF NEW.tenant_id IS NULL THEN
-    RAISE EXCEPTION 'tenant_id is required for sucursales';
-  END IF;
-  
-  RETURN NEW;
-END;
-$$;
+DROP POLICY IF EXISTS "Usuario puede actualizar su perfil" ON profiles;
+
+CREATE POLICY "Usuario puede actualizar su perfil" ON profiles
+FOR UPDATE
+USING (
+  (user_id = auth.uid()) 
+  OR is_admin(auth.uid()) 
+  OR is_super_admin(auth.uid())
+);
 ```
 
-### Cambios Clave
+### Cambios en Users.tsx
 
-| Antes | Después |
-|-------|---------|
-| Siempre sobrescribe tenant_id si no es super_admin | Respeta tenant_id si ya viene con valor |
-| Falla con service role (auth.uid = NULL) | Funciona con service role si tenant_id está presente |
-| No permite Edge Functions crear sucursales | Edge Functions pueden crear con tenant_id explícito |
+1. **Nuevo Query**: Cargar lista de tenants (solo si es super_admin)
+2. **Nuevo Campo en FormData**: `tenant_id`
+3. **Nuevo Selector**: Mostrar dropdown de empresas antes de sucursales
+4. **Lógica de Sucursales**: Filtrar sucursales según el tenant seleccionado
+5. **Actualización**: Incluir `tenant_id` en el update cuando cambie
 
----
+### Flujo de Datos
 
-## Seguridad
-
-La nueva lógica mantiene la seguridad:
-
-1. **Usuarios normales**: Solo pueden crear en su propio tenant (validación explícita)
-2. **Super admins**: Pueden crear en cualquier tenant
-3. **Service role** (Edge Functions): Puede crear con tenant_id explícito (necesario para onboarding)
-4. **Sin tenant_id**: Sigue fallando como antes
-
----
-
-## Migración SQL Requerida
-
-```sql
--- Actualizar trigger para permitir Edge Functions con service role
-CREATE OR REPLACE FUNCTION public.set_sucursal_tenant_id()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  -- Si ya viene con tenant_id, respetarlo (permite Edge Functions con service role)
-  IF NEW.tenant_id IS NOT NULL THEN
-    -- Si hay usuario autenticado y no es super_admin, verificar que pertenezca al tenant
-    IF auth.uid() IS NOT NULL AND NOT public.current_user_is_super_admin() THEN
-      IF NEW.tenant_id != public.current_user_tenant() THEN
-        RAISE EXCEPTION 'No puede crear sucursales en otro tenant';
-      END IF;
-    END IF;
-    RETURN NEW;
-  END IF;
-  
-  -- Si no viene tenant_id, intentar obtenerlo del usuario actual
-  IF auth.uid() IS NOT NULL THEN
-    NEW.tenant_id := public.current_user_tenant();
-  END IF;
-  
-  -- Validación final
-  IF NEW.tenant_id IS NULL THEN
-    RAISE EXCEPTION 'tenant_id is required for sucursales';
-  END IF;
-  
-  RETURN NEW;
-END;
-$$;
+```text
+Super Admin abre editar usuario
+        ↓
+Se cargan los tenants disponibles
+        ↓
+Usuario cambia el tenant
+        ↓
+Las sucursales se filtran por el nuevo tenant
+        ↓
+Se guarda el nuevo tenant_id en profiles
 ```
 
----
+## Consideraciones de Seguridad
+
+- Solo Super Admins pueden ver y cambiar el tenant
+- Los admins normales NO ven este campo
+- La RLS en la base de datos valida que solo super_admin puede modificar tenant_id de otros usuarios
+- Las sucursales se filtran dinámicamente para evitar asignar sucursales de otro tenant
+
+## Archivos a Modificar
+
+| Archivo | Cambio |
+|---------|--------|
+| `supabase/migrations/` | Nueva migración para RLS |
+| `src/pages/Users.tsx` | Agregar selector de tenant |
 
 ## Resultado Esperado
 
-Después de aplicar la migración:
-
-1. El super admin puede crear empresas sin errores
-2. La Edge Function `create-tenant-with-admin` creará la sucursal correctamente
-3. El flujo completo de onboarding funcionará
-4. Los usuarios normales siguen restringidos a su tenant
+1. Super Admin abre la página de Usuarios
+2. Hace clic en "Editar" en cualquier usuario
+3. Ve un nuevo campo "Empresa" con todas las empresas disponibles
+4. Puede cambiar la empresa del usuario
+5. Al guardar, el usuario queda asociado al nuevo tenant
+6. Las sucursales disponibles se actualizan según la empresa seleccionada
