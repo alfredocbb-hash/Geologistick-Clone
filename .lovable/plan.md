@@ -1,137 +1,128 @@
 
-# Plan: Sincronizar Estados entre Envíos y Pedidos E-commerce
+
+# Plan: Editar Dirección de Pedidos y Prevenir Envíos Sin Dirección
 
 ## Problema Identificado
 
-Los pedidos e-commerce muestran "Pendiente" en la columna "Estado" aunque los envíos asociados ya están en estados avanzados (recogido, en_reparto, entregado).
-
-**Datos actuales en la base de datos:**
-| Pedido | order_status | fulfillment_status | envio_id |
-|--------|-------------|-------------------|----------|
-| #100 | pending | shipped | Creado |
-| #101 | pending | processing | Creado |
-| #102 | pending | shipped | Creado |
-
-## Causa Raíz
-
-No existe sincronización entre el estado del `envios` y el `ecommerce_orders`. Los únicos momentos donde se actualiza `ecommerce_orders` son:
-1. Al crear el envío → `fulfillment_status: 'processing'`
-2. Cuando `tiendanube-fulfill` tiene éxito → `fulfillment_status: 'fulfilled'`
-
-Pero nunca se actualiza `order_status` ni `fulfillment_status` cuando el estado del envío cambia (recogido → en_reparto → entregado).
+Algunos pedidos llegan de Tiendanube sin dirección de entrega (cuando el cliente elige "Retiro en local" o hay errores de sincronización). Actualmente:
+- No hay forma de editar el pedido para agregar la dirección
+- Se puede intentar crear un envío sin dirección, lo que causa problemas en planificación
 
 ## Solución Propuesta
 
-Crear un **trigger de base de datos** que sincronice automáticamente los estados cuando el campo `estado` de `envios` cambia.
+### Parte 1: Validar Antes de Crear Envío
 
-### Mapeo de Estados
+Agregar validación en `CreateShipmentFromOrderDialog.tsx` para detectar cuando no hay dirección válida y mostrar advertencia con opción de editar.
 
-| Estado Envío | order_status | fulfillment_status |
-|-------------|-------------|-------------------|
-| pendiente | (sin cambio) | pending |
-| recogido | (sin cambio) | processing |
-| en_bodega | (sin cambio) | processing |
-| en_transito | (sin cambio) | shipped |
-| en_reparto | shipped | shipped |
-| entregado | delivered | delivered |
-| devuelto | (sin cambio) | pending |
-| cancelado | cancelled | pending |
+### Parte 2: Crear Diálogo de Edición de Pedido
 
-### Implementación
+Crear `EditOrderAddressDialog.tsx` que permita:
+- Editar dirección con Google Maps Autocomplete
+- Actualizar ciudad, provincia, código postal
+- Guardar coordenadas para geolocalización
 
-**1. Crear función de sincronización:**
+### Flujo de Usuario
 
-```sql
-CREATE OR REPLACE FUNCTION sync_ecommerce_order_status()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- Solo procesar si el estado cambió
-  IF OLD.estado IS DISTINCT FROM NEW.estado THEN
-    -- Buscar si existe un pedido e-commerce vinculado
-    UPDATE ecommerce_orders
-    SET
-      fulfillment_status = CASE NEW.estado
-        WHEN 'pendiente' THEN 'pending'
-        WHEN 'recogido' THEN 'processing'
-        WHEN 'en_bodega' THEN 'processing'
-        WHEN 'en_transito' THEN 'shipped'
-        WHEN 'en_reparto' THEN 'shipped'
-        WHEN 'entregado' THEN 'delivered'
-        WHEN 'devuelto' THEN 'pending'
-        WHEN 'cancelado' THEN 'pending'
-        ELSE fulfillment_status
-      END,
-      order_status = CASE NEW.estado
-        WHEN 'en_reparto' THEN 'shipped'
-        WHEN 'entregado' THEN 'delivered'
-        WHEN 'cancelado' THEN 'cancelled'
-        ELSE order_status
-      END,
-      updated_at = now()
-    WHERE envio_id = NEW.id;
-  END IF;
-  
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+```text
+┌──────────────────────────────────────────────────────────┐
+│                    Flujo de Validación                   │
+├──────────────────────────────────────────────────────────┤
+│                                                          │
+│  Usuario intenta crear envío                             │
+│          │                                               │
+│          ▼                                               │
+│  ┌────────────────────────┐                              │
+│  │ ¿Tiene shipping_address│                              │
+│  │    válido?             │                              │
+│  └────────────────────────┘                              │
+│          │                                               │
+│    ┌─────┴─────┐                                         │
+│    ▼           ▼                                         │
+│  [SÍ]        [NO]                                        │
+│    │           │                                         │
+│    ▼           ▼                                         │
+│ Mostrar    Mostrar warning                               │
+│ formulario  "Sin dirección"                              │
+│ creación     │                                           │
+│              ▼                                           │
+│         [Editar Pedido]                                  │
+│              │                                           │
+│              ▼                                           │
+│         Diálogo con                                      │
+│         AddressAutocomplete                              │
+│              │                                           │
+│              ▼                                           │
+│         Guardar y recargar                               │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
 ```
 
-**2. Crear el trigger:**
+## Archivos a Crear/Modificar
 
-```sql
-CREATE TRIGGER on_envio_estado_change_sync_ecommerce
-AFTER UPDATE ON envios
-FOR EACH ROW
-EXECUTE FUNCTION sync_ecommerce_order_status();
+| Archivo | Acción | Descripción |
+|---------|--------|-------------|
+| `src/components/ecommerce/EditOrderAddressDialog.tsx` | Crear | Diálogo para editar dirección del pedido |
+| `src/components/ecommerce/CreateShipmentFromOrderDialog.tsx` | Modificar | Agregar validación de dirección vacía |
+| `src/pages/ecommerce/Orders.tsx` | Modificar | Agregar opción "Editar" en menú dropdown |
+
+## Detalles Técnicos
+
+### 1. Nuevo Componente: `EditOrderAddressDialog.tsx`
+
+```tsx
+// Estructura principal
+- Props: order, open, onOpenChange, onSuccess
+- Usar AddressAutocomplete para autocompletado
+- Campos editables:
+  - shipping_address (con autocomplete)
+  - shipping_city
+  - shipping_province  
+  - shipping_postal_code
+  - buyer_phone (por si falta)
+- Al seleccionar dirección: guardar lat/lng automáticamente
+- Mutation para actualizar ecommerce_orders
 ```
 
-**3. Actualizar pedidos existentes (one-time fix):**
+### 2. Validación en `CreateShipmentFromOrderDialog.tsx`
 
-```sql
-UPDATE ecommerce_orders eo
-SET
-  fulfillment_status = CASE e.estado
-    WHEN 'pendiente' THEN 'pending'
-    WHEN 'recogido' THEN 'processing'
-    WHEN 'en_bodega' THEN 'processing'
-    WHEN 'en_transito' THEN 'shipped'
-    WHEN 'en_reparto' THEN 'shipped'
-    WHEN 'entregado' THEN 'delivered'
-    ELSE eo.fulfillment_status
-  END,
-  order_status = CASE e.estado
-    WHEN 'en_reparto' THEN 'shipped'
-    WHEN 'entregado' THEN 'delivered'
-    WHEN 'cancelado' THEN 'cancelled'
-    ELSE eo.order_status
-  END,
-  updated_at = now()
-FROM envios e
-WHERE eo.envio_id = e.id
-AND eo.envio_id IS NOT NULL;
+```tsx
+// Agregar después de la verificación de envio_id existente
+const hasValidAddress = order.shipping_address?.trim().length > 0;
+
+// Si no tiene dirección, mostrar:
+<div className="text-center py-6 space-y-4">
+  <AlertTriangle className="h-16 w-16 text-yellow-500 mx-auto" />
+  <h3>Este pedido no tiene dirección de entrega</h3>
+  <p>Debes agregar una dirección antes de crear el envío.</p>
+  <Button onClick={() => setShowEditAddress(true)}>
+    <Edit className="mr-2 h-4 w-4" />
+    Agregar Dirección
+  </Button>
+</div>
 ```
 
-## Archivos a Modificar
+### 3. Agregar Opción "Editar" en `Orders.tsx`
 
-| Archivo | Cambio |
-|---------|--------|
-| Nueva migración SQL | Crear función + trigger + actualizar datos existentes |
+```tsx
+<DropdownMenuItem onClick={() => setEditOrder(order)}>
+  <Edit className="mr-2 h-4 w-4" />
+  Editar Pedido
+</DropdownMenuItem>
+```
 
 ## Beneficios
 
-1. **Automático**: Los estados se sincronizan sin intervención manual
-2. **Consistente**: No importa dónde cambie el estado del envío
-3. **Retrocompatible**: No afecta la lógica existente de Tiendanube
+- **Prevención**: No se pueden crear envíos sin dirección
+- **Corrección**: El usuario puede arreglar pedidos incompletos
+- **UX**: Flujo guiado desde error hasta solución
+- **Geolocalización**: Al usar autocomplete, se guardan coordenadas
 
-## Riesgo y Complejidad
+## Estimación
 
-- **Riesgo**: Bajo - Solo escribe en `ecommerce_orders` cuando ya existe vínculo
-- **Impacto**: Alto - Resuelve inconsistencias de datos
-- **Tiempo estimado**: 15 minutos
+| Tarea | Tiempo |
+|-------|--------|
+| Crear EditOrderAddressDialog | 20 min |
+| Agregar validación en CreateShipmentFromOrderDialog | 10 min |
+| Integrar en Orders.tsx | 5 min |
+| **Total** | ~35 min |
 
-## Verificación Post-Implementación
-
-1. Confirmar que los pedidos #100, #101, #102 ahora muestran estados correctos
-2. Crear un nuevo envío desde pedido → verificar que `fulfillment_status` = 'processing'
-3. Confirmar retiro → verificar que cambia a 'processing' o 'shipped'
-4. Confirmar entrega → verificar que cambia a 'delivered'
