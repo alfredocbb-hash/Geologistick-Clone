@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -9,8 +9,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, MapPin, User, Package, DollarSign, Printer, CheckCircle, XCircle } from 'lucide-react';
+import { Loader2, MapPin, User, Package, DollarSign, Printer, CheckCircle, XCircle, AlertTriangle, Edit } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { EditOrderAddressDialog } from './EditOrderAddressDialog';
 
 interface Order {
   id: string;
@@ -53,18 +54,20 @@ export function CreateShipmentFromOrderDialog({
 }: CreateShipmentFromOrderDialogProps) {
   const { tenantId } = useTenant();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [precio, setPrecio] = useState<number>(0);
   const [sucursalOrigenId, setSucursalOrigenId] = useState<string>('');
   const [cantidadBultos, setCantidadBultos] = useState<number>(1);
   const [createdEnvio, setCreatedEnvio] = useState<any>(null);
+  const [showEditAddress, setShowEditAddress] = useState(false);
 
-  // Check if order already has a shipment (fresh data)
-  const { data: orderStatus, isLoading: checkingOrder } = useQuery({
+  // Check if order already has a shipment and get fresh address data
+  const { data: orderStatus, isLoading: checkingOrder, refetch: refetchOrderStatus } = useQuery({
     queryKey: ['order-envio-check', order.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('ecommerce_orders')
-        .select('envio_id')
+        .select('envio_id, shipping_address, shipping_lat, shipping_lng')
         .eq('id', order.id)
         .maybeSingle();
       if (error) throw error;
@@ -74,6 +77,7 @@ export function CreateShipmentFromOrderDialog({
   });
 
   const alreadyHasShipment = !!orderStatus?.envio_id;
+  const hasValidAddress = !!(orderStatus?.shipping_address?.trim());
 
   // Fetch seller details
   const { data: seller } = useQuery({
@@ -303,6 +307,44 @@ export function CreateShipmentFromOrderDialog({
                 Cerrar
               </Button>
             </div>
+          </>
+        ) : !hasValidAddress ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>Dirección Requerida</DialogTitle>
+              <DialogDescription>
+                Pedido #{order.external_order_number || order.external_order_id}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="text-center py-6 space-y-4">
+              <div className="flex justify-center">
+                <AlertTriangle className="h-16 w-16 text-yellow-500" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-lg">Este pedido no tiene dirección de entrega</h3>
+                <p className="text-muted-foreground mt-1">
+                  Debes agregar una dirección antes de crear el envío.
+                </p>
+              </div>
+              <div className="flex gap-2 justify-center pt-2">
+                <Button variant="outline" onClick={handleClose}>
+                  Cancelar
+                </Button>
+                <Button onClick={() => setShowEditAddress(true)}>
+                  <Edit className="mr-2 h-4 w-4" />
+                  Agregar Dirección
+                </Button>
+              </div>
+            </div>
+            <EditOrderAddressDialog
+              open={showEditAddress}
+              onOpenChange={setShowEditAddress}
+              order={order}
+              onSuccess={() => {
+                refetchOrderStatus();
+                queryClient.invalidateQueries({ queryKey: ['ecommerce-orders'] });
+              }}
+            />
           </>
         ) : createdEnvio ? (
           <>
