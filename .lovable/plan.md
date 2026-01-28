@@ -1,141 +1,137 @@
 
-# Plan: Corrección de Bugs en EditSellerDialog
+# Plan: Sincronizar Estados entre Envíos y Pedidos E-commerce
 
-## Problema 1: Pantalla en Blanco al Configurar
+## Problema Identificado
 
-### Diagnóstico
-El error proviene de la línea 586 en `EditSellerDialog.tsx`:
-```tsx
-<SelectItem value="">Sin express</SelectItem>
+Los pedidos e-commerce muestran "Pendiente" en la columna "Estado" aunque los envíos asociados ya están en estados avanzados (recogido, en_reparto, entregado).
+
+**Datos actuales en la base de datos:**
+| Pedido | order_status | fulfillment_status | envio_id |
+|--------|-------------|-------------------|----------|
+| #100 | pending | shipped | Creado |
+| #101 | pending | processing | Creado |
+| #102 | pending | shipped | Creado |
+
+## Causa Raíz
+
+No existe sincronización entre el estado del `envios` y el `ecommerce_orders`. Los únicos momentos donde se actualiza `ecommerce_orders` son:
+1. Al crear el envío → `fulfillment_status: 'processing'`
+2. Cuando `tiendanube-fulfill` tiene éxito → `fulfillment_status: 'fulfilled'`
+
+Pero nunca se actualiza `order_status` ni `fulfillment_status` cuando el estado del envío cambia (recogido → en_reparto → entregado).
+
+## Solución Propuesta
+
+Crear un **trigger de base de datos** que sincronice automáticamente los estados cuando el campo `estado` de `envios` cambia.
+
+### Mapeo de Estados
+
+| Estado Envío | order_status | fulfillment_status |
+|-------------|-------------|-------------------|
+| pendiente | (sin cambio) | pending |
+| recogido | (sin cambio) | processing |
+| en_bodega | (sin cambio) | processing |
+| en_transito | (sin cambio) | shipped |
+| en_reparto | shipped | shipped |
+| entregado | delivered | delivered |
+| devuelto | (sin cambio) | pending |
+| cancelado | cancelled | pending |
+
+### Implementación
+
+**1. Crear función de sincronización:**
+
+```sql
+CREATE OR REPLACE FUNCTION sync_ecommerce_order_status()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Solo procesar si el estado cambió
+  IF OLD.estado IS DISTINCT FROM NEW.estado THEN
+    -- Buscar si existe un pedido e-commerce vinculado
+    UPDATE ecommerce_orders
+    SET
+      fulfillment_status = CASE NEW.estado
+        WHEN 'pendiente' THEN 'pending'
+        WHEN 'recogido' THEN 'processing'
+        WHEN 'en_bodega' THEN 'processing'
+        WHEN 'en_transito' THEN 'shipped'
+        WHEN 'en_reparto' THEN 'shipped'
+        WHEN 'entregado' THEN 'delivered'
+        WHEN 'devuelto' THEN 'pending'
+        WHEN 'cancelado' THEN 'pending'
+        ELSE fulfillment_status
+      END,
+      order_status = CASE NEW.estado
+        WHEN 'en_reparto' THEN 'shipped'
+        WHEN 'entregado' THEN 'delivered'
+        WHEN 'cancelado' THEN 'cancelled'
+        ELSE order_status
+      END,
+      updated_at = now()
+    WHERE envio_id = NEW.id;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 ```
 
-Radix UI Select no permite strings vacíos como valor porque el string vacío se usa internamente para limpiar la selección.
+**2. Crear el trigger:**
 
-### Solución
-Cambiar el valor vacío por un placeholder especial como `"none"` o `"__none__"` y ajustar la lógica del formulario:
-
-```tsx
-// Línea 586 - Cambiar de:
-<SelectItem value="">Sin express</SelectItem>
-
-// A:
-<SelectItem value="__none__">Sin express</SelectItem>
+```sql
+CREATE TRIGGER on_envio_estado_change_sync_ecommerce
+AFTER UPDATE ON envios
+FOR EACH ROW
+EXECUTE FUNCTION sync_ecommerce_order_status();
 ```
 
-Y actualizar la lógica de guardado para convertir `"__none__"` a `null`:
-```tsx
-// En el mutationFn, línea 319:
-tarifa_express_id: values.tarifa_express_id === '__none__' 
-  ? null 
-  : (values.tarifa_express_id || null),
+**3. Actualizar pedidos existentes (one-time fix):**
+
+```sql
+UPDATE ecommerce_orders eo
+SET
+  fulfillment_status = CASE e.estado
+    WHEN 'pendiente' THEN 'pending'
+    WHEN 'recogido' THEN 'processing'
+    WHEN 'en_bodega' THEN 'processing'
+    WHEN 'en_transito' THEN 'shipped'
+    WHEN 'en_reparto' THEN 'shipped'
+    WHEN 'entregado' THEN 'delivered'
+    ELSE eo.fulfillment_status
+  END,
+  order_status = CASE e.estado
+    WHEN 'en_reparto' THEN 'shipped'
+    WHEN 'entregado' THEN 'delivered'
+    WHEN 'cancelado' THEN 'cancelled'
+    ELSE eo.order_status
+  END,
+  updated_at = now()
+FROM envios e
+WHERE eo.envio_id = e.id
+AND eo.envio_id IS NOT NULL;
 ```
-
-También actualizar los valores por defecto del formulario:
-```tsx
-// Línea 141 y 178:
-tarifa_express_id: seller.tarifa_express_id || '__none__',
-```
-
----
-
-## Problema 2: Datos se Pierden al Navegar
-
-### Diagnóstico
-Este comportamiento es esperado en formularios que no guardan automáticamente. Cuando navegas fuera de la página:
-1. El componente `EditSellerDialog` se desmonta
-2. El estado local del formulario se pierde
-3. Al volver, el `useQuery` refetch los datos originales del servidor
-
-### Opciones de Solución
-
-**Opción A: Auto-guardado (Recomendado)**
-Implementar guardado automático con debounce cuando el usuario modifica campos. Esto previene pérdida de datos.
-
-**Opción B: Confirmación al salir**
-Mostrar un diálogo de confirmación si hay cambios sin guardar al intentar cerrar.
-
-**Opción C: Estado explicativo**
-Agregar un mensaje visual indicando que los cambios no guardados se perderán.
-
-Para esta corrección, implementaremos la **Opción C** (menor impacto) junto con la corrección del bug principal.
-
----
 
 ## Archivos a Modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/components/ecommerce/EditSellerDialog.tsx` | Corregir SelectItem value vacío, agregar warning de cambios sin guardar |
+| Nueva migración SQL | Crear función + trigger + actualizar datos existentes |
 
-## Cambios Técnicos Detallados
+## Beneficios
 
-### 1. Corregir el SelectItem vacío
+1. **Automático**: Los estados se sincronizan sin intervención manual
+2. **Consistente**: No importa dónde cambie el estado del envío
+3. **Retrocompatible**: No afecta la lógica existente de Tiendanube
 
-```tsx
-// En el Select de tarifa_express_id (línea ~579-594):
-<Select 
-  onValueChange={field.onChange} 
-  value={field.value || '__none__'}
->
-  <FormControl>
-    <SelectTrigger>
-      <SelectValue placeholder="Sin express" />
-    </SelectTrigger>
-  </FormControl>
-  <SelectContent>
-    <SelectItem value="__none__">Sin express</SelectItem>
-    {tarifas?.map((t) => (
-      <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
-    ))}
-  </SelectContent>
-</Select>
-```
+## Riesgo y Complejidad
 
-### 2. Actualizar valores por defecto
+- **Riesgo**: Bajo - Solo escribe en `ecommerce_orders` cuando ya existe vínculo
+- **Impacto**: Alto - Resuelve inconsistencias de datos
+- **Tiempo estimado**: 15 minutos
 
-```tsx
-// Línea 141 (defaultValues) y 178 (reset):
-tarifa_express_id: seller.tarifa_express_id || '__none__',
-```
+## Verificación Post-Implementación
 
-### 3. Lógica de guardado
-
-```tsx
-// En updateMutation.mutationFn (línea ~319):
-tarifa_express_id: values.tarifa_express_id === '__none__' 
-  ? null 
-  : (values.tarifa_express_id || null),
-```
-
-### 4. Agregar indicador de cambios sin guardar (opcional)
-
-```tsx
-// Agregar hook para detectar cambios:
-const isDirty = form.formState.isDirty;
-
-// En el header del dialog:
-{isDirty && (
-  <Alert variant="warning" className="mb-4">
-    <AlertDescription>
-      Tienes cambios sin guardar. Se perderán si cierras sin guardar.
-    </AlertDescription>
-  </Alert>
-)}
-```
-
----
-
-## Verificación
-
-Después de implementar:
-1. Abrir el diálogo "Configurar" de cualquier seller
-2. Verificar que no hay pantalla blanca
-3. Modificar campos y cerrar sin guardar
-4. Verificar el mensaje de advertencia
-5. Guardar cambios y confirmar que se persisten
-
-## Complejidad
-
-- **Impacto:** Bajo (solo un archivo)
-- **Riesgo:** Bajo (cambio localizado)
-- **Tiempo estimado:** 15 minutos
+1. Confirmar que los pedidos #100, #101, #102 ahora muestran estados correctos
+2. Crear un nuevo envío desde pedido → verificar que `fulfillment_status` = 'processing'
+3. Confirmar retiro → verificar que cambia a 'processing' o 'shipped'
+4. Confirmar entrega → verificar que cambia a 'delivered'
