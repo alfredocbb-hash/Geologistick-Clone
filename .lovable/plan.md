@@ -1,160 +1,240 @@
 
-# Plan: Corregir Error de UUID Undefined en Entrega desde APK
+# Plan: Corregir 3 Problemas en Hoja de Reparto, Planificador y Envíos
 
-## Problema Identificado
+## Resumen de Problemas Identificados
 
-El error **"invalid input syntax for type uuid: 'undefined'"** ocurre cuando el usuario Lucas intenta confirmar una entrega desde la APK móvil. Esto sucede porque:
-
-1. El componente intenta insertar registros con `user?.id` cuando el usuario no está completamente autenticado
-2. Si la sesión expiró o hay problemas de sincronización, `user` es `null` y `user?.id` se convierte en la cadena `"undefined"` que PostgreSQL rechaza
-
----
-
-## Archivos Afectados
-
-| Archivo | Problema |
-|---------|----------|
-| `src/components/scan/BranchDeliveryDialog.tsx` | Usa `user?.id` sin validación previa |
-| `src/components/delivery/DeliveryConfirmation.tsx` | Usa `user?.id` sin validación previa |
+| # | Problema | Archivo Afectado | Causa Raíz |
+|---|----------|------------------|------------|
+| 1 | Observaciones no aparecen en hoja de reparto | `PrintPlannedRoute.tsx` | El campo `notas` del envío no se consulta ni muestra |
+| 2 | Nombre "Echevarria" aparece incorrectamente en mapa del planificador | `ShipmentMapPopup.tsx` | No usa `nombre_remitente`/`nombre_destinatario` del envío |
+| 3 | Campos del destinatario desaparecen al seleccionar cuenta corriente | `NewShipment.tsx` | Condición lógica incorrecta oculta la sección |
 
 ---
 
-## Solución Propuesta
+## Problema 1: Observaciones en Hoja de Reparto
 
-### 1. Agregar Validación de Autenticación Antes de Procesar
+### Situación Actual
+- El query obtiene `descripcion` pero NO obtiene el campo `notas` del envío
+- La tabla de paradas no tiene columna para mostrar observaciones
 
-En ambos componentes, agregar verificación temprana de que el usuario está autenticado antes de proceder con la operación:
+### Solución
+1. Agregar `notas` al select del query de envíos
+2. Agregar una fila debajo de cada parada para mostrar las notas cuando existan
+
+### Cambio en Query
+
+Se modificará la consulta para incluir el campo:
+
+```
+envio:envios(
+  tracking_number,
+  ...
+  descripcion,
+  notas,          ← AGREGAR
+  cantidad_bultos,
+  ...
+)
+```
+
+### Cambio en Renderizado
+
+Agregar una fila adicional debajo de cada parada para mostrar observaciones:
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│ # │ Tipo │ Tracking │ Cliente │ Dirección │ Tel │ COD │ ✓ │
+├───┼──────┼──────────┼─────────┼───────────┼─────┼─────┼───┤
+│ 1 │  E   │ GEO-001  │ Juan    │ Calle 123 │ ... │ $50 │ □ │
+│   │      │ 📝 Dejar en portería, tocar timbre 3          │
+├───┼──────┼──────────┼─────────┼───────────┼─────┼─────┼───┤
+│ 2 │  R   │ GEO-002  │ María   │ Av. 456   │ ... │     │ □ │
+└───┴──────┴──────────┴─────────┴───────────┴─────┴─────┴───┘
+```
+
+---
+
+## Problema 2: Nombre Incorrecto en Mapa del Planificador
+
+### Situación Actual
+
+El componente `ShipmentMapPopup.tsx` construye el nombre del cliente así:
 
 ```typescript
-// En handleConfirmDelivery y confirmMutation
-if (!user?.id) {
-  toast.error('Sesión expirada', {
-    description: 'Por favor, inicia sesión nuevamente'
-  });
-  return;
+const clienteNombre = envio.tipo === "retiro"
+  ? `${envio.remitente?.nombre || ''} ${envio.remitente?.apellido || ''}`.trim()
+  : `${envio.destinatario?.nombre || ''} ${envio.destinatario?.apellido || ''}`.trim();
+```
+
+Este código usa los datos de la relación FK con `clientes`, que puede tener datos diferentes a los del envío mismo.
+
+### Causa del Bug
+
+Cuando un envío se importa masivamente o viene del e-commerce:
+- Los campos `nombre_remitente` y `nombre_destinatario` del envío tienen el nombre correcto
+- Pero el FK apunta a un cliente diferente (posiblemente un registro antiguo como "Echevarria")
+
+### Solución
+
+Modificar la lógica para usar primero los campos directos del envío:
+
+```typescript
+const clienteNombre = envio.tipo === "retiro"
+  ? (envio.nombre_remitente || 
+     `${envio.remitente?.nombre || ''} ${envio.remitente?.apellido || ''}`.trim() || 
+     "Sin nombre")
+  : (envio.nombre_destinatario || 
+     `${envio.destinatario?.nombre || ''} ${envio.destinatario?.apellido || ''}`.trim() || 
+     "Sin nombre");
+```
+
+### Actualizar Interface
+
+También se debe actualizar la interfaz `EnvioData` para incluir:
+
+```typescript
+interface EnvioData {
+  // ... campos existentes
+  nombre_remitente?: string;
+  nombre_destinatario?: string;
 }
 ```
 
-### 2. Modificar BranchDeliveryDialog.tsx
+---
 
-**Línea ~138**: Agregar validación al inicio de `handleConfirmDelivery`:
+## Problema 3: Destinatario Desaparece con Cuenta Corriente
 
-```typescript
-const handleConfirmDelivery = async () => {
-  if (!shipment || !validateForm()) return;
-  
-  // NUEVA VALIDACIÓN
-  if (!user?.id) {
-    toast.error('Sesión expirada', {
-      description: 'Por favor, inicia sesión nuevamente'
-    });
-    return;
-  }
+### Situación Actual
 
-  setIsProcessing(true);
-  // ... resto del código
-```
-
-**Líneas 155-170**: Cambiar usos de `user?.id` por `user.id` (ya validado):
+La condición en línea 1488 de `NewShipment.tsx`:
 
 ```typescript
-entregado_por: user.id, // Antes: user?.id
-// ...
-created_by: user.id, // Antes: user?.id
+{!esRetiroAlmacenaje && (formData.tipo_pago !== 'cuenta_corriente' || !formData.cliente_cta_cte_id) && (
+  <Card> {/* Datos del Destinatario */} </Card>
+)}
 ```
 
-### 3. Modificar DeliveryConfirmation.tsx
+Esta lógica significa:
+- Si es retiro almacenaje → NO mostrar destinatario (correcto)
+- Si tipo_pago es cuenta_corriente Y cliente_cta_cte_id está seleccionado → NO mostrar destinatario (INCORRECTO)
 
-**Línea ~133 en mutationFn**: Agregar validación temprana:
+### Por qué está mal
+
+Al seleccionar cuenta corriente:
+1. Usuario elige "Cuenta Corriente" como método de pago
+2. Usuario selecciona el cliente con cta cte
+3. Los campos del destinatario desaparecen
+4. El usuario no puede ingresar datos del destinatario (que puede ser diferente al cliente con cta cte)
+
+### Solución
+
+Cambiar la condición para SOLO ocultar el destinatario en caso de retiro almacenaje:
 
 ```typescript
-mutationFn: async () => {
-  // NUEVA VALIDACIÓN
-  if (!user?.id) {
-    throw new Error('Sesión expirada. Por favor, inicia sesión nuevamente.');
-  }
-
-  const timestamp = Date.now();
-  // ... resto del código
+{!esRetiroAlmacenaje && (
+  <Card> {/* Datos del Destinatario */} </Card>
+)}
 ```
 
-**Líneas donde usa user?.id**: Cambiar a `user.id` después de la validación.
+La cuenta corriente es solo un método de pago y no debe afectar si se muestra o no el destinatario.
+
+---
+
+## Resumen de Archivos a Modificar
+
+| Archivo | Cambios |
+|---------|---------|
+| `src/pages/PrintPlannedRoute.tsx` | Agregar `notas` al query + mostrar observaciones en tabla |
+| `src/components/maps/ShipmentMapPopup.tsx` | Usar `nombre_remitente`/`nombre_destinatario` como prioridad |
+| `src/pages/NewShipment.tsx` | Corregir condición para mostrar destinatario |
 
 ---
 
 ## Sección Técnica
 
-### Cambios en BranchDeliveryDialog.tsx
+### Cambio 1: PrintPlannedRoute.tsx
+
+**Query modificado (líneas 47-64):**
 
 ```typescript
-// Línea 138 - Agregar validación
-const handleConfirmDelivery = async () => {
-  if (!shipment || !validateForm()) return;
-  
-  if (!user?.id) {
-    toast.error('Sesión expirada', {
-      description: 'Por favor, inicia sesión nuevamente'
-    });
-    return;
-  }
-
-  setIsProcessing(true);
-  // ...
+envio:envios(
+  tracking_number,
+  direccion_entrega,
+  direccion_retiro,
+  ciudad_entrega,
+  ciudad_retiro,
+  precio_total,
+  tipo_pago,
+  pago_contra_entrega,
+  descripcion,
+  notas,              // ← AGREGAR
+  cantidad_bultos,
+  nombre_destinatario,
+  nombre_remitente,
+  destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, telefono, direccion),
+  remitente:clientes!envios_remitente_id_fkey(nombre, apellido, telefono, direccion)
+)
 ```
 
+**Renderizado de observaciones (después de cada fila de parada):**
+
 ```typescript
-// Línea 155-156 - Cambiar user?.id por user.id
-entregado_por: user.id,
-
-// Línea 169 - Cambiar user?.id por user.id  
-created_by: user.id,
-
-// Línea 181 - Cambiar user?.id por user.id
-created_by: user.id,
-
-// Línea 195 - Cambiar user?.id por user.id
-created_by: user.id,
+{envio?.notas && (
+  <tr className="bg-amber-50">
+    <td></td>
+    <td colSpan={7} className="px-2 py-1 text-xs italic text-amber-800">
+      📝 {envio.notas}
+    </td>
+  </tr>
+)}
 ```
 
-### Cambios en DeliveryConfirmation.tsx
+### Cambio 2: ShipmentMapPopup.tsx
+
+**Actualizar interfaz (líneas 6-30):**
 
 ```typescript
-// Línea 133 - Agregar validación en mutationFn
-mutationFn: async () => {
-  if (!user?.id) {
-    throw new Error('Sesión expirada. Por favor, inicia sesión nuevamente.');
-  }
-  
-  const timestamp = Date.now();
-  // ...
+interface EnvioData {
+  id: string;
+  tracking_number: string;
+  tipo: "retiro" | "entrega";
+  estado: string;
+  coords?: { lat: number | null; lng: number | null };
+  nombre_remitente?: string;    // ← AGREGAR
+  nombre_destinatario?: string; // ← AGREGAR
+  remitente?: { ... };
+  destinatario?: { ... };
+  // ... resto igual
+}
 ```
 
+**Actualizar lógica de nombre (líneas 52-54):**
+
 ```typescript
-// Línea 173 - Cambiar user?.id por user.id
-created_by: user.id,
+const clienteNombre = envio.tipo === "retiro"
+  ? (envio.nombre_remitente || 
+     `${envio.remitente?.nombre || ''} ${envio.remitente?.apellido || ''}`.trim() || 
+     "Sin nombre")
+  : (envio.nombre_destinatario || 
+     `${envio.destinatario?.nombre || ''} ${envio.destinatario?.apellido || ''}`.trim() || 
+     "Sin nombre");
 ```
 
-### Cambios Adicionales de Seguridad
+### Cambio 3: NewShipment.tsx
 
-También agregar validación en el cálculo de comisiones:
+**Simplificar condición (línea 1488):**
 
 ```typescript
-// Línea 176-177 ya tiene if (!user?.id) return; pero el tipo sigue siendo opcional
-// Después de la validación, usar user.id directamente
-const commissionPromise = (async () => {
-  if (!user?.id) return;
-  
-  // user.id está garantizado aquí
-  // ...
+// ANTES:
+{!esRetiroAlmacenaje && (formData.tipo_pago !== 'cuenta_corriente' || !formData.cliente_cta_cte_id) && (
+
+// DESPUÉS:
+{!esRetiroAlmacenaje && (
 ```
 
 ---
 
 ## Resultado Esperado
 
-Después de aplicar estos cambios:
-
-1. Si el usuario no está autenticado, verá un mensaje claro: **"Sesión expirada - Por favor, inicia sesión nuevamente"**
-2. No se intentarán operaciones de base de datos con valores `undefined`
-3. El usuario podrá refrescar su sesión y volver a intentar la entrega
-4. Se evitarán errores de PostgreSQL relacionados con UUIDs inválidos
+1. **Hoja de reparto**: Mostrará las observaciones/notas de cada envío debajo de su fila correspondiente
+2. **Planificador**: Mostrará el nombre correcto del cliente usando los campos directos del envío
+3. **Nuevo envío**: Los campos del destinatario permanecerán visibles al seleccionar cuenta corriente como método de pago
