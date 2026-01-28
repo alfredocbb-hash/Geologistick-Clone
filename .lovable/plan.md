@@ -1,137 +1,138 @@
 
-# Plan: Corregir RLS para Permitir a Choferes Escanear Envíos de su Tenant
+# Plan: Corregir Error al Crear Empresa desde Edge Function
 
 ## Problema Identificado
 
-El chofer **Alfred Bernard** intenta escanear el envío `ADMIN-ENV-20260128-897A99` pero recibe "Envío no encontrado".
+Al crear una empresa desde el panel de administración, aparece el error:
+**"Edge Function returned a non-2xx status code"**
 
-### Análisis de la Situación
+### Causa Raíz
 
-| Dato | Valor |
-|------|-------|
-| Tracking escaneado | `ADMIN-ENV-20260128-897A99` |
-| Envío existe en BD | ✅ Sí |
-| Tenant del envío | `Beraexpress` |
-| Sucursal origen del envío | `Administración` |
-| Sucursal del chofer | `Berazategui (SUC01)` |
-| Chofer asignado al envío | ❌ Ninguno (`chofer_id = NULL`) |
+El trigger `set_sucursal_tenant_id` en la tabla `sucursales` está bloqueando la inserción de la sucursal "Administración" porque:
 
-### Política RLS Actual para SELECT en `envios`
+1. La Edge Function `create-tenant-with-admin` usa **service role key** para crear la sucursal
+2. Con service role, no hay usuario autenticado en el contexto de Supabase
+3. El trigger intenta verificar si el usuario es super_admin usando `auth.uid()`, que retorna NULL
+4. Como `current_user_is_super_admin()` falla, el trigger sobrescribe `tenant_id` con `current_user_tenant()` (que también es NULL)
+5. El trigger rechaza la operación: `"tenant_id is required for sucursales"`
+
+### Flujo del Error
 
 ```text
-tenant_id = current_user_tenant() 
-AND (
-    is_admin() 
-    OR has_role('supervisor') 
-    OR sucursal_origen_id = get_user_sucursal()  ← FALLA (diferente sucursal)
-    OR sucursal_destino_id = get_user_sucursal() ← FALLA (NULL)
-    OR chofer_id = auth.uid()                     ← FALLA (NULL)
-    OR created_by = auth.uid()                    ← FALLA (otro usuario)
-)
+Edge Function (service role)
+    ↓
+INSERT INTO sucursales (tenant_id = 'xxx-xxx', ...)
+    ↓
+Trigger: set_sucursal_tenant_id_trigger
+    ↓
+auth.uid() = NULL (no hay usuario en contexto de service role)
+    ↓
+current_user_is_super_admin() = FALSE
+    ↓
+NEW.tenant_id := current_user_tenant() → NULL
+    ↓
+ERROR: tenant_id is required for sucursales
 ```
-
-**Resultado**: El chofer no cumple ninguna condición, por lo tanto RLS bloquea la lectura.
-
----
-
-## Contexto de Negocio
-
-Los choferes necesitan poder escanear CUALQUIER envío de su empresa para:
-
-1. **En bodega**: Cargar envíos a su ruta (aún sin asignar)
-2. **En sucursal partner**: Recibir envíos para última milla
-3. **En la calle**: Verificar datos de un paquete encontrado
-
-La restricción actual impide que un chofer escanee envíos que:
-- Fueron creados en otra sucursal
-- No tienen chofer asignado todavía
-- Están destinados a sucursales diferentes
 
 ---
 
 ## Solución Propuesta
 
-### Opción A: Agregar rol `chofer` a la política RLS (Recomendado)
+Modificar el trigger `set_sucursal_tenant_id` para que **respete el tenant_id proporcionado** cuando ya viene con un valor, independientemente del contexto de autenticación.
 
-Modificar la política para que los choferes puedan ver todos los envíos de su tenant:
+### Lógica Actualizada
 
 ```sql
-ALTER POLICY "Ver envíos de su tenant" ON envios
-USING (
-  (
-    tenant_id = current_user_tenant() 
-    AND (
-      is_admin(auth.uid()) 
-      OR has_role(auth.uid(), 'supervisor')
-      OR has_role(auth.uid(), 'chofer')        -- ← AGREGAR
-      OR has_role(auth.uid(), 'operador')      -- ← AGREGAR
-      OR has_role(auth.uid(), 'bodega')        -- ← AGREGAR
-      OR sucursal_origen_id = get_user_sucursal(auth.uid()) 
-      OR sucursal_destino_id = get_user_sucursal(auth.uid()) 
-      OR chofer_id = auth.uid() 
-      OR created_by = auth.uid()
-    )
-  ) 
-  OR is_super_admin(auth.uid())
-);
+CREATE OR REPLACE FUNCTION public.set_sucursal_tenant_id()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  -- Si ya viene con tenant_id, respetarlo (permite Edge Functions con service role)
+  IF NEW.tenant_id IS NOT NULL THEN
+    -- Si hay un usuario autenticado y no es super_admin, verificar que pertenezca al tenant
+    IF auth.uid() IS NOT NULL AND NOT public.current_user_is_super_admin() THEN
+      IF NEW.tenant_id != public.current_user_tenant() THEN
+        RAISE EXCEPTION 'No puede crear sucursales en otro tenant';
+      END IF;
+    END IF;
+    RETURN NEW;
+  END IF;
+  
+  -- Si no viene tenant_id, intentar obtenerlo del usuario actual
+  IF auth.uid() IS NOT NULL THEN
+    NEW.tenant_id := public.current_user_tenant();
+  END IF;
+  
+  -- Validación final
+  IF NEW.tenant_id IS NULL THEN
+    RAISE EXCEPTION 'tenant_id is required for sucursales';
+  END IF;
+  
+  RETURN NEW;
+END;
+$$;
 ```
 
-### Justificación
+### Cambios Clave
 
-Los roles que necesitan ver todos los envíos del tenant son:
-- **chofer**: Para cargar y escanear en bodega
-- **operador**: Para gestionar operaciones
-- **bodega**: Para recibir y despachar
+| Antes | Después |
+|-------|---------|
+| Siempre sobrescribe tenant_id si no es super_admin | Respeta tenant_id si ya viene con valor |
+| Falla con service role (auth.uid = NULL) | Funciona con service role si tenant_id está presente |
+| No permite Edge Functions crear sucursales | Edge Functions pueden crear con tenant_id explícito |
 
-Esto alinea con la memoria existente que indica que los choferes deben poder ver todos los envíos de su empresa.
+---
+
+## Seguridad
+
+La nueva lógica mantiene la seguridad:
+
+1. **Usuarios normales**: Solo pueden crear en su propio tenant (validación explícita)
+2. **Super admins**: Pueden crear en cualquier tenant
+3. **Service role** (Edge Functions): Puede crear con tenant_id explícito (necesario para onboarding)
+4. **Sin tenant_id**: Sigue fallando como antes
 
 ---
 
 ## Migración SQL Requerida
 
 ```sql
--- Actualizar política RLS para envios (SELECT)
-DROP POLICY IF EXISTS "Ver envíos de su tenant" ON envios;
-
-CREATE POLICY "Ver envíos de su tenant" ON envios
-FOR SELECT
-USING (
-  (
-    (tenant_id = current_user_tenant())
-    AND (
-      is_admin(auth.uid())
-      OR has_role(auth.uid(), 'supervisor'::app_role)
-      OR has_role(auth.uid(), 'chofer'::app_role)
-      OR has_role(auth.uid(), 'operador'::app_role)
-      OR has_role(auth.uid(), 'bodega'::app_role)
-      OR (sucursal_origen_id = get_user_sucursal(auth.uid()))
-      OR (sucursal_destino_id = get_user_sucursal(auth.uid()))
-      OR (chofer_id = auth.uid())
-      OR (created_by = auth.uid())
-    )
-  )
-  OR is_super_admin(auth.uid())
-);
+-- Actualizar trigger para permitir Edge Functions con service role
+CREATE OR REPLACE FUNCTION public.set_sucursal_tenant_id()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  -- Si ya viene con tenant_id, respetarlo (permite Edge Functions con service role)
+  IF NEW.tenant_id IS NOT NULL THEN
+    -- Si hay usuario autenticado y no es super_admin, verificar que pertenezca al tenant
+    IF auth.uid() IS NOT NULL AND NOT public.current_user_is_super_admin() THEN
+      IF NEW.tenant_id != public.current_user_tenant() THEN
+        RAISE EXCEPTION 'No puede crear sucursales en otro tenant';
+      END IF;
+    END IF;
+    RETURN NEW;
+  END IF;
+  
+  -- Si no viene tenant_id, intentar obtenerlo del usuario actual
+  IF auth.uid() IS NOT NULL THEN
+    NEW.tenant_id := public.current_user_tenant();
+  END IF;
+  
+  -- Validación final
+  IF NEW.tenant_id IS NULL THEN
+    RAISE EXCEPTION 'tenant_id is required for sucursales';
+  END IF;
+  
+  RETURN NEW;
+END;
+$$;
 ```
-
----
-
-## Impacto
-
-### Antes del Cambio
-- Choferes solo ven envíos de su sucursal o asignados a ellos
-- No pueden escanear envíos de otras sucursales del mismo tenant
-- Error "Envío no encontrado" al escanear paquetes sin asignar
-
-### Después del Cambio
-- Choferes pueden ver todos los envíos de su empresa (tenant)
-- Pueden escanear cualquier paquete en bodega para cargarlo a su ruta
-- Pueden verificar datos de cualquier envío de la empresa
-
-### Seguridad
-- Los choferes siguen sin poder ver envíos de OTROS tenants
-- Solo afecta la visibilidad, no la capacidad de modificar
-- La política de UPDATE sigue requiriendo ser admin o ser el chofer asignado
 
 ---
 
@@ -139,6 +140,7 @@ USING (
 
 Después de aplicar la migración:
 
-1. El chofer Alfred Bernard podrá escanear `ADMIN-ENV-20260128-897A99`
-2. El sistema mostrará los datos del envío correctamente
-3. Podrá proceder con la operación de colecta o entrega según corresponda
+1. El super admin puede crear empresas sin errores
+2. La Edge Function `create-tenant-with-admin` creará la sucursal correctamente
+3. El flujo completo de onboarding funcionará
+4. Los usuarios normales siguen restringidos a su tenant
