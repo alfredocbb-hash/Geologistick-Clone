@@ -138,7 +138,7 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
       // Shipping options
       min_delivery_days: seller.min_delivery_days || 3,
       max_delivery_days: seller.max_delivery_days || 5,
-      tarifa_express_id: seller.tarifa_express_id || '',
+      tarifa_express_id: seller.tarifa_express_id || '__none__',
       express_delivery_days: seller.express_delivery_days || 1,
       express_surcharge: seller.express_surcharge || 0,
       permite_pickup: seller.permite_pickup || false,
@@ -175,7 +175,7 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
         // Shipping options
         min_delivery_days: seller.min_delivery_days || 3,
         max_delivery_days: seller.max_delivery_days || 5,
-        tarifa_express_id: seller.tarifa_express_id || '',
+        tarifa_express_id: seller.tarifa_express_id || '__none__',
         express_delivery_days: seller.express_delivery_days || 1,
         express_surcharge: seller.express_surcharge || 0,
         permite_pickup: seller.permite_pickup || false,
@@ -316,7 +316,7 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
           // Shipping options
           min_delivery_days: values.min_delivery_days,
           max_delivery_days: values.max_delivery_days,
-          tarifa_express_id: values.tarifa_express_id || null,
+          tarifa_express_id: values.tarifa_express_id === '__none__' ? null : (values.tarifa_express_id || null),
           express_delivery_days: values.express_delivery_days,
           express_surcharge: values.express_surcharge,
           permite_pickup: values.permite_pickup,
@@ -353,6 +353,14 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
             Modifica la configuración de {seller.nombre}
           </DialogDescription>
         </DialogHeader>
+
+        {form.formState.isDirty && (
+          <Alert className="border-amber-200 bg-amber-50 text-amber-800">
+            <AlertDescription>
+              Tienes cambios sin guardar. Se perderán si cierras sin guardar.
+            </AlertDescription>
+          </Alert>
+        )}
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -576,14 +584,14 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Tarifa Express</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
+                        <Select onValueChange={field.onChange} value={field.value || '__none__'}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Sin express" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="">Sin express</SelectItem>
+                            <SelectItem value="__none__">Sin express</SelectItem>
                             {tarifas?.map((t) => (
                               <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
                             ))}
