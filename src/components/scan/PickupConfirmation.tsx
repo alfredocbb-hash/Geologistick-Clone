@@ -61,7 +61,7 @@ export default function PickupConfirmation({ shipment, onClose, onSuccess }: Pic
       if (updateError) throw updateError;
 
       // Add history entry
-      const { error: historyError } = await supabase
+      const historyPromise = supabase
         .from('envio_historial')
         .insert({
           envio_id: shipment.id,
@@ -72,7 +72,21 @@ export default function PickupConfirmation({ shipment, onClose, onSuccess }: Pic
           created_by: user?.id,
         });
 
-      if (historyError) throw historyError;
+      // Notify Tiendanube fulfillment (sends "on its way" email to customer)
+      const fulfillPromise = (async () => {
+        try {
+          await supabase.functions.invoke('tiendanube-fulfill', {
+            body: { envio_id: shipment.id }
+          });
+        } catch (e) {
+          // Log but don't fail the pickup confirmation
+          console.log('Tiendanube fulfillment notification skipped or failed:', e);
+        }
+      })();
+
+      const results = await Promise.all([historyPromise, fulfillPromise]);
+      const historyResult = results[0];
+      if (historyResult.error) throw historyResult.error;
     },
     onMutate: async () => {
       await queryClient.cancelQueries({ queryKey: ['my-active-route-paradas'] });

@@ -149,6 +149,7 @@ function AppRoutes() {
       <Route path="/tiendanube/config" element={<TiendanubeConfig />} />
       <Route path="/onboarding" element={<Onboarding />} />
       <Route path="/onboarding" element={<Onboarding />} />
+      <Route path="/tracking/:code" element={<Tracking />} />
       <Route path="/tracking" element={<Tracking />} />
       <Route path="/tracking-embed" element={<TrackingEmbed />} />
       
