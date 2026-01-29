@@ -1,135 +1,121 @@
 
-# Plan: Fondo Oscuro en Login Web + Marca de Agua en Etiquetas
-
-## 1. Fondo Oscuro en Login Web
-
-### Problema Actual
-El login web (`src/components/auth/LoginForm.tsx`) usa un fondo claro:
-```tsx
-<div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-accent/5 p-4">
-```
-
-### Solución
-Aplicar el mismo estilo del login móvil (`MobileLoginScreen.tsx`):
-- Fondo oscuro `bg-slate-950`
-- Orbs de gradiente animados
-- Grid pattern sutil
-- Iconos flotantes animados
-- Efecto glassmorphism en la tarjeta
-- Textos en colores claros
-
-### Cambios en `src/components/auth/LoginForm.tsx`
-
-| Elemento | Actual | Nuevo |
-|----------|--------|-------|
-| Contenedor principal | `bg-gradient-to-br from-primary/5...` | `bg-slate-950` con orbs animados |
-| Logo | `shadow-colored` | Efecto glow con `blur-xl animate-pulse` |
-| Título | `text-foreground` | `text-white` |
-| Subtítulo | `text-muted-foreground` | `text-slate-400` |
-| Card | `bg-card/80 backdrop-blur-sm` | `bg-slate-900/60 backdrop-blur-xl border-slate-800/50` |
-| Labels | Por defecto | `text-slate-300` |
-| Inputs | Por defecto | `bg-slate-800/50 border-slate-700/50 text-white` |
-| Footer | `text-muted-foreground` | `text-slate-600` |
+# Plan: Alternativa de Pagos para Argentina + Generador de Comprobante de Envío
 
 ---
 
-## 2. Marca de Agua en Etiquetas de Impresión
+## 1. Alternativa a Stripe para Argentina
 
-### Objetivo
-Agregar el logo de la empresa emisora del envío como marca de agua semitransparente en el fondo de cada etiqueta impresa.
+**Buenas noticias:** Ya tienen **Mercado Pago** completamente integrado en el sistema. Esta es la mejor alternativa para Argentina porque:
 
-### Flujo de Datos
+| Característica | Mercado Pago |
+|----------------|--------------|
+| País | Argentina (nativo) |
+| Requisitos | Solo DNI/CUIT y cuenta bancaria argentina |
+| Moneda | Pesos Argentinos (ARS) |
+| Comisión | 3.99% + IVA por transacción |
+| QR/Link de pago | Sí |
+| Webhooks | Configurados en el sistema |
+
+**Ubicación en el sistema:**
+- Configuración en: **Configuración > Integraciones > Mercado Pago**
+- Edge functions: `mercadopago-payment` y `mercadopago-webhook`
+
+Solo necesitan configurar sus credenciales de Mercado Pago (Access Token y Public Key) desde el [portal de desarrolladores de Mercado Pago](https://www.mercadopago.com.ar/developers/panel).
+
+---
+
+## 2. Generador de Comprobante de Envío (Guía de Despacho)
+
+Basándome en la imagen de referencia, crearé un nuevo comprobante que incluya:
+
+### Estructura del Comprobante
 
 ```text
-envio.tenant_id → tenant_branding.logo_light → Marca de agua en etiqueta
+┌─────────────────────────────────────────────────────┐
+│  [LOGO EMPRESA]            Guía Nº: XXX-ENV-XXXX   │
+│  Dirección de sucursal     Fecha: 29/01/2026       │
+│  Teléfono                  DOCUMENTO NO VÁLIDO...   │
+├─────────────────────────────────────────────────────┤
+│  ORIGEN: [Ciudad]          DESTINO: [Ciudad]       │
+├─────────────────────────────────────────────────────┤
+│  Remitente: [Nombre]       Destinatario: [Nombre]  │
+│  Domicilio: [Dirección]    Domicilio: [Dirección]  │
+│  Teléfono: [Número]        Teléfono: [Número]      │
+├─────────────────────────────────────────────────────┤
+│  Cond. Venta: [Tipo Pago]  DNI: [xxx]              │
+├───────────────────────┬─────────────────────────────┤
+│  DESCRIPCIÓN PRODUCTO │          CONCEPTOS         │
+├───────────────────────┼─────────────────────────────┤
+│  Bultos: X            │  Flete:         $x.xxx,xx  │
+│  Descripción          │  Seguro:        $x.xxx,xx  │
+│  Peso: X kg           │  Adicionales:   $x.xxx,xx  │
+│  Valor Declarado: $   │                            │
+├───────────────────────┴─────────────────────────────┤
+│  [QR CODE]                       TOTAL: $XX.XXX,XX │
+│  Escanear para tracking                            │
+├─────────────────────────────────────────────────────┤
+│  REMITENTE          │  DESTINATARIO                │
+│  ─────────────      │  ─────────────               │
+│  FIRMA              │  FIRMA Y ACLARACIÓN          │
+│                     │                              │
+│  ─────────────      │  ─────────────  ──────────   │
+│  ACLARACIÓN         │  DOCUMENTO      FECHA        │
+├─────────────────────────────────────────────────────┤
+│  Observaciones:                                     │
+│  Declaro que esta encomienda no contiene dinero    │
+│  ni valores negociables.                           │
+├─────────────────────────────────────────────────────┤
+│                                    COPIA AGENCIA   │
+└─────────────────────────────────────────────────────┘
 ```
 
-### Cambios en `src/pages/PrintLabel.tsx`
+### Características del Comprobante
 
-#### A. Obtener el branding del tenant
-Modificar la query existente para incluir el branding:
+1. **Código QR integrado**: Enlaza directamente a `/tracking?q=[tracking_number]`
+2. **Datos del envío completos**: Origen, destino, remitente, destinatario
+3. **Desglose de costos**: Flete, seguro, adicionales, total
+4. **Espacios para firmas**: Remitente y destinatario
+5. **Declaración legal**: "No contiene dinero ni valores negociables"
+6. **Marca "COPIA AGENCIA" / "COPIA CLIENTE"**: Para distinguir copias
+7. **Branding del tenant**: Logo y colores de la empresa emisora
 
-```tsx
-// Agregar a la query del envío
-const { data: envio, ... } = useQuery({
-  queryFn: async () => {
-    // ... query existente del envío ...
-    
-    // Obtener branding si hay tenant_id
-    let logoUrl = null;
-    if (data.tenant_id) {
-      const { data: branding } = await supabase
-        .from('tenant_branding')
-        .select('logo_light')
-        .eq('tenant_id', data.tenant_id)
-        .single();
-      logoUrl = branding?.logo_light;
-    }
-    
-    return { ...data, logoUrl };
-  }
-});
+### Archivos a Crear/Modificar
+
+| Archivo | Descripción |
+|---------|-------------|
+| `src/lib/generateShipmentReceiptPDF.ts` | **NUEVO** - Generador del PDF del comprobante |
+| `src/pages/PrintReceipt.tsx` | **NUEVO** - Página para vista previa e impresión |
+| `src/components/shipments/ShipmentDetailsDialog.tsx` | Agregar botón "Comprobante" |
+| `src/App.tsx` | Agregar ruta `/print-receipt` |
+
+### Flujo de Uso
+
+1. Usuario crea envío o abre detalles de un envío existente
+2. Hace clic en botón **"Comprobante"** 
+3. Se abre `/print-receipt?id=XXX`
+4. Ve la vista previa del comprobante con QR
+5. Puede elegir: "Copia Agencia" o "Copia Cliente"
+6. Imprime o descarga PDF
+
+### Detalle Técnico del QR
+
+El código QR contendrá la URL completa de tracking:
+```
+https://[dominio]/tracking?q=[tracking_number]
 ```
 
-#### B. Agregar estilos CSS para marca de agua
-
-```css
-.label {
-  position: relative;
-  /* ...estilos existentes... */
-}
-
-.watermark {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 60%;
-  height: auto;
-  opacity: 0.06;
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* Asegurar que el contenido esté sobre la marca de agua */
-.label > *:not(.watermark) {
-  position: relative;
-  z-index: 1;
-}
-```
-
-#### C. Agregar elemento de marca de agua en HTML
-
-```html
-<div class="label">
-  <!-- Watermark -->
-  ${logoUrl ? `<img src="${logoUrl}" class="watermark" alt="" />` : ''}
-  
-  <!-- ... resto del contenido existente ... -->
-</div>
-```
-
-#### D. Actualizar vista previa
-Agregar la marca de agua también en la vista previa de React con el mismo efecto visual.
+Esto permite al cliente escanear con cualquier app de QR y acceder directamente al seguimiento de su envío.
 
 ---
 
-## Resumen de Archivos a Modificar
+## Resumen de Implementación
 
-| Archivo | Cambio |
-|---------|--------|
-| `src/components/auth/LoginForm.tsx` | Rediseño con fondo oscuro estilo mobile |
-| `src/pages/PrintLabel.tsx` | Obtener logo del tenant + agregar marca de agua |
+| Tarea | Tipo | Prioridad |
+|-------|------|-----------|
+| Mercado Pago | ✅ Ya implementado | Solo configurar credenciales |
+| Crear `generateShipmentReceiptPDF.ts` | Nuevo archivo | Alta |
+| Crear `PrintReceipt.tsx` | Nueva página | Alta |
+| Agregar ruta `/print-receipt` | Modificación | Alta |
+| Agregar botón "Comprobante" en ShipmentDetailsDialog | Modificación | Alta |
 
----
-
-## Detalles Técnicos
-
-### Marca de agua CSS optimizada para impresión B&W
-- Opacidad muy baja (6%) para no interferir con la lectura
-- Posición centrada fija
-- Compatible con `print-color-adjust: exact` para impresoras láser
-- La imagen debe poder cargarse antes de imprimir (se usará `onload`)
-
-### Consideración de fallback
-Si el envío no tiene `tenant_id` o el tenant no tiene logo configurado, simplemente no se mostrará marca de agua (comportamiento actual).
+El comprobante generado será profesional, incluirá el branding de cada empresa y permitirá al cliente rastrear su envío escaneando el QR.
