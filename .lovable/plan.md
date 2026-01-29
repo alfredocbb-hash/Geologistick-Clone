@@ -1,42 +1,135 @@
 
-# Plan: Corregir Fecha en Rutas Activas (Problema de Timezone)
+# Plan: Fondo Oscuro en Login Web + Marca de Agua en Etiquetas
 
-## Problema Identificado
+## 1. Fondo Oscuro en Login Web
 
-La ruta de Kevin Bernard (`RP-20260129-7761`) se guarda correctamente con fecha **2026-01-29** en la base de datos, pero se muestra como **28/01/2026** en la interfaz.
-
-**Causa raíz:** 
-En la línea 1359 de `RoutePlanner.tsx`, se usa `new Date(ruta.fecha)` directamente. Cuando JavaScript parsea una fecha en formato `YYYY-MM-DD`, la interpreta como medianoche UTC, y luego la convierte a hora local (Argentina = UTC-3), resultando en el día anterior.
-
-```
-Base de datos: "2026-01-29" (fecha correcta)
-→ new Date("2026-01-29") → 2026-01-29T00:00:00Z (UTC)
-→ En Argentina (UTC-3) → 2026-01-28T21:00:00 local ❌
+### Problema Actual
+El login web (`src/components/auth/LoginForm.tsx`) usa un fondo claro:
+```tsx
+<div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-accent/5 p-4">
 ```
 
-## Solución
+### Solución
+Aplicar el mismo estilo del login móvil (`MobileLoginScreen.tsx`):
+- Fondo oscuro `bg-slate-950`
+- Orbs de gradiente animados
+- Grid pattern sutil
+- Iconos flotantes animados
+- Efecto glassmorphism en la tarjeta
+- Textos en colores claros
 
-Usar la función `parseDateString` de `src/lib/dateUtils.ts` que ya existe en el proyecto y está diseñada exactamente para este problema. Esta función extrae los componentes de la fecha sin conversión de timezone.
+### Cambios en `src/components/auth/LoginForm.tsx`
 
-## Cambio Técnico
+| Elemento | Actual | Nuevo |
+|----------|--------|-------|
+| Contenedor principal | `bg-gradient-to-br from-primary/5...` | `bg-slate-950` con orbs animados |
+| Logo | `shadow-colored` | Efecto glow con `blur-xl animate-pulse` |
+| Título | `text-foreground` | `text-white` |
+| Subtítulo | `text-muted-foreground` | `text-slate-400` |
+| Card | `bg-card/80 backdrop-blur-sm` | `bg-slate-900/60 backdrop-blur-xl border-slate-800/50` |
+| Labels | Por defecto | `text-slate-300` |
+| Inputs | Por defecto | `bg-slate-800/50 border-slate-700/50 text-white` |
+| Footer | `text-muted-foreground` | `text-slate-600` |
+
+---
+
+## 2. Marca de Agua en Etiquetas de Impresión
+
+### Objetivo
+Agregar el logo de la empresa emisora del envío como marca de agua semitransparente en el fondo de cada etiqueta impresa.
+
+### Flujo de Datos
+
+```text
+envio.tenant_id → tenant_branding.logo_light → Marca de agua en etiqueta
+```
+
+### Cambios en `src/pages/PrintLabel.tsx`
+
+#### A. Obtener el branding del tenant
+Modificar la query existente para incluir el branding:
+
+```tsx
+// Agregar a la query del envío
+const { data: envio, ... } = useQuery({
+  queryFn: async () => {
+    // ... query existente del envío ...
+    
+    // Obtener branding si hay tenant_id
+    let logoUrl = null;
+    if (data.tenant_id) {
+      const { data: branding } = await supabase
+        .from('tenant_branding')
+        .select('logo_light')
+        .eq('tenant_id', data.tenant_id)
+        .single();
+      logoUrl = branding?.logo_light;
+    }
+    
+    return { ...data, logoUrl };
+  }
+});
+```
+
+#### B. Agregar estilos CSS para marca de agua
+
+```css
+.label {
+  position: relative;
+  /* ...estilos existentes... */
+}
+
+.watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 60%;
+  height: auto;
+  opacity: 0.06;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Asegurar que el contenido esté sobre la marca de agua */
+.label > *:not(.watermark) {
+  position: relative;
+  z-index: 1;
+}
+```
+
+#### C. Agregar elemento de marca de agua en HTML
+
+```html
+<div class="label">
+  <!-- Watermark -->
+  ${logoUrl ? `<img src="${logoUrl}" class="watermark" alt="" />` : ''}
+  
+  <!-- ... resto del contenido existente ... -->
+</div>
+```
+
+#### D. Actualizar vista previa
+Agregar la marca de agua también en la vista previa de React con el mismo efecto visual.
+
+---
+
+## Resumen de Archivos a Modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/pages/RoutePlanner.tsx` | Importar `parseDateString` de `@/lib/dateUtils` |
-| | Línea 1359: Cambiar `new Date(ruta.fecha)` por `parseDateString(ruta.fecha)` |
+| `src/components/auth/LoginForm.tsx` | Rediseño con fondo oscuro estilo mobile |
+| `src/pages/PrintLabel.tsx` | Obtener logo del tenant + agregar marca de agua |
 
-### Código Actual (línea 1359):
-```tsx
-{format(new Date(ruta.fecha), "dd/MM/yyyy", { locale: es })}
-```
+---
 
-### Código Corregido:
-```tsx
-{format(parseDateString(ruta.fecha), "dd/MM/yyyy", { locale: es })}
-```
+## Detalles Técnicos
 
-## Resultado Esperado
+### Marca de agua CSS optimizada para impresión B&W
+- Opacidad muy baja (6%) para no interferir con la lectura
+- Posición centrada fija
+- Compatible con `print-color-adjust: exact` para impresoras láser
+- La imagen debe poder cargarse antes de imprimir (se usará `onload`)
 
-- La ruta `RP-20260129-7761` de Kevin Bernard mostrará **29/01/2026** (correcto)
-- Todas las rutas activas mostrarán la fecha exacta guardada en la base de datos
-- Consistencia con otras partes del sistema que ya usan `parseDateString`
+### Consideración de fallback
+Si el envío no tiene `tenant_id` o el tenant no tiene logo configurado, simplemente no se mostrará marca de agua (comportamiento actual).
