@@ -45,6 +45,7 @@ import ScanQR from "./pages/ScanQR";
 import Vehicles from "./pages/Vehicles";
 import RouteSheets from "./pages/RouteSheets";
 import PrintRouteSheet from "./pages/PrintRouteSheet";
+import PrintReceipt from "./pages/PrintReceipt";
 import PrintPlannedRoute from "./pages/PrintPlannedRoute";
 import RoutePlanner from "./pages/RoutePlanner";
 import LiveMap from "./pages/LiveMap";
@@ -161,6 +162,7 @@ function AppRoutes() {
       <Route path="/shipments" element={<DashboardLayout><Shipments /></DashboardLayout>} />
       <Route path="/shipments/new" element={<DashboardLayout><NewShipment /></DashboardLayout>} />
       <Route path="/print-label" element={<PrintLabel />} />
+      <Route path="/print-receipt" element={<PrintReceipt />} />
       
       {/* Operaciones */}
       <Route path="/scan" element={<DashboardLayout><ScanQR /></DashboardLayout>} />
