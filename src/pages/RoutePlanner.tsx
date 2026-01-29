@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { supabase } from "@/integrations/supabase/client";
+import { parseDateString } from "@/lib/dateUtils";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1356,7 +1357,7 @@ export default function RoutePlanner() {
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-sm text-muted-foreground">
-                            {format(new Date(ruta.fecha), "dd/MM/yyyy", { locale: es })}
+                            {format(parseDateString(ruta.fecha), "dd/MM/yyyy", { locale: es })}
                           </span>
                           <Button 
                             variant="outline" 
