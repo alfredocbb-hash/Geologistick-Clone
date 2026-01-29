@@ -46,8 +46,9 @@ import {
   ConceptBranchesDialog,
   InsuranceConfigDialog,
   BulkRateUpdateDialog,
+  WeightRangesEditor,
 } from '@/components/rates';
-import type { RateType } from '@/components/rates';
+import type { RateType, WeightRange } from '@/components/rates';
 
 interface Tarifa {
   id: string;
@@ -68,6 +69,8 @@ interface Tarifa {
     volumen_base_hasta?: number;
     adicional_por_m3?: number;
   } | null;
+  rangos_kg: WeightRange[] | null;
+  umbral_volumen_cm: number | null;
   created_at: string | null;
 }
 
@@ -124,6 +127,9 @@ export default function Rates() {
     adicional_por_kg: '',
     volumen_base_hasta: '',
     adicional_por_m3: '',
+    // Rangos de peso escalonados
+    rangos_kg: [] as WeightRange[],
+    umbral_volumen_cm: 50,
     // Conceptos inline
     conceptos: {} as Record<string, { monto: string; es_porcentaje: boolean; porcentaje: string; multiplicar_por_bultos: boolean }>,
   });
@@ -148,7 +154,11 @@ export default function Rates() {
         .select('*')
         .order('nombre');
       if (error) throw error;
-      return data as Tarifa[];
+      // Map the data to handle JSON fields
+      return (data || []).map(t => ({
+        ...t,
+        rangos_kg: Array.isArray(t.rangos_kg) ? (t.rangos_kg as unknown as WeightRange[]) : [],
+      })) as Tarifa[];
     },
   });
 
@@ -197,7 +207,7 @@ export default function Rates() {
         };
       }
 
-      const tarifaData = {
+      const tarifaData: Record<string, unknown> = {
         nombre: data.nombre,
         tipo_tarifa: data.tipo_tarifa,
         precio_base: parseFloat(data.precio_base),
@@ -207,6 +217,8 @@ export default function Rates() {
         zona_origen: data.zona_origen || null,
         zona_destino: data.zona_destino || null,
         rangos_precios: rangosPrecios,
+        rangos_kg: data.rangos_kg.length > 0 ? data.rangos_kg : null,
+        umbral_volumen_cm: data.umbral_volumen_cm || 50,
         comision_chofer_porcentaje: data.comision_chofer_porcentaje
           ? parseFloat(data.comision_chofer_porcentaje)
           : null,
@@ -221,14 +233,14 @@ export default function Rates() {
       if (editingTarifa) {
         const { error } = await supabase
           .from('tarifas')
-          .update(tarifaData)
+          .update(tarifaData as any)
           .eq('id', editingTarifa.id);
         if (error) throw error;
       } else {
         const { data: newTarifa, error } = await supabase.from('tarifas').insert({
           ...tarifaData,
           tenant_id: profile?.tenant_id,
-        }).select('id').single();
+        } as any).select('id').single();
         if (error) throw error;
         tarifaId = newTarifa.id;
       }
@@ -429,6 +441,8 @@ export default function Rates() {
       adicional_por_kg: '',
       volumen_base_hasta: '',
       adicional_por_m3: '',
+      rangos_kg: [],
+      umbral_volumen_cm: 50,
       conceptos: {},
     });
     setEditingTarifa(null);
@@ -466,6 +480,7 @@ export default function Rates() {
     });
 
     const rangos = tarifa.rangos_precios || {};
+    const rangosKg = (tarifa.rangos_kg as WeightRange[]) || [];
 
     setFormData({
       nombre: tarifa.nombre,
@@ -483,6 +498,8 @@ export default function Rates() {
       adicional_por_kg: rangos.adicional_por_kg?.toString() || '',
       volumen_base_hasta: rangos.volumen_base_hasta?.toString() || '',
       adicional_por_m3: rangos.adicional_por_m3?.toString() || '',
+      rangos_kg: rangosKg,
+      umbral_volumen_cm: tarifa.umbral_volumen_cm || 50,
       conceptos: conceptosMap,
     });
     setIsDialogOpen(true);
@@ -568,36 +585,51 @@ export default function Rates() {
     switch (formData.tipo_tarifa) {
       case 'peso':
         return (
-          <div className="space-y-4 p-4 rounded-lg bg-muted/50 border">
-            <div className="flex items-center gap-2 text-sm font-medium">
-              <Weight className="h-4 w-4" />
-              Configuración por Peso
+          <div className="space-y-4">
+            <div className="space-y-4 p-4 rounded-lg bg-muted/50 border">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Weight className="h-4 w-4" />
+                Configuración por Peso - Método Simple
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="peso_base_hasta">Peso incluido en base (Kg)</Label>
+                  <Input
+                    id="peso_base_hasta"
+                    type="number"
+                    step="0.1"
+                    value={formData.peso_base_hasta}
+                    onChange={(e) => setFormData({ ...formData, peso_base_hasta: e.target.value })}
+                    placeholder="5"
+                  />
+                  <p className="text-xs text-muted-foreground">Kg incluidos en el precio base (Flete)</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="adicional_por_kg">Precio por Kg adicional</Label>
+                  <Input
+                    id="adicional_por_kg"
+                    type="number"
+                    step="0.01"
+                    value={formData.adicional_por_kg}
+                    onChange={(e) => setFormData({ ...formData, adicional_por_kg: e.target.value })}
+                    placeholder="150"
+                  />
+                  <p className="text-xs text-muted-foreground">Se cobra por cada kg que exceda el base</p>
+                </div>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="peso_base_hasta">Peso incluido en base (Kg)</Label>
-                <Input
-                  id="peso_base_hasta"
-                  type="number"
-                  step="0.1"
-                  value={formData.peso_base_hasta}
-                  onChange={(e) => setFormData({ ...formData, peso_base_hasta: e.target.value })}
-                  placeholder="5"
-                />
-                <p className="text-xs text-muted-foreground">Kg incluidos en el precio base (Flete)</p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="adicional_por_kg">Precio por Kg adicional</Label>
-                <Input
-                  id="adicional_por_kg"
-                  type="number"
-                  step="0.01"
-                  value={formData.adicional_por_kg}
-                  onChange={(e) => setFormData({ ...formData, adicional_por_kg: e.target.value })}
-                  placeholder="150"
-                />
-                <p className="text-xs text-muted-foreground">Se cobra por cada kg que exceda el base</p>
-              </div>
+            
+            {/* Weight Ranges Editor */}
+            <div className="p-4 rounded-lg bg-muted/50 border">
+              <WeightRangesEditor
+                ranges={formData.rangos_kg}
+                onChange={(ranges) => setFormData({ ...formData, rangos_kg: ranges })}
+                umbralVolumen={formData.umbral_volumen_cm}
+                onUmbralChange={(umbral) => setFormData({ ...formData, umbral_volumen_cm: umbral })}
+                precioPorM3={parseFloat(formData.precio_por_m3) || 0}
+                onPrecioM3Change={(precio) => setFormData({ ...formData, precio_por_m3: precio.toString() })}
+                showVolumeSettings={true}
+              />
             </div>
           </div>
         );
