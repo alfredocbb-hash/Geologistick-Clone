@@ -84,6 +84,8 @@ export default function EditRouteDialog({ route, onClose }: EditRouteDialogProps
             direccion_entrega,
             direccion_retiro,
             requiere_retiro,
+            nombre_remitente,
+            nombre_destinatario,
             remitente:clientes!envios_remitente_id_fkey(nombre, apellido),
             destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)
           )
@@ -397,8 +399,8 @@ export default function EditRouteDialog({ route, onClose }: EditRouteDialogProps
                             </div>
                             <p className="text-sm truncate">
                               {parada.tipo === 'retiro' 
-                                ? `${envio?.remitente?.nombre} ${envio?.remitente?.apellido || ''}`
-                                : `${envio?.destinatario?.nombre} ${envio?.destinatario?.apellido || ''}`
+                                ? envio?.nombre_remitente || `${envio?.remitente?.nombre || ''} ${envio?.remitente?.apellido || ''}`.trim() || 'Sin remitente'
+                                : envio?.nombre_destinatario || `${envio?.destinatario?.nombre || ''} ${envio?.destinatario?.apellido || ''}`.trim() || 'Sin destinatario'
                               }
                             </p>
                             <p className="text-xs text-muted-foreground truncate">

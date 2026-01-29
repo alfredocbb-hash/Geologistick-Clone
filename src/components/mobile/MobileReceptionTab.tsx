@@ -30,8 +30,8 @@ export function MobileReceptionTab() {
           direccion_entrega,
           ciudad_entrega,
           created_at,
-          remitente:clientes!envios_remitente_id_fkey(nombre, apellido),
-          destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)
+          nombre_remitente,
+          remitente:clientes!envios_remitente_id_fkey(nombre, apellido)
         `)
         .or(`sucursal_destino_id.eq.${profile.sucursal_id},sucursal_origen_id.eq.${profile.sucursal_id}`)
         .in('estado', ['en_transito', 'pendiente', 'recogido'])
@@ -132,7 +132,7 @@ export function MobileReceptionTab() {
 
               <div className="flex items-center justify-between text-xs text-slate-500">
                 <span>
-                  De: {shipment.remitente?.nombre} {shipment.remitente?.apellido}
+                  De: {shipment.nombre_remitente || `${shipment.remitente?.nombre || ''} ${shipment.remitente?.apellido || ''}`.trim() || 'Sin remitente'}
                 </span>
                 <span>
                   {format(new Date(shipment.created_at), 'dd MMM', { locale: es })}

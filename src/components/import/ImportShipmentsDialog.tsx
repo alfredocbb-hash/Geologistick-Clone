@@ -321,28 +321,23 @@ export default function ImportShipmentsDialog({
             throw new Error(`Tracking ${trackingNumber} ya existe en el sistema`);
           }
 
-          // Find or create recipient
-          const destinatarioId = await findOrCreateClient(
-            recipientName,
-            recipientPhone || "0000000000",
-            recipientAddress,
-            recipientCity,
-            undefined,
-            lat,
-            lng
-          );
-
-          // Find or create sender (optional)
-          let remitenteId: string | null = null;
-          if (senderName) {
-            remitenteId = await findOrCreateClient(
-              senderName,
-              "0000000000",
+          // Only link to client if we have a valid phone number
+          let destinatarioId: string | null = null;
+          if (recipientPhone && recipientPhone.trim() !== '') {
+            destinatarioId = await findOrCreateClient(
+              recipientName,
+              recipientPhone,
+              recipientAddress,
+              recipientCity,
               undefined,
-              undefined,
-              senderEmail
+              lat,
+              lng
             );
           }
+
+          // Only link sender if we have a valid phone (we don't have sender phone in current mapping)
+          // So for now, don't create sender client without phone
+          const remitenteId: string | null = null;
 
           // Get tipo_pago from mapping if exists, default to 'contado'
           const tipoPagoRaw = getRowValue(row, mapping.tipoPago);

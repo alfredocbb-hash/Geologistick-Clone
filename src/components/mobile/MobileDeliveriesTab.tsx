@@ -31,6 +31,7 @@ export function MobileDeliveriesTab() {
           pago_contra_entrega,
           precio_total,
           created_at,
+          nombre_destinatario,
           destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, telefono)
         `)
         .eq('sucursal_entrega_id', profile.sucursal_id)
@@ -120,7 +121,7 @@ export function MobileDeliveriesTab() {
                 <div className="flex items-start gap-2 text-slate-400">
                   <User className="w-4 h-4 mt-0.5 shrink-0" />
                   <span>
-                    {shipment.destinatario?.nombre} {shipment.destinatario?.apellido}
+                    {shipment.nombre_destinatario || `${shipment.destinatario?.nombre || ''} ${shipment.destinatario?.apellido || ''}`.trim() || 'Sin destinatario'}
                   </span>
                 </div>
                 <div className="flex items-start gap-2 text-slate-400">

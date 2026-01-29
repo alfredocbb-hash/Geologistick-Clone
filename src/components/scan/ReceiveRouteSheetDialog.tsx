@@ -62,6 +62,7 @@ export function ReceiveRouteSheetDialog({ hojaRutaId, onClose }: ReceiveRouteShe
             tracking_number,
             cantidad_bultos,
             estado,
+            nombre_destinatario,
             destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)
           )
         `)
@@ -233,7 +234,7 @@ export function ReceiveRouteSheetDialog({ hojaRutaId, onClose }: ReceiveRouteShe
                             {item.envio?.tracking_number}
                           </TableCell>
                           <TableCell>
-                            {item.envio?.destinatario?.nombre} {item.envio?.destinatario?.apellido}
+                            {item.envio?.nombre_destinatario || `${item.envio?.destinatario?.nombre || ''} ${item.envio?.destinatario?.apellido || ''}`.trim() || 'Sin destinatario'}
                           </TableCell>
                           <TableCell className="text-center">
                             {item.envio?.cantidad_bultos || 1}
@@ -264,7 +265,7 @@ export function ReceiveRouteSheetDialog({ hojaRutaId, onClose }: ReceiveRouteShe
                             {item.envio?.tracking_number}
                           </TableCell>
                           <TableCell>
-                            {item.envio?.destinatario?.nombre} {item.envio?.destinatario?.apellido}
+                            {item.envio?.nombre_destinatario || `${item.envio?.destinatario?.nombre || ''} ${item.envio?.destinatario?.apellido || ''}`.trim() || 'Sin destinatario'}
                           </TableCell>
                         </TableRow>
                       ))}

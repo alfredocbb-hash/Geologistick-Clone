@@ -70,6 +70,7 @@ export default function Routes() {
           estado,
           precio_total,
           created_at,
+          nombre_destinatario,
           sucursal_destino:sucursales!envios_sucursal_destino_id_fkey(nombre),
           destinatario:clientes!envios_destinatario_id_fkey(nombre, direccion, ciudad)
         `)
@@ -386,7 +387,7 @@ export default function Routes() {
                           {getStatusBadge(shipment.estado)}
                         </div>
                         <div className="text-sm text-muted-foreground mt-1 truncate">
-                          {shipment.destinatario?.nombre} - {shipment.destinatario?.direccion}
+                          {(shipment as any).nombre_destinatario || shipment.destinatario?.nombre || 'Sin destinatario'} - {shipment.destinatario?.direccion || ''}
                         </div>
                         <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                           {shipment.destinatario?.ciudad && (

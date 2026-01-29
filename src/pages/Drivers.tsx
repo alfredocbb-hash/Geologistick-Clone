@@ -151,6 +151,7 @@ export default function Drivers() {
           precio_total,
           created_at,
           fecha_entrega,
+          nombre_destinatario,
           destinatario:clientes!envios_destinatario_id_fkey(nombre, direccion, ciudad)
         `)
         .eq('chofer_id', selectedDriver.user_id)
