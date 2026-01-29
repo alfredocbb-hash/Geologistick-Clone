@@ -36,6 +36,7 @@ import {
   Download,
   Loader2,
   Copy,
+  Receipt,
   Share2,
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -263,6 +264,12 @@ export function ShipmentDetailsDialog({
                     <Download className="h-4 w-4 mr-2" />
                   )}
                   EPOD
+                </Button>
+                <Button variant="outline" size="sm" asChild>
+                  <Link to={`/print-receipt?id=${envio.id}`}>
+                    <Receipt className="h-4 w-4 mr-2" />
+                    Comprobante
+                  </Link>
                 </Button>
                 <Button variant="outline" size="sm" asChild>
                   <Link to={`/print-label?id=${envio.id}`}>
