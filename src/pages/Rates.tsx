@@ -37,8 +37,16 @@ import {
   Building2,
   Box,
   Ruler,
+  TrendingUp,
+  Shield,
 } from 'lucide-react';
-import { RateTypeSelector, getRateTypeLabel, ConceptBranchesDialog } from '@/components/rates';
+import { 
+  RateTypeSelector, 
+  getRateTypeLabel, 
+  ConceptBranchesDialog,
+  InsuranceConfigDialog,
+  BulkRateUpdateDialog,
+} from '@/components/rates';
 import type { RateType } from '@/components/rates';
 
 interface Tarifa {
@@ -92,6 +100,8 @@ export default function Rates() {
   const [isConceptDialogOpen, setIsConceptDialogOpen] = useState(false);
   const [isPricingDialogOpen, setIsPricingDialogOpen] = useState(false);
   const [isBranchDialogOpen, setIsBranchDialogOpen] = useState(false);
+  const [isBulkUpdateOpen, setIsBulkUpdateOpen] = useState(false);
+  const [isInsuranceOpen, setIsInsuranceOpen] = useState(false);
   const [editingTarifa, setEditingTarifa] = useState<Tarifa | null>(null);
   const [editingConcept, setEditingConcept] = useState<TarifaConcepto | null>(null);
   const [selectedTarifaForPricing, setSelectedTarifaForPricing] = useState<Tarifa | null>(null);
@@ -839,7 +849,23 @@ export default function Rates() {
 
         {/* Tarifas Tab */}
         <TabsContent value="tarifas" className="space-y-6">
-          <div className="flex justify-end">
+          <div className="flex justify-between gap-2 flex-wrap">
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setIsBulkUpdateOpen(true)}
+              >
+                <TrendingUp className="h-4 w-4 mr-2" />
+                Ajuste Masivo
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setIsInsuranceOpen(true)}
+              >
+                <Shield className="h-4 w-4 mr-2" />
+                Configurar Seguro
+              </Button>
+            </div>
             <Dialog
               open={isDialogOpen}
               onOpenChange={(open) => {
@@ -1535,6 +1561,18 @@ export default function Rates() {
           conceptName={selectedConceptForBranches.nombre}
         />
       )}
+
+      {/* Dialog para ajuste masivo de tarifas */}
+      <BulkRateUpdateDialog
+        open={isBulkUpdateOpen}
+        onOpenChange={setIsBulkUpdateOpen}
+      />
+
+      {/* Dialog para configuración de seguro */}
+      <InsuranceConfigDialog
+        open={isInsuranceOpen}
+        onOpenChange={setIsInsuranceOpen}
+      />
     </div>
   );
 }

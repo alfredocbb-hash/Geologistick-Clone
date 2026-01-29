@@ -302,6 +302,50 @@ export type Database = {
           },
         ]
       }
+      configuracion_seguro: {
+        Row: {
+          activo: boolean | null
+          created_at: string | null
+          id: string
+          porcentaje_excedente: number
+          seguro_base: number
+          tenant_id: string | null
+          updated_at: string | null
+          valor_maximo_asegurado: number
+          valor_minimo_declarado: number
+        }
+        Insert: {
+          activo?: boolean | null
+          created_at?: string | null
+          id?: string
+          porcentaje_excedente?: number
+          seguro_base?: number
+          tenant_id?: string | null
+          updated_at?: string | null
+          valor_maximo_asegurado?: number
+          valor_minimo_declarado?: number
+        }
+        Update: {
+          activo?: boolean | null
+          created_at?: string | null
+          id?: string
+          porcentaje_excedente?: number
+          seguro_base?: number
+          tenant_id?: string | null
+          updated_at?: string | null
+          valor_maximo_asegurado?: number
+          valor_minimo_declarado?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "configuracion_seguro_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       driver_location_history: {
         Row: {
           accuracy: number | null
@@ -825,6 +869,8 @@ export type Database = {
       }
       envios: {
         Row: {
+          alto_cm: number | null
+          ancho_cm: number | null
           cantidad_bultos: number | null
           chofer_id: string | null
           chofer_ultima_milla_id: string | null
@@ -873,6 +919,7 @@ export type Database = {
           horario_preferido_entrega: string | null
           horario_retiro: string | null
           id: string
+          largo_cm: number | null
           nombre_destinatario: string | null
           nombre_remitente: string | null
           nombre_retira: string | null
@@ -898,6 +945,7 @@ export type Database = {
           sucursal_origen_id: string | null
           sucursal_retiro_id: string | null
           tarifa_id: string | null
+          tarifa_metodo_aplicado: string | null
           tenant_id: string | null
           tipo_pago: string | null
           tipo_servicio: string | null
@@ -907,9 +955,12 @@ export type Database = {
           ultima_reprogramacion: string | null
           updated_at: string | null
           valor_declarado: number | null
+          volumen_m3: number | null
           whatsapp_destinatario: string | null
         }
         Insert: {
+          alto_cm?: number | null
+          ancho_cm?: number | null
           cantidad_bultos?: number | null
           chofer_id?: string | null
           chofer_ultima_milla_id?: string | null
@@ -958,6 +1009,7 @@ export type Database = {
           horario_preferido_entrega?: string | null
           horario_retiro?: string | null
           id?: string
+          largo_cm?: number | null
           nombre_destinatario?: string | null
           nombre_remitente?: string | null
           nombre_retira?: string | null
@@ -983,6 +1035,7 @@ export type Database = {
           sucursal_origen_id?: string | null
           sucursal_retiro_id?: string | null
           tarifa_id?: string | null
+          tarifa_metodo_aplicado?: string | null
           tenant_id?: string | null
           tipo_pago?: string | null
           tipo_servicio?: string | null
@@ -992,9 +1045,12 @@ export type Database = {
           ultima_reprogramacion?: string | null
           updated_at?: string | null
           valor_declarado?: number | null
+          volumen_m3?: number | null
           whatsapp_destinatario?: string | null
         }
         Update: {
+          alto_cm?: number | null
+          ancho_cm?: number | null
           cantidad_bultos?: number | null
           chofer_id?: string | null
           chofer_ultima_milla_id?: string | null
@@ -1043,6 +1099,7 @@ export type Database = {
           horario_preferido_entrega?: string | null
           horario_retiro?: string | null
           id?: string
+          largo_cm?: number | null
           nombre_destinatario?: string | null
           nombre_remitente?: string | null
           nombre_retira?: string | null
@@ -1068,6 +1125,7 @@ export type Database = {
           sucursal_origen_id?: string | null
           sucursal_retiro_id?: string | null
           tarifa_id?: string | null
+          tarifa_metodo_aplicado?: string | null
           tenant_id?: string | null
           tipo_pago?: string | null
           tipo_servicio?: string | null
@@ -1077,6 +1135,7 @@ export type Database = {
           ultima_reprogramacion?: string | null
           updated_at?: string | null
           valor_declarado?: number | null
+          volumen_m3?: number | null
           whatsapp_destinatario?: string | null
         }
         Relationships: [
@@ -1228,6 +1287,50 @@ export type Database = {
           },
           {
             foreignKeyName: "facturas_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      historial_ajustes_tarifas: {
+        Row: {
+          aplicado_por: string | null
+          conceptos_afectados: Json | null
+          created_at: string | null
+          id: string
+          notas: string | null
+          opciones_aplicadas: Json | null
+          porcentaje_aplicado: number
+          tarifas_afectadas: Json | null
+          tenant_id: string | null
+        }
+        Insert: {
+          aplicado_por?: string | null
+          conceptos_afectados?: Json | null
+          created_at?: string | null
+          id?: string
+          notas?: string | null
+          opciones_aplicadas?: Json | null
+          porcentaje_aplicado: number
+          tarifas_afectadas?: Json | null
+          tenant_id?: string | null
+        }
+        Update: {
+          aplicado_por?: string | null
+          conceptos_afectados?: Json | null
+          created_at?: string | null
+          id?: string
+          notas?: string | null
+          opciones_aplicadas?: Json | null
+          porcentaje_aplicado?: number
+          tarifas_afectadas?: Json | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "historial_ajustes_tarifas_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -2907,12 +3010,15 @@ export type Database = {
           id: string
           nombre: string
           precio_base: number
+          precio_minimo_flete: number | null
           precio_por_kg: number | null
           precio_por_km: number | null
           precio_por_m3: number | null
+          rangos_kg: Json | null
           rangos_precios: Json | null
           tenant_id: string | null
           tipo_tarifa: string | null
+          umbral_volumen_cm: number | null
           updated_at: string | null
           zona_destino: string | null
           zona_origen: string | null
@@ -2925,12 +3031,15 @@ export type Database = {
           id?: string
           nombre: string
           precio_base: number
+          precio_minimo_flete?: number | null
           precio_por_kg?: number | null
           precio_por_km?: number | null
           precio_por_m3?: number | null
+          rangos_kg?: Json | null
           rangos_precios?: Json | null
           tenant_id?: string | null
           tipo_tarifa?: string | null
+          umbral_volumen_cm?: number | null
           updated_at?: string | null
           zona_destino?: string | null
           zona_origen?: string | null
@@ -2943,12 +3052,15 @@ export type Database = {
           id?: string
           nombre?: string
           precio_base?: number
+          precio_minimo_flete?: number | null
           precio_por_kg?: number | null
           precio_por_km?: number | null
           precio_por_m3?: number | null
+          rangos_kg?: Json | null
           rangos_precios?: Json | null
           tenant_id?: string | null
           tipo_tarifa?: string | null
+          umbral_volumen_cm?: number | null
           updated_at?: string | null
           zona_destino?: string | null
           zona_origen?: string | null
@@ -3512,6 +3624,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      actualizar_conceptos_porcentaje: {
+        Args: { p_factor: number; p_tarifa_ids: string[] }
+        Returns: undefined
+      }
       can_access_sucursal: {
         Args: { _sucursal_id: string; _user_id: string }
         Returns: boolean
