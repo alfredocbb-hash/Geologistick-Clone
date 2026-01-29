@@ -277,9 +277,9 @@ export default function Tracking() {
                 </CardHeader>
                 <CardContent className="space-y-2">
                   <p className="font-semibold">
-                    {envio.remitente?.nombre}
+                    {envio.remitente?.nombre || 'Sin remitente'}
                   </p>
-                  <p className="text-sm text-muted-foreground">{envio.remitente?.ciudad}</p>
+                  <p className="text-sm text-muted-foreground">{envio.remitente?.ciudad || '-'}</p>
                   {envio.origen?.sucursal && (
                     <Badge variant="outline">{envio.origen.sucursal}</Badge>
                   )}
@@ -293,7 +293,7 @@ export default function Tracking() {
                 </CardHeader>
                 <CardContent className="space-y-2">
                   <p className="font-semibold">
-                    {envio.destinatario?.nombre}
+                    {envio.destinatario?.nombre || 'Sin destinatario'}
                   </p>
                   <p className="text-sm text-muted-foreground">{envio.destino?.direccion}</p>
                   <p className="text-sm text-muted-foreground">{envio.destino?.ciudad}</p>

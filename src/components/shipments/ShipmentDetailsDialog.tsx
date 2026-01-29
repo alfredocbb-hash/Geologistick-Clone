@@ -437,15 +437,15 @@ export function ShipmentDetailsDialog({
                 {/* Remitente */}
                 <div className="p-4 border rounded-lg">
                   <p className="text-xs font-semibold text-muted-foreground mb-3">REMITENTE</p>
-                  {envio.remitente ? (
+                  {envio.nombre_remitente || envio.remitente ? (
                     <div className="space-y-2">
                       <InfoRow 
                         icon={User} 
                         label="Nombre" 
-                        value={`${envio.remitente.nombre} ${envio.remitente.apellido || ''}`} 
+                        value={envio.nombre_remitente || `${envio.remitente?.nombre || ''} ${envio.remitente?.apellido || ''}`.trim() || 'Sin nombre'} 
                       />
-                      <InfoRow icon={Phone} label="Teléfono" value={envio.remitente.telefono} />
-                      <InfoRow icon={MapPin} label="Dirección" value={`${envio.remitente.direccion}${envio.remitente.ciudad ? `, ${envio.remitente.ciudad}` : ''}`} />
+                      {envio.remitente?.telefono && <InfoRow icon={Phone} label="Teléfono" value={envio.remitente.telefono} />}
+                      {envio.remitente?.direccion && <InfoRow icon={MapPin} label="Dirección" value={`${envio.remitente.direccion}${envio.remitente.ciudad ? `, ${envio.remitente.ciudad}` : ''}`} />}
                       {envio.dni_remitente && (
                         <InfoRow icon={FileText} label="DNI" value={envio.dni_remitente} />
                       )}
@@ -458,15 +458,15 @@ export function ShipmentDetailsDialog({
                 {/* Destinatario */}
                 <div className="p-4 border rounded-lg">
                   <p className="text-xs font-semibold text-muted-foreground mb-3">DESTINATARIO</p>
-                  {envio.destinatario ? (
+                  {envio.nombre_destinatario || envio.destinatario ? (
                     <div className="space-y-2">
                       <InfoRow 
                         icon={User} 
                         label="Nombre" 
-                        value={`${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}`} 
+                        value={envio.nombre_destinatario || `${envio.destinatario?.nombre || ''} ${envio.destinatario?.apellido || ''}`.trim() || 'Sin nombre'} 
                       />
-                      <InfoRow icon={Phone} label="Teléfono" value={envio.destinatario.telefono} />
-                      <InfoRow icon={MapPin} label="Dirección" value={`${envio.destinatario.direccion}${envio.destinatario.ciudad ? `, ${envio.destinatario.ciudad}` : ''}`} />
+                      {envio.destinatario?.telefono && <InfoRow icon={Phone} label="Teléfono" value={envio.destinatario.telefono} />}
+                      {envio.destinatario?.direccion && <InfoRow icon={MapPin} label="Dirección" value={`${envio.destinatario.direccion}${envio.destinatario.ciudad ? `, ${envio.destinatario.ciudad}` : ''}`} />}
                       {envio.dni_destinatario && (
                         <InfoRow icon={FileText} label="DNI" value={envio.dni_destinatario} />
                       )}

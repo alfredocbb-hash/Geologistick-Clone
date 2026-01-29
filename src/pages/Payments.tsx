@@ -213,6 +213,8 @@ export default function Payments() {
           estado,
           created_at,
           direccion_entrega,
+          nombre_remitente,
+          nombre_destinatario,
           remitente:clientes!envios_remitente_id_fkey(nombre, apellido),
           destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido),
           sucursal_origen:sucursales!envios_sucursal_origen_id_fkey(nombre)
@@ -674,7 +676,7 @@ export default function Payments() {
                           {envio.tracking_number}
                         </TableCell>
                         <TableCell>
-                          {envio.remitente?.nombre || envio.destinatario?.nombre || '-'}
+                          {(envio as any).nombre_remitente || (envio as any).nombre_destinatario || envio.remitente?.nombre || envio.destinatario?.nombre || '-'}
                         </TableCell>
                         <TableCell>
                           {envio.sucursal_origen?.nombre || '-'}

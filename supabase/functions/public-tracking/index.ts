@@ -88,6 +88,8 @@ serve(async (req: Request) => {
         cantidad_bultos,
         peso_kg,
         descripcion,
+        nombre_remitente,
+        nombre_destinatario,
         sucursal_origen:sucursales!envios_sucursal_origen_id_fkey(nombre, ciudad, codigo),
         sucursal_destino:sucursales!envios_sucursal_destino_id_fkey(nombre, ciudad, codigo),
         remitente:clientes!envios_remitente_id_fkey(nombre, ciudad),
@@ -171,14 +173,14 @@ serve(async (req: Request) => {
         peso_kg: envio.peso_kg,
         descripcion: envio.descripcion,
       },
-      remitente: remitente ? {
-        nombre: remitente.nombre,
-        ciudad: remitente.ciudad,
-      } : null,
-      destinatario: destinatario ? {
-        nombre: destinatario.nombre,
-        ciudad: destinatario.ciudad,
-      } : null,
+      remitente: {
+        nombre: envio.nombre_remitente || remitente?.nombre || null,
+        ciudad: remitente?.ciudad || null,
+      },
+      destinatario: {
+        nombre: envio.nombre_destinatario || destinatario?.nombre || null,
+        ciudad: destinatario?.ciudad || null,
+      },
       branding,
       historial: (historial || []).map((h) => ({
         id: h.id,

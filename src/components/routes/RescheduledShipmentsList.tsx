@@ -40,6 +40,8 @@ export default function RescheduledShipmentsList({
         .from('envios')
         .select(`
           *,
+          nombre_remitente,
+          nombre_destinatario,
           remitente:clientes!envios_remitente_id_fkey(nombre, apellido, direccion, ciudad, telefono),
           destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, direccion, ciudad, telefono)
         `)
@@ -153,8 +155,8 @@ export default function RescheduledShipmentsList({
                     <div className="grid gap-1 text-sm">
                       <p className="font-medium">
                         {envio.tipo === 'retiro' 
-                          ? `${envio.remitente?.nombre} ${envio.remitente?.apellido || ''}`
-                          : `${envio.destinatario?.nombre} ${envio.destinatario?.apellido || ''}`
+                          ? envio.nombre_remitente || `${envio.remitente?.nombre || ''} ${envio.remitente?.apellido || ''}`.trim() || 'Sin remitente'
+                          : envio.nombre_destinatario || `${envio.destinatario?.nombre || ''} ${envio.destinatario?.apellido || ''}`.trim() || 'Sin destinatario'
                         }
                       </p>
                       <p className="text-muted-foreground flex items-center gap-1">
