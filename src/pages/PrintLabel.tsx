@@ -95,6 +95,7 @@ interface Envio {
   dni_destinatario: string | null;
   whatsapp_destinatario: string | null;
   created_at: string;
+  tenant_id: string | null;
   // Direct text fields for e-commerce shipments
   nombre_remitente: string | null;
   nombre_destinatario: string | null;
@@ -131,6 +132,8 @@ interface Envio {
     direccion: string;
     ciudad: string | null;
   } | null;
+  // Branding for watermark
+  logoUrl?: string | null;
 }
 
 // Helper function to get QR code URL from external API
@@ -143,7 +146,8 @@ const generateLabelHTML = (
   envio: Envio,
   labelSize: LabelSize,
   tipoConfig: typeof TIPO_SERVICIO_CONFIG[keyof typeof TIPO_SERVICIO_CONFIG],
-  deliveryInfo: { type: string; direccion?: string; ciudad?: string | null; cp?: string | null; nombre?: string } | null
+  deliveryInfo: { type: string; direccion?: string; ciudad?: string | null; cp?: string | null; nombre?: string } | null,
+  logoUrl?: string | null
 ): string => {
   const size = LABEL_SIZES[labelSize];
   const bultos = envio.cantidad_bultos || 1;
@@ -156,6 +160,7 @@ const generateLabelHTML = (
     
     return `
       <div class="label">
+        ${logoUrl ? `<img src="${logoUrl}" class="watermark" alt="" />` : ''}
         <!-- Header -->
         <div class="header">
           <div class="origin-branch">
@@ -315,6 +320,26 @@ const generateLabelHTML = (
       box-sizing: border-box;
       page-break-after: always;
       overflow: hidden;
+      position: relative;
+    }
+    
+    .watermark {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 60%;
+      height: auto;
+      max-height: 60%;
+      object-fit: contain;
+      opacity: 0.06;
+      pointer-events: none;
+      z-index: 0;
+    }
+    
+    .label > *:not(.watermark) {
+      position: relative;
+      z-index: 1;
     }
     
     .label:last-child {
@@ -589,7 +614,19 @@ export default function PrintLabel() {
         .single();
       
       if (error) throw error;
-      return data as Envio;
+      
+      // Fetch tenant branding for watermark
+      let logoUrl: string | null = null;
+      if (data.tenant_id) {
+        const { data: branding } = await supabase
+          .from('tenant_branding')
+          .select('logo_light')
+          .eq('tenant_id', data.tenant_id)
+          .single();
+        logoUrl = branding?.logo_light || null;
+      }
+      
+      return { ...data, logoUrl } as Envio;
     },
     enabled: !!envioId,
   });
@@ -644,7 +681,7 @@ export default function PrintLabel() {
     };
 
     const deliveryInfo = getDeliveryAddress();
-    const labelHTML = generateLabelHTML(envio, labelSize, tipoConfig, deliveryInfo);
+    const labelHTML = generateLabelHTML(envio, labelSize, tipoConfig, deliveryInfo, envio.logoUrl);
     
     printWindow.document.write(labelHTML);
     printWindow.document.close();
@@ -777,10 +814,18 @@ export default function PrintLabel() {
           {labels.map((bultoNum) => (
             <div 
               key={bultoNum}
-              className="bg-white border-[3px] border-black p-3"
+              className="bg-white border-[3px] border-black p-3 relative"
             >
+              {/* Watermark for preview */}
+              {envio.logoUrl && (
+                <img 
+                  src={envio.logoUrl} 
+                  alt="" 
+                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[60%] h-auto max-h-[60%] object-contain opacity-[0.06] pointer-events-none z-0"
+                />
+              )}
               {/* Header: Sucursal Origen */}
-              <div className="flex items-center justify-between border-b-2 border-black pb-1 mb-2">
+              <div className="flex items-center justify-between border-b-2 border-black pb-1 mb-2 relative z-10">
                 <div className="flex items-center gap-1">
                   <span className="font-bold text-xs">[S]</span>
                   <div>
