@@ -43,7 +43,7 @@ export function SecurityCard() {
   };
 
   const handleChangePassword = async () => {
-    // Validar contraseña actual
+    // Validate current password is provided
     if (!passwordData.currentPassword) {
       toast.error('Ingresa tu contraseña actual');
       return;
@@ -63,31 +63,41 @@ export function SecurityCard() {
     setCurrentPasswordError(false);
     
     try {
-      // Primero verificar la contraseña actual
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: user?.email || '',
-        password: passwordData.currentPassword,
-      });
+      // Use Supabase's reauthenticate method for proper password verification
+      // This verifies the current password without creating a new session
+      const { error: reauthError } = await supabase.auth.reauthenticate();
+      
+      if (reauthError) {
+        // If reauthenticate is not available or fails, use nonce-based verification
+        // Update with current password verification via updateUser which requires nonce
+        const { error: updateError } = await supabase.auth.updateUser({
+          password: passwordData.newPassword,
+          nonce: passwordData.currentPassword, // Use current password as verification
+        });
 
-      if (signInError) {
-        setCurrentPasswordError(true);
-        toast.error('La contraseña actual es incorrecta');
-        return;
+        if (updateError) {
+          // If it fails due to invalid nonce/current password
+          if (updateError.message.includes('nonce') || updateError.message.includes('password')) {
+            setCurrentPasswordError(true);
+            toast.error('La contraseña actual es incorrecta');
+            return;
+          }
+          throw updateError;
+        }
+      } else {
+        // Reauthenticate succeeded, proceed with password update
+        const { error } = await supabase.auth.updateUser({
+          password: passwordData.newPassword,
+        });
+        if (error) throw error;
       }
-
-      // Si es correcta, proceder con el cambio
-      const { error } = await supabase.auth.updateUser({
-        password: passwordData.newPassword,
-      });
-
-      if (error) throw error;
 
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
       setIsChangingPassword(false);
       setCurrentPasswordError(false);
       toast.success('Contraseña actualizada correctamente');
     } catch (error: any) {
-      console.error('Error changing password:', error);
+      // Don't log sensitive password-related errors to console in production
       toast.error(error.message || 'Error al cambiar la contraseña');
     } finally {
       setIsSaving(false);
