@@ -88,13 +88,40 @@ function generateQRCodeDataUrl(text: string, size: number = 100): string {
 
 async function loadImageAsBase64(url: string): Promise<string | null> {
   try {
-    const response = await fetch(url);
-    const blob = await response.blob();
+    // Use Image element with crossOrigin to handle CORS properly
     return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(blob);
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      
+      // Timeout after 5 seconds
+      const timeout = setTimeout(() => {
+        resolve(null);
+      }, 5000);
+      
+      img.onload = () => {
+        clearTimeout(timeout);
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0);
+            resolve(canvas.toDataURL('image/png'));
+          } else {
+            resolve(null);
+          }
+        } catch {
+          resolve(null);
+        }
+      };
+      
+      img.onerror = () => {
+        clearTimeout(timeout);
+        resolve(null);
+      };
+      
+      img.src = url;
     });
   } catch {
     return null;
@@ -147,19 +174,22 @@ function drawReceipt(
   let y = yOffset + 5;
 
   // ========== HEADER (compact) ==========
+  const logoSize = 16; // Increased from 12mm to 16mm for better visibility
+  const logoOffset = logoSize + 4; // Space after logo for text
+  
   if (logoToUse) {
     try {
-      doc.addImage(logoToUse, 'PNG', margin, y, 12, 12);
+      doc.addImage(logoToUse, 'PNG', margin, y, logoSize, logoSize);
     } catch (e) {
       // Continue without logo
     }
   }
 
-  // Company name and branch info
+  // Company name and branch info (adjusted position for larger logo)
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-  doc.text(companyName, margin + 15, y + 4);
+  doc.text(companyName, margin + logoOffset, y + 5);
   
   doc.setFontSize(6);
   doc.setFont('helvetica', 'normal');
@@ -168,7 +198,7 @@ function drawReceipt(
   const branchInfo = shipment.sucursal_origen;
   if (branchInfo) {
     const branchLine = `${branchInfo.direccion || ''} ${branchInfo.ciudad || ''} ${branchInfo.telefono ? '• Tel: ' + branchInfo.telefono : ''}`;
-    doc.text(branchLine.substring(0, 60), margin + 15, y + 8);
+    doc.text(branchLine.substring(0, 55), margin + logoOffset, y + 10);
   }
 
   // Receipt number and date (right side)
@@ -186,7 +216,7 @@ function drawReceipt(
   });
   doc.text(`Fecha: ${fecha}`, pageWidth - margin, y + 9, { align: 'right' });
 
-  y += 14;
+  y += logoSize + 2; // Adjust based on logo size
 
   // Separator line
   doc.setDrawColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
