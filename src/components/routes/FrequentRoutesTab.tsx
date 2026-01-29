@@ -104,13 +104,12 @@ export default function FrequentRoutesTab({
         enviosMatchingClients.map(e => e.id),
         ruta.nombre
       );
+      toast.success(`Se pre-seleccionaron ${enviosMatchingClients.length} envíos de la ruta "${ruta.nombre}"`);
     } else {
+      // Allow navigation even without matching shipments
+      onUseRoute([], ruta.nombre);
       toast.info(
-        "No hay envíos pendientes de los clientes de esta ruta. Los clientes guardados son: " +
-        ruta.paradas
-          .filter((p: any) => p.cliente)
-          .map((p: any) => `${p.cliente.nombre} ${p.cliente.apellido || ''}`.trim())
-          .join(", ")
+        `Ruta "${ruta.nombre}" seleccionada. No hay envíos pendientes para los clientes de esta ruta, pero puedes crear envíos manualmente.`
       );
     }
   };
@@ -227,10 +226,10 @@ export default function FrequentRoutesTab({
 
                   <div className="flex items-center gap-2 shrink-0">
                     <Button
-                      variant="default"
+                      variant={matchingCount > 0 ? "default" : "outline"}
                       size="sm"
                       onClick={() => handleUseRoute(ruta)}
-                      disabled={matchingCount === 0}
+                      title={matchingCount === 0 ? "No hay envíos pendientes, pero puedes usar esta ruta como referencia" : `${matchingCount} envíos disponibles para esta ruta`}
                     >
                       <PlayCircle className="mr-1 h-4 w-4" />
                       Usar Ruta
