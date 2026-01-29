@@ -1,150 +1,62 @@
 
-# Plan: Comprobante Doble en Una Sola Hoja A4
+# Plan: Agregar Logo de Empresa en Comprobante PDF
 
-## Objetivo
+## Diagnóstico
 
-Modificar el generador de PDF para que ambas copias (Cliente y Agencia) aparezcan en una **sola hoja A4**, dividida en dos mitades iguales:
+El logo del tenant no se muestra en el PDF porque:
+1. La función `loadImageAsBase64()` hace `fetch()` a la URL del logo en Supabase Storage
+2. Si hay problemas de CORS o la respuesta no es una imagen válida, la función retorna `null` silenciosamente
+3. El fallback usa el logo de Geologistick, pero solo si existe
 
-```text
-┌─────────────────────────────────────────────────────┐
-│                                                     │
-│              COPIA AGENCIA                          │
-│         (Mitad superior de la hoja)                 │
-│                                                     │
-├─────────────────────────────────────────────────────┤  ← Línea de corte
-│                                                     │
-│              COPIA CLIENTE                          │
-│         (Mitad inferior de la hoja)                 │
-│                                                     │
-└─────────────────────────────────────────────────────┘
-```
+## Solución
 
-## Cambios en la Estructura
-
-### Dimensiones
-- Hoja A4: 210mm x 297mm
-- Cada comprobante: 210mm x **~140mm** (mitad de la hoja, dejando espacio para línea de corte)
-- Márgenes reducidos: 8mm laterales, 6mm arriba/abajo
-
-### Diseño Compacto (Cada Mitad)
-
-Cada comprobante tendrá todos los elementos pero más compactos:
-1. **Header**: Logo pequeño (15mm), nombre empresa, guía y fecha
-2. **Origen/Destino**: En una sola línea horizontal
-3. **Remitente/Destinatario**: Cajas lado a lado, altura reducida
-4. **Descripción/Conceptos**: En dos columnas compactas
-5. **QR + Total**: QR más pequeño (25mm) a la izquierda, total a la derecha
-6. **Firmas**: En una sola línea horizontal
-7. **Badge**: "COPIA AGENCIA" o "COPIA CLIENTE"
-
-### Línea de Corte
-
-Entre ambas copias se dibujará:
-- Línea punteada horizontal
-- Ícono de tijera pequeño (opcional: texto "✂ CORTAR AQUÍ")
-
----
-
-## Archivos a Modificar
+### Mejoras en la carga de imágenes
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/lib/generateShipmentReceiptPDF.ts` | Refactorizar para dibujar 2 comprobantes en una página |
-| `src/pages/PrintReceipt.tsx` | Un solo botón "Descargar Comprobante" (genera ambas copias) |
+| `src/lib/generateShipmentReceiptPDF.ts` | Mejorar manejo de carga de logo con detección del tipo de imagen |
 
----
+### Cambios técnicos
 
-## Detalles Técnicos
+1. **Detectar formato de imagen automáticamente** (PNG, JPG, etc.) al cargar desde URL
+2. **Agregar un timeout** para evitar bloqueos largos si el servidor no responde
+3. **Usar proxy/crossOrigin** si es necesario para URLs de storage
+4. **Aumentar el tamaño del logo** de 12mm a 18mm para mejor visibilidad
 
-### Nueva Estructura de `generateShipmentReceiptPDF.ts`
+### Código modificado
 
 ```typescript
-// Nueva función que genera ambas copias en una hoja
-export async function generateShipmentReceiptPDF(
-  shipment: ShipmentData,
-  detalles: DetalleConcepto[],
-  branding: BrandingData | null,
-  trackingUrl: string
-): Promise<void> {
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  
-  const pageHeight = 297; // A4 height
-  const halfHeight = pageHeight / 2; // ~148.5mm por comprobante
-  
-  // Dibujar comprobante superior (COPIA AGENCIA)
-  drawReceipt(doc, shipment, detalles, branding, trackingUrl, 0, 'agencia');
-  
-  // Línea de corte
-  drawCutLine(doc, halfHeight);
-  
-  // Dibujar comprobante inferior (COPIA CLIENTE)
-  drawReceipt(doc, shipment, detalles, branding, trackingUrl, halfHeight, 'cliente');
-  
-  doc.save(`Comprobante_${shipment.tracking_number}.pdf`);
+async function loadImageAsBase64(url: string): Promise<string | null> {
+  try {
+    // Usar Image para cargar con CORS habilitado
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = () => resolve(null);
+      img.src = url;
+    });
+  } catch {
+    return null;
+  }
 }
 ```
 
-### Función Interna `drawReceipt`
+### Ajuste de layout
 
-Dibuja un comprobante compacto en el offset vertical especificado:
+En `drawReceipt`:
+- Logo: de 12x12mm a **18x18mm** (más visible)
+- Ajustar posición del nombre de empresa para no solapar
 
-```typescript
-function drawReceipt(
-  doc: jsPDF,
-  shipment: ShipmentData,
-  detalles: DetalleConcepto[],
-  branding: BrandingData | null,
-  trackingUrl: string,
-  yOffset: number,  // 0 para arriba, halfHeight para abajo
-  copyType: 'agencia' | 'cliente'
-) {
-  // Todo el contenido se dibuja con y + yOffset
-  // Escala y espacios reducidos para caber en media hoja
-}
-```
+## Resultado esperado
 
-### Escalado de Elementos
-
-| Elemento | Tamaño Original | Tamaño Compacto |
-|----------|----------------|-----------------|
-| Logo | 25mm | 15mm |
-| Fuentes títulos | 14pt | 10pt |
-| Fuentes texto | 9pt | 7pt |
-| Caja remitente | 35mm alto | 22mm alto |
-| Caja producto | 40mm alto | 24mm alto |
-| QR Code | 35mm | 22mm |
-| Firmas | 35mm alto | 18mm alto |
-| Observaciones | 25mm alto | 12mm alto |
-
----
-
-## Cambios en PrintReceipt.tsx
-
-Simplificar los botones:
-
-**Antes:**
-```tsx
-<Button onClick={() => handleGeneratePDF('agencia')}>Copia Agencia</Button>
-<Button onClick={() => handleGeneratePDF('cliente')}>Copia Cliente</Button>
-```
-
-**Después:**
-```tsx
-<Button onClick={() => handleGeneratePDF()}>
-  <Printer className="h-4 w-4 mr-2" />
-  Descargar Comprobante
-</Button>
-```
-
-Un solo botón genera el PDF con ambas copias.
-
----
-
-## Resultado Final
-
-Al hacer clic en "Descargar Comprobante", se genera un único PDF A4 con:
-- **Mitad superior**: Copia Agencia (se queda en la sucursal)
-- **Línea de corte**: Con indicador visual para separar
-- **Mitad inferior**: Copia Cliente (se entrega al cliente)
-
-Esto permite imprimir una sola hoja y cortar para entregar al cliente su copia.
+El comprobante mostrará:
+- **Logo del tenant** (si está configurado en branding)
+- O **logo de Geologistick** como fallback si no hay logo personalizado
