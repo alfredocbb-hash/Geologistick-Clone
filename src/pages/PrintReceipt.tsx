@@ -42,7 +42,7 @@ function formatCurrency(amount: number): string {
 export default function PrintReceipt() {
   const [searchParams] = useSearchParams();
   const envioId = searchParams.get('id');
-  const [isGenerating, setIsGenerating] = useState<'agencia' | 'cliente' | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const { data: envio, isLoading: loadingEnvio } = useQuery({
     queryKey: ['receipt-envio', envioId],
@@ -102,24 +102,23 @@ export default function PrintReceipt() {
 
   const trackingUrl = `${window.location.origin}/tracking?q=${envio?.tracking_number}`;
 
-  const handleGeneratePDF = async (copyType: 'agencia' | 'cliente') => {
+  const handleGeneratePDF = async () => {
     if (!envio) return;
     
-    setIsGenerating(copyType);
+    setIsGenerating(true);
     try {
       await generateShipmentReceiptPDF(
         envio as any,
         detalles || [],
         branding,
-        trackingUrl,
-        copyType
+        trackingUrl
       );
-      toast.success(`Comprobante (${copyType === 'agencia' ? 'Copia Agencia' : 'Copia Cliente'}) descargado`);
+      toast.success('Comprobante descargado (Copia Agencia + Copia Cliente)');
     } catch (error) {
       console.error('Error generating receipt:', error);
       toast.error('Error al generar el comprobante');
     } finally {
-      setIsGenerating(null);
+      setIsGenerating(false);
     }
   };
 
@@ -169,31 +168,17 @@ export default function PrintReceipt() {
             </Link>
           </Button>
           
-          <div className="flex gap-2">
-            <Button 
-              onClick={() => handleGeneratePDF('agencia')}
-              disabled={isGenerating !== null}
-              variant="outline"
-            >
-              {isGenerating === 'agencia' ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4 mr-2" />
-              )}
-              Copia Agencia
-            </Button>
-            <Button 
-              onClick={() => handleGeneratePDF('cliente')}
-              disabled={isGenerating !== null}
-            >
-              {isGenerating === 'cliente' ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Printer className="h-4 w-4 mr-2" />
-              )}
-              Copia Cliente
-            </Button>
-          </div>
+          <Button 
+            onClick={handleGeneratePDF}
+            disabled={isGenerating}
+          >
+            {isGenerating ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Printer className="h-4 w-4 mr-2" />
+            )}
+            Descargar Comprobante
+          </Button>
         </div>
 
         {/* Receipt Preview */}
