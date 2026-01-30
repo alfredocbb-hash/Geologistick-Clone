@@ -476,9 +476,9 @@ export default function NewShipment() {
       }, 0);
   }, [conceptosAdicionales, conceptosSeleccionados, formData.valor_declarado, formData.cantidad_bultos, configSeguro]);
 
-  // Memoizar precio total calculado
-  const precioCalculado = useMemo(() => {
-    if (!selectedTarifa) return 0;
+  // Calcular flete base con descripción detallada
+  const { fleteCalculado, fleteDescripcion, metodoAplicado } = useMemo(() => {
+    if (!selectedTarifa) return { fleteCalculado: 0, fleteDescripcion: '', metodoAplicado: '' };
     
     const peso = parseFloat(formData.peso_kg) || 0;
     const precioBase = Number(selectedTarifa.precio_base) || 0;
@@ -488,65 +488,97 @@ export default function NewShipment() {
     const umbralVolumen = (selectedTarifa as any).umbral_volumen_cm || 50;
     const precioM3 = Number(selectedTarifa.precio_por_m3) || 0;
     
-    // Flete base (= precio_base de la tarifa)
-    let flete = precioBase;
+    // Verificar primero si aplica cobro por volumen (tiene prioridad si las dimensiones exceden umbral)
+    if (selectedTarifa.tipo_tarifa === 'peso' && formData.dimensiones && precioM3 > 0) {
+      const dims = formData.dimensiones.split('x').map(d => parseFloat(d.trim())).filter(d => !isNaN(d));
+      if (dims.length === 3 && dims.some(d => d > umbralVolumen)) {
+        const volumen = dims.reduce((a, b) => a * b, 1) / 1000000;
+        const flete = precioBase + (volumen * precioM3);
+        return {
+          fleteCalculado: flete,
+          fleteDescripcion: `Cobro por m³ (dimensión > ${umbralVolumen}cm)`,
+          metodoAplicado: 'volumen_excedido'
+        };
+      }
+    }
     
-    // Ajustar flete según tipo de tarifa
+    // Cálculo según tipo de tarifa
     if (selectedTarifa.tipo_tarifa === 'peso') {
-      // PRIORIDAD 1: Usar rangos_kg escalonados si existen
+      // PRIORIDAD 1: Rangos escalonados (rangos_kg)
       if (rangosKg.length > 0 && peso > 0) {
-        const rangoAplicable = rangosKg.find(
-          r => peso >= r.desde && peso <= r.hasta
-        );
+        const rangoAplicable = rangosKg.find(r => peso >= r.desde && peso <= r.hasta);
         if (rangoAplicable) {
-          flete = rangoAplicable.precio;
-        } else if (peso > rangosKg[rangosKg.length - 1]?.hasta) {
-          // Si excede todos los rangos, usar el último precio
-          flete = rangosKg[rangosKg.length - 1]?.precio || precioBase;
+          return {
+            fleteCalculado: rangoAplicable.precio,
+            fleteDescripcion: `Rango ${rangoAplicable.desde}-${rangoAplicable.hasta} kg`,
+            metodoAplicado: 'rangos_kg'
+          };
         }
-      } 
-      // PRIORIDAD 2: Usar método simple si no hay rangos_kg
-      else {
-        const pesoBaseHasta = rangos.peso_base_hasta || 0;
-        const adicionalPorKg = rangos.adicional_por_kg || 0;
-        
-        if (peso > pesoBaseHasta) {
-          flete += (peso - pesoBaseHasta) * adicionalPorKg;
+        // Peso excede todos los rangos
+        const ultimoRango = rangosKg[rangosKg.length - 1];
+        if (ultimoRango && peso > ultimoRango.hasta) {
+          return {
+            fleteCalculado: ultimoRango.precio,
+            fleteDescripcion: `Peso ${peso}kg excede máximo (${ultimoRango.hasta}kg)`,
+            metodoAplicado: 'rangos_kg_excedido'
+          };
         }
       }
       
-      // Verificar umbral de volumen para cobrar por m3 (si alguna dimensión excede el umbral)
-      if (formData.dimensiones && precioM3 > 0) {
-        const dims = formData.dimensiones.split('x').map(d => parseFloat(d.trim())).filter(d => !isNaN(d));
-        if (dims.length === 3 && dims.some(d => d > umbralVolumen)) {
-          // Calcular volumen en m3
-          const volumen = dims.reduce((a, b) => a * b, 1) / 1000000;
-          flete = precioBase + (volumen * precioM3);
-        }
+      // PRIORIDAD 2: Método simple (base + adicional por kg)
+      const pesoBaseHasta = rangos.peso_base_hasta || 0;
+      const adicionalPorKg = rangos.adicional_por_kg || 0;
+      
+      if (peso > pesoBaseHasta && adicionalPorKg > 0) {
+        const kgExtra = peso - pesoBaseHasta;
+        const flete = precioBase + (kgExtra * adicionalPorKg);
+        return {
+          fleteCalculado: flete,
+          fleteDescripcion: `Base + ${kgExtra.toFixed(1)}kg extra`,
+          metodoAplicado: 'peso_simple'
+        };
       }
-    } else if (selectedTarifa.tipo_tarifa === 'distancia') {
+      
+      // Peso dentro del rango base
+      return {
+        fleteCalculado: precioBase,
+        fleteDescripcion: 'Precio base',
+        metodoAplicado: 'base'
+      };
+    }
+    
+    if (selectedTarifa.tipo_tarifa === 'distancia') {
       const distancia = distanciaKm || 0;
-      flete = distancia * (Number(selectedTarifa.precio_por_km) || 0);
-    } else if (selectedTarifa.tipo_tarifa === 'volumen') {
+      const flete = distancia * (Number(selectedTarifa.precio_por_km) || 0);
+      return {
+        fleteCalculado: flete,
+        fleteDescripcion: `${distancia.toFixed(1)} km`,
+        metodoAplicado: 'distancia'
+      };
+    }
+    
+    if (selectedTarifa.tipo_tarifa === 'volumen') {
       const volumen = parseFloat(formData.dimensiones) || 0;
       const volBaseHasta = rangos.volumen_base_hasta || 0;
       const adicionalPorM3 = rangos.adicional_por_m3 || 0;
       
       if (volumen > volBaseHasta) {
-        flete += (volumen - volBaseHasta) * adicionalPorM3;
+        const flete = precioBase + ((volumen - volBaseHasta) * adicionalPorM3);
+        return {
+          fleteCalculado: flete,
+          fleteDescripcion: `${volumen.toFixed(2)} m³`,
+          metodoAplicado: 'volumen'
+        };
       }
     }
     
-    // Sumar conceptos (básicos + adicionales seleccionados)
-    return flete + totalConceptosBasicos + totalConceptosAdicionales;
-  }, [
-    selectedTarifa,
-    formData.peso_kg,
-    formData.dimensiones,
-    distanciaKm,
-    totalConceptosBasicos,
-    totalConceptosAdicionales
-  ]);
+    return { fleteCalculado: precioBase, fleteDescripcion: 'Precio base', metodoAplicado: 'base' };
+  }, [selectedTarifa, formData.peso_kg, formData.dimensiones, distanciaKm]);
+
+  // Memoizar precio total calculado
+  const precioCalculado = useMemo(() => {
+    return fleteCalculado + totalConceptosBasicos + totalConceptosAdicionales;
+  }, [fleteCalculado, totalConceptosBasicos, totalConceptosAdicionales]);
 
   // Toggle concepto adicional selection
   const toggleConceptoAdicional = (conceptoId: string) => {
@@ -1983,30 +2015,18 @@ export default function NewShipment() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {/* Flete (Precio Base) */}
+                {/* Flete (calculado según método aplicado) */}
                 <div className="flex justify-between text-sm font-medium">
-                  <span>Flete ({selectedTarifa.nombre})</span>
-                  <span>{formatCurrency(selectedTarifa.precio_base)}</span>
+                  <div className="flex flex-col">
+                    <span>Flete ({selectedTarifa.nombre})</span>
+                    {fleteDescripcion && (
+                      <span className="text-xs text-muted-foreground font-normal">
+                        {fleteDescripcion}
+                      </span>
+                    )}
+                  </div>
+                  <span>{formatCurrency(fleteCalculado)}</span>
                 </div>
-                
-                {/* Rangos adicionales por peso */}
-                {(() => {
-                  const rangos = (selectedTarifa as any).rangos_precios || {};
-                  const peso = parseFloat(formData.peso_kg) || 0;
-                  const pesoBaseHasta = rangos.peso_base_hasta || 0;
-                  const adicionalPorKg = rangos.adicional_por_kg || 0;
-                  
-                  if (selectedTarifa.tipo_tarifa === 'peso' && peso > pesoBaseHasta && adicionalPorKg > 0) {
-                    const kgExtra = peso - pesoBaseHasta;
-                    return (
-                      <div className="flex justify-between text-sm text-muted-foreground">
-                        <span>+ {kgExtra.toFixed(1)} kg extra (x {formatCurrency(adicionalPorKg)})</span>
-                        <span>{formatCurrency(kgExtra * adicionalPorKg)}</span>
-                      </div>
-                    );
-                  }
-                  return null;
-                })()}
                 
                 {/* Conceptos Básicos */}
                 {conceptosBasicos.map((cp) => {
