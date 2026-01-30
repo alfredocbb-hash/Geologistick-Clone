@@ -1,6 +1,7 @@
 export { RateTypeSelector, getRateTypeLabel } from './RateTypeSelector';
 export type { RateType } from './RateTypeSelector';
 export { ConceptBranchesDialog } from './ConceptBranchesDialog';
+export { TarifaBranchesDialog } from './TarifaBranchesDialog';
 export { WeightRangesEditor } from './WeightRangesEditor';
 export type { WeightRange } from './WeightRangesEditor';
 export { InsuranceConfigDialog } from './InsuranceConfigDialog';

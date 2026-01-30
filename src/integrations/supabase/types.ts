@@ -2725,6 +2725,58 @@ export type Database = {
           },
         ]
       }
+      sucursal_tarifas: {
+        Row: {
+          created_at: string | null
+          habilitada: boolean | null
+          id: string
+          sucursal_id: string
+          tarifa_id: string
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          habilitada?: boolean | null
+          id?: string
+          sucursal_id: string
+          tarifa_id: string
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          habilitada?: boolean | null
+          id?: string
+          sucursal_id?: string
+          tarifa_id?: string
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sucursal_tarifas_sucursal_id_fkey"
+            columns: ["sucursal_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sucursal_tarifas_tarifa_id_fkey"
+            columns: ["tarifa_id"]
+            isOneToOne: false
+            referencedRelation: "tarifas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sucursal_tarifas_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sucursal_zonas: {
         Row: {
           activa: boolean | null
