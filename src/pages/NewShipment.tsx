@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
+import { useFormDraft } from '@/hooks/useFormDraft';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +19,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import ContactAutocomplete from '@/components/shipments/ContactAutocomplete';
 import { AddressAutocomplete, type AddressDetails } from '@/components/maps';
 import { Checkbox } from '@/components/ui/checkbox';
+import { DraftIndicator, DraftSavingIndicator } from '@/components/ui/draft-indicator';
 import { 
   PackagePlus, ArrowLeft, User, MapPin, Package, DollarSign, Loader2, 
   CreditCard, Truck, Calendar, Clock, Home, AlertCircle, Wallet, Phone,
@@ -145,7 +147,8 @@ export default function NewShipment() {
   // Días preferidos de entrega
   const [diasPreferidos, setDiasPreferidos] = useState<string[]>([]);
 
-  const [formData, setFormData] = useState({
+  // Form data with draft persistence
+  const initialFormData = {
     // Remitente
     remitente_nombre: '',
     remitente_apellido: '',
@@ -183,7 +186,18 @@ export default function NewShipment() {
     notas_retiro: '',
     // Entrega a domicilio
     horario_preferido_entrega: 'cualquier_hora',
-  });
+  };
+
+  const {
+    formData,
+    setFormData,
+    hasDraft,
+    lastSaved,
+    clearDraft,
+    discardDraft,
+    isDraftRecovered,
+    setIsDraftRecovered,
+  } = useFormDraft('new-shipment', initialFormData);
 
   // Coordinates state for distance calculation
   const [origenCoords, setOrigenCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -911,6 +925,9 @@ export default function NewShipment() {
       return envio;
     },
     onSuccess: (data) => {
+      // Clear draft on successful save
+      clearDraft();
+      
       queryClient.invalidateQueries({ queryKey: ['envios'] });
       queryClient.invalidateQueries({ queryKey: ['all_clients'] });
       queryClient.invalidateQueries({ queryKey: ['clientes_cta_cte'] });
@@ -1197,9 +1214,12 @@ export default function NewShipment() {
               <PackagePlus className="h-8 w-8 text-envios" />
               Nuevo Envío
             </h1>
-            <p className="text-muted-foreground mt-1">
-              Completa los datos para crear un nuevo envío
-            </p>
+            <div className="flex items-center gap-3 mt-1">
+              <p className="text-muted-foreground">
+                Completa los datos para crear un nuevo envío
+              </p>
+              <DraftSavingIndicator hasDraft={hasDraft} lastSaved={lastSaved} />
+            </div>
           </div>
         </div>
         
@@ -1211,6 +1231,15 @@ export default function NewShipment() {
           </Badge>
         )}
       </div>
+
+      {/* Draft recovered indicator */}
+      {isDraftRecovered && (
+        <DraftIndicator
+          lastSaved={lastSaved}
+          onDiscard={discardDraft}
+          onDismiss={() => setIsDraftRecovered(false)}
+        />
+      )}
 
       {/* Card de Sucursal Asignada */}
       <Card className="border-primary/30 bg-primary/5">

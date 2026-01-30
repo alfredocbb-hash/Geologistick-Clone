@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
+import { useFormDraft } from '@/hooks/useFormDraft';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { DraftIndicator, DraftSavingIndicator } from '@/components/ui/draft-indicator';
 import {
   Dialog,
   DialogContent,
@@ -74,7 +76,9 @@ export default function Clients() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
-  const [formData, setFormData] = useState({
+  
+  // Initial form data for draft persistence
+  const initialFormData = {
     nombre: '',
     apellido: '',
     telefono: '',
@@ -86,7 +90,37 @@ export default function Clients() {
     sucursal_id: '',
     tiene_cuenta_corriente: false,
     limite_credito: '',
-  });
+  };
+
+  const {
+    formData,
+    setFormData,
+    hasDraft,
+    lastSaved,
+    clearDraft,
+    discardDraft,
+    isDraftRecovered,
+    setIsDraftRecovered,
+  } = useFormDraft('new-client', initialFormData);
+
+  // Reset draft state when editing existing client
+  useEffect(() => {
+    if (editingClient) {
+      setFormData({
+        nombre: editingClient.nombre,
+        apellido: editingClient.apellido || '',
+        telefono: editingClient.telefono,
+        email: editingClient.email || '',
+        direccion: editingClient.direccion,
+        ciudad: editingClient.ciudad || '',
+        codigo_postal: editingClient.codigo_postal || '',
+        notas: editingClient.notas || '',
+        sucursal_id: editingClient.sucursal_id || '',
+        tiene_cuenta_corriente: editingClient.tiene_cuenta_corriente ?? false,
+        limite_credito: editingClient.limite_credito?.toString() || '',
+      });
+    }
+  }, [editingClient, setFormData]);
 
   // Fetch sucursales
   const { data: sucursales = [] } = useQuery({
@@ -157,6 +191,10 @@ export default function Clients() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
       toast.success(editingClient ? 'Cliente actualizado' : 'Cliente creado');
+      // Clear draft only on new client creation (not edit)
+      if (!editingClient) {
+        clearDraft();
+      }
       resetForm();
       setIsDialogOpen(false);
     },
@@ -181,37 +219,13 @@ export default function Clients() {
   });
 
   const resetForm = () => {
-    setFormData({
-      nombre: '',
-      apellido: '',
-      telefono: '',
-      email: '',
-      direccion: '',
-      ciudad: '',
-      codigo_postal: '',
-      notas: '',
-      sucursal_id: '',
-      tiene_cuenta_corriente: false,
-      limite_credito: '',
-    });
+    discardDraft();
     setEditingClient(null);
+    setIsDraftRecovered(false);
   };
 
   const handleEdit = (client: Client) => {
     setEditingClient(client);
-    setFormData({
-      nombre: client.nombre,
-      apellido: client.apellido || '',
-      telefono: client.telefono,
-      email: client.email || '',
-      direccion: client.direccion,
-      ciudad: client.ciudad || '',
-      codigo_postal: client.codigo_postal || '',
-      notas: client.notas || '',
-      sucursal_id: client.sucursal_id || '',
-      tiene_cuenta_corriente: client.tiene_cuenta_corriente ?? false,
-      limite_credito: client.limite_credito?.toString() || '',
-    });
     setIsDialogOpen(true);
   };
 
@@ -247,10 +261,20 @@ export default function Clients() {
           </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
             <DialogHeader className="flex-shrink-0">
-              <DialogTitle>
-                {editingClient ? 'Editar Cliente' : 'Nuevo Cliente'}
+              <DialogTitle className="flex items-center justify-between">
+                <span>{editingClient ? 'Editar Cliente' : 'Nuevo Cliente'}</span>
+                {!editingClient && <DraftSavingIndicator hasDraft={hasDraft} lastSaved={lastSaved} />}
               </DialogTitle>
             </DialogHeader>
+            {/* Draft recovered indicator */}
+            {!editingClient && isDraftRecovered && (
+              <DraftIndicator
+                lastSaved={lastSaved}
+                onDiscard={discardDraft}
+                onDismiss={() => setIsDraftRecovered(false)}
+                className="mb-2"
+              />
+            )}
             <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto space-y-4 pr-2">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Información Personal */}
