@@ -3061,6 +3061,7 @@ export type Database = {
           created_at: string | null
           created_by: string | null
           id: string
+          multiplicar_flete_por_bultos: boolean | null
           nombre: string
           precio_base: number
           precio_minimo_flete: number | null
@@ -3083,6 +3084,7 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           id?: string
+          multiplicar_flete_por_bultos?: boolean | null
           nombre: string
           precio_base: number
           precio_minimo_flete?: number | null
@@ -3105,6 +3107,7 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           id?: string
+          multiplicar_flete_por_bultos?: boolean | null
           nombre?: string
           precio_base?: number
           precio_minimo_flete?: number | null

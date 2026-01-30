@@ -29,6 +29,7 @@ interface TarifaData {
   precio_base: number;
   tipo_tarifa: string | null;
   rangos_precios: { peso_base_hasta?: number; adicional_por_kg?: number } | null;
+  multiplicar_flete_por_bultos: boolean | null;
 }
 
 interface ShippingRate {
@@ -122,28 +123,34 @@ Deno.serve(async (req) => {
 
     const companyName = branding?.nombre_app || "Envío Express";
 
-    // Calculate total weight from items
+    // Calculate total weight and item count from items
     const totalWeight = items.reduce((sum: number, item: { weight?: string; quantity?: number }) => {
       const weight = parseFloat(item.weight || "0") || 0;
       const qty = parseInt(String(item.quantity || 1)) || 1;
       return sum + (weight * qty);
     }, 0);
 
-    console.log("Total weight:", totalWeight, "kg");
+    // Total item count (used for multiplicar_flete_por_bultos)
+    const totalItemCount = items.reduce((sum: number, item: { quantity?: number }) => {
+      const qty = parseInt(String(item.quantity || 1)) || 1;
+      return sum + qty;
+    }, 0);
+
+    console.log("Total weight:", totalWeight, "kg, Total items:", totalItemCount);
 
     // Fetch all required data in parallel
     const [tarifaResult, tarifaExpressResult, conceptosResult, sucursalesResult] = await Promise.all([
       // Standard tarifa
       supabase
         .from("tarifas")
-        .select("id, nombre, precio_base, tipo_tarifa, rangos_precios")
+        .select("id, nombre, precio_base, tipo_tarifa, rangos_precios, multiplicar_flete_por_bultos")
         .eq("id", sellerData.tarifa_id)
         .maybeSingle(),
       // Express tarifa (if configured)
       sellerData.tarifa_express_id
         ? supabase
             .from("tarifas")
-            .select("id, nombre, precio_base, tipo_tarifa, rangos_precios")
+            .select("id, nombre, precio_base, tipo_tarifa, rangos_precios, multiplicar_flete_por_bultos")
             .eq("id", sellerData.tarifa_express_id)
             .maybeSingle()
         : Promise.resolve({ data: null, error: null }),
@@ -176,8 +183,8 @@ Deno.serve(async (req) => {
     const conceptos = conceptosResult.data || [];
     const pickupBranches = sucursalesResult.data || [];
 
-    // Calculate standard rate
-    const standardPrice = calculateRate(tarifa, totalWeight, conceptos);
+    // Calculate standard rate (pass totalItemCount for multiplicar_flete_por_bultos)
+    const standardPrice = calculateRate(tarifa, totalWeight, conceptos, totalItemCount);
     console.log("Standard price calculated:", standardPrice);
 
     const rates: ShippingRate[] = [];
@@ -195,7 +202,7 @@ Deno.serve(async (req) => {
 
     // Add express shipping rate if configured
     if (tarifaExpress) {
-      const expressBasePrice = calculateRate(tarifaExpress, totalWeight, []);
+      const expressBasePrice = calculateRate(tarifaExpress, totalWeight, [], totalItemCount);
       const expressSurcharge = Number(sellerData.express_surcharge) || 0;
       const expressPrice = expressBasePrice + expressSurcharge;
       
@@ -254,13 +261,19 @@ Deno.serve(async (req) => {
   }
 });
 
-// Calculate rate from tarifa, weight, and concepts
+// Calculate rate from tarifa, weight, concepts, and item count
 function calculateRate(
   tarifa: TarifaData,
   totalWeight: number,
-  conceptos: Array<{ monto: number; concepto: unknown }>
+  conceptos: Array<{ monto: number; concepto: unknown }>,
+  itemCount: number = 1
 ): number {
   let precio = Number(tarifa.precio_base) || 0;
+
+  // Multiply base price by item count if configured
+  if (tarifa.multiplicar_flete_por_bultos && itemCount > 1) {
+    precio *= itemCount;
+  }
 
   // Add weight-based calculation if applicable
   if (tarifa.tipo_tarifa === "peso" && tarifa.rangos_precios) {

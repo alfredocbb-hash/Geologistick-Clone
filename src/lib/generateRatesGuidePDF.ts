@@ -151,7 +151,14 @@ Paso 4: Configurar Umbral de Volumen
 • umbral_volumen_cm: Si alguna dimension supera este valor, se usa precio por volumen
 • Por defecto: 50 cm
 
-Paso 5: Guardar Tarifa
+Paso 5: Multiplicar Flete por Bultos (Opcional)
+• Activar si el flete debe cobrarse POR BULTO en lugar de por envio
+• Ejemplo: Si el flete es $1,000 y hay 3 bultos:
+  - Desactivado: Flete = $1,000 (cobro unico)
+  - Activado: Flete = $3,000 (1,000 x 3 bultos)
+• Util para empresas que cobran por cantidad de paquetes
+
+Paso 6: Guardar Tarifa
 • Clic en "Guardar"
 • La tarifa queda disponible para asignar a sucursales
 
@@ -162,6 +169,7 @@ EJEMPLO PRACTICO: Tarifa de Encomiendas
 Configuracion:
 • Nombre: "Encomiendas Standard"
 • Tipo: Por Peso
+• Multiplicar por bultos: Si
 • Rangos:
   - 0-2 kg: $800
   - 2.01-5 kg: $1,100
@@ -171,8 +179,9 @@ Configuracion:
 • Umbral volumen: 60 cm
 
 Resultado:
-• Envio de 3 kg = $1,100
-• Envio de 12 kg = $2,200
+• Envio de 3 kg (1 bulto) = $1,100
+• Envio de 12 kg (1 bulto) = $2,200
+• Envio de 3 kg (2 bultos) = $2,200 (1,100 x 2)
 • Envio de 8 kg pero con caja de 80 cm = Calculo por volumen`
     },
     {

@@ -49,6 +49,7 @@ import {
   Ruler,
   TrendingUp,
   Shield,
+  Package,
 } from 'lucide-react';
 import { 
   RateTypeSelector, 
@@ -82,6 +83,7 @@ interface Tarifa {
   } | null;
   rangos_kg: WeightRange[] | null;
   umbral_volumen_cm: number | null;
+  multiplicar_flete_por_bultos: boolean | null;
   created_at: string | null;
   tenant_id: string | null;
   created_by: string | null;
@@ -154,6 +156,7 @@ export default function Rates() {
     // Rangos de peso escalonados
     rangos_kg: [] as WeightRange[],
     umbral_volumen_cm: 50,
+    multiplicar_flete_por_bultos: false,
     // Conceptos inline
     conceptos: {} as Record<string, { monto: string; es_porcentaje: boolean; porcentaje: string; multiplicar_por_bultos: boolean }>,
   });
@@ -263,6 +266,7 @@ export default function Rates() {
         rangos_precios: rangosPrecios,
         rangos_kg: data.rangos_kg.length > 0 ? data.rangos_kg : null,
         umbral_volumen_cm: data.umbral_volumen_cm || 50,
+        multiplicar_flete_por_bultos: data.multiplicar_flete_por_bultos,
         comision_chofer_porcentaje: data.comision_chofer_porcentaje
           ? parseFloat(data.comision_chofer_porcentaje)
           : null,
@@ -568,6 +572,7 @@ export default function Rates() {
       adicional_por_m3: '',
       rangos_kg: [],
       umbral_volumen_cm: 50,
+      multiplicar_flete_por_bultos: false,
       conceptos: {},
     });
     setEditingTarifa(null);
@@ -625,6 +630,7 @@ export default function Rates() {
       adicional_por_m3: rangos.adicional_por_m3?.toString() || '',
       rangos_kg: rangosKg,
       umbral_volumen_cm: tarifa.umbral_volumen_cm || 50,
+      multiplicar_flete_por_bultos: tarifa.multiplicar_flete_por_bultos ?? false,
       conceptos: conceptosMap,
     });
     setIsDialogOpen(true);
@@ -1072,6 +1078,22 @@ export default function Rates() {
                     />
                   </div>
 
+                  {/* Multiplicar flete por bultos */}
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border">
+                    <div>
+                      <Label className="font-medium">Multiplicar flete por bultos</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Si está activo, el flete base se multiplica por la cantidad de bultos
+                      </p>
+                    </div>
+                    <Switch
+                      checked={formData.multiplicar_flete_por_bultos}
+                      onCheckedChange={(checked) =>
+                        setFormData({ ...formData, multiplicar_flete_por_bultos: checked })
+                      }
+                    />
+                  </div>
+
                   {/* Dynamic fields based on rate type */}
                   {renderRateTypeFields()}
 
@@ -1244,6 +1266,12 @@ export default function Rates() {
                             >
                               {tarifa.activa ? 'Activa' : 'Inactiva'}
                             </Badge>
+                            {tarifa.multiplicar_flete_por_bultos && (
+                              <Badge variant="outline" className="text-xs gap-1 text-amber-600 border-amber-400">
+                                <Package className="h-3 w-3" />
+                                ×Bultos
+                              </Badge>
+                            )}
                           </div>
                         </div>
                         <div className="flex gap-1">
