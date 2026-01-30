@@ -1,138 +1,145 @@
 
 
-# Plan: Texto Negrita para Láser + QR Directo al Envío + Tracking Corto
+# Plan: Corrección de 3 Bugs en la App del Chofer
 
-## Resumen de Cambios
+## Problemas Identificados
 
-Hay **3 mejoras** a implementar:
-
-1. **Texto más negrita** para impresoras láser
-2. **QR que lleve directo al envío** (no a la página para escribir el tracking)
-3. **Acortar el código de tracking** que debe recordar el cliente
-
----
-
-## 1. Texto Más Negrita (Estilo Láser)
-
-**Problema:** El texto actual del PDF usa fuentes muy finas que se ven débiles en impresoras láser.
-
-**Solución:** En `generateShipmentReceiptPDF.ts`:
-- Aumentar grosor de líneas separadoras de `0.5` a `1.0`
-- Usar `'bold'` en más lugares (nombres, conceptos, totales)
-- Subir tamaños de fuente en elementos clave (+1 o +2 pt)
-- Aumentar grosor del borde del cuadro TOTAL
-
-| Elemento | Antes | Después |
-|----------|-------|---------|
-| Nombre empresa | 10pt bold | 12pt bold |
-| Guía | 9pt bold | 11pt bold |
-| Títulos secciones | 6pt bold | 7pt bold |
-| Nombres personas | 7pt normal | 8pt bold |
-| Total | 11pt | 14pt bold |
-| Líneas separadoras | 0.5pt | 1.0pt |
-| Borde Total | 0.5pt | 1.5pt |
+| # | Problema | Causa |
+|---|----------|-------|
+| 1 | Al capturar foto vuelve al menú en vez del pedido | Uso incorrecto de `useState` para GPS + posible cierre prematuro del diálogo |
+| 2 | Pestaña "Mapa" no hace nada | No hay `TabsContent` ni lógica que renderice la vista de mapa |
+| 3 | Solo navega a la primera parada en Google Maps | Posible problema con la construcción de waypoints o límite de Google Maps (10 waypoints) |
 
 ---
 
-## 2. QR que Lleve Directo al Envío
+## Corrección 1: Captura de Foto
 
-**Problema actual:** El QR codifica:
-```
-https://ejemplo.com/tracking?q=SUC01-ENV-20260128-C87880
-```
-El cliente escanea y ya ve el envío. **Esto ya funciona bien**.
+**Archivo:** `src/components/delivery/DeliveryConfirmation.tsx`
 
-Sin embargo, el cliente **también** necesita el tracking para consultar sin QR. Ahí está el problema: el tracking es largo.
+**Problema técnico:** 
+- Línea 62-77: Usa `useState(() => {...})` en lugar de `useEffect` para capturar GPS, lo cual es incorrecto
+- La mutación llama `onSuccess()` y `onClose()` casi simultáneamente, lo que puede cerrar el diálogo antes de que el usuario vea el resultado
 
----
-
-## 3. Acortar el Código de Tracking
-
-**Formato actual:**
-```
-{SUCURSAL}-ENV-{YYYYMMDD}-{6 chars}
-Ejemplo: SUC01-ENV-20260128-C87880
-Total: ~25 caracteres
-```
-
-**Propuesta - Código Corto para Clientes:**
-
-Crear un **código corto público** adicional que sea más fácil de recordar, sin cambiar el tracking interno.
-
-### Opción A: Mostrar solo los últimos 8 caracteres
-
-El cliente solo necesita recordar: `28-C87880` (8 caracteres)
-
-- El sistema buscaría por LIKE `%28-C87880` 
-- Fácil de recordar y escribir
-- No requiere cambios en la base de datos
-
-### Opción B: Generar un código corto separado
-
-Agregar columna `codigo_corto` en `envios` con formato `ABC123` (6 caracteres alfanuméricos)
-
-- Más limpio pero requiere migración
-- Búsqueda exacta más rápida
-
-**Recomendación:** Usar **Opción A** (mostrar los últimos 8 caracteres prominentemente) porque:
-- No requiere migración de datos
-- El tracking completo sigue funcionando
-- El cliente puede buscar con `C87880` o con el completo
-
-### Cambios en el PDF
-
-| Elemento | Antes | Después |
-|----------|-------|---------|
-| Debajo del QR | "Escanear tracking" | "Escanear o buscar con:" |
-| Código visible | (ninguno) | `C87880` (en grande, negrita) |
-
-### Cambios en Tracking.tsx y public-tracking
-
-Modificar la búsqueda para que si el código tiene menos de 15 caracteres, busque con `ILIKE '%{codigo}'`:
+**Cambios:**
+1. Cambiar `useState(() => {...})` por `useEffect(() => {...}, [])`
+2. Asegurar que el flujo no cierre el diálogo prematuramente
+3. Agregar mejor manejo de errores en la captura de foto
 
 ```typescript
-// Si el código es corto, buscar por coincidencia al final
-if (codigo.length < 15) {
-  query = query.ilike('tracking_number', `%${codigo}`);
-} else {
-  query = query.eq('tracking_number', codigo);
-}
+// ANTES (incorrecto)
+useState(() => {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(...)
+  }
+});
+
+// DESPUÉS (correcto)
+useEffect(() => {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(...)
+  }
+}, []);
 ```
 
 ---
 
-## Archivos a Modificar
+## Corrección 2: Implementar Pestaña "Mapa"
+
+**Archivo:** `src/pages/ActiveRouteNavigation.tsx`
+
+**Problema técnico:**
+- Hay un toggle entre `list` y `map` en el viewMode
+- Pero no existe ningún código que use `viewMode === 'map'` para mostrar contenido diferente
+- La pestaña "Mapa" existe en la UI pero no hace nada
+
+**Cambios:**
+1. Agregar renderizado condicional basado en `viewMode`
+2. Cuando `viewMode === 'map'`, mostrar el componente `MapView` con todas las paradas como marcadores
+3. Cuando `viewMode === 'list'`, mostrar la lista actual de paradas
+
+```tsx
+{viewMode === 'list' ? (
+  // Contenido actual de lista
+  <div className="px-4 space-y-2">
+    {/* Lista de paradas */}
+  </div>
+) : (
+  // Vista de mapa
+  <div className="px-4">
+    <MapView
+      markers={stopsMarkers}
+      height="calc(100vh - 250px)"
+      onMarkerClick={(marker) => {
+        // Seleccionar parada
+      }}
+    />
+  </div>
+)}
+```
+
+---
+
+## Corrección 3: Navegación con Todas las Paradas
+
+**Archivo:** `src/pages/ActiveRouteNavigation.tsx`
+
+**Problema técnico:**
+- La API de direcciones de Google Maps para URLs tiene un **límite de 10 waypoints**
+- La codificación puede fallar si hay caracteres especiales
+- Si hay más de 10 paradas pendientes, solo se muestran las primeras 10
+
+**Cambios:**
+1. Limitar waypoints a los primeros 9 + destino final
+2. Mejorar la codificación de direcciones
+3. Agregar advertencia si hay más de 10 paradas
+4. Filtrar direcciones vacías o inválidas
+
+```typescript
+const navigateFullRoute = useCallback(() => {
+  const pendingStops = envios
+    .filter(e => {...})
+    .map(e => {...})
+    .filter(addr => addr && addr.trim().length > 5); // Filtrar vacíos
+
+  if (pendingStops.length === 0) {
+    toast.info('No hay paradas pendientes');
+    return;
+  }
+
+  // Google Maps URL API solo soporta hasta 10 waypoints
+  if (pendingStops.length > 10) {
+    toast.warning(`Mostrando las primeras 10 de ${pendingStops.length} paradas`);
+  }
+
+  const limitedStops = pendingStops.slice(0, 10);
+  const destination = encodeURIComponent(limitedStops[limitedStops.length - 1]);
+  
+  if (limitedStops.length > 1) {
+    const waypoints = limitedStops
+      .slice(0, -1)
+      .map(addr => encodeURIComponent(addr))
+      .join('|');
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${destination}&waypoints=${waypoints}&travelmode=driving`, '_blank');
+  } else {
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`, '_blank');
+  }
+}, [envios]);
+```
+
+---
+
+## Resumen de Archivos a Modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/lib/generateShipmentReceiptPDF.ts` | Fuentes más grandes, líneas más gruesas, mostrar código corto |
-| `supabase/functions/public-tracking/index.ts` | Buscar por sufijo si código es corto |
-| `src/pages/Tracking.tsx` | Buscar por sufijo si código es corto |
-| `src/pages/TrackingEmbed.tsx` | Buscar por sufijo si código es corto |
+| `src/components/delivery/DeliveryConfirmation.tsx` | Cambiar `useState` por `useEffect` para GPS, mejorar flujo de cierre |
+| `src/pages/ActiveRouteNavigation.tsx` | Implementar vista de mapa con marcadores, corregir función de navegación |
 
 ---
 
 ## Resultado Esperado
 
-1. **PDF más legible** con textos negritas para impresoras láser
-2. **QR sigue funcionando** igual (lleva directo al envío)
-3. **Código corto visible** en el comprobante (ej: `C87880`)
-4. **El cliente puede buscar** con `C87880` o con el tracking completo
-5. **No se rompe nada** - el tracking largo sigue funcionando
-
----
-
-## Ejemplo Visual del Código Corto en PDF
-
-```text
-┌──────────────────────────────────────────┐
-│   [QR]     │  TOTAL         │            │
-│            │  $ 7.370,99    │            │
-│            │                │            │
-│ Buscar:    │                │            │
-│  C87880    │                │            │
-└──────────────────────────────────────────┘
-```
-
-El código corto `C87880` se muestra en **grande y negrita** debajo del QR.
+1. ✅ Al capturar foto, el chofer permanece en el diálogo hasta confirmar y ve el resultado
+2. ✅ La pestaña "Mapa" muestra un mapa con todas las paradas como marcadores
+3. ✅ Al navegar la ruta completa, Google Maps abre con todas las paradas (hasta 10) correctamente
 
