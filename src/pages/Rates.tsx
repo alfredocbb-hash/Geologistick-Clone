@@ -44,6 +44,7 @@ import {
   RateTypeSelector, 
   getRateTypeLabel, 
   ConceptBranchesDialog,
+  TarifaBranchesDialog,
   InsuranceConfigDialog,
   BulkRateUpdateDialog,
   WeightRangesEditor,
@@ -96,19 +97,21 @@ interface TarifaConceptoPrecio {
 }
 
 export default function Rates() {
-  const { isAdmin, profile } = useAuth();
+  const { isAdmin, isSuperAdmin, profile } = useAuth();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('tarifas');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isConceptDialogOpen, setIsConceptDialogOpen] = useState(false);
   const [isPricingDialogOpen, setIsPricingDialogOpen] = useState(false);
   const [isBranchDialogOpen, setIsBranchDialogOpen] = useState(false);
+  const [isTarifaBranchDialogOpen, setIsTarifaBranchDialogOpen] = useState(false);
   const [isBulkUpdateOpen, setIsBulkUpdateOpen] = useState(false);
   const [isInsuranceOpen, setIsInsuranceOpen] = useState(false);
   const [editingTarifa, setEditingTarifa] = useState<Tarifa | null>(null);
   const [editingConcept, setEditingConcept] = useState<TarifaConcepto | null>(null);
   const [selectedTarifaForPricing, setSelectedTarifaForPricing] = useState<Tarifa | null>(null);
   const [selectedConceptForBranches, setSelectedConceptForBranches] = useState<TarifaConcepto | null>(null);
+  const [selectedTarifaForBranches, setSelectedTarifaForBranches] = useState<Tarifa | null>(null);
   
   const [formData, setFormData] = useState({
     nombre: '',
@@ -423,6 +426,27 @@ export default function Rates() {
       toast.error('Error: ' + error.message);
     },
   });
+
+  // Delete tarifa mutation (super admin only)
+  const deleteTarifaMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('tarifas').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tarifas'] });
+      toast.success('Tarifa eliminada');
+    },
+    onError: (error: Error) => {
+      toast.error('Error al eliminar: ' + error.message);
+    },
+  });
+
+  // Open tarifa branches dialog
+  const handleOpenTarifaBranches = (tarifa: Tarifa) => {
+    setSelectedTarifaForBranches(tarifa);
+    setIsTarifaBranchDialogOpen(true);
+  };
 
   const resetForm = () => {
     setFormData({
@@ -1133,10 +1157,34 @@ export default function Rates() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            onClick={() => handleOpenTarifaBranches(tarifa)}
+                            title="Gestionar sucursales"
+                          >
+                            <Building2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             onClick={() => handleEdit(tarifa)}
+                            title="Editar tarifa"
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
+                          {isSuperAdmin() && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                if (confirm(`¿Eliminar la tarifa "${tarifa.nombre}"? Esta acción no se puede deshacer.`)) {
+                                  deleteTarifaMutation.mutate(tarifa.id);
+                                }
+                              }}
+                              title="Eliminar tarifa"
+                              disabled={deleteTarifaMutation.isPending}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
                         </div>
                       </div>
 
@@ -1605,6 +1653,16 @@ export default function Rates() {
         open={isInsuranceOpen}
         onOpenChange={setIsInsuranceOpen}
       />
+
+      {/* Dialog para gestionar sucursales de una tarifa */}
+      {selectedTarifaForBranches && (
+        <TarifaBranchesDialog
+          open={isTarifaBranchDialogOpen}
+          onOpenChange={setIsTarifaBranchDialogOpen}
+          tarifaId={selectedTarifaForBranches.id}
+          tarifaNombre={selectedTarifaForBranches.nombre}
+        />
+      )}
     </div>
   );
 }

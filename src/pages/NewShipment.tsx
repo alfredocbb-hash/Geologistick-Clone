@@ -291,6 +291,37 @@ export default function NewShipment() {
     enabled: !!sucursalOrigenId,
   });
 
+  // Query para tarifas habilitadas por sucursal
+  const { data: sucursalTarifas = [] } = useQuery({
+    queryKey: ['sucursal-tarifas', sucursalOrigenId],
+    queryFn: async () => {
+      if (!sucursalOrigenId) return [];
+      const { data, error } = await supabase
+        .from('sucursal_tarifas')
+        .select('tarifa_id')
+        .eq('sucursal_id', sucursalOrigenId)
+        .eq('habilitada', true);
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!sucursalOrigenId,
+  });
+
+  // Query para configuración de seguro
+  const { data: configSeguro } = useQuery({
+    queryKey: ['configuracion_seguro', profile?.tenant_id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('configuracion_seguro')
+        .select('*')
+        .eq('tenant_id', profile?.tenant_id!)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!profile?.tenant_id,
+  });
+
   const { data: conceptoPrecios = [] } = useQuery({
     queryKey: ['tarifa_concepto_precios', formData.tarifa_id],
     queryFn: async () => {
@@ -378,11 +409,34 @@ export default function NewShipment() {
     });
   }, [formData.remitente_dni, formData.remitente_nombre, allClients]);
 
-  const selectedTarifa = tarifas?.find(t => t.id === formData.tarifa_id);
+  // Filtrar tarifas disponibles por sucursal (si hay asignaciones, solo mostrar las habilitadas)
+  const tarifasDisponibles = useMemo(() => {
+    if (!tarifas) return [];
+    
+    // Si no hay asignaciones en sucursal_tarifas, mostrar todas las tarifas activas
+    if (sucursalTarifas.length === 0) {
+      return tarifas;
+    }
+    
+    // Filtrar solo las tarifas habilitadas para esta sucursal
+    const tarifaIdsHabilitados = new Set(sucursalTarifas.map(st => st.tarifa_id));
+    return tarifas.filter(t => tarifaIdsHabilitados.has(t.id));
+  }, [tarifas, sucursalTarifas]);
+
+  // Auto-seleccionar tarifa si solo hay una disponible
+  useEffect(() => {
+    if (tarifasDisponibles.length === 1 && !formData.tarifa_id) {
+      setFormData(prev => ({ ...prev, tarifa_id: tarifasDisponibles[0].id }));
+    }
+  }, [tarifasDisponibles, formData.tarifa_id]);
+
+  const selectedTarifa = tarifasDisponibles?.find(t => t.id === formData.tarifa_id);
 
   // Memoizar total de conceptos básicos (evitar recálculo en cada render)
   const totalConceptosBasicos = useMemo(() => {
-    const valorDeclarado = parseFloat(formData.valor_declarado) || 0;
+    // Usar valor mínimo de seguro si no se especifica valor declarado
+    const valorDeclarado = parseFloat(formData.valor_declarado) || 
+      (configSeguro?.valor_minimo_declarado || 0);
     const cantidadBultos = parseInt(formData.cantidad_bultos) || 1;
     
     return conceptosBasicos.reduce((sum, cp) => {
@@ -397,11 +451,13 @@ export default function NewShipment() {
       }
       return sum + montoConcepto;
     }, 0);
-  }, [conceptosBasicos, formData.valor_declarado, formData.cantidad_bultos]);
+  }, [conceptosBasicos, formData.valor_declarado, formData.cantidad_bultos, configSeguro]);
 
   // Memoizar total de conceptos adicionales seleccionados
   const totalConceptosAdicionales = useMemo(() => {
-    const valorDeclarado = parseFloat(formData.valor_declarado) || 0;
+    // Usar valor mínimo de seguro si no se especifica valor declarado
+    const valorDeclarado = parseFloat(formData.valor_declarado) || 
+      (configSeguro?.valor_minimo_declarado || 0);
     const cantidadBultos = parseInt(formData.cantidad_bultos) || 1;
     
     return conceptosAdicionales
@@ -418,7 +474,7 @@ export default function NewShipment() {
         }
         return sum + montoConcepto;
       }, 0);
-  }, [conceptosAdicionales, conceptosSeleccionados, formData.valor_declarado, formData.cantidad_bultos]);
+  }, [conceptosAdicionales, conceptosSeleccionados, formData.valor_declarado, formData.cantidad_bultos, configSeguro]);
 
   // Memoizar precio total calculado
   const precioCalculado = useMemo(() => {
@@ -427,17 +483,46 @@ export default function NewShipment() {
     const peso = parseFloat(formData.peso_kg) || 0;
     const precioBase = Number(selectedTarifa.precio_base) || 0;
     const rangos = (selectedTarifa as any).rangos_precios || {};
+    const rangosKg: { desde: number; hasta: number; precio: number }[] = 
+      Array.isArray((selectedTarifa as any).rangos_kg) ? (selectedTarifa as any).rangos_kg : [];
+    const umbralVolumen = (selectedTarifa as any).umbral_volumen_cm || 50;
+    const precioM3 = Number(selectedTarifa.precio_por_m3) || 0;
     
     // Flete base (= precio_base de la tarifa)
     let flete = precioBase;
     
     // Ajustar flete según tipo de tarifa
     if (selectedTarifa.tipo_tarifa === 'peso') {
-      const pesoBaseHasta = rangos.peso_base_hasta || 0;
-      const adicionalPorKg = rangos.adicional_por_kg || 0;
+      // PRIORIDAD 1: Usar rangos_kg escalonados si existen
+      if (rangosKg.length > 0 && peso > 0) {
+        const rangoAplicable = rangosKg.find(
+          r => peso >= r.desde && peso <= r.hasta
+        );
+        if (rangoAplicable) {
+          flete = rangoAplicable.precio;
+        } else if (peso > rangosKg[rangosKg.length - 1]?.hasta) {
+          // Si excede todos los rangos, usar el último precio
+          flete = rangosKg[rangosKg.length - 1]?.precio || precioBase;
+        }
+      } 
+      // PRIORIDAD 2: Usar método simple si no hay rangos_kg
+      else {
+        const pesoBaseHasta = rangos.peso_base_hasta || 0;
+        const adicionalPorKg = rangos.adicional_por_kg || 0;
+        
+        if (peso > pesoBaseHasta) {
+          flete += (peso - pesoBaseHasta) * adicionalPorKg;
+        }
+      }
       
-      if (peso > pesoBaseHasta) {
-        flete += (peso - pesoBaseHasta) * adicionalPorKg;
+      // Verificar umbral de volumen para cobrar por m3 (si alguna dimensión excede el umbral)
+      if (formData.dimensiones && precioM3 > 0) {
+        const dims = formData.dimensiones.split('x').map(d => parseFloat(d.trim())).filter(d => !isNaN(d));
+        if (dims.length === 3 && dims.some(d => d > umbralVolumen)) {
+          // Calcular volumen en m3
+          const volumen = dims.reduce((a, b) => a * b, 1) / 1000000;
+          flete = precioBase + (volumen * precioM3);
+        }
       }
     } else if (selectedTarifa.tipo_tarifa === 'distancia') {
       const distancia = distanciaKm || 0;
@@ -1754,7 +1839,13 @@ export default function NewShipment() {
                 min="0"
                 value={formData.valor_declarado}
                 onChange={(e) => handleChange('valor_declarado', e.target.value)}
+                placeholder={configSeguro?.valor_minimo_declarado ? `Mínimo: $${configSeguro.valor_minimo_declarado}` : ''}
               />
+              {configSeguro?.valor_minimo_declarado && !formData.valor_declarado && (
+                <p className="text-xs text-muted-foreground">
+                  Si se deja vacío, se usará el mínimo de ${configSeguro.valor_minimo_declarado} para el cálculo del seguro
+                </p>
+              )}
             </div>
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="descripcion">Descripción del contenido</Label>
@@ -1765,48 +1856,68 @@ export default function NewShipment() {
                 placeholder="Ej: Documentos, ropa, electrónicos..."
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="tarifa_id">Tarifa</Label>
-              <Select
-                value={formData.tarifa_id}
-                onValueChange={(v) => handleChange('tarifa_id', v)}
-                disabled={loadingTarifas}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={loadingTarifas ? "Cargando tarifas..." : "Seleccionar tarifa"} />
-                </SelectTrigger>
-                <SelectContent>
+            {/* Selector de Tarifa - solo mostrar si hay más de 1 tarifa disponible */}
+            {tarifasDisponibles.length > 1 ? (
+              <div className="space-y-2">
+                <Label htmlFor="tarifa_id">Tarifa</Label>
+                <Select
+                  value={formData.tarifa_id}
+                  onValueChange={(v) => handleChange('tarifa_id', v)}
+                  disabled={loadingTarifas}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={loadingTarifas ? "Cargando tarifas..." : "Seleccionar tarifa"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {loadingTarifas ? (
+                      <div className="flex items-center justify-center py-4">
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        <span>Cargando...</span>
+                      </div>
+                    ) : (
+                      tarifasDisponibles.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          {t.nombre} - ${Number(t.precio_base).toLocaleString('es-AR')}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : tarifasDisponibles.length === 1 ? (
+              <div className="p-3 bg-muted/50 rounded-lg">
+                <p className="text-sm text-muted-foreground mb-1">Tarifa</p>
+                <p className="font-medium">
+                  {tarifasDisponibles[0].nombre} - ${Number(tarifasDisponibles[0].precio_base).toLocaleString('es-AR')}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="tarifa_id">Tarifa</Label>
+                <div className="text-sm text-muted-foreground p-3 border rounded-lg">
                   {loadingTarifas ? (
-                    <div className="flex items-center justify-center py-4">
+                    <div className="flex items-center">
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      <span>Cargando...</span>
-                    </div>
-                  ) : tarifas?.length === 0 ? (
-                    <div className="py-4 text-center text-muted-foreground">
-                      No hay tarifas disponibles
+                      <span>Cargando tarifas...</span>
                     </div>
                   ) : (
-                    tarifas?.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.nombre} - ${Number(t.precio_base).toLocaleString('es-AR')}
-                      </SelectItem>
-                    ))
+                    <>
+                      No hay tarifas disponibles para esta sucursal
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => refetchTarifas()}
+                        className="mt-2"
+                        type="button"
+                      >
+                        <Loader2 className="h-4 w-4 mr-2" />
+                        Reintentar
+                      </Button>
+                    </>
                   )}
-                </SelectContent>
-              </Select>
-              {!loadingTarifas && tarifas?.length === 0 && (
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => refetchTarifas()}
-                  className="mt-2"
-                  type="button"
-                >
-                  <Loader2 className="h-4 w-4 mr-2" />
-                  Reintentar carga de tarifas
-                </Button>
-              )}
-            </div>
+                </div>
+              </div>
+            )}
             {/* Note: pago_contra_entrega is now automatically set based on tipo_pago */}
             
             {/* Conceptos Adicionales */}
