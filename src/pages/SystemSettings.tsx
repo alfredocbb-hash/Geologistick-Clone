@@ -3,21 +3,23 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Download, FileText, Info, Loader2, Settings, ShoppingCart } from "lucide-react";
+import { DollarSign, Download, FileText, Info, Loader2, Settings, ShoppingCart } from "lucide-react";
 import { generateUserGuidePDF } from "@/lib/generateUserGuidePDF";
 import { generateEcommerceGuidePDF } from "@/lib/generateEcommerceGuidePDF";
+import { generateRatesGuidePDF } from "@/lib/generateRatesGuidePDF";
 import { useToast } from "@/hooks/use-toast";
 
 const SystemSettings = () => {
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isGeneratingEcommercePDF, setIsGeneratingEcommercePDF] = useState(false);
+  const [isGeneratingRatesPDF, setIsGeneratingRatesPDF] = useState(false);
   const { toast } = useToast();
 
   const handleDownloadGuide = async () => {
     setIsGeneratingPDF(true);
     try {
       await new Promise(resolve => setTimeout(resolve, 500));
-      generateUserGuidePDF();
+      await generateUserGuidePDF();
       toast({
         title: "PDF generado",
         description: "La guía de usuario se ha descargado correctamente.",
@@ -37,7 +39,7 @@ const SystemSettings = () => {
     setIsGeneratingEcommercePDF(true);
     try {
       await new Promise(resolve => setTimeout(resolve, 500));
-      generateEcommerceGuidePDF();
+      await generateEcommerceGuidePDF();
       toast({
         title: "PDF generado",
         description: "La guía de e-Commerce se ha descargado correctamente.",
@@ -50,6 +52,26 @@ const SystemSettings = () => {
       });
     } finally {
       setIsGeneratingEcommercePDF(false);
+    }
+  };
+
+  const handleDownloadRatesGuide = async () => {
+    setIsGeneratingRatesPDF(true);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await generateRatesGuidePDF();
+      toast({
+        title: "PDF generado",
+        description: "La guía de Tarifas se ha descargado correctamente.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo generar el PDF. Intente nuevamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingRatesPDF(false);
     }
   };
 
@@ -167,6 +189,60 @@ const SystemSettings = () => {
                 <>
                   <Download className="mr-2 h-4 w-4" />
                   Descargar Guía e-Commerce
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Rates Guide */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <DollarSign className="h-5 w-5" />
+              Guía de Tarifas
+            </CardTitle>
+            <CardDescription>
+              Manual de configuración de precios
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-start gap-4 p-4 rounded-lg border bg-card">
+              <div className="p-3 rounded-lg bg-amber-500/10">
+                <DollarSign className="h-6 w-6 text-amber-600" />
+              </div>
+              <div className="flex-1 space-y-2">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold">Módulo de Tarifas</h3>
+                  <Badge variant="secondary">PDF</Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Guía completa para configurar precios de envíos.
+                </p>
+                <ul className="text-xs text-muted-foreground space-y-1 mt-2">
+                  <li>• Tipos de tarifas (peso, km, volumen)</li>
+                  <li>• Rangos escalonados de precio</li>
+                  <li>• Conceptos adicionales y seguro</li>
+                  <li>• Ajustes masivos de precios</li>
+                </ul>
+              </div>
+            </div>
+            
+            <Button 
+              onClick={handleDownloadRatesGuide} 
+              className="w-full"
+              variant="outline"
+              disabled={isGeneratingRatesPDF}
+            >
+              {isGeneratingRatesPDF ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Generando PDF...
+                </>
+              ) : (
+                <>
+                  <Download className="mr-2 h-4 w-4" />
+                  Descargar Guía de Tarifas
                 </>
               )}
             </Button>
