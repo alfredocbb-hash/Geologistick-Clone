@@ -1,124 +1,111 @@
 
 
-# Plan: Permitir Optimizar y Crear Rutas con 1 Solo Envío
+# Plan: Mejorar Eliminación de Tarifas con Validación de Dependencias
 
 ## Problema Identificado
 
-Actualmente el planificador requiere **mínimo 2 envíos** para poder optimizar y crear una ruta. Esto impide crear rutas para un solo retiro.
+El error indica que la tarifa **"CABA - GBA"** está siendo usada por sellers de e-commerce:
 
-**Ubicación del problema:** `src/pages/RoutePlanner.tsx`
-- Línea 542: `if (selectedEnvios.length < 2)` - Bloquea la función
-- Línea 937: `disabled={isOptimizing || selectedEnvios.length < 2}` - Deshabilita el botón
-
-## Lógica Propuesta
-
-Si hay **1 solo envío**, no es necesario "optimizar" (no hay nada que ordenar), pero sí debe permitirse:
-1. Crear la ruta con ese único envío
-2. Usar la sucursal del usuario como origen
-3. Asignar chofer y vehículo
-
-## Cambios a Implementar
-
-### 1. Modificar la función `optimizeRoute`
-
-Cambiar la validación para manejar el caso de 1 envío:
-
-```typescript
-// ANTES (línea 541-545)
-if (selectedEnvios.length < 2) {
-  toast.error("Selecciona al menos 2 envíos para optimizar");
-  return;
-}
-
-// DESPUÉS
-if (selectedEnvios.length === 0) {
-  toast.error("Selecciona al menos 1 envío");
-  return;
-}
-
-// Si solo hay 1 envío, crear ruta directa sin optimización
-if (selectedEnvios.length === 1) {
-  const envio = selectedEnviosData[0];
-  if (!envio.coords?.lat || !envio.coords?.lng) {
-    toast.error("El envío no tiene coordenadas. Geolocalizalo primero.");
-    return;
-  }
-  
-  const singleStop: RouteStop = {
-    envio_id: envio.id,
-    tipo: envio.tipo,
-    direccion: envio.tipo === "retiro" 
-      ? (envio.direccion_retiro || envio.remitente?.direccion)
-      : (envio.direccion_entrega || envio.destinatario?.direccion),
-    lat: Number(envio.coords.lat),
-    lng: Number(envio.coords.lng),
-    cliente_nombre: envio.tipo === "retiro" 
-      ? (envio.nombre_remitente || `${envio.remitente?.nombre || ''} ${envio.remitente?.apellido || ''}`.trim())
-      : (envio.nombre_destinatario || `${envio.destinatario?.nombre || ''} ${envio.destinatario?.apellido || ''}`.trim()),
-    telefono: envio.tipo === "retiro" ? envio.remitente?.telefono : envio.destinatario?.telefono,
-    tracking: envio.tracking_number,
-  };
-  
-  const distancia = calcDistance(
-    sucursalOrigen?.lat ? Number(sucursalOrigen.lat) : -34.6037,
-    sucursalOrigen?.lng ? Number(sucursalOrigen.lng) : -58.3816,
-    singleStop.lat,
-    singleStop.lng
-  ) * 1.3; // Factor de corrección
-  
-  const singleOption: RouteOption = {
-    name: envio.tipo === "retiro" ? "🏠 Retiro único" : "📦 Entrega única",
-    stops: [singleStop],
-    totalDistance: Math.round(distancia * 10) / 10,
-    estimatedTime: Math.round((distancia / 25 + 0.1) * 10) / 10,
-    reasoning: "Ruta directa desde la sucursal al punto de " + (envio.tipo === "retiro" ? "retiro" : "entrega"),
-  };
-  
-  setRouteOptions([singleOption]);
-  setSelectedOption(singleOption);
-  toast.success("Ruta preparada");
-  return;
-}
+```
+violates foreign key constraint "ecommerce_sellers_tarifa_id_fkey" on table "ecommerce_sellers"
 ```
 
-### 2. Actualizar la condición del botón
+Esto ocurre porque hay sellers que tienen `tarifa_id` apuntando a esa tarifa.
 
-Cambiar de mínimo 2 a mínimo 1:
+## Solución Propuesta
 
-```tsx
-// ANTES (línea 937)
-disabled={isOptimizing || selectedEnvios.length < 2}
-
-// DESPUÉS
-disabled={isOptimizing || selectedEnvios.length < 1}
-```
-
-### 3. Cambiar el texto del botón contextualmente
-
-```tsx
-// ANTES
-<><Zap className="mr-2 h-4 w-4" />Optimizar Ruta</>
-
-// DESPUÉS
-{selectedEnvios.length === 1 ? (
-  <><Navigation className="mr-2 h-4 w-4" />Preparar Ruta</>
-) : (
-  <><Zap className="mr-2 h-4 w-4" />Optimizar Ruta</>
-)}
-```
+Agregar una **verificación previa** antes de eliminar para:
+1. Detectar si hay sellers, envíos u otras tablas usando esa tarifa
+2. Mostrar un mensaje claro indicando **qué está usando** la tarifa
+3. Ofrecer la opción de **desvincular automáticamente** antes de eliminar
 
 ---
 
-## Archivo a Modificar
+## Cambios a Implementar
 
-| Archivo | Cambio |
-|---------|--------|
-| `src/pages/RoutePlanner.tsx` | Manejar caso de 1 envío, actualizar botón |
+### Archivo: `src/pages/Rates.tsx`
+
+**Modificar la mutación de eliminación** para:
+
+1. **Primero verificar dependencias**:
+   - Consultar `ecommerce_sellers` con esa `tarifa_id`
+   - Consultar `sucursal_tarifas` con esa `tarifa_id`
+   - Consultar `envios` con esa `tarifa_id` (si aplica)
+
+2. **Si hay dependencias, mostrar diálogo de confirmación** con opciones:
+   - Listar los sellers/sucursales que usan la tarifa
+   - Opción de desvincular y eliminar
+   - Opción de cancelar
+
+3. **Si confirma desvincular**:
+   - Actualizar `ecommerce_sellers SET tarifa_id = NULL WHERE tarifa_id = X`
+   - Eliminar de `sucursal_tarifas WHERE tarifa_id = X`
+   - Luego eliminar la tarifa
+
+### Código Propuesto
+
+```typescript
+const deleteTarifaMutation = useMutation({
+  mutationFn: async ({ id, force }: { id: string; force?: boolean }) => {
+    // 1. Verificar dependencias
+    const { data: sellersUsando } = await supabase
+      .from('ecommerce_sellers')
+      .select('id, nombre')
+      .eq('tarifa_id', id);
+    
+    const { data: sucursalesUsando } = await supabase
+      .from('sucursal_tarifas')
+      .select('id, sucursal_id')
+      .eq('tarifa_id', id);
+    
+    const dependencias = {
+      sellers: sellersUsando?.length || 0,
+      sucursales: sucursalesUsando?.length || 0,
+    };
+    
+    if ((dependencias.sellers > 0 || dependencias.sucursales > 0) && !force) {
+      throw new Error(
+        `Esta tarifa está en uso por ${dependencias.sellers} seller(s) ` +
+        `y ${dependencias.sucursales} sucursal(es). ` +
+        `¿Desea desvincularla de todos y eliminarla?`
+      );
+    }
+    
+    // 2. Si force=true, desvincular primero
+    if (force) {
+      await supabase
+        .from('ecommerce_sellers')
+        .update({ tarifa_id: null })
+        .eq('tarifa_id', id);
+      
+      await supabase
+        .from('sucursal_tarifas')
+        .delete()
+        .eq('tarifa_id', id);
+    }
+    
+    // 3. Eliminar tarifa
+    const { error } = await supabase.from('tarifas').delete().eq('id', id);
+    if (error) throw error;
+  },
+  // ...handlers
+});
+```
+
+### Flujo de UI
+
+1. Usuario hace clic en eliminar
+2. Se muestra confirmación inicial
+3. Si hay dependencias, se muestra mensaje detallado con opción de forzar
+4. Si acepta forzar, se desvincula y elimina
+
+---
 
 ## Resultado Esperado
 
-1. El usuario selecciona 1 retiro
-2. El botón muestra "Preparar Ruta" (en vez de "Optimizar Ruta")
-3. Al hacer clic, crea una ruta directa desde la sucursal al punto de retiro
-4. El usuario puede asignar chofer y confirmar la ruta
+| Situación | Comportamiento |
+|-----------|----------------|
+| Tarifa sin uso | Se elimina directamente |
+| Tarifa usada por sellers | Muestra "Esta tarifa está en uso por X seller(s)..." |
+| Usuario confirma forzar | Desvincula sellers y sucursales, luego elimina |
 
