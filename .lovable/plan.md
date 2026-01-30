@@ -1,143 +1,207 @@
 
-# Plan: Guía de Usuario del Módulo de Tarifas (PDF)
+# Plan: Opción para Multiplicar Flete Base por Bultos
 
 ## Resumen
 
-Crear un PDF profesional descargable que explique cómo funciona y cómo configurar correctamente el módulo de Tarifas. Seguirá el mismo patrón de las guías existentes (User Guide y e-Commerce Guide), con branding consistente y color temático naranja/ámbar para diferenciar el módulo de Tarifas.
+Agregar una opción configurable a cada tarifa que permita decidir si el flete base se debe multiplicar por la cantidad de bultos. Esto da flexibilidad para que cada empresa configure si cobra flete por envío o por bulto.
 
 ---
 
-## Contenido de la Guía
+## Cambios Necesarios
 
-La guía cubrirá los siguientes temas:
+### 1. Migración de Base de Datos
 
-### 1. Introducción al Módulo de Tarifas
-- Qué es una tarifa y para qué sirve
-- Estructura: Precio base + Conceptos adicionales
-- Tipos de tarifas disponibles
+Agregar columna `multiplicar_flete_por_bultos` a la tabla `tarifas`:
 
-### 2. Tipos de Tarifas
-- **Por Peso (Kg)**: Método simple vs rangos escalonados
-- **Por Distancia (Km)**: Precio base + kilómetros
-- **Por Volumen (m³)**: Para paquetes de gran tamaño
-- **Por Zona**: Precio fijo según zona origen/destino
-- **Por Código Postal**: Precio según CP
+```sql
+ALTER TABLE tarifas 
+ADD COLUMN IF NOT EXISTS multiplicar_flete_por_bultos boolean DEFAULT false;
 
-### 3. Crear una Nueva Tarifa
-- Pasos para crear tarifa
-- Configurar precio base (Flete)
-- Configurar rangos de peso escalonados
-- Umbral de volumen (cuándo cobra por m³)
-- Ejemplo práctico
+COMMENT ON COLUMN tarifas.multiplicar_flete_por_bultos IS 
+  'Si es true, el flete base se multiplica por la cantidad de bultos del envío';
+```
 
-### 4. Conceptos Adicionales
-- Diferencia entre conceptos Básicos y Adicionales
-- Conceptos típicos: Retiro, Entrega, Seguro, Embalaje
-- Configurar precios fijos vs porcentajes
-- Cómo habilitar conceptos por sucursal
-
-### 5. Asignar Tarifas a Sucursales
-- Por qué asignar tarifas a sucursales
-- Cómo hacerlo desde el diálogo de sucursales
-- Tarifa por defecto cuando solo hay una
-
-### 6. Cálculo del Flete en Envíos
-- Fórmula completa del cálculo
-- Ejemplo paso a paso
-- Cuándo aplica retiro/entrega según tipo de servicio
-
-### 7. Configuración de Seguro
-- Fórmula: Base + ((Valor - Mínimo) × Porcentaje)
-- Valor mínimo por defecto
-- Tope máximo de cobertura
-
-### 8. Ajustes Masivos de Precios
-- Aumentos porcentuales globales
-- Qué afecta: precios base, rangos, conceptos
-- Historial de ajustes
-
-### 9. Tarifas para e-Commerce
-- Asignar tarifa a sellers
-- Cotización automática en Tiendanube
-- Tarifa express (opcional)
-
-### 10. Preguntas Frecuentes
-- ¿Por qué no aparece mi tarifa al crear envío?
-- ¿Cómo cambio el precio del seguro?
-- ¿Puedo tener diferentes precios por sucursal?
+| Campo | Tipo | Default | Descripción |
+|-------|------|---------|-------------|
+| `multiplicar_flete_por_bultos` | boolean | false | El flete se cobra por envío (false) o por bulto (true) |
 
 ---
 
-## Implementación Técnica
+### 2. Actualizar Interface y Formulario de Tarifas
 
-### Archivos a Crear
+En `src/pages/Rates.tsx`:
 
-| Archivo | Descripción |
-|---------|-------------|
-| `src/lib/generateRatesGuidePDF.ts` | Función para generar el PDF de tarifas |
-
-### Archivos a Modificar
-
-| Archivo | Cambio |
-|---------|--------|
-| `src/pages/SystemSettings.tsx` | Agregar card y botón para descargar la guía de Tarifas |
-
-### Estructura del Código
-
+**Modificar la interface `Tarifa`:**
 ```typescript
-// src/lib/generateRatesGuidePDF.ts
+interface Tarifa {
+  // ... campos existentes ...
+  multiplicar_flete_por_bultos: boolean | null;
+}
+```
 
-const RATES_GUIDE_CONTENT = {
-  title: 'Guía de Tarifas',
-  subtitle: 'Configuración de Precios - Geologistick',
-  sections: [
-    { title: '1. INTRODUCCION', content: '...' },
-    { title: '2. TIPOS DE TARIFAS', content: '...' },
-    // ... más secciones
-  ]
-};
+**Agregar campo al formulario:**
+```typescript
+const [formData, setFormData] = useState({
+  // ... campos existentes ...
+  multiplicar_flete_por_bultos: false,
+});
+```
 
-const PRIMARY_COLOR: [number, number, number] = [245, 158, 11]; // Amber/Orange
+**Agregar Switch en el formulario (después del precio base):**
+```tsx
+<div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+  <div>
+    <Label className="font-medium">Multiplicar flete por bultos</Label>
+    <p className="text-xs text-muted-foreground">
+      Si está activo, el flete base se multiplica por la cantidad de bultos
+    </p>
+  </div>
+  <Switch
+    checked={formData.multiplicar_flete_por_bultos}
+    onCheckedChange={(checked) => 
+      setFormData({ ...formData, multiplicar_flete_por_bultos: checked })
+    }
+  />
+</div>
+```
 
-export const generateRatesGuidePDF = async (): Promise<void> => {
-  // Usar las mismas utilidades de pdfHelpers.ts
-  // Generar portada, contenido con paginación, footer
+**Actualizar la mutación de guardado:**
+```typescript
+const tarifaData = {
+  // ... otros campos ...
+  multiplicar_flete_por_bultos: data.multiplicar_flete_por_bultos,
 };
 ```
 
-### UI en SystemSettings
+---
 
-Se agregará una tercera card con:
-- Icono: DollarSign (del módulo Tarifas)
-- Color temático: Amber/Naranja
-- Lista de temas cubiertos
-- Botón "Descargar Guía de Tarifas"
+### 3. Aplicar Lógica en Cálculo de Flete (NewShipment.tsx)
+
+Modificar el `useMemo` que calcula `fleteCalculado`:
+
+**Antes:**
+```typescript
+return {
+  fleteCalculado: flete,
+  fleteDescripcion: 'Precio base',
+  metodoAplicado: 'base'
+};
+```
+
+**Después:**
+```typescript
+const cantidadBultos = parseInt(formData.cantidad_bultos) || 1;
+const multiplicar = selectedTarifa.multiplicar_flete_por_bultos === true;
+const fleteTotal = multiplicar && cantidadBultos > 1 ? flete * cantidadBultos : flete;
+
+return {
+  fleteCalculado: fleteTotal,
+  fleteDescripcion: multiplicar && cantidadBultos > 1 
+    ? `${metodo} × ${cantidadBultos} bultos` 
+    : metodo,
+  metodoAplicado: metodoAplicado,
+  multiplicadoPorBultos: multiplicar && cantidadBultos > 1
+};
+```
+
+**Actualizar la UI del resumen para mostrar cuando aplica:**
+```tsx
+<div className="flex justify-between items-center">
+  <span className="text-muted-foreground">
+    Flete ({fleteDescripcion})
+    {metodoAplicado.multiplicadoPorBultos && (
+      <span className="text-xs text-amber-600 ml-1">(×{cantidadBultos})</span>
+    )}
+  </span>
+  <span>${fleteCalculado.toLocaleString('es-AR')}</span>
+</div>
+```
 
 ---
 
-## Vista Previa del PDF
+### 4. Actualizar Edge Function (tiendanube-shipping-rates)
 
-**Portada:**
-- Header naranja con logo Geologistick
-- Título: "GUÍA DE TARIFAS"
-- Subtítulo: "Manual de Configuración de Precios"
-- Fecha de generación
+Modificar para considerar la nueva columna:
 
-**Páginas de Contenido:**
-- Header con logo pequeño y línea naranja
-- Secciones con títulos en negrita
-- Bullets para instrucciones paso a paso
-- Ejemplos de cálculo con números
-- Footer con fecha y número de página
+```typescript
+// En la consulta de tarifa
+.select("id, nombre, precio_base, tipo_tarifa, rangos_precios, multiplicar_flete_por_bultos")
+
+// En la función calculateRate
+function calculateRate(
+  tarifa: TarifaData,
+  totalWeight: number,
+  conceptos: Array<{ monto: number; concepto: unknown }>,
+  itemCount: number = 1 // Nuevo parámetro
+): number {
+  let precio = Number(tarifa.precio_base) || 0;
+  
+  // Multiplicar por cantidad de items si está configurado
+  if (tarifa.multiplicar_flete_por_bultos && itemCount > 1) {
+    precio *= itemCount;
+  }
+  
+  // ... resto del cálculo igual ...
+}
+```
+
+---
+
+### 5. Mostrar en Tarjeta de Tarifa
+
+Agregar badge visual cuando la opción está activa:
+
+```tsx
+{tarifa.multiplicar_flete_por_bultos && (
+  <Badge variant="outline" className="text-xs gap-1">
+    <Package className="h-3 w-3" />
+    ×Bultos
+  </Badge>
+)}
+```
+
+---
+
+## Archivos a Modificar
+
+| Archivo | Cambio |
+|---------|--------|
+| Migración SQL | Agregar columna `multiplicar_flete_por_bultos` |
+| `src/pages/Rates.tsx` | Interface, formulario, card UI |
+| `src/pages/NewShipment.tsx` | Lógica de cálculo y display |
+| `supabase/functions/tiendanube-shipping-rates/index.ts` | Considerar el flag en cotización |
+| `src/lib/generateRatesGuidePDF.ts` | Documentar la nueva opción |
+
+---
+
+## Flujo de Uso
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                  CONFIGURACIÓN DE TARIFA                     │
+├─────────────────────────────────────────────────────────────┤
+│  Flete Base: $5,000                                         │
+│                                                             │
+│  [x] Multiplicar flete por bultos                           │
+│      Si está activo, el flete base se multiplica            │
+│      por la cantidad de bultos del envío                    │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                 AL CREAR ENVÍO (3 bultos)                   │
+├─────────────────────────────────────────────────────────────┤
+│  Flete (Precio base × 3 bultos)................ $15,000     │
+│  Entrega a domicilio...........................  $1,500     │
+│  ─────────────────────────────────────────────────────────  │
+│  TOTAL......................................... $16,500     │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## Resultado Esperado
 
-| Ubicación | Elemento |
-|-----------|----------|
-| Configuración del Sistema | Nueva card "Guía de Tarifas" |
-| PDF | ~15-20 páginas con toda la documentación |
-| Estilo | Consistente con guías existentes, color naranja |
-
-El administrador podrá descargar el PDF y compartirlo con el equipo para capacitación.
+- **Sin la opción activada (default)**: El flete se cobra una vez por envío, sin importar cuántos bultos tenga
+- **Con la opción activada**: El flete se multiplica por la cantidad de bultos
+- Los conceptos adicionales mantienen su propia configuración de `multiplicar_por_bultos`
+- La información es clara y visible tanto en la configuración como en el resumen del envío
