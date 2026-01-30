@@ -539,8 +539,8 @@ export default function RoutePlanner() {
 
   // Optimize route
   const optimizeRoute = async () => {
-    if (selectedEnvios.length < 2) {
-      toast.error("Selecciona al menos 2 envíos para optimizar");
+    if (selectedEnvios.length === 0) {
+      toast.error("Selecciona al menos 1 envío");
       return;
     }
 
@@ -552,31 +552,66 @@ export default function RoutePlanner() {
     setIsOptimizing(true);
 
     try {
+      // Starting point from user's sucursal
+      const originLat = sucursalOrigen?.lat ? Number(sucursalOrigen.lat) : -34.6037;
+      const originLng = sucursalOrigen?.lng ? Number(sucursalOrigen.lng) : -58.3816;
+
+      // CASO ESPECIAL: Solo 1 envío - crear ruta directa sin optimización
+      if (selectedEnvios.length === 1) {
+        const envio = selectedEnviosData[0];
+        if (!envio.coords?.lat || !envio.coords?.lng) {
+          toast.error("El envío no tiene coordenadas. Geolocalizalo primero.");
+          setIsOptimizing(false);
+          return;
+        }
+        
+        const singleStop: RouteStop = {
+          envio_id: envio.id,
+          tipo: envio.tipo as "retiro" | "entrega",
+          direccion: envio.tipo === "retiro" 
+            ? (envio.direccion_retiro || envio.remitente?.direccion || "")
+            : (envio.direccion_entrega || envio.destinatario?.direccion || ""),
+          lat: Number(envio.coords.lat),
+          lng: Number(envio.coords.lng),
+          cliente_nombre: envio.tipo === "retiro" 
+            ? (envio.nombre_remitente || `${envio.remitente?.nombre || ''} ${envio.remitente?.apellido || ''}`.trim())
+            : (envio.nombre_destinatario || `${envio.destinatario?.nombre || ''} ${envio.destinatario?.apellido || ''}`.trim()),
+          telefono: envio.tipo === "retiro" ? (envio.remitente?.telefono || "") : (envio.destinatario?.telefono || ""),
+          tracking: envio.tracking_number,
+        };
+        
+        const distancia = calcDistance(originLat, originLng, singleStop.lat, singleStop.lng) * 1.3;
+        
+        const singleOption: RouteOption = {
+          name: envio.tipo === "retiro" ? "🏠 Retiro único" : "📦 Entrega única",
+          stops: [singleStop],
+          totalDistance: Math.round(distancia * 10) / 10,
+          estimatedTime: Math.round((distancia / 25 + 0.1) * 10) / 10,
+          reasoning: "Ruta directa desde la sucursal al punto de " + (envio.tipo === "retiro" ? "retiro" : "entrega"),
+        };
+        
+        setRouteOptions([singleOption]);
+        setSelectedOption(singleOption);
+        setIsOptimizing(false);
+        toast.success("Ruta preparada");
+        return;
+      }
+
+      // CASO NORMAL: 2+ envíos - optimizar
       const enviosConCoords = selectedEnviosData.filter(e => e.coords?.lat && e.coords?.lng);
 
       if (enviosConCoords.length < 2) {
         toast.error("Los envíos seleccionados no tienen coordenadas suficientes");
+        setIsOptimizing(false);
         return;
       }
 
-      // Calculate distance between points (Haversine)
-      const calcDistance = (lat1: number, lng1: number, lat2: number, lng2: number) => {
-        const R = 6371;
-        const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLng = (lng2 - lng1) * Math.PI / 180;
-        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                  Math.sin(dLng/2) * Math.sin(dLng/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        return R * c;
-      };
-
       // Nearest neighbor algorithm
-      const nearestNeighbor = (stops: any[], startLat: number, startLng: number) => {
+      const nearestNeighbor = (stops: any[], startLatParam: number, startLngParam: number) => {
         const remaining = [...stops];
         const ordered: any[] = [];
-        let currentLat = startLat;
-        let currentLng = startLng;
+        let currentLat = startLatParam;
+        let currentLng = startLngParam;
         let totalDistance = 0;
 
         while (remaining.length > 0) {
@@ -602,18 +637,14 @@ export default function RoutePlanner() {
         return { ordered, totalDistance };
       };
 
-      // Starting point from user's sucursal
-      const startLat = sucursalOrigen?.lat ? Number(sucursalOrigen.lat) : -34.6037;
-      const startLng = sucursalOrigen?.lng ? Number(sucursalOrigen.lng) : -58.3816;
-
       // Option 1: Pickups first, then deliveries
       const retiros = enviosConCoords.filter(e => e.tipo === "retiro");
       const entregas = enviosConCoords.filter(e => e.tipo === "entrega");
       
-      const retirosOpt = nearestNeighbor(retiros, startLat, startLng);
+      const retirosOpt = nearestNeighbor(retiros, originLat, originLng);
       const lastRetiro = retirosOpt.ordered.length > 0 
         ? retirosOpt.ordered[retirosOpt.ordered.length - 1] 
-        : { coords: { lat: startLat, lng: startLng } };
+        : { coords: { lat: originLat, lng: originLng } };
       const entregasOpt = nearestNeighbor(entregas, Number(lastRetiro.coords.lat), Number(lastRetiro.coords.lng));
       
       const option1Distance = retirosOpt.totalDistance + entregasOpt.totalDistance;
@@ -633,7 +664,7 @@ export default function RoutePlanner() {
       }));
 
       // Option 2: All mixed by nearest neighbor
-      const allMixed = nearestNeighbor(enviosConCoords, startLat, startLng);
+      const allMixed = nearestNeighbor(enviosConCoords, originLat, originLng);
       const option2Stops = allMixed.ordered.map(e => ({
         envio_id: e.id,
         tipo: e.tipo,
@@ -934,10 +965,12 @@ export default function RoutePlanner() {
                     <Button 
                       className="w-full" 
                       onClick={optimizeRoute}
-                      disabled={isOptimizing || selectedEnvios.length < 2}
+                      disabled={isOptimizing || selectedEnvios.length < 1}
                     >
                       {isOptimizing ? (
                         <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Optimizando...</>
+                      ) : selectedEnvios.length === 1 ? (
+                        <><Navigation className="mr-2 h-4 w-4" />Preparar Ruta</>
                       ) : (
                         <><Zap className="mr-2 h-4 w-4" />Optimizar Ruta</>
                       )}
