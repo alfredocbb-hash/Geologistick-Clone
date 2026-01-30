@@ -1,32 +1,144 @@
 
-# Plan: Opción para Multiplicar Flete Base por Bultos
+# Plan: Persistencia Automática de Formularios
 
-## Estado: ✅ COMPLETADO
+## Problema
+Cuando estás cargando datos en cualquier formulario (Nuevo Envío, Nuevo Cliente, etc.) y sales del sistema (cierras pestaña/navegador), al volver toda la información se pierde y debes comenzar de nuevo.
 
-## Cambios Realizados
+## Solución
+Crear un sistema de **auto-guardado en borradores** que persista automáticamente los datos de formularios en el almacenamiento local del navegador. Los datos se recuperan al volver y se eliminan al guardar exitosamente.
 
-### 1. ✅ Migración de Base de Datos
-- Columna `multiplicar_flete_por_bultos` agregada a tabla `tarifas`
+---
 
-### 2. ✅ Rates.tsx
-- Interface Tarifa actualizada con nuevo campo
-- FormData incluye el campo
-- Switch agregado en formulario de tarifa
-- Badge "×Bultos" visible en tarjetas de tarifa activas
-- Reset y edit manejan el nuevo campo
+## Implementación
 
-### 3. ✅ NewShipment.tsx
-- Cálculo de flete multiplicado por cantidad de bultos si está activo
-- Descripción del flete muestra "× N bultos" cuando aplica
-- Variable `multiplicadoPorBultos` disponible para UI
+### 1. Crear Hook Reutilizable `useFormDraft`
 
-### 4. ✅ Edge Function (tiendanube-shipping-rates)
-- Interface TarifaData actualizada
-- Query incluye nuevo campo
-- Función `calculateRate` recibe y usa `itemCount`
-- Multiplicación aplicada al precio base si está configurado
+Crear un hook personalizado que:
+- Guarda automáticamente los cambios del formulario en `localStorage`
+- Recupera el borrador al cargar el componente
+- Limpia el borrador cuando se guarda exitosamente
+- Muestra indicador de "borrador recuperado"
 
-### 5. ✅ PDF Documentation
-- Sección 3 actualizada con nuevo Paso 5
-- Ejemplo práctico muestra cálculos con múltiples bultos
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                    useFormDraft                              │
+├─────────────────────────────────────────────────────────────┤
+│  • formData: estado actual del formulario                   │
+│  • setFormData: función para actualizar                     │
+│  • hasDraft: boolean - hay borrador guardado                │
+│  • clearDraft: limpiar borrador (al guardar exitoso)        │
+│  • discardDraft: descartar y empezar de nuevo               │
+│  • lastSaved: timestamp del último auto-guardado            │
+└─────────────────────────────────────────────────────────────┘
+```
 
+### 2. Archivos a Crear/Modificar
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/hooks/useFormDraft.ts` | **Nuevo** - Hook de persistencia |
+| `src/pages/NewShipment.tsx` | Integrar hook para formulario de envíos |
+| `src/pages/Clients.tsx` | Integrar hook para formulario de clientes |
+| `src/components/ui/draft-indicator.tsx` | **Nuevo** - Indicador visual de borrador |
+
+### 3. Formularios a Cubrir (Prioridad)
+
+1. **Nuevo Envío** (`/shipments/new`) - Formulario más complejo
+2. **Nuevo Cliente** (diálogo en `/clients`)
+3. **Nueva Ruta** (planificador)
+4. **Otras ventanas/diálogos** principales
+
+---
+
+## Comportamiento del Usuario
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│               FLUJO DE AUTO-GUARDADO                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  1. Usuario comienza a llenar formulario                    │
+│     ↓                                                       │
+│  2. Cada 2 segundos o al cambiar campo → guarda borrador    │
+│     ↓                                                       │
+│  3. Usuario cierra el navegador/sale                        │
+│     ↓                                                       │
+│  4. Usuario vuelve al formulario                            │
+│     ↓                                                       │
+│  5. Sistema detecta borrador guardado                       │
+│     ↓                                                       │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │ 🔄 Borrador recuperado                               │   │
+│  │ Tienes datos sin guardar del 30/01 15:45            │   │
+│  │                                                      │   │
+│  │ [Continuar editando]  [Descartar y empezar nuevo]   │   │
+│  └─────────────────────────────────────────────────────┘   │
+│     ↓                                                       │
+│  6. Usuario continúa o descarta                             │
+│     ↓                                                       │
+│  7. Al guardar exitosamente → borrador se elimina           │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Detalles Técnicos
+
+### Hook `useFormDraft`
+
+```typescript
+// Uso en NewShipment.tsx
+const {
+  formData,
+  setFormData,
+  hasDraft,
+  clearDraft,
+  discardDraft,
+  lastSaved
+} = useFormDraft('new-shipment', {
+  // Valores iniciales
+  remitente_nombre: '',
+  destinatario_nombre: '',
+  // ... resto de campos
+});
+
+// Al guardar exitosamente
+onSuccess: () => {
+  clearDraft(); // Elimina el borrador
+  navigate('/shipments');
+}
+```
+
+### Almacenamiento
+
+- **Clave**: `draft_{formKey}_{userId}` (ej: `draft_new-shipment_abc123`)
+- **Datos**: JSON con formData + timestamp
+- **Duración**: 7 días (configurable)
+- **Limpieza**: Automática al guardar o manualmente
+
+### Indicador Visual
+
+Pequeño badge que aparece cuando hay un borrador activo:
+- Muestra "Borrador guardado" con timestamp
+- Opción para descartar
+- Se oculta al no haber cambios
+
+---
+
+## Consideraciones
+
+- **Seguridad**: Los datos solo se guardan localmente, no en el servidor
+- **Privacidad**: Se limpia automáticamente después de 7 días
+- **Rendimiento**: Debounce de 2 segundos para no guardar en cada tecla
+- **Multi-usuario**: Cada usuario tiene sus propios borradores (por userId)
+- **Limpieza**: Opción manual para descartar borrador
+
+---
+
+## Resultado Esperado
+
+- Al salir sin guardar y volver, el formulario muestra los datos que estabas cargando
+- Notificación clara de que hay un borrador recuperado
+- Opción de continuar o empezar de nuevo
+- Sin pérdida de datos accidental
