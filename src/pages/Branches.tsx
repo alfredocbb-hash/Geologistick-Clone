@@ -3,6 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { useTenant } from '@/hooks/useTenant';
+import { useFormDraft } from '@/hooks/useFormDraft';
+import { DraftIndicator, DraftSavingIndicator } from '@/components/ui/draft-indicator';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -100,7 +102,8 @@ export default function Branches() {
   const [isCommissionsDialogOpen, setIsCommissionsDialogOpen] = useState(false);
   const [editingSucursal, setEditingSucursal] = useState<Sucursal | null>(null);
   const [selectedSucursalForCommissions, setSelectedSucursalForCommissions] = useState<Sucursal | null>(null);
-  const [formData, setFormData] = useState({
+  
+  const defaultFormData = {
     nombre: '',
     direccion: '',
     telefono: '',
@@ -108,7 +111,6 @@ export default function Branches() {
     horario_apertura: '08:00',
     horario_cierre: '18:00',
     activa: true,
-    // New fields
     codigo: '',
     ciudad: '',
     es_centro_logistico: false,
@@ -119,7 +121,20 @@ export default function Branches() {
     centro_logistico_id: '',
     lat: null as number | null,
     lng: null as number | null,
-  });
+  };
+
+  // Form draft persistence
+  const {
+    formData,
+    setFormData,
+    clearDraft,
+    discardDraft,
+    isDraftRecovered,
+    setIsDraftRecovered,
+    lastSaved,
+    hasDraft,
+  } = useFormDraft('new-sucursal', defaultFormData);
+
   const [commissionData, setCommissionData] = useState<Record<string, {
     contado: string;
     destino: string;
@@ -235,6 +250,9 @@ export default function Branches() {
       queryClient.invalidateQueries({ queryKey: ['sucursales-full'] });
       queryClient.invalidateQueries({ queryKey: ['sucursales'] });
       toast.success(editingSucursal ? 'Sucursal actualizada' : 'Sucursal creada');
+      if (!editingSucursal) {
+        clearDraft();
+      }
       resetForm();
       setIsDialogOpen(false);
     },
@@ -412,29 +430,12 @@ export default function Branches() {
   const branchesWithoutCoords = sucursales.filter(s => !s.lat || !s.lng).length;
 
   const resetForm = () => {
-    setFormData({
-      nombre: '',
-      direccion: '',
-      telefono: '',
-      email: '',
-      horario_apertura: '08:00',
-      horario_cierre: '18:00',
-      activa: true,
-      codigo: '',
-      ciudad: '',
-      es_centro_logistico: false,
-      puede_despachar: true,
-      puede_recibir: true,
-      realiza_retiros: false,
-      realiza_entregas: false,
-      centro_logistico_id: '',
-      lat: null,
-      lng: null,
-    });
+    setFormData(defaultFormData);
     setEditingSucursal(null);
   };
 
   const handleEdit = (sucursal: Sucursal) => {
+    discardDraft(); // Clear draft when editing existing
     setEditingSucursal(sucursal);
     setFormData({
       nombre: sucursal.nombre,
@@ -550,6 +551,17 @@ export default function Branches() {
                   {editingSucursal ? 'Editar Sucursal' : 'Nueva Sucursal'}
                 </DialogTitle>
               </DialogHeader>
+
+              {/* Draft indicator */}
+              {!editingSucursal && isDraftRecovered && (
+                <DraftIndicator
+                  lastSaved={lastSaved}
+                  onDiscard={discardDraft}
+                  onDismiss={() => setIsDraftRecovered(false)}
+                  className="mb-2"
+                />
+              )}
+
               <form onSubmit={handleSubmit} className="space-y-6">
               {/* Basic Info */}
               <div className="space-y-4">
@@ -803,28 +815,31 @@ export default function Branches() {
                 />
               </div>
 
-              <div className="flex justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    resetForm();
-                    setIsDialogOpen(false);
-                  }}
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={saveMutation.isPending}
-                  className="bg-sucursales hover:bg-sucursales/90"
-                >
-                  {saveMutation.isPending
-                    ? 'Guardando...'
-                    : editingSucursal
-                    ? 'Actualizar'
-                    : 'Crear'}
-                </Button>
+              <div className="flex items-center justify-between">
+                {!editingSucursal && <DraftSavingIndicator hasDraft={hasDraft} lastSaved={lastSaved} />}
+                <div className="flex gap-2 ml-auto">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      if (editingSucursal) resetForm();
+                      setIsDialogOpen(false);
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={saveMutation.isPending}
+                    className="bg-sucursales hover:bg-sucursales/90"
+                  >
+                    {saveMutation.isPending
+                      ? 'Guardando...'
+                      : editingSucursal
+                      ? 'Actualizar'
+                      : 'Crear'}
+                  </Button>
+                </div>
               </div>
             </form>
           </DialogContent>

@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
+import { useFormDraft } from "@/hooks/useFormDraft";
+import { DraftIndicator, DraftSavingIndicator } from "@/components/ui/draft-indicator";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -134,8 +136,19 @@ export default function ThirdPartyCompanies() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [formData, setFormData] = useState<FormData>(emptyForm);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  // Form draft persistence
+  const {
+    formData,
+    setFormData,
+    clearDraft,
+    discardDraft,
+    isDraftRecovered,
+    setIsDraftRecovered,
+    lastSaved,
+    hasDraft,
+  } = useFormDraft<FormData>("new-third-party", emptyForm);
 
   // Fetch companies
   const { data: empresas = [], isLoading } = useQuery({
@@ -164,6 +177,7 @@ export default function ThirdPartyCompanies() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["empresas-terciarizadas"] });
       toast.success("Empresa creada correctamente");
+      clearDraft();
       closeDialog();
     },
     onError: (error: Error) => {
@@ -219,12 +233,13 @@ export default function ThirdPartyCompanies() {
   };
 
   const openCreateDialog = () => {
-    setFormData(emptyForm);
     setEditingId(null);
+    // Don't reset form - use draft if available
     setIsDialogOpen(true);
   };
 
   const openEditDialog = (empresa: EmpresaTerciarizada) => {
+    discardDraft(); // Clear draft when editing existing
     setFormData({
       codigo: empresa.codigo,
       nombre: empresa.nombre,
@@ -469,6 +484,16 @@ export default function ThirdPartyCompanies() {
                 : "Registra una nueva empresa de transporte tercerizado"}
             </DialogDescription>
           </DialogHeader>
+
+          {/* Draft indicator */}
+          {!editingId && isDraftRecovered && (
+            <DraftIndicator
+              lastSaved={lastSaved}
+              onDiscard={discardDraft}
+              onDismiss={() => setIsDraftRecovered(false)}
+              className="mb-2"
+            />
+          )}
 
           <div className="space-y-6 py-4">
             {/* Basic Info */}

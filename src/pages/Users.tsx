@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
+import { useFormDraft } from '@/hooks/useFormDraft';
+import { DraftIndicator, DraftSavingIndicator } from '@/components/ui/draft-indicator';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -149,7 +151,7 @@ export default function Users() {
     comision_retiro_porcentaje: 0,
     comision_retiro_fija: 0,
   });
-  const [createFormData, setCreateFormData] = useState({
+  const defaultCreateForm = {
     email: '',
     password: '',
     nombre: '',
@@ -157,7 +159,19 @@ export default function Users() {
     telefono: '',
     sucursal_id: '',
     selectedRoles: [] as AppRole[],
-  });
+  };
+
+  // Form draft persistence for create user form
+  const {
+    formData: createFormData,
+    setFormData: setCreateFormData,
+    clearDraft: clearCreateDraft,
+    discardDraft: discardCreateDraft,
+    isDraftRecovered: isCreateDraftRecovered,
+    setIsDraftRecovered: setIsCreateDraftRecovered,
+    lastSaved: createLastSaved,
+    hasDraft: hasCreateDraft,
+  } = useFormDraft('new-user', defaultCreateForm);
 
   // Fetch all tenants (only for super_admin)
   const { data: tenants = [] } = useQuery({
@@ -463,16 +477,9 @@ export default function Users() {
       toast.success('Usuario creado exitosamente');
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
       queryClient.invalidateQueries({ queryKey: ['all-user-roles'] });
+      clearCreateDraft();
       setIsCreateDialogOpen(false);
-      setCreateFormData({
-        email: '',
-        password: '',
-        nombre: '',
-        apellido: '',
-        telefono: '',
-        sucursal_id: '',
-        selectedRoles: [],
-      });
+      setCreateFormData(defaultCreateForm);
     } catch (error) {
       console.error('Error creating user:', error);
       toast.error(error instanceof Error ? error.message : 'Error al crear usuario');
@@ -1039,6 +1046,17 @@ export default function Users() {
           <DialogHeader>
             <DialogTitle>Crear Nuevo Usuario</DialogTitle>
           </DialogHeader>
+
+          {/* Draft indicator */}
+          {isCreateDraftRecovered && (
+            <DraftIndicator
+              lastSaved={createLastSaved}
+              onDiscard={discardCreateDraft}
+              onDismiss={() => setIsCreateDraftRecovered(false)}
+              className="mb-2"
+            />
+          )}
+
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Email *</Label>
@@ -1138,17 +1156,20 @@ export default function Users() {
               </p>
             </div>
 
-            <div className="flex justify-end gap-2 pt-4">
-              <Button
-                variant="outline"
-                onClick={() => setIsCreateDialogOpen(false)}
-                disabled={isCreating}
-              >
-                Cancelar
-              </Button>
-              <Button onClick={handleCreateUser} disabled={isCreating}>
-                {isCreating ? 'Creando...' : 'Crear Usuario'}
-              </Button>
+            <div className="flex items-center justify-between pt-4">
+              <DraftSavingIndicator hasDraft={hasCreateDraft} lastSaved={createLastSaved} />
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsCreateDialogOpen(false)}
+                  disabled={isCreating}
+                >
+                  Cancelar
+                </Button>
+                <Button onClick={handleCreateUser} disabled={isCreating}>
+                  {isCreating ? 'Creando...' : 'Crear Usuario'}
+                </Button>
+              </div>
             </div>
           </div>
         </DialogContent>
