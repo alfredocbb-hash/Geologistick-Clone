@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -59,7 +59,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
   const [deliveryLocation, setDeliveryLocation] = useState<{ lat: number; lng: number } | null>(null);
 
   // Capture GPS location on mount
-  useState(() => {
+  useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -74,7 +74,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
       );
     }
-  });
+  }, []);
 
   // Handle photo selection
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
