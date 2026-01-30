@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -38,6 +38,7 @@ import PickupConfirmation from '@/components/scan/PickupConfirmation';
 import DeliveryConfirmation from '@/components/delivery/DeliveryConfirmation';
 import ReportIncidentDialog from '@/components/incidents/ReportIncidentDialog';
 import RescheduleDialog from '@/components/driver/RescheduleDialog';
+import { MapView, type MarkerInfo } from '@/components/maps';
 
 type ViewMode = 'list' | 'map';
 
@@ -239,6 +240,55 @@ export default function ActiveRouteNavigation() {
     });
   }, [envios]);
 
+  // Build markers for map view
+  const mapMarkers: MarkerInfo[] = useMemo(() => {
+    return envios
+      .map((item, index) => {
+        const envio = item.envio;
+        if (!envio) return null;
+        
+        const isItemPickup = envio.requiere_retiro;
+        const isCompleted = envio.estado === 'entregado' || envio.estado === 'devuelto' || envio.estado_retiro === 'retirado';
+        const isCurrent = nextStop?.id === item.id;
+        
+        // Try to get lat/lng from destinatario or use placeholders
+        const lat = isItemPickup 
+          ? (envio as any).remitente_lat 
+          : ((envio as any).destinatario_lat || (envio as any).destinatario?.lat);
+        const lng = isItemPickup 
+          ? (envio as any).remitente_lng 
+          : ((envio as any).destinatario_lng || (envio as any).destinatario?.lng);
+        
+        // Skip if no coordinates
+        if (!lat || !lng) return null;
+        
+        const contact = isItemPickup ? envio.remitente : envio.destinatario;
+        const name = isItemPickup 
+          ? (envio.nombre_remitente || `${contact?.nombre || ''} ${contact?.apellido || ''}`.trim())
+          : (envio.nombre_destinatario || `${contact?.nombre || ''} ${contact?.apellido || ''}`.trim());
+        
+        // Use icon based on status
+        const icon = isCompleted ? 'destination' as const : isCurrent ? 'current' as const : 'origin' as const;
+        
+        return {
+          id: item.id,
+          position: { lat, lng },
+          title: `#${index + 1} - ${name || 'Sin nombre'}`,
+          icon,
+          type: 'envio' as const,
+          data: { 
+            address: isItemPickup 
+              ? (envio.direccion_retiro || contact?.direccion || '')
+              : (envio.direccion_entrega || contact?.direccion || ''),
+            isPickup: isItemPickup,
+            isCompleted,
+            isCurrent
+          },
+        };
+      })
+      .filter((m): m is NonNullable<typeof m> => m !== null) as MarkerInfo[];
+  }, [envios, nextStop]);
+
   // Close route mutation
   const closeRouteMutation = useMutation({
     mutationFn: async () => {
@@ -290,22 +340,34 @@ export default function ActiveRouteNavigation() {
       .map(e => {
         const envio = e.envio;
         if (envio?.requiere_retiro) {
-          return `${envio.direccion_retiro}, ${envio.ciudad_retiro}`;
+          return `${envio.direccion_retiro || ''}, ${envio.ciudad_retiro || ''}`.trim();
         }
-        return `${envio?.direccion_entrega || envio?.destinatario?.direccion}, ${envio?.ciudad_entrega || envio?.destinatario?.ciudad}`;
+        return `${envio?.direccion_entrega || envio?.destinatario?.direccion || ''}, ${envio?.ciudad_entrega || envio?.destinatario?.ciudad || ''}`.trim();
       })
-      .filter(Boolean);
+      .filter(addr => addr && addr.length > 5 && addr !== ','); // Filter empty/invalid addresses
 
     if (pendingStops.length === 0) {
       toast.info('No hay paradas pendientes');
       return;
     }
 
-    const waypoints = pendingStops.slice(0, -1).join('|');
-    const destination = encodeURIComponent(pendingStops[pendingStops.length - 1]);
-    const waypointsParam = waypoints ? `&waypoints=${encodeURIComponent(waypoints)}` : '';
+    // Google Maps URL API only supports up to 10 waypoints
+    if (pendingStops.length > 10) {
+      toast.warning(`Mostrando las primeras 10 de ${pendingStops.length} paradas`);
+    }
+
+    const limitedStops = pendingStops.slice(0, 10);
+    const destination = encodeURIComponent(limitedStops[limitedStops.length - 1]);
     
-    window.open(`https://www.google.com/maps/dir/?api=1&destination=${destination}${waypointsParam}&travelmode=driving`, '_blank');
+    if (limitedStops.length > 1) {
+      const waypoints = limitedStops
+        .slice(0, -1)
+        .map(addr => encodeURIComponent(addr))
+        .join('|');
+      window.open(`https://www.google.com/maps/dir/?api=1&destination=${destination}&waypoints=${waypoints}&travelmode=driving`, '_blank');
+    } else {
+      window.open(`https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`, '_blank');
+    }
   }, [envios]);
 
   // Handle QR scan
@@ -600,13 +662,14 @@ export default function ActiveRouteNavigation() {
         </div>
       )}
 
-      {/* All Stops List */}
-      <div className="px-4 space-y-2">
-        <h3 className="font-semibold text-sm text-muted-foreground mb-2">
-          TODAS LAS PARADAS ({envios.length})
-        </h3>
-        
-        {envios.map((item, index) => {
+      {/* All Stops List or Map View */}
+      {viewMode === 'list' ? (
+        <div className="px-4 space-y-2">
+          <h3 className="font-semibold text-sm text-muted-foreground mb-2">
+            TODAS LAS PARADAS ({envios.length})
+          </h3>
+          
+          {envios.map((item, index) => {
           const envio = item.envio;
           if (!envio) return null;
           
@@ -699,7 +762,41 @@ export default function ActiveRouteNavigation() {
             </Card>
           );
         })}
-      </div>
+        </div>
+      ) : (
+        // Map View
+        <div className="px-4">
+          {mapMarkers.length > 0 ? (
+            <MapView
+              markers={mapMarkers}
+              height="calc(100vh - 380px)"
+              onMarkerClick={(marker) => {
+                const item = envios.find(e => e.id === marker.id);
+                if (item?.envio) {
+                  const isItemPickup = item.envio.requiere_retiro;
+                  const isCompleted = item.envio.estado === 'entregado' || 
+                    item.envio.estado === 'devuelto' || 
+                    item.envio.estado_retiro === 'retirado';
+                  if (!isCompleted) {
+                    setSelectedShipment(item.envio);
+                    setDialogType(isItemPickup ? 'pickup' : 'delivery');
+                  }
+                }
+              }}
+            />
+          ) : (
+            <Card className="p-8 text-center">
+              <MapPin className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">
+                No hay coordenadas disponibles para mostrar el mapa
+              </p>
+              <p className="text-sm text-muted-foreground mt-2">
+                Las direcciones serán geocodificadas al navegar
+              </p>
+            </Card>
+          )}
+        </div>
+      )}
 
       {/* Floating QR Button */}
       <Button
