@@ -17,6 +17,16 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Table,
   TableBody,
   TableCell,
@@ -427,18 +437,77 @@ export default function Rates() {
     },
   });
 
-  // Delete tarifa mutation (super admin only)
+  // State for force delete dialog
+  const [pendingDeleteTarifa, setPendingDeleteTarifa] = useState<{ id: string; nombre: string; sellers: number; sucursales: number } | null>(null);
+
+  // Delete tarifa mutation with dependency validation
   const deleteTarifaMutation = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async ({ id, force }: { id: string; force?: boolean }) => {
+      // 1. Check dependencies
+      const [sellersResult, sucursalesResult] = await Promise.all([
+        supabase
+          .from('ecommerce_sellers')
+          .select('id, nombre')
+          .or(`tarifa_id.eq.${id},tarifa_express_id.eq.${id}`),
+        supabase
+          .from('sucursal_tarifas')
+          .select('id')
+          .eq('tarifa_id', id),
+      ]);
+
+      const sellersCount = sellersResult.data?.length || 0;
+      const sucursalesCount = sucursalesResult.data?.length || 0;
+
+      if ((sellersCount > 0 || sucursalesCount > 0) && !force) {
+        // Get tarifa name for the dialog
+        const tarifa = tarifas.find(t => t.id === id);
+        throw { 
+          type: 'DEPENDENCY_ERROR',
+          id,
+          nombre: tarifa?.nombre || 'Tarifa',
+          sellers: sellersCount,
+          sucursales: sucursalesCount,
+        };
+      }
+
+      // 2. If force=true, unlink first
+      if (force) {
+        await Promise.all([
+          supabase
+            .from('ecommerce_sellers')
+            .update({ tarifa_id: null })
+            .eq('tarifa_id', id),
+          supabase
+            .from('ecommerce_sellers')
+            .update({ tarifa_express_id: null })
+            .eq('tarifa_express_id', id),
+          supabase
+            .from('sucursal_tarifas')
+            .delete()
+            .eq('tarifa_id', id),
+        ]);
+      }
+
+      // 3. Delete tarifa
       const { error } = await supabase.from('tarifas').delete().eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tarifas'] });
       toast.success('Tarifa eliminada');
+      setPendingDeleteTarifa(null);
     },
-    onError: (error: Error) => {
-      toast.error('Error al eliminar: ' + error.message);
+    onError: (error: any) => {
+      if (error?.type === 'DEPENDENCY_ERROR') {
+        setPendingDeleteTarifa({
+          id: error.id,
+          nombre: error.nombre,
+          sellers: error.sellers,
+          sucursales: error.sucursales,
+        });
+      } else {
+        toast.error('Error al eliminar: ' + (error?.message || error));
+      }
     },
   });
 
@@ -1176,7 +1245,7 @@ export default function Rates() {
                               size="icon"
                               onClick={() => {
                                 if (confirm(`¿Eliminar la tarifa "${tarifa.nombre}"? Esta acción no se puede deshacer.`)) {
-                                  deleteTarifaMutation.mutate(tarifa.id);
+                                  deleteTarifaMutation.mutate({ id: tarifa.id });
                                 }
                               }}
                               title="Eliminar tarifa"
@@ -1663,6 +1732,44 @@ export default function Rates() {
           tarifaNombre={selectedTarifaForBranches.nombre}
         />
       )}
+
+      {/* Force Delete Confirmation Dialog */}
+      <AlertDialog open={!!pendingDeleteTarifa} onOpenChange={(open) => !open && setPendingDeleteTarifa(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Tarifa en uso</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>
+                La tarifa <strong>"{pendingDeleteTarifa?.nombre}"</strong> está siendo utilizada por:
+              </p>
+              <ul className="list-disc list-inside text-sm">
+                {(pendingDeleteTarifa?.sellers || 0) > 0 && (
+                  <li>{pendingDeleteTarifa?.sellers} seller(s) de e-commerce</li>
+                )}
+                {(pendingDeleteTarifa?.sucursales || 0) > 0 && (
+                  <li>{pendingDeleteTarifa?.sucursales} sucursal(es)</li>
+                )}
+              </ul>
+              <p className="pt-2">
+                ¿Desea desvincularla de todos y eliminarla de todas formas?
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingDeleteTarifa) {
+                  deleteTarifaMutation.mutate({ id: pendingDeleteTarifa.id, force: true });
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Desvincular y eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
