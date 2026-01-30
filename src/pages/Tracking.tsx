@@ -88,6 +88,8 @@ export default function Tracking() {
     }
   }, [codeFromPath, codeFromQuery]);
 
+  // Fetch tracking via Edge Function
+  // Short codes (< 15 chars) are searched by suffix in the Edge Function
   const { data: envio, isLoading, error } = useQuery({
     queryKey: ['tracking', searchedTracking],
     queryFn: async (): Promise<TrackingResponse | null> => {

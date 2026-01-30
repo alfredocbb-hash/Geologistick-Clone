@@ -186,14 +186,15 @@ function drawReceipt(
   }
 
   // Company name and branch info (adjusted position for larger logo)
-  doc.setFontSize(10);
+  // LASER BOLD: Increased from 10pt to 12pt
+  doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
   doc.text(companyName, margin + logoOffset, y + 5);
   
-  doc.setFontSize(6);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(100, 100, 100);
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(80, 80, 80);
   
   const branchInfo = shipment.sucursal_origen;
   if (branchInfo) {
@@ -202,13 +203,14 @@ function drawReceipt(
   }
 
   // Receipt number and date (right side)
-  doc.setFontSize(9);
+  // LASER BOLD: Increased from 9pt to 11pt
+  doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(50, 50, 50);
+  doc.setTextColor(30, 30, 30);
   doc.text(`Guía: ${shipment.tracking_number}`, pageWidth - margin, y + 4, { align: 'right' });
   
-  doc.setFontSize(7);
-  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'bold');
   const fecha = new Date(shipment.created_at).toLocaleDateString('es-AR', {
     year: 'numeric',
     month: 'short',
@@ -218,9 +220,9 @@ function drawReceipt(
 
   y += logoSize + 2; // Adjust based on logo size
 
-  // Separator line
+  // Separator line - LASER BOLD: Increased from 0.5 to 1.0
   doc.setDrawColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-  doc.setLineWidth(0.5);
+  doc.setLineWidth(1.0);
   doc.line(margin, y, pageWidth - margin, y);
   y += 3;
 
@@ -232,14 +234,15 @@ function drawReceipt(
   doc.setFillColor(34, 197, 94); // Green
   doc.rect(margin + halfWidth + 4, y, halfWidth, 6, 'F');
   
-  doc.setFontSize(7);
+  // LASER BOLD: Increased from 7pt to 8pt
+  doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(255, 255, 255);
   doc.text('ORIGEN', margin + 3, y + 4);
   doc.text('DESTINO', margin + halfWidth + 7, y + 4);
   
-  // Cities next to labels
-  doc.setFontSize(7);
+  // Cities next to labels - LASER BOLD: 8pt bold
+  doc.setFontSize(8);
   const ciudadOrigen = shipment.sucursal_origen?.ciudad || shipment.ciudad_retiro || '-';
   const ciudadDestino = shipment.sucursal_destino?.ciudad || shipment.ciudad_entrega || '-';
   doc.text(ciudadOrigen.substring(0, 20), margin + halfWidth - 3, y + 4, { align: 'right' });
@@ -261,25 +264,30 @@ function drawReceipt(
   ) => {
     const boxY = y;
     
-    doc.setDrawColor(200, 200, 200);
-    doc.setLineWidth(0.2);
+    doc.setDrawColor(180, 180, 180);
+    // LASER BOLD: Increased from 0.2 to 0.4
+    doc.setLineWidth(0.4);
     doc.rect(x, boxY, boxWidth, boxHeight);
     
     doc.setFillColor(245, 245, 245);
     doc.rect(x, boxY, boxWidth, 4.5, 'F');
     
-    doc.setFontSize(6);
+    // LASER BOLD: Increased from 6pt to 7pt
+    doc.setFontSize(7);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(80, 80, 80);
+    doc.setTextColor(60, 60, 60);
     doc.text(title, x + 2, boxY + 3);
     
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(50, 50, 50);
-    doc.setFontSize(7);
+    // LASER BOLD: Name in bold and increased from 7pt to 8pt
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 30, 30);
+    doc.setFontSize(8);
     doc.text(name.substring(0, 30) || '-', x + 2, boxY + 9);
     
-    doc.setFontSize(6);
-    doc.setTextColor(80, 80, 80);
+    // LASER BOLD: Increased from 6pt to 7pt
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(60, 60, 60);
     doc.text(`Dir: ${(address || '-').substring(0, 35)}`, x + 2, boxY + 13);
     doc.text(`Tel: ${phone || '-'} | DNI: ${dni || '-'}`, x + 2, boxY + 17);
   };
@@ -305,39 +313,44 @@ function drawReceipt(
   const thirdWidth = contentWidth / 3 - 2;
   
   // Payment condition (small box)
-  doc.setDrawColor(200, 200, 200);
+  doc.setDrawColor(180, 180, 180);
+  // LASER BOLD: Increased from 0.2 to 0.4
+  doc.setLineWidth(0.4);
   doc.rect(margin, y, thirdWidth, 18);
   doc.setFillColor(245, 245, 245);
   doc.rect(margin, y, thirdWidth, 4, 'F');
-  doc.setFontSize(6);
+  // LASER BOLD: Increased from 6pt to 7pt
+  doc.setFontSize(7);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(80, 80, 80);
+  doc.setTextColor(60, 60, 60);
   doc.text('PAGO', margin + 2, y + 3);
   
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(50, 50, 50);
+  // LASER BOLD: Bold payment type
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(30, 30, 30);
   const tipoPago = TIPO_PAGO_LABELS[shipment.tipo_pago || 'contado'] || shipment.tipo_pago || 'Contado';
   doc.text(tipoPago, margin + 2, y + 9);
   
-  doc.setFontSize(6);
+  doc.setFontSize(7);
   doc.text(`Bultos: ${shipment.cantidad_bultos || 1}`, margin + 2, y + 13);
   if (shipment.peso_kg) {
     doc.text(`Peso: ${shipment.peso_kg}kg`, margin + 2, y + 17);
   }
   
   // Description (middle)
+  doc.setLineWidth(0.4);
   doc.rect(margin + thirdWidth + 2, y, thirdWidth, 18);
   doc.setFillColor(245, 245, 245);
   doc.rect(margin + thirdWidth + 2, y, thirdWidth, 4, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(6);
-  doc.setTextColor(80, 80, 80);
+  doc.setFontSize(7);
+  doc.setTextColor(60, 60, 60);
   doc.text('DESCRIPCIÓN', margin + thirdWidth + 4, y + 3);
   
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6);
-  doc.setTextColor(50, 50, 50);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
+  doc.setTextColor(30, 30, 30);
   const desc = (shipment.descripcion || '-').substring(0, 45);
   doc.text(desc, margin + thirdWidth + 4, y + 9);
   if (shipment.valor_declarado) {
@@ -345,16 +358,18 @@ function drawReceipt(
   }
   
   // Concepts (right)
+  doc.setLineWidth(0.4);
   doc.rect(margin + (thirdWidth + 2) * 2, y, thirdWidth, 18);
   doc.setFillColor(245, 245, 245);
   doc.rect(margin + (thirdWidth + 2) * 2, y, thirdWidth, 4, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(6);
-  doc.setTextColor(80, 80, 80);
+  doc.setFontSize(7);
+  doc.setTextColor(60, 60, 60);
   doc.text('CONCEPTOS', margin + (thirdWidth + 2) * 2 + 2, y + 3);
   
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6);
+  // LASER BOLD: Bold concepts
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
   const conceptX = margin + (thirdWidth + 2) * 2 + 2;
   const conceptXEnd = margin + (thirdWidth + 2) * 2 + thirdWidth - 2;
   
@@ -362,7 +377,7 @@ function drawReceipt(
   const flete = shipment.precio_total - totalConceptos;
   
   let conceptY = y + 8;
-  doc.setTextColor(50, 50, 50);
+  doc.setTextColor(30, 30, 30);
   doc.text('Flete:', conceptX, conceptY);
   doc.text(formatCurrency(flete > 0 ? flete : shipment.precio_total), conceptXEnd, conceptY, { align: 'right' });
   
@@ -388,24 +403,34 @@ function drawReceipt(
       // Continue without QR
     }
   }
-  doc.setFontSize(5);
-  doc.setTextColor(100, 100, 100);
-  doc.text('Escanear tracking', margin + 2, y + 23);
   
-  // Total box
-  const totalX = margin + qrBoxWidth + 2;
-  doc.setDrawColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-  doc.setLineWidth(0.5);
-  doc.rect(totalX, y, totalBoxWidth, 24);
-  
-  doc.setFontSize(8);
+  // Short code for easy search (last 6 characters of tracking)
+  const shortCode = shipment.tracking_number.split('-').pop() || shipment.tracking_number.slice(-6);
+  doc.setFontSize(6);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(80, 80, 80);
+  doc.text('Buscar con:', margin + 2, y + 22);
+  // LASER BOLD: Large short code for customers
+  doc.setFontSize(10);
+  doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+  doc.text(shortCode, margin + 2, y + 27);
+  
+  // Total box - LASER BOLD: Increased border from 0.5 to 1.5
+  const totalX = margin + qrBoxWidth + 2;
+  doc.setDrawColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+  doc.setLineWidth(1.5);
+  doc.rect(totalX, y, totalBoxWidth, 24);
+  
+  // LASER BOLD: Increased from 8pt to 9pt
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(60, 60, 60);
   doc.text('TOTAL', totalX + totalBoxWidth / 2, y + 8, { align: 'center' });
   
-  doc.setFontSize(11);
+  // LASER BOLD: Increased from 11pt to 14pt
+  doc.setFontSize(14);
   doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-  doc.text(formatCurrency(shipment.precio_total), totalX + totalBoxWidth / 2, y + 16, { align: 'center' });
+  doc.text(formatCurrency(shipment.precio_total), totalX + totalBoxWidth / 2, y + 17, { align: 'center' });
   
   // Signature boxes (compact)
   const sig1X = totalX + totalBoxWidth + 4;
