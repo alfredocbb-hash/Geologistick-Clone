@@ -477,8 +477,8 @@ export default function NewShipment() {
   }, [conceptosAdicionales, conceptosSeleccionados, formData.valor_declarado, formData.cantidad_bultos, configSeguro]);
 
   // Calcular flete base con descripción detallada
-  const { fleteCalculado, fleteDescripcion, metodoAplicado } = useMemo(() => {
-    if (!selectedTarifa) return { fleteCalculado: 0, fleteDescripcion: '', metodoAplicado: '' };
+  const { fleteCalculado, fleteDescripcion, metodoAplicado, multiplicadoPorBultos } = useMemo(() => {
+    if (!selectedTarifa) return { fleteCalculado: 0, fleteDescripcion: '', metodoAplicado: '', multiplicadoPorBultos: false };
     
     const peso = parseFloat(formData.peso_kg) || 0;
     const precioBase = Number(selectedTarifa.precio_base) || 0;
@@ -487,93 +487,100 @@ export default function NewShipment() {
       Array.isArray((selectedTarifa as any).rangos_kg) ? (selectedTarifa as any).rangos_kg : [];
     const umbralVolumen = (selectedTarifa as any).umbral_volumen_cm || 50;
     const precioM3 = Number(selectedTarifa.precio_por_m3) || 0;
+    const cantidadBultos = parseInt(formData.cantidad_bultos) || 1;
+    const multiplicarPorBultos = (selectedTarifa as any).multiplicar_flete_por_bultos === true;
+    
+    let flete = 0;
+    let descripcion = '';
+    let metodo = '';
     
     // Verificar primero si aplica cobro por volumen (tiene prioridad si las dimensiones exceden umbral)
     if (selectedTarifa.tipo_tarifa === 'peso' && formData.dimensiones && precioM3 > 0) {
       const dims = formData.dimensiones.split('x').map(d => parseFloat(d.trim())).filter(d => !isNaN(d));
       if (dims.length === 3 && dims.some(d => d > umbralVolumen)) {
         const volumen = dims.reduce((a, b) => a * b, 1) / 1000000;
-        const flete = precioBase + (volumen * precioM3);
-        return {
-          fleteCalculado: flete,
-          fleteDescripcion: `Cobro por m³ (dimensión > ${umbralVolumen}cm)`,
-          metodoAplicado: 'volumen_excedido'
-        };
+        flete = precioBase + (volumen * precioM3);
+        descripcion = `Cobro por m³ (dimensión > ${umbralVolumen}cm)`;
+        metodo = 'volumen_excedido';
       }
     }
     
-    // Cálculo según tipo de tarifa
-    if (selectedTarifa.tipo_tarifa === 'peso') {
-      // PRIORIDAD 1: Rangos escalonados (rangos_kg)
-      if (rangosKg.length > 0 && peso > 0) {
-        const rangoAplicable = rangosKg.find(r => peso >= r.desde && peso <= r.hasta);
-        if (rangoAplicable) {
-          return {
-            fleteCalculado: rangoAplicable.precio,
-            fleteDescripcion: `Rango ${rangoAplicable.desde}-${rangoAplicable.hasta} kg`,
-            metodoAplicado: 'rangos_kg'
-          };
+    // Cálculo según tipo de tarifa (si no se aplicó volumen)
+    if (metodo === '') {
+      if (selectedTarifa.tipo_tarifa === 'peso') {
+        // PRIORIDAD 1: Rangos escalonados (rangos_kg)
+        if (rangosKg.length > 0 && peso > 0) {
+          const rangoAplicable = rangosKg.find(r => peso >= r.desde && peso <= r.hasta);
+          if (rangoAplicable) {
+            flete = rangoAplicable.precio;
+            descripcion = `Rango ${rangoAplicable.desde}-${rangoAplicable.hasta} kg`;
+            metodo = 'rangos_kg';
+          } else {
+            // Peso excede todos los rangos
+            const ultimoRango = rangosKg[rangosKg.length - 1];
+            if (ultimoRango && peso > ultimoRango.hasta) {
+              flete = ultimoRango.precio;
+              descripcion = `Peso ${peso}kg excede máximo (${ultimoRango.hasta}kg)`;
+              metodo = 'rangos_kg_excedido';
+            }
+          }
         }
-        // Peso excede todos los rangos
-        const ultimoRango = rangosKg[rangosKg.length - 1];
-        if (ultimoRango && peso > ultimoRango.hasta) {
-          return {
-            fleteCalculado: ultimoRango.precio,
-            fleteDescripcion: `Peso ${peso}kg excede máximo (${ultimoRango.hasta}kg)`,
-            metodoAplicado: 'rangos_kg_excedido'
-          };
+        
+        // PRIORIDAD 2: Método simple (base + adicional por kg)
+        if (metodo === '') {
+          const pesoBaseHasta = rangos.peso_base_hasta || 0;
+          const adicionalPorKg = rangos.adicional_por_kg || 0;
+          
+          if (peso > pesoBaseHasta && adicionalPorKg > 0) {
+            const kgExtra = peso - pesoBaseHasta;
+            flete = precioBase + (kgExtra * adicionalPorKg);
+            descripcion = `Base + ${kgExtra.toFixed(1)}kg extra`;
+            metodo = 'peso_simple';
+          } else {
+            // Peso dentro del rango base
+            flete = precioBase;
+            descripcion = 'Precio base';
+            metodo = 'base';
+          }
         }
-      }
-      
-      // PRIORIDAD 2: Método simple (base + adicional por kg)
-      const pesoBaseHasta = rangos.peso_base_hasta || 0;
-      const adicionalPorKg = rangos.adicional_por_kg || 0;
-      
-      if (peso > pesoBaseHasta && adicionalPorKg > 0) {
-        const kgExtra = peso - pesoBaseHasta;
-        const flete = precioBase + (kgExtra * adicionalPorKg);
-        return {
-          fleteCalculado: flete,
-          fleteDescripcion: `Base + ${kgExtra.toFixed(1)}kg extra`,
-          metodoAplicado: 'peso_simple'
-        };
-      }
-      
-      // Peso dentro del rango base
-      return {
-        fleteCalculado: precioBase,
-        fleteDescripcion: 'Precio base',
-        metodoAplicado: 'base'
-      };
-    }
-    
-    if (selectedTarifa.tipo_tarifa === 'distancia') {
-      const distancia = distanciaKm || 0;
-      const flete = distancia * (Number(selectedTarifa.precio_por_km) || 0);
-      return {
-        fleteCalculado: flete,
-        fleteDescripcion: `${distancia.toFixed(1)} km`,
-        metodoAplicado: 'distancia'
-      };
-    }
-    
-    if (selectedTarifa.tipo_tarifa === 'volumen') {
-      const volumen = parseFloat(formData.dimensiones) || 0;
-      const volBaseHasta = rangos.volumen_base_hasta || 0;
-      const adicionalPorM3 = rangos.adicional_por_m3 || 0;
-      
-      if (volumen > volBaseHasta) {
-        const flete = precioBase + ((volumen - volBaseHasta) * adicionalPorM3);
-        return {
-          fleteCalculado: flete,
-          fleteDescripcion: `${volumen.toFixed(2)} m³`,
-          metodoAplicado: 'volumen'
-        };
+      } else if (selectedTarifa.tipo_tarifa === 'distancia') {
+        const distancia = distanciaKm || 0;
+        flete = distancia * (Number(selectedTarifa.precio_por_km) || 0);
+        descripcion = `${distancia.toFixed(1)} km`;
+        metodo = 'distancia';
+      } else if (selectedTarifa.tipo_tarifa === 'volumen') {
+        const volumen = parseFloat(formData.dimensiones) || 0;
+        const volBaseHasta = rangos.volumen_base_hasta || 0;
+        const adicionalPorM3 = rangos.adicional_por_m3 || 0;
+        
+        if (volumen > volBaseHasta) {
+          flete = precioBase + ((volumen - volBaseHasta) * adicionalPorM3);
+          descripcion = `${volumen.toFixed(2)} m³`;
+          metodo = 'volumen';
+        } else {
+          flete = precioBase;
+          descripcion = 'Precio base';
+          metodo = 'base';
+        }
+      } else {
+        flete = precioBase;
+        descripcion = 'Precio base';
+        metodo = 'base';
       }
     }
     
-    return { fleteCalculado: precioBase, fleteDescripcion: 'Precio base', metodoAplicado: 'base' };
-  }, [selectedTarifa, formData.peso_kg, formData.dimensiones, distanciaKm]);
+    // Aplicar multiplicación por bultos si está configurado
+    const debeMultiplicar = multiplicarPorBultos && cantidadBultos > 1;
+    const fleteTotal = debeMultiplicar ? flete * cantidadBultos : flete;
+    const descripcionFinal = debeMultiplicar ? `${descripcion} × ${cantidadBultos} bultos` : descripcion;
+    
+    return { 
+      fleteCalculado: fleteTotal, 
+      fleteDescripcion: descripcionFinal, 
+      metodoAplicado: metodo,
+      multiplicadoPorBultos: debeMultiplicar
+    };
+  }, [selectedTarifa, formData.peso_kg, formData.dimensiones, formData.cantidad_bultos, distanciaKm]);
 
   // Memoizar precio total calculado
   const precioCalculado = useMemo(() => {
