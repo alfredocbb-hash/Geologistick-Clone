@@ -3059,6 +3059,7 @@ export type Database = {
           comision_chofer_fija: number | null
           comision_chofer_porcentaje: number | null
           created_at: string | null
+          created_by: string | null
           id: string
           nombre: string
           precio_base: number
@@ -3080,6 +3081,7 @@ export type Database = {
           comision_chofer_fija?: number | null
           comision_chofer_porcentaje?: number | null
           created_at?: string | null
+          created_by?: string | null
           id?: string
           nombre: string
           precio_base: number
@@ -3101,6 +3103,7 @@ export type Database = {
           comision_chofer_fija?: number | null
           comision_chofer_porcentaje?: number | null
           created_at?: string | null
+          created_by?: string | null
           id?: string
           nombre?: string
           precio_base?: number

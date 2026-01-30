@@ -83,6 +83,17 @@ interface Tarifa {
   rangos_kg: WeightRange[] | null;
   umbral_volumen_cm: number | null;
   created_at: string | null;
+  tenant_id: string | null;
+  created_by: string | null;
+  tenant?: {
+    id: string;
+    nombre: string;
+  } | null;
+  creador?: {
+    id: string;
+    nombre: string;
+    apellido: string | null;
+  } | null;
 }
 
 interface TarifaConcepto {
@@ -107,7 +118,7 @@ interface TarifaConceptoPrecio {
 }
 
 export default function Rates() {
-  const { isAdmin, isSuperAdmin, profile } = useAuth();
+  const { isAdmin, isSuperAdmin, profile, user } = useAuth();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('tarifas');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -158,20 +169,40 @@ export default function Rates() {
 
   const [conceptPrices, setConceptPrices] = useState<Record<string, { monto: string; es_porcentaje: boolean; porcentaje: string; multiplicar_por_bultos: boolean }>>({});
 
-  // Fetch tarifas
+  // Fetch tarifas with tenant and creator info for super admins
   const { data: tarifas = [], isLoading } = useQuery({
     queryKey: ['tarifas'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // Build query based on super admin status
+      let query = supabase
         .from('tarifas')
-        .select('*')
+        .select('*, tenant:tenants(id, nombre)')
         .order('nombre');
+        
+      const { data, error } = await query;
       if (error) throw error;
-      // Map the data to handle JSON fields
-      return (data || []).map(t => ({
-        ...t,
-        rangos_kg: Array.isArray(t.rangos_kg) ? (t.rangos_kg as unknown as WeightRange[]) : [],
-      })) as Tarifa[];
+      
+      // For super admins, fetch creator info separately
+      const tarifasWithCreator = await Promise.all(
+        (data || []).map(async (t) => {
+          let creador = null;
+          if (t.created_by) {
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('id, nombre, apellido')
+              .eq('user_id', t.created_by)
+              .maybeSingle();
+            creador = profileData;
+          }
+          return {
+            ...t,
+            rangos_kg: Array.isArray(t.rangos_kg) ? (t.rangos_kg as unknown as WeightRange[]) : [],
+            creador,
+          };
+        })
+      );
+      
+      return tarifasWithCreator as Tarifa[];
     },
   });
 
@@ -253,6 +284,7 @@ export default function Rates() {
         const { data: newTarifa, error } = await supabase.from('tarifas').insert({
           ...tarifaData,
           tenant_id: profile?.tenant_id,
+          created_by: user?.id,
         } as any).select('id').single();
         if (error) throw error;
         tarifaId = newTarifa.id;
@@ -1310,6 +1342,24 @@ export default function Rates() {
                               <span className="font-medium">
                                 {formatCurrency(tarifa.comision_chofer_fija)}
                               </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Super Admin: Show tenant and creator info */}
+                      {isSuperAdmin() && tarifa.tenant && (
+                        <div className="mt-3 pt-3 border-t border-dashed">
+                          <div className="text-xs text-muted-foreground space-y-1">
+                            <div className="flex items-center gap-2">
+                              <Building2 className="h-3 w-3" />
+                              <span>Empresa: <strong>{tarifa.tenant.nombre}</strong></span>
+                            </div>
+                            {tarifa.creador && (
+                              <div className="flex items-center gap-2">
+                                <Users className="h-3 w-3" />
+                                <span>Creado por: {tarifa.creador.nombre} {tarifa.creador.apellido || ''}</span>
+                              </div>
                             )}
                           </div>
                         </div>
