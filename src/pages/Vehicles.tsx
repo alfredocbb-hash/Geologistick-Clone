@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useFormDraft } from '@/hooks/useFormDraft';
+import { DraftIndicator, DraftSavingIndicator } from '@/components/ui/draft-indicator';
 import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -81,9 +83,20 @@ export default function Vehicles() {
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState<any>(null);
-  const [form, setForm] = useState<VehicleForm>(defaultForm);
 
   const canManage = isAdmin() || hasRole('supervisor');
+
+  // Form draft persistence
+  const {
+    formData: form,
+    setFormData: setForm,
+    clearDraft,
+    discardDraft,
+    isDraftRecovered,
+    setIsDraftRecovered,
+    lastSaved,
+    hasDraft,
+  } = useFormDraft<VehicleForm>('new-vehicle', defaultForm);
 
   const { data: vehicles, isLoading, refetch } = useQuery({
     queryKey: ['vehiculos'],
@@ -189,6 +202,9 @@ export default function Vehicles() {
     onSuccess: () => {
       toast.success(editingVehicle ? 'Vehículo actualizado' : 'Vehículo creado');
       queryClient.invalidateQueries({ queryKey: ['vehiculos'] });
+      if (!editingVehicle) {
+        clearDraft(); // Clear draft only on new vehicle creation
+      }
       handleCloseDialog();
     },
     onError: (error: any) => {
@@ -222,6 +238,7 @@ export default function Vehicles() {
   const handleOpenDialog = (vehicle?: any) => {
     if (vehicle) {
       setEditingVehicle(vehicle);
+      discardDraft(); // Clear any draft when editing existing
       setForm({
         patente: vehicle.patente || '',
         marca: vehicle.marca || '',
@@ -236,7 +253,7 @@ export default function Vehicles() {
       });
     } else {
       setEditingVehicle(null);
-      setForm(defaultForm);
+      // Don't reset form - use draft if available
     }
     setDialogOpen(true);
   };
@@ -244,7 +261,9 @@ export default function Vehicles() {
   const handleCloseDialog = () => {
     setDialogOpen(false);
     setEditingVehicle(null);
-    setForm(defaultForm);
+    if (editingVehicle) {
+      setForm(defaultForm); // Only reset on edit mode close
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -477,6 +496,16 @@ export default function Vehicles() {
               </DialogDescription>
             </DialogHeader>
 
+            {/* Draft indicator */}
+            {!editingVehicle && isDraftRecovered && (
+              <DraftIndicator
+                lastSaved={lastSaved}
+                onDiscard={discardDraft}
+                onDismiss={() => setIsDraftRecovered(false)}
+                className="mb-2"
+              />
+            )}
+
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -609,13 +638,16 @@ export default function Vehicles() {
               </div>
             </div>
 
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleCloseDialog}>
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={saveMutation.isPending}>
-                {saveMutation.isPending ? 'Guardando...' : 'Guardar'}
-              </Button>
+            <DialogFooter className="flex items-center justify-between sm:justify-between">
+              {!editingVehicle && <DraftSavingIndicator hasDraft={hasDraft} lastSaved={lastSaved} />}
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" onClick={handleCloseDialog}>
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={saveMutation.isPending}>
+                  {saveMutation.isPending ? 'Guardando...' : 'Guardar'}
+                </Button>
+              </div>
             </DialogFooter>
           </form>
         </DialogContent>

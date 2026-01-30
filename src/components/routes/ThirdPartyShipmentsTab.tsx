@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
+import { useFormDraft } from "@/hooks/useFormDraft";
+import { DraftIndicator, DraftSavingIndicator } from "@/components/ui/draft-indicator";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -124,9 +126,20 @@ const emptyForm: ThirdPartyFormData = {
 export default function ThirdPartyShipmentsTab() {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
-  const [formData, setFormData] = useState<ThirdPartyFormData>(emptyForm);
   const [tempShipments, setTempShipments] = useState<TempShipment[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  // Form draft persistence
+  const {
+    formData,
+    setFormData,
+    clearDraft,
+    discardDraft,
+    isDraftRecovered,
+    setIsDraftRecovered,
+    lastSaved,
+    hasDraft,
+  } = useFormDraft<ThirdPartyFormData>("third-party-shipment", emptyForm);
 
   // Fetch active third-party companies from database
   const { data: empresas = [] } = useQuery({
@@ -311,6 +324,7 @@ export default function ThirdPartyShipmentsTab() {
 
     try {
       await createShipmentMutation.mutateAsync(formData);
+      clearDraft();
       setFormData(emptyForm);
       toast.success("Envío terciarizado creado correctamente");
     } catch (error) {
@@ -372,6 +386,15 @@ export default function ThirdPartyShipmentsTab() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Draft indicator */}
+          {isDraftRecovered && (
+            <DraftIndicator
+              lastSaved={lastSaved}
+              onDiscard={discardDraft}
+              onDismiss={() => setIsDraftRecovered(false)}
+            />
+          )}
+
           {/* Company and Tracking */}
           <div className="grid md:grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -539,15 +562,18 @@ export default function ThirdPartyShipmentsTab() {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-3 justify-end">
-            <Button variant="outline" onClick={handleAddToList}>
-              <Plus className="mr-1 h-4 w-4" />
-              Agregar a Lista
-            </Button>
-            <Button onClick={handleCreateSingle} disabled={createShipmentMutation.isPending}>
-              {createShipmentMutation.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
-              Crear Envío
-            </Button>
+          <div className="flex items-center justify-between">
+            <DraftSavingIndicator hasDraft={hasDraft} lastSaved={lastSaved} />
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={handleAddToList}>
+                <Plus className="mr-1 h-4 w-4" />
+                Agregar a Lista
+              </Button>
+              <Button onClick={handleCreateSingle} disabled={createShipmentMutation.isPending}>
+                {createShipmentMutation.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
+                Crear Envío
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

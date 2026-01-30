@@ -26,7 +26,7 @@ const DRAFT_PREFIX = 'form_draft_';
 const DEFAULT_DEBOUNCE_MS = 2000;
 const DEFAULT_EXPIRATION_DAYS = 7;
 
-export function useFormDraft<T extends Record<string, unknown>>(
+export function useFormDraft<T extends object>(
   formKey: string,
   initialValues: T,
   options: UseFormDraftOptions = {}
@@ -45,8 +45,8 @@ export function useFormDraft<T extends Record<string, unknown>>(
 
   // Check if draft has meaningful data (not just empty initial values)
   const hasMeaningfulData = useCallback((data: T): boolean => {
-    return Object.entries(data).some(([key, value]) => {
-      const initialValue = initialValues[key];
+    return Object.entries(data as Record<string, unknown>).some(([key, value]) => {
+      const initialValue = (initialValues as Record<string, unknown>)[key];
       if (value === initialValue) return false;
       if (typeof value === 'string' && value.trim() === '') return false;
       if (typeof value === 'boolean' && value === false) return false;
