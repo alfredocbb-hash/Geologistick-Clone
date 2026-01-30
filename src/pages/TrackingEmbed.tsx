@@ -86,11 +86,12 @@ const TrackingEmbed = () => {
   const [searchedTracking, setSearchedTracking] = useState(initialTracking);
 
   // Fetch shipment via Edge Function (bypasses RLS for public access)
+  // Short codes (< 15 chars) are searched by suffix in the Edge Function
   const { data: envio, isLoading, error } = useQuery({
     queryKey: ["tracking-embed", searchedTracking],
     queryFn: async (): Promise<TrackingResponse | null> => {
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/public-tracking?code=${searchedTracking}`
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/public-tracking?code=${encodeURIComponent(searchedTracking)}`
       );
       
       const data = await response.json();

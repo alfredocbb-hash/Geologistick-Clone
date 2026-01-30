@@ -69,7 +69,14 @@ serve(async (req: Request) => {
       logStep("API key validated", { tenantId });
     }
 
-    // Build the query - use ilike for case-insensitive search
+    // Build the query
+    // If tracking code is short (< 15 chars), search by suffix using ILIKE '%code'
+    // Otherwise, do exact case-insensitive match
+    const isShortCode = trackingCode.length < 15;
+    const searchPattern = isShortCode ? `%${trackingCode}` : trackingCode;
+    
+    logStep("Search mode", { isShortCode, searchPattern });
+    
     let query = supabaseClient
       .from("envios")
       .select(`
@@ -95,7 +102,7 @@ serve(async (req: Request) => {
         remitente:clientes!envios_remitente_id_fkey(nombre, ciudad),
         destinatario:clientes!envios_destinatario_id_fkey(nombre, ciudad)
       `)
-      .ilike("tracking_number", trackingCode);
+      .ilike("tracking_number", searchPattern);
 
     // If tenant_id from API key, filter by tenant
     if (tenantId) {
