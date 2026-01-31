@@ -1,203 +1,116 @@
 
+# Plan: Corregir Validación de API Keys
 
-# Plan: Preparar APK con Ícono de Geologistick para Play Store
+## Problema Identificado
 
-## Resumen
+La función `validate_api_key` en la base de datos busca API keys usando `LEFT(p_api_key, 8)` como prefijo, pero la Edge Function `manage-api-keys` almacena el prefijo en un formato diferente:
 
-Preparar la aplicación ChoferApp para publicación en Google Play Store, incluyendo:
-- Configurar el ícono del launcher con el logo de Geologistick
-- Eliminar el hot-reload para producción
-- Generar APK/AAB firmado para subir a Play Store
+| Componente | Formato del Prefijo |
+|------------|---------------------|
+| Edge Function (almacena) | `tk_IoIF...zK2b` (7 chars + `...` + 4 chars) |
+| validate_api_key (busca) | `tk_IoIFr` (primeros 8 caracteres) |
 
----
-
-## Configuración Actual
-
-| Parámetro | Valor Actual |
-|-----------|--------------|
-| App ID | `com.geologic.choferapp` |
-| App Name | `ChoferApp` |
-| Modo | Hot-reload (desarrollo) |
+**Resultado**: La búsqueda nunca encuentra la API key porque los formatos no coinciden.
 
 ---
 
-## Pasos a Seguir (En tu computadora local)
+## Solución Propuesta
 
-### Paso 1: Clonar y preparar el proyecto
+Modificar la función de base de datos `validate_api_key` para que use el mismo formato de prefijo que almacena la Edge Function.
 
-```bash
-# Clonar desde GitHub (si aún no lo tienes)
-git clone [tu-repositorio]
-cd [nombre-proyecto]
+### Cambio en SQL
 
-# Instalar dependencias
-npm install
+```sql
+-- ACTUAL (incorrecto):
+WHERE api_key_prefix = LEFT(p_api_key, 8)
 
-# Agregar plataforma Android si no existe
-npx cap add android
+-- NUEVO (correcto):
+WHERE api_key_prefix = LEFT(p_api_key, 7) || '...' || RIGHT(p_api_key, 4)
 ```
 
-### Paso 2: Instalar herramienta de assets
+### Migración SQL Completa
 
-```bash
-npm install @capacitor/assets --save-dev
+```sql
+CREATE OR REPLACE FUNCTION public.validate_api_key(p_api_key text)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tenant_id UUID;
+  v_key_id UUID;
+  v_expected_hash TEXT;
+  v_computed_hash TEXT;
+  v_hashes_match BOOLEAN;
+  v_prefix TEXT;
+BEGIN
+  -- Compute prefix in the same format as stored (tk_XXXX...YYYY)
+  v_prefix := LEFT(p_api_key, 7) || '...' || RIGHT(p_api_key, 4);
+  
+  -- Compute hash
+  v_computed_hash := encode(sha256(p_api_key::bytea), 'hex');
+  
+  -- Get potential match based on prefix
+  SELECT tenant_id, id, api_key_hash
+  INTO v_tenant_id, v_key_id, v_expected_hash
+  FROM public.tenant_api_keys
+  WHERE api_key_prefix = v_prefix
+    AND is_active = true
+  LIMIT 1;
+  
+  -- If no row found, do dummy comparison for timing attack prevention
+  IF v_expected_hash IS NULL THEN
+    v_expected_hash := encode(sha256('dummy_value_for_constant_time'::bytea), 'hex');
+  END IF;
+  
+  -- Compare hashes
+  v_hashes_match := (v_computed_hash = v_expected_hash);
+  
+  -- Return tenant_id only if prefix AND hash matched
+  IF v_tenant_id IS NOT NULL AND v_hashes_match THEN
+    UPDATE public.tenant_api_keys
+    SET last_used_at = now()
+    WHERE id = v_key_id;
+    
+    RETURN v_tenant_id;
+  END IF;
+  
+  RETURN NULL;
+END;
+$function$;
 ```
 
-### Paso 3: Crear carpeta de recursos
+---
 
-Crea la carpeta `resources/` en la raíz del proyecto con estos archivos:
+## Pasos de Implementación
 
-```text
-resources/
-├── icon.png              (1024x1024 px)
-├── icon-foreground.png   (1024x1024 px)  
-├── icon-background.png   (1024x1024 px - color sólido #1e293b)
-└── splash.png            (2732x2732 px)
+1. **Ejecutar migración SQL** para actualizar la función `validate_api_key`
+2. **Probar** la API con la key existente: `tk_IoIFryrlTbRottqJOfij1QmIQSszzK2b`
+
+---
+
+## Verificación Post-Fix
+
+Después de aplicar el cambio, la consulta:
+```sql
+SELECT public.validate_api_key('tk_IoIFryrlTbRottqJOfij1QmIQSszzK2b');
 ```
 
-Para crear estos archivos:
+Debería retornar el `tenant_id` correcto en lugar de `NULL`.
 
-1. **icon.png**: Usa el logo de `src/assets/geologistick-logo.png` redimensionado a 1024x1024px
-2. **icon-foreground.png**: El mismo logo centrado con margen (para adaptive icons de Android)
-3. **icon-background.png**: Imagen de 1024x1024px con color sólido `#1e293b` (azul oscuro)
-4. **splash.png**: Logo centrado sobre fondo `#1e293b` en 2732x2732px
+---
 
-### Paso 4: Generar todos los tamaños de íconos
+## Detalle Técnico
 
-```bash
-npx capacitor-assets generate
-```
-
-Esto creará automáticamente todos los tamaños necesarios en `android/app/src/main/res/`.
-
-### Paso 5: Configurar para producción (sin hot-reload)
-
-Edita `capacitor.config.ts` y **elimina** la sección `server` si existe:
-
+La Edge Function genera el prefijo así:
 ```typescript
-// ELIMINAR estas líneas para producción:
-// server: {
-//   url: "https://...",
-//   cleartext: true
-// },
+const prefix = apiKey.substring(0, 7) + '...' + apiKey.slice(-4);
+// Resultado: "tk_IoIF...zK2b"
 ```
 
-El archivo final debe quedar:
-
-```typescript
-import type { CapacitorConfig } from '@capacitor/cli';
-
-const config: CapacitorConfig = {
-  appId: 'com.geologic.choferapp',
-  appName: 'ChoferApp',
-  webDir: 'dist',
-  plugins: {
-    StatusBar: {
-      style: 'DARK',
-      overlaysWebView: false
-    },
-    SplashScreen: {
-      launchShowDuration: 2000,
-      backgroundColor: '#1e293b',
-      showSpinner: true,
-      spinnerColor: '#3b82f6'
-    },
-    BarcodeScanner: {
-      enableGoogleBarcodeScanning: true
-    }
-  }
-};
-
-export default config;
+La función SQL debe construir el mismo prefijo para la búsqueda:
+```sql
+v_prefix := LEFT(p_api_key, 7) || '...' || RIGHT(p_api_key, 4);
+-- Resultado: "tk_IoIF...zK2b"
 ```
-
-### Paso 6: Compilar y sincronizar
-
-```bash
-# Compilar el proyecto web
-npm run build
-
-# Sincronizar con Android
-npx cap sync android
-```
-
-### Paso 7: Generar APK/AAB firmado
-
-Abre Android Studio:
-
-```bash
-npx cap open android
-```
-
-En Android Studio:
-1. Menú **Build** > **Generate Signed Bundle / APK**
-2. Selecciona **Android App Bundle** (recomendado para Play Store) o **APK**
-3. Crea o usa un **keystore existente** (guárdalo bien, lo necesitas para futuras actualizaciones)
-4. Completa los datos de firma
-5. Selecciona **release** como build variant
-6. Click en **Finish**
-
-El archivo `.aab` o `.apk` se generará en:
-```
-android/app/release/app-release.aab
-```
-
----
-
-## Requisitos para Play Store
-
-Antes de subir a Play Store, asegúrate de tener:
-
-| Requisito | Descripción |
-|-----------|-------------|
-| Cuenta de desarrollador | Registro en Google Play Console ($25 USD único) |
-| Ícono de la app | 512x512 PNG (se genera automáticamente) |
-| Feature graphic | 1024x500 PNG (imagen promocional) |
-| Capturas de pantalla | Mínimo 2 capturas por tipo de dispositivo |
-| Descripción | Texto de la app (corta y larga) |
-| Política de privacidad | URL a tu política de privacidad |
-| Clasificación de contenido | Completar cuestionario de clasificación |
-
----
-
-## Solución de Problemas
-
-### El ícono no cambia
-```bash
-cd android
-./gradlew clean
-cd ..
-npx cap sync android
-```
-
-### Error de permisos (Mac/Linux)
-```bash
-chmod +x android/gradlew
-```
-
-### El APK es muy grande
-Usa **Android App Bundle** (.aab) en lugar de APK - Google Play optimizará automáticamente el tamaño para cada dispositivo.
-
----
-
-## Resumen de Comandos
-
-```bash
-# Preparación completa
-npm install
-npm install @capacitor/assets --save-dev
-npx cap add android
-
-# Crear recursos en carpeta resources/ manualmente
-
-# Generar íconos
-npx capacitor-assets generate
-
-# Compilar para producción
-npm run build
-npx cap sync android
-
-# Abrir en Android Studio para firmar
-npx cap open android
-```
-
