@@ -1,191 +1,67 @@
 
-# Plan: Mejoras en Gestión de Usuarios para Super Admin
+# Plan: Super Admin Siempre Ve Branding Geologistick
 
-## Problemas Identificados
+## Problema
 
-1. **Usuario admin de empresa nueva no visible**
-   - El usuario SÍ existe en la base de datos
-   - El query de profiles no está filtrando correctamente para super admin
-   - Posible problema de cache o timing al crear la empresa
+Cuando un Super Admin está logueado, ve el branding de la empresa asociada a su perfil en lugar del branding neutro de Geologistick. Esto causa confusión porque:
 
-2. **No hay opción para eliminar usuarios**
-   - El componente `Users.tsx` solo tiene acciones de "Editar" y "Reiniciar contraseña"
-   - Falta el botón y la lógica de eliminación
-   - La política RLS ya existe: `Super admin can delete profiles`
+1. Si una empresa cambia su logo, el Super Admin ve ese cambio
+2. El Super Admin debería ver siempre la marca "Geologistick" como plataforma neutral
+3. Los colores y estilos de otras empresas afectan la interfaz del Super Admin
 
-3. **Usuarios no agrupados por empresa**
-   - La tabla muestra usuarios de forma plana
-   - No hay indicador visual de a qué empresa pertenece cada usuario
-   - Dificulta la administración cuando hay múltiples empresas
+## Solución
 
----
+Modificar el hook `useTenant` para que cuando el usuario sea Super Admin, no cargue el branding de ningún tenant específico, permitiendo que la interfaz use los valores por defecto de Geologistick.
 
-## Solución Propuesta
+## Cambios Técnicos
 
-### 1. Agrupar Usuarios por Empresa (Super Admin)
+### Archivo: `src/hooks/useTenant.ts`
 
-Modificar la vista de usuarios para mostrar usuarios agrupados por empresa cuando el usuario es super admin:
-
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│  USUARIOS                                                       │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ▼ Beraexpress (6 usuarios)                                    │
-│  ├─ Alfredo Bernard - admin - alfredo@beraexpress.com          │
-│  ├─ Kevin Bernard - chofer - kevin@beraexpress.com             │
-│  └─ Lucas Galarza - operador - lucas@beraexpress.com           │
-│                                                                 │
-│  ▼ BlackBox Cargas (1 usuario)                                 │
-│  └─ Blackbox Admin - admin - julian@blackbox.com               │
-│                                                                 │
-│  ▼ PlataBus Cargas (1 usuario)                                 │
-│  └─ Pablo Rios - admin - pablo@platabus.com                    │
-│                                                                 │
-│  ▼ Sin Empresa Asignada (0 usuarios)                           │
-│  └─ (vacío)                                                    │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### 2. Agregar Botón Eliminar Usuario
-
-Agregar un botón de eliminar con confirmación para super admins:
-
-- Ícono de papelera rojo junto a editar
-- Diálogo de confirmación con el nombre del usuario
-- Validar que no se pueda eliminar a sí mismo
-- Eliminar: roles, ubicaciones, y profile (el usuario en auth queda)
-
-### 3. Mejorar Query de Perfiles
-
-Incluir la información del tenant en el query para poder agrupar:
+Agregar verificación de `isSuperAdmin()` para evitar cargar branding cuando el usuario es Super Admin:
 
 ```typescript
-const { data, error } = await supabase
-  .from('profiles')
-  .select(`
-    *,
-    tenant:tenants(id, nombre)
-  `)
-  .order('created_at', { ascending: false });
+export function useTenant() {
+  const { user, profile, isSuperAdmin } = useAuth();
+  const tenantId = (profile as { tenant_id?: string })?.tenant_id;
+
+  // Super Admin siempre ve branding por defecto
+  const shouldLoadBranding = !isSuperAdmin();
+
+  const { data: tenant, isLoading: tenantLoading } = useQuery({
+    // ...
+    enabled: !!user && !!tenantId && shouldLoadBranding,
+  });
+
+  const { data: branding, isLoading: brandingLoading } = useQuery({
+    // ...
+    enabled: !!user && !!tenantId && shouldLoadBranding,
+  });
+
+  return {
+    tenant,
+    branding,
+    tenantId,
+    isLoading: shouldLoadBranding ? (tenantLoading || brandingLoading) : false,
+  };
+}
 ```
 
----
+## Comportamiento Resultante
 
-## Cambios por Archivo
+| Usuario | Logo | Colores | Favicon |
+|---------|------|---------|---------|
+| Super Admin | Geologistick (default) | Azul/Default | Geologistick |
+| Admin Empresa A | Logo Empresa A | Colores Empresa A | Favicon A |
+| Admin Empresa B | Logo Empresa B | Colores Empresa B | Favicon B |
+
+## Archivo a Modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/pages/Users.tsx` | - Agregar join con tenants en query<br>- Vista agrupada por empresa (Collapsible)<br>- Botón eliminar usuario<br>- Diálogo de confirmación eliminación<br>- Filtro por empresa |
+| `src/hooks/useTenant.ts` | Agregar condición `isSuperAdmin()` para deshabilitar carga de branding |
 
----
+## Impacto
 
-## Funcionalidades Nuevas
-
-### Vista Agrupada (Solo Super Admin)
-
-- Los usuarios se agrupan por empresa (tenant)
-- Cada grupo es colapsable/expandible
-- Muestra contador de usuarios por empresa
-- Los admins normales siguen viendo la tabla plana (solo su empresa)
-
-### Eliminar Usuario
-
-```typescript
-const deleteUserMutation = useMutation({
-  mutationFn: async (userId: string) => {
-    // 1. Eliminar roles
-    await supabase.from('user_roles').delete().eq('user_id', userId);
-    
-    // 2. Eliminar ubicaciones (si es chofer)
-    await supabase.from('driver_locations').delete().eq('chofer_id', userId);
-    
-    // 3. Eliminar perfil
-    const { error } = await supabase.from('profiles').delete().eq('user_id', userId);
-    if (error) throw error;
-  },
-  onSuccess: () => {
-    queryClient.invalidateQueries({ queryKey: ['profiles'] });
-    toast.success('Usuario eliminado');
-  },
-});
-```
-
-### Filtro por Empresa
-
-Agregar un select para filtrar usuarios por empresa específica:
-
-```typescript
-<Select value={filterTenant} onValueChange={setFilterTenant}>
-  <SelectItem value="all">Todas las empresas</SelectItem>
-  {tenants.map(t => (
-    <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
-  ))}
-</Select>
-```
-
----
-
-## UI Propuesta
-
-### Header con Filtros (Super Admin)
-
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│  Usuarios                                    [Nuevo Usuario]    │
-│  Administra usuarios y roles del sistema                        │
-├─────────────────────────────────────────────────────────────────┤
-│  [🔍 Buscar...]  [📦 Todas las empresas ▼]  [Vista: Agrupada ▼]│
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Fila de Usuario con Eliminar
-
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│  👤 Juan Pérez       📧 juan@ejemplo.com    [Admin] [Operador]  │
-│     juan@ejemplo.com  📞 +54 11 1234        📍 Sucursal Central │
-│                                              [🔑] [✏️] [🗑️]    │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Diálogo de Confirmación
-
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│  ⚠️ Eliminar Usuario                                           │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ¿Estás seguro de que deseas eliminar a:                       │
-│                                                                 │
-│  👤 Juan Pérez (juan@ejemplo.com)                              │
-│                                                                 │
-│  Esta acción no se puede deshacer.                             │
-│  Se eliminarán sus roles y datos asociados.                    │
-│                                                                 │
-│  Nota: El acceso de autenticación permanecerá activo.          │
-│  Para eliminarlo completamente, contacta al soporte.           │
-│                                                                 │
-│                      [Cancelar]  [🗑️ Eliminar Usuario]         │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Consideraciones Técnicas
-
-1. **Eliminación parcial**: Solo se elimina el profile y roles, no el usuario en auth (requiere service role key)
-
-2. **Protecciones**:
-   - No permitir eliminar al usuario actual
-   - No permitir eliminar super admins (solo otro super admin)
-   - Confirmación obligatoria
-
-3. **Rendimiento**: 
-   - La vista agrupada usa un `useMemo` para organizar usuarios
-   - El fetch incluye el tenant en una sola query (join)
-
-4. **Permisos**:
-   - Solo super admin puede ver/eliminar usuarios de otras empresas
-   - Admins normales solo ven usuarios de su empresa
+- Los Super Admins verán siempre la interfaz estándar de Geologistick
+- Los usuarios normales seguirán viendo el branding de su empresa
+- No afecta la funcionalidad de personalización en el panel de administración de cada empresa
