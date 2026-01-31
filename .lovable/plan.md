@@ -1,113 +1,118 @@
 
-# Plan: Corregir Aislamiento de Control de Caja por Tenant
+# Plan: Validar Caja Abierta para Crear Envíos
 
 ## Problema Identificado
 
-El usuario de **BlackBox Cargas** puede ver una caja abierta que pertenece a **Empresa Principal**. Esto ocurre porque las queries en `Cash.tsx` no filtran las sesiones de caja por el tenant del usuario.
-
-### Datos del problema:
-| Caja Abierta | Pertenece a | Debería verse por |
-|--------------|-------------|-------------------|
-| Central Buenos Aires | Empresa Principal | Solo Empresa Principal |
-| (ninguna) | BlackBox Cargas | BlackBox Cargas debería ver "sin caja abierta" |
-
-### Causa raíz:
-La tabla `sesiones_caja` no tiene columna `tenant_id` directa, pero se relaciona con `sucursales` que sí tiene `tenant_id`. Las queries actuales no filtran a través de esta relación.
-
----
+Actualmente los usuarios pueden crear envíos aunque no haya una sesión de caja abierta en su sucursal. Esto impide el correcto control de efectivo, ya que los pagos en efectivo deben registrarse en una caja activa.
 
 ## Solución
 
-Modificar **`src/pages/Cash.tsx`** para filtrar las sesiones de caja solo a sucursales del tenant del usuario.
+Agregar una validación en el formulario de nuevo envío que verifique si existe una caja abierta para la sucursal del usuario antes de permitir la creación del envío.
 
-### Cambio 1: Query de sesión activa (líneas 142-162)
+---
 
-Actualmente:
+## Cambios a Realizar
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/pages/NewShipment.tsx` | Agregar query para verificar caja abierta + validación en handleSubmit + alerta visual |
+
+---
+
+## Detalles Técnicos
+
+### 1. Query para verificar caja abierta
+
+Agregar una nueva query que busque una sesión de caja con estado "abierta" para la sucursal del usuario:
+
 ```typescript
-let query = supabase
-  .from('sesiones_caja')
-  .select('*')
-  .eq('estado', 'abierta');
+const { data: cajaAbierta, isLoading: loadingCaja } = useQuery({
+  queryKey: ['caja-abierta', sucursalOrigenId],
+  queryFn: async () => {
+    if (!sucursalOrigenId) return null;
+    
+    const { data, error } = await supabase
+      .from('sesiones_caja')
+      .select('id, sucursal_id')
+      .eq('sucursal_id', sucursalOrigenId)
+      .eq('estado', 'abierta')
+      .maybeSingle();
+    
+    if (error) throw error;
+    return data;
+  },
+  enabled: !!sucursalOrigenId,
+});
+```
 
-if (!isAdmin()) {
-  query = query.or(`usuario_id.eq.${user.id},sucursal_id.eq.${profile?.sucursal_id}`);
+### 2. Validación en handleSubmit
+
+Agregar validación al inicio de `handleSubmit`:
+
+```typescript
+// Validar que haya caja abierta
+if (!cajaAbierta) {
+  toast({
+    title: 'No hay caja abierta',
+    description: 'Debes abrir una sesión de caja antes de crear envíos.',
+    variant: 'destructive',
+  });
+  return;
 }
 ```
 
-**Problema:** Para admins no hay filtro de tenant.
+### 3. Alerta visual cuando no hay caja
 
-**Solución:** Obtener primero las sucursales del tenant y filtrar por ellas:
-
-```typescript
-// Obtener IDs de sucursales del tenant actual
-const { data: tenantSucursales } = await supabase
-  .from('sucursales')
-  .select('id')
-  .eq('tenant_id', profile?.tenant_id);
-
-const sucursalIds = tenantSucursales?.map(s => s.id) || [];
-
-if (sucursalIds.length === 0) return null;
-
-let query = supabase
-  .from('sesiones_caja')
-  .select('*')
-  .eq('estado', 'abierta')
-  .in('sucursal_id', sucursalIds);  // ← FILTRO POR TENANT
-```
-
-### Cambio 2: Query de historial (líneas 165-176)
-
-Actualmente:
-```typescript
-const { data, error } = await supabase
-  .from('sesiones_caja')
-  .select('*')
-  .order('fecha_apertura', { ascending: false })
-  .limit(20);
-```
-
-**Problema:** Sin filtro de tenant, muestra historial de todos.
-
-**Solución:** Aplicar el mismo filtro:
+Mostrar un banner de alerta en la parte superior del formulario cuando no hay caja abierta:
 
 ```typescript
-// Obtener IDs de sucursales del tenant
-const { data: tenantSucursales } = await supabase
-  .from('sucursales')
-  .select('id')
-  .eq('tenant_id', profile?.tenant_id);
-
-const sucursalIds = tenantSucursales?.map(s => s.id) || [];
-
-const { data, error } = await supabase
-  .from('sesiones_caja')
-  .select('*')
-  .in('sucursal_id', sucursalIds)  // ← FILTRO POR TENANT
-  .order('fecha_apertura', { ascending: false })
-  .limit(20);
+{!cajaAbierta && !loadingCaja && (
+  <Alert variant="destructive">
+    <AlertCircle className="h-4 w-4" />
+    <AlertDescription>
+      No hay caja abierta en tu sucursal. 
+      <Button variant="link" onClick={() => navigate('/cash')}>
+        Ir a Control de Caja
+      </Button>
+    </AlertDescription>
+  </Alert>
+)}
 ```
 
 ---
 
-## Archivos a Modificar
+## Flujo de Usuario
 
-| Archivo | Cambio |
-|---------|--------|
-| `src/pages/Cash.tsx` | Agregar filtro de `sucursal_id` basado en el tenant del usuario en ambas queries de sesiones de caja |
+```text
+Usuario intenta crear envío
+        │
+        ▼
+┌───────────────────────┐
+│  ¿Hay caja abierta?   │
+└───────────────────────┘
+        │
+   No   │   Sí
+   ─────┼──────
+        │          │
+        ▼          ▼
+   Mostrar      Permitir
+   alerta y     crear
+   bloquear     envío
+```
 
 ---
 
 ## Resultado Esperado
 
-| Usuario | Antes | Después |
-|---------|-------|---------|
-| BlackBox Cargas | Ve caja de "Central Buenos Aires" (otro tenant) | Ve "No hay caja abierta" o solo cajas de su empresa |
-| Empresa Principal | Ve cajas de todos | Ve solo cajas de "Empresa Principal" |
-| Super Admin | Ve todo | Sigue viendo todo (comportamiento correcto) |
+| Situación | Antes | Después |
+|-----------|-------|---------|
+| Sin caja abierta | Permite crear envío (sin control) | Bloquea con mensaje claro y link a Control de Caja |
+| Con caja abierta | Permite crear envío | Permite crear envío (sin cambios) |
 
 ---
 
-## Consideración Adicional
+## Consideraciones
 
-También se debe eliminar el intento de insertar `tenant_id` en las líneas 207 y 276-277 ya que esas columnas no existen en las tablas `sesiones_caja` y `movimientos_caja`. Aunque Supabase ignora columnas inexistentes en inserts, es código muerto que debería limpiarse.
+- La validación aplica a la sucursal específica del usuario (`sucursalOrigenId`)
+- El botón "Crear Envío" podría deshabilitarse visualmente cuando no hay caja
+- Se proporciona un acceso directo para abrir la caja desde el mismo formulario
