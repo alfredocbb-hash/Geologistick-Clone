@@ -336,6 +336,25 @@ export default function NewShipment() {
     enabled: !!profile?.tenant_id,
   });
 
+  // Query para verificar si hay caja abierta en la sucursal del usuario
+  const { data: cajaAbierta, isLoading: loadingCaja } = useQuery({
+    queryKey: ['caja-abierta', sucursalOrigenId],
+    queryFn: async () => {
+      if (!sucursalOrigenId) return null;
+      
+      const { data, error } = await supabase
+        .from('sesiones_caja')
+        .select('id, sucursal_id')
+        .eq('sucursal_id', sucursalOrigenId)
+        .eq('estado', 'abierta')
+        .maybeSingle();
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!sucursalOrigenId,
+  });
+
   const { data: conceptoPrecios = [] } = useQuery({
     queryKey: ['tarifa_concepto_precios', formData.tarifa_id],
     queryFn: async () => {
@@ -962,6 +981,16 @@ export default function NewShipment() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Validar que haya caja abierta
+    if (!cajaAbierta) {
+      toast({
+        title: 'No hay caja abierta',
+        description: 'Debes abrir una sesión de caja antes de crear envíos.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
     // Validations
     if (!sucursalOrigenId) {
       toast({
@@ -1287,6 +1316,19 @@ export default function NewShipment() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Alert de caja no abierta */}
+      {!cajaAbierta && !loadingCaja && sucursalOrigenId && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription className="flex items-center justify-between">
+            <span>No hay caja abierta en tu sucursal. Debes abrir una sesión de caja antes de crear envíos.</span>
+            <Button variant="link" className="p-0 h-auto text-destructive-foreground underline" onClick={() => navigate('/cash')}>
+              Ir a Control de Caja
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Alert de cuenta corriente detectada */}
       {remitenteConCtaCte && formData.tipo_pago !== 'cuenta_corriente' && (
