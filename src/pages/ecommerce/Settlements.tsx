@@ -126,6 +126,7 @@ export default function Settlements() {
       const { data, error } = await supabase
         .from('ecommerce_sellers')
         .select('id, nombre, saldo_cuenta_corriente, tiene_cuenta_corriente')
+        .eq('tenant_id', tenantId)
         .eq('tiene_cuenta_corriente', true)
         .order('nombre');
 

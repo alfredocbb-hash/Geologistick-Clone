@@ -93,6 +93,7 @@ export default function Orders() {
           *,
           seller:ecommerce_sellers(id, nombre, tarifa_id, sucursal_pickup_id, tiene_cuenta_corriente)
         `)
+        .eq('tenant_id', tenantId)
         .order('created_at', { ascending: false })
         .limit(200);
 
