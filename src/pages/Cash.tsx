@@ -140,16 +140,27 @@ export default function Cash() {
 
   // Fetch current open session
   const { data: currentSession, isLoading: loadingSession } = useQuery({
-    queryKey: ['current-cash-session', user?.id],
+    queryKey: ['current-cash-session', user?.id, profile?.tenant_id],
     queryFn: async () => {
-      if (!user) return null;
+      if (!user || !profile?.tenant_id) return null;
+      
+      // First get branch IDs for current tenant
+      const { data: tenantSucursales } = await supabase
+        .from('sucursales')
+        .select('id')
+        .eq('tenant_id', profile.tenant_id);
+      
+      const sucursalIds = tenantSucursales?.map(s => s.id) || [];
+      
+      if (sucursalIds.length === 0) return null;
       
       let query = supabase
         .from('sesiones_caja')
         .select('*')
-        .eq('estado', 'abierta');
+        .eq('estado', 'abierta')
+        .in('sucursal_id', sucursalIds);
       
-      // If not admin, only show user's session or their branch
+      // If not admin, further filter to user's session or their branch
       if (!isAdmin()) {
         query = query.or(`usuario_id.eq.${user.id},sucursal_id.eq.${profile?.sucursal_id}`);
       }
@@ -158,21 +169,35 @@ export default function Cash() {
       if (error) throw error;
       return data as CashSession | null;
     },
-    enabled: !!user,
+    enabled: !!user && !!profile?.tenant_id,
   });
 
   // Fetch session history
   const { data: sessionHistory = [], isLoading: loadingHistory } = useQuery({
-    queryKey: ['cash-sessions-history'],
+    queryKey: ['cash-sessions-history', profile?.tenant_id],
     queryFn: async () => {
+      if (!profile?.tenant_id) return [];
+      
+      // Get branch IDs for current tenant
+      const { data: tenantSucursales } = await supabase
+        .from('sucursales')
+        .select('id')
+        .eq('tenant_id', profile.tenant_id);
+      
+      const sucursalIds = tenantSucursales?.map(s => s.id) || [];
+      
+      if (sucursalIds.length === 0) return [];
+      
       const { data, error } = await supabase
         .from('sesiones_caja')
         .select('*')
+        .in('sucursal_id', sucursalIds)
         .order('fecha_apertura', { ascending: false })
         .limit(20);
       if (error) throw error;
       return data as CashSession[];
     },
+    enabled: !!profile?.tenant_id,
   });
 
   // Fetch movements for current session
@@ -204,7 +229,6 @@ export default function Cash() {
         monto_inicial: data.monto_inicial,
         notas_apertura: data.notas_apertura || null,
         estado: 'abierta',
-        tenant_id: profile.tenant_id,
       });
       if (error) throw error;
     },
@@ -273,7 +297,6 @@ export default function Cash() {
         metodo_pago: data.metodo_pago,
         referencia: data.referencia || null,
         created_by: user.id,
-        tenant_id: profile?.tenant_id,
       });
       if (error) throw error;
     },
