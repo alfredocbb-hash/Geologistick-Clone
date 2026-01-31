@@ -211,11 +211,6 @@ const navigation: NavGroup[] = [{
     icon: Plug,
     permissionKey: 'integrations.manage'
   }, {
-    title: 'Personalización',
-    url: '/admin/branding',
-    icon: Palette,
-    permissionKey: 'integrations.manage'
-  }, {
     title: 'Suscripción',
     url: '/subscription',
     icon: Crown,
@@ -243,6 +238,11 @@ const navigation: NavGroup[] = [{
     title: 'Landing Page',
     url: '/admin/landing',
     icon: Globe,
+    permissionKey: 'tenants.manage'
+  }, {
+    title: 'Personalización',
+    url: '/admin/branding',
+    icon: Palette,
     permissionKey: 'tenants.manage'
   }],
   superAdminOnly: true

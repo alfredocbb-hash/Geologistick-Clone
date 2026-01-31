@@ -9,9 +9,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Loader2, Palette, Image, Type, Globe, Save, Eye, Phone } from 'lucide-react';
+import { Loader2, Palette, Image, Type, Globe, Save, Eye, Phone, Building2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LogoUploader } from '@/components/branding/LogoUploader';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface BrandingFormData {
   nombre_app: string;
@@ -78,13 +79,33 @@ const defaultBranding: BrandingFormData = {
 
 export default function BrandingSettings() {
   const { profile, isAdmin, isSuperAdmin } = useAuth();
-  const tenantId = (profile as { tenant_id?: string })?.tenant_id;
+  const userTenantId = (profile as { tenant_id?: string })?.tenant_id;
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState<BrandingFormData>(defaultBranding);
   const [previewMode, setPreviewMode] = useState(false);
+  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
+
+  // Fetch all tenants for Super Admin selector
+  const { data: tenants } = useQuery({
+    queryKey: ['tenants-list-branding'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('tenants')
+        .select('id, nombre')
+        .eq('activo', true)
+        .order('nombre');
+      if (error) throw error;
+      return data;
+    },
+    enabled: isSuperAdmin(),
+  });
+
+  // Use selected tenant for super admin, or user's tenant for regular users
+  const tenantId = isSuperAdmin() ? selectedTenantId : userTenantId;
 
   const { data: branding, isLoading } = useQuery({
     queryKey: ['tenant-branding-admin', tenantId],
+    refetchOnMount: true,
     queryFn: async () => {
       if (!tenantId) return null;
       const { data, error } = await supabase
@@ -174,7 +195,7 @@ export default function BrandingSettings() {
     saveMutation.mutate(formData);
   };
 
-  if (!isAdmin()) {
+  if (!isSuperAdmin()) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center h-[60vh]">
@@ -210,13 +231,61 @@ export default function BrandingSettings() {
               <Eye className="h-4 w-4 mr-2" />
               {previewMode ? 'Ocultar' : 'Ver'} Preview
             </Button>
-            <Button onClick={handleSave} disabled={saveMutation.isPending}>
+            <Button onClick={handleSave} disabled={saveMutation.isPending || !tenantId}>
               {saveMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               <Save className="h-4 w-4 mr-2" />
               Guardar Cambios
             </Button>
           </div>
         </div>
+
+        {/* Tenant Selector for Super Admin */}
+        {isSuperAdmin() && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Building2 className="h-4 w-4" />
+                Seleccionar Empresa
+              </CardTitle>
+              <CardDescription>
+                Elige la empresa cuyo branding deseas personalizar
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Select
+                value={selectedTenantId || ''}
+                onValueChange={(value) => {
+                  setSelectedTenantId(value);
+                  setFormData(defaultBranding); // Reset form when changing tenant
+                }}
+              >
+                <SelectTrigger className="w-full md:w-80">
+                  <SelectValue placeholder="Selecciona una empresa..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {tenants?.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Show message if no tenant selected for super admin */}
+        {isSuperAdmin() && !selectedTenantId && (
+          <Card>
+            <CardContent className="py-12 text-center text-muted-foreground">
+              <Building2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>Selecciona una empresa para personalizar su branding</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Main content - only show when tenant is selected */}
+        {tenantId && (
 
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2">
@@ -664,6 +733,7 @@ export default function BrandingSettings() {
             </div>
           )}
         </div>
+        )}
       </div>
     </DashboardLayout>
   );

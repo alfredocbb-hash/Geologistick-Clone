@@ -6,11 +6,15 @@ import { SecurityCard } from '@/components/profile/SecurityCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
-import { Package, TrendingUp, Route } from 'lucide-react';
+import { Package, TrendingUp, Route, Sun, Moon, Monitor } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { useTheme } from 'next-themes';
+import { Label } from '@/components/ui/label';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 
 export default function Profile() {
   const { profile, roles, user } = useAuth();
+  const { theme, setTheme } = useTheme();
   const [avatarUrl, setAvatarUrl] = useState<string | null>(profile?.avatar_url || null);
   const [localProfile, setLocalProfile] = useState<ProfileType | null>(profile);
 
@@ -120,6 +124,41 @@ export default function Profile() {
 
         {/* Security */}
         <SecurityCard />
+
+        {/* Preferences */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Preferencias</CardTitle>
+            <CardDescription>Configura tu experiencia de usuario</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Tema de la Interfaz</Label>
+              <ToggleGroup 
+                type="single" 
+                value={theme} 
+                onValueChange={(value) => value && setTheme(value)}
+                className="justify-start"
+              >
+                <ToggleGroupItem value="light" aria-label="Modo claro">
+                  <Sun className="h-4 w-4 mr-2" />
+                  Claro
+                </ToggleGroupItem>
+                <ToggleGroupItem value="dark" aria-label="Modo oscuro">
+                  <Moon className="h-4 w-4 mr-2" />
+                  Oscuro
+                </ToggleGroupItem>
+                <ToggleGroupItem value="system" aria-label="Sistema">
+                  <Monitor className="h-4 w-4 mr-2" />
+                  Sistema
+                </ToggleGroupItem>
+              </ToggleGroup>
+              <p className="text-xs text-muted-foreground">
+                Elige entre modo claro, oscuro o usa la configuración de tu sistema
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Driver Stats */}
