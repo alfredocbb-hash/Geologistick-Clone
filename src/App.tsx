@@ -11,6 +11,7 @@ import { MobileAppLayout } from "@/components/mobile/MobileAppLayout";
 import { MobileLoginScreen } from "@/components/mobile/MobileLoginScreen";
 import { useNativePlatform } from "@/hooks/useNativePlatform";
 import { Loader2 } from "lucide-react";
+import { ThemeProvider } from "next-themes";
 
 // Pages
 import Index from "./pages/Index";
@@ -232,19 +233,21 @@ function AppRoutes() {
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <AuthProvider>
-          <TenantProvider>
-            <GoogleMapsProvider>
-              <AppRoutes />
-            </GoogleMapsProvider>
-          </TenantProvider>
-        </AuthProvider>
-      </BrowserRouter>
-    </TooltipProvider>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <AuthProvider>
+            <TenantProvider>
+              <GoogleMapsProvider>
+                <AppRoutes />
+              </GoogleMapsProvider>
+            </TenantProvider>
+          </AuthProvider>
+        </BrowserRouter>
+      </TooltipProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 
