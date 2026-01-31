@@ -1,67 +1,160 @@
 
-# Plan: Super Admin Siempre Ve Branding Geologistick
+# Plan: Restringir Personalización a Super Admin + Agregar Toggle Claro/Oscuro
 
-## Problema
+## Situación Actual
 
-Cuando un Super Admin está logueado, ve el branding de la empresa asociada a su perfil en lugar del branding neutro de Geologistick. Esto causa confusión porque:
+1. **Personalización completa** (`/admin/branding`) es accesible por cualquier admin de empresa
+2. **No existe** un toggle de tema claro/oscuro en la interfaz web
+3. El Super Admin ya tiene un diálogo de personalización por empresa (`TenantBrandingDialog`)
 
-1. Si una empresa cambia su logo, el Super Admin ve ese cambio
-2. El Super Admin debería ver siempre la marca "Geologistick" como plataforma neutral
-3. Los colores y estilos de otras empresas afectan la interfaz del Super Admin
+## Cambios Propuestos
 
-## Solución
+### 1. Restringir Acceso al Módulo de Personalización
 
-Modificar el hook `useTenant` para que cuando el usuario sea Super Admin, no cargue el branding de ningún tenant específico, permitiendo que la interfaz use los valores por defecto de Geologistick.
+**Archivo: `src/components/layout/AppSidebar.tsx`**
 
-## Cambios Técnicos
+Cambiar el ítem "Personalización" del menú para que solo sea visible para Super Admins:
 
-### Archivo: `src/hooks/useTenant.ts`
+```text
+Antes:
+  Administración
+  ├─ Personalización (permissionKey: 'integrations.manage')
 
-Agregar verificación de `isSuperAdmin()` para evitar cargar branding cuando el usuario es Super Admin:
-
-```typescript
-export function useTenant() {
-  const { user, profile, isSuperAdmin } = useAuth();
-  const tenantId = (profile as { tenant_id?: string })?.tenant_id;
-
-  // Super Admin siempre ve branding por defecto
-  const shouldLoadBranding = !isSuperAdmin();
-
-  const { data: tenant, isLoading: tenantLoading } = useQuery({
-    // ...
-    enabled: !!user && !!tenantId && shouldLoadBranding,
-  });
-
-  const { data: branding, isLoading: brandingLoading } = useQuery({
-    // ...
-    enabled: !!user && !!tenantId && shouldLoadBranding,
-  });
-
-  return {
-    tenant,
-    branding,
-    tenantId,
-    isLoading: shouldLoadBranding ? (tenantLoading || brandingLoading) : false,
-  };
-}
+Después:
+  Super Admin
+  ├─ Empresas
+  ├─ Planes
+  ├─ Landing Page
+  ├─ Personalización ← Mover aquí (superAdminOnly: true)
 ```
 
-## Comportamiento Resultante
+**Archivo: `src/pages/BrandingSettings.tsx`**
 
-| Usuario | Logo | Colores | Favicon |
-|---------|------|---------|---------|
-| Super Admin | Geologistick (default) | Azul/Default | Geologistick |
-| Admin Empresa A | Logo Empresa A | Colores Empresa A | Favicon A |
-| Admin Empresa B | Logo Empresa B | Colores Empresa B | Favicon B |
+Cambiar la verificación de permisos:
+- Antes: `if (!isAdmin())` → Acceso denegado
+- Después: `if (!isSuperAdmin())` → Acceso denegado
 
-## Archivo a Modificar
+Además, agregar selector de empresa para que el Super Admin pueda elegir qué tenant personalizar.
+
+### 2. Agregar Toggle de Tema para Usuarios Normales
+
+**Nuevo componente: `src/components/theme/ThemeToggle.tsx`**
+
+Un simple toggle con iconos Sol/Luna que alterna entre modo claro y oscuro.
+
+**Ubicación del toggle:**
+- En la página de Perfil (`src/pages/Profile.tsx`) - nueva sección "Preferencias"
+- En el header del Dashboard (`src/components/layout/AppHeader.tsx`) - botón rápido
+
+**Implementación técnica:**
+- Usar `next-themes` (ya está instalado, usado en `sonner.tsx`)
+- Agregar `ThemeProvider` en `App.tsx`
+- Persistir preferencia en localStorage
+
+### 3. Flujo de Trabajo
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│  SUPER ADMIN                                                    │
+├─────────────────────────────────────────────────────────────────┤
+│  ● Puede acceder a /admin/branding                              │
+│  ● Ve selector de empresa para elegir cuál personalizar         │
+│  ● Puede cambiar logos, colores, SEO, contacto, etc.            │
+│  ● También puede usar TenantBrandingDialog desde Empresas       │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│  ADMIN / USUARIOS DE EMPRESA                                    │
+├─────────────────────────────────────────────────────────────────┤
+│  ● NO pueden acceder a /admin/branding                          │
+│  ● Solo ven el toggle Claro/Oscuro en su perfil o header        │
+│  ● El branding de su empresa es aplicado automáticamente        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Archivos a Modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/hooks/useTenant.ts` | Agregar condición `isSuperAdmin()` para deshabilitar carga de branding |
+| `src/App.tsx` | Agregar `ThemeProvider` de next-themes |
+| `src/pages/BrandingSettings.tsx` | Restringir a Super Admin + agregar selector de tenant |
+| `src/components/layout/AppSidebar.tsx` | Mover "Personalización" a sección Super Admin |
+| `src/components/layout/AppHeader.tsx` | Agregar botón toggle de tema |
+| `src/pages/Profile.tsx` | Agregar sección "Preferencias" con toggle de tema |
+| `src/components/theme/ThemeToggle.tsx` | Nuevo componente para el toggle |
 
-## Impacto
+---
 
-- Los Super Admins verán siempre la interfaz estándar de Geologistick
-- Los usuarios normales seguirán viendo el branding de su empresa
-- No afecta la funcionalidad de personalización en el panel de administración de cada empresa
+## Detalles Técnicos
+
+### ThemeProvider en App.tsx
+
+```typescript
+import { ThemeProvider } from 'next-themes';
+
+// Envolver la app
+<ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+  <AuthProvider>
+    {/* ... resto */}
+  </AuthProvider>
+</ThemeProvider>
+```
+
+### ThemeToggle Component
+
+```typescript
+import { Moon, Sun } from 'lucide-react';
+import { useTheme } from 'next-themes';
+import { Button } from '@/components/ui/button';
+
+export function ThemeToggle() {
+  const { theme, setTheme } = useTheme();
+  
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+    >
+      <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+      <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+      <span className="sr-only">Cambiar tema</span>
+    </Button>
+  );
+}
+```
+
+### BrandingSettings con Selector de Tenant
+
+Para Super Admins, agregar un Select al inicio de la página que liste todas las empresas y permita seleccionar cuál personalizar:
+
+```typescript
+// Solo para Super Admin
+const { data: tenants } = useQuery({
+  queryKey: ['tenants-list'],
+  queryFn: async () => {
+    const { data } = await supabase.from('tenants').select('id, nombre').order('nombre');
+    return data;
+  },
+  enabled: isSuperAdmin(),
+});
+
+// Select para elegir tenant
+<Select value={selectedTenantId} onValueChange={setSelectedTenantId}>
+  {tenants?.map(t => (
+    <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
+  ))}
+</Select>
+```
+
+---
+
+## Resultado Final
+
+| Usuario | Personalización | Toggle Tema |
+|---------|-----------------|-------------|
+| Super Admin | Acceso completo a `/admin/branding` con selector de empresa | Si |
+| Admin Empresa | Sin acceso | Si |
+| Usuarios | Sin acceso | Si |
