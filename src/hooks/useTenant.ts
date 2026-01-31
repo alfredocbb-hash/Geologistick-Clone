@@ -57,8 +57,11 @@ export interface TenantBranding {
 }
 
 export function useTenant() {
-  const { user, profile } = useAuth();
+  const { user, profile, isSuperAdmin } = useAuth();
   const tenantId = (profile as { tenant_id?: string })?.tenant_id;
+
+  // Super Admin siempre ve branding por defecto de Geologistick
+  const shouldLoadBranding = !isSuperAdmin();
 
   const { data: tenant, isLoading: tenantLoading } = useQuery({
     queryKey: ['tenant', tenantId],
@@ -74,7 +77,7 @@ export function useTenant() {
       if (error) throw error;
       return data as Tenant;
     },
-    enabled: !!user && !!tenantId,
+    enabled: !!user && !!tenantId && shouldLoadBranding,
   });
 
   const { data: branding, isLoading: brandingLoading } = useQuery({
@@ -91,14 +94,14 @@ export function useTenant() {
       if (error && error.code !== 'PGRST116') throw error;
       return data as TenantBranding | null;
     },
-    enabled: !!user && !!tenantId,
+    enabled: !!user && !!tenantId && shouldLoadBranding,
   });
 
   return {
     tenant,
     branding,
     tenantId,
-    isLoading: tenantLoading || brandingLoading,
+    isLoading: shouldLoadBranding ? (tenantLoading || brandingLoading) : false,
   };
 }
 
