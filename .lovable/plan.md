@@ -1,63 +1,92 @@
 
+# Plan: Corregir Aislamiento de Control de Caja por Tenant
 
-# Plan: Mejorar Presentación del Logo en el Sidebar
+## Problema Identificado
 
-## Problema
+El usuario de **BlackBox Cargas** puede ver una caja abierta que pertenece a **Empresa Principal**. Esto ocurre porque las queries en `Cash.tsx` no filtran las sesiones de caja por el tenant del usuario.
 
-El logo de BlackBox Cargas tiene fondo blanco que se ve mal sobre el sidebar oscuro, creando un efecto "cuadrado" poco profesional.
+### Datos del problema:
+| Caja Abierta | Pertenece a | Debería verse por |
+|--------------|-------------|-------------------|
+| Central Buenos Aires | Empresa Principal | Solo Empresa Principal |
+| (ninguna) | BlackBox Cargas | BlackBox Cargas debería ver "sin caja abierta" |
 
-## Solución Recomendada
+### Causa raíz:
+La tabla `sesiones_caja` no tiene columna `tenant_id` directa, pero se relaciona con `sucursales` que sí tiene `tenant_id`. Las queries actuales no filtran a través de esta relación.
 
-Hay dos opciones complementarias:
+---
 
-### Opción A: Subir logo con fondo transparente (RECOMENDADO)
+## Solución
 
-La solución más profesional es subir una versión del logo en formato **PNG con fondo transparente**:
+Modificar **`src/pages/Cash.tsx`** para filtrar las sesiones de caja solo a sucursales del tenant del usuario.
 
-1. Ir a **Personalización** en el panel de Super Admin
-2. Seleccionar la empresa **BlackBox Cargas**
-3. En la pestaña **Imágenes**, eliminar el logo actual
-4. Subir una nueva versión del logo en formato PNG con transparencia
+### Cambio 1: Query de sesión activa (líneas 142-162)
 
-Esto se integra perfectamente sin necesidad de cambios en el código.
-
-### Opción B: Mejoras de CSS (si no se puede cambiar el logo)
-
-Agregar estilos CSS para que el logo se vea mejor:
-
-| Archivo | Cambio |
-|---------|--------|
-| `src/components/layout/AppSidebar.tsx` | Agregar padding, bordes redondeados y fondo adaptativo al contenedor del logo |
-
+Actualmente:
 ```typescript
-// Contenedor del logo con fondo adaptativo
-<div className="flex items-center justify-center rounded-lg bg-white/10 p-1">
-  <img 
-    src={branding.logo_light} 
-    alt={branding.nombre_app || 'Logo'} 
-    className={cn(
-      "object-contain transition-all rounded",
-      collapsed 
-        ? "h-8 w-8 max-w-[32px]"
-        : "h-10 w-auto max-w-[160px]"
-    )}
-  />
-</div>
+let query = supabase
+  .from('sesiones_caja')
+  .select('*')
+  .eq('estado', 'abierta');
+
+if (!isAdmin()) {
+  query = query.or(`usuario_id.eq.${user.id},sucursal_id.eq.${profile?.sucursal_id}`);
+}
 ```
 
-Esto agrega:
-- Bordes redondeados al logo
-- Un fondo semi-transparente que suaviza el contraste
-- Padding interno para darle espacio
+**Problema:** Para admins no hay filtro de tenant.
 
-### Mejora Adicional: Soporte para Logo Oscuro
+**Solución:** Obtener primero las sucursales del tenant y filtrar por ellas:
 
-El sistema ya tiene campo para **Logo Oscuro** (`logo_dark`). Podemos hacer que el sidebar use el logo apropiado según el tema:
+```typescript
+// Obtener IDs de sucursales del tenant actual
+const { data: tenantSucursales } = await supabase
+  .from('sucursales')
+  .select('id')
+  .eq('tenant_id', profile?.tenant_id);
 
-- **Sidebar oscuro** → Usar `logo_dark` (logo blanco/claro) si está disponible
-- **Sidebar claro** → Usar `logo_light` (logo oscuro) normal
+const sucursalIds = tenantSucursales?.map(s => s.id) || [];
 
-Esto permite que cada empresa suba dos versiones de su logo para máxima compatibilidad.
+if (sucursalIds.length === 0) return null;
+
+let query = supabase
+  .from('sesiones_caja')
+  .select('*')
+  .eq('estado', 'abierta')
+  .in('sucursal_id', sucursalIds);  // ← FILTRO POR TENANT
+```
+
+### Cambio 2: Query de historial (líneas 165-176)
+
+Actualmente:
+```typescript
+const { data, error } = await supabase
+  .from('sesiones_caja')
+  .select('*')
+  .order('fecha_apertura', { ascending: false })
+  .limit(20);
+```
+
+**Problema:** Sin filtro de tenant, muestra historial de todos.
+
+**Solución:** Aplicar el mismo filtro:
+
+```typescript
+// Obtener IDs de sucursales del tenant
+const { data: tenantSucursales } = await supabase
+  .from('sucursales')
+  .select('id')
+  .eq('tenant_id', profile?.tenant_id);
+
+const sucursalIds = tenantSucursales?.map(s => s.id) || [];
+
+const { data, error } = await supabase
+  .from('sesiones_caja')
+  .select('*')
+  .in('sucursal_id', sucursalIds)  // ← FILTRO POR TENANT
+  .order('fecha_apertura', { ascending: false })
+  .limit(20);
+```
 
 ---
 
@@ -65,15 +94,20 @@ Esto permite que cada empresa suba dos versiones de su logo para máxima compati
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/components/layout/AppSidebar.tsx` | Usar `logo_dark` para sidebar oscuro, mejorar estilos del contenedor |
+| `src/pages/Cash.tsx` | Agregar filtro de `sucursal_id` basado en el tenant del usuario en ambas queries de sesiones de caja |
 
 ---
 
 ## Resultado Esperado
 
-| Situación | Antes | Después |
-|-----------|-------|---------|
-| Logo con fondo blanco en sidebar oscuro | Se ve un cuadrado blanco | Logo con bordes suaves o usando versión para fondo oscuro |
-| Empresa sube logo transparente | N/A | Se muestra perfectamente |
-| Empresa sube logo_dark adicional | No se usa | Se aplica automáticamente en sidebar oscuro |
+| Usuario | Antes | Después |
+|---------|-------|---------|
+| BlackBox Cargas | Ve caja de "Central Buenos Aires" (otro tenant) | Ve "No hay caja abierta" o solo cajas de su empresa |
+| Empresa Principal | Ve cajas de todos | Ve solo cajas de "Empresa Principal" |
+| Super Admin | Ve todo | Sigue viendo todo (comportamiento correcto) |
 
+---
+
+## Consideración Adicional
+
+También se debe eliminar el intento de insertar `tenant_id` en las líneas 207 y 276-277 ya que esas columnas no existen en las tablas `sesiones_caja` y `movimientos_caja`. Aunque Supabase ignora columnas inexistentes en inserts, es código muerto que debería limpiarse.
