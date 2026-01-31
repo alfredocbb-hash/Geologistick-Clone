@@ -1016,6 +1016,25 @@ export default function NewShipment() {
       });
       return;
     }
+
+    // Validar que haya tarifa seleccionada con precio válido
+    if (!formData.tarifa_id) {
+      toast({
+        title: 'Tarifa requerida',
+        description: 'Debes seleccionar una tarifa para el envío',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (precioCalculado <= 0) {
+      toast({
+        title: 'Precio inválido',
+        description: 'El precio del envío debe ser mayor a $0. Verifica que la tarifa tenga precios configurados.',
+        variant: 'destructive',
+      });
+      return;
+    }
     
     createShipmentMutation.mutate();
   };
