@@ -100,7 +100,7 @@ export default function PrintReceipt() {
     enabled: !!envio?.tenant_id,
   });
 
-  const trackingUrl = `${window.location.origin}/tracking?q=${envio?.tracking_number}`;
+  const trackingUrl = `${window.location.origin}/tracking?code=${envio?.tracking_number}`;
 
   const handleGeneratePDF = async () => {
     if (!envio) return;
