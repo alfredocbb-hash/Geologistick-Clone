@@ -3138,6 +3138,7 @@ export type Database = {
           api_key_hash: string
           api_key_prefix: string
           created_at: string
+          created_by: string | null
           id: string
           is_active: boolean
           last_used_at: string | null
@@ -3149,6 +3150,7 @@ export type Database = {
           api_key_hash: string
           api_key_prefix: string
           created_at?: string
+          created_by?: string | null
           id?: string
           is_active?: boolean
           last_used_at?: string | null
@@ -3160,6 +3162,7 @@ export type Database = {
           api_key_hash?: string
           api_key_prefix?: string
           created_at?: string
+          created_by?: string | null
           id?: string
           is_active?: boolean
           last_used_at?: string | null
