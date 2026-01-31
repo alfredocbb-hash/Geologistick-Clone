@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -47,9 +47,14 @@ import {
   Percent,
   DollarSign,
   Package,
+  Trash2,
+  LayoutGrid,
+  List,
 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { ResetPasswordDialog } from '@/components/users/ResetPasswordDialog';
+import { DeleteUserDialog } from '@/components/users/DeleteUserDialog';
+import { UserGroupedView } from '@/components/users/UserGroupedView';
 import type { Database } from '@/integrations/supabase/types';
 
 type AppRole = Database['public']['Enums']['app_role'];
@@ -66,6 +71,8 @@ interface Profile {
   tenant_id: string | null;
   activo: boolean | null;
   created_at: string | null;
+  // Tenant info for grouping
+  tenant?: { id: string; nombre: string } | null;
   // Delivery commission fields
   comision_tipo: string | null;
   comision_porcentaje: number | null;
@@ -133,6 +140,11 @@ export default function Users() {
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
   const [editingRoles, setEditingRoles] = useState<AppRole[]>([]);
   const [isCreating, setIsCreating] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deletingUser, setDeletingUser] = useState<Profile | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [viewMode, setViewMode] = useState<'flat' | 'grouped'>('grouped');
+  const [filterTenantId, setFilterTenantId] = useState<string>('all');
   const [formData, setFormData] = useState({
     nombre: '',
     apellido: '',
@@ -207,9 +219,9 @@ export default function Users() {
     ? sucursales.filter(s => s.tenant_id === formData.tenant_id)
     : sucursales;
 
-  // Fetch profiles
+  // Fetch profiles with tenant info for grouping
   const { data: profiles = [], isLoading } = useQuery({
-    queryKey: ['profiles', searchTerm],
+    queryKey: ['profiles', searchTerm, isSuperAdmin()],
     queryFn: async () => {
       let query = supabase
         .from('profiles')
@@ -224,9 +236,34 @@ export default function Users() {
 
       const { data, error } = await query;
       if (error) throw error;
+      
+      // If super admin, fetch tenant info separately
+      if (isSuperAdmin() && data && data.length > 0) {
+        const tenantIds = [...new Set(data.map(p => p.tenant_id).filter(Boolean))];
+        if (tenantIds.length > 0) {
+          const { data: tenantsData } = await supabase
+            .from('tenants')
+            .select('id, nombre')
+            .in('id', tenantIds as string[]);
+          
+          const tenantMap = new Map(tenantsData?.map(t => [t.id, t]) || []);
+          return data.map(p => ({
+            ...p,
+            tenant: p.tenant_id ? tenantMap.get(p.tenant_id) || null : null,
+          })) as Profile[];
+        }
+      }
+      
       return data as Profile[];
     },
   });
+
+  // Filter profiles by tenant if filter is applied
+  const filteredProfiles = useMemo(() => {
+    if (!isSuperAdmin() || filterTenantId === 'all') return profiles;
+    if (filterTenantId === 'sin-empresa') return profiles.filter(p => !p.tenant_id);
+    return profiles.filter(p => p.tenant_id === filterTenantId);
+  }, [profiles, filterTenantId, isSuperAdmin]);
 
   // Fetch all roles
   const { data: allRoles = [] } = useQuery({
@@ -327,6 +364,58 @@ export default function Users() {
       toast.error('Error: ' + error.message);
     },
   });
+
+  // Delete user mutation
+  const handleDeleteUser = async () => {
+    if (!deletingUser) return;
+    
+    // Safety check - cannot delete yourself
+    if (deletingUser.user_id === currentUser?.id) {
+      toast.error('No puedes eliminarte a ti mismo');
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      // 1. Delete user roles
+      const { error: rolesError } = await supabase
+        .from('user_roles')
+        .delete()
+        .eq('user_id', deletingUser.user_id);
+      
+      if (rolesError) throw rolesError;
+
+      // 2. Delete driver locations (if driver)
+      await supabase
+        .from('driver_locations')
+        .delete()
+        .eq('chofer_id', deletingUser.user_id);
+
+      // 3. Delete profile
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', deletingUser.id);
+
+      if (profileError) throw profileError;
+
+      toast.success('Usuario eliminado correctamente');
+      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      queryClient.invalidateQueries({ queryKey: ['all-user-roles'] });
+      setIsDeleteDialogOpen(false);
+      setDeletingUser(null);
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      toast.error(error instanceof Error ? error.message : 'Error al eliminar usuario');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleOpenDeleteDialog = (profile: Profile) => {
+    setDeletingUser(profile);
+    setIsDeleteDialogOpen(true);
+  };
 
   const getUserRoles = (userId: string): AppRole[] => {
     return allRoles.filter((r) => r.user_id === userId).map((r) => r.role);
@@ -587,29 +676,90 @@ export default function Users() {
         </Card>
       </div>
 
-      {/* Search */}
+      {/* Search and Filters */}
       <Card className="glass">
         <CardContent className="p-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar por nombre o email..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por nombre o email..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            
+            {/* Tenant Filter - Only for Super Admin */}
+            {isSuperAdmin() && (
+              <>
+                <Select value={filterTenantId} onValueChange={setFilterTenantId}>
+                  <SelectTrigger className="w-full sm:w-[220px]">
+                    <Building2 className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="Filtrar por empresa" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas las empresas</SelectItem>
+                    <SelectItem value="sin-empresa">Sin empresa asignada</SelectItem>
+                    {tenants.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {/* View Mode Toggle */}
+                <div className="flex border rounded-md">
+                  <Button
+                    variant={viewMode === 'grouped' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setViewMode('grouped')}
+                    className="rounded-r-none"
+                    title="Vista agrupada"
+                  >
+                    <LayoutGrid className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant={viewMode === 'flat' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setViewMode('flat')}
+                    className="rounded-l-none"
+                    title="Vista lista"
+                  >
+                    <List className="h-4 w-4" />
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Table */}
+      {/* Users View */}
       <Card className="glass">
         <CardContent className="p-0">
           {isLoading ? (
             <div className="p-8 text-center text-muted-foreground">
               Cargando usuarios...
             </div>
-          ) : profiles.length === 0 ? (
+          ) : isSuperAdmin() && viewMode === 'grouped' ? (
+            <UserGroupedView
+              profiles={filteredProfiles}
+              getUserRoles={getUserRoles}
+              getSucursalName={getSucursalName}
+              onEdit={handleEdit}
+              onResetPassword={(profile) => {
+                setResetPasswordUser(profile);
+                setIsResetPasswordOpen(true);
+              }}
+              onDelete={handleOpenDeleteDialog}
+              canDelete={isSuperAdmin()}
+              currentUserId={currentUser?.id}
+              roleLabels={ROLE_LABELS}
+              roleColors={ROLE_COLORS}
+            />
+          ) : filteredProfiles.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">
               No se encontraron usuarios
             </div>
@@ -626,8 +776,9 @@ export default function Users() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {profiles.map((profile) => {
+                {filteredProfiles.map((profile) => {
                   const roles = getUserRoles(profile.user_id);
+                  const canDeleteThisUser = isSuperAdmin() && profile.user_id !== currentUser?.id;
                   return (
                     <TableRow key={profile.id}>
                       <TableCell>
@@ -718,6 +869,17 @@ export default function Users() {
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
+                          {canDeleteThisUser && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleOpenDeleteDialog(profile)}
+                              title="Eliminar usuario"
+                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -1180,6 +1342,15 @@ export default function Users() {
         open={isResetPasswordOpen}
         onOpenChange={setIsResetPasswordOpen}
         user={resetPasswordUser}
+      />
+
+      {/* Delete User Dialog */}
+      <DeleteUserDialog
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+        user={deletingUser}
+        onConfirm={handleDeleteUser}
+        isDeleting={isDeleting}
       />
     </div>
   );
