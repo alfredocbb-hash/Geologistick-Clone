@@ -332,17 +332,22 @@ export function AppSidebar() {
   return <Sidebar collapsible="icon" className="border-r-0">
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4 overflow-hidden">
         <div className="flex items-center gap-3">
-          {branding?.logo_light ? (
-            <img 
-              src={branding.logo_light} 
-              alt={branding.nombre_app || 'Logo'} 
-              className={cn(
-                "object-contain transition-all",
-                collapsed 
-                  ? "h-8 w-8 max-w-[32px]"
-                  : "h-10 w-auto max-w-[160px]"
-              )}
-            />
+          {(branding?.logo_dark || branding?.logo_light) ? (
+            <div className={cn(
+              "flex items-center justify-center rounded-lg bg-white/10 p-1.5 transition-all",
+              collapsed ? "p-1" : "p-1.5"
+            )}>
+              <img 
+                src={branding.logo_dark || branding.logo_light} 
+                alt={branding.nombre_app || 'Logo'} 
+                className={cn(
+                  "object-contain transition-all rounded",
+                  collapsed 
+                    ? "h-7 w-7 max-w-[28px]"
+                    : "h-9 w-auto max-w-[150px]"
+                )}
+              />
+            </div>
           ) : (
             <>
               <img 
