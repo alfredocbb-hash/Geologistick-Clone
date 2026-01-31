@@ -84,6 +84,7 @@ export default function Sellers() {
       const { data, error } = await supabase
         .from('ecommerce_sellers')
         .select('*')
+        .eq('tenant_id', tenantId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
