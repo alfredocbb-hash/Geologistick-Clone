@@ -360,47 +360,75 @@ Deno.serve(async (req) => {
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { 
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      display: flex; 
-      align-items: center; 
-      justify-content: center; 
-      min-height: 100vh; 
-      padding: 20px;
+      display: flex; align-items: center; justify-content: center; 
+      min-height: 100vh; padding: 20px;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     }
     .card { 
-      background: white; 
-      padding: 48px 40px; 
-      border-radius: 16px; 
-      text-align: center; 
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-      max-width: 420px;
-      width: 100%;
-      animation: slideUp 0.5s ease-out;
+      background: white; padding: 48px 40px; border-radius: 20px; 
+      text-align: center; box-shadow: 0 25px 80px rgba(0,0,0,0.25);
+      max-width: 440px; width: 100%;
+      animation: slideUp 0.6s ease-out;
     }
     @keyframes slideUp {
-      from { opacity: 0; transform: translateY(20px); }
+      from { opacity: 0; transform: translateY(30px); }
       to { opacity: 1; transform: translateY(0); }
     }
-    .icon { font-size: 64px; margin-bottom: 20px; }
-    h1 { color: #1a1a1a; margin-bottom: 12px; font-size: 24px; font-weight: 600; }
-    .subtitle { color: #666; font-size: 16px; margin-bottom: 24px; line-height: 1.6; }
-    .hint { font-size: 13px; color: #999; margin-top: 24px; }
+    .platform-logo { margin-bottom: 24px; }
+    .platform-logo svg { width: 200px; height: auto; }
+    .success-icon { 
+      font-size: 72px; margin-bottom: 16px;
+      animation: bounce 0.6s ease-out 0.3s both;
+    }
+    @keyframes bounce {
+      0% { transform: scale(0); }
+      50% { transform: scale(1.2); }
+      100% { transform: scale(1); }
+    }
+    h1 { color: #1a1a1a; margin-bottom: 16px; font-size: 28px; font-weight: 700; }
+    .message { color: #4b5563; font-size: 16px; line-height: 1.7; margin-bottom: 28px; }
+    .divider { 
+      height: 1px; background: linear-gradient(90deg, transparent, #e5e7eb, transparent);
+      margin: 24px 0;
+    }
+    .thanks { 
+      background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+      padding: 20px; border-radius: 12px; margin-bottom: 24px;
+    }
+    .thanks-title { color: #166534; font-weight: 600; margin-bottom: 8px; font-size: 16px; }
+    .thanks-text { color: #15803d; font-size: 14px; line-height: 1.6; }
+    .hint { font-size: 13px; color: #9ca3af; margin-top: 20px; }
     .loader { 
-      width: 24px; height: 24px; 
-      border: 3px solid #eee; 
-      border-top-color: #667eea; 
-      border-radius: 50%; 
-      animation: spin 1s linear infinite;
-      margin: 20px auto 0;
+      width: 28px; height: 28px; 
+      border: 3px solid #e5e7eb; border-top-color: #667eea;
+      border-radius: 50%; animation: spin 1s linear infinite;
+      margin: 16px auto 0;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="icon">✅</div>
-    <h1>Tienda Conectada</h1>
-    <p class="subtitle">Tu tienda de Tiendanube se ha vinculado correctamente con el sistema de envíos.</p>
+    <div class="platform-logo">
+      <svg viewBox="0 0 200 40" xmlns="http://www.w3.org/2000/svg">
+        <path fill="#2F5496" d="M25 5C13.9 5 5 11.3 5 19s8.9 14 20 14 20-6.3 20-14S36.1 5 25 5zm-8.5 18.5c-1.4 0-2.5-1.1-2.5-2.5s1.1-2.5 2.5-2.5 2.5 1.1 2.5 2.5-1.1 2.5-2.5 2.5zm17 0c-1.4 0-2.5-1.1-2.5-2.5s1.1-2.5 2.5-2.5 2.5 1.1 2.5 2.5-1.1 2.5-2.5 2.5z"/>
+        <text x="52" y="27" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="20" font-weight="600" fill="#2F5496">Tiendanube</text>
+      </svg>
+    </div>
+    <div class="success-icon">✅</div>
+    <h1>¡Conexión Exitosa!</h1>
+    <p class="message">
+      Tu tienda de <strong>Tiendanube</strong> se ha vinculado 
+      correctamente con el sistema de envíos.
+    </p>
+    <div class="divider"></div>
+    <div class="thanks">
+      <div class="thanks-title">🎉 ¡Gracias por confiar en nosotros!</div>
+      <div class="thanks-text">
+        A partir de ahora, recibirás tus pedidos automáticamente 
+        y podrás gestionar tus envíos de forma sencilla.
+      </div>
+    </div>
     <p class="hint">Esta ventana se cerrará automáticamente...</p>
     <div class="loader"></div>
   </div>
@@ -410,7 +438,7 @@ Deno.serve(async (req) => {
         window.opener.postMessage({ type: 'tiendanube-oauth-success', sellerId: '${sellerId}' }, '*');
       }
       window.close();
-    }, 3000);
+    }, 4000);
   </script>
 </body>
 </html>`,
