@@ -1,125 +1,145 @@
 
-# Plan: Modificar Campos en Agregar Envío Terciarizado
 
-## Resumen
+# Plan de Mejora de Seguridad
 
-Modificar el formulario de Envío Terciarizado para reemplazar dos campos que no se utilizan por información más relevante para la operación:
+## Resumen Ejecutivo
 
-| Campo Actual | Nuevo Campo |
-|--------------|-------------|
-| Código de Cliente | Teléfono del destinatario |
-| Código de Orden | Método de pago (selector) |
+Después de un análisis exhaustivo de la aplicación, he identificado varios problemas de seguridad que requieren atención. Este plan prioriza las correcciones por nivel de riesgo.
 
 ---
 
-## Cambios a Realizar
+## Hallazgos y Correcciones
 
-### Archivo: `src/components/routes/ThirdPartyShipmentsTab.tsx`
+### 1. BUG CRITICO: Inconsistencia en `integration_type` de MercadoLibre
 
-**1. Actualizar la interfaz `ThirdPartyFormData`**
+**Problema Detectado:**
+- La UI en `IntegrationSettings.tsx` usa `'mercadolibre'` como tipo
+- Las Edge Functions buscan `'mercado_libre'` (con guión bajo)
+- El enum de la base de datos NO incluye ninguno de estos valores
 
-Reemplazar los campos:
-```typescript
-// Antes:
-codigo_cliente_externo: string;
-codigo_orden_externo: string;
+**Riesgo:** Las credenciales de MercadoLibre NO se pueden guardar ni recuperar correctamente.
 
-// Después:
-whatsapp_destinatario: string;
-tipo_pago: string;
+**Corrección:**
+1. Agregar `'mercadolibre'` al enum `integration_type` en la base de datos
+2. Actualizar las Edge Functions para usar `'mercadolibre'` (consistente con la UI)
+
+### 2. ALTA: Habilitar Leaked Password Protection
+
+**Problema:** La protección contra contraseñas filtradas está desactivada.
+
+**Riesgo:** Los usuarios pueden registrarse con contraseñas comprometidas en brechas de datos conocidas.
+
+**Corrección:** Habilitar en la configuración de autenticación (se configura vía herramienta de Cloud).
+
+### 3. MEDIA: Tabla `ml_status_mapping` Públicamente Accesible
+
+**Problema:** La política `'Anyone can view ML status mapping'` permite que cualquiera (incluso usuarios anónimos) vea el mapeo de estados.
+
+**Riesgo:** Exposición de lógica de negocio interna a competidores.
+
+**Corrección:**
+```sql
+-- Eliminar política pública
+DROP POLICY IF EXISTS "Anyone can view ML status mapping" ON ml_status_mapping;
+
+-- Crear política para usuarios autenticados del mismo tenant
+CREATE POLICY "Authenticated users can view ML status mapping"
+ON ml_status_mapping FOR SELECT
+TO authenticated
+USING (true);
 ```
 
-**2. Actualizar el objeto `emptyForm`**
+### 4. MEDIA: Tabla `subscription_plans` Expuesta a Usuarios Autenticados
 
-```typescript
-// Antes:
-codigo_cliente_externo: "",
-codigo_orden_externo: "",
+**Problema:** Cualquier usuario autenticado puede ver todos los planes de suscripción con precios y configuración de Stripe.
 
-// Después:
-whatsapp_destinatario: "",
-tipo_pago: "destino", // Valor por defecto
+**Riesgo:** Competidores pueden crear cuentas para extraer información de pricing.
+
+**Corrección:**
+```sql
+-- Restringir a solo super_admins y usuarios que necesitan ver planes durante checkout
+DROP POLICY IF EXISTS "Ver planes activos" ON subscription_plans;
+
+CREATE POLICY "Ver planes activos para checkout"
+ON subscription_plans FOR SELECT
+USING (
+  is_active = true 
+  AND (
+    is_super_admin(auth.uid()) 
+    OR current_user_is_admin()
+    -- O durante el flujo de checkout (verificar sesión)
+  )
+);
 ```
 
-**3. Modificar el formulario en la UI (líneas 428-446)**
+### 5. BAJA: Tabla `landing_content` Expuesta
 
-Reemplazar los dos campos de Input por:
+**Problema:** Contenido de landing page es público (necesario para la página de inicio).
 
-**Campo 1 - Teléfono del destinatario:**
-- Label: "Teléfono del destinatario"
-- Tipo: Input de texto
-- Placeholder: "Ej: 1155557777"
-- Almacena en: `whatsapp_destinatario`
+**Riesgo:** Exposición de estrategia de marketing y emails de contacto.
 
-**Campo 2 - Método de pago:**
-- Label: "Método de pago"
-- Tipo: Select (dropdown)
-- Opciones:
-  - `destino` → "Pago en Destino"
-  - `contado` → "Contado"
-  - `cuenta_corriente` → "Cuenta Corriente"
-- Almacena en: `tipo_pago`
+**Nota:** Este es un riesgo aceptable ya que el contenido debe ser público para la landing page. Sin embargo, se puede limitar qué campos se exponen.
 
-**4. Actualizar la mutación `createShipmentMutation`**
+### 6. MEJORA: Webhook de MercadoLibre sin Validación de Firma
 
-Cambiar los campos insertados en la base de datos:
-```typescript
-// Antes:
-codigo_cliente_externo: shipment.codigo_cliente_externo || null,
-codigo_orden_externo: shipment.codigo_orden_externo || null,
+**Problema:** El webhook acepta cualquier POST sin verificar que realmente provenga de MercadoLibre.
 
-// Después:
-whatsapp_destinatario: shipment.whatsapp_destinatario || null,
-tipo_pago: shipment.tipo_pago || 'destino',
-pago_contra_entrega: shipment.tipo_pago === 'destino',
-```
+**Riesgo:** Un atacante podría enviar webhooks falsos para crear envíos fraudulentos.
 
-La lógica `pago_contra_entrega = true` cuando `tipo_pago === 'destino'` es consistente con el comportamiento existente en `NewShipment.tsx`.
+**Corrección Recomendada:**
+- Verificar el `user_id` contra sellers registrados (ya implementado)
+- Agregar validación de IP de origen (IPs de ML)
+- O implementar verificación de firma si ML lo soporta
 
 ---
 
-## Resultado Visual
-
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│ 📦 Agregar Envío Terciarizado                                   │
-├─────────────────────────────────────────────────────────────────┤
-│ Empresa Terciarizada *          │ Tracking Externo *            │
-│ [MD CARGAS (MD)            ▾]   │ [R-349-5686               ]   │
-├─────────────────────────────────────────────────────────────────┤
-│ Teléfono del destinatario       │ Método de pago                │
-│ [1155557777                 ]   │ [Pago en Destino          ▾]  │
-│                                 │  ├─ Pago en Destino           │
-│                                 │  ├─ Contado                   │
-│                                 │  └─ Cuenta Corriente          │
-├─────────────────────────────────────────────────────────────────┤
-│ Nombre Destinatario/Cliente *                                   │
-│ [SANDRA CORBELLI                                            ]   │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Sección Técnica
-
-### Constantes para Método de Pago
-
-Se agregará una constante para las opciones de método de pago, similar a las existentes:
-
-```typescript
-const METODOS_PAGO = [
-  { value: "destino", label: "Pago en Destino" },
-  { value: "contado", label: "Contado" },
-  { value: "cuenta_corriente", label: "Cuenta Corriente" },
-];
-```
-
-### Impacto en Otros Componentes
-
-Los campos `codigo_cliente_externo` y `codigo_orden_externo` seguirán existiendo en la base de datos y se pueden usar en otros contextos (importación CSV, etc.). Este cambio solo afecta al formulario de terciarizados.
-
-### Archivos Modificados
+## Archivos a Modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/components/routes/ThirdPartyShipmentsTab.tsx` | Reemplazar campos del formulario |
+| Nueva migración SQL | Agregar `mercadolibre` al enum y ajustar RLS |
+| `supabase/functions/mercadolibre-oauth/index.ts` | Cambiar `mercado_libre` → `mercadolibre` |
+| `supabase/functions/mercadolibre-webhook/index.ts` | Cambiar `mercado_libre` → `mercadolibre` |
+| `supabase/functions/mercadolibre-update-status/index.ts` | Cambiar `mercado_libre` → `mercadolibre` |
+
+---
+
+## Detalle Técnico de la Migración SQL
+
+```sql
+-- 1. Agregar valor al enum
+ALTER TYPE integration_type ADD VALUE IF NOT EXISTS 'mercadolibre';
+
+-- 2. Corregir política de ml_status_mapping
+DROP POLICY IF EXISTS "Anyone can view ML status mapping" ON ml_status_mapping;
+
+CREATE POLICY "Authenticated users can view ML status mapping"
+ON ml_status_mapping FOR SELECT
+TO authenticated
+USING (true);
+
+-- 3. Denegar acceso anónimo explícitamente
+CREATE POLICY "Deny anonymous access to ML status mapping"
+ON ml_status_mapping FOR SELECT
+TO anon
+USING (false);
+```
+
+---
+
+## Resumen de Prioridades
+
+| Prioridad | Issue | Esfuerzo |
+|-----------|-------|----------|
+| CRITICO | Bug de `integration_type` inconsistente | Bajo |
+| ALTA | Leaked Password Protection | Configuración |
+| MEDIA | RLS de `ml_status_mapping` | Bajo |
+| MEDIA | RLS de `subscription_plans` | Bajo |
+| BAJA | Webhook sin firma | Medio |
+
+---
+
+## Nota sobre Secrets en Plaintext
+
+El escaneo de seguridad anterior indicó que las credenciales de terceros se almacenan en texto plano en `system_integrations`. Esto es un riesgo conocido pero de difícil remediación (requiere Supabase Vault y refactorización extensa). Se recomienda como mejora futura pero NO es bloqueante para la operación actual.
+
