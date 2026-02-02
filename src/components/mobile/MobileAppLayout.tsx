@@ -35,12 +35,13 @@ export function MobileAppLayout() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Refresh permissions when app resumes (comes back to focus)
+  // Refresh permissions when app resumes - using refetch instead of invalidate
+  // to prevent flash while loading (keeps old data visible)
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        queryClient.invalidateQueries({ queryKey: ['user-permissions'] });
-        queryClient.invalidateQueries({ queryKey: ['user-roles'] });
+        // Soft refetch - doesn't clear cache while loading
+        queryClient.refetchQueries({ queryKey: ['user-permissions'], type: 'active' });
       }
     };
 
