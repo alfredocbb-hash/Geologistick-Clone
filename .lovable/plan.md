@@ -1,145 +1,143 @@
 
 
-# Plan de Mejora de Seguridad
+# Plan: Agregar Campos de Importe y Bultos a Envío Terciarizado
 
-## Resumen Ejecutivo
+## Resumen
 
-Después de un análisis exhaustivo de la aplicación, he identificado varios problemas de seguridad que requieren atención. Este plan prioriza las correcciones por nivel de riesgo.
-
----
-
-## Hallazgos y Correcciones
-
-### 1. BUG CRITICO: Inconsistencia en `integration_type` de MercadoLibre
-
-**Problema Detectado:**
-- La UI en `IntegrationSettings.tsx` usa `'mercadolibre'` como tipo
-- Las Edge Functions buscan `'mercado_libre'` (con guión bajo)
-- El enum de la base de datos NO incluye ninguno de estos valores
-
-**Riesgo:** Las credenciales de MercadoLibre NO se pueden guardar ni recuperar correctamente.
-
-**Corrección:**
-1. Agregar `'mercadolibre'` al enum `integration_type` en la base de datos
-2. Actualizar las Edge Functions para usar `'mercadolibre'` (consistente con la UI)
-
-### 2. ALTA: Habilitar Leaked Password Protection
-
-**Problema:** La protección contra contraseñas filtradas está desactivada.
-
-**Riesgo:** Los usuarios pueden registrarse con contraseñas comprometidas en brechas de datos conocidas.
-
-**Corrección:** Habilitar en la configuración de autenticación (se configura vía herramienta de Cloud).
-
-### 3. MEDIA: Tabla `ml_status_mapping` Públicamente Accesible
-
-**Problema:** La política `'Anyone can view ML status mapping'` permite que cualquiera (incluso usuarios anónimos) vea el mapeo de estados.
-
-**Riesgo:** Exposición de lógica de negocio interna a competidores.
-
-**Corrección:**
-```sql
--- Eliminar política pública
-DROP POLICY IF EXISTS "Anyone can view ML status mapping" ON ml_status_mapping;
-
--- Crear política para usuarios autenticados del mismo tenant
-CREATE POLICY "Authenticated users can view ML status mapping"
-ON ml_status_mapping FOR SELECT
-TO authenticated
-USING (true);
-```
-
-### 4. MEDIA: Tabla `subscription_plans` Expuesta a Usuarios Autenticados
-
-**Problema:** Cualquier usuario autenticado puede ver todos los planes de suscripción con precios y configuración de Stripe.
-
-**Riesgo:** Competidores pueden crear cuentas para extraer información de pricing.
-
-**Corrección:**
-```sql
--- Restringir a solo super_admins y usuarios que necesitan ver planes durante checkout
-DROP POLICY IF EXISTS "Ver planes activos" ON subscription_plans;
-
-CREATE POLICY "Ver planes activos para checkout"
-ON subscription_plans FOR SELECT
-USING (
-  is_active = true 
-  AND (
-    is_super_admin(auth.uid()) 
-    OR current_user_is_admin()
-    -- O durante el flujo de checkout (verificar sesión)
-  )
-);
-```
-
-### 5. BAJA: Tabla `landing_content` Expuesta
-
-**Problema:** Contenido de landing page es público (necesario para la página de inicio).
-
-**Riesgo:** Exposición de estrategia de marketing y emails de contacto.
-
-**Nota:** Este es un riesgo aceptable ya que el contenido debe ser público para la landing page. Sin embargo, se puede limitar qué campos se exponen.
-
-### 6. MEJORA: Webhook de MercadoLibre sin Validación de Firma
-
-**Problema:** El webhook acepta cualquier POST sin verificar que realmente provenga de MercadoLibre.
-
-**Riesgo:** Un atacante podría enviar webhooks falsos para crear envíos fraudulentos.
-
-**Corrección Recomendada:**
-- Verificar el `user_id` contra sellers registrados (ya implementado)
-- Agregar validación de IP de origen (IPs de ML)
-- O implementar verificación de firma si ML lo soporta
+Agregaré dos campos faltantes al formulario de Envío Terciarizado:
+1. **Importe ($)** - Precio total del envío
+2. **Cantidad de Bultos** - Número de paquetes/bultos
 
 ---
 
-## Archivos a Modificar
+## Cambios a Realizar
+
+### Archivo: `src/components/routes/ThirdPartyShipmentsTab.tsx`
+
+**1. Actualizar la interfaz `ThirdPartyFormData`**
+
+Agregar los campos faltantes:
+```typescript
+interface ThirdPartyFormData {
+  // ... campos existentes
+  precio_total: number;   // NUEVO
+  cantidad_bultos: number; // NUEVO
+}
+```
+
+**2. Actualizar el objeto `emptyForm`**
+
+```typescript
+const emptyForm: ThirdPartyFormData = {
+  // ... campos existentes
+  precio_total: 0,
+  cantidad_bultos: 1,  // Por defecto 1 bulto
+};
+```
+
+**3. Reorganizar el formulario**
+
+Cambiaré la fila de Teléfono + Método de pago de 2 columnas a 4 columnas para incluir Importe y Bultos:
+
+```text
+┌────────────────────────────────────────────────────────────────────────────────┐
+│ Teléfono destino    │ Método de pago     │ Importe ($)    │ Bultos           │
+│ [1155557777      ]  │ [Pago en Dest. ▾]  │ [$ 2500.00  ]  │ [1           ]   │
+└────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**4. Actualizar la mutación `createShipmentMutation`**
+
+```typescript
+// Cambiar de:
+precio_total: 0,
+
+// A:
+precio_total: shipment.precio_total || 0,
+cantidad_bultos: shipment.cantidad_bultos || 1,
+```
+
+**5. Agregar ícono de importación**
+
+```typescript
+import { DollarSign, Package } from "lucide-react";
+```
+
+---
+
+## Resultado Visual del Formulario
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ 📦 Agregar Envío Terciarizado                                                   │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│ Empresa Terciarizada *              │ Tracking Externo *                        │
+│ [MD CARGAS (MD)                 ▾]  │ [R-349-5686                           ]   │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│ Teléfono destino  │ Método de pago      │ Importe ($)     │ Bultos            │
+│ [1155557777    ]  │ [Pago en Destino ▾] │ [$ 2500.00   ]  │ [1            ]   │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│ Nombre Destinatario/Cliente *                                                   │
+│ [SANDRA CORBELLI                                                            ]   │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│ ... resto del formulario ...                                                    │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Sección Tecnica
+
+### Componentes de los Nuevos Campos
+
+**Campo de Importe:**
+```typescript
+<div className="space-y-2">
+  <Label>Importe ($)</Label>
+  <div className="relative">
+    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+    <Input
+      type="number"
+      min="0"
+      step="0.01"
+      placeholder="0.00"
+      className="pl-9"
+      value={formData.precio_total || ""}
+      onChange={(e) => handleInputChange("precio_total", parseFloat(e.target.value) || 0)}
+    />
+  </div>
+</div>
+```
+
+**Campo de Bultos:**
+```typescript
+<div className="space-y-2">
+  <Label>Bultos</Label>
+  <div className="relative">
+    <Package className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+    <Input
+      type="number"
+      min="1"
+      placeholder="1"
+      className="pl-9"
+      value={formData.cantidad_bultos || 1}
+      onChange={(e) => handleInputChange("cantidad_bultos", parseInt(e.target.value) || 1)}
+    />
+  </div>
+</div>
+```
+
+### Impacto en Cuenta Corriente
+
+El campo `precio_total` ya está siendo usado en la lógica de cuenta corriente (linea ~296-303), por lo que al capturar el importe real, los cargos se registrarán correctamente.
+
+### Grid Responsive
+
+El grid usara `grid-cols-2 md:grid-cols-4` para que en movil se vea en 2 columnas y en desktop en 4.
+
+### Archivos Modificados
 
 | Archivo | Cambio |
 |---------|--------|
-| Nueva migración SQL | Agregar `mercadolibre` al enum y ajustar RLS |
-| `supabase/functions/mercadolibre-oauth/index.ts` | Cambiar `mercado_libre` → `mercadolibre` |
-| `supabase/functions/mercadolibre-webhook/index.ts` | Cambiar `mercado_libre` → `mercadolibre` |
-| `supabase/functions/mercadolibre-update-status/index.ts` | Cambiar `mercado_libre` → `mercadolibre` |
-
----
-
-## Detalle Técnico de la Migración SQL
-
-```sql
--- 1. Agregar valor al enum
-ALTER TYPE integration_type ADD VALUE IF NOT EXISTS 'mercadolibre';
-
--- 2. Corregir política de ml_status_mapping
-DROP POLICY IF EXISTS "Anyone can view ML status mapping" ON ml_status_mapping;
-
-CREATE POLICY "Authenticated users can view ML status mapping"
-ON ml_status_mapping FOR SELECT
-TO authenticated
-USING (true);
-
--- 3. Denegar acceso anónimo explícitamente
-CREATE POLICY "Deny anonymous access to ML status mapping"
-ON ml_status_mapping FOR SELECT
-TO anon
-USING (false);
-```
-
----
-
-## Resumen de Prioridades
-
-| Prioridad | Issue | Esfuerzo |
-|-----------|-------|----------|
-| CRITICO | Bug de `integration_type` inconsistente | Bajo |
-| ALTA | Leaked Password Protection | Configuración |
-| MEDIA | RLS de `ml_status_mapping` | Bajo |
-| MEDIA | RLS de `subscription_plans` | Bajo |
-| BAJA | Webhook sin firma | Medio |
-
----
-
-## Nota sobre Secrets en Plaintext
-
-El escaneo de seguridad anterior indicó que las credenciales de terceros se almacenan en texto plano en `system_integrations`. Esto es un riesgo conocido pero de difícil remediación (requiere Supabase Vault y refactorización extensa). Se recomienda como mejora futura pero NO es bloqueante para la operación actual.
+| `src/components/routes/ThirdPartyShipmentsTab.tsx` | Agregar campos de importe y bultos |
 
