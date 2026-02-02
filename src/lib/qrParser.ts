@@ -5,10 +5,12 @@
  * - URLs with ?q= parameter (e.g., "https://example.com/tracking?q=001-ENV-20250118-ABC123")
  * - URLs with path segment (e.g., "https://example.com/tracking/001-ENV-20250118-ABC123")
  * - Route sheet QR codes (e.g., "HR:HR-20250118-0001")
+ * - MercadoLibre shipment IDs (e.g., "ML:40070866801" or numeric "40070866801")
+ * - MercadoLibre tracking URLs
  */
 
 export interface ParsedQR {
-  type: 'tracking' | 'route_sheet' | 'unknown';
+  type: 'tracking' | 'route_sheet' | 'ml_shipment' | 'unknown';
   value: string;
   originalData: string;
 }
@@ -29,6 +31,24 @@ export function parseQRCode(data: string): ParsedQR {
     };
   }
 
+  // Check for MercadoLibre format with ML: prefix
+  if (/^ML:\d{8,}$/i.test(trimmed)) {
+    return {
+      type: 'ml_shipment',
+      value: trimmed.replace(/^ML:/i, ''),
+      originalData: data
+    };
+  }
+
+  // Check for pure numeric ML shipment ID (10+ digits)
+  if (/^\d{10,}$/.test(trimmed)) {
+    return {
+      type: 'ml_shipment',
+      value: trimmed,
+      originalData: data
+    };
+  }
+
   let tracking = trimmed;
 
   // Check if it's a URL
@@ -37,6 +57,27 @@ export function parseQRCode(data: string): ParsedQR {
       // Add protocol if missing for URL parsing
       const urlString = trimmed.startsWith('www.') ? `https://${trimmed}` : trimmed;
       const url = new URL(urlString);
+      
+      // Check for MercadoLibre tracking URLs
+      if (url.hostname.includes('mercadolibre') || url.hostname.includes('mercadopago')) {
+        const idParam = url.searchParams.get('id') || url.searchParams.get('shipment_id');
+        if (idParam && /^\d{8,}$/.test(idParam)) {
+          return {
+            type: 'ml_shipment',
+            value: idParam,
+            originalData: data
+          };
+        }
+        // Check path for ML shipment ID
+        const pathMatch = url.pathname.match(/\/(\d{10,})(?:\/|$)/);
+        if (pathMatch) {
+          return {
+            type: 'ml_shipment',
+            value: pathMatch[1],
+            originalData: data
+          };
+        }
+      }
       
       // First, try to get 'q' parameter (most common for tracking URLs)
       const qParam = url.searchParams.get('q');
@@ -67,6 +108,15 @@ export function parseQRCode(data: string): ParsedQR {
     tracking = decodeURIComponent(tracking);
   } catch {
     // Already decoded or not encoded
+  }
+
+  // Check if extracted value looks like ML shipment ID
+  if (/^\d{10,}$/.test(tracking)) {
+    return {
+      type: 'ml_shipment',
+      value: tracking,
+      originalData: data
+    };
   }
 
   // Normalize: remove package suffix like -01, -02 if tracking has format XXX-ENV-YYYYMMDD-HASH-XX

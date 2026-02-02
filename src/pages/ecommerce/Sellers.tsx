@@ -68,7 +68,7 @@ export default function Sellers() {
   // Listen for OAuth success messages from popup
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'tiendanube-oauth-success') {
+      if (event.data?.type === 'tiendanube-oauth-success' || event.data?.type === 'mercadolibre-oauth-success') {
         queryClient.invalidateQueries({ queryKey: ['ecommerce-sellers'] });
         toast({ title: 'Tienda conectada exitosamente' });
       }
@@ -76,6 +76,22 @@ export default function Sellers() {
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
   }, [queryClient]);
+
+  // Connect to MercadoLibre
+  const handleConnectMercadoLibre = (seller: Seller) => {
+    const oauthUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mercadolibre-oauth/authorize?seller_id=${seller.id}`;
+    
+    const width = 600;
+    const height = 700;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+    
+    window.open(
+      oauthUrl,
+      'mercadolibre-oauth',
+      `width=${width},height=${height},left=${left},top=${top},popup=yes`
+    );
+  };
 
   // Fetch sellers
   const { data: sellers, isLoading } = useQuery({
@@ -378,6 +394,23 @@ Saludos`;
                           >
                             <Link2 className="mr-1 h-3 w-3" />
                             Conectar
+                          </Button>
+                        )
+                      ) : seller.plataforma === 'mercadolibre' ? (
+                        isConnected(seller) ? (
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="h-4 w-4 text-green-500" />
+                            <span className="text-xs text-green-600 dark:text-green-400">Conectado</span>
+                          </div>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="bg-yellow-50 hover:bg-yellow-100 border-yellow-300"
+                            onClick={() => handleConnectMercadoLibre(seller)}
+                          >
+                            <Link2 className="mr-1 h-3 w-3" />
+                            Conectar ML
                           </Button>
                         )
                       ) : seller.plataforma === 'manual' ? (
