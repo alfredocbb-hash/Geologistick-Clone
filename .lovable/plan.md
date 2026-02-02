@@ -1,129 +1,119 @@
 
 
-# Plan: Agregar Opciones de Invitación para MercadoLibre
+# Plan: Corregir Edge Function de MercadoLibre OAuth para Envíos Flex
 
-## Situación Actual
+## Contexto
 
-Beraexpress ya creó un seller de MercadoLibre. Ahora necesita enviar una invitación al cliente para que conecte su cuenta.
+Esta integración es para los **envíos Flex de MercadoLibre** que permiten a Beraexpress recibir automáticamente los pedidos con logística "self_service" para su gestión.
 
-**El problema**: El sistema solo tiene opciones de invitación para Tiendanube. Para MercadoLibre falta:
-1. Las opciones "Enviar link por Email" y "Enviar link por WhatsApp" en el menú desplegable
-2. Una función para generar el link de MercadoLibre
+## Problema Actual
 
-## Cómo Funciona el Flujo de Invitación
+Las credenciales de Beraexpress están correctamente guardadas:
 
-```text
-ADMINISTRADOR (Beraexpress)
-         │
-         ▼
-Crea seller "Mi Tienda ML" con plataforma "mercadolibre"
-         │
-         ▼
-En la tabla de Sellers, abre el menú (...)
-         │
-         ▼
-Elige "Enviar link por WhatsApp" o "Enviar link por Email"
-         │
-         ▼
-Se abre WhatsApp/Email con mensaje pre-armado incluyendo:
-"Para conectar tu cuenta de MercadoLibre, haz clic aquí: [LINK]"
-         │
-         ▼
-CLIENTE (dueño de la tienda ML)
-         │
-         ▼
-Recibe el mensaje y hace clic en el link
-         │
-         ▼
-Se abre ventana de autorización de MercadoLibre
-         │
-         ▼
-Cliente autoriza la conexión
-         │
-         ▼
-Sistema guarda los tokens y queda conectado
-```
+| config_key | config_value |
+|------------|--------------|
+| client_id | 221043070220552 |
+| client_secret | VIpsj0IRyox... |
 
-## Cambios a Realizar
+Pero la Edge Function `mercadolibre-oauth` tiene dos errores:
 
-### Archivo: `src/pages/ecommerce/Sellers.tsx`
+| Error | Código Actual | Debería Ser |
+|-------|---------------|-------------|
+| Columna inexistente | `.select('config')` | `.select('config_key, config_value')` |
+| Enum incorrecto | `'mercado_libre'` | `'mercadolibre'` |
 
-**Paso 1**: Modificar la función `handleSendConnectionLink` para soportar ambas plataformas
+## Solución
 
-Actualmente solo genera links para Tiendanube:
+Modificar la Edge Function para usar el esquema key-value de `system_integrations`.
+
+### Cambios en `supabase/functions/mercadolibre-oauth/index.ts`
+
+**1. Agregar función helper para obtener configuración:**
+
 ```typescript
-const oauthUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tiendanube-oauth/authorize?seller_id=${seller.id}`;
-```
+// Helper to get integration config as object from key-value rows
+async function getIntegrationConfig(
+  supabase: any,
+  tenantId: string
+): Promise<Record<string, string> | null> {
+  const { data, error } = await supabase
+    .from('system_integrations')
+    .select('config_key, config_value')
+    .eq('tenant_id', tenantId)
+    .eq('integration_type', 'mercadolibre')  // Enum correcto
+    .eq('is_active', true);
 
-Cambiar para detectar la plataforma:
-```typescript
-const handleSendConnectionLink = (seller: Seller, method: 'email' | 'whatsapp') => {
-  // Determinar la URL según la plataforma
-  let oauthUrl: string;
-  let platformName: string;
-  
-  if (seller.plataforma === 'mercadolibre') {
-    oauthUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mercadolibre-oauth/authorize?seller_id=${seller.id}`;
-    platformName = 'MercadoLibre';
-  } else {
-    oauthUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tiendanube-oauth/authorize?seller_id=${seller.id}`;
-    platformName = 'Tiendanube';
+  if (error || !data || data.length === 0) {
+    return null;
   }
-  
-  // ... resto de la lógica igual, usando platformName en los mensajes
-};
+
+  // Convertir filas key-value a objeto
+  const config: Record<string, string> = {};
+  for (const row of data) {
+    config[row.config_key] = row.config_value;
+  }
+  return config;
+}
 ```
 
-**Paso 2**: Agregar opciones de menú para MercadoLibre (después de la línea 505)
+**2. Actualizar AUTHORIZE endpoint (líneas 56-72):**
 
 ```typescript
-{seller.plataforma === 'mercadolibre' && !isConnected(seller) && (
-  <>
-    <DropdownMenuItem onClick={() => handleConnectMercadoLibre(seller)}>
-      <Link2 className="mr-2 h-4 w-4" />
-      Conectar MercadoLibre
-    </DropdownMenuItem>
-    <DropdownMenuSeparator />
-    <DropdownMenuItem onClick={() => handleSendConnectionLink(seller, 'email')}>
-      <Mail className="mr-2 h-4 w-4" />
-      Enviar link por Email
-    </DropdownMenuItem>
-    <DropdownMenuItem onClick={() => handleSendConnectionLink(seller, 'whatsapp')}>
-      <MessageSquare className="mr-2 h-4 w-4" />
-      Enviar link por WhatsApp
-    </DropdownMenuItem>
-  </>
-)}
+// Antes:
+const { data: integration } = await supabase
+  .from('system_integrations')
+  .select('config')
+  .eq('integration_type', 'mercado_libre')
+  .single();
+
+// Después:
+const config = await getIntegrationConfig(supabase, seller.tenant_id);
+if (!config || !config.client_id) {
+  return new Response(
+    JSON.stringify({ error: 'MercadoLibre integration not configured' }),
+    { status: 400, headers: corsHeaders }
+  );
+}
 ```
+
+**3. Actualizar CALLBACK endpoint (líneas 136-154):**
+
+Mismo cambio: reemplazar query por `getIntegrationConfig()`
+
+**4. Actualizar REFRESH endpoint (líneas 256-271):**
+
+Mismo cambio: reemplazar query por `getIntegrationConfig()`
+
+---
+
+## Archivo a Modificar
+
+| Archivo | Cambio |
+|---------|--------|
+| `supabase/functions/mercadolibre-oauth/index.ts` | Usar esquema key-value y enum 'mercadolibre' |
 
 ---
 
 ## Resultado Esperado
 
-Después de los cambios, el administrador de Beraexpress podrá:
+Después del cambio, el flujo será:
 
-| Acción | Descripción |
-|--------|-------------|
-| Conectar MercadoLibre | El admin conecta directamente si tiene acceso a la cuenta ML |
-| Enviar link por Email | Abre cliente de correo con mensaje pre-armado |
-| Enviar link por WhatsApp | Abre WhatsApp Web con mensaje pre-armado |
-
-**Mensaje de ejemplo por WhatsApp:**
+```text
+Admin envía link por WhatsApp
+         │
+         ▼
+Cliente hace clic en el link
+         │
+         ▼
+Edge Function obtiene credenciales correctamente
+         │
+         ▼
+Redirige a MercadoLibre para autorización
+         │
+         ▼
+Cliente autoriza → tokens guardados → ¡Conectado!
+         │
+         ▼
+Webhook recibe pedidos Flex automáticamente
 ```
-Hola Mi Tienda ML 👋
-
-Para conectar tu cuenta de MercadoLibre y sincronizar tus pedidos automáticamente, haz clic aquí:
-
-https://uhlgimnmfifmrxraorrl.supabase.co/functions/v1/mercadolibre-oauth/authorize?seller_id=xxx
-
-Solo toma unos segundos 🚀
-```
-
----
-
-## Archivos a Modificar
-
-| Archivo | Cambio |
-|---------|--------|
-| `src/pages/ecommerce/Sellers.tsx` | Actualizar función de envío de links + agregar opciones de menú para ML |
 
