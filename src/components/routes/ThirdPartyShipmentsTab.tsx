@@ -46,6 +46,10 @@ interface EmpresaTerciarizada {
   id: string;
   codigo: string;
   nombre: string;
+  direccion?: string;
+  ciudad?: string;
+  provincia?: string;
+  telefono?: string;
   tiene_cuenta_corriente: boolean;
   saldo_cuenta_corriente: number;
 }
@@ -157,7 +161,7 @@ export default function ThirdPartyShipmentsTab() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("empresas_terciarizadas")
-        .select("id, codigo, nombre, tiene_cuenta_corriente, saldo_cuenta_corriente")
+        .select("id, codigo, nombre, direccion, ciudad, provincia, telefono, tiene_cuenta_corriente, saldo_cuenta_corriente")
         .eq("activa", true)
         .order("nombre");
 
@@ -290,6 +294,10 @@ export default function ThirdPartyShipmentsTab() {
           cantidad_bultos: shipment.cantidad_bultos || 1,
           sucursal_origen_id: profile?.sucursal_id,
           requiere_retiro: shipment.tipo_operacion === "retiro",
+          // Datos del remitente (empresa terciarizada)
+          nombre_remitente: selectedEmpresa?.nombre || null,
+          direccion_retiro: selectedEmpresa?.direccion || null,
+          ciudad_retiro: selectedEmpresa?.ciudad || null,
         })
         .select()
         .single();
