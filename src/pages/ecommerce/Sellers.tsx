@@ -194,7 +194,17 @@ export default function Sellers() {
 
   // Send connection link via Email or WhatsApp
   const handleSendConnectionLink = (seller: Seller, method: 'email' | 'whatsapp') => {
-    const oauthUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tiendanube-oauth/authorize?seller_id=${seller.id}`;
+    // Determine URL and platform name based on seller platform
+    let oauthUrl: string;
+    let platformName: string;
+    
+    if (seller.plataforma === 'mercadolibre') {
+      oauthUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mercadolibre-oauth/authorize?seller_id=${seller.id}`;
+      platformName = 'MercadoLibre';
+    } else {
+      oauthUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tiendanube-oauth/authorize?seller_id=${seller.id}`;
+      platformName = 'Tiendanube';
+    }
     
     if (method === 'whatsapp') {
       if (!seller.telefono) {
@@ -209,7 +219,7 @@ export default function Sellers() {
       const cleanPhone = seller.telefono.replace(/\D/g, '');
       const message = `Hola ${seller.nombre} 👋
 
-Para conectar tu tienda y sincronizar tus pedidos automáticamente, haz clic aquí:
+Para conectar tu cuenta de ${platformName} y sincronizar tus pedidos automáticamente, haz clic aquí:
 
 ${oauthUrl}
 
@@ -218,10 +228,10 @@ Solo toma unos segundos 🚀`;
       window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
       toast({ title: 'WhatsApp abierto', description: 'Envía el mensaje al seller' });
     } else {
-      const subject = 'Conecta tu tienda Tiendanube';
+      const subject = `Conecta tu cuenta de ${platformName}`;
       const body = `Hola ${seller.nombre},
 
-Para sincronizar automáticamente tus pedidos de Tiendanube, necesitamos que autorices la conexión.
+Para sincronizar automáticamente tus pedidos de ${platformName}, necesitamos que autorices la conexión.
 
 Haz clic en el siguiente enlace:
 ${oauthUrl}
@@ -491,6 +501,24 @@ Saludos`;
                               <DropdownMenuItem onClick={() => handleConnectTiendanube(seller)}>
                                 <Link2 className="mr-2 h-4 w-4" />
                                 Conectar Tiendanube
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => handleSendConnectionLink(seller, 'email')}>
+                                <Mail className="mr-2 h-4 w-4" />
+                                Enviar link por Email
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleSendConnectionLink(seller, 'whatsapp')}>
+                                <MessageSquare className="mr-2 h-4 w-4" />
+                                Enviar link por WhatsApp
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                          
+                          {seller.plataforma === 'mercadolibre' && !isConnected(seller) && (
+                            <>
+                              <DropdownMenuItem onClick={() => handleConnectMercadoLibre(seller)}>
+                                <Link2 className="mr-2 h-4 w-4" />
+                                Conectar MercadoLibre
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem onClick={() => handleSendConnectionLink(seller, 'email')}>
