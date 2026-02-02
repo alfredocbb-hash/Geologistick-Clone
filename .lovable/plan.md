@@ -1,100 +1,178 @@
 
 
-# Plan: Poblar Remitente con Empresa Terciarizada
+# Plan: Corregir Parpadeo de Pantalla y Pérdida de Datos al Cambiar de Ventana
 
 ## Problema Identificado
 
-Cuando se crea un envío terciarizado, los campos del remitente quedan vacíos. El usuario espera que la empresa terciarizada aparezca como remitente del envío.
+El sistema experimenta parpadeo (flashing) y pérdida de datos al:
+1. Navegar entre módulos del sistema
+2. Cambiar a otra pestaña del navegador o programa del escritorio
+3. Volver a la aplicación después de minimizarla
 
-## Solución
+## Causas Raíz
 
-Modificar el código de creación de envíos en `ThirdPartyShipmentsTab.tsx` para poblar automáticamente los campos del remitente usando los datos de la empresa terciarizada seleccionada.
+### Causa 1: QueryClient sin configuración de caché adecuada
+El `QueryClient` se crea sin opciones, lo que significa que:
+- `staleTime` es 0 (los datos se marcan como "stale" inmediatamente)
+- `refetchOnWindowFocus` está activado por defecto
+- `gcTime` (garbage collection) es muy corto
 
----
+**Resultado**: Cada vez que cambias de ventana y vuelves, React Query refetch todos los datos, causando parpadeo.
 
-## Cambios a Realizar
-
-### Archivo: `src/components/routes/ThirdPartyShipmentsTab.tsx`
-
-**Paso 1**: Ampliar la consulta de empresas para traer más datos
-
-Actualmente se consulta:
+### Causa 2: Invalidación agresiva en visibilitychange
+En `MobileAppLayout.tsx` hay un listener que invalida queries cuando la app vuelve a estar visible:
 ```typescript
-.select("id, codigo, nombre, tiene_cuenta_corriente, saldo_cuenta_corriente")
-```
-
-Cambiar a:
-```typescript
-.select("id, codigo, nombre, direccion, ciudad, provincia, telefono, tiene_cuenta_corriente, saldo_cuenta_corriente")
-```
-
-**Paso 2**: Actualizar la interfaz `EmpresaTerciarizada`
-
-Agregar los nuevos campos:
-```typescript
-interface EmpresaTerciarizada {
-  id: string;
-  codigo: string;
-  nombre: string;
-  direccion?: string;
-  ciudad?: string;
-  provincia?: string;
-  telefono?: string;
-  tiene_cuenta_corriente: boolean;
-  saldo_cuenta_corriente: number;
+if (document.visibilityState === 'visible') {
+  queryClient.invalidateQueries({ queryKey: ['user-permissions'] });
+  queryClient.invalidateQueries({ queryKey: ['user-roles'] });
 }
 ```
 
-**Paso 3**: Poblar datos del remitente al crear el envío
+### Causa 3: Estado local en componentes
+Muchas páginas (como `RoutePlanner`) usan `useState` para datos que deberían persistir:
+```typescript
+const [selectedEnvios, setSelectedEnvios] = useState<string[]>([]);
+const [selectedChofer, setSelectedChofer] = useState<string>("");
+```
+Cuando el componente se desmonta (navegación) o se re-renderiza, este estado se pierde.
 
-En la mutación de creación (líneas 265-293), agregar los campos del remitente:
+---
+
+## Solución Propuesta
+
+### Paso 1: Configurar QueryClient con opciones de caché
+
+Modificar la creación del `QueryClient` en `src/App.tsx` para agregar configuración global:
 
 ```typescript
-const { data, error } = await supabase
-  .from("envios")
-  .insert({
-    // ... campos existentes ...
-    
-    // NUEVOS: Datos del remitente (empresa terciarizada)
-    nombre_remitente: selectedEmpresa?.nombre,
-    direccion_retiro: selectedEmpresa?.direccion || null,
-    ciudad_retiro: selectedEmpresa?.ciudad || null,
-    // El teléfono del remitente podría guardarse en whatsapp_remitente si existe ese campo
-  })
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000, // 5 minutos: datos frescos por más tiempo
+      gcTime: 10 * 60 * 1000,   // 10 minutos: mantener en caché
+      refetchOnWindowFocus: false, // NO refetch al volver a la ventana
+      refetchOnReconnect: true,   // SÍ refetch al reconectar internet
+      retry: 1, // Reintentar solo 1 vez en error
+    },
+  },
+});
+```
+
+### Paso 2: Eliminar invalidación agresiva en visibilitychange
+
+Modificar `src/components/mobile/MobileAppLayout.tsx` para NO invalidar todas las queries al cambiar de visibilidad:
+
+```typescript
+// ELIMINAR este bloque:
+useEffect(() => {
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === 'visible') {
+      queryClient.invalidateQueries({ queryKey: ['user-permissions'] });
+      queryClient.invalidateQueries({ queryKey: ['user-roles'] });
+    }
+  };
+  // ...
+}, [queryClient]);
+```
+
+O si es necesario refrescar permisos, hacerlo de forma menos agresiva:
+```typescript
+// Refetch en vez de invalidar (no borra el caché mientras carga)
+queryClient.refetchQueries({ queryKey: ['user-permissions'], type: 'active' });
+```
+
+### Paso 3: Usar `placeholderData` en queries críticas
+
+Para páginas con datos pesados, agregar `placeholderData` para evitar el flash de loading:
+
+```typescript
+const { data: envios } = useQuery({
+  queryKey: ['envios-planificador'],
+  queryFn: fetchEnvios,
+  placeholderData: (previousData) => previousData, // Mantener datos anteriores
+});
+```
+
+### Paso 4: Persistir estado de selección en sessionStorage (opcional)
+
+Para páginas como `RoutePlanner` donde las selecciones son importantes:
+
+```typescript
+// Crear hook usePersistedState
+function usePersistedState<T>(key: string, initialValue: T) {
+  const [state, setState] = useState<T>(() => {
+    const saved = sessionStorage.getItem(key);
+    return saved ? JSON.parse(saved) : initialValue;
+  });
+  
+  useEffect(() => {
+    sessionStorage.setItem(key, JSON.stringify(state));
+  }, [key, state]);
+  
+  return [state, setState] as const;
+}
+
+// Uso:
+const [selectedEnvios, setSelectedEnvios] = usePersistedState<string[]>('planner-selected', []);
 ```
 
 ---
 
-## Flujo Resultante
-
-```text
-Usuario selecciona empresa terciarizada: "Andreani (AND)"
-                    ↓
-Sistema crea envío con:
-  - nombre_remitente: "Andreani"
-  - direccion_retiro: "Av. Callao 1234"
-  - ciudad_retiro: "CABA"
-  - provincia: (de la empresa)
-                    ↓
-El envío muestra correctamente quién es el remitente
-```
-
----
-
-## Campos Mapeados
-
-| Campo Empresa Terciarizada | Campo Envío (Remitente) |
-|---------------------------|-------------------------|
-| `nombre` | `nombre_remitente` |
-| `direccion` | `direccion_retiro` |
-| `ciudad` | `ciudad_retiro` |
-| `telefono` | *(opcional)* |
-
----
-
-## Resumen de Cambios
+## Archivos a Modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/components/routes/ThirdPartyShipmentsTab.tsx` | Ampliar query de empresas, actualizar interfaz, poblar campos remitente |
+| `src/App.tsx` | Configurar QueryClient con staleTime, gcTime, refetchOnWindowFocus |
+| `src/components/mobile/MobileAppLayout.tsx` | Eliminar o suavizar invalidación en visibilitychange |
+| `src/hooks/usePersistedState.ts` (nuevo) | Hook para persistir estado en sessionStorage |
+| `src/pages/RoutePlanner.tsx` | Usar usePersistedState para selecciones críticas |
+
+---
+
+## Impacto Esperado
+
+| Antes | Después |
+|-------|---------|
+| Flash de loading al cambiar de ventana | Datos permanecen visibles |
+| Selecciones perdidas al navegar | Selecciones persisten en sesión |
+| Refetch innecesarios | Caché de 5 minutos |
+| UX frustrante | Experiencia fluida |
+
+---
+
+## Diagrama de Flujo
+
+```text
+ANTES:
+┌─────────────────────────────────────────────────────────┐
+│ Usuario cambia a otra pestaña                           │
+│                    ↓                                    │
+│ Usuario vuelve a la app                                 │
+│                    ↓                                    │
+│ visibilitychange dispara invalidateQueries              │
+│                    ↓                                    │
+│ Todos los datos se marcan como "stale"                  │
+│                    ↓                                    │
+│ React Query hace refetch de TODO                        │
+│                    ↓                                    │
+│ Pantalla muestra "Cargando..." (FLASH)                  │
+│                    ↓                                    │
+│ Datos cargan de nuevo (pero selecciones se perdieron)   │
+└─────────────────────────────────────────────────────────┘
+
+DESPUÉS:
+┌─────────────────────────────────────────────────────────┐
+│ Usuario cambia a otra pestaña                           │
+│                    ↓                                    │
+│ Usuario vuelve a la app                                 │
+│                    ↓                                    │
+│ staleTime = 5min → datos siguen "frescos"               │
+│                    ↓                                    │
+│ refetchOnWindowFocus = false → NO refetch               │
+│                    ↓                                    │
+│ Pantalla muestra datos del caché (SIN FLASH)            │
+│                    ↓                                    │
+│ Selecciones persisten (sessionStorage)                  │
+└─────────────────────────────────────────────────────────┘
+```
 
