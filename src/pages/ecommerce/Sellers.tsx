@@ -145,7 +145,7 @@ export default function Sellers() {
     },
   });
 
-  // Sync mutation
+  // Sync mutation for Tiendanube
   const syncMutation = useMutation({
     mutationFn: async (sellerId: string) => {
       setSyncingSellerId(sellerId);
@@ -166,6 +166,36 @@ export default function Sellers() {
     onError: (error: any) => {
       toast({ 
         title: 'Error al sincronizar', 
+        description: error.message || 'Error desconocido',
+        variant: 'destructive' 
+      });
+    },
+    onSettled: () => {
+      setSyncingSellerId(null);
+    },
+  });
+
+  // Sync mutation for MercadoLibre
+  const syncMLMutation = useMutation({
+    mutationFn: async (sellerId: string) => {
+      setSyncingSellerId(sellerId);
+      const { data, error } = await supabase.functions.invoke('mercadolibre-sync', {
+        body: { seller_id: sellerId },
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['ecommerce-sellers'] });
+      queryClient.invalidateQueries({ queryKey: ['ecommerce-orders'] });
+      toast({ 
+        title: 'Sincronización ML completada',
+        description: `${data.created} nuevos, ${data.existing} existentes, ${data.errors} errores`
+      });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: 'Error al sincronizar MercadoLibre', 
         description: error.message || 'Error desconocido',
         variant: 'destructive' 
       });
@@ -512,6 +542,20 @@ Saludos`;
                                 Enviar link por WhatsApp
                               </DropdownMenuItem>
                             </>
+                          )}
+                          
+                          {seller.plataforma === 'mercadolibre' && isConnected(seller) && (
+                            <DropdownMenuItem 
+                              onClick={() => syncMLMutation.mutate(seller.id)}
+                              disabled={syncingSellerId === seller.id}
+                            >
+                              {syncingSellerId === seller.id ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                <RefreshCw className="mr-2 h-4 w-4" />
+                              )}
+                              Sincronizar Ahora
+                            </DropdownMenuItem>
                           )}
                           
                           {seller.plataforma === 'mercadolibre' && !isConnected(seller) && (

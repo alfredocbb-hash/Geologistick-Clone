@@ -68,3 +68,6 @@ verify_jwt = false
 
 [functions.mercadolibre-update-status]
 verify_jwt = false
+
+[functions.mercadolibre-sync]
+verify_jwt = false
