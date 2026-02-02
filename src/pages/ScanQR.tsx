@@ -26,6 +26,8 @@ import PickupConfirmation from '@/components/scan/PickupConfirmation';
 import ReceiveShipmentDialog from '@/components/scan/ReceiveShipmentDialog';
 import { BranchDeliveryDialog } from '@/components/scan/BranchDeliveryDialog';
 import { ReceiveRouteSheetDialog } from '@/components/scan/ReceiveRouteSheetDialog';
+import { MLDeliveryDialog } from '@/components/scan/MLDeliveryDialog';
+import { parseQRCode } from '@/lib/qrParser';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   pendiente: { label: 'Pendiente', color: 'bg-orange-100 text-orange-800' },
@@ -62,6 +64,15 @@ interface ScannedShipment {
     nombre: string;
     ciudad: string | null;
   } | null;
+  // ML Flex fields
+  ml_shipment_id?: number | null;
+  ml_order_id?: number | null;
+  ml_sync_status?: string | null;
+  nombre_destinatario?: string | null;
+  direccion_entrega?: string | null;
+  ciudad_entrega?: string | null;
+  whatsapp_destinatario?: string | null;
+  pago_contra_entrega?: boolean | null;
 }
 
 export default function ScanQR() {
@@ -80,6 +91,7 @@ export default function ScanQR() {
   const [duplicateShipment, setDuplicateShipment] = useState<ScannedShipment | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [routeSheetId, setRouteSheetId] = useState<string | null>(null);
+  const [showMLDeliveryDialog, setShowMLDeliveryDialog] = useState(false);
 
   // Role-based permissions
   const isDriver = hasRole('chofer');
@@ -149,11 +161,20 @@ export default function ScanQR() {
       return;
     }
     
-    // Extract tracking number from QR (may contain URL)
-    let trackingNumber = data;
+    // Parse QR code to detect type
+    const parsed = parseQRCode(data);
     
-    // If it's a URL, extract the tracking parameter
-    if (data.includes('/tracking')) {
+    // Handle ML shipment ID
+    if (parsed.type === 'ml_shipment') {
+      await searchShipmentByML(parsed.value, mode);
+      return;
+    }
+    
+    // Extract tracking number from QR (may contain URL)
+    let trackingNumber = parsed.type === 'tracking' ? parsed.value : data;
+    
+    // If it's a URL, extract the tracking parameter (fallback for legacy)
+    if (parsed.type === 'unknown' && data.includes('/tracking')) {
       const urlMatch = data.match(/[?&]q=([^&]+)/);
       if (urlMatch) {
         trackingNumber = urlMatch[1];
@@ -164,6 +185,58 @@ export default function ScanQR() {
     const baseTacking = trackingNumber.split('-').slice(0, -1).join('-') || trackingNumber;
     
     await searchShipment(baseTacking.includes('-') && !baseTacking.endsWith('-') ? trackingNumber.replace(/-\d{2}$/, '') : trackingNumber, mode);
+  };
+
+  const searchShipmentByML = async (mlShipmentId: string, mode: ScanMode = null) => {
+    setIsSearching(true);
+    
+    try {
+      const { data: shipment, error } = await supabase
+        .from('envios')
+        .select(`
+          id,
+          tracking_number,
+          estado,
+          requiere_retiro,
+          direccion_retiro,
+          ciudad_retiro,
+          tipo_pago,
+          precio_total,
+          ml_shipment_id,
+          ml_order_id,
+          ml_sync_status,
+          nombre_destinatario,
+          direccion_entrega,
+          ciudad_entrega,
+          whatsapp_destinatario,
+          pago_contra_entrega,
+          remitente:clientes!envios_remitente_id_fkey(nombre, apellido, telefono),
+          destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido),
+          sucursal_destino:sucursales!envios_sucursal_destino_id_fkey(nombre, ciudad)
+        `)
+        .eq('ml_shipment_id', parseInt(mlShipmentId))
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (!shipment) {
+        toast.error('Envío ML Flex no encontrado', {
+          description: `ID: ${mlShipmentId} - Verifica que el pedido haya sido sincronizado`,
+        });
+        setIsSearching(false);
+        return;
+      }
+
+      setScannedShipment(shipment as ScannedShipment);
+      
+      // For ML shipments, show the ML delivery dialog
+      setShowMLDeliveryDialog(true);
+    } catch (error: any) {
+      console.error('Error searching ML shipment:', error);
+      toast.error('Error al buscar envío ML Flex');
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   const searchShipment = async (tracking: string, mode: ScanMode = null) => {
@@ -577,6 +650,37 @@ export default function ScanQR() {
           queryClient.invalidateQueries({ queryKey: ['envios'] });
         }}
       />
+
+      {/* ML Delivery Dialog */}
+      {showMLDeliveryDialog && scannedShipment && scannedShipment.ml_shipment_id && (
+        <MLDeliveryDialog
+          open={showMLDeliveryDialog}
+          shipment={{
+            id: scannedShipment.id,
+            tracking_number: scannedShipment.tracking_number,
+            estado: scannedShipment.estado,
+            ml_shipment_id: scannedShipment.ml_shipment_id,
+            ml_order_id: scannedShipment.ml_order_id,
+            ml_sync_status: scannedShipment.ml_sync_status,
+            nombre_destinatario: scannedShipment.nombre_destinatario,
+            direccion_entrega: scannedShipment.direccion_entrega,
+            ciudad_entrega: scannedShipment.ciudad_entrega,
+            whatsapp_destinatario: scannedShipment.whatsapp_destinatario,
+            precio_total: scannedShipment.precio_total || 0,
+            pago_contra_entrega: scannedShipment.pago_contra_entrega,
+            destinatario: scannedShipment.destinatario,
+          }}
+          onClose={() => {
+            setShowMLDeliveryDialog(false);
+            setScannedShipment(null);
+          }}
+          onSuccess={() => {
+            setShowMLDeliveryDialog(false);
+            setScannedShipment(null);
+            queryClient.invalidateQueries({ queryKey: ['envios'] });
+          }}
+        />
+      )}
     </div>
   );
 }

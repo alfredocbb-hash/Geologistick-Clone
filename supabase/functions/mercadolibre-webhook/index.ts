@@ -238,12 +238,64 @@ Deno.serve(async (req) => {
 
       console.log('[ML Webhook] Created envio:', envio.id, 'tracking:', trackingNumber);
 
+      // Register charge in seller's cuenta corriente if enabled
+      let precioCalculado = 0;
+      if (seller.tiene_cuenta_corriente && seller.tarifa_id) {
+        // Get tarifa to calculate price
+        const { data: tarifa } = await supabase
+          .from('tarifas')
+          .select('precio_base')
+          .eq('id', seller.tarifa_id)
+          .single();
+
+        if (tarifa?.precio_base) {
+          precioCalculado = tarifa.precio_base;
+          const saldoAnterior = seller.saldo_cuenta_corriente || 0;
+          const saldoNuevo = saldoAnterior + precioCalculado;
+
+          // Insert cargo in seller_cuenta_corriente
+          const { error: cargoError } = await supabase
+            .from('seller_cuenta_corriente')
+            .insert({
+              seller_id: seller.id,
+              tipo: 'cargo',
+              monto: precioCalculado,
+              saldo_anterior: saldoAnterior,
+              saldo_nuevo: saldoNuevo,
+              descripcion: `Envío ML Flex - ${trackingNumber}`,
+              envio_id: envio.id,
+            });
+
+          if (cargoError) {
+            console.error('[ML Webhook] Error creating cargo:', cargoError);
+          } else {
+            // Update seller balance
+            await supabase
+              .from('ecommerce_sellers')
+              .update({ 
+                saldo_cuenta_corriente: saldoNuevo,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', seller.id);
+
+            // Update envio with calculated price
+            await supabase
+              .from('envios')
+              .update({ precio_total: precioCalculado })
+              .eq('id', envio.id);
+
+            console.log('[ML Webhook] Registered cargo:', precioCalculado, 'new balance:', saldoNuevo);
+          }
+        }
+      }
+
       return new Response(
         JSON.stringify({ 
           success: true, 
           envio_id: envio.id, 
           tracking: trackingNumber,
-          ml_shipment_id: shipment.id 
+          ml_shipment_id: shipment.id,
+          precio: precioCalculado,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
