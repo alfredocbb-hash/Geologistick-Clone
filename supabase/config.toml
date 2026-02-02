@@ -59,3 +59,12 @@ verify_jwt = false
 
 [functions.tiendanube-fulfill]
 verify_jwt = false
+
+[functions.mercadolibre-oauth]
+verify_jwt = false
+
+[functions.mercadolibre-webhook]
+verify_jwt = false
+
+[functions.mercadolibre-update-status]
+verify_jwt = false

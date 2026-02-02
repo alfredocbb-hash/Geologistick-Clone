@@ -11,6 +11,7 @@ import PickupConfirmation from '@/components/scan/PickupConfirmation';
 import ReceiveShipmentDialog from '@/components/scan/ReceiveShipmentDialog';
 import { BranchDeliveryDialog } from '@/components/scan/BranchDeliveryDialog';
 import { UltimaMillaDialog } from '@/components/scan/UltimaMillaDialog';
+import { MLDeliveryDialog } from '@/components/scan/MLDeliveryDialog';
 import { parseQRCode } from '@/lib/qrParser';
 
 type ScanMode = 'idle' | 'scanning';
@@ -30,6 +31,11 @@ interface ScannedShipment {
   pago_contra_entrega: boolean | null;
   tipo_pago: string | null;
   chofer_id?: string | null;
+  ml_shipment_id?: number | null;
+  ml_order_id?: number | null;
+  ml_sync_status?: string | null;
+  nombre_destinatario?: string | null;
+  whatsapp_destinatario?: string | null;
   destinatario?: {
     nombre: string;
     apellido: string | null;
@@ -48,6 +54,7 @@ export function MobileScanTab() {
   const [showReceiveDialog, setShowReceiveDialog] = useState(false);
   const [showDeliveryDialog, setShowDeliveryDialog] = useState(false);
   const [showUltimaMillaDialog, setShowUltimaMillaDialog] = useState(false);
+  const [showMLDeliveryDialog, setShowMLDeliveryDialog] = useState(false);
   const [isPulsing, setIsPulsing] = useState(true);
 
   // Fetch recent scans
@@ -96,6 +103,52 @@ export function MobileScanTab() {
       });
       setIsPulsing(true);
       return;
+    }
+
+    // Handle MercadoLibre shipment IDs
+    if (parsed.type === 'ml_shipment') {
+      try {
+        const { data: shipment, error } = await supabase
+          .from('envios')
+          .select(`
+            *,
+            destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, telefono)
+          `)
+          .eq('ml_shipment_id', parseInt(parsed.value))
+          .maybeSingle();
+
+        if (error) {
+          console.error('[MobileScanTab] ML shipment lookup error:', error);
+          toast.error('Error al buscar envío ML');
+          setIsPulsing(true);
+          return;
+        }
+
+        if (!shipment) {
+          toast.error('Envío ML no encontrado', {
+            description: `Shipment ID: ${parsed.value} no está registrado en el sistema`
+          });
+          setIsPulsing(true);
+          return;
+        }
+
+        // Play success sound and vibrate
+        playBeepSound();
+        vibrateDevice();
+
+        setScannedShipment(shipment);
+        setShowMLDeliveryDialog(true);
+        
+        toast.success('Envío ML encontrado', {
+          description: `Tracking: ${shipment.tracking_number}`
+        });
+        return;
+      } catch (err) {
+        console.error('Error searching ML shipment:', err);
+        toast.error('Error al buscar envío ML');
+        setIsPulsing(true);
+        return;
+      }
     }
     
     const tracking = parsed.value;
@@ -237,6 +290,7 @@ export function MobileScanTab() {
     setShowReceiveDialog(false);
     setShowDeliveryDialog(false);
     setShowUltimaMillaDialog(false);
+    setShowMLDeliveryDialog(false);
     setScannedShipment(null);
     setIsPulsing(true);
     
@@ -443,6 +497,16 @@ export function MobileScanTab() {
       {scannedShipment && showUltimaMillaDialog && (
         <UltimaMillaDialog
           open={showUltimaMillaDialog}
+          shipment={scannedShipment}
+          onClose={handleDialogClose}
+          onSuccess={handleDialogSuccess}
+        />
+      )}
+
+      {/* ML Flex Delivery Dialog */}
+      {scannedShipment && showMLDeliveryDialog && (
+        <MLDeliveryDialog
+          open={showMLDeliveryDialog}
           shipment={scannedShipment}
           onClose={handleDialogClose}
           onSuccess={handleDialogSuccess}
