@@ -1,59 +1,129 @@
 
 
-# Plan: Agregar "mercadolibre" al Enum de Integraciones
+# Plan: Agregar Opciones de Invitación para MercadoLibre
 
-## Problema Identificado
+## Situación Actual
 
-Cuando el administrador de Beraexpress intenta guardar las credenciales de MercadoLibre, aparece el error:
+Beraexpress ya creó un seller de MercadoLibre. Ahora necesita enviar una invitación al cliente para que conecte su cuenta.
 
+**El problema**: El sistema solo tiene opciones de invitación para Tiendanube. Para MercadoLibre falta:
+1. Las opciones "Enviar link por Email" y "Enviar link por WhatsApp" en el menú desplegable
+2. Una función para generar el link de MercadoLibre
+
+## Cómo Funciona el Flujo de Invitación
+
+```text
+ADMINISTRADOR (Beraexpress)
+         │
+         ▼
+Crea seller "Mi Tienda ML" con plataforma "mercadolibre"
+         │
+         ▼
+En la tabla de Sellers, abre el menú (...)
+         │
+         ▼
+Elige "Enviar link por WhatsApp" o "Enviar link por Email"
+         │
+         ▼
+Se abre WhatsApp/Email con mensaje pre-armado incluyendo:
+"Para conectar tu cuenta de MercadoLibre, haz clic aquí: [LINK]"
+         │
+         ▼
+CLIENTE (dueño de la tienda ML)
+         │
+         ▼
+Recibe el mensaje y hace clic en el link
+         │
+         ▼
+Se abre ventana de autorización de MercadoLibre
+         │
+         ▼
+Cliente autoriza la conexión
+         │
+         ▼
+Sistema guarda los tokens y queda conectado
 ```
-invalid input value for enum integration_type: "mercadolibre"
+
+## Cambios a Realizar
+
+### Archivo: `src/pages/ecommerce/Sellers.tsx`
+
+**Paso 1**: Modificar la función `handleSendConnectionLink` para soportar ambas plataformas
+
+Actualmente solo genera links para Tiendanube:
+```typescript
+const oauthUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tiendanube-oauth/authorize?seller_id=${seller.id}`;
 ```
 
-**Causa**: El código del frontend incluye `mercadolibre` como tipo de integración válido, pero el enum `integration_type` en la base de datos no tiene ese valor.
+Cambiar para detectar la plataforma:
+```typescript
+const handleSendConnectionLink = (seller: Seller, method: 'email' | 'whatsapp') => {
+  // Determinar la URL según la plataforma
+  let oauthUrl: string;
+  let platformName: string;
+  
+  if (seller.plataforma === 'mercadolibre') {
+    oauthUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mercadolibre-oauth/authorize?seller_id=${seller.id}`;
+    platformName = 'MercadoLibre';
+  } else {
+    oauthUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tiendanube-oauth/authorize?seller_id=${seller.id}`;
+    platformName = 'Tiendanube';
+  }
+  
+  // ... resto de la lógica igual, usando platformName en los mensajes
+};
+```
 
-## Valores Actuales del Enum
+**Paso 2**: Agregar opciones de menú para MercadoLibre (después de la línea 505)
 
-| Valor en DB | Estado |
-|-------------|--------|
-| mercado_pago | Existe |
-| google_maps | Existe |
-| whatsapp | Existe |
-| email_smtp | Existe |
-| sms | Existe |
-| arca | Existe |
-| tiendanube | Existe |
-| mercadolibre | **FALTA** |
-
-## Solución
-
-Ejecutar una migración SQL para agregar el valor `mercadolibre` al enum `integration_type`.
-
-### Migración SQL
-
-```sql
--- Agregar 'mercadolibre' al enum integration_type
-ALTER TYPE integration_type ADD VALUE IF NOT EXISTS 'mercadolibre';
+```typescript
+{seller.plataforma === 'mercadolibre' && !isConnected(seller) && (
+  <>
+    <DropdownMenuItem onClick={() => handleConnectMercadoLibre(seller)}>
+      <Link2 className="mr-2 h-4 w-4" />
+      Conectar MercadoLibre
+    </DropdownMenuItem>
+    <DropdownMenuSeparator />
+    <DropdownMenuItem onClick={() => handleSendConnectionLink(seller, 'email')}>
+      <Mail className="mr-2 h-4 w-4" />
+      Enviar link por Email
+    </DropdownMenuItem>
+    <DropdownMenuItem onClick={() => handleSendConnectionLink(seller, 'whatsapp')}>
+      <MessageSquare className="mr-2 h-4 w-4" />
+      Enviar link por WhatsApp
+    </DropdownMenuItem>
+  </>
+)}
 ```
 
 ---
 
-## Detalles Técnicos
+## Resultado Esperado
 
-- El enum `integration_type` se usa en la tabla `system_integrations` para clasificar las diferentes integraciones por tenant
-- Una vez agregado el valor, los administradores podrán guardar las credenciales de MercadoLibre sin errores
-- No requiere cambios en el código frontend, ya que `mercadolibre` ya está definido en el tipo TypeScript
+Después de los cambios, el administrador de Beraexpress podrá:
 
-## Impacto
+| Acción | Descripción |
+|--------|-------------|
+| Conectar MercadoLibre | El admin conecta directamente si tiene acceso a la cuenta ML |
+| Enviar link por Email | Abre cliente de correo con mensaje pre-armado |
+| Enviar link por WhatsApp | Abre WhatsApp Web con mensaje pre-armado |
 
-| Antes | Después |
-|-------|---------|
-| Error al guardar credenciales MercadoLibre | Guardado exitoso |
-| Integración MercadoLibre no funcional | Integración completamente operativa |
+**Mensaje de ejemplo por WhatsApp:**
+```
+Hola Mi Tienda ML 👋
 
-## Archivo a Crear
+Para conectar tu cuenta de MercadoLibre y sincronizar tus pedidos automáticamente, haz clic aquí:
+
+https://uhlgimnmfifmrxraorrl.supabase.co/functions/v1/mercadolibre-oauth/authorize?seller_id=xxx
+
+Solo toma unos segundos 🚀
+```
+
+---
+
+## Archivos a Modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| Migración SQL | `ALTER TYPE integration_type ADD VALUE 'mercadolibre'` |
+| `src/pages/ecommerce/Sellers.tsx` | Actualizar función de envío de links + agregar opciones de menú para ML |
 
