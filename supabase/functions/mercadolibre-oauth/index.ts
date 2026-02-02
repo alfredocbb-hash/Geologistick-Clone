@@ -10,6 +10,31 @@ const ML_AUTH_URL = 'https://auth.mercadolibre.com.ar/authorization';
 const ML_TOKEN_URL = 'https://api.mercadolibre.com/oauth/token';
 const ML_USER_URL = 'https://api.mercadolibre.com/users/me';
 
+// Helper to get integration config as object from key-value rows
+async function getIntegrationConfig(
+  supabase: any,
+  tenantId: string
+): Promise<Record<string, string> | null> {
+  const { data, error } = await supabase
+    .from('system_integrations')
+    .select('config_key, config_value')
+    .eq('tenant_id', tenantId)
+    .eq('integration_type', 'mercadolibre')
+    .eq('is_active', true);
+
+  if (error || !data || data.length === 0) {
+    console.error('[ML OAuth] Config query error:', error);
+    return null;
+  }
+
+  // Convert key-value rows to object
+  const config: Record<string, string> = {};
+  for (const row of data) {
+    config[row.config_key] = row.config_value;
+  }
+  return config;
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -52,33 +77,19 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Get ML credentials from system_integrations
-      const { data: integration, error: intError } = await supabase
-        .from('system_integrations')
-        .select('config')
-        .eq('tenant_id', seller.tenant_id)
-        .eq('integration_type', 'mercado_libre')
-        .eq('is_active', true)
-        .single();
+      // Get ML credentials from system_integrations (key-value schema)
+      const config = await getIntegrationConfig(supabase, seller.tenant_id);
 
-      if (intError || !integration?.config) {
-        console.error('[ML OAuth] Integration config not found:', intError);
+      if (!config || !config.client_id) {
+        console.error('[ML OAuth] Integration config not found for tenant:', seller.tenant_id);
         return new Response(
           JSON.stringify({ error: 'MercadoLibre integration not configured for this tenant' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      const config = integration.config as Record<string, string>;
       const clientId = config.client_id;
       const redirectUri = config.redirect_uri || `${supabaseUrl}/functions/v1/mercadolibre-oauth/callback`;
-
-      if (!clientId) {
-        return new Response(
-          JSON.stringify({ error: 'MercadoLibre client_id not configured' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
 
       // Build OAuth URL
       const authUrl = new URL(ML_AUTH_URL);
@@ -132,23 +143,16 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Get ML credentials
-      const { data: integration } = await supabase
-        .from('system_integrations')
-        .select('config')
-        .eq('tenant_id', seller.tenant_id)
-        .eq('integration_type', 'mercado_libre')
-        .eq('is_active', true)
-        .single();
+      // Get ML credentials (key-value schema)
+      const config = await getIntegrationConfig(supabase, seller.tenant_id);
 
-      if (!integration?.config) {
+      if (!config || !config.client_id || !config.client_secret) {
         return new Response(
           generateHtmlResponse(false, 'MercadoLibre integration not configured'),
           { headers: { ...corsHeaders, 'Content-Type': 'text/html' } }
         );
       }
 
-      const config = integration.config as Record<string, string>;
       const clientId = config.client_id;
       const clientSecret = config.client_secret;
       const redirectUri = config.redirect_uri || `${supabaseUrl}/functions/v1/mercadolibre-oauth/callback`;
@@ -252,23 +256,15 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Get ML credentials
-      const { data: integration } = await supabase
-        .from('system_integrations')
-        .select('config')
-        .eq('tenant_id', seller.tenant_id)
-        .eq('integration_type', 'mercado_libre')
-        .eq('is_active', true)
-        .single();
+      // Get ML credentials (key-value schema)
+      const config = await getIntegrationConfig(supabase, seller.tenant_id);
 
-      if (!integration?.config) {
+      if (!config || !config.client_id || !config.client_secret) {
         return new Response(
           JSON.stringify({ error: 'MercadoLibre integration not configured' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-
-      const config = integration.config as Record<string, string>;
 
       // Refresh token
       const tokenResponse = await fetch(ML_TOKEN_URL, {
