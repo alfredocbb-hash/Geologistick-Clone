@@ -31,6 +31,24 @@ export function parseQRCode(data: string): ParsedQR {
     };
   }
 
+  // Check for MercadoLibre Flex JSON format
+  // Format: {"id":"46071048441","sender_id":293662607,"hash_code":"...","security_digit":"0"}
+  if (trimmed.startsWith('{') && trimmed.includes('"id"')) {
+    try {
+      const jsonData = JSON.parse(trimmed);
+      // Verify it has a numeric id field (8+ digits)
+      if (jsonData.id && /^\d{8,}$/.test(String(jsonData.id))) {
+        return {
+          type: 'ml_shipment',
+          value: String(jsonData.id),
+          originalData: data
+        };
+      }
+    } catch {
+      // Not valid JSON, continue with other methods
+    }
+  }
+
   // Check for MercadoLibre format with ML: prefix
   if (/^ML:\d{8,}$/i.test(trimmed)) {
     return {
