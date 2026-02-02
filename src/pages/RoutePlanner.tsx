@@ -4,6 +4,7 @@ import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea
 import { supabase } from "@/integrations/supabase/client";
 import { parseDateString } from "@/lib/dateUtils";
 import { useAuth } from "@/lib/auth";
+import { usePersistedState, useClearPersistedState } from "@/hooks/usePersistedState";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -90,11 +91,13 @@ export default function RoutePlanner() {
   const queryClient = useQueryClient();
   
   const [activeTab, setActiveTab] = useState("crear");
-  const [selectedEnvios, setSelectedEnvios] = useState<string[]>([]);
-  const [selectedChofer, setSelectedChofer] = useState<string>("");
-  const [selectedVehiculo, setSelectedVehiculo] = useState<string>("");
-  const [routeDate, setRouteDate] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [routeStartTime, setRouteStartTime] = useState("09:00");
+  // Persist critical selections in sessionStorage to prevent data loss on tab switch
+  const [selectedEnvios, setSelectedEnvios] = usePersistedState<string[]>('planner-selected-envios', []);
+  const [selectedChofer, setSelectedChofer] = usePersistedState<string>('planner-selected-chofer', "");
+  const [selectedVehiculo, setSelectedVehiculo] = usePersistedState<string>('planner-selected-vehiculo', "");
+  const [routeDate, setRouteDate] = usePersistedState('planner-route-date', format(new Date(), "yyyy-MM-dd"));
+  const [routeStartTime, setRouteStartTime] = usePersistedState('planner-route-time', "09:00");
+  const clearPersistedState = useClearPersistedState('planner-selected-envios');
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [routeOptions, setRouteOptions] = useState<RouteOption[]>([]);
   const [selectedOption, setSelectedOption] = useState<RouteOption | null>(null);
@@ -794,6 +797,9 @@ export default function RoutePlanner() {
       setSelectedOption(null);
       setSelectedChofer("");
       setSelectedVehiculo("");
+      
+      // Clear persisted state after successful creation
+      clearPersistedState();
       
       setActiveTab("activas");
     },
