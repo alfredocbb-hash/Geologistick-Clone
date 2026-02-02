@@ -83,11 +83,17 @@ const TIPO_OPERACION = [
   { value: "cobro", label: "Cobro" },
 ];
 
+const METODOS_PAGO = [
+  { value: "destino", label: "Pago en Destino" },
+  { value: "contado", label: "Contado" },
+  { value: "cuenta_corriente", label: "Cuenta Corriente" },
+];
+
 interface ThirdPartyFormData {
   empresa_terciarizada: string;
   tracking_externo: string;
-  codigo_cliente_externo: string;
-  codigo_orden_externo: string;
+  whatsapp_destinatario: string;
+  tipo_pago: string;
   nombre_destinatario: string;
   direccion_entrega: string;
   ciudad_entrega: string;
@@ -108,8 +114,8 @@ interface TempShipment extends ThirdPartyFormData {
 const emptyForm: ThirdPartyFormData = {
   empresa_terciarizada: "",
   tracking_externo: "",
-  codigo_cliente_externo: "",
-  codigo_orden_externo: "",
+  whatsapp_destinatario: "",
+  tipo_pago: "destino",
   nombre_destinatario: "",
   direccion_entrega: "",
   ciudad_entrega: "",
@@ -261,8 +267,9 @@ export default function ThirdPartyShipmentsTab() {
           empresa_terciarizada_id: shipment.empresa_terciarizada,
           empresa_terciarizada: selectedEmpresa?.nombre || shipment.empresa_terciarizada,
           tracking_externo: shipment.tracking_externo,
-          codigo_cliente_externo: shipment.codigo_cliente_externo || null,
-          codigo_orden_externo: shipment.codigo_orden_externo || null,
+          whatsapp_destinatario: shipment.whatsapp_destinatario || null,
+          tipo_pago: shipment.tipo_pago || 'destino',
+          pago_contra_entrega: shipment.tipo_pago === 'destino',
           nombre_destinatario: shipment.nombre_destinatario,
           direccion_entrega: shipment.direccion_entrega,
           ciudad_entrega: shipment.ciudad_entrega,
@@ -425,23 +432,33 @@ export default function ThirdPartyShipmentsTab() {
             </div>
           </div>
 
-          {/* Client and Order codes */}
+          {/* Phone and Payment Method */}
           <div className="grid md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Código de Cliente</Label>
+              <Label>Teléfono del destinatario</Label>
               <Input
-                placeholder="Código de cliente externo"
-                value={formData.codigo_cliente_externo}
-                onChange={(e) => handleInputChange("codigo_cliente_externo", e.target.value)}
+                placeholder="Ej: 1155557777"
+                value={formData.whatsapp_destinatario}
+                onChange={(e) => handleInputChange("whatsapp_destinatario", e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label>Código de Orden</Label>
-              <Input
-                placeholder="Código de orden externo"
-                value={formData.codigo_orden_externo}
-                onChange={(e) => handleInputChange("codigo_orden_externo", e.target.value)}
-              />
+              <Label>Método de pago</Label>
+              <Select
+                value={formData.tipo_pago}
+                onValueChange={(value) => handleInputChange("tipo_pago", value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar método" />
+                </SelectTrigger>
+                <SelectContent>
+                  {METODOS_PAGO.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
