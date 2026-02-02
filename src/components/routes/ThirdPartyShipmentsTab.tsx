@@ -94,6 +94,8 @@ interface ThirdPartyFormData {
   tracking_externo: string;
   whatsapp_destinatario: string;
   tipo_pago: string;
+  precio_total: number;
+  cantidad_bultos: number;
   nombre_destinatario: string;
   direccion_entrega: string;
   ciudad_entrega: string;
@@ -116,6 +118,8 @@ const emptyForm: ThirdPartyFormData = {
   tracking_externo: "",
   whatsapp_destinatario: "",
   tipo_pago: "destino",
+  precio_total: 0,
+  cantidad_bultos: 1,
   nombre_destinatario: "",
   direccion_entrega: "",
   ciudad_entrega: "",
@@ -282,7 +286,8 @@ export default function ThirdPartyShipmentsTab() {
           duracion_estimada_minutos: shipment.duracion_estimada_minutos,
           notas: shipment.notas || null,
           estado: "pendiente",
-          precio_total: 0,
+          precio_total: shipment.precio_total || 0,
+          cantidad_bultos: shipment.cantidad_bultos || 1,
           sucursal_origen_id: profile?.sucursal_id,
           requiere_retiro: shipment.tipo_operacion === "retiro",
         })
@@ -432,8 +437,8 @@ export default function ThirdPartyShipmentsTab() {
             </div>
           </div>
 
-          {/* Phone and Payment Method */}
-          <div className="grid md:grid-cols-2 gap-4">
+          {/* Phone, Payment Method, Amount and Packages */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="space-y-2">
               <Label>Teléfono del destinatario</Label>
               <Input
@@ -459,6 +464,35 @@ export default function ThirdPartyShipmentsTab() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Importe ($)</Label>
+              <div className="relative">
+                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  className="pl-9"
+                  value={formData.precio_total || ""}
+                  onChange={(e) => handleInputChange("precio_total", parseFloat(e.target.value) || 0)}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Bultos</Label>
+              <div className="relative">
+                <Package className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="number"
+                  min="1"
+                  placeholder="1"
+                  className="pl-9"
+                  value={formData.cantidad_bultos || 1}
+                  onChange={(e) => handleInputChange("cantidad_bultos", parseInt(e.target.value) || 1)}
+                />
+              </div>
             </div>
           </div>
 
