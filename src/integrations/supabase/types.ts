@@ -920,6 +920,10 @@ export type Database = {
           horario_retiro: string | null
           id: string
           largo_cm: number | null
+          ml_last_sync_at: string | null
+          ml_order_id: number | null
+          ml_shipment_id: number | null
+          ml_sync_status: string | null
           nombre_destinatario: string | null
           nombre_remitente: string | null
           nombre_retira: string | null
@@ -1010,6 +1014,10 @@ export type Database = {
           horario_retiro?: string | null
           id?: string
           largo_cm?: number | null
+          ml_last_sync_at?: string | null
+          ml_order_id?: number | null
+          ml_shipment_id?: number | null
+          ml_sync_status?: string | null
           nombre_destinatario?: string | null
           nombre_remitente?: string | null
           nombre_retira?: string | null
@@ -1100,6 +1108,10 @@ export type Database = {
           horario_retiro?: string | null
           id?: string
           largo_cm?: number | null
+          ml_last_sync_at?: string | null
+          ml_order_id?: number | null
+          ml_shipment_id?: number | null
+          ml_sync_status?: string | null
           nombre_destinatario?: string | null
           nombre_remitente?: string | null
           nombre_retira?: string | null
@@ -1896,6 +1908,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      ml_status_mapping: {
+        Row: {
+          created_at: string | null
+          descripcion: string | null
+          estado_interno: string
+          id: string
+          ml_status: string
+          ml_substatus: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          descripcion?: string | null
+          estado_interno: string
+          id?: string
+          ml_status: string
+          ml_substatus?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          descripcion?: string | null
+          estado_interno?: string
+          id?: string
+          ml_status?: string
+          ml_substatus?: string | null
+        }
+        Relationships: []
       }
       movimientos_caja: {
         Row: {
