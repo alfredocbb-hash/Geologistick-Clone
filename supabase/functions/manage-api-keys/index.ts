@@ -5,10 +5,21 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-async function sha256(message: string): Promise<string> {
-  const msgBuffer = new TextEncoder().encode(message);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
+async function hmacSha256(message: string, secret: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(secret);
+  const messageData = encoder.encode(message);
+  
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
+  const hashArray = Array.from(new Uint8Array(signature));
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
@@ -31,6 +42,15 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const hmacSecret = Deno.env.get('API_KEY_HMAC_SECRET');
+    
+    if (!hmacSecret) {
+      console.error('API_KEY_HMAC_SECRET not configured');
+      return new Response(
+        JSON.stringify({ error: 'Server configuration error' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
     
     // Create service role client for database operations
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
@@ -102,7 +122,9 @@ Deno.serve(async (req) => {
       // Generate API key
       const apiKey = generateApiKey();
       const prefix = apiKey.substring(0, 7) + '...' + apiKey.slice(-4);
-      const hash = await sha256(apiKey);
+      
+      // Use HMAC-SHA256 for secure hashing
+      const hash = await hmacSha256(apiKey, hmacSecret);
 
       // Store in database
       const { data: insertedKey, error: insertError } = await supabaseAdmin
@@ -126,7 +148,7 @@ Deno.serve(async (req) => {
         );
       }
 
-      console.log(`API key generated for tenant ${tenant_id} by user ${user.id}`);
+      console.log(`API key generated with HMAC-SHA256 for tenant ${tenant_id} by user ${user.id}`);
 
       return new Response(
         JSON.stringify({
