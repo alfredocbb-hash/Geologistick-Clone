@@ -1,143 +1,150 @@
 
 
-# Plan: Agregar Campos de Importe y Bultos a Envío Terciarizado
+# Plan: Fortalecer Seguridad de API Keys con HMAC-SHA256
 
 ## Resumen
 
-Agregaré dos campos faltantes al formulario de Envío Terciarizado:
-1. **Importe ($)** - Precio total del envío
-2. **Cantidad de Bultos** - Número de paquetes/bultos
+Actualizaré el sistema de API Keys para usar HMAC-SHA256 en lugar de SHA-256 simple. Esto agrega una capa de seguridad: incluso si un atacante obtiene acceso a los hashes en la base de datos, no podrá crackearlos sin conocer el secreto HMAC.
 
 ---
 
-## Cambios a Realizar
+## Pasos a Realizar
 
-### Archivo: `src/components/routes/ThirdPartyShipmentsTab.tsx`
+### Paso 1: Agregar el Secreto HMAC
 
-**1. Actualizar la interfaz `ThirdPartyFormData`**
+Agregaré el secreto que generaste (`3896fbea9e976df0a746b92324508fa65e2cadc1366023137afc3bf9e554bea2`) como variable de entorno en el backend.
 
-Agregar los campos faltantes:
+### Paso 2: Actualizar Edge Function `manage-api-keys`
+
+**Archivo:** `supabase/functions/manage-api-keys/index.ts`
+
+Cambiar la función `sha256()` por `hmacSha256()`:
+
 ```typescript
-interface ThirdPartyFormData {
-  // ... campos existentes
-  precio_total: number;   // NUEVO
-  cantidad_bultos: number; // NUEVO
+// ANTES (vulnerable a fuerza bruta)
+async function sha256(message: string): Promise<string> {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  // ...
+}
+
+// DESPUES (protegido con secreto)
+async function hmacSha256(message: string, secret: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(secret);
+  const messageData = encoder.encode(message);
+  
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
+  return Array.from(new Uint8Array(signature))
+    .map(b => b.toString(16).padStart(2, '0')).join('');
 }
 ```
 
-**2. Actualizar el objeto `emptyForm`**
+### Paso 3: Actualizar Función de Base de Datos `validate_api_key`
 
-```typescript
-const emptyForm: ThirdPartyFormData = {
-  // ... campos existentes
-  precio_total: 0,
-  cantidad_bultos: 1,  // Por defecto 1 bulto
-};
-```
+**Migración SQL:**
 
-**3. Reorganizar el formulario**
+PostgreSQL tiene `pgcrypto` con `hmac()`. Actualizaré la función para usar HMAC:
 
-Cambiaré la fila de Teléfono + Método de pago de 2 columnas a 4 columnas para incluir Importe y Bultos:
-
-```text
-┌────────────────────────────────────────────────────────────────────────────────┐
-│ Teléfono destino    │ Método de pago     │ Importe ($)    │ Bultos           │
-│ [1155557777      ]  │ [Pago en Dest. ▾]  │ [$ 2500.00  ]  │ [1           ]   │
-└────────────────────────────────────────────────────────────────────────────────┘
-```
-
-**4. Actualizar la mutación `createShipmentMutation`**
-
-```typescript
-// Cambiar de:
-precio_total: 0,
-
-// A:
-precio_total: shipment.precio_total || 0,
-cantidad_bultos: shipment.cantidad_bultos || 1,
-```
-
-**5. Agregar ícono de importación**
-
-```typescript
-import { DollarSign, Package } from "lucide-react";
-```
-
----
-
-## Resultado Visual del Formulario
-
-```text
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│ 📦 Agregar Envío Terciarizado                                                   │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│ Empresa Terciarizada *              │ Tracking Externo *                        │
-│ [MD CARGAS (MD)                 ▾]  │ [R-349-5686                           ]   │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│ Teléfono destino  │ Método de pago      │ Importe ($)     │ Bultos            │
-│ [1155557777    ]  │ [Pago en Destino ▾] │ [$ 2500.00   ]  │ [1            ]   │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│ Nombre Destinatario/Cliente *                                                   │
-│ [SANDRA CORBELLI                                                            ]   │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│ ... resto del formulario ...                                                    │
-└─────────────────────────────────────────────────────────────────────────────────┘
+```sql
+CREATE OR REPLACE FUNCTION public.validate_api_key(p_api_key text)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tenant_id UUID;
+  v_key_id UUID;
+  v_expected_hash TEXT;
+  v_computed_hash TEXT;
+  v_hashes_match BOOLEAN;
+  v_prefix TEXT;
+  v_hmac_secret TEXT;
+BEGIN
+  -- Get HMAC secret from vault
+  v_hmac_secret := current_setting('app.hmac_secret', true);
+  
+  -- Fallback for backward compatibility
+  IF v_hmac_secret IS NULL OR v_hmac_secret = '' THEN
+    v_computed_hash := encode(sha256(p_api_key::bytea), 'hex');
+  ELSE
+    v_computed_hash := encode(
+      hmac(p_api_key::bytea, v_hmac_secret::bytea, 'sha256'), 
+      'hex'
+    );
+  END IF;
+  
+  -- ... resto de la lógica igual
+END;
+$function$;
 ```
 
 ---
 
-## Sección Tecnica
+## Compatibilidad con Keys Existentes
 
-### Componentes de los Nuevos Campos
+Las API Keys existentes usan SHA-256 simple. El plan incluye:
 
-**Campo de Importe:**
-```typescript
-<div className="space-y-2">
-  <Label>Importe ($)</Label>
-  <div className="relative">
-    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-    <Input
-      type="number"
-      min="0"
-      step="0.01"
-      placeholder="0.00"
-      className="pl-9"
-      value={formData.precio_total || ""}
-      onChange={(e) => handleInputChange("precio_total", parseFloat(e.target.value) || 0)}
-    />
-  </div>
-</div>
+1. **Período de transición**: La función de validación intentará primero con HMAC, y si falla, con SHA-256 simple
+2. **Nuevas keys**: Todas las nuevas keys usarán HMAC-SHA256
+3. **Migración gradual**: Los usuarios pueden regenerar sus keys para obtener la protección HMAC
+
+---
+
+## Arquitectura de Seguridad
+
+```text
+┌──────────────────────────────────────────────────────────────────┐
+│                     FLUJO DE GENERACIÓN                          │
+├──────────────────────────────────────────────────────────────────┤
+│  1. Usuario solicita nueva API Key                               │
+│                    ↓                                             │
+│  2. Edge Function genera: tk_randomBase64String                  │
+│                    ↓                                             │
+│  3. Calcula HMAC: hmac(api_key, HMAC_SECRET)                    │
+│                    ↓                                             │
+│  4. Guarda en DB: { prefix: "tk_xxxx...yyyy", hash: hmac_hash } │
+│                    ↓                                             │
+│  5. Retorna API Key al usuario (única vez)                       │
+└──────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│                     FLUJO DE VALIDACIÓN                          │
+├──────────────────────────────────────────────────────────────────┤
+│  1. Request llega con header: x-api-key: tk_xxxxx...             │
+│                    ↓                                             │
+│  2. DB Function calcula: hmac(api_key, HMAC_SECRET)              │
+│                    ↓                                             │
+│  3. Compara con hash almacenado (constant-time)                  │
+│                    ↓                                             │
+│  4. Si coincide → retorna tenant_id                              │
+│     Si no → retorna NULL                                         │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-**Campo de Bultos:**
-```typescript
-<div className="space-y-2">
-  <Label>Bultos</Label>
-  <div className="relative">
-    <Package className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-    <Input
-      type="number"
-      min="1"
-      placeholder="1"
-      className="pl-9"
-      value={formData.cantidad_bultos || 1}
-      onChange={(e) => handleInputChange("cantidad_bultos", parseInt(e.target.value) || 1)}
-    />
-  </div>
-</div>
-```
+---
 
-### Impacto en Cuenta Corriente
+## Beneficios de Seguridad
 
-El campo `precio_total` ya está siendo usado en la lógica de cuenta corriente (linea ~296-303), por lo que al capturar el importe real, los cargos se registrarán correctamente.
+| Aspecto | SHA-256 (actual) | HMAC-SHA256 (propuesto) |
+|---------|------------------|-------------------------|
+| Ataque offline | Vulnerable | Protegido |
+| Rainbow tables | Vulnerable | Inútiles sin secreto |
+| Brute force | Posible | Imposible sin secreto |
+| DB leak | Expone hashes crackeables | Hashes inútiles |
 
-### Grid Responsive
+---
 
-El grid usara `grid-cols-2 md:grid-cols-4` para que en movil se vea en 2 columnas y en desktop en 4.
-
-### Archivos Modificados
+## Archivos a Modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/components/routes/ThirdPartyShipmentsTab.tsx` | Agregar campos de importe y bultos |
+| Secreto HMAC | Agregar `API_KEY_HMAC_SECRET` |
+| `supabase/functions/manage-api-keys/index.ts` | Usar HMAC-SHA256 |
+| Nueva migración SQL | Actualizar `validate_api_key` con HMAC |
 
