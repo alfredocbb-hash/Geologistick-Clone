@@ -1,124 +1,125 @@
 
-
-# Plan: Agregar MercadoLibre a la Página de Integraciones
+# Plan: Modificar Campos en Agregar Envío Terciarizado
 
 ## Resumen
 
-Agregaré la configuración de MercadoLibre a la página de integraciones existente (`/admin/integrations`) para que puedas configurar las credenciales de tu aplicación de MercadoLibre (Client ID y Client Secret) directamente desde el panel de administración.
+Modificar el formulario de Envío Terciarizado para reemplazar dos campos que no se utilizan por información más relevante para la operación:
+
+| Campo Actual | Nuevo Campo |
+|--------------|-------------|
+| Código de Cliente | Teléfono del destinatario |
+| Código de Orden | Método de pago (selector) |
 
 ---
 
 ## Cambios a Realizar
 
-### Archivo: `src/pages/IntegrationSettings.tsx`
+### Archivo: `src/components/routes/ThirdPartyShipmentsTab.tsx`
 
-**1. Actualizar el tipo `IntegrationType`**
+**1. Actualizar la interfaz `ThirdPartyFormData`**
 
-Agregar `'mercadolibre'` a la lista de tipos de integración:
-
+Reemplazar los campos:
 ```typescript
-type IntegrationType = 'mercado_pago' | 'google_maps' | 'whatsapp' | 'email_smtp' | 'sms' | 'arca' | 'tiendanube' | 'mercadolibre';
+// Antes:
+codigo_cliente_externo: string;
+codigo_orden_externo: string;
+
+// Después:
+whatsapp_destinatario: string;
+tipo_pago: string;
 ```
 
-**2. Agregar configuración de MercadoLibre al objeto `INTEGRATIONS_CONFIG`**
+**2. Actualizar el objeto `emptyForm`**
 
 ```typescript
-mercadolibre: {
-  name: 'MercadoLibre',
-  description: 'Integración con Mercado Envíos Flex para sincronizar pedidos',
-  icon: Package, // Icono de paquete
-  docsUrl: 'https://developers.mercadolibre.com.ar/es_ar/api-docs-es',
-  webhookUrl: '/functions/v1/mercadolibre-webhook',
-  fields: [
-    { 
-      key: 'client_id', 
-      label: 'Client ID (APP_ID)', 
-      placeholder: '1234567890123456', 
-      type: 'text', 
-      required: true, 
-      helpText: 'ID de tu aplicación en el Portal de Desarrolladores de MercadoLibre' 
-    },
-    { 
-      key: 'client_secret', 
-      label: 'Client Secret', 
-      placeholder: 'Tu Client Secret', 
-      type: 'password', 
-      required: true, 
-      helpText: 'Secret Key de tu aplicación de MercadoLibre' 
-    },
-  ],
-},
+// Antes:
+codigo_cliente_externo: "",
+codigo_orden_externo: "",
+
+// Después:
+whatsapp_destinatario: "",
+tipo_pago: "destino", // Valor por defecto
 ```
 
-**3. Agregar importación del ícono**
+**3. Modificar el formulario en la UI (líneas 428-446)**
 
+Reemplazar los dos campos de Input por:
+
+**Campo 1 - Teléfono del destinatario:**
+- Label: "Teléfono del destinatario"
+- Tipo: Input de texto
+- Placeholder: "Ej: 1155557777"
+- Almacena en: `whatsapp_destinatario`
+
+**Campo 2 - Método de pago:**
+- Label: "Método de pago"
+- Tipo: Select (dropdown)
+- Opciones:
+  - `destino` → "Pago en Destino"
+  - `contado` → "Contado"
+  - `cuenta_corriente` → "Cuenta Corriente"
+- Almacena en: `tipo_pago`
+
+**4. Actualizar la mutación `createShipmentMutation`**
+
+Cambiar los campos insertados en la base de datos:
 ```typescript
-import { Package } from 'lucide-react';
+// Antes:
+codigo_cliente_externo: shipment.codigo_cliente_externo || null,
+codigo_orden_externo: shipment.codigo_orden_externo || null,
+
+// Después:
+whatsapp_destinatario: shipment.whatsapp_destinatario || null,
+tipo_pago: shipment.tipo_pago || 'destino',
+pago_contra_entrega: shipment.tipo_pago === 'destino',
 ```
 
-**4. Actualizar el grid de tabs**
-
-Cambiar de `grid-cols-7` a `grid-cols-8` para acomodar la nueva pestaña.
+La lógica `pago_contra_entrega = true` cuando `tipo_pago === 'destino'` es consistente con el comportamiento existente en `NewShipment.tsx`.
 
 ---
 
 ## Resultado Visual
 
-La página de integraciones mostrará una nueva pestaña "MercadoLibre" con:
-
 ```text
 ┌─────────────────────────────────────────────────────────────────┐
-│  📦 MercadoLibre                                                 │
-│  Integración con Mercado Envíos Flex para sincronizar pedidos   │
-│                                                                  │
-│  Estado: [Switch] Activo ✅                                      │
+│ 📦 Agregar Envío Terciarizado                                   │
 ├─────────────────────────────────────────────────────────────────┤
-│  Entorno: [🧪 Sandbox] [🚀 Production]                          │
+│ Empresa Terciarizada *          │ Tracking Externo *            │
+│ [MD CARGAS (MD)            ▾]   │ [R-349-5686               ]   │
 ├─────────────────────────────────────────────────────────────────┤
-│  Client ID (APP_ID) *                                           │
-│  [____________________________________]                          │
-│  ID de tu aplicación en el Portal de Desarrolladores           │
-│                                                                  │
-│  Client Secret *                                                 │
-│  [____________________________________] 👁                       │
-│  Secret Key de tu aplicación de MercadoLibre                    │
+│ Teléfono del destinatario       │ Método de pago                │
+│ [1155557777                 ]   │ [Pago en Destino          ▾]  │
+│                                 │  ├─ Pago en Destino           │
+│                                 │  ├─ Contado                   │
+│                                 │  └─ Cuenta Corriente          │
 ├─────────────────────────────────────────────────────────────────┤
-│  URL para Webhooks:                                              │
-│  https://uhlgimnmfifmrxraorrl.supabase.co/functions/v1/...  📋 │
-│  Configura esta URL en el panel de MercadoLibre                 │
-├─────────────────────────────────────────────────────────────────┤
-│  🔗 Ver documentación de MercadoLibre                           │
-│                                                                  │
-│                          [💾 Guardar Configuración]              │
+│ Nombre Destinatario/Cliente *                                   │
+│ [SANDRA CORBELLI                                            ]   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Flujo de Configuración
-
-1. El admin va a `/admin/integrations`
-2. Selecciona la pestaña "MercadoLibre"
-3. Ingresa el Client ID y Client Secret de su app de ML
-4. Selecciona el entorno (Sandbox para pruebas, Production para real)
-5. Guarda la configuración
-6. Copia la URL del webhook y la configura en el Portal de Desarrolladores de ML
-7. Los vendedores ya pueden conectar sus cuentas desde la sección de Sellers
-
----
-
 ## Sección Técnica
 
-### Compatibilidad con Edge Functions
+### Constantes para Método de Pago
 
-Las Edge Functions (`mercadolibre-oauth`, `mercadolibre-webhook`) ya están configuradas para buscar las credenciales en `system_integrations` con:
-- `integration_type = 'mercadolibre'`
-- `config_key` = `'client_id'` o `'client_secret'`
-- Filtrado por `tenant_id`
+Se agregará una constante para las opciones de método de pago, similar a las existentes:
+
+```typescript
+const METODOS_PAGO = [
+  { value: "destino", label: "Pago en Destino" },
+  { value: "contado", label: "Contado" },
+  { value: "cuenta_corriente", label: "Cuenta Corriente" },
+];
+```
+
+### Impacto en Otros Componentes
+
+Los campos `codigo_cliente_externo` y `codigo_orden_externo` seguirán existiendo en la base de datos y se pueden usar en otros contextos (importación CSV, etc.). Este cambio solo afecta al formulario de terciarizados.
 
 ### Archivos Modificados
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/pages/IntegrationSettings.tsx` | Agregar tipo y config de MercadoLibre |
-
+| `src/components/routes/ThirdPartyShipmentsTab.tsx` | Reemplazar campos del formulario |
