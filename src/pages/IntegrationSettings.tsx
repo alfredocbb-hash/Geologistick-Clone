@@ -25,10 +25,11 @@ import {
   Copy,
   ExternalLink,
   FileText,
-  Store
+  Store,
+  Package
 } from 'lucide-react';
 
-type IntegrationType = 'mercado_pago' | 'google_maps' | 'whatsapp' | 'email_smtp' | 'sms' | 'arca' | 'tiendanube';
+type IntegrationType = 'mercado_pago' | 'google_maps' | 'whatsapp' | 'email_smtp' | 'sms' | 'arca' | 'tiendanube' | 'mercadolibre';
 type IntegrationEnvironment = 'sandbox' | 'production';
 
 interface IntegrationConfig {
@@ -134,6 +135,17 @@ const INTEGRATIONS_CONFIG: Record<IntegrationType, {
     fields: [
       { key: 'client_id', label: 'Client ID', placeholder: 'Tu Client ID de Tiendanube', type: 'text', required: true, helpText: 'ID de la aplicación creada en Tiendanube Partners' },
       { key: 'client_secret', label: 'Client Secret', placeholder: 'Tu Client Secret', type: 'password', required: true, helpText: 'Secret de la aplicación de Tiendanube' },
+    ],
+  },
+  mercadolibre: {
+    name: 'MercadoLibre',
+    description: 'Integración con Mercado Envíos Flex para sincronizar pedidos',
+    icon: Package,
+    docsUrl: 'https://developers.mercadolibre.com.ar/es_ar/api-docs-es',
+    webhookUrl: '/functions/v1/mercadolibre-webhook',
+    fields: [
+      { key: 'client_id', label: 'Client ID (APP_ID)', placeholder: '1234567890123456', type: 'text', required: true, helpText: 'ID de tu aplicación en el Portal de Desarrolladores de MercadoLibre' },
+      { key: 'client_secret', label: 'Client Secret', placeholder: 'Tu Client Secret', type: 'password', required: true, helpText: 'Secret Key de tu aplicación de MercadoLibre' },
     ],
   },
 };
@@ -307,7 +319,7 @@ export default function IntegrationSettings() {
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as IntegrationType)}>
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList className="grid w-full grid-cols-8">
           {(Object.entries(INTEGRATIONS_CONFIG) as [IntegrationType, typeof INTEGRATIONS_CONFIG[IntegrationType]][]).map(([key, config]) => {
             const Icon = config.icon;
             const configured = configs && Object.keys(configs).length > 0;
