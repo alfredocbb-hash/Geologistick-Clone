@@ -1,191 +1,244 @@
 
-# Plan: Auto-Registro de Envios ML Flex al Escanear
+# Plan: Sincronización de Estados E-Commerce y Mejora del Flujo de Registro Flex
 
-## Problema Identificado
+## Resumen de Problemas Identificados
 
-Cuando se escanea un QR de MercadoLibre Flex y el envio no existe en la base de datos, el sistema muestra "Envio ML no encontrado" sin ofrecer la opcion de registrarlo automaticamente.
+### 1. Estados de pedidos e-commerce no se actualizan
+Cuando un envío cambia de estado (`entregado`, `recogido`, etc.), el `fulfillment_status` del `ecommerce_order` asociado **no se sincroniza**. Esto ocurre porque:
+- `DeliveryConfirmation.tsx` actualiza solo la tabla `envios` sin actualizar `ecommerce_orders`
+- `PickupConfirmation.tsx` no sincroniza el estado del pedido
+- No existe un trigger ni lógica de sincronización automática
 
-### Datos del QR escaneado
-El QR contiene JSON con la estructura:
-```json
+### 2. Sucursal origen no refleja quién hizo el pickup
+El `register-ml-shipment` no asigna el campo `sucursal_origen_id` cuando crea el envío. Este debería ser la sucursal del usuario que escanea/registra el paquete (ej: "Administración").
+
+### 3. Flujo incompleto desde e-commerce a Planificador
+Actualmente para enviar pedidos al Planificador hay que:
+1. Ir a Pedidos e-commerce
+2. Crear envío individual desde cada orden
+3. Ir manualmente al Planificador
+
+**Flujo deseado**: Seleccionar múltiples órdenes con envío ya creado y enviarlas directamente al Planificador con un botón.
+
+---
+
+## Solución Propuesta
+
+### Parte 1: Sincronización automática de estados
+
+Crear un **Database Trigger** que sincronice automáticamente el `fulfillment_status` de `ecommerce_orders` cuando cambie el `estado` de un `envio` vinculado.
+
+**Mapeo de estados:**
+| Estado envío | fulfillment_status | order_status |
+|--------------|-------------------|--------------|
+| pendiente | pending | - |
+| recogido | processing | shipped |
+| en_transito | shipped | shipped |
+| en_reparto | shipped | shipped |
+| entregado | delivered | delivered |
+| devuelto | pending | - |
+| cancelado | cancelled | cancelled |
+
+**Trigger SQL:**
+```sql
+CREATE OR REPLACE FUNCTION sync_ecommerce_order_status()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.estado IS DISTINCT FROM OLD.estado THEN
+    UPDATE ecommerce_orders
+    SET 
+      fulfillment_status = CASE NEW.estado
+        WHEN 'pendiente' THEN 'pending'
+        WHEN 'recogido' THEN 'processing'
+        WHEN 'en_bodega' THEN 'processing'
+        WHEN 'en_transito' THEN 'shipped'
+        WHEN 'en_reparto' THEN 'shipped'
+        WHEN 'entregado' THEN 'delivered'
+        WHEN 'devuelto' THEN 'pending'
+        WHEN 'cancelado' THEN COALESCE(fulfillment_status, 'pending')
+        ELSE fulfillment_status
+      END,
+      order_status = CASE NEW.estado
+        WHEN 'recogido' THEN 'shipped'
+        WHEN 'en_transito' THEN 'shipped'
+        WHEN 'entregado' THEN 'delivered'
+        WHEN 'cancelado' THEN 'cancelled'
+        ELSE order_status
+      END,
+      updated_at = now()
+    WHERE envio_id = NEW.id;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_sync_ecommerce_order_status
+AFTER UPDATE OF estado ON envios
+FOR EACH ROW
+EXECUTE FUNCTION sync_ecommerce_order_status();
+```
+
+---
+
+### Parte 2: Asignar sucursal origen en registro ML
+
+Modificar `supabase/functions/register-ml-shipment/index.ts` para:
+
+1. Recibir opcionalmente el `user_id` del usuario que escanea
+2. Buscar la `sucursal_id` del perfil del usuario
+3. Asignar `sucursal_origen_id` al crear el envío
+
+**Cambios en la Edge Function:**
+```typescript
+// Recibir user_id opcionalmente
+const { ml_shipment_id, sender_id, user_id }: RegisterRequest = await req.json();
+
+// Si hay user_id, obtener su sucursal
+let sucursalOrigenId = null;
+if (user_id) {
+  const { data: userProfile } = await supabase
+    .from('profiles')
+    .select('sucursal_id')
+    .eq('user_id', user_id)
+    .single();
+  
+  if (userProfile?.sucursal_id) {
+    sucursalOrigenId = userProfile.sucursal_id;
+  }
+}
+
+// Alternativa: usar sucursal_pickup_id del seller
+if (!sucursalOrigenId && seller.sucursal_pickup_id) {
+  sucursalOrigenId = seller.sucursal_pickup_id;
+}
+
+// Incluir en el insert del envío
 {
-  "id": "46389045746",      // <-- ML Shipment ID
-  "sender_id": 293662607,   // <-- store_id del seller (FULLIMPORT)
-  "hash_code": "...",
-  "security_digit": "0"
+  ...
+  sucursal_origen_id: sucursalOrigenId,
+  ...
 }
 ```
 
-El seller "FULLIMPORT" (store_id: 293662607) esta registrado en el sistema con token valido, pero el envio nunca fue sincronizado (ni por webhook ni manualmente).
+**Cambios en los componentes de escaneo:**
+- `ScanQR.tsx` y `MobileScanTab.tsx` deben enviar el `user?.id` al invocar `register-ml-shipment`
 
 ---
 
-## Solucion Propuesta
+### Parte 3: Botón "Enviar al Planificador" en Pedidos E-Commerce
 
-Modificar el flujo de escaneo para que cuando un envio ML no se encuentre:
-1. Extraer el `sender_id` del QR JSON para identificar al seller
-2. Mostrar un dialogo preguntando si desea registrar el envio
-3. Llamar a una nueva edge function que consulte la API de ML y cree el envio
+Modificar `src/pages/ecommerce/Orders.tsx` para agregar:
 
----
+1. Un botón "Enviar al Planificador" cuando hay órdenes seleccionadas con envío creado
+2. Navegación al Planificador con los `envio_id` preseleccionados
 
-## Cambios Tecnicos
-
-### 1. Actualizar QR Parser para extraer sender_id
-
-**Archivo**: `src/lib/qrParser.ts`
-
-El parser ya detecta ML JSON, pero necesita retornar tambien el `sender_id`:
-
-```typescript
-export interface ParsedQR {
-  type: 'tracking' | 'route_sheet' | 'ml_shipment' | 'unknown';
-  value: string;
-  originalData: string;
-  mlSenderId?: string; // Nuevo campo
-}
+**Flujo:**
+```text
+Usuario selecciona órdenes con envío
+        |
+        v
+Click "Enviar al Planificador"
+        |
+        v
+Navega a /route-planner?envios=id1,id2,id3
+        |
+        v
+Planificador precarga esos envíos seleccionados
 ```
 
+**Cambios en Orders.tsx:**
+```tsx
+// Nuevo botón junto al existente
+{selectedOrders.length > 0 && (
+  <div className="flex gap-2">
+    {/* Botón existente para crear envíos */}
+    <Button onClick={handleCreateShipments}>
+      <Truck className="mr-2 h-4 w-4" />
+      Crear Envíos
+    </Button>
+    
+    {/* NUEVO: Botón para enviar al planificador */}
+    <Button 
+      variant="outline"
+      onClick={() => {
+        const envioIds = filteredOrders
+          ?.filter(o => selectedOrders.includes(o.id) && o.envio_id)
+          .map(o => o.envio_id);
+        
+        if (envioIds?.length === 0) {
+          toast({ title: 'Sin envíos', description: 'Las órdenes seleccionadas no tienen envío creado' });
+          return;
+        }
+        
+        navigate(`/route-planner?envios=${envioIds.join(',')}`);
+      }}
+    >
+      <MapPin className="mr-2 h-4 w-4" />
+      Enviar al Planificador ({ordersWithShipment.length})
+    </Button>
+  </div>
+)}
+```
+
+**Cambios en RoutePlanner.tsx:**
+- Leer parámetro `envios` de la URL
+- Preseleccionar esos envíos al cargar la página
+
 ---
 
-### 2. Nueva Edge Function: register-ml-shipment
+## Archivos a Modificar
 
-**Archivo**: `supabase/functions/register-ml-shipment/index.ts`
-
-Esta funcion recibe un `ml_shipment_id` y `sender_id`:
-
-1. Busca el seller por `store_id = sender_id`
-2. Obtiene el access_token valido (refresh si es necesario)
-3. Consulta `GET /shipments/{ml_shipment_id}` en la API de ML
-4. Verifica que sea tipo `self_service` (Flex)
-5. Crea el `ecommerce_order` y el `envio` con el ml_shipment_id original
-6. Registra el cargo en cuenta corriente si corresponde
-7. Retorna el envio creado
-
----
-
-### 3. Actualizar ScanQR.tsx y MobileScanTab.tsx
-
-Modificar la funcion `searchShipmentByML` para que cuando no encuentre el envio:
-
-1. Muestre un dialogo preguntando: "Envio ML no registrado. Desea registrarlo ahora?"
-2. Si el usuario acepta, llame a `register-ml-shipment`
-3. Al completarse, muestre el dialogo de ML Delivery con el envio creado
-
----
-
-### 4. Nuevo Componente: MLRegisterDialog
-
-**Archivo**: `src/components/scan/MLRegisterDialog.tsx`
-
-Dialogo que muestra:
-- "Este envio de MercadoLibre no esta registrado"
-- Shipment ID: 46389045746
-- Seller detectado: FULLIMPORT (si se encuentra)
-- Boton "Registrar Envio" que invoca la edge function
-- Estado de carga mientras se procesa
-
----
-
-## Archivos a Crear/Modificar
-
-| Archivo | Accion |
+| Archivo | Cambio |
 |---------|--------|
-| `src/lib/qrParser.ts` | MODIFICAR - Extraer y retornar sender_id |
-| `supabase/functions/register-ml-shipment/index.ts` | CREAR - Nueva edge function |
-| `src/components/scan/MLRegisterDialog.tsx` | CREAR - Dialogo de registro |
-| `src/pages/ScanQR.tsx` | MODIFICAR - Integrar dialogo de registro |
-| `src/components/mobile/MobileScanTab.tsx` | MODIFICAR - Integrar dialogo de registro |
-| `supabase/config.toml` | MODIFICAR - Registrar nueva function |
+| **Migración SQL** | Crear trigger `sync_ecommerce_order_status` |
+| `supabase/functions/register-ml-shipment/index.ts` | Agregar `user_id` y asignar `sucursal_origen_id` |
+| `src/pages/ScanQR.tsx` | Enviar `user?.id` al invocar la función |
+| `src/components/mobile/MobileScanTab.tsx` | Enviar `user?.id` al invocar la función |
+| `src/components/scan/MLRegisterDialog.tsx` | Pasar `userId` como prop y enviarlo |
+| `src/pages/ecommerce/Orders.tsx` | Agregar botón "Enviar al Planificador" |
+| `src/pages/RoutePlanner.tsx` | Leer y preseleccionar envíos desde URL |
 
 ---
 
-## Flujo de Usuario
+## Flujo Optimizado de Pickup Flex
 
 ```text
-Usuario escanea QR de ML Flex
+Chofer/Administración escanea QR ML Flex
         |
         v
-parseQRCode() detecta JSON ML
-  -> type: 'ml_shipment'
-  -> value: '46389045746'
-  -> mlSenderId: '293662607'
+No existe -> Mostrar MLRegisterDialog
         |
         v
-Busca en envios por ml_shipment_id
+Click "Registrar" -> register-ml-shipment
+  - Crea envío con sucursal_origen_id del usuario
+  - Crea ecommerce_order vinculado
         |
-    ┌───┴───┐
-    |       |
- Existe   No existe
-    |       |
-    v       v
-MLDelivery  MLRegisterDialog
-  Dialog    "Desea registrar?"
-                |
-            [Registrar]
-                |
-                v
-    register-ml-shipment()
-                |
-                v
-    Crea envio con datos de ML API
-                |
-                v
-    Toast: "Envio registrado"
-                |
-                v
-    Muestra MLDeliveryDialog
+        v
+Éxito -> Opciones:
+  1. "Seguir Escaneando" (pickup rápido)
+  2. "Ir al Planificador" (asignar chofer)
+        |
+        v
+Repetir para todos los paquetes Flex
+        |
+        v
+Desde Pedidos E-Commerce:
+  - Ver todos con envío creado
+  - Seleccionar múltiples
+  - Click "Enviar al Planificador"
+        |
+        v
+Planificador muestra envíos preseleccionados
+        |
+        v
+Asignar a chofer y crear ruta
 ```
 
 ---
 
-## API de MercadoLibre Utilizada
+## Notas Técnicas
 
-```text
-GET https://api.mercadolibre.com/shipments/{shipment_id}
-
-Headers:
-  Authorization: Bearer {access_token}
-
-Respuesta incluye:
-- id (shipment_id)
-- order_id
-- status
-- logistic_type (debe ser "self_service")
-- receiver_address (nombre, direccion, telefono)
-- shipping_cost
-```
-
----
-
-## Logica de la Edge Function
-
-```typescript
-// register-ml-shipment/index.ts (pseudocodigo)
-
-1. Recibir { ml_shipment_id, sender_id } del body
-2. Buscar seller: WHERE store_id = sender_id AND plataforma = 'mercadolibre'
-3. Si no existe: return error "Seller no encontrado"
-4. Obtener access_token valido (refresh si vencido)
-5. GET /shipments/{ml_shipment_id}
-6. Verificar logistic_type === 'self_service'
-7. Verificar status (debe ser ready_to_ship o shipped)
-8. Crear ecommerce_order
-9. Crear envio con:
-   - ml_shipment_id = shipment.id (EL ORIGINAL)
-   - tracking_number = generado
-   - estado = 'pendiente'
-   - datos del receiver_address
-10. Registrar cargo en cuenta corriente
-11. Retornar { envio, tracking_number }
-```
-
----
-
-## Consideraciones Importantes
-
-1. **ML Shipment ID Original**: El envio se crea con el `ml_shipment_id` exacto del QR, NO se genera uno nuevo
-2. **Seller Correcto**: Se usa el `sender_id` del QR JSON para identificar al seller (en este caso FULLIMPORT, no Pablo Gauna)
-3. **Validacion**: Solo se registran envios tipo Flex (logistic_type = self_service)
-4. **Sin Autenticacion de Usuario**: La edge function usa service_role_key ya que puede ser invocada sin usuario logueado desde el escaneo
-5. **Cuenta Corriente**: El cargo se registra automaticamente si el seller tiene tarifa asignada
+1. **Trigger vs Código**: Usar trigger de base de datos garantiza sincronización incluso para cambios directos en la DB o desde Edge Functions
+2. **Retrocompatibilidad**: El trigger solo se ejecuta en UPDATE, no afecta datos existentes
+3. **Performance**: El trigger es ligero, solo actualiza una fila por cambio de estado
+4. **Sucursal origen**: Si no hay usuario ni sucursal de pickup del seller, el campo queda null (comportamiento actual)
