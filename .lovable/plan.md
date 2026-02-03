@@ -1,188 +1,132 @@
 
-# Plan: Sincronización de Estados E-Commerce y Mejora del Flujo de Registro Flex
+# Plan: Agregar Autocomplete de Clientes y Guardado en Envíos Terciarizados
 
-## Resumen de Problemas Identificados
+## Problema Identificado
 
-### 1. Estados de pedidos e-commerce no se actualizan
-Cuando un envío cambia de estado (`entregado`, `recogido`, etc.), el `fulfillment_status` del `ecommerce_order` asociado **no se sincroniza**. Esto ocurre porque:
-- `DeliveryConfirmation.tsx` actualiza solo la tabla `envios` sin actualizar `ecommerce_orders`
-- `PickupConfirmation.tsx` no sincroniza el estado del pedido
-- No existe un trigger ni lógica de sincronización automática
+El formulario "Agregar Envío Terciarizado" en `ThirdPartyShipmentsTab.tsx` presenta dos deficiencias:
 
-### 2. Sucursal origen no refleja quién hizo el pickup
-El `register-ml-shipment` no asigna el campo `sucursal_origen_id` cuando crea el envío. Este debería ser la sucursal del usuario que escanea/registra el paquete (ej: "Administración").
+1. **No permite buscar clientes existentes**: A diferencia de `NewShipment.tsx`, no tiene el componente `ContactAutocomplete` para cargar datos de clientes ya registrados.
 
-### 3. Flujo incompleto desde e-commerce a Planificador
-Actualmente para enviar pedidos al Planificador hay que:
-1. Ir a Pedidos e-commerce
-2. Crear envío individual desde cada orden
-3. Ir manualmente al Planificador
-
-**Flujo deseado**: Seleccionar múltiples órdenes con envío ya creado y enviarlas directamente al Planificador con un botón.
+2. **No guarda el destinatario en la base de clientes**: Los datos del destinatario se insertan solo en la tabla `envios` pero nunca se persisten en la tabla `clientes`, perdiendo la oportunidad de reutilizarlos en futuras operaciones.
 
 ---
 
-## Solución Propuesta
+## Solucion Propuesta
 
-### Parte 1: Sincronización automática de estados
+### 1. Agregar ContactAutocomplete al Formulario
 
-Crear un **Database Trigger** que sincronice automáticamente el `fulfillment_status` de `ecommerce_orders` cuando cambie el `estado` de un `envio` vinculado.
+Importar y usar el componente `ContactAutocomplete` en la seccion de "Nombre del destinatario":
 
-**Mapeo de estados:**
-| Estado envío | fulfillment_status | order_status |
-|--------------|-------------------|--------------|
-| pendiente | pending | - |
-| recogido | processing | shipped |
-| en_transito | shipped | shipped |
-| en_reparto | shipped | shipped |
-| entregado | delivered | delivered |
-| devuelto | pending | - |
-| cancelado | cancelled | cancelled |
+```tsx
+import ContactAutocomplete from '@/components/shipments/ContactAutocomplete';
 
-**Trigger SQL:**
-```sql
-CREATE OR REPLACE FUNCTION sync_ecommerce_order_status()
-RETURNS TRIGGER AS $$
-BEGIN
-  IF NEW.estado IS DISTINCT FROM OLD.estado THEN
-    UPDATE ecommerce_orders
-    SET 
-      fulfillment_status = CASE NEW.estado
-        WHEN 'pendiente' THEN 'pending'
-        WHEN 'recogido' THEN 'processing'
-        WHEN 'en_bodega' THEN 'processing'
-        WHEN 'en_transito' THEN 'shipped'
-        WHEN 'en_reparto' THEN 'shipped'
-        WHEN 'entregado' THEN 'delivered'
-        WHEN 'devuelto' THEN 'pending'
-        WHEN 'cancelado' THEN COALESCE(fulfillment_status, 'pending')
-        ELSE fulfillment_status
-      END,
-      order_status = CASE NEW.estado
-        WHEN 'recogido' THEN 'shipped'
-        WHEN 'en_transito' THEN 'shipped'
-        WHEN 'entregado' THEN 'delivered'
-        WHEN 'cancelado' THEN 'cancelled'
-        ELSE order_status
-      END,
-      updated_at = now()
-    WHERE envio_id = NEW.id;
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+// Query para obtener todos los clientes
+const { data: allClients = [] } = useQuery({
+  queryKey: ['all_clients'],
+  queryFn: async () => {
+    const { data, error } = await supabase
+      .from('clientes')
+      .select('*')
+      .order('nombre');
+    if (error) throw error;
+    return data;
+  },
+});
 
-CREATE TRIGGER trigger_sync_ecommerce_order_status
-AFTER UPDATE OF estado ON envios
-FOR EACH ROW
-EXECUTE FUNCTION sync_ecommerce_order_status();
+// Handler para cargar cliente existente
+const handleLoadClient = (client: Client) => {
+  setFormData(prev => ({
+    ...prev,
+    nombre_destinatario: `${client.nombre} ${client.apellido || ''}`.trim(),
+    direccion_entrega: client.direccion,
+    ciudad_entrega: client.ciudad || '',
+    provincia: '', // El cliente no tiene provincia, mantener manual
+    cp_entrega: client.codigo_postal || '',
+    whatsapp_destinatario: client.telefono,
+    entrega_lat: client.lat || null,
+    entrega_lng: client.lng || null,
+  }));
+  toast.success(`Datos de ${client.nombre} cargados`);
+};
 ```
 
----
+### 2. Implementar findOrCreateClient
 
-### Parte 2: Asignar sucursal origen en registro ML
+Agregar la funcion para buscar o crear el cliente antes de insertar el envio:
 
-Modificar `supabase/functions/register-ml-shipment/index.ts` para:
+```tsx
+const findOrCreateClient = async (data: {
+  nombre: string;
+  telefono: string;
+  direccion: string;
+  ciudad?: string;
+  codigo_postal?: string;
+}) => {
+  // Buscar por telefono primero
+  if (data.telefono) {
+    const { data: existing } = await supabase
+      .from('clientes')
+      .select('id')
+      .eq('telefono', data.telefono)
+      .maybeSingle();
 
-1. Recibir opcionalmente el `user_id` del usuario que escanea
-2. Buscar la `sucursal_id` del perfil del usuario
-3. Asignar `sucursal_origen_id` al crear el envío
-
-**Cambios en la Edge Function:**
-```typescript
-// Recibir user_id opcionalmente
-const { ml_shipment_id, sender_id, user_id }: RegisterRequest = await req.json();
-
-// Si hay user_id, obtener su sucursal
-let sucursalOrigenId = null;
-if (user_id) {
-  const { data: userProfile } = await supabase
-    .from('profiles')
-    .select('sucursal_id')
-    .eq('user_id', user_id)
-    .single();
-  
-  if (userProfile?.sucursal_id) {
-    sucursalOrigenId = userProfile.sucursal_id;
+    if (existing) {
+      // Actualizar datos
+      await supabase.from('clientes')
+        .update({
+          nombre: data.nombre,
+          direccion: data.direccion,
+          ciudad: data.ciudad,
+          codigo_postal: data.codigo_postal,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existing.id);
+      return existing.id;
+    }
   }
-}
 
-// Alternativa: usar sucursal_pickup_id del seller
-if (!sucursalOrigenId && seller.sucursal_pickup_id) {
-  sucursalOrigenId = seller.sucursal_pickup_id;
-}
+  // Crear nuevo cliente
+  const { data: newClient, error } = await supabase
+    .from('clientes')
+    .insert({
+      nombre: data.nombre.split(' ')[0],
+      apellido: data.nombre.split(' ').slice(1).join(' ') || null,
+      telefono: data.telefono,
+      direccion: data.direccion,
+      ciudad: data.ciudad,
+      codigo_postal: data.codigo_postal,
+      tenant_id: profile?.tenant_id,
+      sucursal_id: profile?.sucursal_id,
+    })
+    .select('id')
+    .single();
 
-// Incluir en el insert del envío
+  if (error) throw error;
+  return newClient.id;
+};
+```
+
+### 3. Modificar createShipmentMutation
+
+Antes de insertar el envio, llamar a `findOrCreateClient` y guardar el `destinatario_id`:
+
+```tsx
+// Dentro de mutationFn
+const destinatarioId = await findOrCreateClient({
+  nombre: shipment.nombre_destinatario,
+  telefono: shipment.whatsapp_destinatario,
+  direccion: shipment.direccion_entrega,
+  ciudad: shipment.ciudad_entrega,
+  codigo_postal: shipment.cp_entrega,
+});
+
+// Agregar al insert del envio
 {
   ...
-  sucursal_origen_id: sucursalOrigenId,
+  destinatario_id: destinatarioId,
   ...
 }
 ```
-
-**Cambios en los componentes de escaneo:**
-- `ScanQR.tsx` y `MobileScanTab.tsx` deben enviar el `user?.id` al invocar `register-ml-shipment`
-
----
-
-### Parte 3: Botón "Enviar al Planificador" en Pedidos E-Commerce
-
-Modificar `src/pages/ecommerce/Orders.tsx` para agregar:
-
-1. Un botón "Enviar al Planificador" cuando hay órdenes seleccionadas con envío creado
-2. Navegación al Planificador con los `envio_id` preseleccionados
-
-**Flujo:**
-```text
-Usuario selecciona órdenes con envío
-        |
-        v
-Click "Enviar al Planificador"
-        |
-        v
-Navega a /route-planner?envios=id1,id2,id3
-        |
-        v
-Planificador precarga esos envíos seleccionados
-```
-
-**Cambios en Orders.tsx:**
-```tsx
-// Nuevo botón junto al existente
-{selectedOrders.length > 0 && (
-  <div className="flex gap-2">
-    {/* Botón existente para crear envíos */}
-    <Button onClick={handleCreateShipments}>
-      <Truck className="mr-2 h-4 w-4" />
-      Crear Envíos
-    </Button>
-    
-    {/* NUEVO: Botón para enviar al planificador */}
-    <Button 
-      variant="outline"
-      onClick={() => {
-        const envioIds = filteredOrders
-          ?.filter(o => selectedOrders.includes(o.id) && o.envio_id)
-          .map(o => o.envio_id);
-        
-        if (envioIds?.length === 0) {
-          toast({ title: 'Sin envíos', description: 'Las órdenes seleccionadas no tienen envío creado' });
-          return;
-        }
-        
-        navigate(`/route-planner?envios=${envioIds.join(',')}`);
-      }}
-    >
-      <MapPin className="mr-2 h-4 w-4" />
-      Enviar al Planificador ({ordersWithShipment.length})
-    </Button>
-  </div>
-)}
-```
-
-**Cambios en RoutePlanner.tsx:**
-- Leer parámetro `envios` de la URL
-- Preseleccionar esos envíos al cargar la página
 
 ---
 
@@ -190,55 +134,53 @@ Planificador precarga esos envíos seleccionados
 
 | Archivo | Cambio |
 |---------|--------|
-| **Migración SQL** | Crear trigger `sync_ecommerce_order_status` |
-| `supabase/functions/register-ml-shipment/index.ts` | Agregar `user_id` y asignar `sucursal_origen_id` |
-| `src/pages/ScanQR.tsx` | Enviar `user?.id` al invocar la función |
-| `src/components/mobile/MobileScanTab.tsx` | Enviar `user?.id` al invocar la función |
-| `src/components/scan/MLRegisterDialog.tsx` | Pasar `userId` como prop y enviarlo |
-| `src/pages/ecommerce/Orders.tsx` | Agregar botón "Enviar al Planificador" |
-| `src/pages/RoutePlanner.tsx` | Leer y preseleccionar envíos desde URL |
+| `src/components/routes/ThirdPartyShipmentsTab.tsx` | Agregar ContactAutocomplete, query de clientes, findOrCreateClient, y modificar mutacion |
 
 ---
 
-## Flujo Optimizado de Pickup Flex
+## Cambios en la UI
 
-```text
-Chofer/Administración escanea QR ML Flex
-        |
-        v
-No existe -> Mostrar MLRegisterDialog
-        |
-        v
-Click "Registrar" -> register-ml-shipment
-  - Crea envío con sucursal_origen_id del usuario
-  - Crea ecommerce_order vinculado
-        |
-        v
-Éxito -> Opciones:
-  1. "Seguir Escaneando" (pickup rápido)
-  2. "Ir al Planificador" (asignar chofer)
-        |
-        v
-Repetir para todos los paquetes Flex
-        |
-        v
-Desde Pedidos E-Commerce:
-  - Ver todos con envío creado
-  - Seleccionar múltiples
-  - Click "Enviar al Planificador"
-        |
-        v
-Planificador muestra envíos preseleccionados
-        |
-        v
-Asignar a chofer y crear ruta
+El formulario agregara:
+1. Un selector "Cargar cliente existente" arriba del campo "Nombre del destinatario"
+2. Al seleccionar un cliente, se precargan: nombre, direccion, ciudad, CP, telefono y coordenadas
+
+---
+
+## Notas Tecnicas
+
+1. **Reutilizacion de logica**: La funcion `findOrCreateClient` replica la logica de `NewShipment.tsx` para mantener consistencia
+2. **Deduplicacion**: Busca primero por telefono para evitar duplicados
+3. **Coordenadas**: Si el cliente tiene lat/lng guardados, se cargan automaticamente
+4. **Invalidacion de cache**: Se agrega `invalidateQueries(['all_clients'])` al exito para refrescar la lista
+
+---
+
+## Flujo Actualizado
+
 ```
-
----
-
-## Notas Técnicas
-
-1. **Trigger vs Código**: Usar trigger de base de datos garantiza sincronización incluso para cambios directos en la DB o desde Edge Functions
-2. **Retrocompatibilidad**: El trigger solo se ejecuta en UPDATE, no afecta datos existentes
-3. **Performance**: El trigger es ligero, solo actualiza una fila por cambio de estado
-4. **Sucursal origen**: Si no hay usuario ni sucursal de pickup del seller, el campo queda null (comportamiento actual)
+Usuario abre "Agregar Envio Terciarizado"
+        |
+        v
+Opcion 1: Click "Cargar cliente existente"
+  -> Buscar en base de clientes
+  -> Seleccionar cliente
+  -> Precargar todos los datos
+        |
+        v
+Opcion 2: Ingresar datos manualmente
+        |
+        v
+Click "Crear Envio"
+        |
+        v
+findOrCreateClient()
+  -> Busca por telefono
+  -> Si existe: actualiza y retorna ID
+  -> Si no existe: crea nuevo cliente
+        |
+        v
+Inserta envio con destinatario_id
+        |
+        v
+Cliente disponible para futuros envios
+```
