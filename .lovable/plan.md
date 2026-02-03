@@ -1,148 +1,89 @@
 
+# Plan: Auto-Registro de Envios ML Flex al Escanear
 
-# Plan: Correccion de Eliminacion de Empresas, Restriccion de Registro y Migracion a Mercado Pago
+## Problema Identificado
 
-## Resumen de Cambios
+Cuando se escanea un QR de MercadoLibre Flex y el envio no existe en la base de datos, el sistema muestra "Envio ML no encontrado" sin ofrecer la opcion de registrarlo automaticamente.
 
-Este plan aborda las 3 solicitudes:
-1. Corregir el error de foreign key al eliminar empresas
-2. Eliminar registro publico y reemplazarlo por solicitud de prueba
-3. Migrar las suscripciones de Stripe a Mercado Pago
-
----
-
-## 1. Correccion del Error al Eliminar Empresas
-
-### Problema
-El `DeleteTenantDialog.tsx` no elimina todas las tablas relacionadas con el tenant antes de intentar eliminar el registro principal. Faltan al menos 15 tablas con `tenant_id`.
-
-### Solucion
-Actualizar `DeleteTenantDialog.tsx` agregando la eliminacion en cascada de las siguientes tablas faltantes:
-
-| Tabla | Dependencias |
-|-------|-------------|
-| `seller_cuenta_corriente` | Via ecommerce_sellers |
-| `liquidaciones_seller` | Via ecommerce_sellers |
-| `ecommerce_orders` | Directa |
-| `ecommerce_sellers` | Directa |
-| `system_integrations` | Directa |
-| `tenant_api_keys` | Directa |
-| `tenant_subscriptions` | Directa |
-| `tenant_usage` | Directa |
-| `vehiculos` | Directa |
-| `empresas_terciarizadas` | Directa |
-| `rutas_frecuentes` | Via ruta_frecuente_paradas |
-| `configuracion_seguro` | Directa |
-| `tarifa_concepto_precios` | Via tarifa_conceptos |
-| `tarifa_conceptos` | Via tarifas |
-| `historial_ajustes_tarifas` | Directa |
-| `sucursal_tarifas` | Via sucursales |
-| `sucursal_conceptos` | Via sucursales |
-| `tarifas` | Directa |
-| `driver_location_history` | Via profiles/user_id |
-
-### Orden de eliminacion
-Se respetara el orden correcto de foreign keys para evitar errores.
-
----
-
-## 2. Eliminacion del Registro Publico
-
-### Cambios en la Pagina de Login
-
-Modificar `src/components/auth/LoginForm.tsx`:
-- Eliminar la pestaña "Registrarse" completamente
-- Mostrar solo el formulario de inicio de sesion
-- Agregar un enlace "Solicitar Prueba" que redirija a la landing page
-
-### Nueva Tabla de Solicitudes de Prueba
-
-Crear tabla `trial_requests` para almacenar solicitudes:
-
-```sql
-CREATE TABLE public.trial_requests (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  nombre_empresa VARCHAR(255) NOT NULL,
-  nombre_contacto VARCHAR(255) NOT NULL,
-  email VARCHAR(255) NOT NULL,
-  telefono VARCHAR(50),
-  mensaje TEXT,
-  estado VARCHAR(20) DEFAULT 'pendiente',
-  created_at TIMESTAMPTZ DEFAULT now(),
-  reviewed_at TIMESTAMPTZ,
-  reviewed_by UUID REFERENCES auth.users(id)
-);
+### Datos del QR escaneado
+El QR contiene JSON con la estructura:
+```json
+{
+  "id": "46389045746",      // <-- ML Shipment ID
+  "sender_id": 293662607,   // <-- store_id del seller (FULLIMPORT)
+  "hash_code": "...",
+  "security_digit": "0"
+}
 ```
 
-### Nueva Seccion en Landing Page
-
-Modificar `src/components/landing/Pricing.tsx`:
-- Cambiar el boton "Comenzar gratis" por "Solicitar Prueba Gratuita"
-- El boton abrira un modal para completar el formulario
-
-### Nuevo Componente de Solicitud
-
-Crear `src/components/landing/TrialRequestDialog.tsx`:
-- Formulario con campos: nombre empresa, contacto, email, telefono, mensaje
-- Al enviar, guarda en `trial_requests`
-- Muestra mensaje de confirmacion
-
-### Panel de Gestion para Super Admin
-
-Crear `src/pages/TrialRequests.tsx`:
-- Lista de solicitudes pendientes
-- Acciones: Aprobar (crea tenant + usuario), Rechazar
-- Historial de solicitudes procesadas
+El seller "FULLIMPORT" (store_id: 293662607) esta registrado en el sistema con token valido, pero el envio nunca fue sincronizado (ni por webhook ni manualmente).
 
 ---
 
-## 3. Migracion de Suscripciones de Stripe a Mercado Pago
+## Solucion Propuesta
 
-### Cambios en Edge Functions
+Modificar el flujo de escaneo para que cuando un envio ML no se encuentre:
+1. Extraer el `sender_id` del QR JSON para identificar al seller
+2. Mostrar un dialogo preguntando si desea registrar el envio
+3. Llamar a una nueva edge function que consulte la API de ML y cree el envio
 
-**Actualizar `create-checkout` a `mp-create-subscription`:**
-- Usar la API de Mercado Pago Subscriptions
-- Endpoint: `POST /preapproval` para suscripciones
-- Retornar URL de checkout de Mercado Pago
+---
 
-**Actualizar `check-subscription` a usar MP:**
-- Consultar suscripciones activas via API de MP
-- Endpoint: `GET /preapproval/search`
-- Sincronizar estado con la base de datos local
+## Cambios Tecnicos
 
-**Actualizar `customer-portal` a usar MP:**
-- Mercado Pago no tiene portal de cliente como Stripe
-- Crear endpoint que permita cancelar/pausar suscripcion directamente
+### 1. Actualizar QR Parser para extraer sender_id
 
-### Cambios en la Base de Datos
+**Archivo**: `src/lib/qrParser.ts`
 
-Actualizar tabla `subscription_plans`:
-- Agregar columna `mercadopago_plan_id` VARCHAR
-- Mantener `stripe_price_id` para retrocompatibilidad
+El parser ya detecta ML JSON, pero necesita retornar tambien el `sender_id`:
 
-Actualizar tabla `tenant_subscriptions`:
-- Agregar columna `mercadopago_subscription_id` VARCHAR
-- Agregar columna `mercadopago_payer_id` VARCHAR
+```typescript
+export interface ParsedQR {
+  type: 'tracking' | 'route_sheet' | 'ml_shipment' | 'unknown';
+  value: string;
+  originalData: string;
+  mlSenderId?: string; // Nuevo campo
+}
+```
 
-### Cambios en Frontend
+---
 
-**Actualizar `src/hooks/useSubscription.ts`:**
-- Cambiar llamadas de Stripe a Mercado Pago
-- Actualizar tipos para nuevos campos
+### 2. Nueva Edge Function: register-ml-shipment
 
-**Actualizar `src/pages/Subscription.tsx`:**
-- Adaptar UI para flujo de Mercado Pago
-- Cambiar boton "Gestionar Suscripcion" por opciones directas (Cancelar, Ver Estado)
+**Archivo**: `supabase/functions/register-ml-shipment/index.ts`
 
-**Actualizar `src/components/landing/Pricing.tsx`:**
-- Mantener UI pero cambiar destino del checkout
+Esta funcion recibe un `ml_shipment_id` y `sender_id`:
 
-### Configuracion de Mercado Pago
+1. Busca el seller por `store_id = sender_id`
+2. Obtiene el access_token valido (refresh si es necesario)
+3. Consulta `GET /shipments/{ml_shipment_id}` en la API de ML
+4. Verifica que sea tipo `self_service` (Flex)
+5. Crea el `ecommerce_order` y el `envio` con el ml_shipment_id original
+6. Registra el cargo en cuenta corriente si corresponde
+7. Retorna el envio creado
 
-Reutilizar la integracion existente en `system_integrations`:
-- Tipo: `mercado_pago`
-- Claves: `access_token`, `public_key`
-- Ya esta multi-tenant implementado
+---
+
+### 3. Actualizar ScanQR.tsx y MobileScanTab.tsx
+
+Modificar la funcion `searchShipmentByML` para que cuando no encuentre el envio:
+
+1. Muestre un dialogo preguntando: "Envio ML no registrado. Desea registrarlo ahora?"
+2. Si el usuario acepta, llame a `register-ml-shipment`
+3. Al completarse, muestre el dialogo de ML Delivery con el envio creado
+
+---
+
+### 4. Nuevo Componente: MLRegisterDialog
+
+**Archivo**: `src/components/scan/MLRegisterDialog.tsx`
+
+Dialogo que muestra:
+- "Este envio de MercadoLibre no esta registrado"
+- Shipment ID: 46389045746
+- Seller detectado: FULLIMPORT (si se encuentra)
+- Boton "Registrar Envio" que invoca la edge function
+- Estado de carga mientras se procesa
 
 ---
 
@@ -150,114 +91,101 @@ Reutilizar la integracion existente en `system_integrations`:
 
 | Archivo | Accion |
 |---------|--------|
-| `src/components/tenants/DeleteTenantDialog.tsx` | MODIFICAR - Agregar tablas faltantes |
-| `src/components/auth/LoginForm.tsx` | MODIFICAR - Eliminar registro, agregar link solicitar prueba |
-| `src/components/landing/TrialRequestDialog.tsx` | CREAR - Formulario solicitud prueba |
-| `src/components/landing/Pricing.tsx` | MODIFICAR - Cambiar CTA a solicitar prueba |
-| `src/pages/TrialRequests.tsx` | CREAR - Panel gestion solicitudes |
-| `src/App.tsx` | MODIFICAR - Agregar ruta /trial-requests |
-| `supabase/functions/mp-create-subscription/index.ts` | CREAR - Nueva function para crear suscripcion MP |
-| `supabase/functions/mp-check-subscription/index.ts` | CREAR - Nueva function para verificar suscripcion MP |
-| `supabase/functions/mp-cancel-subscription/index.ts` | CREAR - Nueva function para cancelar suscripcion |
-| `src/hooks/useSubscription.ts` | MODIFICAR - Adaptar para Mercado Pago |
-| `src/pages/Subscription.tsx` | MODIFICAR - Adaptar UI para MP |
-| **Migracion SQL** | CREAR - Tabla trial_requests y columnas MP |
+| `src/lib/qrParser.ts` | MODIFICAR - Extraer y retornar sender_id |
+| `supabase/functions/register-ml-shipment/index.ts` | CREAR - Nueva edge function |
+| `src/components/scan/MLRegisterDialog.tsx` | CREAR - Dialogo de registro |
+| `src/pages/ScanQR.tsx` | MODIFICAR - Integrar dialogo de registro |
+| `src/components/mobile/MobileScanTab.tsx` | MODIFICAR - Integrar dialogo de registro |
+| `supabase/config.toml` | MODIFICAR - Registrar nueva function |
 
 ---
 
-## Flujo de Solicitud de Prueba
+## Flujo de Usuario
 
 ```text
-Usuario visita Landing
+Usuario escanea QR de ML Flex
         |
         v
-Click "Solicitar Prueba"
+parseQRCode() detecta JSON ML
+  -> type: 'ml_shipment'
+  -> value: '46389045746'
+  -> mlSenderId: '293662607'
         |
         v
-Completa formulario
-(empresa, nombre, email, tel)
+Busca en envios por ml_shipment_id
         |
-        v
-Se guarda en trial_requests
-        |
-        v
-Super Admin recibe notificacion
-        |
-        v
-Revisa solicitud en /trial-requests
-        |
-        v
-Aprueba --> Crea tenant + usuario + envia email con credenciales
-   O
-Rechaza --> Marca como rechazada
-```
-
----
-
-## Flujo de Suscripcion con Mercado Pago
-
-```text
-Usuario en /subscription
-        |
-        v
-Click "Suscribirse" en plan
-        |
-        v
-mp-create-subscription crea preferencia
-        |
-        v
-Redirige a checkout.mercadopago.com
-        |
-        v
-Usuario paga con tarjeta/debito
-        |
-        v
-MP envia webhook a mp-webhook-subscription
-        |
-        v
-Sistema actualiza tenant_subscriptions
-        |
-        v
-Usuario ve su suscripcion activa
+    ┌───┴───┐
+    |       |
+ Existe   No existe
+    |       |
+    v       v
+MLDelivery  MLRegisterDialog
+  Dialog    "Desea registrar?"
+                |
+            [Registrar]
+                |
+                v
+    register-ml-shipment()
+                |
+                v
+    Crea envio con datos de ML API
+                |
+                v
+    Toast: "Envio registrado"
+                |
+                v
+    Muestra MLDeliveryDialog
 ```
 
 ---
 
-## API de Mercado Pago para Suscripciones
+## API de MercadoLibre Utilizada
 
-### Crear Suscripcion
 ```text
-POST https://api.mercadopago.com/preapproval
-{
-  "reason": "LogiTrack Profesional",
-  "auto_recurring": {
-    "frequency": 1,
-    "frequency_type": "months",
-    "transaction_amount": 15000,
-    "currency_id": "ARS"
-  },
-  "back_url": "https://app.com/subscription?status=approved",
-  "payer_email": "user@email.com"
-}
-```
+GET https://api.mercadolibre.com/shipments/{shipment_id}
 
-### Consultar Suscripciones
-```text
-GET https://api.mercadopago.com/preapproval/search?payer_email=user@email.com
-```
+Headers:
+  Authorization: Bearer {access_token}
 
-### Cancelar Suscripcion
-```text
-PUT https://api.mercadopago.com/preapproval/{id}
-{ "status": "cancelled" }
+Respuesta incluye:
+- id (shipment_id)
+- order_id
+- status
+- logistic_type (debe ser "self_service")
+- receiver_address (nombre, direccion, telefono)
+- shipping_cost
 ```
 
 ---
 
-## Notas Importantes
+## Logica de la Edge Function
 
-1. **Retrocompatibilidad**: Se mantienen las columnas de Stripe para usuarios existentes
-2. **Multi-tenant**: La configuracion de MP ya esta multi-tenant en system_integrations
-3. **Seguridad**: Solo Super Admins pueden aprobar solicitudes de prueba
-4. **Eliminacion de empresas**: Se usara transaccion para garantizar atomicidad
+```typescript
+// register-ml-shipment/index.ts (pseudocodigo)
 
+1. Recibir { ml_shipment_id, sender_id } del body
+2. Buscar seller: WHERE store_id = sender_id AND plataforma = 'mercadolibre'
+3. Si no existe: return error "Seller no encontrado"
+4. Obtener access_token valido (refresh si vencido)
+5. GET /shipments/{ml_shipment_id}
+6. Verificar logistic_type === 'self_service'
+7. Verificar status (debe ser ready_to_ship o shipped)
+8. Crear ecommerce_order
+9. Crear envio con:
+   - ml_shipment_id = shipment.id (EL ORIGINAL)
+   - tracking_number = generado
+   - estado = 'pendiente'
+   - datos del receiver_address
+10. Registrar cargo en cuenta corriente
+11. Retornar { envio, tracking_number }
+```
+
+---
+
+## Consideraciones Importantes
+
+1. **ML Shipment ID Original**: El envio se crea con el `ml_shipment_id` exacto del QR, NO se genera uno nuevo
+2. **Seller Correcto**: Se usa el `sender_id` del QR JSON para identificar al seller (en este caso FULLIMPORT, no Pablo Gauna)
+3. **Validacion**: Solo se registran envios tipo Flex (logistic_type = self_service)
+4. **Sin Autenticacion de Usuario**: La edge function usa service_role_key ya que puede ser invocada sin usuario logueado desde el escaneo
+5. **Cuenta Corriente**: El cargo se registra automaticamente si el seller tiene tarifa asignada
