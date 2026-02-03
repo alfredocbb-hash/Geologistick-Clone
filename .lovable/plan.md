@@ -1,141 +1,263 @@
 
 
-# Plan: Agregar Sincronizacion Manual para MercadoLibre Flex
+# Plan: Correccion de Eliminacion de Empresas, Restriccion de Registro y Migracion a Mercado Pago
 
-## Problema Identificado
+## Resumen de Cambios
 
-Los envios de MercadoLibre Flex solo entran al sistema via webhook cuando cambian a estado `ready_to_ship`. Los pedidos existentes (viejos) o aquellos cuyo webhook falló no se pueden recuperar porque:
+Este plan aborda las 3 solicitudes:
+1. Corregir el error de foreign key al eliminar empresas
+2. Eliminar registro publico y reemplazarlo por solicitud de prueba
+3. Migrar las suscripciones de Stripe a Mercado Pago
 
-1. No existe una edge function `mercadolibre-sync` equivalente a `tiendanube-sync`
-2. El frontend `Sellers.tsx` solo muestra el boton "Sincronizar Ahora" para Tiendanube (linea 485)
-3. Los sellers de ML conectados no tienen opcion de sincronizacion manual
+---
 
-## Solucion Propuesta
+## 1. Correccion del Error al Eliminar Empresas
 
-Crear una edge function `mercadolibre-sync` que consulte la API de MercadoLibre para traer envios Flex pendientes, y agregar el boton correspondiente en el frontend.
+### Problema
+El `DeleteTenantDialog.tsx` no elimina todas las tablas relacionadas con el tenant antes de intentar eliminar el registro principal. Faltan al menos 15 tablas con `tenant_id`.
 
-## Cambios Tecnicos
+### Solucion
+Actualizar `DeleteTenantDialog.tsx` agregando la eliminacion en cascada de las siguientes tablas faltantes:
 
-### 1. Nueva Edge Function: `mercadolibre-sync`
+| Tabla | Dependencias |
+|-------|-------------|
+| `seller_cuenta_corriente` | Via ecommerce_sellers |
+| `liquidaciones_seller` | Via ecommerce_sellers |
+| `ecommerce_orders` | Directa |
+| `ecommerce_sellers` | Directa |
+| `system_integrations` | Directa |
+| `tenant_api_keys` | Directa |
+| `tenant_subscriptions` | Directa |
+| `tenant_usage` | Directa |
+| `vehiculos` | Directa |
+| `empresas_terciarizadas` | Directa |
+| `rutas_frecuentes` | Via ruta_frecuente_paradas |
+| `configuracion_seguro` | Directa |
+| `tarifa_concepto_precios` | Via tarifa_conceptos |
+| `tarifa_conceptos` | Via tarifas |
+| `historial_ajustes_tarifas` | Directa |
+| `sucursal_tarifas` | Via sucursales |
+| `sucursal_conceptos` | Via sucursales |
+| `tarifas` | Directa |
+| `driver_location_history` | Via profiles/user_id |
 
-**Archivo**: `supabase/functions/mercadolibre-sync/index.ts`
+### Orden de eliminacion
+Se respetara el orden correcto de foreign keys para evitar errores.
 
-La funcion:
+---
 
-1. Recibe `seller_id` del body
-2. Verifica autenticacion JWT y permisos de tenant
-3. Obtiene el access_token del seller (refrescando si es necesario)
-4. Consulta la API de ML para obtener shipments con:
-   - `logistic_type=self_service` (Flex)
-   - `status=ready_to_ship`
-5. Para cada shipment, verifica si ya existe en `envios` por `ml_shipment_id`
-6. Crea los envios faltantes con la misma logica del webhook
-7. Registra cargos en cuenta corriente si corresponde
+## 2. Eliminacion del Registro Publico
 
-```typescript
-// Pseudocodigo
-const shipmentsUrl = `${ML_API}/users/${seller.store_id}/shipping_labels/shipments/search?status=ready_to_ship&shipping_mode=self_service`;
+### Cambios en la Pagina de Login
 
-for (const shipment of shipments) {
-  // Verificar si ya existe
-  const existing = await supabase.from('envios').select('id').eq('ml_shipment_id', shipment.id).maybeSingle();
-  if (existing) continue;
-  
-  // Crear envio, order, cargo en cuenta corriente...
-}
+Modificar `src/components/auth/LoginForm.tsx`:
+- Eliminar la pestaña "Registrarse" completamente
+- Mostrar solo el formulario de inicio de sesion
+- Agregar un enlace "Solicitar Prueba" que redirija a la landing page
+
+### Nueva Tabla de Solicitudes de Prueba
+
+Crear tabla `trial_requests` para almacenar solicitudes:
+
+```sql
+CREATE TABLE public.trial_requests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nombre_empresa VARCHAR(255) NOT NULL,
+  nombre_contacto VARCHAR(255) NOT NULL,
+  email VARCHAR(255) NOT NULL,
+  telefono VARCHAR(50),
+  mensaje TEXT,
+  estado VARCHAR(20) DEFAULT 'pendiente',
+  created_at TIMESTAMPTZ DEFAULT now(),
+  reviewed_at TIMESTAMPTZ,
+  reviewed_by UUID REFERENCES auth.users(id)
+);
 ```
 
-### 2. Actualizar Frontend: `Sellers.tsx`
+### Nueva Seccion en Landing Page
 
-**Archivo**: `src/pages/ecommerce/Sellers.tsx`
+Modificar `src/components/landing/Pricing.tsx`:
+- Cambiar el boton "Comenzar gratis" por "Solicitar Prueba Gratuita"
+- El boton abrira un modal para completar el formulario
 
-Agregar mutacion y boton para sincronizar ML:
+### Nuevo Componente de Solicitud
 
-```typescript
-// Nueva mutacion (reutilizando logica existente)
-const syncMLMutation = useMutation({
-  mutationFn: async (sellerId: string) => {
-    setSyncingSellerId(sellerId);
-    const { data, error } = await supabase.functions.invoke('mercadolibre-sync', {
-      body: { seller_id: sellerId },
-    });
-    if (error) throw error;
-    return data;
-  },
-  // ... mismo onSuccess, onError que tiendanube
-});
+Crear `src/components/landing/TrialRequestDialog.tsx`:
+- Formulario con campos: nombre empresa, contacto, email, telefono, mensaje
+- Al enviar, guarda en `trial_requests`
+- Muestra mensaje de confirmacion
 
-// En el dropdown menu, agregar para mercadolibre conectado:
-{seller.plataforma === 'mercadolibre' && isConnected(seller) && (
-  <DropdownMenuItem 
-    onClick={() => syncMLMutation.mutate(seller.id)}
-    disabled={syncingSellerId === seller.id}
-  >
-    <RefreshCw className="mr-2 h-4 w-4" />
-    Sincronizar Ahora
-  </DropdownMenuItem>
-)}
-```
+### Panel de Gestion para Super Admin
+
+Crear `src/pages/TrialRequests.tsx`:
+- Lista de solicitudes pendientes
+- Acciones: Aprobar (crea tenant + usuario), Rechazar
+- Historial de solicitudes procesadas
+
+---
+
+## 3. Migracion de Suscripciones de Stripe a Mercado Pago
+
+### Cambios en Edge Functions
+
+**Actualizar `create-checkout` a `mp-create-subscription`:**
+- Usar la API de Mercado Pago Subscriptions
+- Endpoint: `POST /preapproval` para suscripciones
+- Retornar URL de checkout de Mercado Pago
+
+**Actualizar `check-subscription` a usar MP:**
+- Consultar suscripciones activas via API de MP
+- Endpoint: `GET /preapproval/search`
+- Sincronizar estado con la base de datos local
+
+**Actualizar `customer-portal` a usar MP:**
+- Mercado Pago no tiene portal de cliente como Stripe
+- Crear endpoint que permita cancelar/pausar suscripcion directamente
+
+### Cambios en la Base de Datos
+
+Actualizar tabla `subscription_plans`:
+- Agregar columna `mercadopago_plan_id` VARCHAR
+- Mantener `stripe_price_id` para retrocompatibilidad
+
+Actualizar tabla `tenant_subscriptions`:
+- Agregar columna `mercadopago_subscription_id` VARCHAR
+- Agregar columna `mercadopago_payer_id` VARCHAR
+
+### Cambios en Frontend
+
+**Actualizar `src/hooks/useSubscription.ts`:**
+- Cambiar llamadas de Stripe a Mercado Pago
+- Actualizar tipos para nuevos campos
+
+**Actualizar `src/pages/Subscription.tsx`:**
+- Adaptar UI para flujo de Mercado Pago
+- Cambiar boton "Gestionar Suscripcion" por opciones directas (Cancelar, Ver Estado)
+
+**Actualizar `src/components/landing/Pricing.tsx`:**
+- Mantener UI pero cambiar destino del checkout
+
+### Configuracion de Mercado Pago
+
+Reutilizar la integracion existente en `system_integrations`:
+- Tipo: `mercado_pago`
+- Claves: `access_token`, `public_key`
+- Ya esta multi-tenant implementado
+
+---
 
 ## Archivos a Crear/Modificar
 
 | Archivo | Accion |
 |---------|--------|
-| `supabase/functions/mercadolibre-sync/index.ts` | CREAR - Nueva edge function |
-| `src/pages/ecommerce/Sellers.tsx` | MODIFICAR - Agregar boton sync ML |
+| `src/components/tenants/DeleteTenantDialog.tsx` | MODIFICAR - Agregar tablas faltantes |
+| `src/components/auth/LoginForm.tsx` | MODIFICAR - Eliminar registro, agregar link solicitar prueba |
+| `src/components/landing/TrialRequestDialog.tsx` | CREAR - Formulario solicitud prueba |
+| `src/components/landing/Pricing.tsx` | MODIFICAR - Cambiar CTA a solicitar prueba |
+| `src/pages/TrialRequests.tsx` | CREAR - Panel gestion solicitudes |
+| `src/App.tsx` | MODIFICAR - Agregar ruta /trial-requests |
+| `supabase/functions/mp-create-subscription/index.ts` | CREAR - Nueva function para crear suscripcion MP |
+| `supabase/functions/mp-check-subscription/index.ts` | CREAR - Nueva function para verificar suscripcion MP |
+| `supabase/functions/mp-cancel-subscription/index.ts` | CREAR - Nueva function para cancelar suscripcion |
+| `src/hooks/useSubscription.ts` | MODIFICAR - Adaptar para Mercado Pago |
+| `src/pages/Subscription.tsx` | MODIFICAR - Adaptar UI para MP |
+| **Migracion SQL** | CREAR - Tabla trial_requests y columnas MP |
 
-## API de MercadoLibre Utilizada
+---
 
-Para obtener shipments Flex pendientes:
-
-```text
-GET /users/{user_id}/shipping_labels/shipments/search
-  ?status=ready_to_ship
-  &shipping_mode=self_service
-  &limit=50
-```
-
-Para obtener detalles de cada shipment:
-
-```text
-GET /shipments/{shipment_id}
-```
-
-## Flujo Resultante
+## Flujo de Solicitud de Prueba
 
 ```text
-Admin/Operador accede a Sellers
+Usuario visita Landing
         |
         v
-    Seller ML conectado
+Click "Solicitar Prueba"
         |
         v
-  Click "Sincronizar Ahora"
+Completa formulario
+(empresa, nombre, email, tel)
         |
         v
-  mercadolibre-sync invocada
+Se guarda en trial_requests
         |
         v
-  ┌─────────────────────────────────────┐
-  │ 1. Refresh token si vencido         │
-  │ 2. GET shipments pendientes de ML   │
-  │ 3. Filtrar solo Flex (self_service) │
-  │ 4. Crear envios que faltan en BD    │
-  │ 5. Registrar cargos si CC habilitada│
-  └─────────────────────────────────────┘
+Super Admin recibe notificacion
         |
         v
-  Toast: "X nuevos, Y existentes"
+Revisa solicitud en /trial-requests
         |
         v
-  Envios disponibles para escaneo!
+Aprueba --> Crea tenant + usuario + envia email con credenciales
+   O
+Rechaza --> Marca como rechazada
 ```
 
-## Resultado Esperado
+---
 
-1. Los sellers de MercadoLibre conectados veran el boton "Sincronizar Ahora"
-2. Al hacer click, se traeran todos los envios Flex pendientes de la API de ML
-3. Los envios se crearan en la tabla `envios` con `ml_shipment_id`
-4. Al escanear el QR, el sistema los encontrara correctamente
-5. Los cargos se registraran automaticamente en la cuenta corriente del seller
+## Flujo de Suscripcion con Mercado Pago
+
+```text
+Usuario en /subscription
+        |
+        v
+Click "Suscribirse" en plan
+        |
+        v
+mp-create-subscription crea preferencia
+        |
+        v
+Redirige a checkout.mercadopago.com
+        |
+        v
+Usuario paga con tarjeta/debito
+        |
+        v
+MP envia webhook a mp-webhook-subscription
+        |
+        v
+Sistema actualiza tenant_subscriptions
+        |
+        v
+Usuario ve su suscripcion activa
+```
+
+---
+
+## API de Mercado Pago para Suscripciones
+
+### Crear Suscripcion
+```text
+POST https://api.mercadopago.com/preapproval
+{
+  "reason": "LogiTrack Profesional",
+  "auto_recurring": {
+    "frequency": 1,
+    "frequency_type": "months",
+    "transaction_amount": 15000,
+    "currency_id": "ARS"
+  },
+  "back_url": "https://app.com/subscription?status=approved",
+  "payer_email": "user@email.com"
+}
+```
+
+### Consultar Suscripciones
+```text
+GET https://api.mercadopago.com/preapproval/search?payer_email=user@email.com
+```
+
+### Cancelar Suscripcion
+```text
+PUT https://api.mercadopago.com/preapproval/{id}
+{ "status": "cancelled" }
+```
+
+---
+
+## Notas Importantes
+
+1. **Retrocompatibilidad**: Se mantienen las columnas de Stripe para usuarios existentes
+2. **Multi-tenant**: La configuracion de MP ya esta multi-tenant en system_integrations
+3. **Seguridad**: Solo Super Admins pueden aprobar solicitudes de prueba
+4. **Eliminacion de empresas**: Se usara transaccion para garantizar atomicidad
 
