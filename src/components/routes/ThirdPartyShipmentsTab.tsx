@@ -41,6 +41,24 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { AddressAutocomplete, AddressDetails } from "@/components/maps/AddressAutocomplete";
+import ContactAutocomplete from "@/components/shipments/ContactAutocomplete";
+
+interface Client {
+  id: string;
+  nombre: string;
+  apellido?: string | null;
+  telefono: string;
+  email?: string | null;
+  direccion: string;
+  ciudad?: string | null;
+  codigo_postal?: string | null;
+  dni_cuit?: string | null;
+  tiene_cuenta_corriente?: boolean | null;
+  saldo_cuenta_corriente?: number | null;
+  limite_credito?: number | null;
+  lat?: number | null;
+  lng?: number | null;
+}
 
 interface EmpresaTerciarizada {
   id: string;
@@ -187,6 +205,98 @@ export default function ThirdPartyShipmentsTab() {
     },
   });
 
+  // Fetch all clients for autocomplete
+  const { data: allClients = [] } = useQuery({
+    queryKey: ["all_clients"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("clientes")
+        .select("*")
+        .order("nombre");
+      if (error) throw error;
+      return data as Client[];
+    },
+  });
+
+  // Handler to load existing client data
+  const handleLoadClient = (client: Client) => {
+    setFormData((prev) => ({
+      ...prev,
+      nombre_destinatario: `${client.nombre} ${client.apellido || ""}`.trim(),
+      direccion_entrega: client.direccion,
+      ciudad_entrega: client.ciudad || "",
+      cp_entrega: client.codigo_postal || "",
+      whatsapp_destinatario: client.telefono,
+      entrega_lat: client.lat || null,
+      entrega_lng: client.lng || null,
+    }));
+    toast.success(`Datos de ${client.nombre} cargados`);
+  };
+
+  // Find or create client in database
+  const findOrCreateClient = async (data: {
+    nombre: string;
+    telefono: string;
+    direccion: string;
+    ciudad?: string;
+    codigo_postal?: string;
+    lat?: number | null;
+    lng?: number | null;
+  }): Promise<string | null> => {
+    if (!data.telefono && !data.nombre) return null;
+
+    // Search by phone first
+    if (data.telefono) {
+      const { data: existing } = await supabase
+        .from("clientes")
+        .select("id")
+        .eq("telefono", data.telefono)
+        .maybeSingle();
+
+      if (existing) {
+        // Update existing client data
+        await supabase
+          .from("clientes")
+          .update({
+            nombre: data.nombre.split(" ")[0],
+            apellido: data.nombre.split(" ").slice(1).join(" ") || null,
+            direccion: data.direccion,
+            ciudad: data.ciudad,
+            codigo_postal: data.codigo_postal,
+            lat: data.lat,
+            lng: data.lng,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existing.id);
+        return existing.id;
+      }
+    }
+
+    // Create new client
+    const { data: newClient, error } = await supabase
+      .from("clientes")
+      .insert({
+        nombre: data.nombre.split(" ")[0],
+        apellido: data.nombre.split(" ").slice(1).join(" ") || null,
+        telefono: data.telefono,
+        direccion: data.direccion,
+        ciudad: data.ciudad,
+        codigo_postal: data.codigo_postal,
+        lat: data.lat,
+        lng: data.lng,
+        tenant_id: profile?.tenant_id,
+        sucursal_id: profile?.sucursal_id,
+      })
+      .select("id")
+      .single();
+
+    if (error) {
+      console.error("Error creating client:", error);
+      return null;
+    }
+    return newClient.id;
+  };
+
   const handleInputChange = (field: keyof ThirdPartyFormData, value: string | number) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
@@ -254,6 +364,17 @@ export default function ThirdPartyShipmentsTab() {
       // Find selected company details
       const selectedEmpresa = empresas.find((e) => e.id === shipment.empresa_terciarizada);
       
+      // Find or create client first
+      const destinatarioId = await findOrCreateClient({
+        nombre: shipment.nombre_destinatario,
+        telefono: shipment.whatsapp_destinatario,
+        direccion: shipment.direccion_entrega,
+        ciudad: shipment.ciudad_entrega,
+        codigo_postal: shipment.cp_entrega,
+        lat: shipment.entrega_lat,
+        lng: shipment.entrega_lng,
+      });
+
       // Generate tracking number with branch code
       const { data: trackingData, error: trackingError } = await supabase
         .rpc("generate_tracking_number", { p_sucursal_id: profile?.sucursal_id });
@@ -285,6 +406,7 @@ export default function ThirdPartyShipmentsTab() {
           cp_entrega: shipment.cp_entrega || null,
           entrega_lat: shipment.entrega_lat,
           entrega_lng: shipment.entrega_lng,
+          destinatario_id: destinatarioId,
           tipo_servicio: "puerta_puerta",
           tipo_servicio_detalle: shipment.tipo_operacion === "retiro" ? "puerta_sucursal" : "sucursal_puerta",
           duracion_estimada_minutos: shipment.duracion_estimada_minutos,
@@ -333,6 +455,7 @@ export default function ThirdPartyShipmentsTab() {
       queryClient.invalidateQueries({ queryKey: ["envios-planificador"] });
       queryClient.invalidateQueries({ queryKey: ["empresas-terciarizadas-activas"] });
       queryClient.invalidateQueries({ queryKey: ["terciarizado-cuenta-corriente"] });
+      queryClient.invalidateQueries({ queryKey: ["all_clients"] });
     },
     onError: (error: Error) => {
       toast.error(`Error al crear envío: ${error.message}`);
@@ -504,14 +627,22 @@ export default function ThirdPartyShipmentsTab() {
             </div>
           </div>
 
-          {/* Recipient */}
-          <div className="space-y-2">
-            <Label>Nombre Destinatario/Cliente *</Label>
-            <Input
-              placeholder="Nombre completo"
-              value={formData.nombre_destinatario}
-              onChange={(e) => handleInputChange("nombre_destinatario", e.target.value)}
+          {/* Recipient - with client autocomplete */}
+          <div className="space-y-3">
+            <ContactAutocomplete
+              clients={allClients}
+              onSelect={handleLoadClient}
+              label="Cargar cliente existente"
+              placeholder="Buscar por nombre, teléfono o DNI..."
             />
+            <div className="space-y-2">
+              <Label>Nombre Destinatario/Cliente *</Label>
+              <Input
+                placeholder="Nombre completo"
+                value={formData.nombre_destinatario}
+                onChange={(e) => handleInputChange("nombre_destinatario", e.target.value)}
+              />
+            </div>
           </div>
 
           {/* Address */}
