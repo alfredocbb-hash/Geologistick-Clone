@@ -203,12 +203,17 @@ export default function Branches() {
     enabled: !!selectedSucursalForCommissions,
   });
 
+  // Conceptos a mostrar (excluir recepcion y cobros)
+  const conceptosFiltrados = conceptos.filter(
+    c => !['recepcion', 'cobros'].includes(c.codigo)
+  );
+
   // Initialize commission data when dialog opens - separado por tipo_rol
   useEffect(() => {
-    if (selectedSucursalForCommissions && conceptos.length > 0) {
+    if (selectedSucursalForCommissions && conceptosFiltrados.length > 0) {
       // Inicializar datos de EMISIÓN
       const emisionData: Record<string, CommissionValues> = {};
-      conceptos.forEach((concepto) => {
+      conceptosFiltrados.forEach((concepto) => {
         const existing = sucursalComisiones.find(
           (c) => c.concepto_id === concepto.id && c.tipo_rol === 'emision'
         );
@@ -223,7 +228,7 @@ export default function Branches() {
 
       // Inicializar datos de RECEPCIÓN
       const recepcionData: Record<string, CommissionValues> = {};
-      conceptos.forEach((concepto) => {
+      conceptosFiltrados.forEach((concepto) => {
         const existing = sucursalComisiones.find(
           (c) => c.concepto_id === concepto.id && c.tipo_rol === 'recepcion'
         );
@@ -236,7 +241,7 @@ export default function Branches() {
       });
       setRecepcionCommissionData(recepcionData);
     }
-  }, [selectedSucursalForCommissions, conceptos, sucursalComisiones]);
+  }, [selectedSucursalForCommissions, conceptosFiltrados, sucursalComisiones]);
 
   // Create/Update sucursal mutation
   const saveMutation = useMutation({
@@ -1212,7 +1217,7 @@ export default function Branches() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            {conceptos.length === 0 ? (
+            {conceptosFiltrados.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 No hay conceptos configurados. Ve a Tarifas → Conceptos para crearlos.
               </div>
@@ -1244,7 +1249,7 @@ export default function Branches() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {conceptos.map((concepto) => (
+                      {conceptosFiltrados.map((concepto) => (
                         <TableRow key={concepto.id}>
                           <TableCell className="font-medium">{concepto.nombre}</TableCell>
                           <TableCell>
@@ -1348,7 +1353,7 @@ export default function Branches() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {conceptos.map((concepto) => (
+                      {conceptosFiltrados.map((concepto) => (
                         <TableRow key={concepto.id}>
                           <TableCell className="font-medium">{concepto.nombre}</TableCell>
                           <TableCell>
@@ -1445,7 +1450,7 @@ export default function Branches() {
               </Button>
               <Button
                 onClick={() => saveCommissionsMutation.mutate()}
-                disabled={saveCommissionsMutation.isPending || conceptos.length === 0}
+                disabled={saveCommissionsMutation.isPending || conceptosFiltrados.length === 0}
                 className="bg-sucursales hover:bg-sucursales/90"
               >
                 <Save className="h-4 w-4 mr-2" />
