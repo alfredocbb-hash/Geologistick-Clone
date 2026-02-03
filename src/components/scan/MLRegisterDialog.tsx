@@ -3,9 +3,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Package, Store, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Loader2, Package, Store, AlertTriangle, CheckCircle2, MapPin } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 
 interface MLRegisterDialogProps {
   open: boolean;
@@ -28,15 +29,19 @@ export function MLRegisterDialog({
   onClose,
   onSuccess,
 }: MLRegisterDialogProps) {
+  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [isLookingUpSeller, setIsLookingUpSeller] = useState(false);
   const [seller, setSeller] = useState<SellerInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [registeredEnvio, setRegisteredEnvio] = useState<any>(null);
 
   // Look up seller when dialog opens
   useEffect(() => {
     if (open && mlSenderId) {
       lookupSeller();
+      setRegisteredEnvio(null);
+      setError(null);
     }
   }, [open, mlSenderId]);
 
@@ -93,7 +98,7 @@ export function MLRegisterDialog({
         description: `Tracking: ${data.envio.tracking_number}`,
       });
 
-      onSuccess(data.envio);
+      setRegisteredEnvio(data.envio);
     } catch (err: any) {
       console.error('Error registering ML shipment:', err);
       setError(err.message || 'Error al registrar el envío');
@@ -104,6 +109,76 @@ export function MLRegisterDialog({
       setIsLoading(false);
     }
   };
+
+  const handleGoToPlanner = () => {
+    onClose();
+    navigate('/route-planner');
+  };
+
+  const handleContinueScanning = () => {
+    if (registeredEnvio) {
+      onSuccess(registeredEnvio);
+    }
+    onClose();
+  };
+
+  // Success state after registration
+  if (registeredEnvio) {
+    return (
+      <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-green-600">
+              <CheckCircle2 className="h-5 w-5" />
+              Envío Registrado
+            </DialogTitle>
+            <DialogDescription>
+              El envío ha sido registrado correctamente y está listo para ser planificado.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-950/30 rounded-lg border border-green-200 dark:border-green-800">
+              <span className="text-sm text-muted-foreground">Tracking:</span>
+              <Badge variant="secondary" className="font-mono text-base">
+                {registeredEnvio.tracking_number}
+              </Badge>
+            </div>
+
+            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+              <span className="text-sm text-muted-foreground">ML Shipment ID:</span>
+              <Badge variant="outline" className="font-mono">
+                {mlShipmentId}
+              </Badge>
+            </div>
+
+            {registeredEnvio.direccion_entrega && (
+              <div className="p-3 bg-muted/50 rounded-lg">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                  <MapPin className="h-4 w-4" />
+                  Destino:
+                </div>
+                <p className="text-sm font-medium">{registeredEnvio.direccion_entrega}</p>
+                {registeredEnvio.ciudad_entrega && (
+                  <p className="text-xs text-muted-foreground">{registeredEnvio.ciudad_entrega}</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
+            <Button variant="outline" onClick={handleContinueScanning} className="w-full sm:w-auto">
+              Seguir Escaneando
+            </Button>
+            <Button onClick={handleGoToPlanner} className="w-full sm:w-auto gap-2">
+              <MapPin className="h-4 w-4" />
+              Ir al Planificador
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
