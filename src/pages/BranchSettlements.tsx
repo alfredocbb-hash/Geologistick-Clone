@@ -152,7 +152,7 @@ export default function BranchSettlements() {
 
       if (sucursalError) throw sucursalError;
 
-      // Fetch envíos del período with detalles for flete calculation
+      // Fetch envíos donde la sucursal es ORIGEN o DESTINO
       const { data: envios, error: enviosError } = await supabase
         .from('envios')
         .select(`
@@ -162,22 +162,33 @@ export default function BranchSettlements() {
           tipo_pago, 
           created_at, 
           estado,
+          sucursal_origen_id,
+          sucursal_destino_id,
           envio_detalles(concepto_id, monto, nombre_concepto)
         `)
-        .eq('sucursal_origen_id', selectedSucursal)
+        .or(`sucursal_origen_id.eq.${selectedSucursal},sucursal_destino_id.eq.${selectedSucursal}`)
         .gte('created_at', fechaInicio)
         .lte('created_at', fechaFin + 'T23:59:59')
         .in('estado', ['entregado', 'devuelto']);
 
       if (enviosError) throw enviosError;
 
-      // Fetch comisiones de la sucursal with base_comision
-      const { data: comisiones, error: comisionesError } = await supabase
+      // Fetch comisiones de la sucursal separadas por tipo_rol
+      const { data: comisionesEmision, error: emisionError } = await supabase
         .from('sucursal_comisiones')
         .select('concepto_id, porcentaje_contado, porcentaje_cta_cte, porcentaje_destino, base_comision')
-        .eq('sucursal_id', selectedSucursal);
+        .eq('sucursal_id', selectedSucursal)
+        .eq('tipo_rol', 'emision');
 
-      if (comisionesError) throw comisionesError;
+      if (emisionError) throw emisionError;
+
+      const { data: comisionesRecepcion, error: recepcionError } = await supabase
+        .from('sucursal_comisiones')
+        .select('concepto_id, porcentaje_contado, porcentaje_cta_cte, porcentaje_destino, base_comision')
+        .eq('sucursal_id', selectedSucursal)
+        .eq('tipo_rol', 'recepcion');
+
+      if (recepcionError) throw recepcionError;
 
       // Calculate totals
       let totalCobrado = 0;
@@ -188,18 +199,12 @@ export default function BranchSettlements() {
         : 1;
       const ivaDivisor = 1 + ((sucursalConfig?.porcentaje_iva || 21) / 100);
 
-      const enviosData = (envios || []).map(envio => {
-        // Calculate flete (sum of "Flete" concept or fallback to precio_total)
-        const detalles = (envio as any).envio_detalles || [];
-        const fleteMonto = detalles.find((d: any) => 
-          d.nombre_concepto?.toLowerCase().includes('flete')
-        )?.monto || envio.precio_total;
-
-        if (envio.tipo_pago === 'contado') {
-          totalCobrado += envio.precio_total;
-        }
-        
-        // Calculate commission for each configured concept
+      // Helper function to calculate commission for a set of configs
+      const calcularComisionPorConfigs = (
+        envio: any, 
+        comisiones: typeof comisionesEmision, 
+        fleteMonto: number
+      ) => {
         let envioComision = 0;
         (comisiones || []).forEach((comisionConfig) => {
           // Determine base value based on base_comision setting
@@ -241,10 +246,49 @@ export default function BranchSettlements() {
 
           envioComision += comision;
         });
+        return envioComision;
+      };
 
-        // If no commissions configured, use default 10%
-        if (!comisiones || comisiones.length === 0) {
-          envioComision = envio.precio_total * 0.10;
+      const enviosData = (envios || []).map(envio => {
+        // Calculate flete (sum of "Flete" concept or fallback to precio_total)
+        const detalles = (envio as any).envio_detalles || [];
+        const fleteMonto = detalles.find((d: any) => 
+          d.nombre_concepto?.toLowerCase().includes('flete')
+        )?.monto || envio.precio_total;
+
+        const esOrigen = envio.sucursal_origen_id === selectedSucursal;
+        const esDestino = envio.sucursal_destino_id === selectedSucursal;
+        
+        let envioComision = 0;
+
+        // Si es ORIGEN → usar comisiones de EMISIÓN
+        if (esOrigen) {
+          envioComision += calcularComisionPorConfigs(envio, comisionesEmision, fleteMonto);
+          
+          // Cobrado solo si es contado (la sucursal origen cobra)
+          if (envio.tipo_pago === 'contado') {
+            totalCobrado += envio.precio_total;
+          }
+        }
+
+        // Si es DESTINO y está entregado → usar comisiones de RECEPCIÓN
+        if (esDestino && envio.estado === 'entregado') {
+          envioComision += calcularComisionPorConfigs(envio, comisionesRecepcion, fleteMonto);
+          
+          // Cobrado si es pago destino (la sucursal destino cobra)
+          if (envio.tipo_pago === 'destino') {
+            totalCobrado += envio.precio_total;
+          }
+        }
+
+        // If no commissions configured for the applicable role, use default 10%
+        const hasEmisionConfig = esOrigen && comisionesEmision && comisionesEmision.length > 0;
+        const hasRecepcionConfig = esDestino && comisionesRecepcion && comisionesRecepcion.length > 0;
+        
+        if ((esOrigen && !hasEmisionConfig) || (esDestino && !hasRecepcionConfig)) {
+          if (envioComision === 0) {
+            envioComision = envio.precio_total * 0.10;
+          }
         }
 
         totalComisiones += envioComision;

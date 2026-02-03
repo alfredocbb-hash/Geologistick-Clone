@@ -2677,6 +2677,7 @@ export type Database = {
           porcentaje_cta_cte: number | null
           porcentaje_destino: number | null
           sucursal_id: string
+          tipo_rol: string | null
           updated_at: string | null
         }
         Insert: {
@@ -2688,6 +2689,7 @@ export type Database = {
           porcentaje_cta_cte?: number | null
           porcentaje_destino?: number | null
           sucursal_id: string
+          tipo_rol?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -2699,6 +2701,7 @@ export type Database = {
           porcentaje_cta_cte?: number | null
           porcentaje_destino?: number | null
           sucursal_id?: string
+          tipo_rol?: string | null
           updated_at?: string | null
         }
         Relationships: [
