@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Search, MoreHorizontal, Package, Eye, Truck, ShoppingBag, Clock, CheckCircle, XCircle, Printer, Edit } from 'lucide-react';
+import { Search, MoreHorizontal, Package, Eye, Truck, ShoppingBag, Clock, CheckCircle, XCircle, Printer, Edit, MapPin } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from '@/hooks/use-toast';
@@ -153,32 +153,60 @@ export default function Orders() {
           </p>
         </div>
         {selectedOrders.length > 0 && (
-          <Button onClick={() => {
-            const ordersToShip = filteredOrders?.filter(
-              o => selectedOrders.includes(o.id) && !o.envio_id && o.order_status !== 'cancelled'
-            ) || [];
+          <div className="flex gap-2">
+            {/* Button to create shipments */}
+            <Button onClick={() => {
+              const ordersToShip = filteredOrders?.filter(
+                o => selectedOrders.includes(o.id) && !o.envio_id && o.order_status !== 'cancelled'
+              ) || [];
+              
+              if (ordersToShip.length === 0) {
+                toast({ 
+                  title: 'Sin pedidos válidos', 
+                  description: 'Los pedidos seleccionados ya tienen envío o están cancelados',
+                  variant: 'destructive'
+                });
+                return;
+              }
+              
+              if (ordersToShip.length === 1) {
+                setCreateShipmentOrder(ordersToShip[0]);
+              } else {
+                toast({ 
+                  title: 'Funcionalidad próximamente', 
+                  description: `Crear ${ordersToShip.length} envíos masivos` 
+                });
+              }
+            }}>
+              <Truck className="mr-2 h-4 w-4" />
+              Crear Envíos
+            </Button>
             
-            if (ordersToShip.length === 0) {
-              toast({ 
-                title: 'Sin pedidos válidos', 
-                description: 'Los pedidos seleccionados ya tienen envío o están cancelados',
-                variant: 'destructive'
-              });
-              return;
-            }
-            
-            if (ordersToShip.length === 1) {
-              setCreateShipmentOrder(ordersToShip[0]);
-            } else {
-              toast({ 
-                title: 'Funcionalidad próximamente', 
-                description: `Crear ${ordersToShip.length} envíos masivos` 
-              });
-            }
-          }}>
-            <Truck className="mr-2 h-4 w-4" />
-            Crear {selectedOrders.length} Envíos
-          </Button>
+            {/* Button to send to planner */}
+            <Button 
+              variant="outline"
+              onClick={() => {
+                const ordersWithShipment = filteredOrders?.filter(
+                  o => selectedOrders.includes(o.id) && o.envio_id
+                ) || [];
+                
+                if (ordersWithShipment.length === 0) {
+                  toast({ 
+                    title: 'Sin envíos', 
+                    description: 'Las órdenes seleccionadas no tienen envío creado',
+                    variant: 'destructive'
+                  });
+                  return;
+                }
+                
+                const envioIds = ordersWithShipment.map(o => o.envio_id);
+                navigate(`/route-planner?envios=${envioIds.join(',')}`);
+              }}
+            >
+              <MapPin className="mr-2 h-4 w-4" />
+              Enviar al Planificador
+            </Button>
+          </div>
         )}
       </div>
 

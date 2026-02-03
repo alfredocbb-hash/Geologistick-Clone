@@ -12,6 +12,7 @@ interface MLRegisterDialogProps {
   open: boolean;
   mlShipmentId: string;
   mlSenderId?: string;
+  userId?: string; // User who is registering (for sucursal_origen)
   onClose: () => void;
   onSuccess: (envio: any) => void;
 }
@@ -26,6 +27,7 @@ export function MLRegisterDialog({
   open,
   mlShipmentId,
   mlSenderId,
+  userId,
   onClose,
   onSuccess,
 }: MLRegisterDialogProps) {
@@ -83,6 +85,7 @@ export function MLRegisterDialog({
         body: {
           ml_shipment_id: mlShipmentId,
           sender_id: mlSenderId,
+          user_id: userId, // Pass user for sucursal_origen tracking
         },
       });
 
