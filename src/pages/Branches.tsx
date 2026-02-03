@@ -97,7 +97,15 @@ interface SucursalComision {
   porcentaje_destino: number;
   porcentaje_cta_cte: number;
   base_comision: string;
+  tipo_rol: string;
 }
+
+type CommissionValues = {
+  contado: string;
+  destino: string;
+  cta_cte: string;
+  base: string;
+};
 
 export default function Branches() {
   const { isAdmin } = useAuth();
@@ -144,12 +152,11 @@ export default function Branches() {
     hasDraft,
   } = useFormDraft('new-sucursal', defaultFormData);
 
-  const [commissionData, setCommissionData] = useState<Record<string, {
-    contado: string;
-    destino: string;
-    cta_cte: string;
-    base: string;
-  }>>({});
+  // Tab activa para el diálogo de comisiones
+  const [commissionTab, setCommissionTab] = useState<'emision' | 'recepcion'>('emision');
+  // Datos separados para emisión y recepción
+  const [emisionCommissionData, setEmisionCommissionData] = useState<Record<string, CommissionValues>>({});
+  const [recepcionCommissionData, setRecepcionCommissionData] = useState<Record<string, CommissionValues>>({});
 
   // Fetch sucursales
   const { data: sucursales = [], isLoading } = useQuery({
@@ -181,7 +188,7 @@ export default function Branches() {
     },
   });
 
-  // Fetch comisiones para la sucursal seleccionada
+  // Fetch comisiones para la sucursal seleccionada (incluye tipo_rol)
   const { data: sucursalComisiones = [] } = useQuery({
     queryKey: ['sucursal_comisiones', selectedSucursalForCommissions?.id],
     queryFn: async () => {
@@ -191,25 +198,43 @@ export default function Branches() {
         .select('*')
         .eq('sucursal_id', selectedSucursalForCommissions.id);
       if (error) throw error;
-      return data as SucursalComision[];
+      return (data || []) as SucursalComision[];
     },
     enabled: !!selectedSucursalForCommissions,
   });
 
-  // Initialize commission data when dialog opens
+  // Initialize commission data when dialog opens - separado por tipo_rol
   useEffect(() => {
     if (selectedSucursalForCommissions && conceptos.length > 0) {
-      const initialData: Record<string, { contado: string; destino: string; cta_cte: string; base: string }> = {};
+      // Inicializar datos de EMISIÓN
+      const emisionData: Record<string, CommissionValues> = {};
       conceptos.forEach((concepto) => {
-        const existing = sucursalComisiones.find((c) => c.concepto_id === concepto.id);
-        initialData[concepto.id] = {
+        const existing = sucursalComisiones.find(
+          (c) => c.concepto_id === concepto.id && c.tipo_rol === 'emision'
+        );
+        emisionData[concepto.id] = {
           contado: existing?.porcentaje_contado?.toString() || '0',
           destino: existing?.porcentaje_destino?.toString() || '0',
           cta_cte: existing?.porcentaje_cta_cte?.toString() || '0',
           base: existing?.base_comision || 'total',
         };
       });
-      setCommissionData(initialData);
+      setEmisionCommissionData(emisionData);
+
+      // Inicializar datos de RECEPCIÓN
+      const recepcionData: Record<string, CommissionValues> = {};
+      conceptos.forEach((concepto) => {
+        const existing = sucursalComisiones.find(
+          (c) => c.concepto_id === concepto.id && c.tipo_rol === 'recepcion'
+        );
+        recepcionData[concepto.id] = {
+          contado: existing?.porcentaje_contado?.toString() || '0',
+          destino: existing?.porcentaje_destino?.toString() || '0',
+          cta_cte: existing?.porcentaje_cta_cte?.toString() || '0',
+          base: existing?.base_comision || 'total',
+        };
+      });
+      setRecepcionCommissionData(recepcionData);
     }
   }, [selectedSucursalForCommissions, conceptos, sucursalComisiones]);
 
@@ -276,32 +301,55 @@ export default function Branches() {
     },
   });
 
-  // Save commissions mutation
+  // Helper function to save a single commission
+  const saveCommission = async (
+    conceptoId: string,
+    values: CommissionValues,
+    tipoRol: 'emision' | 'recepcion'
+  ) => {
+    if (!selectedSucursalForCommissions) return;
+    
+    const existing = sucursalComisiones.find(
+      (c) => c.concepto_id === conceptoId && c.tipo_rol === tipoRol
+    );
+    
+    const data = {
+      sucursal_id: selectedSucursalForCommissions.id,
+      concepto_id: conceptoId,
+      porcentaje_contado: parseFloat(values.contado) || 0,
+      porcentaje_destino: parseFloat(values.destino) || 0,
+      porcentaje_cta_cte: parseFloat(values.cta_cte) || 0,
+      base_comision: values.base || 'total',
+      tipo_rol: tipoRol,
+    };
+
+    if (existing) {
+      const { error } = await supabase
+        .from('sucursal_comisiones')
+        .update(data)
+        .eq('id', existing.id);
+      if (error) throw error;
+    } else {
+      const { error } = await supabase.from('sucursal_comisiones').insert(data);
+      if (error) throw error;
+    }
+  };
+
+  // Save commissions mutation - guarda ambos roles (emisión y recepción)
   const saveCommissionsMutation = useMutation({
     mutationFn: async () => {
       if (!selectedSucursalForCommissions) return;
 
-      const operations = Object.entries(commissionData).map(async ([conceptoId, values]) => {
-        const existing = sucursalComisiones.find((c) => c.concepto_id === conceptoId);
-        const data = {
-          sucursal_id: selectedSucursalForCommissions.id,
-          concepto_id: conceptoId,
-          porcentaje_contado: parseFloat(values.contado) || 0,
-          porcentaje_destino: parseFloat(values.destino) || 0,
-          porcentaje_cta_cte: parseFloat(values.cta_cte) || 0,
-          base_comision: values.base || 'total',
-        };
+      const operations: Promise<void>[] = [];
 
-        if (existing) {
-          const { error } = await supabase
-            .from('sucursal_comisiones')
-            .update(data)
-            .eq('id', existing.id);
-          if (error) throw error;
-        } else {
-          const { error } = await supabase.from('sucursal_comisiones').insert(data);
-          if (error) throw error;
-        }
+      // Guardar comisiones de EMISIÓN
+      Object.entries(emisionCommissionData).forEach(([conceptoId, values]) => {
+        operations.push(saveCommission(conceptoId, values, 'emision'));
+      });
+
+      // Guardar comisiones de RECEPCIÓN
+      Object.entries(recepcionCommissionData).forEach(([conceptoId, values]) => {
+        operations.push(saveCommission(conceptoId, values, 'recepcion'));
       });
 
       await Promise.all(operations);
@@ -1155,122 +1203,240 @@ export default function Branches() {
         </div>
       )}
 
-      {/* Dialog para configurar comisiones */}
+      {/* Dialog para configurar comisiones con tabs Emisión/Recepción */}
       <Dialog open={isCommissionsDialogOpen} onOpenChange={setIsCommissionsDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               Comisiones - {selectedSucursalForCommissions?.nombre}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Define el porcentaje de comisión por cada concepto según el tipo de pago.
-            </p>
-            
             {conceptos.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 No hay conceptos configurados. Ve a Tarifas → Conceptos para crearlos.
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Concepto</TableHead>
-                    <TableHead className="text-center">% Contado</TableHead>
-                    <TableHead className="text-center">% Destino</TableHead>
-                    <TableHead className="text-center">% Cta. Cte.</TableHead>
-                    <TableHead className="text-center">Base</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {conceptos.map((concepto) => (
-                    <TableRow key={concepto.id}>
-                      <TableCell className="font-medium">{concepto.nombre}</TableCell>
-                      <TableCell>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          max="100"
-                          value={commissionData[concepto.id]?.contado || '0'}
-                          onChange={(e) =>
-                            setCommissionData({
-                              ...commissionData,
-                              [concepto.id]: {
-                                ...commissionData[concepto.id],
-                                contado: e.target.value,
-                              },
-                            })
-                          }
-                          className="w-20 text-center"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          max="100"
-                          value={commissionData[concepto.id]?.destino || '0'}
-                          onChange={(e) =>
-                            setCommissionData({
-                              ...commissionData,
-                              [concepto.id]: {
-                                ...commissionData[concepto.id],
-                                destino: e.target.value,
-                              },
-                            })
-                          }
-                          className="w-20 text-center"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          max="100"
-                          value={commissionData[concepto.id]?.cta_cte || '0'}
-                          onChange={(e) =>
-                            setCommissionData({
-                              ...commissionData,
-                              [concepto.id]: {
-                                ...commissionData[concepto.id],
-                                cta_cte: e.target.value,
-                              },
-                            })
-                          }
-                          className="w-20 text-center"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Select
-                          value={commissionData[concepto.id]?.base || 'total'}
-                          onValueChange={(value) =>
-                            setCommissionData({
-                              ...commissionData,
-                              [concepto.id]: {
-                                ...commissionData[concepto.id],
-                                base: value,
-                              },
-                            })
-                          }
-                        >
-                          <SelectTrigger className="w-24">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="flete">Flete</SelectItem>
-                            <SelectItem value="neto">Neto</SelectItem>
-                            <SelectItem value="total">Total</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <Tabs value={commissionTab} onValueChange={(v) => setCommissionTab(v as 'emision' | 'recepcion')}>
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="emision" className="flex items-center gap-2">
+                    <ArrowUpFromLine className="h-4 w-4" />
+                    Emisión
+                  </TabsTrigger>
+                  <TabsTrigger value="recepcion" className="flex items-center gap-2">
+                    <ArrowDownToLine className="h-4 w-4" />
+                    Recepción
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="emision" className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Comisiones cuando esta sucursal <strong>DESPACHA</strong> envíos hacia otras sucursales.
+                  </p>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Concepto</TableHead>
+                        <TableHead className="text-center">% Contado</TableHead>
+                        <TableHead className="text-center">% Destino</TableHead>
+                        <TableHead className="text-center">% Cta. Cte.</TableHead>
+                        <TableHead className="text-center">Base</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {conceptos.map((concepto) => (
+                        <TableRow key={concepto.id}>
+                          <TableCell className="font-medium">{concepto.nombre}</TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              max="100"
+                              value={emisionCommissionData[concepto.id]?.contado || '0'}
+                              onChange={(e) =>
+                                setEmisionCommissionData({
+                                  ...emisionCommissionData,
+                                  [concepto.id]: {
+                                    ...emisionCommissionData[concepto.id],
+                                    contado: e.target.value,
+                                  },
+                                })
+                              }
+                              className="w-20 text-center"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              max="100"
+                              value={emisionCommissionData[concepto.id]?.destino || '0'}
+                              onChange={(e) =>
+                                setEmisionCommissionData({
+                                  ...emisionCommissionData,
+                                  [concepto.id]: {
+                                    ...emisionCommissionData[concepto.id],
+                                    destino: e.target.value,
+                                  },
+                                })
+                              }
+                              className="w-20 text-center"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              max="100"
+                              value={emisionCommissionData[concepto.id]?.cta_cte || '0'}
+                              onChange={(e) =>
+                                setEmisionCommissionData({
+                                  ...emisionCommissionData,
+                                  [concepto.id]: {
+                                    ...emisionCommissionData[concepto.id],
+                                    cta_cte: e.target.value,
+                                  },
+                                })
+                              }
+                              className="w-20 text-center"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Select
+                              value={emisionCommissionData[concepto.id]?.base || 'total'}
+                              onValueChange={(value) =>
+                                setEmisionCommissionData({
+                                  ...emisionCommissionData,
+                                  [concepto.id]: {
+                                    ...emisionCommissionData[concepto.id],
+                                    base: value,
+                                  },
+                                })
+                              }
+                            >
+                              <SelectTrigger className="w-24">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="flete">Flete</SelectItem>
+                                <SelectItem value="neto">Neto</SelectItem>
+                                <SelectItem value="total">Total</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TabsContent>
+
+                <TabsContent value="recepcion" className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Comisiones cuando esta sucursal <strong>RECIBE</strong> envíos de otras sucursales.
+                  </p>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Concepto</TableHead>
+                        <TableHead className="text-center">% Contado</TableHead>
+                        <TableHead className="text-center">% Destino</TableHead>
+                        <TableHead className="text-center">% Cta. Cte.</TableHead>
+                        <TableHead className="text-center">Base</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {conceptos.map((concepto) => (
+                        <TableRow key={concepto.id}>
+                          <TableCell className="font-medium">{concepto.nombre}</TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              max="100"
+                              value={recepcionCommissionData[concepto.id]?.contado || '0'}
+                              onChange={(e) =>
+                                setRecepcionCommissionData({
+                                  ...recepcionCommissionData,
+                                  [concepto.id]: {
+                                    ...recepcionCommissionData[concepto.id],
+                                    contado: e.target.value,
+                                  },
+                                })
+                              }
+                              className="w-20 text-center"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              max="100"
+                              value={recepcionCommissionData[concepto.id]?.destino || '0'}
+                              onChange={(e) =>
+                                setRecepcionCommissionData({
+                                  ...recepcionCommissionData,
+                                  [concepto.id]: {
+                                    ...recepcionCommissionData[concepto.id],
+                                    destino: e.target.value,
+                                  },
+                                })
+                              }
+                              className="w-20 text-center"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              max="100"
+                              value={recepcionCommissionData[concepto.id]?.cta_cte || '0'}
+                              onChange={(e) =>
+                                setRecepcionCommissionData({
+                                  ...recepcionCommissionData,
+                                  [concepto.id]: {
+                                    ...recepcionCommissionData[concepto.id],
+                                    cta_cte: e.target.value,
+                                  },
+                                })
+                              }
+                              className="w-20 text-center"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Select
+                              value={recepcionCommissionData[concepto.id]?.base || 'total'}
+                              onValueChange={(value) =>
+                                setRecepcionCommissionData({
+                                  ...recepcionCommissionData,
+                                  [concepto.id]: {
+                                    ...recepcionCommissionData[concepto.id],
+                                    base: value,
+                                  },
+                                })
+                              }
+                            >
+                              <SelectTrigger className="w-24">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="flete">Flete</SelectItem>
+                                <SelectItem value="neto">Neto</SelectItem>
+                                <SelectItem value="total">Total</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TabsContent>
+              </Tabs>
             )}
 
             <div className="flex justify-end gap-2 pt-4 border-t">
