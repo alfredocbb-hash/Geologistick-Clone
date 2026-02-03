@@ -24,6 +24,7 @@ export interface SubscriptionData {
   limits?: SubscriptionLimits;
   usage?: SubscriptionUsage;
   error?: string;
+  payment_method?: "stripe" | "mercadopago";
 }
 
 export interface SubscriptionPlan {
@@ -32,6 +33,7 @@ export interface SubscriptionPlan {
   description: string | null;
   stripe_product_id: string;
   stripe_price_id: string;
+  mercadopago_plan_id?: string | null;
   max_users: number;
   max_branches: number;
   max_shipments_month: number;
@@ -46,6 +48,13 @@ export function useSubscription() {
   const { data: subscription, isLoading: isLoadingSubscription, refetch: refetchSubscription } = useQuery({
     queryKey: ["subscription", user?.id],
     queryFn: async (): Promise<SubscriptionData> => {
+      // Try Mercado Pago first
+      const { data: mpData, error: mpError } = await supabase.functions.invoke("mp-check-subscription");
+      if (!mpError && mpData && mpData.subscribed) {
+        return mpData as SubscriptionData;
+      }
+
+      // Fallback to Stripe check
       const { data, error } = await supabase.functions.invoke("check-subscription");
       if (error) throw error;
       return data as SubscriptionData;
@@ -73,7 +82,18 @@ export function useSubscription() {
     enabled: !!user,
   });
 
-  const createCheckout = async (priceId: string) => {
+  const createCheckoutMP = async (planId: string) => {
+    const { data, error } = await supabase.functions.invoke("mp-create-subscription", {
+      body: { planId },
+    });
+    if (error) throw error;
+    if (data?.url) {
+      window.open(data.url, "_blank");
+    }
+    return data;
+  };
+
+  const createCheckoutStripe = async (priceId: string) => {
     const { data, error } = await supabase.functions.invoke("create-checkout", {
       body: { priceId },
     });
@@ -84,7 +104,14 @@ export function useSubscription() {
     return data;
   };
 
+  const cancelSubscription = async () => {
+    const { data, error } = await supabase.functions.invoke("mp-cancel-subscription");
+    if (error) throw error;
+    return data;
+  };
+
   const openCustomerPortal = async () => {
+    // For Stripe subscriptions
     const { data, error } = await supabase.functions.invoke("customer-portal");
     if (error) throw error;
     if (data?.url) {
@@ -141,7 +168,9 @@ export function useSubscription() {
     subscription,
     plans,
     isLoading: isLoadingSubscription || isLoadingPlans,
-    createCheckout,
+    createCheckoutMP,
+    createCheckoutStripe,
+    cancelSubscription,
     openCustomerPortal,
     refetchSubscription,
     isWithinLimits,

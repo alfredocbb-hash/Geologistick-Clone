@@ -2624,6 +2624,7 @@ export type Database = {
           max_branches: number
           max_shipments_month: number
           max_users: number
+          mercadopago_plan_id: string | null
           name: string
           price_monthly: number
           stripe_price_id: string
@@ -2640,6 +2641,7 @@ export type Database = {
           max_branches: number
           max_shipments_month: number
           max_users: number
+          mercadopago_plan_id?: string | null
           name: string
           price_monthly: number
           stripe_price_id: string
@@ -2656,6 +2658,7 @@ export type Database = {
           max_branches?: number
           max_shipments_month?: number
           max_users?: number
+          mercadopago_plan_id?: string | null
           name?: string
           price_monthly?: number
           stripe_price_id?: string
@@ -3339,6 +3342,8 @@ export type Database = {
           current_period_end: string | null
           current_period_start: string | null
           id: string
+          mercadopago_payer_id: string | null
+          mercadopago_subscription_id: string | null
           plan_id: string
           status: string
           stripe_customer_id: string | null
@@ -3352,6 +3357,8 @@ export type Database = {
           current_period_end?: string | null
           current_period_start?: string | null
           id?: string
+          mercadopago_payer_id?: string | null
+          mercadopago_subscription_id?: string | null
           plan_id: string
           status?: string
           stripe_customer_id?: string | null
@@ -3365,6 +3372,8 @@ export type Database = {
           current_period_end?: string | null
           current_period_start?: string | null
           id?: string
+          mercadopago_payer_id?: string | null
+          mercadopago_subscription_id?: string | null
           plan_id?: string
           status?: string
           stripe_customer_id?: string | null
@@ -3628,6 +3637,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      trial_requests: {
+        Row: {
+          created_at: string | null
+          email: string
+          estado: string | null
+          id: string
+          mensaje: string | null
+          nombre_contacto: string
+          nombre_empresa: string
+          notas_revision: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          telefono: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          estado?: string | null
+          id?: string
+          mensaje?: string | null
+          nombre_contacto: string
+          nombre_empresa: string
+          notas_revision?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          telefono?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          estado?: string | null
+          id?: string
+          mensaje?: string | null
+          nombre_contacto?: string
+          nombre_empresa?: string
+          notas_revision?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          telefono?: string | null
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {

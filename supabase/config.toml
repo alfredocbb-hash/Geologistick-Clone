@@ -71,3 +71,15 @@ verify_jwt = false
 
 [functions.mercadolibre-sync]
 verify_jwt = false
+
+[functions.mp-create-subscription]
+verify_jwt = false
+
+[functions.mp-check-subscription]
+verify_jwt = false
+
+[functions.mp-cancel-subscription]
+verify_jwt = false
+
+[functions.mp-subscription-webhook]
+verify_jwt = false

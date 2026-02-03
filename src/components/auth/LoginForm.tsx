@@ -1,19 +1,18 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Mail, Lock, User, MapPin, Truck } from "lucide-react";
+import { Card, CardContent, CardFooter, CardHeader, CardDescription } from "@/components/ui/card";
+import { Loader2, Mail, Lock, MapPin, Truck, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import geologistickLogo from "@/assets/geologistick-logo.png";
 
 export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [showContent, setShowContent] = useState(false);
-  const { signIn, signUp } = useAuth();
+  const { signIn } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -48,38 +47,6 @@ export function LoginForm() {
     }
 
     setIsLoading(false);
-  };
-
-  const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setIsLoading(true);
-
-    const formData = new FormData(e.currentTarget);
-    const email = formData.get("email") as string;
-    const password = formData.get("password") as string;
-    const nombre = formData.get("nombre") as string;
-
-    const { error } = await signUp(email, password, nombre);
-
-    if (error) {
-      toast({
-        title: "Error al registrarse",
-        description: error.message,
-        variant: "destructive",
-      });
-      setIsLoading(false);
-    } else {
-      toast({
-        title: "¡Cuenta creada!",
-        description: "Redirigiendo a configuración...",
-      });
-      // Auto-login and redirect to onboarding
-      const { error: loginError } = await signIn(email, password);
-      if (!loginError) {
-        navigate("/onboarding");
-      }
-      setIsLoading(false);
-    }
   };
 
   return (
@@ -132,146 +99,82 @@ export function LoginForm() {
           <p className="text-slate-400">Sistema de Gestión Logística</p>
         </div>
 
-        {/* Login/Register Card */}
+        {/* Login Card */}
         <Card 
           className={`shadow-xl border-slate-800/50 bg-slate-900/60 backdrop-blur-xl transition-all duration-700 delay-200 ${
             showContent ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
           }`}
         >
-          <Tabs defaultValue="login" className="w-full">
-            <CardHeader className="pb-4">
-              <TabsList className="grid w-full grid-cols-2 bg-slate-800/50">
-                <TabsTrigger value="login" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                  Iniciar Sesión
-                </TabsTrigger>
-                <TabsTrigger value="register" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                  Registrarse
-                </TabsTrigger>
-              </TabsList>
-            </CardHeader>
+          <CardHeader className="pb-4 text-center">
+            <h2 className="text-xl font-semibold text-white">Iniciar Sesión</h2>
+            <CardDescription className="text-slate-400">
+              Ingresa tus credenciales para acceder
+            </CardDescription>
+          </CardHeader>
 
-            <TabsContent value="login">
-              <form onSubmit={handleLogin}>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="login-email" className="text-slate-300">Correo electrónico</Label>
-                    <div className="relative group">
-                      <div className="absolute inset-0 bg-primary/20 rounded-xl blur opacity-0 group-focus-within:opacity-100 transition-opacity" />
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-primary transition-colors z-10" />
-                      <Input
-                        id="login-email"
-                        name="email"
-                        type="email"
-                        placeholder="tu@email.com"
-                        className="relative pl-10 bg-slate-800/50 border-slate-700/50 text-white placeholder:text-slate-500 focus:border-primary focus:ring-primary/30"
-                        required
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="login-password" className="text-slate-300">Contraseña</Label>
-                    <div className="relative group">
-                      <div className="absolute inset-0 bg-primary/20 rounded-xl blur opacity-0 group-focus-within:opacity-100 transition-opacity" />
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-primary transition-colors z-10" />
-                      <Input
-                        id="login-password"
-                        name="password"
-                        type="password"
-                        placeholder="••••••••"
-                        className="relative pl-10 bg-slate-800/50 border-slate-700/50 text-white placeholder:text-slate-500 focus:border-primary focus:ring-primary/30"
-                        required
-                      />
-                    </div>
-                  </div>
-                </CardContent>
-                <CardFooter>
-                  <Button 
-                    type="submit" 
-                    className="w-full bg-gradient-to-r from-primary via-primary to-emerald-500 hover:opacity-90 text-white font-semibold shadow-lg shadow-primary/30 transition-all active:scale-[0.98]" 
-                    disabled={isLoading}
+          <form onSubmit={handleLogin}>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="login-email" className="text-slate-300">Correo electrónico</Label>
+                <div className="relative group">
+                  <div className="absolute inset-0 bg-primary/20 rounded-xl blur opacity-0 group-focus-within:opacity-100 transition-opacity" />
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-primary transition-colors z-10" />
+                  <Input
+                    id="login-email"
+                    name="email"
+                    type="email"
+                    placeholder="tu@email.com"
+                    className="relative pl-10 bg-slate-800/50 border-slate-700/50 text-white placeholder:text-slate-500 focus:border-primary focus:ring-primary/30"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="login-password" className="text-slate-300">Contraseña</Label>
+                <div className="relative group">
+                  <div className="absolute inset-0 bg-primary/20 rounded-xl blur opacity-0 group-focus-within:opacity-100 transition-opacity" />
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-primary transition-colors z-10" />
+                  <Input
+                    id="login-password"
+                    name="password"
+                    type="password"
+                    placeholder="••••••••"
+                    className="relative pl-10 bg-slate-800/50 border-slate-700/50 text-white placeholder:text-slate-500 focus:border-primary focus:ring-primary/30"
+                    required
+                  />
+                </div>
+              </div>
+            </CardContent>
+            <CardFooter className="flex flex-col gap-4">
+              <Button 
+                type="submit" 
+                className="w-full bg-gradient-to-r from-primary via-primary to-emerald-500 hover:opacity-90 text-white font-semibold shadow-lg shadow-primary/30 transition-all active:scale-[0.98]" 
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Iniciando...
+                  </>
+                ) : (
+                  "Iniciar Sesión"
+                )}
+              </Button>
+              
+              <div className="text-center">
+                <p className="text-sm text-slate-400">
+                  ¿No tienes cuenta?{" "}
+                  <Link 
+                    to="/#pricing" 
+                    className="text-primary hover:text-primary/80 font-medium inline-flex items-center gap-1"
                   >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Iniciando...
-                      </>
-                    ) : (
-                      "Iniciar Sesión"
-                    )}
-                  </Button>
-                </CardFooter>
-              </form>
-            </TabsContent>
-
-            <TabsContent value="register">
-              <form onSubmit={handleRegister}>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="register-nombre" className="text-slate-300">Nombre</Label>
-                    <div className="relative group">
-                      <div className="absolute inset-0 bg-primary/20 rounded-xl blur opacity-0 group-focus-within:opacity-100 transition-opacity" />
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-primary transition-colors z-10" />
-                      <Input
-                        id="register-nombre"
-                        name="nombre"
-                        type="text"
-                        placeholder="Tu nombre"
-                        className="relative pl-10 bg-slate-800/50 border-slate-700/50 text-white placeholder:text-slate-500 focus:border-primary focus:ring-primary/30"
-                        required
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="register-email" className="text-slate-300">Correo electrónico</Label>
-                    <div className="relative group">
-                      <div className="absolute inset-0 bg-primary/20 rounded-xl blur opacity-0 group-focus-within:opacity-100 transition-opacity" />
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-primary transition-colors z-10" />
-                      <Input
-                        id="register-email"
-                        name="email"
-                        type="email"
-                        placeholder="tu@email.com"
-                        className="relative pl-10 bg-slate-800/50 border-slate-700/50 text-white placeholder:text-slate-500 focus:border-primary focus:ring-primary/30"
-                        required
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="register-password" className="text-slate-300">Contraseña</Label>
-                    <div className="relative group">
-                      <div className="absolute inset-0 bg-primary/20 rounded-xl blur opacity-0 group-focus-within:opacity-100 transition-opacity" />
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-primary transition-colors z-10" />
-                      <Input
-                        id="register-password"
-                        name="password"
-                        type="password"
-                        placeholder="Mínimo 6 caracteres"
-                        className="relative pl-10 bg-slate-800/50 border-slate-700/50 text-white placeholder:text-slate-500 focus:border-primary focus:ring-primary/30"
-                        minLength={6}
-                        required
-                      />
-                    </div>
-                  </div>
-                </CardContent>
-                <CardFooter>
-                  <Button 
-                    type="submit" 
-                    className="w-full bg-gradient-to-r from-primary via-primary to-emerald-500 hover:opacity-90 text-white font-semibold shadow-lg shadow-primary/30 transition-all active:scale-[0.98]" 
-                    disabled={isLoading}
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Creando cuenta...
-                      </>
-                    ) : (
-                      "Crear Cuenta"
-                    )}
-                  </Button>
-                </CardFooter>
-              </form>
-            </TabsContent>
-          </Tabs>
+                    Solicitar prueba gratuita
+                    <ExternalLink className="h-3 w-3" />
+                  </Link>
+                </p>
+              </div>
+            </CardFooter>
+          </form>
         </Card>
 
         <p 
