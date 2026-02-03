@@ -143,10 +143,27 @@ export default function BranchSettlements() {
         throw new Error('Seleccione sucursal y período');
       }
 
-      // Fetch envíos del período
+      // Fetch sucursal configuration (for IVA settings)
+      const { data: sucursalConfig, error: sucursalError } = await supabase
+        .from('sucursales')
+        .select('incluye_iva, porcentaje_iva')
+        .eq('id', selectedSucursal)
+        .single();
+
+      if (sucursalError) throw sucursalError;
+
+      // Fetch envíos del período with detalles for flete calculation
       const { data: envios, error: enviosError } = await supabase
         .from('envios')
-        .select('id, tracking_number, precio_total, tipo_pago, created_at, estado')
+        .select(`
+          id, 
+          tracking_number, 
+          precio_total, 
+          tipo_pago, 
+          created_at, 
+          estado,
+          envio_detalles(concepto_id, monto, nombre_concepto)
+        `)
         .eq('sucursal_origen_id', selectedSucursal)
         .gte('created_at', fechaInicio)
         .lte('created_at', fechaFin + 'T23:59:59')
@@ -154,10 +171,10 @@ export default function BranchSettlements() {
 
       if (enviosError) throw enviosError;
 
-      // Fetch comisiones de la sucursal
+      // Fetch comisiones de la sucursal with base_comision
       const { data: comisiones, error: comisionesError } = await supabase
         .from('sucursal_comisiones')
-        .select('concepto_id, porcentaje_contado, porcentaje_cta_cte, porcentaje_destino')
+        .select('concepto_id, porcentaje_contado, porcentaje_cta_cte, porcentaje_destino, base_comision')
         .eq('sucursal_id', selectedSucursal);
 
       if (comisionesError) throw comisionesError;
@@ -166,15 +183,80 @@ export default function BranchSettlements() {
       let totalCobrado = 0;
       let totalComisiones = 0;
 
-      const enviosData = envios || [];
-      enviosData.forEach((envio) => {
+      const ivaMultiplier = sucursalConfig?.incluye_iva 
+        ? 1 + ((sucursalConfig?.porcentaje_iva || 21) / 100) 
+        : 1;
+      const ivaDivisor = 1 + ((sucursalConfig?.porcentaje_iva || 21) / 100);
+
+      const enviosData = (envios || []).map(envio => {
+        // Calculate flete (sum of "Flete" concept or fallback to precio_total)
+        const detalles = (envio as any).envio_detalles || [];
+        const fleteMonto = detalles.find((d: any) => 
+          d.nombre_concepto?.toLowerCase().includes('flete')
+        )?.monto || envio.precio_total;
+
         if (envio.tipo_pago === 'contado') {
           totalCobrado += envio.precio_total;
         }
         
-        // Calculate commission based on payment type
-        const comisionPorcentaje = comisiones?.[0]?.porcentaje_contado || 10;
-        totalComisiones += (envio.precio_total * comisionPorcentaje) / 100;
+        // Calculate commission for each configured concept
+        let envioComision = 0;
+        (comisiones || []).forEach((comisionConfig) => {
+          // Determine base value based on base_comision setting
+          let baseCalculo = 0;
+          switch (comisionConfig.base_comision || 'total') {
+            case 'flete':
+              baseCalculo = fleteMonto;
+              break;
+            case 'neto':
+              baseCalculo = envio.precio_total / ivaDivisor;
+              break;
+            case 'total':
+            default:
+              baseCalculo = envio.precio_total;
+          }
+
+          // Get percentage based on payment type
+          let porcentaje = 0;
+          switch (envio.tipo_pago) {
+            case 'contado':
+              porcentaje = comisionConfig.porcentaje_contado || 0;
+              break;
+            case 'destino':
+              porcentaje = comisionConfig.porcentaje_destino || 0;
+              break;
+            case 'cta_cte':
+              porcentaje = comisionConfig.porcentaje_cta_cte || 0;
+              break;
+            default:
+              porcentaje = comisionConfig.porcentaje_contado || 0;
+          }
+
+          let comision = baseCalculo * (porcentaje / 100);
+          
+          // Apply IVA if configured
+          if (sucursalConfig?.incluye_iva) {
+            comision *= ivaMultiplier;
+          }
+
+          envioComision += comision;
+        });
+
+        // If no commissions configured, use default 10%
+        if (!comisiones || comisiones.length === 0) {
+          envioComision = envio.precio_total * 0.10;
+        }
+
+        totalComisiones += envioComision;
+
+        return {
+          id: envio.id,
+          tracking_number: envio.tracking_number,
+          precio_total: envio.precio_total,
+          tipo_pago: envio.tipo_pago,
+          created_at: envio.created_at,
+          estado: envio.estado,
+        };
       });
 
       const saldo = totalCobrado - totalComisiones;

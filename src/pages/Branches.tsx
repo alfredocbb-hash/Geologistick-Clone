@@ -76,6 +76,10 @@ interface Sucursal {
   centro_logistico_id: string | null;
   lat: number | null;
   lng: number | null;
+  // Configuración fiscal y liquidación
+  incluye_iva: boolean | null;
+  porcentaje_iva: number | null;
+  tipo_liquidacion: string | null;
 }
 
 interface TarifaConcepto {
@@ -92,6 +96,7 @@ interface SucursalComision {
   porcentaje_contado: number;
   porcentaje_destino: number;
   porcentaje_cta_cte: number;
+  base_comision: string;
 }
 
 export default function Branches() {
@@ -121,6 +126,10 @@ export default function Branches() {
     centro_logistico_id: '',
     lat: null as number | null,
     lng: null as number | null,
+    // Configuración fiscal y liquidación
+    incluye_iva: false,
+    porcentaje_iva: 21,
+    tipo_liquidacion: 'diferida',
   };
 
   // Form draft persistence
@@ -139,6 +148,7 @@ export default function Branches() {
     contado: string;
     destino: string;
     cta_cte: string;
+    base: string;
   }>>({});
 
   // Fetch sucursales
@@ -189,13 +199,14 @@ export default function Branches() {
   // Initialize commission data when dialog opens
   useEffect(() => {
     if (selectedSucursalForCommissions && conceptos.length > 0) {
-      const initialData: Record<string, { contado: string; destino: string; cta_cte: string }> = {};
+      const initialData: Record<string, { contado: string; destino: string; cta_cte: string; base: string }> = {};
       conceptos.forEach((concepto) => {
         const existing = sucursalComisiones.find((c) => c.concepto_id === concepto.id);
         initialData[concepto.id] = {
           contado: existing?.porcentaje_contado?.toString() || '0',
           destino: existing?.porcentaje_destino?.toString() || '0',
           cta_cte: existing?.porcentaje_cta_cte?.toString() || '0',
+          base: existing?.base_comision || 'total',
         };
       });
       setCommissionData(initialData);
@@ -229,6 +240,10 @@ export default function Branches() {
         centro_logistico_id: data.centro_logistico_id || null,
         lat: data.lat,
         lng: data.lng,
+        // Configuración fiscal
+        incluye_iva: data.incluye_iva,
+        porcentaje_iva: data.porcentaje_iva,
+        tipo_liquidacion: data.tipo_liquidacion,
       };
 
       if (editingSucursal) {
@@ -274,6 +289,7 @@ export default function Branches() {
           porcentaje_contado: parseFloat(values.contado) || 0,
           porcentaje_destino: parseFloat(values.destino) || 0,
           porcentaje_cta_cte: parseFloat(values.cta_cte) || 0,
+          base_comision: values.base || 'total',
         };
 
         if (existing) {
@@ -455,6 +471,10 @@ export default function Branches() {
       centro_logistico_id: sucursal.centro_logistico_id || '',
       lat: sucursal.lat || null,
       lng: sucursal.lng || null,
+      // Configuración fiscal
+      incluye_iva: sucursal.incluye_iva ?? false,
+      porcentaje_iva: sucursal.porcentaje_iva ?? 21,
+      tipo_liquidacion: sucursal.tipo_liquidacion || 'diferida',
     });
     setIsDialogOpen(true);
   };
@@ -804,6 +824,77 @@ export default function Branches() {
 
               <Separator />
 
+              {/* Configuración Fiscal y Liquidación */}
+              <div className="space-y-4">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <Percent className="h-4 w-4" />
+                  Configuración Fiscal y Comisiones
+                </h3>
+                
+                <div className="flex items-center justify-between p-4 rounded-lg border">
+                  <div className="space-y-0.5">
+                    <Label className="font-medium">Incluye IVA en Comisiones</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Las comisiones incluirán el porcentaje de IVA configurado
+                    </p>
+                  </div>
+                  <Switch
+                    checked={formData.incluye_iva}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, incluye_iva: checked })
+                    }
+                  />
+                </div>
+
+                {formData.incluye_iva && (
+                  <div className="space-y-2 pl-4 border-l-2 border-primary/20">
+                    <Label htmlFor="porcentaje_iva">Porcentaje IVA (%)</Label>
+                    <Input
+                      id="porcentaje_iva"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={formData.porcentaje_iva}
+                      onChange={(e) =>
+                        setFormData({ ...formData, porcentaje_iva: parseFloat(e.target.value) || 21 })
+                      }
+                      className="w-32"
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label>Tipo de Liquidación</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div
+                      className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                        formData.tipo_liquidacion === 'inmediata'
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border hover:border-muted-foreground'
+                      }`}
+                      onClick={() => setFormData({ ...formData, tipo_liquidacion: 'inmediata' })}
+                    >
+                      <div className="font-medium text-sm">Inmediata</div>
+                      <p className="text-xs text-muted-foreground">Al entregar el envío</p>
+                    </div>
+                    <div
+                      className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                        formData.tipo_liquidacion === 'diferida'
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border hover:border-muted-foreground'
+                      }`}
+                      onClick={() => setFormData({ ...formData, tipo_liquidacion: 'diferida' })}
+                    >
+                      <div className="font-medium text-sm">Diferida</div>
+                      <p className="text-xs text-muted-foreground">Al final del período</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
               <div className="flex items-center justify-between">
                 <Label htmlFor="activa">Sucursal Activa</Label>
                 <Switch
@@ -1089,6 +1180,7 @@ export default function Branches() {
                     <TableHead className="text-center">% Contado</TableHead>
                     <TableHead className="text-center">% Destino</TableHead>
                     <TableHead className="text-center">% Cta. Cte.</TableHead>
+                    <TableHead className="text-center">Base</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1151,6 +1243,29 @@ export default function Branches() {
                           }
                           className="w-20 text-center"
                         />
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={commissionData[concepto.id]?.base || 'total'}
+                          onValueChange={(value) =>
+                            setCommissionData({
+                              ...commissionData,
+                              [concepto.id]: {
+                                ...commissionData[concepto.id],
+                                base: value,
+                              },
+                            })
+                          }
+                        >
+                          <SelectTrigger className="w-24">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="flete">Flete</SelectItem>
+                            <SelectItem value="neto">Neto</SelectItem>
+                            <SelectItem value="total">Total</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </TableCell>
                     </TableRow>
                   ))}
