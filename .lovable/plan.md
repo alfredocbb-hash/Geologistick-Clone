@@ -1,130 +1,185 @@
 
-# Plan: Agregar Autocomplete de Clientes y Guardado en Envíos Terciarizados
+# Plan: Configuracion Avanzada de Comisiones para Sucursales/Agencias
 
-## Problema Identificado
+## Resumen del Analisis
 
-El formulario "Agregar Envío Terciarizado" en `ThirdPartyShipmentsTab.tsx` presenta dos deficiencias:
+### Comparativa Video vs Estado Actual
 
-1. **No permite buscar clientes existentes**: A diferencia de `NewShipment.tsx`, no tiene el componente `ContactAutocomplete` para cargar datos de clientes ya registrados.
-
-2. **No guarda el destinatario en la base de clientes**: Los datos del destinatario se insertan solo en la tabla `envios` pero nunca se persisten en la tabla `clientes`, perdiendo la oportunidad de reutilizarlos en futuras operaciones.
+| Funcionalidad | Video | Estado Actual |
+|---------------|-------|---------------|
+| IVA Incluido (toggle) | Si | No existe |
+| Porcentaje IVA | Si (ej: 21%) | No existe |
+| Base de Calculo | Flete / Neto / Total | No existe |
+| Tipo de Liquidacion | Inmediata / Diferida | No existe |
+| Concepto "Recepcion" | Si | No existe en tarifa_conceptos |
+| Concepto "Cobros/Cobranzas" | Si | No existe en tarifa_conceptos |
+| Comisiones por concepto | Si | Si (funciona) |
+| Porcentaje por tipo pago | Si | Si (contado/destino/cta_cte) |
 
 ---
 
-## Solucion Propuesta
+## Parte 1: Migracion de Base de Datos
 
-### 1. Agregar ContactAutocomplete al Formulario
+### 1.1 Agregar campos a tabla `sucursales`
 
-Importar y usar el componente `ContactAutocomplete` en la seccion de "Nombre del destinatario":
+```sql
+-- Campos de configuracion fiscal y liquidacion a nivel sucursal
+ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS incluye_iva boolean DEFAULT false;
+ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS porcentaje_iva numeric DEFAULT 21;
+ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS tipo_liquidacion text DEFAULT 'diferida' 
+  CHECK (tipo_liquidacion IN ('inmediata', 'diferida'));
+```
 
-```tsx
-import ContactAutocomplete from '@/components/shipments/ContactAutocomplete';
+### 1.2 Agregar campo a tabla `sucursal_comisiones`
 
-// Query para obtener todos los clientes
-const { data: allClients = [] } = useQuery({
-  queryKey: ['all_clients'],
-  queryFn: async () => {
-    const { data, error } = await supabase
-      .from('clientes')
-      .select('*')
-      .order('nombre');
-    if (error) throw error;
-    return data;
-  },
-});
+```sql
+-- Base de calculo para cada concepto-comision
+ALTER TABLE sucursal_comisiones ADD COLUMN IF NOT EXISTS base_comision text DEFAULT 'total'
+  CHECK (base_comision IN ('flete', 'neto', 'total'));
+```
 
-// Handler para cargar cliente existente
-const handleLoadClient = (client: Client) => {
-  setFormData(prev => ({
-    ...prev,
-    nombre_destinatario: `${client.nombre} ${client.apellido || ''}`.trim(),
-    direccion_entrega: client.direccion,
-    ciudad_entrega: client.ciudad || '',
-    provincia: '', // El cliente no tiene provincia, mantener manual
-    cp_entrega: client.codigo_postal || '',
-    whatsapp_destinatario: client.telefono,
-    entrega_lat: client.lat || null,
-    entrega_lng: client.lng || null,
-  }));
-  toast.success(`Datos de ${client.nombre} cargados`);
+### 1.3 Insertar conceptos faltantes
+
+```sql
+-- Agregar concepto "Recepcion" si no existe
+INSERT INTO tarifa_conceptos (nombre, codigo, activo, es_basico, orden, descripcion)
+SELECT 'Recepcion', 'recepcion', true, true, 12, 'Servicio de recepcion de envios en sucursal'
+WHERE NOT EXISTS (SELECT 1 FROM tarifa_conceptos WHERE codigo = 'recepcion');
+
+-- Agregar concepto "Cobros/Cobranzas" si no existe
+INSERT INTO tarifa_conceptos (nombre, codigo, activo, es_basico, orden, descripcion)
+SELECT 'Cobros', 'cobros', true, true, 13, 'Comision por gestion de cobros'
+WHERE NOT EXISTS (SELECT 1 FROM tarifa_conceptos WHERE codigo = 'cobros');
+```
+
+---
+
+## Parte 2: Modificar Formulario de Sucursales
+
+### Archivo: `src/pages/Branches.tsx`
+
+### 2.1 Actualizar interface Sucursal
+
+```typescript
+interface Sucursal {
+  // ... campos existentes
+  incluye_iva: boolean | null;
+  porcentaje_iva: number | null;
+  tipo_liquidacion: string | null;
+}
+```
+
+### 2.2 Actualizar defaultFormData
+
+```typescript
+const defaultFormData = {
+  // ... campos existentes
+  incluye_iva: false,
+  porcentaje_iva: 21,
+  tipo_liquidacion: 'diferida',
 };
 ```
 
-### 2. Implementar findOrCreateClient
+### 2.3 Agregar seccion "Configuracion Fiscal" al formulario
 
-Agregar la funcion para buscar o crear el cliente antes de insertar el envio:
+Nueva seccion despues de "Capacidades Operativas":
 
-```tsx
-const findOrCreateClient = async (data: {
-  nombre: string;
-  telefono: string;
-  direccion: string;
-  ciudad?: string;
-  codigo_postal?: string;
-}) => {
-  // Buscar por telefono primero
-  if (data.telefono) {
-    const { data: existing } = await supabase
-      .from('clientes')
-      .select('id')
-      .eq('telefono', data.telefono)
-      .maybeSingle();
+```
++-----------------------------------+
+| Configuracion Fiscal y Comisiones |
++-----------------------------------+
+| [x] Incluye IVA en comisiones     |
+|     Porcentaje IVA: [21] %        |
+|                                   |
+| Tipo de Liquidacion:              |
+| ( ) Inmediata - Al entregar       |
+| (x) Diferida  - Fin de periodo    |
++-----------------------------------+
+```
 
-    if (existing) {
-      // Actualizar datos
-      await supabase.from('clientes')
-        .update({
-          nombre: data.nombre,
-          direccion: data.direccion,
-          ciudad: data.ciudad,
-          codigo_postal: data.codigo_postal,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', existing.id);
-      return existing.id;
+---
+
+## Parte 3: Modificar Dialog de Comisiones
+
+### Archivo: `src/pages/Branches.tsx` (lineas 1067-1176)
+
+### 3.1 Actualizar interface SucursalComision
+
+```typescript
+interface SucursalComision {
+  id: string;
+  sucursal_id: string;
+  concepto_id: string;
+  porcentaje_contado: number;
+  porcentaje_destino: number;
+  porcentaje_cta_cte: number;
+  base_comision: string; // NUEVO
+}
+```
+
+### 3.2 Agregar columna "Base" a la tabla de comisiones
+
+```
++----------+----------+----------+----------+----------+
+| Concepto | % Contado| % Destino| % CtaCte | Base     |
++----------+----------+----------+----------+----------+
+| Flete    | [5]      | [3]      | [4]      | [Total v]|
+| Seguro   | [10]     | [8]      | [10]     | [Neto  v]|
+| Entrega  | [15]     | [12]     | [15]     | [Flete v]|
+| Recepcion| [5]      | [3]      | [5]      | [Total v]|
+| Cobros   | [2]      | [1]      | [2]      | [Total v]|
++----------+----------+----------+----------+----------+
+```
+
+### 3.3 Selector de Base de Calculo
+
+Opciones del dropdown:
+- **Flete**: Solo sobre el costo de transporte
+- **Neto**: Sobre el valor neto (sin IVA)
+- **Total**: Sobre el valor total del envio
+
+---
+
+## Parte 4: Actualizar Calculo de Liquidaciones
+
+### Archivo: `src/pages/BranchSettlements.tsx`
+
+Modificar la funcion de calculo para:
+
+1. Obtener configuracion de la sucursal (incluye_iva, porcentaje_iva)
+2. Obtener base_comision de cada concepto
+3. Calcular segun la base seleccionada:
+
+```typescript
+// Pseudocodigo del calculo mejorado
+for (const envio of envios) {
+  for (const concepto of conceptos) {
+    const comisionConfig = comisiones.find(c => c.concepto_id === concepto.id);
+    if (!comisionConfig) continue;
+
+    let baseCalculo = 0;
+    switch (comisionConfig.base_comision) {
+      case 'flete':
+        baseCalculo = envio.valor_flete || 0;
+        break;
+      case 'neto':
+        baseCalculo = envio.precio_total / (1 + sucursal.porcentaje_iva / 100);
+        break;
+      case 'total':
+      default:
+        baseCalculo = envio.precio_total;
     }
+
+    const porcentaje = getPorcentajePorTipoPago(comisionConfig, envio.tipo_pago);
+    const comision = baseCalculo * (porcentaje / 100);
+    
+    // Si incluye IVA, agregar
+    if (sucursal.incluye_iva) {
+      comision *= (1 + sucursal.porcentaje_iva / 100);
+    }
+    
+    totalComisiones += comision;
   }
-
-  // Crear nuevo cliente
-  const { data: newClient, error } = await supabase
-    .from('clientes')
-    .insert({
-      nombre: data.nombre.split(' ')[0],
-      apellido: data.nombre.split(' ').slice(1).join(' ') || null,
-      telefono: data.telefono,
-      direccion: data.direccion,
-      ciudad: data.ciudad,
-      codigo_postal: data.codigo_postal,
-      tenant_id: profile?.tenant_id,
-      sucursal_id: profile?.sucursal_id,
-    })
-    .select('id')
-    .single();
-
-  if (error) throw error;
-  return newClient.id;
-};
-```
-
-### 3. Modificar createShipmentMutation
-
-Antes de insertar el envio, llamar a `findOrCreateClient` y guardar el `destinatario_id`:
-
-```tsx
-// Dentro de mutationFn
-const destinatarioId = await findOrCreateClient({
-  nombre: shipment.nombre_destinatario,
-  telefono: shipment.whatsapp_destinatario,
-  direccion: shipment.direccion_entrega,
-  ciudad: shipment.ciudad_entrega,
-  codigo_postal: shipment.cp_entrega,
-});
-
-// Agregar al insert del envio
-{
-  ...
-  destinatario_id: destinatarioId,
-  ...
 }
 ```
 
@@ -132,55 +187,68 @@ const destinatarioId = await findOrCreateClient({
 
 ## Archivos a Modificar
 
-| Archivo | Cambio |
-|---------|--------|
-| `src/components/routes/ThirdPartyShipmentsTab.tsx` | Agregar ContactAutocomplete, query de clientes, findOrCreateClient, y modificar mutacion |
+| Archivo | Cambios |
+|---------|---------|
+| **Nueva migracion SQL** | Agregar campos a sucursales y sucursal_comisiones, insertar conceptos |
+| `src/pages/Branches.tsx` | Actualizar interfaces, formulario, y dialog de comisiones |
+| `src/pages/BranchSettlements.tsx` | Actualizar logica de calculo de liquidaciones |
+| `src/integrations/supabase/types.ts` | Se actualizara automaticamente |
 
 ---
 
-## Cambios en la UI
+## Flujo de Configuracion (Nuevo)
 
-El formulario agregara:
-1. Un selector "Cargar cliente existente" arriba del campo "Nombre del destinatario"
-2. Al seleccionar un cliente, se precargan: nombre, direccion, ciudad, CP, telefono y coordenadas
+```
+Administrador abre Sucursales
+        |
+        v
+Click en una sucursal -> Editar
+        |
+        v
+Seccion "Configuracion Fiscal":
+  - Toggle "Incluye IVA"
+  - Input "% IVA" (solo si incluye)
+  - Radio "Tipo Liquidacion"
+        |
+        v
+Guardar sucursal
+        |
+        v
+Click icono "%" -> Dialog Comisiones
+        |
+        v
+Por cada concepto:
+  - % Contado
+  - % Destino
+  - % Cta Cte
+  - Base (Flete/Neto/Total)
+        |
+        v
+Guardar comisiones
+        |
+        v
+Liquidar Sucursal:
+  - Sistema calcula usando base_comision
+  - Aplica IVA si corresponde
+  - Genera liquidacion inmediata o diferida
+```
+
+---
+
+## Definiciones de Campos
+
+| Campo | Descripcion | Ejemplo |
+|-------|-------------|---------|
+| `incluye_iva` | Si las comisiones incluyen IVA | `true` |
+| `porcentaje_iva` | Porcentaje de IVA a aplicar | `21` |
+| `tipo_liquidacion` | Cuando se genera la comision | `inmediata` = al entregar, `diferida` = fin de periodo |
+| `base_comision` | Sobre que valor se calcula el % | `flete`, `neto`, `total` |
 
 ---
 
 ## Notas Tecnicas
 
-1. **Reutilizacion de logica**: La funcion `findOrCreateClient` replica la logica de `NewShipment.tsx` para mantener consistencia
-2. **Deduplicacion**: Busca primero por telefono para evitar duplicados
-3. **Coordenadas**: Si el cliente tiene lat/lng guardados, se cargan automaticamente
-4. **Invalidacion de cache**: Se agrega `invalidateQueries(['all_clients'])` al exito para refrescar la lista
-
----
-
-## Flujo Actualizado
-
-```
-Usuario abre "Agregar Envio Terciarizado"
-        |
-        v
-Opcion 1: Click "Cargar cliente existente"
-  -> Buscar en base de clientes
-  -> Seleccionar cliente
-  -> Precargar todos los datos
-        |
-        v
-Opcion 2: Ingresar datos manualmente
-        |
-        v
-Click "Crear Envio"
-        |
-        v
-findOrCreateClient()
-  -> Busca por telefono
-  -> Si existe: actualiza y retorna ID
-  -> Si no existe: crea nuevo cliente
-        |
-        v
-Inserta envio con destinatario_id
-        |
-        v
-Cliente disponible para futuros envios
-```
+1. **Retrocompatibilidad**: Los campos nuevos tienen valores por defecto que mantienen el comportamiento actual (sin IVA, liquidacion diferida, base total)
+2. **Conceptos nuevos**: Se insertan solo si no existen (idempotente)
+3. **Validacion**: Los campos tipo_liquidacion y base_comision usan CHECK constraints para valores validos
+4. **UI**: El campo "% IVA" solo se muestra si "Incluye IVA" esta activo
