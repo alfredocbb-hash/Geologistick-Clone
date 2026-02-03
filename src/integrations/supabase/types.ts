@@ -2669,6 +2669,7 @@ export type Database = {
       }
       sucursal_comisiones: {
         Row: {
+          base_comision: string | null
           concepto_id: string
           created_at: string | null
           id: string
@@ -2679,6 +2680,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          base_comision?: string | null
           concepto_id: string
           created_at?: string | null
           id?: string
@@ -2689,6 +2691,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          base_comision?: string | null
           concepto_id?: string
           created_at?: string | null
           id?: string
@@ -2873,16 +2876,19 @@ export type Database = {
           horario_apertura: string | null
           horario_cierre: string | null
           id: string
+          incluye_iva: boolean | null
           lat: number | null
           lng: number | null
           nombre: string
           permite_retiro_clientes: boolean | null
+          porcentaje_iva: number | null
           puede_despachar: boolean | null
           puede_recibir: boolean | null
           realiza_entregas: boolean | null
           realiza_retiros: boolean | null
           telefono: string | null
           tenant_id: string | null
+          tipo_liquidacion: string | null
           updated_at: string | null
         }
         Insert: {
@@ -2897,16 +2903,19 @@ export type Database = {
           horario_apertura?: string | null
           horario_cierre?: string | null
           id?: string
+          incluye_iva?: boolean | null
           lat?: number | null
           lng?: number | null
           nombre: string
           permite_retiro_clientes?: boolean | null
+          porcentaje_iva?: number | null
           puede_despachar?: boolean | null
           puede_recibir?: boolean | null
           realiza_entregas?: boolean | null
           realiza_retiros?: boolean | null
           telefono?: string | null
           tenant_id?: string | null
+          tipo_liquidacion?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -2921,16 +2930,19 @@ export type Database = {
           horario_apertura?: string | null
           horario_cierre?: string | null
           id?: string
+          incluye_iva?: boolean | null
           lat?: number | null
           lng?: number | null
           nombre?: string
           permite_retiro_clientes?: boolean | null
+          porcentaje_iva?: number | null
           puede_despachar?: boolean | null
           puede_recibir?: boolean | null
           realiza_entregas?: boolean | null
           realiza_retiros?: boolean | null
           telefono?: string | null
           tenant_id?: string | null
+          tipo_liquidacion?: string | null
           updated_at?: string | null
         }
         Relationships: [
