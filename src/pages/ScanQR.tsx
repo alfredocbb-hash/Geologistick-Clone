@@ -27,7 +27,8 @@ import ReceiveShipmentDialog from '@/components/scan/ReceiveShipmentDialog';
 import { BranchDeliveryDialog } from '@/components/scan/BranchDeliveryDialog';
 import { ReceiveRouteSheetDialog } from '@/components/scan/ReceiveRouteSheetDialog';
 import { MLDeliveryDialog } from '@/components/scan/MLDeliveryDialog';
-import { parseQRCode } from '@/lib/qrParser';
+import { MLRegisterDialog } from '@/components/scan/MLRegisterDialog';
+import { parseQRCode, ParsedQR } from '@/lib/qrParser';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   pendiente: { label: 'Pendiente', color: 'bg-orange-100 text-orange-800' },
@@ -92,6 +93,8 @@ export default function ScanQR() {
   const [isSearching, setIsSearching] = useState(false);
   const [routeSheetId, setRouteSheetId] = useState<string | null>(null);
   const [showMLDeliveryDialog, setShowMLDeliveryDialog] = useState(false);
+  const [showMLRegisterDialog, setShowMLRegisterDialog] = useState(false);
+  const [pendingMLData, setPendingMLData] = useState<{ mlShipmentId: string; mlSenderId?: string } | null>(null);
 
   // Role-based permissions
   const isDriver = hasRole('chofer');
@@ -166,7 +169,7 @@ export default function ScanQR() {
     
     // Handle ML shipment ID
     if (parsed.type === 'ml_shipment') {
-      await searchShipmentByML(parsed.value, mode);
+      await searchShipmentByML(parsed.value, parsed.mlSenderId, mode);
       return;
     }
     
@@ -187,7 +190,7 @@ export default function ScanQR() {
     await searchShipment(baseTacking.includes('-') && !baseTacking.endsWith('-') ? trackingNumber.replace(/-\d{2}$/, '') : trackingNumber, mode);
   };
 
-  const searchShipmentByML = async (mlShipmentId: string, mode: ScanMode = null) => {
+  const searchShipmentByML = async (mlShipmentId: string, mlSenderId: string | undefined, mode: ScanMode = null) => {
     setIsSearching(true);
     
     try {
@@ -220,9 +223,9 @@ export default function ScanQR() {
       if (error) throw error;
 
       if (!shipment) {
-        toast.error('Envío ML Flex no encontrado', {
-          description: `ID: ${mlShipmentId} - Verifica que el pedido haya sido sincronizado`,
-        });
+        // Shipment not found - show registration dialog
+        setPendingMLData({ mlShipmentId, mlSenderId });
+        setShowMLRegisterDialog(true);
         setIsSearching(false);
         return;
       }
@@ -237,6 +240,30 @@ export default function ScanQR() {
     } finally {
       setIsSearching(false);
     }
+  };
+
+  const handleMLRegisterSuccess = (envio: any) => {
+    setShowMLRegisterDialog(false);
+    setPendingMLData(null);
+    
+    // Set the newly registered shipment and show delivery dialog
+    setScannedShipment({
+      id: envio.id,
+      tracking_number: envio.tracking_number,
+      estado: envio.estado,
+      requiere_retiro: false,
+      direccion_retiro: null,
+      ciudad_retiro: null,
+      ml_shipment_id: envio.ml_shipment_id,
+      nombre_destinatario: envio.nombre_destinatario,
+      direccion_entrega: envio.direccion_entrega,
+      ciudad_entrega: envio.ciudad_entrega,
+      whatsapp_destinatario: envio.whatsapp_destinatario,
+      precio_total: envio.precio_total,
+      pago_contra_entrega: false,
+    });
+    
+    setShowMLDeliveryDialog(true);
   };
 
   const searchShipment = async (tracking: string, mode: ScanMode = null) => {
@@ -679,6 +706,20 @@ export default function ScanQR() {
             setScannedShipment(null);
             queryClient.invalidateQueries({ queryKey: ['envios'] });
           }}
+        />
+      )}
+
+      {/* ML Register Dialog - for unregistered ML shipments */}
+      {showMLRegisterDialog && pendingMLData && (
+        <MLRegisterDialog
+          open={showMLRegisterDialog}
+          mlShipmentId={pendingMLData.mlShipmentId}
+          mlSenderId={pendingMLData.mlSenderId}
+          onClose={() => {
+            setShowMLRegisterDialog(false);
+            setPendingMLData(null);
+          }}
+          onSuccess={handleMLRegisterSuccess}
         />
       )}
     </div>

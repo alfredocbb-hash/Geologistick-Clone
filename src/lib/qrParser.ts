@@ -13,6 +13,7 @@ export interface ParsedQR {
   type: 'tracking' | 'route_sheet' | 'ml_shipment' | 'unknown';
   value: string;
   originalData: string;
+  mlSenderId?: string; // sender_id from ML Flex JSON for seller identification
 }
 
 export function parseQRCode(data: string): ParsedQR {
@@ -41,7 +42,8 @@ export function parseQRCode(data: string): ParsedQR {
         return {
           type: 'ml_shipment',
           value: String(jsonData.id),
-          originalData: data
+          originalData: data,
+          mlSenderId: jsonData.sender_id ? String(jsonData.sender_id) : undefined
         };
       }
     } catch {
