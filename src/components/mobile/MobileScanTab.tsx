@@ -12,6 +12,7 @@ import ReceiveShipmentDialog from '@/components/scan/ReceiveShipmentDialog';
 import { BranchDeliveryDialog } from '@/components/scan/BranchDeliveryDialog';
 import { UltimaMillaDialog } from '@/components/scan/UltimaMillaDialog';
 import { MLDeliveryDialog } from '@/components/scan/MLDeliveryDialog';
+import { MLRegisterDialog } from '@/components/scan/MLRegisterDialog';
 import { parseQRCode } from '@/lib/qrParser';
 
 type ScanMode = 'idle' | 'scanning';
@@ -55,6 +56,8 @@ export function MobileScanTab() {
   const [showDeliveryDialog, setShowDeliveryDialog] = useState(false);
   const [showUltimaMillaDialog, setShowUltimaMillaDialog] = useState(false);
   const [showMLDeliveryDialog, setShowMLDeliveryDialog] = useState(false);
+  const [showMLRegisterDialog, setShowMLRegisterDialog] = useState(false);
+  const [pendingMLData, setPendingMLData] = useState<{ mlShipmentId: string; mlSenderId?: string } | null>(null);
   const [isPulsing, setIsPulsing] = useState(true);
 
   // Fetch recent scans
@@ -125,10 +128,9 @@ export function MobileScanTab() {
         }
 
         if (!shipment) {
-          toast.error('Envío ML no encontrado', {
-            description: `Shipment ID: ${parsed.value} no está registrado en el sistema`
-          });
-          setIsPulsing(true);
+          // Shipment not found - show registration dialog
+          setPendingMLData({ mlShipmentId: parsed.value, mlSenderId: parsed.mlSenderId });
+          setShowMLRegisterDialog(true);
           return;
         }
 
@@ -291,11 +293,40 @@ export function MobileScanTab() {
     setShowDeliveryDialog(false);
     setShowUltimaMillaDialog(false);
     setShowMLDeliveryDialog(false);
+    setShowMLRegisterDialog(false);
     setScannedShipment(null);
+    setPendingMLData(null);
     setIsPulsing(true);
     
     // Refresh recent scans
     queryClient.invalidateQueries({ queryKey: ['mobile-recent-scans'] });
+  };
+
+  const handleMLRegisterSuccess = (envio: any) => {
+    setShowMLRegisterDialog(false);
+    setPendingMLData(null);
+    
+    // Set the newly registered shipment and show delivery dialog
+    setScannedShipment({
+      id: envio.id,
+      tracking_number: envio.tracking_number,
+      estado: envio.estado,
+      direccion_entrega: envio.direccion_entrega,
+      direccion_retiro: null,
+      ciudad_retiro: null,
+      ciudad_entrega: envio.ciudad_entrega,
+      destinatario_id: null,
+      remitente_id: null,
+      sucursal_destino_id: null,
+      precio_total: envio.precio_total || 0,
+      pago_contra_entrega: false,
+      tipo_pago: null,
+      ml_shipment_id: envio.ml_shipment_id,
+      nombre_destinatario: envio.nombre_destinatario,
+      whatsapp_destinatario: envio.whatsapp_destinatario,
+    });
+    
+    setShowMLDeliveryDialog(true);
   };
 
   const handleDialogSuccess = () => {
@@ -510,6 +541,17 @@ export function MobileScanTab() {
           shipment={scannedShipment}
           onClose={handleDialogClose}
           onSuccess={handleDialogSuccess}
+        />
+      )}
+
+      {/* ML Register Dialog - for unregistered ML shipments */}
+      {showMLRegisterDialog && pendingMLData && (
+        <MLRegisterDialog
+          open={showMLRegisterDialog}
+          mlShipmentId={pendingMLData.mlShipmentId}
+          mlSenderId={pendingMLData.mlSenderId}
+          onClose={handleDialogClose}
+          onSuccess={handleMLRegisterSuccess}
         />
       )}
     </div>
