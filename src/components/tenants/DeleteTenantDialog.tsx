@@ -42,79 +42,139 @@ export function DeleteTenantDialog({
 
     setIsDeleting(true);
     try {
-      // Delete in order to respect foreign key constraints
-      // 1. Delete tenant branding
-      await supabase.from('tenant_branding').delete().eq('tenant_id', tenant.id);
-
-      // 2. Delete route stops (ruta_paradas) via rutas_planificadas
-      const { data: rutas } = await supabase
-        .from('rutas_planificadas')
-        .select('id')
+      // Get all related IDs first
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id')
         .eq('tenant_id', tenant.id);
-      
-      if (rutas && rutas.length > 0) {
-        const rutaIds = rutas.map(r => r.id);
-        await supabase.from('ruta_paradas').delete().in('ruta_id', rutaIds);
-      }
+      const userIds = profiles?.map(p => p.user_id) || [];
 
-      // 3. Delete planned routes
-      await supabase.from('rutas_planificadas').delete().eq('tenant_id', tenant.id);
-
-      // 4. Delete route sheet shipments (hoja_ruta_envios) via hojas_ruta
-      const { data: hojas } = await supabase
-        .from('hojas_ruta')
-        .select('id')
-        .eq('tenant_id', tenant.id);
-      
-      if (hojas && hojas.length > 0) {
-        const hojaIds = hojas.map(h => h.id);
-        await supabase.from('hoja_ruta_envios').delete().in('hoja_ruta_id', hojaIds);
-      }
-
-      // 5. Delete route sheets
-      await supabase.from('hojas_ruta').delete().eq('tenant_id', tenant.id);
-
-      // 6. Delete shipment details and history
-      const { data: envios } = await supabase
-        .from('envios')
-        .select('id')
-        .eq('tenant_id', tenant.id);
-      
-      if (envios && envios.length > 0) {
-        const envioIds = envios.map(e => e.id);
-        await supabase.from('envio_detalles').delete().in('envio_id', envioIds);
-        await supabase.from('envio_historial').delete().in('envio_id', envioIds);
-      }
-
-      // 7. Delete commissions and settlements
-      await supabase.from('comisiones').delete().eq('tenant_id', tenant.id);
-      await supabase.from('liquidaciones').delete().eq('tenant_id', tenant.id);
-      await supabase.from('liquidaciones_sucursal').delete().eq('tenant_id', tenant.id);
-
-      // 8. Delete payments and invoices
-      await supabase.from('pagos').delete().eq('tenant_id', tenant.id);
-      await supabase.from('facturas').delete().eq('tenant_id', tenant.id);
-
-      // 9. Delete shipments
-      await supabase.from('envios').delete().eq('tenant_id', tenant.id);
-
-      // 10. Delete incidents
-      await supabase.from('incidentes').delete().eq('tenant_id', tenant.id);
-
-      // 11. Delete notifications
-      await supabase.from('notifications').delete().eq('tenant_id', tenant.id);
-
-      // 12. Delete ARCA config
-      await supabase.from('arca_config').delete().eq('tenant_id', tenant.id);
-
-      // 13. Delete cash sessions and movements
       const { data: sucursales } = await supabase
         .from('sucursales')
         .select('id')
         .eq('tenant_id', tenant.id);
+      const sucursalIds = sucursales?.map(s => s.id) || [];
+
+      const { data: rutas } = await supabase
+        .from('rutas_planificadas')
+        .select('id')
+        .eq('tenant_id', tenant.id);
+      const rutaIds = rutas?.map(r => r.id) || [];
+
+      const { data: hojas } = await supabase
+        .from('hojas_ruta')
+        .select('id')
+        .eq('tenant_id', tenant.id);
+      const hojaIds = hojas?.map(h => h.id) || [];
+
+      const { data: envios } = await supabase
+        .from('envios')
+        .select('id')
+        .eq('tenant_id', tenant.id);
+      const envioIds = envios?.map(e => e.id) || [];
+
+      const { data: clientes } = await supabase
+        .from('clientes')
+        .select('id')
+        .eq('tenant_id', tenant.id);
+      const clienteIds = clientes?.map(c => c.id) || [];
+
+      const { data: tarifas } = await supabase
+        .from('tarifas')
+        .select('id')
+        .eq('tenant_id', tenant.id);
+      const tarifaIds = tarifas?.map(t => t.id) || [];
+
+      const { data: sellers } = await supabase
+        .from('ecommerce_sellers')
+        .select('id')
+        .eq('tenant_id', tenant.id);
+      const sellerIds = sellers?.map(s => s.id) || [];
+
+      const { data: rutasFrecuentes } = await supabase
+        .from('rutas_frecuentes')
+        .select('id')
+        .eq('tenant_id', tenant.id);
+      const rutaFrecuenteIds = rutasFrecuentes?.map(r => r.id) || [];
+
+      // Delete in order to respect foreign key constraints
       
-      if (sucursales && sucursales.length > 0) {
-        const sucursalIds = sucursales.map(s => s.id);
+      // 1. Delete tenant branding
+      await supabase.from('tenant_branding').delete().eq('tenant_id', tenant.id);
+
+      // 2. Delete driver location history (references chofer_id which is user_id)
+      if (userIds.length > 0) {
+        await supabase.from('driver_location_history').delete().in('chofer_id', userIds);
+      }
+
+      // 3. Delete route stops (ruta_paradas) via rutas_planificadas
+      if (rutaIds.length > 0) {
+        await supabase.from('ruta_paradas').delete().in('ruta_id', rutaIds);
+      }
+
+      // 4. Delete planned routes
+      await supabase.from('rutas_planificadas').delete().eq('tenant_id', tenant.id);
+
+      // 5. Delete frequent route stops
+      if (rutaFrecuenteIds.length > 0) {
+        await supabase.from('ruta_frecuente_paradas').delete().in('ruta_frecuente_id', rutaFrecuenteIds);
+      }
+
+      // 6. Delete frequent routes
+      await supabase.from('rutas_frecuentes').delete().eq('tenant_id', tenant.id);
+
+      // 7. Delete route sheet shipments (hoja_ruta_envios) via hojas_ruta
+      if (hojaIds.length > 0) {
+        await supabase.from('hoja_ruta_envios').delete().in('hoja_ruta_id', hojaIds);
+      }
+
+      // 8. Delete route sheets
+      await supabase.from('hojas_ruta').delete().eq('tenant_id', tenant.id);
+
+      // 9. Delete ecommerce_orders (references envio_id and seller_id)
+      await supabase.from('ecommerce_orders').delete().eq('tenant_id', tenant.id);
+
+      // 10. Delete seller account movements
+      if (sellerIds.length > 0) {
+        await supabase.from('seller_cuenta_corriente').delete().in('seller_id', sellerIds);
+        await supabase.from('liquidaciones_seller').delete().in('seller_id', sellerIds);
+      }
+
+      // 11. Delete ecommerce sellers
+      await supabase.from('ecommerce_sellers').delete().eq('tenant_id', tenant.id);
+
+      // 12. Delete shipment details and history
+      if (envioIds.length > 0) {
+        await supabase.from('envio_detalles').delete().in('envio_id', envioIds);
+        await supabase.from('envio_historial').delete().in('envio_id', envioIds);
+      }
+
+      // 13. Delete commissions and settlements
+      await supabase.from('comisiones').delete().eq('tenant_id', tenant.id);
+      await supabase.from('liquidaciones').delete().eq('tenant_id', tenant.id);
+      await supabase.from('liquidaciones_sucursal').delete().eq('tenant_id', tenant.id);
+
+      // 14. Delete payments and invoices
+      await supabase.from('pagos').delete().eq('tenant_id', tenant.id);
+      await supabase.from('facturas').delete().eq('tenant_id', tenant.id);
+
+      // 15. Delete shipments
+      await supabase.from('envios').delete().eq('tenant_id', tenant.id);
+
+      // 16. Delete incidents
+      await supabase.from('incidentes').delete().eq('tenant_id', tenant.id);
+
+      // 17. Delete notifications
+      await supabase.from('notifications').delete().eq('tenant_id', tenant.id);
+
+      // 18. Delete ARCA config
+      await supabase.from('arca_config').delete().eq('tenant_id', tenant.id);
+
+      // 19. Delete insurance config
+      await supabase.from('configuracion_seguro').delete().eq('tenant_id', tenant.id);
+
+      // 20. Delete cash sessions and movements
+      if (sucursalIds.length > 0) {
         const { data: sesiones } = await supabase
           .from('sesiones_caja')
           .select('id')
@@ -127,44 +187,61 @@ export function DeleteTenantDialog({
         await supabase.from('sesiones_caja').delete().in('sucursal_id', sucursalIds);
       }
 
-      // 14. Delete client settlements and accounts
-      const { data: clientes } = await supabase
-        .from('clientes')
-        .select('id')
-        .eq('tenant_id', tenant.id);
-      
-      if (clientes && clientes.length > 0) {
-        const clienteIds = clientes.map(c => c.id);
+      // 21. Delete client settlements and accounts
+      if (clienteIds.length > 0) {
         await supabase.from('cliente_cuenta_corriente').delete().in('cliente_id', clienteIds);
         await supabase.from('liquidaciones_cliente').delete().in('cliente_id', clienteIds);
       }
 
-      // 15. Delete clients
+      // 22. Delete clients
       await supabase.from('clientes').delete().eq('tenant_id', tenant.id);
 
-      // 16. Delete branches
+      // 23. Delete tarifa concepts (tarifa_concepto_precios will be handled by cascade)
+      await supabase.from('tarifa_conceptos').delete().eq('tenant_id', tenant.id);
+
+      // 24. Delete sucursal_tarifas and sucursal_conceptos
+      for (const sucursalId of sucursalIds) {
+        await supabase.from('sucursal_tarifas').delete().eq('sucursal_id', sucursalId);
+        await supabase.from('sucursal_conceptos').delete().eq('sucursal_id', sucursalId);
+      }
+
+      // 25. Delete tarifas
+      await supabase.from('tarifas').delete().eq('tenant_id', tenant.id);
+
+      // 26. Delete historial ajustes tarifas
+      await supabase.from('historial_ajustes_tarifas').delete().eq('tenant_id', tenant.id);
+
+      // 27. Delete branches
       await supabase.from('sucursales').delete().eq('tenant_id', tenant.id);
 
-      // 17. Get user IDs for this tenant
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('user_id')
-        .eq('tenant_id', tenant.id);
+      // 28. Delete vehicles
+      await supabase.from('vehiculos').delete().eq('tenant_id', tenant.id);
 
-      if (profiles && profiles.length > 0) {
-        const userIds = profiles.map(p => p.user_id);
-        
-        // Delete user roles
+      // 29. Delete third party companies
+      await supabase.from('empresas_terciarizadas').delete().eq('tenant_id', tenant.id);
+
+      // 30. Delete system integrations
+      await supabase.from('system_integrations').delete().eq('tenant_id', tenant.id);
+
+      // 31. Delete tenant API keys
+      await supabase.from('tenant_api_keys').delete().eq('tenant_id', tenant.id);
+
+      // 32. Delete tenant subscriptions
+      await supabase.from('tenant_subscriptions').delete().eq('tenant_id', tenant.id);
+
+      // 33. Delete tenant usage
+      await supabase.from('tenant_usage').delete().eq('tenant_id', tenant.id);
+
+      // 34. Delete user roles and driver locations
+      if (userIds.length > 0) {
         await supabase.from('user_roles').delete().in('user_id', userIds);
-        
-        // Delete driver locations
         await supabase.from('driver_locations').delete().in('chofer_id', userIds);
       }
 
-      // 18. Delete profiles
+      // 35. Delete profiles
       await supabase.from('profiles').delete().eq('tenant_id', tenant.id);
 
-      // 19. Finally delete the tenant
+      // 36. Finally delete the tenant
       const { error: tenantError } = await supabase
         .from('tenants')
         .delete()

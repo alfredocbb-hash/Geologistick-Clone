@@ -1,9 +1,10 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Check, Sparkles, Zap, Loader2 } from "lucide-react";
-import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useLandingContent, defaultLandingContent } from "@/hooks/useLandingContent";
+import { TrialRequestDialog } from "./TrialRequestDialog";
 
 interface SubscriptionPlan {
   id: string;
@@ -28,6 +29,8 @@ const gradients: Record<string, string> = {
 const Pricing = () => {
   const { data: landingContent } = useLandingContent();
   const generalContent = landingContent?.general || defaultLandingContent.general!;
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<string | undefined>();
 
   const { data: plans, isLoading } = useQuery({
     queryKey: ["public-subscription-plans"],
@@ -58,6 +61,11 @@ const Pricing = () => {
 
   const formatLimit = (limit: number) => {
     return limit === -1 ? "Ilimitados" : limit.toString();
+  };
+
+  const handleRequestTrial = (planName?: string) => {
+    setSelectedPlan(planName);
+    setDialogOpen(true);
   };
 
   return (
@@ -170,7 +178,7 @@ const Pricing = () => {
 
                     {/* CTA */}
                     <Button 
-                      asChild
+                      onClick={() => handleRequestTrial(plan.name)}
                       className={`w-full py-6 text-lg font-semibold transition-all duration-300 ${
                         isPopular 
                           ? "bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30" 
@@ -178,9 +186,7 @@ const Pricing = () => {
                       }`}
                       size="lg"
                     >
-                      <Link to="/login">
-                        Comenzar gratis
-                      </Link>
+                      Solicitar Prueba Gratuita
                     </Button>
                   </div>
                 </div>
@@ -202,6 +208,13 @@ const Pricing = () => {
           </p>
         </div>
       </div>
+
+      {/* Trial Request Dialog */}
+      <TrialRequestDialog 
+        open={dialogOpen} 
+        onOpenChange={setDialogOpen}
+        planName={selectedPlan}
+      />
     </section>
   );
 };

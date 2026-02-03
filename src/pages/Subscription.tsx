@@ -1,12 +1,22 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { Check, Crown, Zap, Building2, Users, Package, CreditCard, Settings } from "lucide-react";
+import { Check, Crown, Zap, Building2, Users, Package, CreditCard, XCircle, Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useSubscription, SubscriptionPlan } from "@/hooks/useSubscription";
 
 const planIcons: Record<string, typeof Crown> = {
@@ -17,18 +27,21 @@ const planIcons: Record<string, typeof Crown> = {
 
 export default function Subscription() {
   const [searchParams] = useSearchParams();
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const {
     subscription,
     plans,
     isLoading,
-    createCheckout,
+    createCheckoutMP,
+    cancelSubscription,
     openCustomerPortal,
     refetchSubscription,
     getUsagePercentage,
   } = useSubscription();
 
   useEffect(() => {
-    if (searchParams.get("success") === "true") {
+    if (searchParams.get("success") === "true" || searchParams.get("mp_status") === "approved") {
       toast.success("¡Suscripción activada exitosamente!");
       refetchSubscription();
     } else if (searchParams.get("canceled") === "true") {
@@ -38,17 +51,38 @@ export default function Subscription() {
 
   const handleSubscribe = async (plan: SubscriptionPlan) => {
     try {
-      await createCheckout(plan.stripe_price_id);
+      // Use Mercado Pago for subscriptions
+      await createCheckoutMP(plan.id);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Error al crear la suscripción");
     }
   };
 
   const handleManageSubscription = async () => {
+    // For Stripe subscriptions, open customer portal
+    if (subscription?.payment_method === "stripe") {
+      try {
+        await openCustomerPortal();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Error al abrir el portal");
+      }
+    } else {
+      // For MP subscriptions, show cancel dialog
+      setCancelDialogOpen(true);
+    }
+  };
+
+  const handleCancelSubscription = async () => {
+    setIsCancelling(true);
     try {
-      await openCustomerPortal();
+      await cancelSubscription();
+      toast.success("Suscripción cancelada correctamente");
+      refetchSubscription();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Error al abrir el portal");
+      toast.error(error instanceof Error ? error.message : "Error al cancelar la suscripción");
+    } finally {
+      setIsCancelling(false);
+      setCancelDialogOpen(false);
     }
   };
 
@@ -65,7 +99,7 @@ export default function Subscription() {
     );
   }
 
-  const currentProductId = subscription?.product_id;
+  const currentPlanName = subscription?.plan_name;
 
   return (
     <div className="container mx-auto py-8 space-y-8">
@@ -78,8 +112,17 @@ export default function Subscription() {
         </div>
         {subscription?.subscribed && (
           <Button variant="outline" onClick={handleManageSubscription}>
-            <Settings className="mr-2 h-4 w-4" />
-            Gestionar Suscripción
+            {subscription.payment_method === "stripe" ? (
+              <>
+                <CreditCard className="mr-2 h-4 w-4" />
+                Gestionar Suscripción
+              </>
+            ) : (
+              <>
+                <XCircle className="mr-2 h-4 w-4" />
+                Cancelar Suscripción
+              </>
+            )}
           </Button>
         )}
       </div>
@@ -93,7 +136,14 @@ export default function Subscription() {
                 <CreditCard className="h-5 w-5 text-primary" />
                 Tu Suscripción Actual
               </CardTitle>
-              <Badge variant="default">{subscription.plan_name}</Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="default">{subscription.plan_name}</Badge>
+                {subscription.payment_method && (
+                  <Badge variant="outline" className="capitalize">
+                    {subscription.payment_method === "mercadopago" ? "Mercado Pago" : "Stripe"}
+                  </Badge>
+                )}
+              </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -147,7 +197,7 @@ export default function Subscription() {
       <div className="grid md:grid-cols-3 gap-6">
         {plans?.map((plan) => {
           const Icon = planIcons[plan.name] || Zap;
-          const isCurrentPlan = plan.stripe_product_id === currentProductId;
+          const isCurrentPlan = plan.name === currentPlanName;
           const isProfessional = plan.name === "LogiTrack Profesional";
 
           return (
@@ -180,7 +230,7 @@ export default function Subscription() {
               </CardHeader>
               <CardContent className="flex-1 space-y-4">
                 <div className="text-center">
-                  <span className="text-4xl font-bold">${plan.price_monthly}</span>
+                  <span className="text-4xl font-bold">${plan.price_monthly.toLocaleString("es-AR")}</span>
                   <span className="text-muted-foreground"> /mes</span>
                 </div>
                 <ul className="space-y-2">
@@ -201,7 +251,7 @@ export default function Subscription() {
                   <Button
                     className="w-full"
                     variant={isProfessional ? "default" : "outline"}
-                    onClick={handleManageSubscription}
+                    onClick={() => handleSubscribe(plan)}
                   >
                     Cambiar Plan
                   </Button>
@@ -224,7 +274,38 @@ export default function Subscription() {
       <div className="text-center text-sm text-muted-foreground">
         <p>Todos los planes incluyen actualizaciones automáticas y soporte técnico.</p>
         <p>Los límites de -1 indican uso ilimitado. El contador de envíos se reinicia cada mes.</p>
+        <p className="mt-2 text-primary">Pagos procesados de forma segura con Mercado Pago</p>
       </div>
+
+      {/* Cancel Subscription Dialog */}
+      <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Cancelar suscripción?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tu suscripción permanecerá activa hasta el final del período de facturación actual. 
+              Después de eso, perderás acceso a las funciones premium.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Mantener suscripción</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleCancelSubscription}
+              className="bg-destructive hover:bg-destructive/90"
+              disabled={isCancelling}
+            >
+              {isCancelling ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Cancelando...
+                </>
+              ) : (
+                "Sí, cancelar"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
