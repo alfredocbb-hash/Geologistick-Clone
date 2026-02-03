@@ -79,7 +79,7 @@ interface ScannedShipment {
 export default function ScanQR() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { hasRole } = useAuth();
+  const { hasRole, user } = useAuth();
 
   const [manualTracking, setManualTracking] = useState('');
   const [scannedShipment, setScannedShipment] = useState<ScannedShipment | null>(null);
@@ -715,6 +715,7 @@ export default function ScanQR() {
           open={showMLRegisterDialog}
           mlShipmentId={pendingMLData.mlShipmentId}
           mlSenderId={pendingMLData.mlSenderId}
+          userId={user?.id}
           onClose={() => {
             setShowMLRegisterDialog(false);
             setPendingMLData(null);

@@ -9,6 +9,7 @@ const corsHeaders = {
 interface RegisterRequest {
   ml_shipment_id: string;
   sender_id: string;
+  user_id?: string; // Optional: user who is registering (for sucursal_origen)
 }
 
 serve(async (req) => {
@@ -22,9 +23,9 @@ serve(async (req) => {
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    const { ml_shipment_id, sender_id }: RegisterRequest = await req.json();
+    const { ml_shipment_id, sender_id, user_id }: RegisterRequest = await req.json();
 
-    console.log('[register-ml-shipment] Request:', { ml_shipment_id, sender_id });
+    console.log('[register-ml-shipment] Request:', { ml_shipment_id, sender_id, user_id });
 
     if (!ml_shipment_id || !sender_id) {
       return new Response(
@@ -194,7 +195,28 @@ serve(async (req) => {
 
     console.log('[register-ml-shipment] Generated tracking:', trackingNumber);
 
-    // 8. Get seller's rate for pricing
+    // 8. Get sucursal_origen from user's profile if user_id provided
+    let sucursalOrigenId: string | null = null;
+    if (user_id) {
+      const { data: userProfile } = await supabase
+        .from('profiles')
+        .select('sucursal_id')
+        .eq('user_id', user_id)
+        .single();
+      
+      if (userProfile?.sucursal_id) {
+        sucursalOrigenId = userProfile.sucursal_id;
+        console.log('[register-ml-shipment] User sucursal_origen:', sucursalOrigenId);
+      }
+    }
+    
+    // Fallback to seller's pickup branch if no user branch
+    if (!sucursalOrigenId && seller.sucursal_pickup_id) {
+      sucursalOrigenId = seller.sucursal_pickup_id;
+      console.log('[register-ml-shipment] Using seller pickup branch:', sucursalOrigenId);
+    }
+
+    // 9. Get seller's rate for pricing
     let precioTotal = 0;
     if (seller.tarifa_id) {
       const { data: tarifa } = await supabase
@@ -208,7 +230,7 @@ serve(async (req) => {
       }
     }
 
-    // 9. Create ecommerce_order
+    // 10. Create ecommerce_order
     const { data: ecommerceOrder, error: orderError } = await supabase
       .from('ecommerce_orders')
       .insert({
@@ -243,7 +265,7 @@ serve(async (req) => {
 
     console.log('[register-ml-shipment] Created ecommerce_order:', ecommerceOrder.id);
 
-    // 10. Create envio with ORIGINAL ml_shipment_id
+    // 11. Create envio with ORIGINAL ml_shipment_id and sucursal_origen
     const { data: envio, error: envioError } = await supabase
       .from('envios')
       .insert({
@@ -268,6 +290,7 @@ serve(async (req) => {
         tipo_servicio_detalle: 'ML Flex',
         pago_contra_entrega: false,
         descripcion: `Pedido MercadoLibre Flex #${mlShipment.order_id || ml_shipment_id}`,
+        sucursal_origen_id: sucursalOrigenId, // Track who did the pickup
       })
       .select()
       .single();
@@ -282,15 +305,15 @@ serve(async (req) => {
       );
     }
 
-    console.log('[register-ml-shipment] Created envio:', envio.id, envio.tracking_number);
+    console.log('[register-ml-shipment] Created envio:', envio.id, envio.tracking_number, 'sucursal_origen:', sucursalOrigenId);
 
-    // 11. Link ecommerce_order to envio
+    // 12. Link ecommerce_order to envio
     await supabase
       .from('ecommerce_orders')
       .update({ envio_id: envio.id })
       .eq('id', ecommerceOrder.id);
 
-    // 12. Record charge in seller's account if applicable
+    // 13. Record charge in seller's account if applicable
     if (precioTotal > 0 && seller.tiene_cuenta_corriente) {
       const { data: currentBalance } = await supabase
         .from('ecommerce_sellers')
@@ -314,11 +337,11 @@ serve(async (req) => {
       console.log('[register-ml-shipment] Recorded charge:', precioTotal);
     }
 
-    // 13. Create history entry
+    // 14. Create history entry
     await supabase.from('envio_historial').insert({
       envio_id: envio.id,
       estado_nuevo: 'pendiente',
-      notas: `Envío registrado desde escaneo QR ML Flex. Seller: ${seller.nombre}`,
+      notas: `Envío registrado desde escaneo QR ML Flex. Seller: ${seller.nombre}${sucursalOrigenId ? ' (con sucursal origen)' : ''}`,
     });
 
     console.log('[register-ml-shipment] Success! Envio:', envio.tracking_number);

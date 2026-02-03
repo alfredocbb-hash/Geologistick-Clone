@@ -550,6 +550,7 @@ export function MobileScanTab() {
           open={showMLRegisterDialog}
           mlShipmentId={pendingMLData.mlShipmentId}
           mlSenderId={pendingMLData.mlSenderId}
+          userId={user?.id}
           onClose={handleDialogClose}
           onSuccess={handleMLRegisterSuccess}
         />

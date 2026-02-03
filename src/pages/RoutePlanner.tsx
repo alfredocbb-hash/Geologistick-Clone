@@ -1,10 +1,11 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { supabase } from "@/integrations/supabase/client";
 import { parseDateString } from "@/lib/dateUtils";
 import { useAuth } from "@/lib/auth";
 import { usePersistedState, useClearPersistedState } from "@/hooks/usePersistedState";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -88,6 +89,7 @@ interface RouteOption {
 export default function RoutePlanner() {
   const { profile, roles } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   
   const [activeTab, setActiveTab] = useState("crear");
@@ -112,6 +114,7 @@ export default function RoutePlanner() {
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showSaveFrequentDialog, setShowSaveFrequentDialog] = useState(false);
   const [cancellingRoute, setCancellingRoute] = useState<any | null>(null);
+  const [urlEnviosProcessed, setUrlEnviosProcessed] = useState(false);
 
   // Fetch sucursal de origen del usuario
   const { data: sucursalOrigen } = useQuery({
@@ -191,6 +194,38 @@ export default function RoutePlanner() {
       }));
     },
   });
+
+  // Preselect envios from URL query params (from e-commerce orders page)
+  useEffect(() => {
+    if (urlEnviosProcessed) return;
+    
+    const enviosParam = searchParams.get('envios');
+    if (enviosParam && enviosPendientes.length > 0) {
+      const envioIds = enviosParam.split(',').filter(Boolean);
+      
+      // Filter to only include valid envío IDs that exist in the pending list
+      const validIds = envioIds.filter(id => 
+        enviosPendientes.some(e => e.id === id)
+      );
+      
+      if (validIds.length > 0) {
+        setSelectedEnvios(validIds);
+        toast.success(`${validIds.length} envíos preseleccionados`, {
+          description: 'Listos para optimizar y crear ruta'
+        });
+        
+        // Clear URL param to prevent re-selection on page refresh
+        setSearchParams({}, { replace: true });
+      } else if (envioIds.length > 0) {
+        toast.warning('Envíos no disponibles', {
+          description: 'Algunos envíos ya fueron asignados o no están disponibles'
+        });
+        setSearchParams({}, { replace: true });
+      }
+      
+      setUrlEnviosProcessed(true);
+    }
+  }, [enviosPendientes, searchParams, urlEnviosProcessed, setSelectedEnvios, setSearchParams]);
 
   // Fetch choferes
   const { data: choferes = [] } = useQuery({
