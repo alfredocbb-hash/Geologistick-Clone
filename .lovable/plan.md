@@ -1,149 +1,136 @@
 
-# Plan: Historial de Recorridos GPS para Rutas Planificadas
 
-## Resumen
+# Plan: Mejorar Tracking Publico - Mostrar Sucursal y Ocultar DNI
 
-Agregaremos la funcionalidad de visualizar el recorrido GPS de los choferes para las rutas planificadas, incluyendo filtros por fecha, de forma similar a como se implementó en las Hojas de Ruta.
+## Problemas Identificados
 
-## Estado Actual
+| Problema | Impacto | Ubicacion |
+|----------|---------|-----------|
+| DNI visible en historial | Exposicion de datos personales sensibles | `notas` en `envio_historial` se muestra en tracking publico |
+| Sucursal no visible | Cliente no sabe donde retirar el paquete | `sucursal_destino` no se incluye en respuesta API |
 
-| Componente | Estado |
-|------------|--------|
-| Hojas de Ruta (RouteSheets.tsx) | Ya implementado con filtros de fecha y visualización GPS |
-| Rutas Planificadas (RoutePlanner.tsx) | Solo muestra rutas activas, sin historial ni GPS |
-| Hook useDriverRoute | Ya soporta `loadRoute(driverId, rutaId)` para rutas planificadas |
-| Datos GPS | Existen registros en `driver_location_history` con `ruta_id` |
-
-## Cambios Propuestos
-
-### 1. Nueva Pestaña "Historial" en el Planificador
-
-Agregar una nueva pestaña junto a las existentes (Crear, Frecuentes, Terciarizados, Reprogramados, Activas):
+### Ejemplo Actual (Incorrecto)
 
 ```text
-[Crear Ruta] [Frecuentes] [Terciarizados] [Reprogramados] [Activas] [Historial]
+Estado: "En Sucursal"
+Historial: "Entregado en sucursal a Antonella rojas (DNI: 55256272727)"
 ```
 
-### 2. Contenido de la Pestaña Historial
+### Objetivo
 
 ```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  Historial de Rutas                                                         │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  [🔍 Buscar...]   [📅 Desde: __/__]   [📅 Hasta: __/__]   [X Limpiar]      │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  ┌──────────────────────────────────────────────────────────────┐          │
-│  │  RP-20260204-1751                                [Completada] │          │
-│  │  👤 Kevin Bernard                    📍 5/5 paradas           │          │
-│  │  📅 04/02/2026                       🚗 12.5 km               │          │
-│  │  [📋 Imprimir]                  [🗺️ Ver Recorrido] (si GPS)  │          │
-│  └──────────────────────────────────────────────────────────────┘          │
-│                                                                             │
-│  ┌──────────────────────────────────────────────────────────────┐          │
-│  │  RP-20260204-6391                                [Completada] │          │
-│  │  👤 Kevin Bernard                    📍 3/3 paradas           │          │
-│  │  📅 04/02/2026                       🚗 8.2 km                │          │
-│  │  [📋 Imprimir]                  [🗺️ Ver Recorrido] (si GPS)  │          │
-│  └──────────────────────────────────────────────────────────────┘          │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
+Estado: "En Sucursal (Berazategui)"
+Historial: "Entregado en sucursal" (sin DNI)
 ```
 
-### 3. Dialog de Visualización del Recorrido
+---
 
-Al hacer clic en "Ver Recorrido", se mostrará el mismo dialog que en RouteSheets:
+## Solucion Propuesta
 
+### Parte 1: Edge Function - Sanitizar Notas
+
+Modificar `supabase/functions/public-tracking/index.ts` para:
+
+1. **Agregar campo `sucursal_actual`** en la respuesta con el nombre de la sucursal destino
+2. **Sanitizar las notas** del historial para remover datos sensibles como DNI antes de enviarlas
+
+**Logica de sanitizacion:**
 ```text
-┌──────────────────────────────────────────────────────────────────────────┐
-│  Recorrido de Kevin Bernard - RP-20260204-1751                    [X]   │
-├──────────────────────────────────────────────────────────────────────────┤
-│  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │                                                                    │ │
-│  │                    [MAPA CON RECORRIDO]                            │ │
-│  │                    Polyline con degradado temporal                 │ │
-│  │                    Marcadores de entregas completadas              │ │
-│  │                                                                    │ │
-│  └────────────────────────────────────────────────────────────────────┘ │
-│  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │  📏 12.5 km  │  ⏱️ 1h 23m  │  🚗 28 km/h  │  📦 5 entregas        │ │
-│  └────────────────────────────────────────────────────────────────────┘ │
-└──────────────────────────────────────────────────────────────────────────┘
+Original: "Entregado en sucursal a Antonella rojas (DNI: 55256272727)"
+Sanitizado: "Entregado en sucursal"
 ```
+
+El patron a detectar y remover: `(DNI: XXXXXXXX)`
+
+### Parte 2: Frontend - Mostrar Sucursal
+
+Modificar `src/pages/Tracking.tsx` y `src/pages/TrackingEmbed.tsx` para:
+
+1. **Mostrar sucursal en estado "en_sucursal"**: Agregar el nombre de la sucursal junto al estado
+2. **Mostrar sucursal en "entregado"** cuando fue entregado en sucursal
 
 ---
 
 ## Detalles Tecnicos
 
-### Archivo a Modificar: `src/pages/RoutePlanner.tsx`
+### Archivo 1: `supabase/functions/public-tracking/index.ts`
 
-**Nuevos Imports:**
-- `Popover`, `PopoverContent`, `PopoverTrigger` de shadcn
-- `Calendar` de shadcn
-- `Dialog`, `DialogContent`, `DialogHeader`, `DialogTitle`, `DialogDescription` de shadcn
-- `useDriverRoute` hook
-- `GoogleMapsProvider`, `MapView`, `RouteStatsPanel` de maps
+**Cambios:**
 
-**Nuevos Estados:**
-```text
-- historyDateFrom: Date | undefined
-- historyDateTo: Date | undefined
-- showHistoryRouteDialog: boolean
-- selectedHistoryRoute: RutaPlanificada | null
-```
+1. Agregar campo `sucursal_actual` en la respuesta (nombre de sucursal_destino)
 
-**Nueva Query: Rutas Históricas**
-```text
-SELECT 
-  rp.*,
-  p.nombre, p.apellido,
-  (SELECT COUNT(*) FROM driver_location_history WHERE ruta_id = rp.id) > 0 AS has_gps_history
-FROM rutas_planificadas rp
-LEFT JOIN profiles p ON p.user_id = rp.chofer_id
-WHERE rp.estado = 'completada'
-  AND rp.created_at >= dateFrom
-  AND rp.created_at <= dateTo
-ORDER BY rp.created_at DESC
-```
-
-**Integración con useDriverRoute:**
-```text
-// Al hacer clic en "Ver Recorrido"
-const handleViewHistoryRoute = async (ruta: RutaPlanificada) => {
-  setSelectedHistoryRoute(ruta);
-  setShowHistoryRouteDialog(true);
-  await driverRoute.loadRoute(ruta.chofer_id, ruta.id);
+2. Funcion para sanitizar notas:
+```typescript
+// Remover datos sensibles de las notas para tracking publico
+const sanitizeNotasForPublic = (notas: string | null): string | null => {
+  if (!notas) return null;
+  
+  // Remover patrones de DNI: "(DNI: XXXXX)" 
+  let sanitized = notas.replace(/\s*\(DNI:\s*\d+\)/gi, '');
+  
+  // Remover patrones de CUIT tambien
+  sanitized = sanitized.replace(/\s*\(CUIT:\s*[\d-]+\)/gi, '');
+  
+  return sanitized.trim();
 };
 ```
 
-### Flujo de Datos
-
-```text
-1. Usuario navega a pestaña "Historial"
-   ↓
-2. Se cargan rutas con estado "completada" (filtradas por fecha si aplica)
-   ↓
-3. Query verifica cuáles tienen historial GPS
-   ↓
-4. Tarjetas muestran botón "Ver Recorrido" si hay GPS
-   ↓
-5. Usuario hace clic en "Ver Recorrido"
-   ↓
-6. driverRoute.loadRoute(chofer_id, ruta_id)
-   ↓
-7. Dialog muestra mapa con recorrido + estadísticas
+3. Aplicar sanitizacion al mapear historial:
+```typescript
+historial: (historial || []).map((h) => ({
+  ...
+  notas: sanitizeNotasForPublic(h.notas),
+  ...
+})),
 ```
 
-### Componentes a Reutilizar
+4. Agregar `sucursal_actual` a la respuesta:
+```typescript
+sucursal_actual: sucursalDestino?.nombre || null,
+```
 
-| Componente | Uso |
-|------------|-----|
-| `Calendar` | Selectores de fecha en filtros |
-| `Popover` | Contenedor de calendarios |
-| `GoogleMapsProvider` | Wrapper para mapa |
-| `MapView` | Renderizado del mapa con polyline |
-| `RouteStatsPanel` | Panel de estadísticas del recorrido |
-| `useDriverRoute` | Hook para cargar datos GPS |
+### Archivo 2: `src/pages/Tracking.tsx`
+
+**Cambios:**
+
+1. Actualizar interfaz `TrackingResponse` para incluir `sucursal_actual`
+
+2. Modificar badge de estado para incluir sucursal:
+```tsx
+// Si esta en_sucursal y hay sucursal_actual
+{envio.estado === 'en_sucursal' && envio.sucursal_actual && (
+  <Badge>En Sucursal ({envio.sucursal_actual})</Badge>
+)}
+```
+
+3. En el estado "entregado", si fue en sucursal mostrar tambien
+
+### Archivo 3: `src/pages/TrackingEmbed.tsx`
+
+**Cambios similares:**
+
+1. Actualizar interfaz para incluir `sucursal_actual`
+2. Mostrar sucursal en estado cuando corresponda
+
+---
+
+## Resultado Esperado
+
+### Vista Tracking Publica
+
+**Antes:**
+```text
+Estado: En Sucursal
+Historial:
+  - Entregado | "Entregado en sucursal a Antonella rojas (DNI: 55256272727)"
+```
+
+**Despues:**
+```text
+Estado: En Sucursal (Berazategui)
+Historial:
+  - Entregado | "Entregado en sucursal"
+```
 
 ---
 
@@ -151,15 +138,17 @@ const handleViewHistoryRoute = async (ruta: RutaPlanificada) => {
 
 | Archivo | Cambios |
 |---------|---------|
-| `src/pages/RoutePlanner.tsx` | Nueva pestaña "Historial", filtros de fecha, dialog de recorrido |
+| `supabase/functions/public-tracking/index.ts` | Agregar sanitizacion de notas + campo sucursal_actual |
+| `src/pages/Tracking.tsx` | Mostrar sucursal en estado + actualizar interfaz |
+| `src/pages/TrackingEmbed.tsx` | Mostrar sucursal en estado + actualizar interfaz |
 
 ---
 
-## Resultado Esperado
+## Seguridad
 
-1. Nueva pestaña "Historial" en el Planificador de Rutas
-2. Listado de rutas completadas con filtro por fecha
-3. Cada tarjeta muestra chofer, fecha, distancia y paradas
-4. Botón "Ver Recorrido" visible cuando hay historial GPS
-5. Dialog con mapa calle por calle y estadísticas
-6. Funciona con el cache existente de `driver_route_segments`
+Esta solucion protege la privacidad al:
+
+1. **Nunca exponer DNI/CUIT** en el tracking publico
+2. **Mantener los datos internos intactos** - el historial original con DNI sigue guardado para uso interno
+3. **Sanitizar en el punto de salida** - la Edge Function filtra datos sensibles antes de enviar al cliente
+
