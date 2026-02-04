@@ -87,6 +87,12 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; icon:
     icon: AlertCircle, 
     description: 'El envío fue cancelado' 
   },
+  incidencia: { 
+    label: 'Incidencia', 
+    color: 'bg-amber-500', 
+    icon: AlertCircle, 
+    description: 'El envío tiene un problema reportado pendiente de resolver' 
+  },
 };
 
 const statusOrder: ShipmentStatus[] = [
