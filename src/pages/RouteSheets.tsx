@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
@@ -31,6 +31,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { 
@@ -44,11 +50,21 @@ import {
   Clock,
   CheckCircle,
   Search,
-  QrCode
+  QrCode,
+  MapPin,
+  CalendarIcon,
+  X,
+  Loader2,
+  Route
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, startOfDay, endOfDay } from "date-fns";
 import { es } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
+import { cn } from "@/lib/utils";
+import { useDriverRoute } from "@/hooks/useDriverRoute";
+import { GoogleMapsProvider } from "@/components/maps/GoogleMapsProvider";
+import { MapView } from "@/components/maps/MapView";
+import { RouteStatsPanel } from "@/components/maps/RouteStatsPanel";
 
 const ESTADO_CONFIG: Record<string, { label: string; color: string }> = {
   pendiente: { label: "Pendiente", color: "bg-yellow-100 text-yellow-800" },
@@ -56,6 +72,19 @@ const ESTADO_CONFIG: Record<string, { label: string; color: string }> = {
   recibida: { label: "Recibida", color: "bg-green-100 text-green-800" },
   cancelada: { label: "Cancelada", color: "bg-red-100 text-red-800" },
 };
+
+interface HojaRutaWithDetails {
+  id: string;
+  numero: string;
+  estado: string | null;
+  cantidad_envios: number | null;
+  created_at: string | null;
+  chofer_id: string | null;
+  sucursal_origen: { id: string; nombre: string; ciudad: string | null } | null;
+  sucursal_destino: { id: string; nombre: string; ciudad: string | null } | null;
+  chofer?: { nombre: string | null; apellido: string | null } | null;
+  has_gps_history?: boolean;
+}
 
 export default function RouteSheets() {
   const { profile } = useAuth();
@@ -68,12 +97,23 @@ export default function RouteSheets() {
   const [selectedChofer, setSelectedChofer] = useState<string>("");
   const [selectedVehiculo, setSelectedVehiculo] = useState<string>("");
   const [notas, setNotas] = useState("");
+  
+  // Date filters
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
+  const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+  
+  // Route dialog state
+  const [showRouteDialog, setShowRouteDialog] = useState(false);
+  const [selectedHojaRuta, setSelectedHojaRuta] = useState<HojaRutaWithDetails | null>(null);
+  
+  // Use driver route hook for GPS visualization
+  const driverRoute = useDriverRoute();
 
-  // Fetch hojas de ruta
+  // Fetch hojas de ruta with date filter
   const { data: hojasRuta = [], isLoading } = useQuery({
-    queryKey: ["hojas-ruta"],
+    queryKey: ["hojas-ruta", dateFrom?.toISOString(), dateTo?.toISOString()],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("hojas_ruta")
         .select(`
           *,
@@ -82,8 +122,61 @@ export default function RouteSheets() {
         `)
         .order("created_at", { ascending: false });
       
+      // Apply date filters
+      if (dateFrom) {
+        query = query.gte("created_at", startOfDay(dateFrom).toISOString());
+      }
+      if (dateTo) {
+        query = query.lte("created_at", endOfDay(dateTo).toISOString());
+      }
+      
+      const { data, error } = await query;
+      
       if (error) throw error;
-      return data;
+      
+      // Get chofer profiles for each hoja that has a chofer_id
+      const choferIds = [...new Set(data?.filter(hr => hr.chofer_id).map(hr => hr.chofer_id) || [])];
+      let choferProfiles: Record<string, { nombre: string | null; apellido: string | null }> = {};
+      
+      if (choferIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("user_id, nombre, apellido")
+          .in("user_id", choferIds);
+        
+        if (profiles) {
+          choferProfiles = profiles.reduce((acc, p) => {
+            acc[p.user_id] = { nombre: p.nombre, apellido: p.apellido };
+            return acc;
+          }, {} as Record<string, { nombre: string | null; apellido: string | null }>);
+        }
+      }
+      
+      // Check which hojas have GPS history
+      const hojaIds = data?.map(hr => hr.id) || [];
+      let gpsHistoryMap: Record<string, boolean> = {};
+      
+      if (hojaIds.length > 0) {
+        const { data: gpsData } = await supabase
+          .from("driver_location_history")
+          .select("hoja_ruta_id")
+          .in("hoja_ruta_id", hojaIds);
+        
+        if (gpsData) {
+          const hojaIdsWithHistory = new Set(gpsData.map(g => g.hoja_ruta_id));
+          gpsHistoryMap = hojaIds.reduce((acc, id) => {
+            acc[id] = hojaIdsWithHistory.has(id);
+            return acc;
+          }, {} as Record<string, boolean>);
+        }
+      }
+      
+      // Combine data
+      return data?.map(hr => ({
+        ...hr,
+        chofer: hr.chofer_id ? choferProfiles[hr.chofer_id] : null,
+        has_gps_history: gpsHistoryMap[hr.id] || false,
+      })) as HojaRutaWithDetails[];
     },
   });
 
@@ -264,8 +357,30 @@ export default function RouteSheets() {
   const filteredHojas = hojasRuta.filter(hr => 
     hr.numero?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     hr.sucursal_origen?.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    hr.sucursal_destino?.nombre?.toLowerCase().includes(searchTerm.toLowerCase())
+    hr.sucursal_destino?.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (hr.chofer?.nombre && hr.chofer.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (hr.chofer?.apellido && hr.chofer.apellido.toLowerCase().includes(searchTerm.toLowerCase()))
   );
+
+  // Handle opening route dialog
+  const handleViewRoute = async (hr: HojaRutaWithDetails) => {
+    if (!hr.chofer_id) {
+      toast.error("Esta hoja de ruta no tiene chofer asignado");
+      return;
+    }
+    
+    setSelectedHojaRuta(hr);
+    setShowRouteDialog(true);
+    
+    // Load the route data
+    await driverRoute.loadRouteByHojaRuta(hr.chofer_id, hr.id);
+  };
+
+  // Clear date filters
+  const clearDateFilters = () => {
+    setDateFrom(undefined);
+    setDateTo(undefined);
+  };
 
   return (
     <div className="space-y-6">
@@ -447,15 +562,74 @@ export default function RouteSheets() {
         </Dialog>
       </div>
 
-      {/* Búsqueda */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar por número o sucursal..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10"
-        />
+      {/* Búsqueda y Filtros de Fecha */}
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por número, sucursal o chofer..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        
+        {/* Date From */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              className={cn(
+                "w-[160px] justify-start text-left font-normal",
+                !dateFrom && "text-muted-foreground"
+              )}
+            >
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              {dateFrom ? format(dateFrom, "dd/MM/yyyy", { locale: es }) : "Desde"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={dateFrom}
+              onSelect={setDateFrom}
+              initialFocus
+              className="p-3 pointer-events-auto"
+            />
+          </PopoverContent>
+        </Popover>
+        
+        {/* Date To */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              className={cn(
+                "w-[160px] justify-start text-left font-normal",
+                !dateTo && "text-muted-foreground"
+              )}
+            >
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              {dateTo ? format(dateTo, "dd/MM/yyyy", { locale: es }) : "Hasta"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={dateTo}
+              onSelect={setDateTo}
+              initialFocus
+              className="p-3 pointer-events-auto"
+            />
+          </PopoverContent>
+        </Popover>
+        
+        {/* Clear Filters */}
+        {(dateFrom || dateTo) && (
+          <Button variant="ghost" size="icon" onClick={clearDateFilters}>
+            <X className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
       {/* Lista de Hojas de Ruta */}
@@ -499,6 +673,22 @@ export default function RouteSheets() {
                   <span>{hr.sucursal_destino?.nombre}</span>
                 </div>
 
+                {/* Chofer info */}
+                {hr.chofer && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Truck className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-medium">
+                      {hr.chofer.nombre} {hr.chofer.apellido}
+                    </span>
+                    {hr.has_gps_history && (
+                      <Badge variant="outline" className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800">
+                        <MapPin className="h-3 w-3 mr-1" />
+                        GPS
+                      </Badge>
+                    )}
+                  </div>
+                )}
+
                 {/* Info adicional */}
                 <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground">
                   <div className="flex items-center gap-1">
@@ -508,7 +698,7 @@ export default function RouteSheets() {
                   <div className="flex items-center gap-1">
                     <Clock className="h-4 w-4" />
                     <span>
-                      {format(new Date(hr.created_at), "dd/MM HH:mm", { locale: es })}
+                      {hr.created_at && format(new Date(hr.created_at), "dd/MM HH:mm", { locale: es })}
                     </span>
                   </div>
                 </div>
@@ -531,12 +721,90 @@ export default function RouteSheets() {
                   >
                     <QrCode className="h-4 w-4" />
                   </Button>
+                  {hr.has_gps_history && hr.chofer_id && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleViewRoute(hr)}
+                      className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20"
+                    >
+                      <Route className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
       )}
+
+      {/* Route Dialog */}
+      <Dialog open={showRouteDialog} onOpenChange={(open) => {
+        setShowRouteDialog(open);
+        if (!open) {
+          driverRoute.clearRoute();
+          setSelectedHojaRuta(null);
+        }
+      }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Route className="h-5 w-5" />
+              Recorrido de {selectedHojaRuta?.chofer?.nombre} {selectedHojaRuta?.chofer?.apellido}
+            </DialogTitle>
+            <DialogDescription>
+              Hoja de Ruta: {selectedHojaRuta?.numero}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Map */}
+            <GoogleMapsProvider>
+              {driverRoute.isLoading ? (
+                <div className="flex items-center justify-center h-[400px] bg-muted rounded-lg">
+                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-8 w-8 animate-spin" />
+                    <span>Cargando recorrido...</span>
+                  </div>
+                </div>
+              ) : driverRoute.polylinePath.length > 0 ? (
+                <MapView
+                  polylinePath={driverRoute.polylinePath}
+                  useGradient={true}
+                  deliveryStops={driverRoute.deliveryStops}
+                  height="400px"
+                  className="rounded-lg overflow-hidden"
+                />
+              ) : (
+                <div className="flex items-center justify-center h-[400px] bg-muted rounded-lg">
+                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                    <MapPin className="h-8 w-8" />
+                    <span>No hay datos de recorrido disponibles</span>
+                  </div>
+                </div>
+              )}
+            </GoogleMapsProvider>
+
+            {/* Route Stats */}
+            {driverRoute.polylinePath.length > 0 && (
+              <RouteStatsPanel
+                stats={driverRoute.routeStats}
+                driverName={`${selectedHojaRuta?.chofer?.nombre || ''} ${selectedHojaRuta?.chofer?.apellido || ''}`}
+                routeNumber={selectedHojaRuta?.numero}
+                isLoading={driverRoute.isLoading}
+                isSnapping={driverRoute.isSnapping}
+              />
+            )}
+
+            {/* Error message */}
+            {driverRoute.error && (
+              <div className="text-sm text-red-500 text-center">
+                {driverRoute.error}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

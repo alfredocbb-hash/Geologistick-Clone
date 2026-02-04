@@ -28,6 +28,7 @@ interface UseDriverRouteReturn {
   isSnapping: boolean;
   error: string | null;
   loadRoute: (driverId: string, rutaId: string) => Promise<void>;
+  loadRouteByHojaRuta: (driverId: string, hojaRutaId: string) => Promise<void>;
   clearRoute: () => void;
   polylinePath: SnappedPoint[];
   routeStats: {
@@ -92,6 +93,10 @@ function generatePointsHash(points: { lat: number; lng: number }[]): string {
   return Math.abs(hash).toString(36);
 }
 
+type RouteIdentifier = 
+  | { type: 'ruta'; rutaId: string }
+  | { type: 'hoja_ruta'; hojaRutaId: string };
+
 export function useDriverRoute(): UseDriverRouteReturn {
   const [rawHistory, setRawHistory] = useState<LocationHistoryPoint[]>([]);
   const [snappedRoute, setSnappedRoute] = useState<SnappedPoint[]>([]);
@@ -100,7 +105,8 @@ export function useDriverRoute(): UseDriverRouteReturn {
   const [isSnapping, setIsSnapping] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadRoute = useCallback(async (driverId: string, rutaId: string) => {
+  // Internal function to load route by either ruta_id or hoja_ruta_id
+  const loadRouteInternal = useCallback(async (driverId: string, identifier: RouteIdentifier) => {
     setIsLoading(true);
     setIsSnapping(false);
     setError(null);
@@ -108,14 +114,22 @@ export function useDriverRoute(): UseDriverRouteReturn {
     setRawHistory([]);
     setDeliveryStops([]);
 
+    const routeIdForCache = identifier.type === 'ruta' ? identifier.rutaId : identifier.hojaRutaId;
+
     try {
-      // Fetch location history for the route
-      const { data: history, error: historyError } = await supabase
+      // Build query based on identifier type
+      let query = supabase
         .from('driver_location_history')
         .select('lat, lng, recorded_at, speed')
-        .eq('chofer_id', driverId)
-        .eq('ruta_id', rutaId)
-        .order('recorded_at', { ascending: true });
+        .eq('chofer_id', driverId);
+      
+      if (identifier.type === 'ruta') {
+        query = query.eq('ruta_id', identifier.rutaId);
+      } else {
+        query = query.eq('hoja_ruta_id', identifier.hojaRutaId);
+      }
+      
+      const { data: history, error: historyError } = await query.order('recorded_at', { ascending: true });
 
       if (historyError) throw historyError;
 
@@ -129,15 +143,41 @@ export function useDriverRoute(): UseDriverRouteReturn {
       setRawHistory(formattedHistory);
 
       // Fetch delivery stops (completed deliveries) for this route
-      const { data: deliveries } = await supabase
-        .from('envios')
-        .select('tracking_number, entrega_lat, entrega_lng, fecha_entrega')
-        .eq('chofer_id', driverId)
-        .eq('estado', 'entregado')
-        .not('entrega_lat', 'is', null)
-        .not('entrega_lng', 'is', null)
-        .not('fecha_entrega', 'is', null)
-        .order('fecha_entrega', { ascending: true });
+      // For hoja_ruta, we need to get envios linked to it
+      let deliveriesQuery;
+      if (identifier.type === 'hoja_ruta') {
+        // Get envios from hoja_ruta_envios junction table
+        const { data: hojaEnvios } = await supabase
+          .from('hoja_ruta_envios')
+          .select('envio_id')
+          .eq('hoja_ruta_id', identifier.hojaRutaId);
+        
+        const envioIds = hojaEnvios?.map(e => e.envio_id) || [];
+        
+        if (envioIds.length > 0) {
+          deliveriesQuery = await supabase
+            .from('envios')
+            .select('tracking_number, entrega_lat, entrega_lng, fecha_entrega')
+            .in('id', envioIds)
+            .eq('estado', 'entregado')
+            .not('entrega_lat', 'is', null)
+            .not('entrega_lng', 'is', null)
+            .not('fecha_entrega', 'is', null)
+            .order('fecha_entrega', { ascending: true });
+        }
+      } else {
+        deliveriesQuery = await supabase
+          .from('envios')
+          .select('tracking_number, entrega_lat, entrega_lng, fecha_entrega')
+          .eq('chofer_id', driverId)
+          .eq('estado', 'entregado')
+          .not('entrega_lat', 'is', null)
+          .not('entrega_lng', 'is', null)
+          .not('fecha_entrega', 'is', null)
+          .order('fecha_entrega', { ascending: true });
+      }
+      
+      const deliveries = deliveriesQuery?.data;
 
       if (deliveries && deliveries.length > 0) {
         const stops: DeliveryStop[] = deliveries.map((d, idx) => ({
@@ -153,11 +193,11 @@ export function useDriverRoute(): UseDriverRouteReturn {
       if (formattedHistory.length >= 2) {
         const pointsHash = generatePointsHash(formattedHistory);
         
-        // Check cache first
+        // Check cache first (only for ruta_id since that's the cache key)
         const { data: cachedSegment } = await supabase
           .from('driver_route_segments')
           .select('snapped_points, total_distance')
-          .eq('ruta_id', rutaId)
+          .eq('ruta_id', routeIdForCache)
           .eq('chofer_id', driverId)
           .eq('points_hash', pointsHash)
           .maybeSingle();
@@ -203,7 +243,7 @@ export function useDriverRoute(): UseDriverRouteReturn {
                   await supabase
                     .from('driver_route_segments')
                     .upsert({
-                      ruta_id: rutaId,
+                      ruta_id: routeIdForCache,
                       chofer_id: driverId,
                       tenant_id: profile.tenant_id,
                       points_hash: pointsHash,
@@ -236,6 +276,16 @@ export function useDriverRoute(): UseDriverRouteReturn {
       setIsLoading(false);
     }
   }, []);
+
+  // Public function to load by ruta_id
+  const loadRoute = useCallback(async (driverId: string, rutaId: string) => {
+    return loadRouteInternal(driverId, { type: 'ruta', rutaId });
+  }, [loadRouteInternal]);
+
+  // Public function to load by hoja_ruta_id
+  const loadRouteByHojaRuta = useCallback(async (driverId: string, hojaRutaId: string) => {
+    return loadRouteInternal(driverId, { type: 'hoja_ruta', hojaRutaId });
+  }, [loadRouteInternal]);
 
   const clearRoute = useCallback(() => {
     setRawHistory([]);
@@ -298,6 +348,7 @@ export function useDriverRoute(): UseDriverRouteReturn {
     isSnapping,
     error,
     loadRoute,
+    loadRouteByHojaRuta,
     clearRoute,
     polylinePath,
     routeStats,
