@@ -137,6 +137,7 @@ export default function ActiveRouteNavigation() {
             notas,
             nombre_destinatario,
             nombre_remitente,
+            whatsapp_destinatario,
             destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, telefono, direccion, ciudad),
             remitente:clientes!envios_remitente_id_fkey(nombre, apellido, telefono, direccion, ciudad)
           )
@@ -175,6 +176,7 @@ export default function ActiveRouteNavigation() {
             notas,
             nombre_destinatario,
             nombre_remitente,
+            whatsapp_destinatario,
             destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, telefono, direccion, ciudad),
             remitente:clientes!envios_remitente_id_fkey(nombre, apellido, telefono, direccion, ciudad)
           )
@@ -444,6 +446,14 @@ export default function ActiveRouteNavigation() {
   const address = isPickup 
     ? `${nextEnvio?.direccion_retiro}`
     : `${nextEnvio?.direccion_entrega || contact?.direccion}`;
+  
+  // Phone fallback: use linked client's phone OR direct whatsapp_destinatario field
+  const phone = isPickup 
+    ? contact?.telefono 
+    : (contact?.telefono || (nextEnvio as any)?.whatsapp_destinatario);
+  const clienteName = isPickup 
+    ? (nextEnvio?.nombre_remitente || `${contact?.nombre || ''} ${contact?.apellido || ''}`.trim())
+    : (nextEnvio?.nombre_destinatario || `${contact?.nombre || ''} ${contact?.apellido || ''}`.trim());
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -605,8 +615,8 @@ export default function ActiveRouteNavigation() {
                 </Button>
                 <Button 
                   variant="outline"
-                  onClick={() => contact?.telefono && callCustomer(contact.telefono)}
-                  disabled={!contact?.telefono}
+                  onClick={() => phone && callCustomer(phone)}
+                  disabled={!phone}
                 >
                   <Phone className="h-4 w-4 mr-1" />
                   Llamar
@@ -614,8 +624,8 @@ export default function ActiveRouteNavigation() {
                 <Button 
                   variant="outline"
                   className="bg-green-500/10 border-green-500/30 text-green-600"
-                  onClick={() => contact?.telefono && whatsAppCustomer(contact.telefono, contact.nombre)}
-                  disabled={!contact?.telefono}
+                  onClick={() => phone && whatsAppCustomer(phone, clienteName)}
+                  disabled={!phone}
                 >
                   <MessageCircle className="h-4 w-4 mr-1" />
                   WhatsApp
