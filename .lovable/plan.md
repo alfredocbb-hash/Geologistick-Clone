@@ -1,149 +1,167 @@
 
 
-# Plan: Corrección de Eliminación de Tenant y Precio Flete ML
+# Plan: Agregar Opción de Eliminar Envío Flex en Pedidos e-Commerce
 
-## Problema 1: Error al Eliminar Tenant
+## Problema Identificado
 
-### Causa Raíz
-El error `"update or delete on table 'tenants' violates foreign key constraint 'sucursales_tenant_id_fkey'"` ocurre porque hay envíos con referencias a sucursales (`sucursal_entrega_id`, `sucursal_origen_id`, etc.) que no se limpian antes de eliminar las sucursales.
+En la página de **Pedidos e-Commerce** (`/ecommerce/orders`), el menú de acciones solo tiene:
+- Ver Detalles
+- Editar Pedido
+- Crear Envío
 
-### Tablas que Referencian Sucursales (21 constraints):
-| Tabla | Columna FK |
-|-------|------------|
-| clientes | sucursal_id |
-| ecommerce_sellers | sucursal_pickup_id |
-| envios | sucursal_origen_id, sucursal_destino_id, sucursal_entrega_id, sucursal_retiro_id |
-| hojas_ruta | sucursal_origen_id, sucursal_destino_id |
-| liquidaciones_sucursal | sucursal_id |
-| profiles | sucursal_id |
-| rutas_frecuentes | sucursal_id |
-| rutas_planificadas | sucursal_id |
-| sesiones_caja | sucursal_id |
-| sucursal_comisiones | sucursal_id |
-| sucursal_conceptos | sucursal_id |
-| sucursal_tarifas | sucursal_id |
-| sucursal_zonas | sucursal_id |
-| sucursales | centro_logistico_id (auto-referencia) |
-| transferencias | sucursal_origen_id, sucursal_destino_id |
-| vehiculos | sucursal_id |
-
-### Solución
-Corregir el orden de eliminación en `DeleteTenantDialog.tsx`:
-
-1. **Paso crítico agregado**: Antes de eliminar sucursales, limpiar todas las columnas que referencian sucursales:
-   - Limpiar `sucursal_pickup_id` en ecommerce_sellers
-   - Limpiar `sucursal_id` en profiles
-   - Limpiar `sucursal_origen_id`, `sucursal_destino_id`, `sucursal_entrega_id`, `sucursal_retiro_id` en envíos
-   - Limpiar `sucursal_origen_id`, `sucursal_destino_id` en hojas_ruta
-   - Limpiar `sucursal_id` en rutas_frecuentes y rutas_planificadas
-   - Limpiar `centro_logistico_id` auto-referencia en sucursales
-   - Eliminar transferencias, sucursal_comisiones, sucursal_zonas
-
-2. **Orden corregido de eliminación**:
-   - Eliminar tablas hijas ANTES de eliminar sucursales
-   - Finalmente eliminar sucursales y luego tenant
+**Falta la opción de eliminar** el envío asociado a una orden de Mercado Libre Flex, lo cual es necesario para:
+1. Re-sincronizar el envío y capturar el precio de flete correcto
+2. Corregir errores de datos en envíos creados incorrectamente
 
 ---
 
-## Problema 2: precio_flete_ml Siempre en 0
+## Solución Propuesta
 
-### Causa Raíz
-El envío ML existente fue creado **antes** de que se corrigiera el código para extraer `lead_time.cost`. Los logs muestran:
-```
-[ML Sync] Shipment already exists: 46399291666
-```
+Agregar una opción **"Eliminar Envío"** en el menú desplegable de acciones cuando:
+- La orden tiene un envío asociado (`envio_id` no es null)
+- El envío no está entregado ni en reparto
 
-El código actual ya está corregido para guardar el precio, pero los envíos existentes no se actualizan.
+### Flujo de Eliminación
 
-### Evidencia en Base de Datos
-```
-ml_shipment_id: 46399291666  precio_flete_ml: 0.00
-```
-
-### Solución
-Opciones disponibles:
-
-**Opción A - Actualización Manual** (recomendada):
-1. Eliminar el envío existente desde la UI
-2. Sincronizar nuevamente para que se cree con el precio correcto
-
-**Opción B - Script de Actualización**:
-Ejecutar un SQL para re-procesar envíos ML existentes con precio 0 (requiere llamar a la API de ML para obtener lead_time.cost)
+1. Usuario hace clic en "Eliminar Envío"
+2. Se muestra diálogo de confirmación
+3. Al confirmar:
+   - Se elimina el historial del envío (`envio_historial`)
+   - Se elimina los detalles del envío (`envio_detalles`)
+   - Se desvincula la orden (`envio_id = null` en `ecommerce_orders`)
+   - Se elimina el envío de la tabla `envios`
+4. La orden queda disponible para crear un nuevo envío (o re-sincronizar)
 
 ---
 
-## Archivos a Modificar
+## Cambios Necesarios
+
+### Archivo: `src/pages/ecommerce/Orders.tsx`
+
+| Cambio | Descripción |
+|--------|-------------|
+| Estado nuevo | Agregar `deleteOrder` para controlar el diálogo |
+| Mutation | Crear `deleteShipmentMutation` para eliminar el envío |
+| Menú | Agregar opción "Eliminar Envío" en el DropdownMenu |
+| Diálogo | Agregar AlertDialog de confirmación |
+
+---
+
+## Sección Técnica
+
+### 1. Nuevo estado para el diálogo
+```typescript
+const [deleteOrder, setDeleteOrder] = useState<Order | null>(null);
+```
+
+### 2. Mutation para eliminar envío
+```typescript
+const deleteShipmentMutation = useMutation({
+  mutationFn: async (order: Order) => {
+    if (!order.envio_id) throw new Error('No hay envío asociado');
+    
+    // 1. Eliminar historial del envío
+    await supabase
+      .from('envio_historial')
+      .delete()
+      .eq('envio_id', order.envio_id);
+    
+    // 2. Eliminar detalles del envío
+    await supabase
+      .from('envio_detalles')
+      .delete()
+      .eq('envio_id', order.envio_id);
+    
+    // 3. Desvincular la orden del envío
+    await supabase
+      .from('ecommerce_orders')
+      .update({ envio_id: null })
+      .eq('id', order.id);
+    
+    // 4. Eliminar el envío
+    const { error } = await supabase
+      .from('envios')
+      .delete()
+      .eq('id', order.envio_id);
+    
+    if (error) throw error;
+  },
+  onSuccess: () => {
+    toast({ title: 'Envío eliminado correctamente' });
+    queryClient.invalidateQueries({ queryKey: ['ecommerce-orders'] });
+    setDeleteOrder(null);
+  },
+  onError: (error: Error) => {
+    toast({ 
+      title: 'Error al eliminar', 
+      description: error.message,
+      variant: 'destructive' 
+    });
+  },
+});
+```
+
+### 3. Nueva opción en el menú (línea ~370)
+```typescript
+{order.envio_id && order.order_status !== 'delivered' && (
+  <DropdownMenuItem 
+    className="text-destructive"
+    onClick={() => setDeleteOrder(order)}
+  >
+    <Trash2 className="mr-2 h-4 w-4" />
+    Eliminar Envío
+  </DropdownMenuItem>
+)}
+```
+
+### 4. Diálogo de confirmación
+```typescript
+<AlertDialog open={!!deleteOrder} onOpenChange={() => setDeleteOrder(null)}>
+  <AlertDialogContent>
+    <AlertDialogHeader>
+      <AlertDialogTitle>¿Eliminar este envío?</AlertDialogTitle>
+      <AlertDialogDescription>
+        Se eliminará el envío asociado al pedido #{deleteOrder?.external_order_number}.
+        La orden quedará disponible para crear un nuevo envío o re-sincronizar.
+      </AlertDialogDescription>
+    </AlertDialogHeader>
+    <AlertDialogFooter>
+      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+      <AlertDialogAction
+        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+        onClick={() => deleteOrder && deleteShipmentMutation.mutate(deleteOrder)}
+        disabled={deleteShipmentMutation.isPending}
+      >
+        {deleteShipmentMutation.isPending ? 'Eliminando...' : 'Eliminar Envío'}
+      </AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
+```
+
+---
+
+## Importaciones Adicionales
+
+```typescript
+import { Trash2 } from 'lucide-react';
+import { 
+  AlertDialog, 
+  AlertDialogAction, 
+  AlertDialogCancel, 
+  AlertDialogContent, 
+  AlertDialogDescription, 
+  AlertDialogFooter, 
+  AlertDialogHeader, 
+  AlertDialogTitle 
+} from '@/components/ui/alert-dialog';
+```
+
+---
+
+## Resumen de Archivos
 
 | Archivo | Cambios |
 |---------|---------|
-| `src/components/tenants/DeleteTenantDialog.tsx` | Corregir orden de eliminación y agregar limpieza de FKs |
-
----
-
-## Sección Técnica - Código de DeleteTenantDialog
-
-```typescript
-// ORDEN CORREGIDO DE ELIMINACIÓN:
-
-// A. Limpiar referencias en ecommerce_sellers (ANTES de eliminar sellers)
-await supabase.from('ecommerce_sellers')
-  .update({ sucursal_pickup_id: null })
-  .eq('tenant_id', tenant.id);
-
-// B. Limpiar referencias FK en envíos que apuntan a sucursales
-await supabase.from('envios')
-  .update({ 
-    sucursal_origen_id: null,
-    sucursal_destino_id: null,
-    sucursal_entrega_id: null,
-    sucursal_retiro_id: null
-  })
-  .eq('tenant_id', tenant.id);
-
-// C. Limpiar referencias en hojas_ruta
-await supabase.from('hojas_ruta')
-  .update({
-    sucursal_origen_id: null,
-    sucursal_destino_id: null
-  })
-  .eq('tenant_id', tenant.id);
-
-// D. Limpiar auto-referencia centro_logistico_id antes de eliminar
-await supabase.from('sucursales')
-  .update({ centro_logistico_id: null })
-  .eq('tenant_id', tenant.id);
-
-// E. Eliminar transferencias (referencia doble a sucursales)
-await supabase.from('transferencias')
-  .delete()
-  .or(`sucursal_origen_id.in.(${sucursalIds.join(',')}),sucursal_destino_id.in.(${sucursalIds.join(',')})`);
-
-// F. Eliminar sucursal_comisiones
-if (sucursalIds.length > 0) {
-  await supabase.from('sucursal_comisiones').delete().in('sucursal_id', sucursalIds);
-  await supabase.from('sucursal_zonas').delete().in('sucursal_id', sucursalIds);
-}
-
-// G. Limpiar sucursal_id en profiles ANTES de eliminar sucursales
-await supabase.from('profiles')
-  .update({ sucursal_id: null })
-  .eq('tenant_id', tenant.id);
-
-// H. Limpiar vehiculos.sucursal_id
-await supabase.from('vehiculos')
-  .update({ sucursal_id: null })
-  .eq('tenant_id', tenant.id);
-
-// I. Ahora sí eliminar sucursales (después de limpiar todas las FKs)
-await supabase.from('sucursales').delete().eq('tenant_id', tenant.id);
-```
-
----
-
-## Resumen de Cambios
-
-| Problema | Solución | Estado |
-|----------|----------|--------|
-| Error FK al eliminar tenant | Corregir orden y limpiar referencias | Pendiente aprobación |
-| precio_flete_ml = 0 | Eliminar y re-sincronizar el envío existente | Código ya corregido, datos antiguos |
+| `src/pages/ecommerce/Orders.tsx` | Agregar estado, mutation, opción de menú y diálogo de confirmación |
 
