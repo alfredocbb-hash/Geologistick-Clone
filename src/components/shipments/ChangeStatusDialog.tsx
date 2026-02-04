@@ -52,10 +52,10 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; icon:
     description: 'El paquete fue recogido del remitente' 
   },
   en_bodega: { 
-    label: 'En Bodega', 
+    label: 'En Sucursal', 
     color: 'bg-purple-500', 
     icon: Building2, 
-    description: 'El paquete está en el centro de distribución' 
+    description: 'El paquete está en la sucursal listo para despacho' 
   },
   en_transito: { 
     label: 'En Tránsito', 

@@ -231,8 +231,10 @@ export default function RoutePlanner() {
 
   // Fetch choferes
   const { data: choferes = [] } = useQuery({
-    queryKey: ["choferes-planificador"],
+    queryKey: ["choferes-planificador", profile?.tenant_id],
     queryFn: async () => {
+      if (!profile?.tenant_id) return [];
+      
       const { data: roles, error: rolesError } = await supabase
         .from("user_roles")
         .select("user_id")
@@ -247,11 +249,13 @@ export default function RoutePlanner() {
         .from("profiles")
         .select("*")
         .in("user_id", choferIds)
+        .eq("tenant_id", profile.tenant_id)
         .eq("activo", true);
       
       if (error) throw error;
       return data;
     },
+    enabled: !!profile?.tenant_id,
   });
 
   // Fetch vehículos

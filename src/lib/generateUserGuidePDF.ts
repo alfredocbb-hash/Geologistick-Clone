@@ -81,7 +81,7 @@ Funciones disponibles:
 Estados del Envío:
 • Pendiente (Amarillo): Esperando retiro
 • Recogido (Azul): Retirado del origen
-• En Bodega (Púrpura): En almacén/sucursal
+• En Sucursal (Púrpura): Recibido en sucursal
 • En Tránsito (Azul): Viajando entre sucursales
 • En Reparto (Naranja): En manos del repartidor
 • Entregado (Verde): Entrega completada

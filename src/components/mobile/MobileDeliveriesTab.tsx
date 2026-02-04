@@ -48,7 +48,7 @@ export function MobileDeliveriesTab() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'en_bodega':
-        return <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30">En Bodega</Badge>;
+        return <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30">En Sucursal</Badge>;
       case 'recogido':
         return <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/30">Recogido</Badge>;
       case 'en_reparto':
