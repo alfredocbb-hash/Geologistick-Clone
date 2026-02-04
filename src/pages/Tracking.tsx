@@ -46,6 +46,9 @@ interface TrackingResponse {
     logo: string | null;
     color_primario: string | null;
   } | null;
+  // New fields for branch information
+  sucursal_actual: string | null;
+  entregado_en_sucursal: boolean;
   historial: Array<{
     id: string;
     estado_anterior: string | null;
@@ -223,7 +226,11 @@ export default function Tracking() {
                       const Icon = statusConfig[envio.estado]?.icon;
                       return Icon ? <Icon className="mr-2 h-4 w-4" /> : null;
                     })()}
-                    {statusConfig[envio.estado]?.label || envio.estado}
+                    {envio.estado === 'en_sucursal' && envio.sucursal_actual
+                      ? `En Sucursal (${envio.sucursal_actual})`
+                      : envio.estado === 'entregado' && envio.entregado_en_sucursal && envio.sucursal_actual
+                        ? `Entregado en Sucursal (${envio.sucursal_actual})`
+                        : statusConfig[envio.estado]?.label || envio.estado}
                   </Badge>
                 </div>
               </CardHeader>

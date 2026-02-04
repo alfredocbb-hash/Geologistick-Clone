@@ -11,6 +11,22 @@ const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[PUBLIC-TRACKING] ${step}${detailsStr}`);
 };
 
+// Sanitize notes to remove sensitive data (DNI, CUIT) for public tracking
+const sanitizeNotasForPublic = (notas: string | null): string | null => {
+  if (!notas) return null;
+  
+  // Remove DNI patterns: "(DNI: XXXXX)" or "DNI: XXXXX" 
+  let sanitized = notas.replace(/\s*\(?DNI:\s*\d+\)?/gi, '');
+  
+  // Remove CUIT patterns: "(CUIT: XX-XXXXXXXX-X)" or similar
+  sanitized = sanitized.replace(/\s*\(?CUIT:\s*[\d-]+\)?/gi, '');
+  
+  // Remove trailing " a Name Lastname" after "sucursal" if DNI was removed
+  sanitized = sanitized.replace(/(\ben sucursal)\s+a\s+[^(]+$/i, '$1');
+  
+  return sanitized.trim() || null;
+};
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -97,8 +113,10 @@ serve(async (req: Request) => {
         descripcion,
         nombre_remitente,
         nombre_destinatario,
+        entregado_en_sucursal,
         sucursal_origen:sucursales!envios_sucursal_origen_id_fkey(nombre, ciudad, codigo),
         sucursal_destino:sucursales!envios_sucursal_destino_id_fkey(nombre, ciudad, codigo),
+        sucursal_entrega:sucursales!envios_sucursal_entrega_id_fkey(nombre, ciudad, codigo),
         remitente:clientes!envios_remitente_id_fkey(nombre, ciudad),
         destinatario:clientes!envios_destinatario_id_fkey(nombre, ciudad)
       `)
@@ -154,8 +172,13 @@ serve(async (req: Request) => {
     // Handle potential array from Supabase join (use first element if array)
     const sucursalOrigen = Array.isArray(envio.sucursal_origen) ? envio.sucursal_origen[0] : envio.sucursal_origen;
     const sucursalDestino = Array.isArray(envio.sucursal_destino) ? envio.sucursal_destino[0] : envio.sucursal_destino;
+    const sucursalEntrega = Array.isArray(envio.sucursal_entrega) ? envio.sucursal_entrega[0] : envio.sucursal_entrega;
     const remitente = Array.isArray(envio.remitente) ? envio.remitente[0] : envio.remitente;
     const destinatario = Array.isArray(envio.destinatario) ? envio.destinatario[0] : envio.destinatario;
+
+    // Determine current branch based on status
+    // If in sucursal_entrega, that's where the package is. Otherwise, use sucursal_destino
+    const sucursalActual = sucursalEntrega?.nombre || sucursalDestino?.nombre || null;
 
     // Build response
     const response = {
@@ -189,11 +212,15 @@ serve(async (req: Request) => {
         ciudad: destinatario?.ciudad || null,
       },
       branding,
+      // New field: current branch where the package is located
+      sucursal_actual: sucursalActual,
+      entregado_en_sucursal: envio.entregado_en_sucursal || false,
       historial: (historial || []).map((h) => ({
         id: h.id,
         estado_anterior: h.estado_anterior,
         estado_nuevo: h.estado_nuevo,
-        notas: h.notas,
+        // Sanitize notes to remove sensitive data (DNI, CUIT)
+        notas: sanitizeNotasForPublic(h.notas),
         ubicacion: h.ubicacion,
         fecha: h.created_at,
       })),
