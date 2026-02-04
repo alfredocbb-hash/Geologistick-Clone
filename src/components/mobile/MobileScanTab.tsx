@@ -57,6 +57,7 @@ export function MobileScanTab() {
   const [showPickupDialog, setShowPickupDialog] = useState(false);
   const [showReceiveDialog, setShowReceiveDialog] = useState(false);
   const [showDeliveryDialog, setShowDeliveryDialog] = useState(false);
+  const [showBranchDeliveryDialog, setShowBranchDeliveryDialog] = useState(false);
   const [showUltimaMillaDialog, setShowUltimaMillaDialog] = useState(false);
   const [showMLDeliveryDialog, setShowMLDeliveryDialog] = useState(false);
   const [showMLRegisterDialog, setShowMLRegisterDialog] = useState(false);
@@ -282,8 +283,8 @@ export function MobileScanTab() {
           isPickupAtBranch;
         
         if (isReadyForBranchDelivery && canDeliver) {
-          // Envío listo para entrega al cliente en sucursal
-          setShowDeliveryDialog(true);
+          // Envío listo para entrega al cliente en sucursal - usar BranchDeliveryDialog
+          setShowBranchDeliveryDialog(true);
         } else if (shipment.estado === 'en_transito' && canReceive) {
           // Recepción de envío entrante
           setShowReceiveDialog(true);
@@ -292,9 +293,23 @@ export function MobileScanTab() {
           setShowDeliveryDialog(true);
         }
       } else if (canDeliver) {
-        setShowDeliveryDialog(true);
+        // Fallback basado en permisos: si tiene delivery.confirm y el envío está en sucursal
+        const isPickupAtBranch = 
+          shipment.tipo_servicio_detalle === 'sucursal_sucursal' ||
+          shipment.tipo_servicio_detalle === 'puerta_sucursal';
+        
+        if (shipment.estado === 'en_sucursal' && isPickupAtBranch) {
+          setShowBranchDeliveryDialog(true);
+        } else {
+          setShowDeliveryDialog(true);
+        }
       } else if (canReceive) {
         setShowReceiveDialog(true);
+      } else {
+        // Sin acciones disponibles - mostrar mensaje explicativo
+        toast.warning('Sin acciones disponibles', {
+          description: 'No tienes permisos para operar con este envío en su estado actual'
+        });
       }
       
       toast.success('Envío encontrado', {
@@ -342,6 +357,7 @@ export function MobileScanTab() {
     setShowPickupDialog(false);
     setShowReceiveDialog(false);
     setShowDeliveryDialog(false);
+    setShowBranchDeliveryDialog(false);
     setShowUltimaMillaDialog(false);
     setShowMLDeliveryDialog(false);
     setShowMLRegisterDialog(false);
@@ -589,7 +605,17 @@ export function MobileScanTab() {
         />
       )}
 
-      {/* Branch Delivery Dialog */}
+      {/* Branch Delivery Dialog (for branch counter delivery with payment) */}
+      {scannedShipment && showBranchDeliveryDialog && (
+        <BranchDeliveryDialog
+          open={showBranchDeliveryDialog}
+          shipment={scannedShipment}
+          onClose={handleDialogClose}
+          onSuccess={handleDialogSuccess}
+        />
+      )}
+
+      {/* Standard Delivery Dialog (for drivers) */}
       {scannedShipment && showDeliveryDialog && (
         <BranchDeliveryDialog
           open={showDeliveryDialog}
