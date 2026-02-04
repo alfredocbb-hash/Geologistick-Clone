@@ -57,7 +57,7 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
 import MapView, { MarkerInfo } from "@/components/maps/MapView";
-import { ShipmentMapPopup } from "@/components/maps/ShipmentMapPopup";
+import { ShipmentMapPopup, EnvioData } from "@/components/maps/ShipmentMapPopup";
 import { BranchMapPopup } from "@/components/maps/BranchMapPopup";
 import EditRouteDialog from "@/components/routes/EditRouteDialog";
 import CancelRouteDialog from "@/components/routes/CancelRouteDialog";
@@ -66,6 +66,7 @@ import RescheduledShipmentsList from "@/components/routes/RescheduledShipmentsLi
 import SaveFrequentRouteDialog from "@/components/routes/SaveFrequentRouteDialog";
 import FrequentRoutesTab from "@/components/routes/FrequentRoutesTab";
 import ThirdPartyShipmentsTab from "@/components/routes/ThirdPartyShipmentsTab";
+import EditShipmentLocationDialog from "@/components/routes/EditShipmentLocationDialog";
 
 interface RouteStop {
   envio_id: string;
@@ -115,6 +116,7 @@ export default function RoutePlanner() {
   const [showSaveFrequentDialog, setShowSaveFrequentDialog] = useState(false);
   const [cancellingRoute, setCancellingRoute] = useState<any | null>(null);
   const [urlEnviosProcessed, setUrlEnviosProcessed] = useState(false);
+  const [editingLocationEnvio, setEditingLocationEnvio] = useState<EnvioData | null>(null);
 
   // Fetch sucursal de origen del usuario
   const { data: sucursalOrigen } = useQuery({
@@ -1146,7 +1148,18 @@ export default function RoutePlanner() {
             isOpen={selectedMapItem?.type === 'envio'}
             onClose={() => setSelectedMapItem(null)}
             onGeolocate={geocodeEnvio}
+            onEditLocation={(envio) => {
+              setEditingLocationEnvio(envio);
+              setSelectedMapItem(null);
+            }}
             isGeolocating={isGeolocating}
+          />
+
+          {/* Edit Location Dialog */}
+          <EditShipmentLocationDialog
+            envio={editingLocationEnvio}
+            isOpen={!!editingLocationEnvio}
+            onClose={() => setEditingLocationEnvio(null)}
           />
 
           {/* Branch Popup */}
