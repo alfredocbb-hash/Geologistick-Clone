@@ -28,6 +28,19 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { toast } from "sonner";
 import {
   Route,
@@ -52,14 +65,23 @@ import {
   Upload,
   Star,
   XCircle,
+  History,
+  X,
+  Search,
+  CalendarIcon,
+  Printer,
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, startOfDay, endOfDay } from "date-fns";
 import { es } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
 import MapView, { MarkerInfo } from "@/components/maps/MapView";
 import { ShipmentMapPopup, EnvioData } from "@/components/maps/ShipmentMapPopup";
 import { BranchMapPopup } from "@/components/maps/BranchMapPopup";
+import { GoogleMapsProvider } from "@/components/maps/GoogleMapsProvider";
+import { RouteStatsPanel } from "@/components/maps/RouteStatsPanel";
+import { useDriverRoute } from "@/hooks/useDriverRoute";
 import EditRouteDialog from "@/components/routes/EditRouteDialog";
+import { cn } from "@/lib/utils";
 import CancelRouteDialog from "@/components/routes/CancelRouteDialog";
 import ImportShipmentsDialog from "@/components/import/ImportShipmentsDialog";
 import RescheduledShipmentsList from "@/components/routes/RescheduledShipmentsList";
@@ -117,6 +139,16 @@ export default function RoutePlanner() {
   const [cancellingRoute, setCancellingRoute] = useState<any | null>(null);
   const [urlEnviosProcessed, setUrlEnviosProcessed] = useState(false);
   const [editingLocationEnvio, setEditingLocationEnvio] = useState<EnvioData | null>(null);
+  
+  // History tab state
+  const [historyDateFrom, setHistoryDateFrom] = useState<Date | undefined>(undefined);
+  const [historyDateTo, setHistoryDateTo] = useState<Date | undefined>(undefined);
+  const [historySearch, setHistorySearch] = useState("");
+  const [showHistoryRouteDialog, setShowHistoryRouteDialog] = useState(false);
+  const [selectedHistoryRoute, setSelectedHistoryRoute] = useState<any | null>(null);
+  
+  // GPS route visualization
+  const driverRoute = useDriverRoute();
 
   // Fetch sucursal de origen del usuario
   const { data: sucursalOrigen } = useQuery({
@@ -305,7 +337,100 @@ export default function RoutePlanner() {
     },
   });
 
-  // Filter envios
+  // Fetch completed routes for history tab with GPS data check
+  const { data: rutasHistorial = [], isLoading: loadingHistorial } = useQuery({
+    queryKey: ["rutas-historial", historyDateFrom?.toISOString(), historyDateTo?.toISOString()],
+    queryFn: async () => {
+      let query = supabase
+        .from("rutas_planificadas")
+        .select(`
+          *,
+          sucursal:sucursales(nombre)
+        `)
+        .eq("estado", "completada")
+        .order("created_at", { ascending: false })
+        .limit(100);
+      
+      // Apply date filters
+      if (historyDateFrom) {
+        query = query.gte("created_at", startOfDay(historyDateFrom).toISOString());
+      }
+      if (historyDateTo) {
+        query = query.lte("created_at", endOfDay(historyDateTo).toISOString());
+      }
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      
+      // Fetch driver profiles
+      const driverIds = [...new Set(data?.map(r => r.chofer_id).filter(Boolean) || [])];
+      let profiles: any[] = [];
+      if (driverIds.length > 0) {
+        const { data: profs } = await supabase
+          .from("profiles")
+          .select("user_id, nombre, apellido")
+          .in("user_id", driverIds);
+        profiles = profs || [];
+      }
+      
+      // Check which routes have GPS history
+      const rutaIds = data?.map(r => r.id) || [];
+      let gpsHistoryMap: Record<string, boolean> = {};
+      
+      if (rutaIds.length > 0) {
+        const { data: gpsData } = await supabase
+          .from("driver_location_history")
+          .select("ruta_id")
+          .in("ruta_id", rutaIds);
+        
+        if (gpsData) {
+          const rutaIdsWithHistory = new Set(gpsData.map(g => g.ruta_id));
+          gpsHistoryMap = rutaIds.reduce((acc, id) => {
+            acc[id] = rutaIdsWithHistory.has(id);
+            return acc;
+          }, {} as Record<string, boolean>);
+        }
+      }
+      
+      return data?.map(ruta => ({
+        ...ruta,
+        chofer_profile: profiles.find(p => p.user_id === ruta.chofer_id),
+        has_gps_history: gpsHistoryMap[ruta.id] || false,
+      })) || [];
+    },
+  });
+
+  // Filter history routes by search term
+  const filteredHistorial = useMemo(() => {
+    if (!historySearch.trim()) return rutasHistorial;
+    const term = historySearch.toLowerCase();
+    return rutasHistorial.filter(ruta =>
+      ruta.numero?.toLowerCase().includes(term) ||
+      ruta.chofer_profile?.nombre?.toLowerCase().includes(term) ||
+      ruta.chofer_profile?.apellido?.toLowerCase().includes(term) ||
+      ruta.sucursal?.nombre?.toLowerCase().includes(term)
+    );
+  }, [rutasHistorial, historySearch]);
+
+  // Handle viewing route GPS history
+  const handleViewHistoryRoute = async (ruta: any) => {
+    if (!ruta.chofer_id) {
+      toast.error("Esta ruta no tiene chofer asignado");
+      return;
+    }
+    
+    setSelectedHistoryRoute(ruta);
+    setShowHistoryRouteDialog(true);
+    
+    // Load the route GPS data
+    await driverRoute.loadRoute(ruta.chofer_id, ruta.id);
+  };
+
+  // Clear history date filters
+  const clearHistoryDateFilters = () => {
+    setHistoryDateFrom(undefined);
+    setHistoryDateTo(undefined);
+  };
   const filteredEnvios = useMemo(() => {
     return enviosPendientes.filter(e => {
       if (filterType === "all") return true;
@@ -885,6 +1010,10 @@ export default function RoutePlanner() {
           <TabsTrigger value="activas">
             <PlayCircle className="mr-2 h-4 w-4" />
             Rutas Activas ({rutasActivas.length})
+          </TabsTrigger>
+          <TabsTrigger value="historial">
+            <History className="mr-2 h-4 w-4" />
+            Historial
           </TabsTrigger>
         </TabsList>
 
@@ -1498,7 +1627,251 @@ export default function RoutePlanner() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="historial" className="space-y-4">
+          {/* Search and Date Filters */}
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por número, chofer o sucursal..."
+                value={historySearch}
+                onChange={(e) => setHistorySearch(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            
+            {/* Date From */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "w-[160px] justify-start text-left font-normal",
+                    !historyDateFrom && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {historyDateFrom ? format(historyDateFrom, "dd/MM/yyyy", { locale: es }) : "Desde"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <CalendarComponent
+                  mode="single"
+                  selected={historyDateFrom}
+                  onSelect={setHistoryDateFrom}
+                  initialFocus
+                  className="p-3 pointer-events-auto"
+                />
+              </PopoverContent>
+            </Popover>
+            
+            {/* Date To */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "w-[160px] justify-start text-left font-normal",
+                    !historyDateTo && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {historyDateTo ? format(historyDateTo, "dd/MM/yyyy", { locale: es }) : "Hasta"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <CalendarComponent
+                  mode="single"
+                  selected={historyDateTo}
+                  onSelect={setHistoryDateTo}
+                  initialFocus
+                  className="p-3 pointer-events-auto"
+                />
+              </PopoverContent>
+            </Popover>
+            
+            {/* Clear Filters */}
+            {(historyDateFrom || historyDateTo) && (
+              <Button variant="ghost" size="icon" onClick={clearHistoryDateFilters}>
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+
+          {/* Routes List */}
+          {loadingHistorial ? (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {[1, 2, 3].map(i => (
+                <Card key={i} className="animate-pulse">
+                  <CardHeader className="h-20 bg-muted" />
+                  <CardContent className="h-32 bg-muted/50" />
+                </Card>
+              ))}
+            </div>
+          ) : filteredHistorial.length === 0 ? (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <History className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                <h3 className="font-medium mb-2">No hay rutas en el historial</h3>
+                <p className="text-sm text-muted-foreground">
+                  {historyDateFrom || historyDateTo 
+                    ? "No se encontraron rutas completadas en el rango de fechas seleccionado" 
+                    : "Las rutas completadas aparecerán aquí"
+                  }
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {filteredHistorial.map(ruta => (
+                <Card key={ruta.id} className="hover:shadow-md transition-shadow">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-lg font-mono">{ruta.numero}</CardTitle>
+                      <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">
+                        Completada
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Driver info */}
+                    {ruta.chofer_profile && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <User className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium">
+                          {ruta.chofer_profile.nombre} {ruta.chofer_profile.apellido}
+                        </span>
+                        {ruta.has_gps_history && (
+                          <Badge variant="outline" className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800">
+                            <MapPin className="h-3 w-3 mr-1" />
+                            GPS
+                          </Badge>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Route info */}
+                    <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-1">
+                        <Calendar className="h-4 w-4" />
+                        <span>
+                          {ruta.created_at && format(new Date(ruta.created_at), "dd/MM/yyyy", { locale: es })}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <MapPin className="h-4 w-4" />
+                        <span>{ruta.paradas_completadas || 0}/{ruta.total_paradas} paradas</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Navigation className="h-4 w-4" />
+                        <span>{ruta.distancia_total_km || 0} km</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Badge variant="outline" className="text-xs">
+                          {ruta.tipo === "mixta" ? "Mixta" : ruta.tipo === "retiro" ? "Retiros" : "Entregas"}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex gap-2 pt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => window.open(`/print/planned-route?id=${ruta.id}`, '_blank')}
+                      >
+                        <Printer className="mr-1 h-4 w-4" />
+                        Imprimir
+                      </Button>
+                      {ruta.has_gps_history && ruta.chofer_id && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleViewHistoryRoute(ruta)}
+                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20"
+                        >
+                          <Route className="h-4 w-4 mr-1" />
+                          Ver Recorrido
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
       </Tabs>
+
+      {/* History Route GPS Dialog */}
+      <Dialog open={showHistoryRouteDialog} onOpenChange={(open) => {
+        setShowHistoryRouteDialog(open);
+        if (!open) {
+          driverRoute.clearRoute();
+          setSelectedHistoryRoute(null);
+        }
+      }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Route className="h-5 w-5" />
+              Recorrido de {selectedHistoryRoute?.chofer_profile?.nombre} {selectedHistoryRoute?.chofer_profile?.apellido}
+            </DialogTitle>
+            <DialogDescription>
+              Ruta: {selectedHistoryRoute?.numero}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Map */}
+            <GoogleMapsProvider>
+              {driverRoute.isLoading ? (
+                <div className="flex items-center justify-center h-[400px] bg-muted rounded-lg">
+                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-8 w-8 animate-spin" />
+                    <span>Cargando recorrido...</span>
+                  </div>
+                </div>
+              ) : driverRoute.polylinePath.length > 0 ? (
+                <MapView
+                  polylinePath={driverRoute.polylinePath}
+                  useGradient={true}
+                  deliveryStops={driverRoute.deliveryStops}
+                  height="400px"
+                  className="rounded-lg overflow-hidden"
+                />
+              ) : (
+                <div className="flex items-center justify-center h-[400px] bg-muted rounded-lg">
+                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                    <MapPin className="h-8 w-8" />
+                    <span>No hay datos de recorrido disponibles</span>
+                  </div>
+                </div>
+              )}
+            </GoogleMapsProvider>
+
+            {/* Route Stats */}
+            {driverRoute.polylinePath.length > 0 && (
+              <RouteStatsPanel
+                stats={driverRoute.routeStats}
+                driverName={`${selectedHistoryRoute?.chofer_profile?.nombre || ''} ${selectedHistoryRoute?.chofer_profile?.apellido || ''}`}
+                routeNumber={selectedHistoryRoute?.numero}
+                isLoading={driverRoute.isLoading}
+                isSnapping={driverRoute.isSnapping}
+              />
+            )}
+
+            {/* Error message */}
+            {driverRoute.error && (
+              <div className="text-sm text-destructive text-center">
+                {driverRoute.error}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Route Dialog */}
       {editingRoute && (
