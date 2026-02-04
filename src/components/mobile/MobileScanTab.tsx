@@ -39,6 +39,7 @@ interface ScannedShipment {
   ml_sync_status?: string | null;
   nombre_destinatario?: string | null;
   whatsapp_destinatario?: string | null;
+  tipo_servicio_detalle?: string | null;
   destinatario?: {
     nombre: string;
     apellido: string | null;
@@ -271,9 +272,23 @@ export function MobileScanTab() {
           setShowReceiveDialog(true);
         }
       } else if (hasRole('sucursal') || hasRole('despachador')) {
-        if (shipment.estado === 'en_transito' && canReceive) {
+        // Verificar si es un envío de tipo "retira en sucursal" listo para entregar
+        const isPickupAtBranch = 
+          shipment.tipo_servicio_detalle === 'sucursal_sucursal' ||
+          shipment.tipo_servicio_detalle === 'puerta_sucursal';
+        
+        const isReadyForBranchDelivery = 
+          shipment.estado === 'en_bodega' && 
+          isPickupAtBranch;
+        
+        if (isReadyForBranchDelivery && canDeliver) {
+          // Envío listo para entrega al cliente en sucursal
+          setShowDeliveryDialog(true);
+        } else if (shipment.estado === 'en_transito' && canReceive) {
+          // Recepción de envío entrante
           setShowReceiveDialog(true);
         } else if (canDeliver) {
+          // Fallback para otros casos de entrega
           setShowDeliveryDialog(true);
         }
       } else if (canDeliver) {
