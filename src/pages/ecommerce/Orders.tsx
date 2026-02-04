@@ -90,25 +90,67 @@ export default function Orders() {
     mutationFn: async (order: Order) => {
       if (!order.envio_id) throw new Error('No hay envío asociado');
       
-      // 1. Eliminar historial del envío
+      // PASO 0: Buscar movimientos de cargo en cuenta corriente del seller
+      const { data: cargos } = await supabase
+        .from('seller_cuenta_corriente')
+        .select('id, monto, seller_id, descripcion')
+        .eq('envio_id', order.envio_id)
+        .eq('tipo', 'cargo');
+      
+      // Si hay cargos, crear reversión y limpiar FK
+      if (cargos && cargos.length > 0) {
+        for (const cargo of cargos) {
+          // Obtener saldo actual del seller
+          const { data: seller } = await supabase
+            .from('ecommerce_sellers')
+            .select('saldo_cuenta_corriente')
+            .eq('id', cargo.seller_id)
+            .single();
+          
+          const saldoAnterior = seller?.saldo_cuenta_corriente || 0;
+          const montoReversion = -Math.abs(cargo.monto);
+          const saldoNuevo = saldoAnterior + montoReversion;
+          
+          // Crear ajuste de reversión
+          await supabase
+            .from('seller_cuenta_corriente')
+            .insert({
+              seller_id: cargo.seller_id,
+              tipo: 'ajuste',
+              monto: montoReversion,
+              saldo_anterior: saldoAnterior,
+              saldo_nuevo: saldoNuevo,
+              descripcion: `Reversión: ${cargo.descripcion || 'Envío eliminado'}`,
+              order_id: order.id,
+            });
+          
+          // Limpiar envio_id del cargo original (romper FK)
+          await supabase
+            .from('seller_cuenta_corriente')
+            .update({ envio_id: null })
+            .eq('id', cargo.id);
+        }
+      }
+      
+      // PASO 1: Eliminar historial del envío
       await supabase
         .from('envio_historial')
         .delete()
         .eq('envio_id', order.envio_id);
       
-      // 2. Eliminar detalles del envío
+      // PASO 2: Eliminar detalles del envío
       await supabase
         .from('envio_detalles')
         .delete()
         .eq('envio_id', order.envio_id);
       
-      // 3. Desvincular la orden del envío
+      // PASO 3: Desvincular la orden del envío
       await supabase
         .from('ecommerce_orders')
         .update({ envio_id: null })
         .eq('id', order.id);
       
-      // 4. Eliminar el envío
+      // PASO 4: Eliminar el envío
       const { error } = await supabase
         .from('envios')
         .delete()
