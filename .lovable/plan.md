@@ -1,47 +1,101 @@
 
+# Plan: Corrección de 3 Problemas Reportados
 
-# Plan: Eliminar Conceptos "Recepción" y "Cobros" del Diálogo de Comisiones
+## Problema 1: Inputs de comisiones no permiten editar
 
-## Resumen
+### Causa Raíz
+El `useEffect` que inicializa los datos de comisiones tiene `conceptosFiltrados` como dependencia. Como `conceptosFiltrados` se recalcula en **cada render** (porque `filter` siempre crea un nuevo array), el `useEffect` se ejecuta continuamente, sobrescribiendo los valores que el usuario intenta ingresar.
 
-Filtrar los conceptos con códigos `recepcion` y `cobros` para que no aparezcan en ninguna de las dos pestañas del diálogo de comisiones de sucursales.
-
-## Cambio Requerido
-
-### Archivo: `src/pages/Branches.tsx`
-
-Agregar un filtro a los conceptos antes de renderizarlos en las tablas de ambas pestañas:
+### Solución
+Usar `useMemo` para memorizar `conceptosFiltrados` y evitar que cambie innecesariamente:
 
 ```typescript
-// Conceptos a mostrar (excluir recepcion y cobros)
-const conceptosFiltrados = conceptos.filter(
-  c => !['recepcion', 'cobros'].includes(c.codigo)
+const conceptosFiltrados = useMemo(() => 
+  conceptos.filter(c => !['recepcion', 'cobros'].includes(c.codigo)),
+  [conceptos]
 );
 ```
 
-### Lugares a modificar:
+---
 
-1. **useEffect de inicialización** (~líneas 207-239): Usar `conceptosFiltrados` en lugar de `conceptos` para inicializar los datos de emisión y recepción
+## Problema 2: Insertar tarifa de MercadoLibre en envíos Flex
 
-2. **Tab Emisión** (~línea 1247): Cambiar `conceptos.map(...)` por `conceptosFiltrados.map(...)`
+### Situación Actual
+Cuando se registra un envío ML Flex via QR, el sistema usa la tarifa del seller (`seller.tarifa_id`) para calcular el precio, **ignorando** la tarifa que ML ya tiene definida para ese envío.
 
-3. **Tab Recepción** (~línea 1351): Cambiar `conceptos.map(...)` por `conceptosFiltrados.map(...)`
+### Solución
+Obtener el costo del envío desde la respuesta del API de MercadoLibre y guardarlo en el campo `precio_flete_ml`:
 
-4. **Mutación de guardado**: Solo guardar los conceptos que están en `conceptosFiltrados`
+1. Extraer `mlShipment.shipping_option.cost` o `mlShipment.cost` de la respuesta del API
+2. Agregar columna `precio_flete_ml` a la tabla `envios` (si no existe)
+3. Guardar este valor junto con el envío para referencia
 
-## Resultado Visual
+---
 
-Las tablas de comisiones mostrarán solo estos conceptos:
+## Problema 3: Página OAuth muestra código en lugar de HTML
 
-| Concepto | %Cont. | %Dest. | %CC | Base |
-|----------|--------|--------|-----|------|
-| Flete | 5 | 3 | 4 | Total |
-| Seguro | 10 | 8 | 10 | Neto |
-| Embalaje | 2 | 2 | 2 | Total |
-| Servicio de Agencia | 0 | 0 | 0 | Total |
-| Retiro a Domicilio | 0 | 0 | 0 | Total |
-| Entrega a Domicilio | 0 | 0 | 0 | Total |
-| Traslado | 0 | 0 | 0 | Total |
+### Posible Causa
+La función edge ya tiene el HTML correcto pero puede no estar desplegada correctamente o el navegador puede estar mostrando una respuesta JSON de una etapa anterior del proceso.
 
-**"Recepción" y "Cobros" NO aparecerán.**
+### Solución
+Redesplegar la edge function para asegurar que el código actualizado esté en producción.
 
+---
+
+## Archivos a Modificar
+
+| Archivo | Cambios |
+|---------|---------|
+| `src/pages/Branches.tsx` | Envolver `conceptosFiltrados` en `useMemo` |
+| `supabase/functions/register-ml-shipment/index.ts` | Capturar y guardar `shipping_option.cost` de ML API |
+| Nueva migración SQL | Agregar campo `precio_flete_ml` a tabla `envios` (si no existe) |
+| `supabase/functions/mercadolibre-oauth/index.ts` | Redesplegar para asegurar HTML de éxito |
+
+---
+
+## Sección Tecnica
+
+### Cambio 1: Memorizar conceptos filtrados
+
+```typescript
+// ANTES (línea ~207)
+const conceptosFiltrados = conceptos.filter(
+  c => !['recepcion', 'cobros'].includes(c.codigo)
+);
+
+// DESPUÉS
+const conceptosFiltrados = useMemo(() => 
+  conceptos.filter(c => !['recepcion', 'cobros'].includes(c.codigo)),
+  [conceptos]
+);
+```
+
+### Cambio 2: Capturar tarifa ML en registro de envíos
+
+```typescript
+// En register-ml-shipment/index.ts, después de obtener mlShipment:
+
+// Extraer costo de envío de ML
+const mlShippingCost = mlShipment.shipping_option?.cost 
+  || mlShipment.cost 
+  || mlShipment.base_cost 
+  || 0;
+
+console.log('[register-ml-shipment] ML shipping cost:', mlShippingCost);
+
+// Al crear el envío, agregar el campo:
+{
+  // ... otros campos
+  precio_flete_ml: mlShippingCost,
+}
+```
+
+### Migración SQL (si el campo no existe)
+
+```sql
+ALTER TABLE envios 
+ADD COLUMN IF NOT EXISTS precio_flete_ml numeric(10,2) DEFAULT 0;
+
+COMMENT ON COLUMN envios.precio_flete_ml IS 
+  'Costo de envío definido por MercadoLibre para envíos Flex';
+```
