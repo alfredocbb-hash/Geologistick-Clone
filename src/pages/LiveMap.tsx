@@ -41,6 +41,13 @@ interface DriverLocation {
     numero: string;
     estado: string;
   } | null;
+  ultima_ruta?: {
+    id: string;
+    numero: string;
+    estado: string;
+    fecha: string;
+    tiene_historial: boolean;
+  } | null;
 }
 
 interface LocationHistoryPoint {
@@ -112,13 +119,26 @@ export default function LiveMap() {
     refetchInterval: 30000,
   });
 
-  // Query para ubicaciones de choferes
+  // Query para ubicaciones de choferes (solo con rol 'chofer' válido)
   const { data: driversData = [], refetch: refetchDrivers } = useQuery({
     queryKey: ["driver-locations"],
     queryFn: async () => {
+      // Obtener IDs de usuarios con rol 'chofer'
+      const { data: choferRoles, error: rolesError } = await supabase
+        .from("user_roles")
+        .select("user_id")
+        .eq("role", "chofer");
+      
+      if (rolesError) throw rolesError;
+      
+      const validChoferIds = choferRoles?.map(r => r.user_id) || [];
+      if (validChoferIds.length === 0) return [];
+
+      // Obtener ubicaciones solo de choferes válidos
       const { data: locations, error: locError } = await supabase
         .from("driver_locations")
         .select("*")
+        .in("chofer_id", validChoferIds)
         .order("updated_at", { ascending: false });
       
       if (locError) throw locError;
@@ -126,25 +146,74 @@ export default function LiveMap() {
       if (!locations || locations.length === 0) return [];
 
       const driverIds = [...new Set(locations.map(l => l.chofer_id))];
+      
+      // Obtener perfiles
       const { data: profiles } = await supabase
         .from("profiles")
         .select("user_id, nombre, apellido")
         .in("user_id", driverIds);
 
-      const { data: rutas } = await supabase
+      // Obtener rutas activas (en_curso)
+      const { data: rutasActivas } = await supabase
         .from("rutas_planificadas")
         .select("id, numero, estado, chofer_id")
         .in("chofer_id", driverIds)
         .eq("estado", "en_curso");
 
+      // Obtener últimas rutas completadas para choferes sin ruta activa
+      const choferesSinRutaActiva = driverIds.filter(
+        id => !rutasActivas?.some(r => r.chofer_id === id)
+      );
+      
+      let ultimasRutas: { id: string; numero: string; estado: string; chofer_id: string; created_at: string }[] = [];
+      
+      if (choferesSinRutaActiva.length > 0) {
+        // Obtener rutas completadas con historial GPS
+        const { data: rutasCompletadas } = await supabase
+          .from("rutas_planificadas")
+          .select("id, numero, estado, chofer_id, created_at")
+          .in("chofer_id", choferesSinRutaActiva)
+          .eq("estado", "completada")
+          .order("created_at", { ascending: false });
+        
+        if (rutasCompletadas && rutasCompletadas.length > 0) {
+          // Verificar cuáles tienen historial GPS
+          const rutaIds = rutasCompletadas.map(r => r.id);
+          const { data: historialCount } = await supabase
+            .from("driver_location_history")
+            .select("ruta_id")
+            .in("ruta_id", rutaIds);
+          
+          const rutasConHistorial = new Set(historialCount?.map(h => h.ruta_id) || []);
+          
+          // Tomar la última ruta con historial por chofer
+          const rutasPorChofer = new Map<string, typeof rutasCompletadas[0]>();
+          for (const ruta of rutasCompletadas) {
+            if (rutasConHistorial.has(ruta.id) && !rutasPorChofer.has(ruta.chofer_id)) {
+              rutasPorChofer.set(ruta.chofer_id, ruta);
+            }
+          }
+          ultimasRutas = Array.from(rutasPorChofer.values());
+        }
+      }
+
       return locations.map(loc => {
         const profile = profiles?.find(p => p.user_id === loc.chofer_id);
-        const ruta = rutas?.find(r => r.chofer_id === loc.chofer_id);
+        const rutaActiva = rutasActivas?.find(r => r.chofer_id === loc.chofer_id);
+        const ultimaRuta = ultimasRutas.find(r => r.chofer_id === loc.chofer_id);
+        
         return {
           ...loc,
           nombre: profile?.nombre || "Chofer",
           apellido: profile?.apellido || "",
-          ruta_activa: ruta ? { id: ruta.id, numero: ruta.numero, estado: ruta.estado } : null
+          ruta_activa: rutaActiva ? { id: rutaActiva.id, numero: rutaActiva.numero, estado: rutaActiva.estado } : null,
+          ultima_ruta: !rutaActiva && ultimaRuta ? {
+            id: ultimaRuta.id,
+            numero: ultimaRuta.numero,
+            estado: ultimaRuta.estado,
+            fecha: ultimaRuta.created_at,
+            tiene_historial: true
+          } : null
         };
       });
     },
@@ -717,6 +786,9 @@ export default function LiveMap() {
                     ) : (
                       driverLocations.map((driver) => {
                         const status = getDriverStatus(driver.updated_at);
+                        const hasActiveRoute = !!driver.ruta_activa;
+                        const hasHistoricalRoute = !hasActiveRoute && !!driver.ultima_ruta;
+                        
                         return (
                           <div
                             key={driver.id}
@@ -728,9 +800,15 @@ export default function LiveMap() {
                                 <p className="text-sm font-medium">
                                   {driver.nombre} {driver.apellido}
                                 </p>
-                                {driver.ruta_activa && (
+                                {hasActiveRoute && (
                                   <p className="text-xs text-muted-foreground">
-                                    Ruta: {driver.ruta_activa.numero}
+                                    Ruta: {driver.ruta_activa!.numero}
+                                  </p>
+                                )}
+                                {hasHistoricalRoute && (
+                                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                    <Clock className="h-3 w-3" />
+                                    Última: {formatDistanceToNow(new Date(driver.ultima_ruta!.fecha), { addSuffix: true, locale: es })}
                                   </p>
                                 )}
                               </div>
@@ -746,7 +824,8 @@ export default function LiveMap() {
                                   locale: es 
                                 })}
                               </p>
-                              {driver.ruta_activa && (
+                              {/* Botones para ruta activa */}
+                              {hasActiveRoute && (
                                 <div className="flex gap-1">
                                   <Button
                                     size="sm"
@@ -768,6 +847,23 @@ export default function LiveMap() {
                                   >
                                     <Route className="h-3 w-3 mr-1" />
                                     Detalles
+                                  </Button>
+                                </div>
+                              )}
+                              {/* Botón para ver última ruta completada */}
+                              {hasHistoricalRoute && (
+                                <div className="flex gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant={selectedDriverForMap === driver.chofer_id ? "default" : "outline"}
+                                    className="h-6 text-xs px-2"
+                                    onClick={() => toggleRouteOnMap(driver.chofer_id, driver.ultima_ruta!.id)}
+                                  >
+                                    {selectedDriverForMap === driver.chofer_id ? (
+                                      <><EyeOff className="h-3 w-3 mr-1" />Ocultar</>
+                                    ) : (
+                                      <><Route className="h-3 w-3 mr-1" />Ver último recorrido</>
+                                    )}
                                   </Button>
                                 </div>
                               )}
