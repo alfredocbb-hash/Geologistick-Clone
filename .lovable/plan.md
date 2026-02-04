@@ -1,142 +1,78 @@
 
-## Plan: Corrección de Hojas de Ruta y Terminología
+
+## Plan: Completar cambio de "En Bodega" a "En Sucursal"
 
 ---
 
-## 1. Problema: Los choferes no aparecen en el dropdown de Hojas de Ruta
+## Archivos Pendientes Identificados
 
-### Causa Identificada
-La query de choferes en `RouteSheets.tsx` (líneas 105-128) **no incluye el filtro por tenant_id**, por lo que RLS podría no estar filtrando correctamente. Al verificar la base de datos, hay 4 choferes activos en el tenant "Beraexpress" pero no aparecen en el dropdown.
+La búsqueda encontró 6 archivos que aún tienen "En Bodega":
 
-### Solución
-Agregar un filtro explícito por `tenant_id` del usuario actual en la query de choferes:
+| Archivo | Cambio Necesario |
+|---------|------------------|
+| `src/pages/ShipmentStatusGuide.tsx` | Actualizar label y descripción en guía de estados |
+| `src/pages/Routes.tsx` | Cambiar SelectItem en filtro de estados |
+| `src/components/shipments/ShipmentDetailsDialog.tsx` | Actualizar statusConfig |
+| `src/components/scan/MLDeliveryDialog.tsx` | Actualizar mapping de estados |
+| `src/components/mobile/MobileScanTab.tsx` | Actualizar función getStatusLabel |
+| `src/pages/NewShipment.tsx` | **NO CAMBIAR** - Se refiere a almacenaje físico, no al estado |
 
-**Archivo:** `src/pages/RouteSheets.tsx`
+---
+
+## Cambios Específicos
+
+### 1. `src/pages/ShipmentStatusGuide.tsx`
+
+**Línea 40:** Cambiar label de "En Bodega" a "En Sucursal"
+**Línea 41:** Actualizar descripción de "centro logístico" a "sucursal"
+**Líneas 119-120:** Actualizar las acciones del rol "Operador/Bodega":
+- "Recibir en bodega" → "Recibir en sucursal"
+
+### 2. `src/pages/Routes.tsx`
+
+**Línea 340:** Cambiar SelectItem
 ```text
-const { data: choferes = [] } = useQuery({
-  queryKey: ["choferes-activos", profile?.tenant_id],
-  queryFn: async () => {
-    if (!profile?.tenant_id) return [];
-    
-    const { data: roles, error: rolesError } = await supabase
-      .from("user_roles")
-      .select("user_id")
-      .eq("role", "chofer");
-    
-    if (rolesError) throw rolesError;
-    
-    const choferIds = roles?.map(r => r.user_id) || [];
-    if (choferIds.length === 0) return [];
-
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .in("user_id", choferIds)
-      .eq("tenant_id", profile.tenant_id)  // <-- AGREGAR FILTRO
-      .eq("activo", true);
-    
-    if (error) throw error;
-    return data;
-  },
-  enabled: !!profile?.tenant_id,  // <-- HABILITAR SOLO CON TENANT
-});
+Antes:  <SelectItem value="en_bodega">En Bodega</SelectItem>
+Después: <SelectItem value="en_bodega">En Sucursal</SelectItem>
 ```
 
-Aplicar el mismo cambio en `RoutePlanner.tsx` (líneas 232-256).
+### 3. `src/components/shipments/ShipmentDetailsDialog.tsx`
 
----
-
-## 2. Cambiar "En Bodega" por "En Sucursal"
-
-### Contexto
-El término "En Bodega" confunde a los usuarios porque en el flujo logístico, cuando un paquete llega a una sucursal (ya sea centro logístico o sucursal destino), el estado debería indicar claramente que está **En Sucursal** listo para ser planificado o despachado.
-
-### Archivos a Modificar (17 archivos)
-
-| Archivo | Ubicación del cambio |
-|---------|---------------------|
-| `src/pages/Shipments.tsx` | línea 39 |
-| `src/pages/Routes.tsx` | línea 238 |
-| `src/pages/Drivers.tsx` | línea 192 |
-| `src/pages/ScanQR.tsx` | línea 36 |
-| `src/pages/Tracking.tsx` | línea 63 |
-| `src/pages/TrackingEmbed.tsx` | línea 65 |
-| `src/pages/LiveMap.tsx` | líneas 333, 477 |
-| `src/components/shipments/ShipmentHistoryDialog.tsx` | línea 39 |
-| `src/components/shipments/ChangeStatusDialog.tsx` | línea 55 |
-| `src/components/mobile/MobileDeliveriesTab.tsx` | línea 51 |
-| `src/lib/generateEPODPDF.ts` | línea 95 |
-| `src/lib/generateUserGuidePDF.ts` | línea 84 |
-
-**Cambio en cada archivo:**
+**Línea 60:** Actualizar statusConfig
 ```text
 Antes:  en_bodega: { label: 'En Bodega', ... }
 Después: en_bodega: { label: 'En Sucursal', ... }
 ```
 
-**Nota:** El valor del estado en la base de datos (`en_bodega`) **NO cambia**, solo la etiqueta visible al usuario.
+### 4. `src/components/scan/MLDeliveryDialog.tsx`
 
----
-
-## 3. Ajustes de Lógica en Recepción de Hoja de Ruta
-
-### Flujo Actual (correcto según lo descrito)
-
+**Línea 133:** Actualizar mapping
 ```text
-1. Sucursal Origen crea envío (estado: pendiente)
-2. Sucursal genera Hoja de Ruta hacia Centro Logístico
-3. Chofer recolecta (estado: en_transito - hoja)
-4. Centro Logístico recibe (estado: en_bodega / ahora "En Sucursal")
-5. Centro Logístico puede:
-   a) Planificar reparto a puerta (si es entrega a puerta)
-   b) Crear otra Hoja de Ruta hacia Sucursal Destino (si es entrega en sucursal)
-6. Sucursal Destino recibe (estado: en_bodega / ahora "En Sucursal")
-7. Cliente retira (estado: entregado)
+Antes:  en_bodega: 'En bodega'
+Después: en_bodega: 'En Sucursal'
 ```
 
-### Mensaje de historial a mejorar
-En `ReceiveRouteSheetDialog.tsx`, el mensaje de historial ya dice "Paquete recibido en sucursal", lo cual es correcto.
+### 5. `src/components/mobile/MobileScanTab.tsx`
 
-En `ReceiveShipmentDialog.tsx` (línea 81), el mensaje dice "Paquete recibido {statusLabel}" donde statusLabel es "en centro logístico" o "en sucursal". Esto es correcto.
-
----
-
-## Archivos Involucrados
-
-| Archivo | Accion |
-|---------|--------|
-| `src/pages/RouteSheets.tsx` | Agregar filtro tenant_id a query de choferes |
-| `src/pages/RoutePlanner.tsx` | Agregar filtro tenant_id a query de choferes |
-| 15+ archivos de UI | Cambiar label "En Bodega" → "En Sucursal" |
-
----
-
-## Detalles del Cambio de Terminología
-
-### Mapeo de etiquetas (ejemplo)
-
+**Líneas 362-363:** Actualizar función getStatusLabel
 ```text
-Antes:
-{
-  en_bodega: { label: 'En Bodega', color: 'bg-purple-500', icon: Building2 }
-}
-
-Después:
-{
-  en_bodega: { label: 'En Sucursal', color: 'bg-purple-500', icon: Building2 }
-}
+Antes:  return 'En bodega';
+Después: return 'En Sucursal';
 ```
 
-### Lugares específicos a cambiar:
+---
 
-1. **Páginas principales:** Shipments, Routes, Drivers, ScanQR, Tracking, TrackingEmbed, LiveMap
-2. **Componentes:** ShipmentHistoryDialog, ChangeStatusDialog, MobileDeliveriesTab
-3. **PDFs:** generateEPODPDF, generateUserGuidePDF
+## Notas
+
+- **`src/pages/NewShipment.tsx`**: Las menciones a "bodega" en este archivo se refieren al **almacenaje físico** (servicio de guardado), no al estado del envío. Estas referencias deben mantenerse como están.
+
+- El valor en base de datos (`en_bodega`) **no cambia**, solo las etiquetas visibles.
+
+- Después de aplicar estos cambios, se deberá **publicar la aplicación** para que la versión pública de tracking muestre "En Sucursal" en lugar de "En Bodega".
 
 ---
 
-## Resultado Esperado
+## Resultado
 
-1. Los choferes del tenant actual aparecerán correctamente en el dropdown de Hojas de Ruta
-2. El estado "en_bodega" se mostrará como "En Sucursal" en toda la aplicación
-3. La lógica de recepción entre sucursales funcionará según el flujo esperado
+Todos los lugares donde se muestra el estado `en_bodega` mostrarán consistentemente **"En Sucursal"** en toda la aplicación.
+
