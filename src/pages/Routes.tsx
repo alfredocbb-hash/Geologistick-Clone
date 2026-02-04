@@ -75,7 +75,7 @@ export default function Routes() {
           destinatario:clientes!envios_destinatario_id_fkey(nombre, direccion, ciudad)
         `)
         .is('chofer_id', null)
-        .in('estado', ['pendiente', 'recogido', 'en_bodega'])
+        .in('estado', ['pendiente', 'recogido', 'en_sucursal'])
         .order('created_at', { ascending: true });
 
       if (error) throw error;
@@ -124,7 +124,7 @@ export default function Routes() {
           destinatario:clientes!envios_destinatario_id_fkey(nombre, direccion, ciudad)
         `)
         .in('chofer_id', userIds)
-        .in('estado', ['pendiente', 'recogido', 'en_bodega', 'en_transito', 'en_reparto']);
+        .in('estado', ['pendiente', 'recogido', 'en_sucursal', 'en_transito', 'en_reparto']);
 
       if (shipmentsError) throw shipmentsError;
 
@@ -235,7 +235,7 @@ export default function Routes() {
     const config: Record<string, { label: string; className: string }> = {
       pendiente: { label: 'Pendiente', className: 'bg-warning/10 text-warning border-warning' },
       recogido: { label: 'Recogido', className: 'bg-info/10 text-info border-info' },
-      en_bodega: { label: 'En Sucursal', className: 'bg-muted text-muted-foreground border-muted-foreground' },
+      en_sucursal: { label: 'En Sucursal', className: 'bg-muted text-muted-foreground border-muted-foreground' },
       en_transito: { label: 'En Tránsito', className: 'bg-chofer/10 text-chofer border-chofer' },
       en_reparto: { label: 'En Reparto', className: 'bg-primary/10 text-primary border-primary' },
     };
@@ -337,7 +337,7 @@ export default function Routes() {
                     <SelectItem value="all">Todos</SelectItem>
                     <SelectItem value="pendiente">Pendiente</SelectItem>
                     <SelectItem value="recogido">Recogido</SelectItem>
-                    <SelectItem value="en_bodega">En Bodega</SelectItem>
+                    <SelectItem value="en_sucursal">En Sucursal</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

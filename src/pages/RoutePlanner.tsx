@@ -150,7 +150,7 @@ export default function RoutePlanner() {
       const { data: enviosCounts, error: envError } = await supabase
         .from("envios")
         .select("sucursal_origen_id")
-        .in("estado", ["pendiente", "recogido", "en_bodega"])
+        .in("estado", ["pendiente", "recogido", "en_sucursal"])
         .is("chofer_id", null);
 
       if (envError) throw envError;
@@ -174,7 +174,7 @@ export default function RoutePlanner() {
           remitente:clientes!envios_remitente_id_fkey(nombre, apellido, direccion, ciudad, telefono),
           destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, direccion, ciudad, telefono)
         `)
-        .in("estado", ["pendiente", "recogido", "en_bodega", "en_reparto"])
+        .in("estado", ["pendiente", "recogido", "en_sucursal", "en_reparto"])
         .is("chofer_id", null)
         .order("created_at", { ascending: false });
 

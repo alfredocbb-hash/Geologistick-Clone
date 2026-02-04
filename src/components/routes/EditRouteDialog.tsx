@@ -157,7 +157,7 @@ export default function EditRouteDialog({ route, onClose }: EditRouteDialogProps
           remitente:clientes!envios_remitente_id_fkey(nombre, apellido, direccion),
           destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, direccion)
         `)
-        .in('estado', ['pendiente', 'recogido', 'en_bodega'])
+        .in('estado', ['pendiente', 'recogido', 'en_sucursal'])
         .is('chofer_id', null)
         .limit(50);
 

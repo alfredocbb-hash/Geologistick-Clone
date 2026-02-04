@@ -100,7 +100,7 @@ export function ReceiveRouteSheetDialog({ hojaRutaId, onClose }: ReceiveRouteShe
       // Update envíos status
       const { error: enviosError } = await supabase
         .from("envios")
-        .update({ estado: "en_bodega" })
+        .update({ estado: "en_sucursal" })
         .in("id", selectedEnvios);
 
       if (enviosError) throw enviosError;

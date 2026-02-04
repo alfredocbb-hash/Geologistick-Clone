@@ -51,7 +51,7 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; icon:
     icon: Package, 
     description: 'El paquete fue recogido del remitente' 
   },
-  en_bodega: { 
+  en_sucursal: { 
     label: 'En Sucursal', 
     color: 'bg-purple-500', 
     icon: Building2, 
@@ -98,7 +98,7 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; icon:
 const statusOrder: ShipmentStatus[] = [
   'pendiente',
   'recogido',
-  'en_bodega',
+  'en_sucursal',
   'en_transito',
   'en_reparto',
   'entregado',

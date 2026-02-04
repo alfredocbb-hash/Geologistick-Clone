@@ -159,7 +159,7 @@ export default function RouteSheets() {
         `)
         .eq("sucursal_origen_id", profile.sucursal_id)
         .eq("sucursal_destino_id", selectedDestino)
-        .in("estado", ["pendiente", "recogido", "en_bodega"])
+        .in("estado", ["pendiente", "recogido", "en_sucursal"])
         .is("chofer_id", null);
       
       if (error) throw error;
