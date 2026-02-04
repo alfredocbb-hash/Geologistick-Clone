@@ -1,89 +1,125 @@
 
-# Plan: Trazabilidad Calle por Calle en Mapa en Vivo
+# Plan: Caché de Segmentos + Mejoras Visuales del Recorrido
 
-## Estado: ✅ IMPLEMENTADO
+## Resumen
 
-Ya existe una implementación base que incluye:
-- Edge Function `snap-to-roads` que utiliza Google Roads API
-- Diálogo de "Ver recorrido" que aplica Snap to Roads
-- Polylines con estilo de navegación (sombra azul + flechas)
-- Historial de ubicaciones guardándose cada 30 segundos
+Implementaremos dos mejoras clave para la trazabilidad de choferes:
 
-Sin embargo, hay oportunidades de mejora significativas para lograr la trazabilidad idéntica a la imagen de QuadMinds.
+1. **Caché de Segmentos Procesados**: Almacenar rutas ya procesadas por Google Roads API para evitar llamadas repetidas y reducir costos/latencia
+2. **Mejoras Visuales**: Marcadores de paradas intermedias, gradiente temporal en la línea, y estadísticas del recorrido
 
 ---
 
-## Mejoras Propuestas
+## Fase 1: Tabla de Caché para Segmentos Procesados
 
-### 1. Visualización del Recorrido en la Vista Principal
+Se creará una nueva tabla para almacenar las rutas procesadas por Snap to Roads.
 
-Actualmente el recorrido solo se muestra al abrir un diálogo. La mejora añadirá:
-- Opción de ver el recorrido directamente en el mapa principal
-- Click en un chofer para mostrar/ocultar su trayecto
-- Polyline persistente mientras el chofer esté seleccionado
+### Estructura de la Tabla
 
 ```text
-┌─────────────────────────────────────────────────────────┐
-│  MAPA PRINCIPAL                                         │
-│  ┌───────────────────────────────────────────────────┐ │
-│  │                                                   │ │
-│  │     🟢 Inicio                                    │ │
-│  │       ╲                                          │ │
-│  │        ╲═══════╗                                 │ │
-│  │                ║                                 │ │
-│  │        ╔══════╝                                  │ │
-│  │        ║                                         │ │
-│  │        ╚═══════╗                                 │ │
-│  │                🚚 Chofer actual                  │ │
-│  │                                                   │ │
-│  └───────────────────────────────────────────────────┘ │
-│  [Recorrido de Juan Pérez - Ruta #45] ← Badge visible  │
-└─────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│  driver_route_segments                                         │
+├────────────────────────────────────────────────────────────────┤
+│  id              UUID (PK)                                     │
+│  ruta_id         UUID (FK → rutas_planificadas)               │
+│  chofer_id       UUID (FK → auth.users)                       │
+│  tenant_id       UUID (FK → tenants)                          │
+│  raw_points      JSONB  (puntos GPS originales)               │
+│  snapped_points  JSONB  (puntos ajustados a calles)           │
+│  points_hash     TEXT   (hash para detectar cambios)          │
+│  created_at      TIMESTAMP                                     │
+│  updated_at      TIMESTAMP                                     │
+│  total_distance  NUMERIC (metros calculados)                  │
+└────────────────────────────────────────────────────────────────┘
 ```
 
-### 2. Frecuencia de Captura de Datos Mejorada
+### Flujo de Funcionamiento
 
-El análisis de datos reales muestra brechas de hasta 1 hora entre puntos. Mejoras:
-- Reducir intervalo de guardado de 30s a 15s cuando hay movimiento
-- Detectar movimiento significativo (>50m) para forzar guardado inmediato
-- Mantener 30s cuando el chofer está detenido (evitar duplicados)
-
-### 3. Preprocesamiento de Rutas Largas
-
-Google Roads API tiene límite de 100 puntos. Para rutas extensas:
-- Procesamiento por lotes con solapamiento (ya implementado)
-- Caché de segmentos ya procesados para evitar reprocesar
-- Indicador de progreso durante el procesamiento
-
-### 4. Estilo Visual Mejorado
-
-Actualizar el estilo de Polyline para mayor similitud con navegación GPS:
-- Línea principal azul brillante (#4285F4) - ya implementado
-- Borde/sombra para contraste - ya implementado
-- Flechas de dirección cada 150px - ya implementado
-- Gradiente opcional para indicar progreso temporal
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│  SOLICITUD DE RECORRIDO                                         │
+│                                                                 │
+│  1. Cargar historial GPS de driver_location_history            │
+│                          ↓                                      │
+│  2. Calcular hash de los puntos (cantidad + coordenadas)       │
+│                          ↓                                      │
+│  3. ¿Existe caché con mismo hash?                              │
+│       │                                                         │
+│    SI ↓ NO                                                      │
+│       │    │                                                    │
+│       │    └──→ Llamar snap-to-roads API                       │
+│       │              ↓                                          │
+│       │         Guardar en driver_route_segments               │
+│       │              ↓                                          │
+│       └────────────────→ Retornar puntos snapped               │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## Implementación Técnica
+## Fase 2: Hook Mejorado con Caché
 
-### Fase 1: Hook de Geolocalización Mejorado
-Modificar `useGeolocation.ts` para:
-- Calcular distancia desde último punto guardado
-- Forzar guardado si distancia > 50 metros
-- Reducir intervalo base a 15 segundos
+Modificaremos `useDriverRoute.ts` para:
 
-### Fase 2: Vista Principal con Recorrido
-Modificar `LiveMap.tsx` para:
-- Añadir estado para chofer seleccionado en vista de mapa
-- Cargar historial + snap al seleccionar
-- Renderizar polyline en mapa principal (no solo en diálogo)
+- Verificar caché antes de llamar a la Edge Function
+- Calcular hash de puntos para detectar si hay datos nuevos
+- Guardar resultados procesados en la tabla de caché
+- Calcular estadísticas adicionales (distancia total, velocidad promedio)
 
-### Fase 3: Caché de Segmentos Procesados
-Crear tabla `driver_route_segments` para:
-- Almacenar segmentos ya procesados con snap
-- Evitar llamadas repetidas a Roads API
-- Reducir latencia en visualización
+### Beneficios
+
+| Sin Caché | Con Caché |
+|-----------|-----------|
+| Llamada API cada visualización | Llamada solo cuando hay datos nuevos |
+| ~2-3s de procesamiento | <100ms desde base de datos |
+| Costo por 1000 elementos | Costo reducido ~80-90% |
+
+---
+
+## Fase 3: Mejoras Visuales del Recorrido
+
+### 3.1 Marcadores de Entregas Completadas
+
+Se agregarán marcadores en los puntos donde el chofer realizó entregas durante la ruta.
+
+```text
+┌───────────────────────────────────────────────────────────────┐
+│  MAPA CON PARADAS                                             │
+│                                                               │
+│     🟢 Inicio                                                 │
+│       ╲                                                       │
+│        ╲═══════╗                                              │
+│                📦 Entrega #1 (10:30)                          │
+│        ╔══════╝                                               │
+│        ║                                                      │
+│        📦 Entrega #2 (10:45)                                  │
+│        ║                                                      │
+│        ╚═══════╗                                              │
+│                🚚 Posición actual                             │
+└───────────────────────────────────────────────────────────────┘
+```
+
+### 3.2 Gradiente Temporal en Polyline
+
+La línea del recorrido mostrará un degradado de color indicando progreso temporal:
+
+- **Verde claro** → Inicio del recorrido
+- **Verde oscuro** → Medio del recorrido  
+- **Azul** → Reciente/actual
+
+Esto se logra segmentando el polyline en tramos con colores progresivos.
+
+### 3.3 Panel de Estadísticas Mejorado
+
+Se agregará información calculada en tiempo real:
+
+| Estadística | Descripción |
+|-------------|-------------|
+| Distancia total | Km recorridos |
+| Tiempo en ruta | Duración desde inicio |
+| Velocidad promedio | Km/h calculado |
+| Paradas realizadas | Entregas completadas |
+| % Ruta completada | Basado en envíos asignados |
 
 ---
 
@@ -91,20 +127,38 @@ Crear tabla `driver_route_segments` para:
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/hooks/useGeolocation.ts` | Lógica de detección de movimiento |
-| `src/pages/LiveMap.tsx` | Visualización en mapa principal |
-| `src/components/maps/MapView.tsx` | Soporte para múltiples polylines |
+| `supabase/migrations/` | Nueva tabla `driver_route_segments` |
+| `src/hooks/useDriverRoute.ts` | Lógica de caché + hash + estadísticas |
+| `src/components/maps/MapView.tsx` | Soporte para polyline con gradiente y marcadores de paradas |
+| `src/pages/LiveMap.tsx` | Mostrar paradas en mapa + panel de estadísticas mejorado |
 
 ---
 
-## Datos Actuales
+## Detalles Técnicos
 
-El sistema ya tiene 462 puntos de historial registrados. La ruta más reciente tiene 27 puntos en 2 horas, lo cual es suficiente para un buen snap to roads.
+### Cálculo de Hash para Caché
+
+```text
+hash = MD5(
+  cantidad_puntos + 
+  primer_punto.lat + primer_punto.lng +
+  ultimo_punto.lat + ultimo_punto.lng
+)
+```
+
+### Cálculo de Distancia (Haversine)
+
+Se implementará una función que suma la distancia entre puntos consecutivos del polyline para obtener la distancia total en kilómetros.
+
+### Polyline con Gradiente
+
+Se divide el path en N segmentos (ej: 10), cada uno con un color diferente en una escala de verde a azul, creando efecto de degradado temporal.
 
 ---
 
 ## Consideraciones
 
-- **Costo de API**: Google Roads API tiene costo por 1000 elementos. La caché reduce llamadas.
-- **Rendimiento**: Procesar rutas largas puede tomar 2-3 segundos. El indicador de carga ya existe.
-- **Modo Offline**: El snap solo funciona con conexión; los puntos raw se muestran como fallback.
+- **RLS**: La tabla de caché tendrá políticas por tenant para seguridad multi-tenant
+- **Limpieza automática**: Se puede agregar un trigger para eliminar caché de rutas finalizadas después de 30 días
+- **Invalidación**: El caché se invalida automáticamente cuando hay nuevos puntos GPS (hash diferente)
+- **Fallback**: Si el caché falla, el sistema funciona igual que antes (llamada directa a API)
