@@ -1,175 +1,155 @@
 
+# Plan: Permitir Entrega en Sucursal al Escanear Envíos de Retiro en Sucursal
 
-## Plan: Corrección de Incidencias del Chofer
+## Problema Identificado
 
-Se identificaron 3 problemas relacionados con el flujo de incidencias desde la aplicación móvil del chofer:
+Cuando un envío con tipo de servicio "retira en sucursal" (`sucursal_sucursal` o `puerta_sucursal`) llega a la sucursal de destino y pasa a estado `en_bodega`, el usuario de la sucursal no puede entregar el paquete al cliente que viene a retirarlo mediante escaneo.
 
----
+### Flujo Esperado
 
-## Problema 1: Incidencias se Registran Varias Veces
-
-### Causa
-El botón "Reportar Incidente" puede ser clickeado múltiples veces antes de que `isPending` se actualice. Esto ocurre porque:
-1. El usuario hace clic rápidamente varias veces
-2. La mutación tarda en iniciar y el estado `isPending` no se activa instantáneamente
-
-**Evidencia en BD:** El envío `3da241a8-3525...` tiene 2 incidentes duplicados creados con solo 14 segundos de diferencia (17:24:42 y 17:24:56).
-
-### Solución
-Agregar un estado local `isSubmitting` que se active inmediatamente al hacer clic, y deshabilitar el botón al instante:
-
-**Archivo:** `src/components/incidents/ReportIncidentDialog.tsx`
-
-```typescript
-// Agregar estado local
-const [isSubmitting, setIsSubmitting] = useState(false);
-
-// En el onClick del botón
-onClick={() => {
-  if (isSubmitting || reportMutation.isPending) return;
-  setIsSubmitting(true);
-  reportMutation.mutate();
-}}
-
-// Combinar ambos estados para disabled
-disabled={isSubmitting || reportMutation.isPending || !incidentType}
+```text
+1. Envío llega a sucursal destino (estado: en_bodega)
+2. Cliente viene a retirar
+3. Sucursal escanea el código QR del paquete
+4. Se abre el diálogo de "Entrega en Sucursal" (BranchDeliveryDialog)
+5. Registra datos de quien retira + firma + pago si aplica
+6. Envío pasa a "entregado"
 ```
 
-Adicionalmente, agregar validación en la base de datos para verificar si ya existe un incidente pendiente para ese envío antes de insertar.
+### Problema Actual
 
----
-
-## Problema 2: Las Fotos de Evidencia No Cargan
-
-### Causa
-La función `uploadFile` retorna `null` si hay un error de upload, pero la mutación **no falla** cuando esto ocurre. El código continúa creando el incidente sin la foto y luego llama `onSuccess()`, cerrando el diálogo sin avisar al usuario que la foto no se subió.
+La lógica de decisión en `MobileScanTab.tsx` para el rol `sucursal`:
 
 ```typescript
-// Código actual - la foto falla silenciosamente
-if (photo) {
-  const photoPath = `incidents/${shipment.id}/evidence_${Date.now()}.jpg`;
-  photoUrl = await uploadFile(photo, photoPath);
-  // Si photoUrl es null, no hace nada y continúa
-}
-```
-
-**Evidencia:** No hay archivos en el bucket `delivery-photos` con path `incidents/*`.
-
-### Solución
-Lanzar un error explícito cuando falla la subida de la foto para que el usuario pueda reintentar:
-
-```typescript
-if (photo) {
-  const photoPath = `incidents/${shipment.id}/evidence_${Date.now()}.jpg`;
-  photoUrl = await uploadFile(photo, photoPath);
-  
-  if (!photoUrl) {
-    throw new Error('Error al subir la foto de evidencia. Por favor intenta nuevamente.');
+} else if (hasRole('sucursal') || hasRole('despachador')) {
+  if (shipment.estado === 'en_transito' && canReceive) {
+    setShowReceiveDialog(true);      // Solo recibe si está en_transito
+  } else if (canDeliver) {
+    setShowDeliveryDialog(true);     // Abre entrega pero falta condición de en_bodega
   }
 }
 ```
 
-También agregar un timeout y mejor manejo de errores en el upload.
+El problema es que **no verifica** que el envío:
+- Esté en estado `en_bodega` (ya recibido en sucursal)
+- Sea del tipo de servicio que permite retiro en sucursal
+- Pertenezca a la sucursal del usuario que escanea
 
 ---
 
-## Problema 3: Cerrar Hoja de Ruta Automáticamente Cuando No Quedan Pendientes
+## Solución Propuesta
 
-### Causa
-El cálculo de `stats.pending` no considera los envíos en estado `incidencia` como "finalizados" desde el punto de vista del chofer. La lógica actual es:
+### 1. Agregar campo `tipo_servicio_detalle` a la interfaz ScannedShipment
 
 ```typescript
-const completed = envios.filter(e => 
-  e.envio?.estado === 'entregado' || 
-  e.envio?.estado === 'devuelto' ||
-  e.envio?.estado_retiro === 'retirado'
-).length;
-const pending = total - completed; // incidencia NO cuenta como completed
+interface ScannedShipment {
+  // ... campos existentes ...
+  tipo_servicio_detalle?: string | null;  // NUEVO
+}
 ```
 
-Por lo tanto, si todos los envíos terminan en `incidencia`, `pending` nunca llega a 0 y el modal "Ruta Completada" nunca aparece.
-
-### Solución
-Incluir `incidencia` en la lista de estados "finalizados" para el chofer (ya no hay acción que el chofer pueda tomar sobre ese envío):
-
-**Archivo:** `src/pages/ActiveRouteNavigation.tsx`
+### 2. Actualizar la lógica de decisión para rol `sucursal`
 
 ```typescript
-const stats = useMemo(() => {
-  const total = envios.length;
-  const completed = envios.filter(e => 
-    e.envio?.estado === 'entregado' || 
-    e.envio?.estado === 'devuelto' ||
-    e.envio?.estado === 'incidencia' ||    // NUEVO: incidencia cuenta como "terminado" para el chofer
-    e.envio?.estado_retiro === 'retirado'
-  ).length;
-  const failed = envios.filter(e => 
-    e.envio?.estado === 'devuelto' ||
-    e.envio?.estado === 'incidencia' ||    // NUEVO: incidencia es un "fallo"
-    e.envio?.estado_retiro === 'fallido'
-  ).length;
-  const pending = total - completed;
-  const progress = total > 0 ? (completed / total) * 100 : 0;
+} else if (hasRole('sucursal') || hasRole('despachador')) {
+  // Verificar si es un envío de tipo "retira en sucursal" listo para entregar
+  const isPickupAtBranch = 
+    shipment.tipo_servicio_detalle === 'sucursal_sucursal' ||
+    shipment.tipo_servicio_detalle === 'puerta_sucursal';
   
-  return { total, completed, failed, pending, progress };
-}, [envios]);
+  const isReadyForBranchDelivery = 
+    shipment.estado === 'en_bodega' && 
+    isPickupAtBranch;
+  
+  if (isReadyForBranchDelivery && canDeliver) {
+    // Envío listo para entrega al cliente en sucursal
+    setShowDeliveryDialog(true);
+  } else if (shipment.estado === 'en_transito' && canReceive) {
+    // Recepción de envío entrante
+    setShowReceiveDialog(true);
+  } else if (canDeliver) {
+    // Fallback para otros casos de entrega
+    setShowDeliveryDialog(true);
+  }
+}
 ```
 
-También actualizar la lógica de `nextStop` para ignorar envíos en estado `incidencia`:
+### 3. (Opcional) Verificar que el envío pertenece a la sucursal del usuario
+
+Para mayor seguridad, se puede validar que `sucursal_destino_id` coincida con la sucursal del perfil:
 
 ```typescript
-const nextStop = useMemo(() => {
-  return envios.find(e => {
-    const envio = e.envio;
-    if (!envio) return false;
-    
-    // Envíos con incidencia ya no requieren acción del chofer
-    if (envio.estado === 'incidencia') return false;
-    
-    // ... resto de la lógica
-  });
-}, [envios]);
+const isMySucursalDestino = 
+  profile?.sucursal_id && 
+  shipment.sucursal_destino_id === profile.sucursal_id;
+
+const isReadyForBranchDelivery = 
+  shipment.estado === 'en_bodega' && 
+  isPickupAtBranch &&
+  isMySucursalDestino;
 ```
+
+Esto previene que una sucursal pueda entregar envíos destinados a otra sucursal.
 
 ---
 
-## Archivos a Modificar
+## Archivo a Modificar
 
 | Archivo | Cambios |
 |---------|---------|
-| `src/components/incidents/ReportIncidentDialog.tsx` | Agregar protección contra doble-clic + lanzar error si foto falla |
-| `src/pages/ActiveRouteNavigation.tsx` | Incluir `incidencia` en stats.completed y excluir de nextStop |
+| `src/components/mobile/MobileScanTab.tsx` | Agregar `tipo_servicio_detalle` a interfaz + actualizar lógica de decisión |
 
 ---
 
 ## Flujo Resultante
 
 ```text
-Chofer reporta incidencia
+Usuario con rol "sucursal" escanea envío
+                │
+                ▼
+    ┌───────────────────────────────────┐
+    │   ¿Estado = en_bodega?            │
+    │   ¿Tipo = sucursal_sucursal       │
+    │         o puerta_sucursal?        │
+    │   ¿Es mi sucursal destino?        │
+    └───────────────────────────────────┘
+                │
+        ┌───────┴───────┐
+        │               │
+        ▼               ▼
+       SÍ              NO
+        │               │
+        ▼               ▼
+  BranchDelivery    ¿Estado = en_transito?
+    Dialog              │
+        │           ┌───┴───┐
+        │           ▼       ▼
+        │          SÍ      NO
+        │           │       │
+        │           ▼       ▼
+        │     Receive    Delivery
+        │      Dialog    Dialog
         │
-        ├── Botón deshabilitado inmediatamente
+        ▼
+  Cliente retira:
+  - Nombre quien retira
+  - DNI
+  - Firma
+  - Pago (si aplica)
         │
-        ├── ¿Hay foto? 
-        │     ├── Sí → Subir al storage
-        │     │         ├── Éxito → Continuar
-        │     │         └── Error → Mostrar mensaje, permitir reintentar
-        │     └── No → Continuar
-        │
-        ├── Insertar incidente en BD
-        │
-        ├── Actualizar envío a estado 'incidencia'
-        │
-        ├── Invalidar queries
-        │
-        └── Si no quedan pendientes (incluyendo incidencias como "terminados")
-              └── Mostrar modal "Ruta Completada" → Cerrar automáticamente
+        ▼
+  Estado → "entregado"
 ```
 
 ---
 
 ## Resultado Esperado
 
-1. **Sin duplicados:** El botón se deshabilita instantáneamente al hacer clic
-2. **Fotos funcionando:** Si la foto falla, el usuario ve el error y puede reintentar
-3. **Cierre automático:** Cuando todos los envíos están entregados, devueltos o con incidencia, el chofer puede cerrar la ruta
+1. Al escanear un envío con `tipo_servicio_detalle = 'sucursal_sucursal'` o `'puerta_sucursal'` que esté en estado `en_bodega`:
+   - Se abre el diálogo **BranchDeliveryDialog**
+   - Permite registrar los datos de quien retira
+   - Confirma la entrega y cambia estado a `entregado`
 
+2. Seguridad adicional: solo se permite entregar si el envío está destinado a la sucursal del usuario.
+
+3. El flujo de recepción (`en_transito` → `en_bodega`) sigue funcionando igual para envíos entrantes.
