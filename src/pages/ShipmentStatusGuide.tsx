@@ -37,8 +37,8 @@ const statusData = [
   },
   {
     status: 'en_bodega',
-    label: 'En Bodega',
-    description: 'El paquete está en el centro logístico',
+    label: 'En Sucursal',
+    description: 'El paquete está en la sucursal',
     color: 'bg-purple-500',
     icon: Warehouse,
     actions: ['Se asigna a ruta o se marca en tránsito a sucursal'],
@@ -116,7 +116,7 @@ const roleActions = [
     icon: Warehouse,
     color: 'text-purple-500',
     actions: [
-      { action: 'Recibir en bodega', from: 'recogido', to: 'en_bodega', description: 'Escanea al ingresar al centro' },
+      { action: 'Recibir en sucursal', from: 'recogido', to: 'en_bodega', description: 'Escanea al ingresar a la sucursal' },
       { action: 'Enviar a sucursal', from: 'en_bodega', to: 'en_transito', description: 'Despacha hacia destino' },
     ],
   },
