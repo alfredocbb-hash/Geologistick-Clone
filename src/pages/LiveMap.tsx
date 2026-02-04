@@ -1,9 +1,9 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Building2, Package, Truck, RefreshCw, AlertCircle, Navigation, User, Clock, MapPin, Route } from "lucide-react";
+import { Building2, Package, Truck, RefreshCw, AlertCircle, Navigation, User, Clock, MapPin, Route, Eye, EyeOff, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import MapView from "@/components/maps/MapView";
 import { Link } from "react-router-dom";
@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDistanceToNow, format } from "date-fns";
 import { es } from "date-fns/locale";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useDriverRoute } from "@/hooks/useDriverRoute";
 
 interface SucursalConEnvios {
   id: string;
@@ -51,13 +52,21 @@ interface LocationHistoryPoint {
 export default function LiveMap() {
   const [activeTab, setActiveTab] = useState("sucursales");
   const [driverLocations, setDriverLocations] = useState<DriverLocation[]>([]);
-  const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
-  const [, setSelectedRouteId] = useState<string | null>(null);
+  
+  // State for main map route visualization (street-level traceability)
+  const [selectedDriverForMap, setSelectedDriverForMap] = useState<string | null>(null);
+  const [selectedRouteForMap, setSelectedRouteForMap] = useState<string | null>(null);
+  
+  // State for dialog route visualization (legacy)
   const [showRouteDialog, setShowRouteDialog] = useState(false);
-  const [routeHistory, setRouteHistory] = useState<LocationHistoryPoint[]>([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-  const [snappedRoute, setSnappedRoute] = useState<{ lat: number; lng: number }[]>([]);
-  const [isSnapping, setIsSnapping] = useState(false);
+  const [dialogDriverId, setDialogDriverId] = useState<string | null>(null);
+  const [dialogRouteHistory, setDialogRouteHistory] = useState<LocationHistoryPoint[]>([]);
+  const [loadingDialogHistory, setLoadingDialogHistory] = useState(false);
+  const [dialogSnappedRoute, setDialogSnappedRoute] = useState<{ lat: number; lng: number }[]>([]);
+  const [isDialogSnapping, setIsDialogSnapping] = useState(false);
+
+  // Hook for main map route visualization
+  const driverRoute = useDriverRoute();
 
   // Query para sucursales
   const { data: sucursalesData = [], isLoading, refetch } = useQuery({
@@ -203,13 +212,27 @@ export default function LiveMap() {
     return { color: "bg-red-500", label: "Sin señal" };
   };
 
-  // Load route history for a driver
-  const loadRouteHistory = async (driverId: string, rutaId: string) => {
-    setLoadingHistory(true);
-    setIsSnapping(false);
-    setSnappedRoute([]);
-    setSelectedDriverId(driverId);
-    setSelectedRouteId(rutaId);
+  // Toggle route visualization on main map
+  const toggleRouteOnMap = useCallback((driverId: string, rutaId: string) => {
+    if (selectedDriverForMap === driverId) {
+      // Hide route
+      setSelectedDriverForMap(null);
+      setSelectedRouteForMap(null);
+      driverRoute.clearRoute();
+    } else {
+      // Show route
+      setSelectedDriverForMap(driverId);
+      setSelectedRouteForMap(rutaId);
+      driverRoute.loadRoute(driverId, rutaId);
+    }
+  }, [selectedDriverForMap, driverRoute]);
+
+  // Load route history for dialog (legacy)
+  const loadRouteHistoryForDialog = async (driverId: string, rutaId: string) => {
+    setLoadingDialogHistory(true);
+    setIsDialogSnapping(false);
+    setDialogSnappedRoute([]);
+    setDialogDriverId(driverId);
     setShowRouteDialog(true);
 
     try {
@@ -225,15 +248,15 @@ export default function LiveMap() {
       const rawHistory = history?.map(h => ({
         lat: Number(h.lat),
         lng: Number(h.lng),
-        recorded_at: h.recorded_at,
+        recorded_at: h.recorded_at || '',
         speed: h.speed ? Number(h.speed) : null,
       })) || [];
 
-      setRouteHistory(rawHistory);
+      setDialogRouteHistory(rawHistory);
 
       // Process with Snap to Roads if we have enough points
       if (rawHistory.length >= 2) {
-        setIsSnapping(true);
+        setIsDialogSnapping(true);
         try {
           const { data: snappedData, error: snapError } = await supabase.functions.invoke('snap-to-roads', {
             body: {
@@ -245,7 +268,7 @@ export default function LiveMap() {
           if (snapError) {
             console.error('Snap to roads error:', snapError);
           } else if (snappedData?.snappedPoints && snappedData.snappedPoints.length > 0) {
-            setSnappedRoute(snappedData.snappedPoints.map((p: { lat: number; lng: number }) => ({
+            setDialogSnappedRoute(snappedData.snappedPoints.map((p: { lat: number; lng: number }) => ({
               lat: p.lat,
               lng: p.lng
             })));
@@ -254,29 +277,58 @@ export default function LiveMap() {
         } catch (snapErr) {
           console.error('Failed to snap route:', snapErr);
         } finally {
-          setIsSnapping(false);
+          setIsDialogSnapping(false);
         }
       }
     } catch (err) {
       console.error('Error loading route history:', err);
-      setRouteHistory([]);
+      setDialogRouteHistory([]);
     } finally {
-      setLoadingHistory(false);
+      setLoadingDialogHistory(false);
     }
   };
 
-  // Generate polyline path from history - use snapped if available
-  const routePolylinePath = useMemo(() => {
-    if (snappedRoute.length > 0) {
-      return snappedRoute;
+  // Generate polyline path from dialog history - use snapped if available
+  const dialogPolylinePath = useMemo(() => {
+    if (dialogSnappedRoute.length > 0) {
+      return dialogSnappedRoute;
     }
-    return routeHistory.map(point => ({ lat: point.lat, lng: point.lng }));
-  }, [routeHistory, snappedRoute]);
+    return dialogRouteHistory.map(point => ({ lat: point.lat, lng: point.lng }));
+  }, [dialogRouteHistory, dialogSnappedRoute]);
 
-  // Get selected driver info
-  const selectedDriver = useMemo(() => {
-    return driverLocations.find(d => d.chofer_id === selectedDriverId);
-  }, [driverLocations, selectedDriverId]);
+  // Get selected driver info for dialog
+  const dialogSelectedDriver = useMemo(() => {
+    return driverLocations.find(d => d.chofer_id === dialogDriverId);
+  }, [driverLocations, dialogDriverId]);
+
+  // Get selected driver info for main map
+  const selectedDriverInfo = useMemo(() => {
+    return driverLocations.find(d => d.chofer_id === selectedDriverForMap);
+  }, [driverLocations, selectedDriverForMap]);
+
+  // Combine driver markers with route markers for main map
+  const mainMapMarkers = useMemo(() => {
+    const markers: Array<{
+      position: { lat: number; lng: number };
+      title: string;
+      icon: 'origin' | 'destination' | 'branch' | 'current' | 'warning' | 'driver';
+    }> = driverMarkers.map(m => ({
+      position: m.position,
+      title: m.title,
+      icon: 'driver' as const,
+    }));
+    
+    // Add start point marker when showing route
+    if (driverRoute.polylinePath.length > 0 && selectedDriverForMap) {
+      markers.push({
+        position: driverRoute.polylinePath[0],
+        title: "Inicio del recorrido",
+        icon: "origin" as const,
+      });
+    }
+    
+    return markers;
+  }, [driverMarkers, driverRoute.polylinePath, selectedDriverForMap]);
 
   // Stats
   const totalPendientes = sucursalesData.reduce((acc, s) => acc + s.envios_pendientes, 0);
@@ -539,15 +591,72 @@ export default function LiveMap() {
                   </div>
                 ) : (
                   <>
-                    <div className="h-[500px] rounded-lg overflow-hidden">
+                    <div className="h-[500px] rounded-lg overflow-hidden relative">
                       <MapView 
-                        markers={driverMarkers}
+                        markers={mainMapMarkers}
                         center={driverLocations.length > 0 
                           ? { lat: driverLocations[0].lat, lng: driverLocations[0].lng }
                           : { lat: -34.6037, lng: -58.3816 }
                         }
                         zoom={12}
+                        polylinePath={selectedDriverForMap ? driverRoute.polylinePath : []}
                       />
+                      
+                      {/* Route overlay indicator */}
+                      {selectedDriverForMap && selectedDriverInfo && (
+                        <div className="absolute top-3 left-3 right-3 z-10">
+                          <div className="bg-background/95 backdrop-blur-sm rounded-lg p-3 shadow-lg border flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-3 h-3 rounded-full bg-primary animate-pulse" />
+                              <div>
+                                <p className="font-medium text-sm">
+                                  Recorrido de {selectedDriverInfo.nombre} {selectedDriverInfo.apellido}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {driverRoute.isLoading ? 'Cargando...' : 
+                                   driverRoute.isSnapping ? 'Procesando calles...' :
+                                   driverRoute.snappedRoute.length > 0 ? 
+                                     `${driverRoute.routeStats.pointsCount} puntos GPS → ${driverRoute.routeStats.snappedPointsCount} sobre calles` :
+                                     `${driverRoute.routeStats.pointsCount} puntos GPS`}
+                                </p>
+                              </div>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setSelectedDriverForMap(null);
+                                setSelectedRouteForMap(null);
+                                driverRoute.clearRoute();
+                              }}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Route type badge */}
+                      {selectedDriverForMap && driverRoute.polylinePath.length > 0 && (
+                        <div className="absolute bottom-3 right-3 z-10">
+                          <Badge 
+                            variant={driverRoute.snappedRoute.length > 0 ? "default" : "secondary"}
+                            className="shadow-lg"
+                          >
+                            {driverRoute.snappedRoute.length > 0 ? (
+                              <>
+                                <Route className="h-3 w-3 mr-1" />
+                                Ruta sobre calles
+                              </>
+                            ) : (
+                              <>
+                                <MapPin className="h-3 w-3 mr-1" />
+                                Puntos GPS
+                              </>
+                            )}
+                          </Badge>
+                        </div>
+                      )}
                     </div>
                     <div className="flex gap-4 mt-4 text-sm">
                       <div className="flex items-center gap-2">
@@ -562,6 +671,12 @@ export default function LiveMap() {
                         <div className="w-3 h-3 rounded-full bg-red-500" />
                         <span>Sin señal (+15 min)</span>
                       </div>
+                      {selectedDriverForMap && (
+                        <div className="flex items-center gap-2 ml-auto">
+                          <div className="w-3 h-1 rounded bg-primary" />
+                          <span>Recorrido activo</span>
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
@@ -616,15 +731,29 @@ export default function LiveMap() {
                                 })}
                               </p>
                               {driver.ruta_activa && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-6 text-xs px-2"
-                                  onClick={() => loadRouteHistory(driver.chofer_id, driver.ruta_activa!.id)}
-                                >
-                                  <Route className="h-3 w-3 mr-1" />
-                                  Ver recorrido
-                                </Button>
+                                <div className="flex gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant={selectedDriverForMap === driver.chofer_id ? "default" : "ghost"}
+                                    className="h-6 text-xs px-2"
+                                    onClick={() => toggleRouteOnMap(driver.chofer_id, driver.ruta_activa!.id)}
+                                  >
+                                    {selectedDriverForMap === driver.chofer_id ? (
+                                      <><EyeOff className="h-3 w-3 mr-1" />Ocultar</>
+                                    ) : (
+                                      <><Eye className="h-3 w-3 mr-1" />Ver en mapa</>
+                                    )}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 text-xs px-2"
+                                    onClick={() => loadRouteHistoryForDialog(driver.chofer_id, driver.ruta_activa!.id)}
+                                  >
+                                    <Route className="h-3 w-3 mr-1" />
+                                    Detalles
+                                  </Button>
+                                </div>
                               )}
                             </div>
                           </div>
@@ -682,22 +811,22 @@ export default function LiveMap() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Route className="h-5 w-5" />
-              Recorrido de {selectedDriver?.nombre} {selectedDriver?.apellido}
-              {selectedDriver?.ruta_activa && (
+              Recorrido de {dialogSelectedDriver?.nombre} {dialogSelectedDriver?.apellido}
+              {dialogSelectedDriver?.ruta_activa && (
                 <Badge variant="outline" className="ml-2">
-                  {selectedDriver.ruta_activa.numero}
+                  {dialogSelectedDriver.ruta_activa.numero}
                 </Badge>
               )}
             </DialogTitle>
           </DialogHeader>
           
           <div className="space-y-4">
-            {loadingHistory ? (
+            {loadingDialogHistory ? (
               <div className="h-[400px] flex flex-col items-center justify-center gap-3">
                 <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">Cargando historial de ubicación...</p>
               </div>
-            ) : routeHistory.length === 0 ? (
+            ) : dialogRouteHistory.length === 0 ? (
               <div className="h-[400px] flex flex-col items-center justify-center gap-4 border-2 border-dashed rounded-lg bg-muted/20">
                 <MapPin className="h-12 w-12 text-muted-foreground" />
                 <div className="text-center">
@@ -709,7 +838,7 @@ export default function LiveMap() {
               </div>
             ) : (
               <>
-                {isSnapping && (
+                {isDialogSnapping && (
                   <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-3 py-2 rounded-lg">
                     <RefreshCw className="h-4 w-4 animate-spin" />
                     <span>Procesando ruta calle por calle...</span>
@@ -721,29 +850,29 @@ export default function LiveMap() {
                     markers={[
                       // Start point
                       {
-                        position: routePolylinePath[0],
+                        position: dialogPolylinePath[0],
                         title: "Inicio del recorrido",
                         icon: "origin",
                       },
                       // Current/Last point
                       {
-                        position: routePolylinePath[routePolylinePath.length - 1],
+                        position: dialogPolylinePath[dialogPolylinePath.length - 1],
                         title: "Posición actual",
                         icon: "driver",
                       },
                     ]}
-                    center={routePolylinePath[Math.floor(routePolylinePath.length / 2)]}
+                    center={dialogPolylinePath[Math.floor(dialogPolylinePath.length / 2)]}
                     zoom={14}
-                    polylinePath={routePolylinePath}
+                    polylinePath={dialogPolylinePath}
                   />
                   
                   {/* Route type indicator */}
                   <div className="absolute top-3 right-3 z-10">
                     <Badge 
-                      variant={snappedRoute.length > 0 ? "default" : "secondary"}
+                      variant={dialogSnappedRoute.length > 0 ? "default" : "secondary"}
                       className="shadow-lg"
                     >
-                      {snappedRoute.length > 0 ? (
+                      {dialogSnappedRoute.length > 0 ? (
                         <>
                           <Route className="h-3 w-3 mr-1" />
                           Ruta sobre calles
@@ -761,31 +890,31 @@ export default function LiveMap() {
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
                   <div className="bg-muted/50 rounded-lg p-3">
                     <p className="text-muted-foreground text-xs">Puntos GPS</p>
-                    <p className="font-semibold text-lg">{routeHistory.length}</p>
+                    <p className="font-semibold text-lg">{dialogRouteHistory.length}</p>
                   </div>
-                  {snappedRoute.length > 0 && (
+                  {dialogSnappedRoute.length > 0 && (
                     <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
                       <p className="text-blue-600 dark:text-blue-400 text-xs">Puntos ajustados</p>
-                      <p className="font-semibold text-lg text-blue-700 dark:text-blue-300">{snappedRoute.length}</p>
+                      <p className="font-semibold text-lg text-blue-700 dark:text-blue-300">{dialogSnappedRoute.length}</p>
                     </div>
                   )}
                   <div className="bg-muted/50 rounded-lg p-3">
                     <p className="text-muted-foreground text-xs">Inicio</p>
                     <p className="font-medium">
-                      {routeHistory[0] && format(new Date(routeHistory[0].recorded_at), "HH:mm", { locale: es })}
+                      {dialogRouteHistory[0] && format(new Date(dialogRouteHistory[0].recorded_at), "HH:mm", { locale: es })}
                     </p>
                   </div>
                   <div className="bg-muted/50 rounded-lg p-3">
                     <p className="text-muted-foreground text-xs">Último registro</p>
                     <p className="font-medium">
-                      {routeHistory[routeHistory.length - 1] && format(new Date(routeHistory[routeHistory.length - 1].recorded_at), "HH:mm", { locale: es })}
+                      {dialogRouteHistory[dialogRouteHistory.length - 1] && format(new Date(dialogRouteHistory[dialogRouteHistory.length - 1].recorded_at), "HH:mm", { locale: es })}
                     </p>
                   </div>
                   <div className="bg-muted/50 rounded-lg p-3">
                     <p className="text-muted-foreground text-xs">Duración aprox.</p>
                     <p className="font-medium">
-                      {routeHistory.length >= 2 && formatDistanceToNow(
-                        new Date(routeHistory[0].recorded_at),
+                      {dialogRouteHistory.length >= 2 && formatDistanceToNow(
+                        new Date(dialogRouteHistory[0].recorded_at),
                         { locale: es }
                       )}
                     </p>

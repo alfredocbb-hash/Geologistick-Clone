@@ -18,15 +18,30 @@ interface UseGeolocationOptions {
   enableHighAccuracy?: boolean;
   activeRouteId?: string | null; // ID de ruta planificada activa
   activeHojaRutaId?: string | null; // ID de hoja de ruta activa
+  movementThreshold?: number; // meters - force update if moved more than this
+}
+
+// Calculate distance between two coordinates in meters (Haversine formula)
+function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000; // Earth's radius in meters
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
 
 export function useGeolocation(options: UseGeolocationOptions = {}) {
   const { 
     enabled = false, 
-    updateInterval = 30000, // 30 seconds default
+    updateInterval = 15000, // 15 seconds default (improved from 30s)
     enableHighAccuracy = true,
     activeRouteId = null,
     activeHojaRutaId = null,
+    movementThreshold = 50, // 50 meters default
   } = options;
   
   const { user, profile } = useAuth();
@@ -36,6 +51,7 @@ export function useGeolocation(options: UseGeolocationOptions = {}) {
   const watchIdRef = useRef<string | number | null>(null);
   const lastUpdateRef = useRef<number>(0);
   const lastHistoryUpdateRef = useRef<number>(0);
+  const lastSavedLocationRef = useRef<{ lat: number; lng: number } | null>(null);
   const isNative = Capacitor.isNativePlatform();
 
   // Update location to Supabase (current position + history)
@@ -60,10 +76,38 @@ export function useGeolocation(options: UseGeolocationOptions = {}) {
         console.error('Error updating location:', upsertError);
       }
 
-      // Add to location history (every 30 seconds when tracking)
+      // Improved history recording logic:
+      // - Save every 15 seconds when moving
+      // - Force save immediately if moved more than threshold
+      // - Skip if stationary (avoid duplicates)
       const now = Date.now();
-      if (now - lastHistoryUpdateRef.current >= 30000) { // 30 seconds
+      const timeSinceLastHistory = now - lastHistoryUpdateRef.current;
+      const lastSaved = lastSavedLocationRef.current;
+      
+      let shouldSaveHistory = false;
+      let distanceMoved = 0;
+      
+      if (lastSaved) {
+        distanceMoved = calculateDistance(lastSaved.lat, lastSaved.lng, loc.lat, loc.lng);
+      }
+      
+      // Force save if moved more than threshold (significant movement)
+      if (distanceMoved >= movementThreshold) {
+        shouldSaveHistory = true;
+        console.log(`Movement detected: ${distanceMoved.toFixed(1)}m - forcing history save`);
+      }
+      // Regular interval save (15 seconds) but only if we've moved at least 5 meters
+      else if (timeSinceLastHistory >= 15000 && distanceMoved >= 5) {
+        shouldSaveHistory = true;
+      }
+      // First point always saved
+      else if (!lastSaved) {
+        shouldSaveHistory = true;
+      }
+      
+      if (shouldSaveHistory) {
         lastHistoryUpdateRef.current = now;
+        lastSavedLocationRef.current = { lat: loc.lat, lng: loc.lng };
         
         const { error: historyError } = await supabase
           .from('driver_location_history')
@@ -81,12 +125,14 @@ export function useGeolocation(options: UseGeolocationOptions = {}) {
 
         if (historyError) {
           console.error('Error saving location history:', historyError);
+        } else if (distanceMoved > 0) {
+          console.log(`Location history saved (moved ${distanceMoved.toFixed(1)}m)`);
         }
       }
     } catch (err) {
       console.error('Error saving location:', err);
     }
-  }, [user?.id, profile?.tenant_id, activeRouteId, activeHojaRutaId]);
+  }, [user?.id, profile?.tenant_id, activeRouteId, activeHojaRutaId, movementThreshold]);
 
   // Handle position update (native)
   const handleNativePositionUpdate = useCallback((position: Position | null) => {
