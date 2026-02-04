@@ -1,7 +1,7 @@
 
 # Plan: Trazabilidad Calle por Calle en Mapa en Vivo
 
-## Estado Actual
+## Estado: ✅ IMPLEMENTADO
 
 Ya existe una implementación base que incluye:
 - Edge Function `snap-to-roads` que utiliza Google Roads API
