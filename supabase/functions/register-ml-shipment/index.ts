@@ -142,11 +142,18 @@ serve(async (req) => {
     }
 
     const mlShipment = await shipmentResponse.json();
+    // Extract ML shipping cost from various possible fields
+    const mlShippingCost = mlShipment.shipping_option?.cost 
+      || mlShipment.cost 
+      || mlShipment.base_cost 
+      || 0;
+
     console.log('[register-ml-shipment] ML Shipment data:', {
       id: mlShipment.id,
       status: mlShipment.status,
       logistic_type: mlShipment.logistic_type,
       order_id: mlShipment.order_id,
+      shipping_cost: mlShippingCost,
     });
 
     // 4. Validate shipment type (must be Flex / self_service)
@@ -291,6 +298,7 @@ serve(async (req) => {
         pago_contra_entrega: false,
         descripcion: `Pedido MercadoLibre Flex #${mlShipment.order_id || ml_shipment_id}`,
         sucursal_origen_id: sucursalOrigenId, // Track who did the pickup
+        precio_flete_ml: mlShippingCost, // ML shipping rate from API
       })
       .select()
       .single();
