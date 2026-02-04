@@ -360,27 +360,41 @@ async function getValidAccessToken(supabase: any, seller: any): Promise<string |
   const expiresAt = seller.token_expires_at ? new Date(seller.token_expires_at) : null;
 
   // Check if token is valid (5 min buffer)
-  if (expiresAt && expiresAt.getTime() - now.getTime() > 5 * 60 * 1000) {
+  if (seller.access_token && expiresAt && expiresAt.getTime() - now.getTime() > 5 * 60 * 1000) {
     return seller.access_token;
+  }
+
+  // If no refresh token, cannot refresh
+  if (!seller.refresh_token) {
+    console.error('[ML Sync] No refresh token available');
+    return null;
   }
 
   console.log('[ML Sync] Token expired, refreshing...');
 
-  // Get ML credentials
-  const { data: integration } = await supabase
+  // Get ML credentials using key-value schema (same pattern as mercadolibre-oauth)
+  const { data: credentials, error: credError } = await supabase
     .from('system_integrations')
-    .select('config')
+    .select('key, value')
     .eq('tenant_id', seller.tenant_id)
     .eq('integration_type', 'mercadolibre')
-    .eq('is_active', true)
-    .single();
+    .in('key', ['client_id', 'client_secret']);
 
-  if (!integration?.config) {
-    console.error('[ML Sync] No integration config found');
+  if (credError || !credentials || credentials.length === 0) {
+    console.error('[ML Sync] No integration credentials found:', credError);
     return null;
   }
 
-  const config = integration.config as Record<string, string>;
+  // Convert key-value rows to object
+  const config: Record<string, string> = {};
+  for (const row of credentials) {
+    config[row.key] = row.value;
+  }
+
+  if (!config.client_id || !config.client_secret) {
+    console.error('[ML Sync] Missing client_id or client_secret');
+    return null;
+  }
 
   // Refresh token
   const tokenResponse = await fetch('https://api.mercadolibre.com/oauth/token', {
@@ -395,7 +409,8 @@ async function getValidAccessToken(supabase: any, seller: any): Promise<string |
   });
 
   if (!tokenResponse.ok) {
-    console.error('[ML Sync] Token refresh failed');
+    const errorText = await tokenResponse.text();
+    console.error('[ML Sync] Token refresh failed:', errorText);
     return null;
   }
 
@@ -415,5 +430,6 @@ async function getValidAccessToken(supabase: any, seller: any): Promise<string |
     })
     .eq('id', seller.id);
 
+  console.log('[ML Sync] Token refreshed successfully');
   return tokenData.access_token;
 }
