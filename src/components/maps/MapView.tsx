@@ -3,6 +3,8 @@ import { useState, useCallback, useEffect, memo } from 'react';
 import { useGoogleMaps } from './GoogleMapsProvider';
 import { Card } from '@/components/ui/card';
 import { Loader2, AlertTriangle } from 'lucide-react';
+import { GradientPolyline } from './GradientPolyline';
+import { DeliveryStopMarker } from './DeliveryStopMarker';
 
 export interface MarkerInfo {
   position: { lat: number; lng: number };
@@ -14,6 +16,13 @@ export interface MarkerInfo {
   onClick?: () => void;
 }
 
+export interface DeliveryStop {
+  position: { lat: number; lng: number };
+  time: string;
+  trackingNumber: string;
+  order: number;
+}
+
 interface MapViewProps {
   center?: { lat: number; lng: number };
   zoom?: number;
@@ -22,6 +31,8 @@ interface MapViewProps {
   origin?: { lat: number; lng: number };
   destination?: { lat: number; lng: number };
   polylinePath?: { lat: number; lng: number }[];
+  useGradient?: boolean;
+  deliveryStops?: DeliveryStop[];
   height?: string;
   className?: string;
   onMarkerClick?: (marker: MarkerInfo) => void;
@@ -69,6 +80,8 @@ function MapViewComponent({
   origin,
   destination,
   polylinePath = [],
+  useGradient = false,
+  deliveryStops = [],
   height = '300px',
   className = '',
   onMarkerClick,
@@ -210,42 +223,63 @@ function MapViewComponent({
           />
         )}
 
-        {/* Render polyline path with navigation-style appearance */}
+        {/* Render polyline path - gradient or standard */}
         {polylinePath.length > 1 && !directions && (
-          <>
-            {/* Shadow/outline polyline for better visibility */}
-            <Polyline
+          useGradient ? (
+            <GradientPolyline
               path={polylinePath}
-              options={{
-                strokeColor: '#1e3a5f',
-                strokeWeight: 7,
-                strokeOpacity: 0.4,
-                geodesic: true,
-              }}
+              segments={10}
+              showArrows={true}
+              showStartMarker={false}
+              showEndMarker={false}
             />
-            {/* Main route polyline */}
-            <Polyline
-              path={polylinePath}
-              options={{
-                strokeColor: '#4285F4',
-                strokeWeight: 5,
-                strokeOpacity: 0.95,
-                geodesic: true,
-                icons: [{
-                  icon: {
-                    path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                    scale: 2.5,
-                    strokeColor: '#ffffff',
-                    strokeWeight: 1,
-                    fillColor: '#4285F4',
-                    fillOpacity: 1,
-                  },
-                  repeat: '150px',
-                }],
-              }}
-            />
-          </>
+          ) : (
+            <>
+              {/* Shadow/outline polyline for better visibility */}
+              <Polyline
+                path={polylinePath}
+                options={{
+                  strokeColor: '#1e3a5f',
+                  strokeWeight: 7,
+                  strokeOpacity: 0.4,
+                  geodesic: true,
+                }}
+              />
+              {/* Main route polyline */}
+              <Polyline
+                path={polylinePath}
+                options={{
+                  strokeColor: '#4285F4',
+                  strokeWeight: 5,
+                  strokeOpacity: 0.95,
+                  geodesic: true,
+                  icons: [{
+                    icon: {
+                      path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                      scale: 2.5,
+                      strokeColor: '#ffffff',
+                      strokeWeight: 1,
+                      fillColor: '#4285F4',
+                      fillOpacity: 1,
+                    },
+                    repeat: '150px',
+                  }],
+                }}
+              />
+            </>
+          )
         )}
+
+        {/* Render delivery stop markers */}
+        {deliveryStops.map((stop) => (
+          <DeliveryStopMarker
+            key={`stop-${stop.order}-${stop.trackingNumber}`}
+            position={stop.position}
+            time={stop.time}
+            trackingNumber={stop.trackingNumber}
+            order={stop.order}
+          />
+        ))}
       </GoogleMap>
     </div>
   );

@@ -13,9 +13,17 @@ interface SnappedPoint {
   lng: number;
 }
 
+interface DeliveryStop {
+  position: { lat: number; lng: number };
+  time: string;
+  trackingNumber: string;
+  order: number;
+}
+
 interface UseDriverRouteReturn {
   rawHistory: LocationHistoryPoint[];
   snappedRoute: SnappedPoint[];
+  deliveryStops: DeliveryStop[];
   isLoading: boolean;
   isSnapping: boolean;
   error: string | null;
@@ -27,12 +35,67 @@ interface UseDriverRouteReturn {
     snappedPointsCount: number;
     startTime: string | null;
     endTime: string | null;
+    totalDistanceKm: number;
+    durationMinutes: number;
+    avgSpeedKmh: number;
+    stopsCount: number;
   };
+}
+
+// Calculate distance between two points using Haversine formula
+function calculateHaversineDistance(
+  lat1: number, lng1: number, 
+  lat2: number, lng2: number
+): number {
+  const R = 6371; // Earth's radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// Calculate total distance for a path
+function calculateTotalDistance(points: SnappedPoint[]): number {
+  if (points.length < 2) return 0;
+  
+  let totalDistance = 0;
+  for (let i = 1; i < points.length; i++) {
+    totalDistance += calculateHaversineDistance(
+      points[i - 1].lat, points[i - 1].lng,
+      points[i].lat, points[i].lng
+    );
+  }
+  return totalDistance;
+}
+
+// Generate a simple hash for cache lookup
+function generatePointsHash(points: { lat: number; lng: number }[]): string {
+  if (points.length === 0) return 'empty';
+  
+  const first = points[0];
+  const last = points[points.length - 1];
+  
+  // Hash based on count + first point + last point
+  const hashData = `${points.length}|${first.lat.toFixed(5)},${first.lng.toFixed(5)}|${last.lat.toFixed(5)},${last.lng.toFixed(5)}`;
+  
+  // Simple hash function
+  let hash = 0;
+  for (let i = 0; i < hashData.length; i++) {
+    const char = hashData.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return Math.abs(hash).toString(36);
 }
 
 export function useDriverRoute(): UseDriverRouteReturn {
   const [rawHistory, setRawHistory] = useState<LocationHistoryPoint[]>([]);
   const [snappedRoute, setSnappedRoute] = useState<SnappedPoint[]>([]);
+  const [deliveryStops, setDeliveryStops] = useState<DeliveryStop[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSnapping, setIsSnapping] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +106,7 @@ export function useDriverRoute(): UseDriverRouteReturn {
     setError(null);
     setSnappedRoute([]);
     setRawHistory([]);
+    setDeliveryStops([]);
 
     try {
       // Fetch location history for the route
@@ -64,32 +128,104 @@ export function useDriverRoute(): UseDriverRouteReturn {
 
       setRawHistory(formattedHistory);
 
+      // Fetch delivery stops (completed deliveries) for this route
+      const { data: deliveries } = await supabase
+        .from('envios')
+        .select('tracking_number, entrega_lat, entrega_lng, fecha_entrega')
+        .eq('chofer_id', driverId)
+        .eq('estado', 'entregado')
+        .not('entrega_lat', 'is', null)
+        .not('entrega_lng', 'is', null)
+        .not('fecha_entrega', 'is', null)
+        .order('fecha_entrega', { ascending: true });
+
+      if (deliveries && deliveries.length > 0) {
+        const stops: DeliveryStop[] = deliveries.map((d, idx) => ({
+          position: { lat: Number(d.entrega_lat), lng: Number(d.entrega_lng) },
+          time: d.fecha_entrega || '',
+          trackingNumber: d.tracking_number,
+          order: idx + 1,
+        }));
+        setDeliveryStops(stops);
+      }
+
       // Process with Snap to Roads if we have enough points
       if (formattedHistory.length >= 2) {
-        setIsSnapping(true);
-        try {
-          const { data: snappedData, error: snapError } = await supabase.functions.invoke('snap-to-roads', {
-            body: {
-              points: formattedHistory.map(p => ({ lat: p.lat, lng: p.lng })),
-              interpolate: true
-            }
-          });
+        const pointsHash = generatePointsHash(formattedHistory);
+        
+        // Check cache first
+        const { data: cachedSegment } = await supabase
+          .from('driver_route_segments')
+          .select('snapped_points, total_distance')
+          .eq('ruta_id', rutaId)
+          .eq('chofer_id', driverId)
+          .eq('points_hash', pointsHash)
+          .maybeSingle();
 
-          if (snapError) {
-            console.error('Snap to roads error:', snapError);
-            setError('Error procesando ruta con calles');
-          } else if (snappedData?.snappedPoints && snappedData.snappedPoints.length > 0) {
-            setSnappedRoute(snappedData.snappedPoints.map((p: { lat: number; lng: number }) => ({
-              lat: p.lat,
-              lng: p.lng
-            })));
-            console.log(`Route snapped: ${formattedHistory.length} → ${snappedData.snappedPoints.length} points`);
+        if (cachedSegment?.snapped_points) {
+          // Use cached data
+          const cachedPoints = cachedSegment.snapped_points as { lat: number; lng: number }[];
+          setSnappedRoute(cachedPoints);
+          console.log(`Cache hit: ${formattedHistory.length} → ${cachedPoints.length} points`);
+        } else {
+          // Call snap-to-roads API
+          setIsSnapping(true);
+          try {
+            const { data: snappedData, error: snapError } = await supabase.functions.invoke('snap-to-roads', {
+              body: {
+                points: formattedHistory.map(p => ({ lat: p.lat, lng: p.lng })),
+                interpolate: true
+              }
+            });
+
+            if (snapError) {
+              console.error('Snap to roads error:', snapError);
+              setError('Error procesando ruta con calles');
+            } else if (snappedData?.snappedPoints && snappedData.snappedPoints.length > 0) {
+              const snappedPoints = snappedData.snappedPoints.map((p: { lat: number; lng: number }) => ({
+                lat: p.lat,
+                lng: p.lng
+              }));
+              setSnappedRoute(snappedPoints);
+              console.log(`Route snapped: ${formattedHistory.length} → ${snappedPoints.length} points`);
+
+              // Save to cache (get user's tenant_id first)
+              try {
+                const { data: profile } = await supabase
+                  .from('profiles')
+                  .select('tenant_id')
+                  .eq('user_id', driverId)
+                  .single();
+
+                if (profile?.tenant_id) {
+                  const totalDistance = calculateTotalDistance(snappedPoints) * 1000; // Convert to meters
+                  
+                  await supabase
+                    .from('driver_route_segments')
+                    .upsert({
+                      ruta_id: rutaId,
+                      chofer_id: driverId,
+                      tenant_id: profile.tenant_id,
+                      points_hash: pointsHash,
+                      raw_points: formattedHistory.map(p => ({ lat: p.lat, lng: p.lng })),
+                      snapped_points: snappedPoints,
+                      total_distance: totalDistance,
+                    }, {
+                      onConflict: 'ruta_id,chofer_id,points_hash'
+                    });
+                  console.log('Route segment cached successfully');
+                }
+              } catch (cacheErr) {
+                console.warn('Failed to cache route segment:', cacheErr);
+                // Non-blocking error - continue with the snapped route
+              }
+            }
+          } catch (snapErr) {
+            console.error('Failed to snap route:', snapErr);
+            setError('Error al conectar con Roads API');
+          } finally {
+            setIsSnapping(false);
           }
-        } catch (snapErr) {
-          console.error('Failed to snap route:', snapErr);
-          setError('Error al conectar con Roads API');
-        } finally {
-          setIsSnapping(false);
         }
       }
     } catch (err) {
@@ -104,6 +240,7 @@ export function useDriverRoute(): UseDriverRouteReturn {
   const clearRoute = useCallback(() => {
     setRawHistory([]);
     setSnappedRoute([]);
+    setDeliveryStops([]);
     setError(null);
     setIsLoading(false);
     setIsSnapping(false);
@@ -118,16 +255,45 @@ export function useDriverRoute(): UseDriverRouteReturn {
   }, [rawHistory, snappedRoute]);
 
   // Route statistics
-  const routeStats = useMemo(() => ({
-    pointsCount: rawHistory.length,
-    snappedPointsCount: snappedRoute.length,
-    startTime: rawHistory.length > 0 ? rawHistory[0].recorded_at : null,
-    endTime: rawHistory.length > 0 ? rawHistory[rawHistory.length - 1].recorded_at : null,
-  }), [rawHistory, snappedRoute]);
+  const routeStats = useMemo(() => {
+    const pointsCount = rawHistory.length;
+    const snappedPointsCount = snappedRoute.length;
+    const startTime = rawHistory.length > 0 ? rawHistory[0].recorded_at : null;
+    const endTime = rawHistory.length > 0 ? rawHistory[rawHistory.length - 1].recorded_at : null;
+    
+    // Calculate distance from the path we're using
+    const pathToUse = snappedRoute.length > 0 ? snappedRoute : rawHistory.map(p => ({ lat: p.lat, lng: p.lng }));
+    const totalDistanceKm = calculateTotalDistance(pathToUse);
+    
+    // Calculate duration
+    let durationMinutes = 0;
+    if (startTime && endTime) {
+      const start = new Date(startTime).getTime();
+      const end = new Date(endTime).getTime();
+      durationMinutes = Math.round((end - start) / (1000 * 60));
+    }
+    
+    // Calculate average speed
+    const avgSpeedKmh = durationMinutes > 0 
+      ? Math.round((totalDistanceKm / (durationMinutes / 60)) * 10) / 10
+      : 0;
+    
+    return {
+      pointsCount,
+      snappedPointsCount,
+      startTime,
+      endTime,
+      totalDistanceKm: Math.round(totalDistanceKm * 100) / 100,
+      durationMinutes,
+      avgSpeedKmh,
+      stopsCount: deliveryStops.length,
+    };
+  }, [rawHistory, snappedRoute, deliveryStops]);
 
   return {
     rawHistory,
     snappedRoute,
+    deliveryStops,
     isLoading,
     isSnapping,
     error,
