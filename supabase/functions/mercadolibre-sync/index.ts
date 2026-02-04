@@ -167,6 +167,13 @@ Deno.serve(async (req) => {
           continue;
         }
 
+        // Extract ML shipping cost - priority: lead_time.cost (documented), then fallbacks
+        const mlShippingCost = shipment.lead_time?.cost 
+          || shipment.shipping_option?.cost 
+          || shipment.cost 
+          || 0;
+        console.log('[ML Sync] ML shipping cost:', mlShippingCost, 'lead_time:', JSON.stringify(shipment.lead_time));
+
         // Use orderItem data which already has buyer info
         const orderData = orderItem;
 
@@ -225,7 +232,7 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Create envio
+        // Create envio with ML shipping cost
         const { data: envio, error: envioError } = await supabase
           .from('envios')
           .insert({
@@ -245,6 +252,7 @@ Deno.serve(async (req) => {
             destinatario_lng: receiver.longitude || null,
             whatsapp_destinatario: receiverPhone,
             precio_total: 0,
+            precio_flete_ml: mlShippingCost, // ML shipping rate from API
             tipo_servicio: 'express',
             tipo_servicio_detalle: 'ML Flex',
             sucursal_origen_id: seller.sucursal_pickup_id || null,

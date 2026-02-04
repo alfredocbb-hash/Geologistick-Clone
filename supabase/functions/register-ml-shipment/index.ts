@@ -70,12 +70,12 @@ serve(async (req) => {
       // Get ML credentials from system_integrations
       const { data: credentials } = await supabase
         .from('system_integrations')
-        .select('key, value')
+        .select('config_key, config_value')
         .eq('tenant_id', seller.tenant_id)
         .eq('integration_type', 'mercadolibre')
-        .in('key', ['client_id', 'client_secret']);
+        .in('config_key', ['client_id', 'client_secret']);
 
-      const credMap = Object.fromEntries((credentials || []).map(c => [c.key, c.value]));
+      const credMap = Object.fromEntries((credentials || []).map(c => [c.config_key, c.config_value]));
       
       if (!credMap.client_id || !credMap.client_secret || !seller.refresh_token) {
         return new Response(
@@ -142,8 +142,10 @@ serve(async (req) => {
     }
 
     const mlShipment = await shipmentResponse.json();
-    // Extract ML shipping cost from various possible fields
-    const mlShippingCost = mlShipment.shipping_option?.cost 
+    
+    // Extract ML shipping cost - priority: lead_time.cost (documented), then fallbacks
+    const mlShippingCost = mlShipment.lead_time?.cost 
+      || mlShipment.shipping_option?.cost 
       || mlShipment.cost 
       || mlShipment.base_cost 
       || 0;
@@ -155,6 +157,7 @@ serve(async (req) => {
       order_id: mlShipment.order_id,
       shipping_cost: mlShippingCost,
     });
+    console.log('[register-ml-shipment] Full lead_time:', JSON.stringify(mlShipment.lead_time));
 
     // 4. Validate shipment type (must be Flex / self_service)
     if (mlShipment.logistic_type !== 'self_service') {
