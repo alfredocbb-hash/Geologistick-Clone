@@ -1,170 +1,245 @@
 
 
-# Plan: Corregir Eliminación de Envío Flex con Reversión de Cuenta Corriente
+# Plan: Bandeja de Incidencias con Acciones Manuales
 
-## Problema Identificado
+## Resumen
 
-El error `"violates foreign key constraint 'seller_cuenta_corriente_envio_id_fkey'"` ocurre porque:
-
-1. Al crear un envío desde una orden e-commerce, el sistema registra un **cargo** en `seller_cuenta_corriente` referenciando el `envio_id`
-2. Al intentar eliminar el envío, ese registro de cuenta corriente bloquea la eliminación por la FK
-
-### Tablas con FK a envíos que deben limpiarse:
-| Tabla | FK Column | Acción |
-|-------|-----------|--------|
-| `seller_cuenta_corriente` | envio_id | Crear ajuste de reversión + limpiar FK |
-| `envio_historial` | envio_id | Eliminar (ya está en el código) |
-| `envio_detalles` | envio_id | Eliminar (ya está en el código) |
-| `ecommerce_orders` | envio_id | Limpiar FK (ya está en el código) |
+Crear una nueva sección "Incidencias" donde los administradores puedan revisar y gestionar envíos con problemas reportados (ausente, rechazo, dirección incorrecta, etc.), decidiendo la acción apropiada: **re-intentar**, **reprogramar**, o **cancelar/devolver**.
 
 ---
 
-## Solución
-
-Modificar `deleteShipmentMutation` en `Orders.tsx` para:
-
-1. **Buscar movimiento de cargo** en `seller_cuenta_corriente` asociado al envío
-2. **Crear movimiento de ajuste negativo** para revertir el saldo
-3. **Limpiar el `envio_id`** en el movimiento original (para romper la FK)
-4. Continuar con la eliminación normal del envío
-
----
-
-## Flujo Actualizado de Eliminación
+## Flujo Propuesto
 
 ```text
-1. Buscar cargo en seller_cuenta_corriente con envio_id = X
-      ↓
-2. Si existe cargo:
-   - Obtener saldo actual del seller
-   - Insertar movimiento tipo "ajuste" con monto negativo
-   - Actualizar registro original: envio_id = null
-      ↓
-3. Eliminar envio_historial
-      ↓
-4. Eliminar envio_detalles
-      ↓
-5. Desvincular ecommerce_orders (envio_id = null)
-      ↓
-6. Eliminar envío de tabla "envios"
+┌─────────────────────────────────────────────────────────────────────┐
+│                     FLUJO DE INCIDENCIAS                            │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  CHOFER reporta problema (ausente, rechazo, dirección incorrecta)   │
+│                              ↓                                       │
+│  Estado envío → "devuelto" (actual) o "incidencia" (nuevo)          │
+│  + Registro en tabla "incidentes" con estado = 'pendiente'          │
+│                              ↓                                       │
+│  ┌────────────────────────────────────────────────────────────┐     │
+│  │              BANDEJA DE INCIDENCIAS (nueva)                 │     │
+│  │  Administrador revisa y decide acción:                      │     │
+│  │                                                             │     │
+│  │  [Re-intentar hoy]  → estado = pendiente, chofer = null    │     │
+│  │                       Aparece en Planificador para nueva   │     │
+│  │                       ruta inmediata                        │     │
+│  │                                                             │     │
+│  │  [Reprogramar]      → estado = pendiente, chofer = null    │     │
+│  │                       + nueva fecha_entrega                 │     │
+│  │                       + reprogramado_count++                │     │
+│  │                       Aparece en "Reprogramados"            │     │
+│  │                                                             │     │
+│  │  [Devolver/Cancelar] → estado = devuelto o cancelado       │     │
+│  │                        Cierra la incidencia                 │     │
+│  │                                                             │     │
+│  │  [Corregir dirección] → Abre formulario para actualizar    │     │
+│  │                         dirección antes de re-asignar       │     │
+│  └────────────────────────────────────────────────────────────┘     │
+│                              ↓                                       │
+│  Incidente marcado como "resuelto" con la acción tomada             │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
+
+## Componentes a Crear
+
+| Componente | Descripción |
+|------------|-------------|
+| `src/pages/Incidents.tsx` | Página principal de bandeja de incidencias |
+| `src/components/incidents/IncidentActionDialog.tsx` | Dialog para resolver incidencia con opciones |
+| `src/components/incidents/EditAddressDialog.tsx` | Dialog para corregir dirección antes de re-asignar |
 
 ## Archivos a Modificar
 
 | Archivo | Cambios |
 |---------|---------|
-| `src/pages/ecommerce/Orders.tsx` | Actualizar `deleteShipmentMutation` para manejar la reversión de cuenta corriente |
+| `src/components/layout/AppSidebar.tsx` | Agregar enlace "Incidencias" en el menú |
+| `src/App.tsx` | Agregar ruta `/incidents` |
+| `src/components/incidents/ReportIncidentDialog.tsx` | Cambiar estado a "incidencia" en lugar de "devuelto" |
+
+## Migraciones de Base de Datos
+
+| Cambio | Descripción |
+|--------|-------------|
+| Agregar estado "incidencia" | Nuevo valor en el ENUM `estado_envio` para envíos con problema activo |
+| Agregar campo `accion_tomada` a incidentes | Para registrar qué se hizo (re_intento, reprogramado, devuelto, cancelado) |
+| Agregar campo `resuelto_por` a incidentes | ID del usuario que resolvió la incidencia |
+| Agregar campo `resuelto_at` a incidentes | Timestamp de resolución |
 
 ---
 
-## Sección Técnica
+## Sección Tecnica
 
-### Código actualizado para `deleteShipmentMutation`:
+### 1. Nueva Pagina de Incidencias
+
+La bandeja mostrara una tabla con:
+- Tracking del envio
+- Tipo de incidente (ausente, rechazo, direccion incorrecta, paquete daniado, otro)
+- Chofer que reporto
+- Fecha del reporte
+- Cantidad de intentos previos (`reprogramado_count`)
+- Estado de la incidencia (pendiente, resuelto)
+- Acciones disponibles
+
+### 2. Logica del Dialog de Accion
 
 ```typescript
-const deleteShipmentMutation = useMutation({
-  mutationFn: async (order: Order) => {
-    if (!order.envio_id) throw new Error('No hay envío asociado');
-    
-    // PASO 0: Buscar movimientos de cargo en cuenta corriente del seller
-    const { data: cargos } = await supabase
-      .from('seller_cuenta_corriente')
-      .select('id, monto, seller_id, descripcion')
-      .eq('envio_id', order.envio_id)
-      .eq('tipo', 'cargo');
-    
-    // Si hay cargos, crear reversión y limpiar FK
-    if (cargos && cargos.length > 0) {
-      for (const cargo of cargos) {
-        // Obtener saldo actual del seller
-        const { data: seller } = await supabase
-          .from('ecommerce_sellers')
-          .select('saldo_cuenta_corriente')
-          .eq('id', cargo.seller_id)
-          .single();
-        
-        const saldoAnterior = seller?.saldo_cuenta_corriente || 0;
-        const montoReversion = -Math.abs(cargo.monto);
-        const saldoNuevo = saldoAnterior + montoReversion;
-        
-        // Crear ajuste de reversión
-        await supabase
-          .from('seller_cuenta_corriente')
-          .insert({
-            seller_id: cargo.seller_id,
-            tipo: 'ajuste',
-            monto: montoReversion,
-            saldo_anterior: saldoAnterior,
-            saldo_nuevo: saldoNuevo,
-            descripcion: `Reversión: ${cargo.descripcion || 'Envío eliminado'}`,
-            order_id: order.id,
-          });
-        
-        // Limpiar envio_id del cargo original (romper FK)
-        await supabase
-          .from('seller_cuenta_corriente')
-          .update({ envio_id: null })
-          .eq('id', cargo.id);
-      }
-    }
-    
-    // PASO 1: Eliminar historial del envío
-    await supabase
-      .from('envio_historial')
-      .delete()
-      .eq('envio_id', order.envio_id);
-    
-    // PASO 2: Eliminar detalles del envío
-    await supabase
-      .from('envio_detalles')
-      .delete()
-      .eq('envio_id', order.envio_id);
-    
-    // PASO 3: Desvincular la orden del envío
-    await supabase
-      .from('ecommerce_orders')
-      .update({ envio_id: null })
-      .eq('id', order.id);
-    
-    // PASO 4: Eliminar el envío
-    const { error } = await supabase
-      .from('envios')
-      .delete()
-      .eq('id', order.envio_id);
+// Opciones de resolucion
+const RESOLUTION_ACTIONS = [
+  { 
+    value: 're_intento', 
+    label: 'Re-intentar hoy',
+    description: 'Liberar para asignar a otra ruta inmediatamente'
+  },
+  { 
+    value: 'reprogramar', 
+    label: 'Reprogramar',
+    description: 'Programar nuevo intento para otra fecha'
+  },
+  { 
+    value: 'corregir_direccion', 
+    label: 'Corregir direccion',
+    description: 'Actualizar direccion antes de re-asignar'
+  },
+  { 
+    value: 'devolver', 
+    label: 'Devolver al remitente',
+    description: 'Marcar para devolucion'
+  },
+  { 
+    value: 'cancelar', 
+    label: 'Cancelar envio',
+    description: 'Cancelar el envio definitivamente'
+  },
+];
+```
+
+### 3. Migracion SQL
+
+```sql
+-- Agregar estado 'incidencia' al enum
+ALTER TYPE estado_envio ADD VALUE IF NOT EXISTS 'incidencia';
+
+-- Agregar campos de resolucion a incidentes
+ALTER TABLE incidentes 
+ADD COLUMN IF NOT EXISTS accion_tomada text,
+ADD COLUMN IF NOT EXISTS resuelto_por uuid REFERENCES auth.users(id),
+ADD COLUMN IF NOT EXISTS resuelto_at timestamptz;
+
+-- Crear indice para consultas frecuentes
+CREATE INDEX IF NOT EXISTS idx_incidentes_estado_tenant 
+ON incidentes(tenant_id, estado);
+```
+
+### 4. Query de la Bandeja
+
+```typescript
+const { data: incidencias } = useQuery({
+  queryKey: ['incidencias-pendientes'],
+  queryFn: async () => {
+    const { data, error } = await supabase
+      .from('incidentes')
+      .select(`
+        *,
+        envio:envios(
+          id, tracking_number, estado, reprogramado_count,
+          nombre_destinatario, direccion_entrega, ciudad_entrega
+        ),
+        chofer:profiles!incidentes_chofer_id_fkey(nombre, apellido)
+      `)
+      .eq('estado', 'pendiente')
+      .order('created_at', { ascending: false });
     
     if (error) throw error;
-  },
-  onSuccess: () => {
-    toast({ title: 'Envío eliminado correctamente' });
-    queryClient.invalidateQueries({ queryKey: ['ecommerce-orders'] });
-    setDeleteOrder(null);
-  },
-  onError: (error: Error) => {
-    toast({ 
-      title: 'Error al eliminar', 
-      description: error.message,
-      variant: 'destructive' 
-    });
-  },
+    return data;
+  }
 });
 ```
 
-### Tipo de Movimiento para Reversión
+### 5. Logica de Resolucion
 
-Se usa `tipo: 'ajuste'` con monto negativo para:
-- Mantener trazabilidad del movimiento original
-- Reflejar correctamente en el historial de cuenta corriente
-- El trigger existente `trigger_update_seller_balance` actualizará automáticamente el saldo del seller
+```typescript
+const resolveIncident = async (incidentId: string, action: string, data?: any) => {
+  // Actualizar incidente
+  await supabase
+    .from('incidentes')
+    .update({
+      estado: 'resuelto',
+      accion_tomada: action,
+      resolucion: data?.notas || null,
+      resuelto_por: user.id,
+      resuelto_at: new Date().toISOString()
+    })
+    .eq('id', incidentId);
+
+  // Actualizar envio segun accion
+  switch (action) {
+    case 're_intento':
+      await supabase
+        .from('envios')
+        .update({ estado: 'pendiente', chofer_id: null })
+        .eq('id', envioId);
+      break;
+    
+    case 'reprogramar':
+      await supabase
+        .from('envios')
+        .update({ 
+          estado: 'pendiente', 
+          chofer_id: null,
+          fecha_entrega: data.nuevaFecha,
+          reprogramado_count: incrementar,
+          ultima_reprogramacion: new Date().toISOString()
+        })
+        .eq('id', envioId);
+      break;
+    
+    case 'devolver':
+      await supabase
+        .from('envios')
+        .update({ estado: 'devuelto' })
+        .eq('id', envioId);
+      break;
+    
+    case 'cancelar':
+      await supabase
+        .from('envios')
+        .update({ estado: 'cancelado' })
+        .eq('id', envioId);
+      break;
+  }
+};
+```
 
 ---
 
-## Resultado Esperado
+## Relacion entre Incidencias y Reprogramados
 
-| Antes | Después |
-|-------|---------|
-| Error FK al eliminar | Eliminación exitosa |
-| Cargo permanece en cuenta corriente | Cargo revertido con ajuste negativo |
-| Saldo incorrecto si se re-sincroniza | Saldo correcto, listo para nueva sincronización |
+| Seccion | Proposito |
+|---------|-----------|
+| **Bandeja de Incidencias** | Envios con problema que requieren decision administrativa |
+| **Reprogramados (Planificador)** | Envios ya liberados listos para asignar a nueva ruta |
+
+Cuando el admin elige "Re-intentar" o "Reprogramar" en la bandeja de incidencias, el envio pasa automaticamente a estar disponible en el Planificador (aparecera en "Reprogramados" si tiene `reprogramado_count > 0`).
+
+---
+
+## Integracion con Menu
+
+Se agregara un nuevo item en el sidebar:
+
+```text
+Operaciones
+├── Escaneo QR
+├── Planificador
+├── Incidencias ← NUEVO (con badge de pendientes)
+├── Hojas de Ruta
+└── Mapa en Vivo
+```
 
