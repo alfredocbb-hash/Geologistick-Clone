@@ -1,130 +1,110 @@
 
+# Plan: Trazabilidad Calle por Calle en Mapa en Vivo
 
-# Plan: Cambiar Estado `en_bodega` a `en_sucursal`
+## Estado Actual
 
-## Resumen del Cambio
+Ya existe una implementación base que incluye:
+- Edge Function `snap-to-roads` que utiliza Google Roads API
+- Diálogo de "Ver recorrido" que aplica Snap to Roads
+- Polylines con estilo de navegación (sombra azul + flechas)
+- Historial de ubicaciones guardándose cada 30 segundos
 
-Este cambio renombra el estado de envío `en_bodega` a `en_sucursal` en toda la aplicación para alinear la terminología con el flujo logístico real (los paquetes están en sucursales, no en una bodega genérica).
-
-## Alcance del Cambio
-
-| Área | Impacto |
-|------|---------|
-| Base de datos | Modificar enum `shipment_status` + migrar datos existentes |
-| Código frontend | 26 archivos con 294 referencias |
-| Edge functions | Sin cambios (no usan este valor) |
-
-## Datos Actuales en Producción
-
-- **2 envíos** actualmente en estado `en_bodega`
-- **54 registros** en historial que referencian `en_bodega`
+Sin embargo, hay oportunidades de mejora significativas para lograr la trazabilidad idéntica a la imagen de QuadMinds.
 
 ---
 
-## Fase 1: Migración de Base de Datos
+## Mejoras Propuestas
 
-La migración debe hacerse en un orden específico para evitar errores de integridad:
+### 1. Visualización del Recorrido en la Vista Principal
 
-```sql
--- 1. Agregar nuevo valor al enum (PostgreSQL no permite renombrar valores directamente)
-ALTER TYPE shipment_status ADD VALUE IF NOT EXISTS 'en_sucursal' AFTER 'recogido';
-
--- 2. Actualizar envíos existentes
-UPDATE envios SET estado = 'en_sucursal' WHERE estado = 'en_bodega';
-
--- 3. Actualizar historial (estado_anterior y estado_nuevo son text, no enum)
-UPDATE envio_historial SET estado_anterior = 'en_sucursal' WHERE estado_anterior = 'en_bodega';
-UPDATE envio_historial SET estado_nuevo = 'en_sucursal' WHERE estado_nuevo = 'en_bodega';
-```
-
-**Nota**: En PostgreSQL no se puede eliminar un valor de un enum existente sin recrear el tipo. El valor `en_bodega` quedará en el enum pero sin uso.
-
----
-
-## Fase 2: Cambios en Código Frontend
-
-### Archivos a Modificar (26 archivos)
-
-| Archivo | Cambios |
-|---------|---------|
-| `src/pages/Routes.tsx` | Actualizar filtros y mapeo de estados |
-| `src/pages/LiveMap.tsx` | Actualizar filtros y propiedades |
-| `src/pages/Drivers.tsx` | Actualizar filtros y mapeo de estados |
-| `src/pages/RoutePlanner.tsx` | Actualizar filtros de estado |
-| `src/pages/RouteSheets.tsx` | Actualizar filtros |
-| `src/pages/ScanQR.tsx` | Actualizar mapeo y condiciones |
-| `src/pages/TrackingEmbed.tsx` | Actualizar tipo y mapeo |
-| `src/pages/Tracking.tsx` | Actualizar mapeo de estados |
-| `src/pages/Shipments.tsx` | Actualizar filtros y mapeo |
-| `src/pages/Dashboard.tsx` | Actualizar estadísticas |
-| `src/pages/ActiveRouteNavigation.tsx` | Actualizar condiciones de estado |
-| `src/pages/ShipmentStatusGuide.tsx` | Actualizar guía de estados |
-| `src/components/mobile/MobileScanTab.tsx` | Actualizar condiciones |
-| `src/components/mobile/MobileDeliveriesTab.tsx` | Actualizar filtros |
-| `src/components/mobile/MobileHistoryTab.tsx` | Actualizar mapeo |
-| `src/components/mobile/MobileHomeTab.tsx` | Actualizar estadísticas |
-| `src/components/scan/ReceiveShipmentDialog.tsx` | Actualizar nuevo estado |
-| `src/components/scan/ReceiveRouteSheetDialog.tsx` | Actualizar estado |
-| `src/components/scan/BranchDeliveryDialog.tsx` | Actualizar condiciones |
-| `src/components/shipments/ShipmentDetailsDialog.tsx` | Actualizar mapeo |
-| `src/components/shipments/ChangeStatusDialog.tsx` | Actualizar opciones |
-| `src/components/routes/EditRouteDialog.tsx` | Actualizar filtros |
-| `src/components/routes/ThirdPartyShipmentsTab.tsx` | Actualizar filtros |
-| `src/lib/generateShipmentReceiptPDF.ts` | Actualizar etiquetas |
-| `src/lib/generateEPODPDF.ts` | Actualizar etiquetas |
-| `src/lib/generateSettlementPDF.ts` | Actualizar etiquetas |
-
-### Patrón de Cambio
-
-Cada archivo requiere reemplazar:
-
-```typescript
-// ANTES
-'en_bodega'
-estado === 'en_bodega'
-.in('estado', ['pendiente', 'recogido', 'en_bodega'])
-
-// DESPUÉS  
-'en_sucursal'
-estado === 'en_sucursal'
-.in('estado', ['pendiente', 'recogido', 'en_sucursal'])
-```
-
----
-
-## Flujo de Estados Actualizado
+Actualmente el recorrido solo se muestra al abrir un diálogo. La mejora añadirá:
+- Opción de ver el recorrido directamente en el mapa principal
+- Click en un chofer para mostrar/ocultar su trayecto
+- Polyline persistente mientras el chofer esté seleccionado
 
 ```text
-pendiente → recogido → en_sucursal → en_transito → en_reparto → entregado
-                            │                                      │
-                            └──────────────────────────────────────┘
-                                (para retiro en sucursal)
+┌─────────────────────────────────────────────────────────┐
+│  MAPA PRINCIPAL                                         │
+│  ┌───────────────────────────────────────────────────┐ │
+│  │                                                   │ │
+│  │     🟢 Inicio                                    │ │
+│  │       ╲                                          │ │
+│  │        ╲═══════╗                                 │ │
+│  │                ║                                 │ │
+│  │        ╔══════╝                                  │ │
+│  │        ║                                         │ │
+│  │        ╚═══════╗                                 │ │
+│  │                🚚 Chofer actual                  │ │
+│  │                                                   │ │
+│  └───────────────────────────────────────────────────┘ │
+│  [Recorrido de Juan Pérez - Ruta #45] ← Badge visible  │
+└─────────────────────────────────────────────────────────┘
 ```
+
+### 2. Frecuencia de Captura de Datos Mejorada
+
+El análisis de datos reales muestra brechas de hasta 1 hora entre puntos. Mejoras:
+- Reducir intervalo de guardado de 30s a 15s cuando hay movimiento
+- Detectar movimiento significativo (>50m) para forzar guardado inmediato
+- Mantener 30s cuando el chofer está detenido (evitar duplicados)
+
+### 3. Preprocesamiento de Rutas Largas
+
+Google Roads API tiene límite de 100 puntos. Para rutas extensas:
+- Procesamiento por lotes con solapamiento (ya implementado)
+- Caché de segmentos ya procesados para evitar reprocesar
+- Indicador de progreso durante el procesamiento
+
+### 4. Estilo Visual Mejorado
+
+Actualizar el estilo de Polyline para mayor similitud con navegación GPS:
+- Línea principal azul brillante (#4285F4) - ya implementado
+- Borde/sombra para contraste - ya implementado
+- Flechas de dirección cada 150px - ya implementado
+- Gradiente opcional para indicar progreso temporal
 
 ---
 
-## Etiquetas de UI (ya correctas)
+## Implementación Técnica
 
-Las etiquetas de usuario ya muestran "En Sucursal" (según la memoria del proyecto). Este cambio solo afecta el valor interno en código y base de datos:
+### Fase 1: Hook de Geolocalización Mejorado
+Modificar `useGeolocation.ts` para:
+- Calcular distancia desde último punto guardado
+- Forzar guardado si distancia > 50 metros
+- Reducir intervalo base a 15 segundos
 
-```typescript
-// Mapeo actual (se mantiene igual la etiqueta)
-en_sucursal: { label: 'En Sucursal', ... }  // Antes era en_bodega: { label: 'En Sucursal' }
-```
+### Fase 2: Vista Principal con Recorrido
+Modificar `LiveMap.tsx` para:
+- Añadir estado para chofer seleccionado en vista de mapa
+- Cargar historial + snap al seleccionar
+- Renderizar polyline en mapa principal (no solo en diálogo)
+
+### Fase 3: Caché de Segmentos Procesados
+Crear tabla `driver_route_segments` para:
+- Almacenar segmentos ya procesados con snap
+- Evitar llamadas repetidas a Roads API
+- Reducir latencia en visualización
 
 ---
 
-## Orden de Implementación
+## Archivos a Modificar
 
-1. **Primero**: Ejecutar migración de base de datos
-2. **Segundo**: Actualizar todos los archivos de código
-3. **Tercero**: Verificar que el archivo `types.ts` se regenere automáticamente
+| Archivo | Cambio |
+|---------|--------|
+| `src/hooks/useGeolocation.ts` | Lógica de detección de movimiento |
+| `src/pages/LiveMap.tsx` | Visualización en mapa principal |
+| `src/components/maps/MapView.tsx` | Soporte para múltiples polylines |
+
+---
+
+## Datos Actuales
+
+El sistema ya tiene 462 puntos de historial registrados. La ruta más reciente tiene 27 puntos en 2 horas, lo cual es suficiente para un buen snap to roads.
 
 ---
 
 ## Consideraciones
 
-- El cambio es **retrocompatible** ya que los datos se migran antes de cambiar el código
-- Las etiquetas de usuario no cambian (ya mostraban "En Sucursal")
-- El historial se actualiza para mantener consistencia en reportes
-
+- **Costo de API**: Google Roads API tiene costo por 1000 elementos. La caché reduce llamadas.
+- **Rendimiento**: Procesar rutas largas puede tomar 2-3 segundos. El indicador de carga ya existe.
+- **Modo Offline**: El snap solo funciona con conexión; los puntos raw se muestran como fallback.
