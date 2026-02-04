@@ -437,6 +437,60 @@ export type Database = {
         }
         Relationships: []
       }
+      driver_route_segments: {
+        Row: {
+          chofer_id: string
+          created_at: string
+          id: string
+          points_hash: string
+          raw_points: Json
+          ruta_id: string | null
+          snapped_points: Json
+          tenant_id: string | null
+          total_distance: number | null
+          updated_at: string
+        }
+        Insert: {
+          chofer_id: string
+          created_at?: string
+          id?: string
+          points_hash: string
+          raw_points?: Json
+          ruta_id?: string | null
+          snapped_points?: Json
+          tenant_id?: string | null
+          total_distance?: number | null
+          updated_at?: string
+        }
+        Update: {
+          chofer_id?: string
+          created_at?: string
+          id?: string
+          points_hash?: string
+          raw_points?: Json
+          ruta_id?: string | null
+          snapped_points?: Json
+          tenant_id?: string | null
+          total_distance?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "driver_route_segments_ruta_id_fkey"
+            columns: ["ruta_id"]
+            isOneToOne: false
+            referencedRelation: "rutas_planificadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "driver_route_segments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ecommerce_orders: {
         Row: {
           buyer_dni: string | null

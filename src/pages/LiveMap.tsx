@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Building2, Package, Truck, RefreshCw, AlertCircle, Navigation, User, Clock, MapPin, Route, Eye, EyeOff, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import MapView from "@/components/maps/MapView";
+import { RouteStatsPanel } from "@/components/maps/RouteStatsPanel";
 import { Link } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDistanceToNow, format } from "date-fns";
@@ -600,6 +601,8 @@ export default function LiveMap() {
                         }
                         zoom={12}
                         polylinePath={selectedDriverForMap ? driverRoute.polylinePath : []}
+                        useGradient={selectedDriverForMap !== null && driverRoute.snappedRoute.length > 0}
+                        deliveryStops={selectedDriverForMap ? driverRoute.deliveryStops : []}
                       />
                       
                       {/* Route overlay indicator */}
@@ -636,9 +639,22 @@ export default function LiveMap() {
                         </div>
                       )}
                       
+                      {/* Route stats badges */}
+                      {selectedDriverForMap && driverRoute.polylinePath.length > 0 && !driverRoute.isLoading && (
+                        <div className="absolute bottom-3 left-3 right-3 z-10">
+                          <div className="bg-background/95 backdrop-blur-sm rounded-lg p-2 shadow-lg border">
+                            <RouteStatsPanel 
+                              stats={driverRoute.routeStats}
+                              isSnapping={driverRoute.isSnapping}
+                              compact={true}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      
                       {/* Route type badge */}
                       {selectedDriverForMap && driverRoute.polylinePath.length > 0 && (
-                        <div className="absolute bottom-3 right-3 z-10">
+                        <div className="absolute top-16 right-3 z-10">
                           <Badge 
                             variant={driverRoute.snappedRoute.length > 0 ? "default" : "secondary"}
                             className="shadow-lg"
