@@ -1,49 +1,170 @@
 
 
-# Plan: Agregar Política RLS de DELETE para Envíos
+# Plan: Corregir Eliminación de Envío Flex con Reversión de Cuenta Corriente
 
 ## Problema Identificado
 
-La tabla `envios` **no tiene política RLS para DELETE**. Actualmente solo existen políticas para:
-- `SELECT` - "Ver envíos de su tenant"
-- `INSERT` - "Crear envíos en su tenant"  
-- `UPDATE` - "Actualizar envíos de su tenant"
+El error `"violates foreign key constraint 'seller_cuenta_corriente_envio_id_fkey'"` ocurre porque:
 
-Sin una política DELETE, Supabase acepta la petición (204) pero **no elimina ningún registro**.
+1. Al crear un envío desde una orden e-commerce, el sistema registra un **cargo** en `seller_cuenta_corriente` referenciando el `envio_id`
+2. Al intentar eliminar el envío, ese registro de cuenta corriente bloquea la eliminación por la FK
 
-## Solución
-
-Crear una política RLS que permita eliminar envíos a usuarios administradores del mismo tenant.
-
-### Migración SQL Requerida
-
-```sql
-CREATE POLICY "Eliminar envíos de su tenant"
-  ON public.envios
-  FOR DELETE
-  USING (
-    (tenant_id = current_user_tenant() AND is_admin(auth.uid()))
-    OR is_super_admin(auth.uid())
-  );
-```
-
-### Condiciones de la Política
-
-| Rol | Puede Eliminar |
-|-----|----------------|
-| admin del tenant | Sí |
-| super_admin | Sí |
-| Otros roles (operador, chofer, etc.) | No |
-
-Esto asegura que solo administradores puedan eliminar envíos, evitando eliminaciones accidentales por usuarios operativos.
+### Tablas con FK a envíos que deben limpiarse:
+| Tabla | FK Column | Acción |
+|-------|-----------|--------|
+| `seller_cuenta_corriente` | envio_id | Crear ajuste de reversión + limpiar FK |
+| `envio_historial` | envio_id | Eliminar (ya está en el código) |
+| `envio_detalles` | envio_id | Eliminar (ya está en el código) |
+| `ecommerce_orders` | envio_id | Limpiar FK (ya está en el código) |
 
 ---
 
-## Resumen de Cambios
+## Solución
 
-| Tipo | Acción |
-|------|--------|
-| Migración DB | Crear política RLS `DELETE` en tabla `envios` |
+Modificar `deleteShipmentMutation` en `Orders.tsx` para:
 
-Una vez aplicada la migración, la función de "Eliminar Envío" en pedidos e-commerce funcionará correctamente.
+1. **Buscar movimiento de cargo** en `seller_cuenta_corriente` asociado al envío
+2. **Crear movimiento de ajuste negativo** para revertir el saldo
+3. **Limpiar el `envio_id`** en el movimiento original (para romper la FK)
+4. Continuar con la eliminación normal del envío
+
+---
+
+## Flujo Actualizado de Eliminación
+
+```text
+1. Buscar cargo en seller_cuenta_corriente con envio_id = X
+      ↓
+2. Si existe cargo:
+   - Obtener saldo actual del seller
+   - Insertar movimiento tipo "ajuste" con monto negativo
+   - Actualizar registro original: envio_id = null
+      ↓
+3. Eliminar envio_historial
+      ↓
+4. Eliminar envio_detalles
+      ↓
+5. Desvincular ecommerce_orders (envio_id = null)
+      ↓
+6. Eliminar envío de tabla "envios"
+```
+
+---
+
+## Archivos a Modificar
+
+| Archivo | Cambios |
+|---------|---------|
+| `src/pages/ecommerce/Orders.tsx` | Actualizar `deleteShipmentMutation` para manejar la reversión de cuenta corriente |
+
+---
+
+## Sección Técnica
+
+### Código actualizado para `deleteShipmentMutation`:
+
+```typescript
+const deleteShipmentMutation = useMutation({
+  mutationFn: async (order: Order) => {
+    if (!order.envio_id) throw new Error('No hay envío asociado');
+    
+    // PASO 0: Buscar movimientos de cargo en cuenta corriente del seller
+    const { data: cargos } = await supabase
+      .from('seller_cuenta_corriente')
+      .select('id, monto, seller_id, descripcion')
+      .eq('envio_id', order.envio_id)
+      .eq('tipo', 'cargo');
+    
+    // Si hay cargos, crear reversión y limpiar FK
+    if (cargos && cargos.length > 0) {
+      for (const cargo of cargos) {
+        // Obtener saldo actual del seller
+        const { data: seller } = await supabase
+          .from('ecommerce_sellers')
+          .select('saldo_cuenta_corriente')
+          .eq('id', cargo.seller_id)
+          .single();
+        
+        const saldoAnterior = seller?.saldo_cuenta_corriente || 0;
+        const montoReversion = -Math.abs(cargo.monto);
+        const saldoNuevo = saldoAnterior + montoReversion;
+        
+        // Crear ajuste de reversión
+        await supabase
+          .from('seller_cuenta_corriente')
+          .insert({
+            seller_id: cargo.seller_id,
+            tipo: 'ajuste',
+            monto: montoReversion,
+            saldo_anterior: saldoAnterior,
+            saldo_nuevo: saldoNuevo,
+            descripcion: `Reversión: ${cargo.descripcion || 'Envío eliminado'}`,
+            order_id: order.id,
+          });
+        
+        // Limpiar envio_id del cargo original (romper FK)
+        await supabase
+          .from('seller_cuenta_corriente')
+          .update({ envio_id: null })
+          .eq('id', cargo.id);
+      }
+    }
+    
+    // PASO 1: Eliminar historial del envío
+    await supabase
+      .from('envio_historial')
+      .delete()
+      .eq('envio_id', order.envio_id);
+    
+    // PASO 2: Eliminar detalles del envío
+    await supabase
+      .from('envio_detalles')
+      .delete()
+      .eq('envio_id', order.envio_id);
+    
+    // PASO 3: Desvincular la orden del envío
+    await supabase
+      .from('ecommerce_orders')
+      .update({ envio_id: null })
+      .eq('id', order.id);
+    
+    // PASO 4: Eliminar el envío
+    const { error } = await supabase
+      .from('envios')
+      .delete()
+      .eq('id', order.envio_id);
+    
+    if (error) throw error;
+  },
+  onSuccess: () => {
+    toast({ title: 'Envío eliminado correctamente' });
+    queryClient.invalidateQueries({ queryKey: ['ecommerce-orders'] });
+    setDeleteOrder(null);
+  },
+  onError: (error: Error) => {
+    toast({ 
+      title: 'Error al eliminar', 
+      description: error.message,
+      variant: 'destructive' 
+    });
+  },
+});
+```
+
+### Tipo de Movimiento para Reversión
+
+Se usa `tipo: 'ajuste'` con monto negativo para:
+- Mantener trazabilidad del movimiento original
+- Reflejar correctamente en el historial de cuenta corriente
+- El trigger existente `trigger_update_seller_balance` actualizará automáticamente el saldo del seller
+
+---
+
+## Resultado Esperado
+
+| Antes | Después |
+|-------|---------|
+| Error FK al eliminar | Eliminación exitosa |
+| Cargo permanece en cuenta corriente | Cargo revertido con ajuste negativo |
+| Saldo incorrecto si se re-sincroniza | Saldo correcto, listo para nueva sincronización |
 
