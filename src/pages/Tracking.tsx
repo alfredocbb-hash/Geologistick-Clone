@@ -9,7 +9,7 @@ import { Package, Search, MapPin, Clock, CheckCircle, Truck, AlertCircle, Loader
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-type ShipmentStatus = 'pendiente' | 'recogido' | 'en_bodega' | 'en_transito' | 'en_reparto' | 'entregado' | 'devuelto' | 'cancelado';
+type ShipmentStatus = 'pendiente' | 'recogido' | 'en_sucursal' | 'en_transito' | 'en_reparto' | 'entregado' | 'devuelto' | 'cancelado';
 
 interface TrackingResponse {
   tracking_number: string;
@@ -60,7 +60,7 @@ interface TrackingResponse {
 const statusConfig: Record<ShipmentStatus, { label: string; color: string; bgColor: string; icon: React.ElementType }> = {
   pendiente: { label: 'Pendiente', color: 'text-yellow-600', bgColor: 'bg-yellow-100', icon: Clock },
   recogido: { label: 'Recogido', color: 'text-blue-600', bgColor: 'bg-blue-100', icon: Package },
-  en_bodega: { label: 'En Sucursal', color: 'text-purple-600', bgColor: 'bg-purple-100', icon: Package },
+  en_sucursal: { label: 'En Sucursal', color: 'text-purple-600', bgColor: 'bg-purple-100', icon: Package },
   en_transito: { label: 'En Tránsito', color: 'text-blue-600', bgColor: 'bg-blue-100', icon: Truck },
   en_reparto: { label: 'En Reparto', color: 'text-orange-600', bgColor: 'bg-orange-100', icon: Truck },
   entregado: { label: 'Entregado', color: 'text-green-600', bgColor: 'bg-green-100', icon: CheckCircle },
@@ -68,7 +68,7 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; bgCol
   cancelado: { label: 'Cancelado', color: 'text-gray-600', bgColor: 'bg-gray-100', icon: AlertCircle },
 };
 
-const statusOrder: ShipmentStatus[] = ['pendiente', 'recogido', 'en_bodega', 'en_transito', 'en_reparto', 'entregado'];
+const statusOrder: ShipmentStatus[] = ['pendiente', 'recogido', 'en_sucursal', 'en_transito', 'en_reparto', 'entregado'];
 
 export default function Tracking() {
   const { code: codeFromPath } = useParams();

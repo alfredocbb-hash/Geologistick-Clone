@@ -260,7 +260,7 @@ export function MobileScanTab() {
         // Show última milla dialog
         setShowUltimaMillaDialog(true);
       } else if (hasRole('chofer')) {
-        if ((shipment.estado === 'pendiente' || shipment.estado === 'en_bodega') && canPickup) {
+        if ((shipment.estado === 'pendiente' || shipment.estado === 'en_sucursal') && canPickup) {
           setShowPickupDialog(true);
         } else if (canDeliver) {
           setShowDeliveryDialog(true);
@@ -278,7 +278,7 @@ export function MobileScanTab() {
           shipment.tipo_servicio_detalle === 'puerta_sucursal';
         
         const isReadyForBranchDelivery = 
-          shipment.estado === 'en_bodega' && 
+          shipment.estado === 'en_sucursal' && 
           isPickupAtBranch;
         
         if (isReadyForBranchDelivery && canDeliver) {
@@ -396,7 +396,7 @@ export function MobileScanTab() {
       case 'en_reparto':
         return 'text-blue-400';
       case 'recogido':
-      case 'en_bodega':
+      case 'en_sucursal':
         return 'text-amber-400';
       default:
         return 'text-slate-400';
@@ -413,7 +413,7 @@ export function MobileScanTab() {
         return 'En reparto';
       case 'recogido':
         return 'Recogido';
-      case 'en_bodega':
+      case 'en_sucursal':
         return 'En Sucursal';
       case 'cancelado':
         return 'Cancelado';

@@ -36,7 +36,7 @@ const statusData = [
     nextStatus: 'en_bodega',
   },
   {
-    status: 'en_bodega',
+    status: 'en_sucursal',
     label: 'En Sucursal',
     description: 'El paquete está en la sucursal',
     color: 'bg-purple-500',
@@ -88,7 +88,7 @@ const alternativeStatuses = [
     description: 'El envío fue cancelado por el cliente o la empresa',
     color: 'bg-red-500',
     icon: XCircle,
-    fromStatuses: ['pendiente', 'recogido', 'en_bodega'],
+    fromStatuses: ['pendiente', 'recogido', 'en_sucursal'],
   },
   {
     status: 'incidente',
@@ -116,8 +116,8 @@ const roleActions = [
     icon: Warehouse,
     color: 'text-purple-500',
     actions: [
-      { action: 'Recibir en sucursal', from: 'recogido', to: 'en_bodega', description: 'Escanea al ingresar a la sucursal' },
-      { action: 'Enviar a sucursal', from: 'en_bodega', to: 'en_transito', description: 'Despacha hacia destino' },
+      { action: 'Recibir en sucursal', from: 'recogido', to: 'en_sucursal', description: 'Escanea al ingresar a la sucursal' },
+      { action: 'Enviar a sucursal', from: 'en_sucursal', to: 'en_transito', description: 'Despacha hacia destino' },
     ],
   },
   {
@@ -134,7 +134,7 @@ const roleActions = [
     icon: ScanLine,
     color: 'text-cyan-500',
     actions: [
-      { action: 'Asignar a ruta', from: 'en_bodega/en_transito', to: 'en_reparto', description: 'Planifica ruta, al iniciar cambia a en_reparto' },
+      { action: 'Asignar a ruta', from: 'en_sucursal/en_transito', to: 'en_reparto', description: 'Planifica ruta, al iniciar cambia a en_reparto' },
     ],
   },
 ];

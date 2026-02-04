@@ -33,7 +33,7 @@ import { parseQRCode, ParsedQR } from '@/lib/qrParser';
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   pendiente: { label: 'Pendiente', color: 'bg-orange-100 text-orange-800' },
   recogido: { label: 'Recogido', color: 'bg-green-100 text-green-800' },
-  en_bodega: { label: 'En Sucursal', color: 'bg-indigo-100 text-indigo-800' },
+  en_sucursal: { label: 'En Sucursal', color: 'bg-indigo-100 text-indigo-800' },
   en_transito: { label: 'En Tránsito', color: 'bg-cyan-100 text-cyan-800' },
   en_reparto: { label: 'En Reparto', color: 'bg-amber-100 text-amber-800' },
   entregado: { label: 'Entregado', color: 'bg-emerald-100 text-emerald-800' },
@@ -360,7 +360,7 @@ export default function ScanQR() {
     }
 
     if (mode === 'branch_delivery') {
-      if (!['en_bodega', 'en_transito'].includes(shipment.estado)) {
+      if (!['en_sucursal', 'en_transito'].includes(shipment.estado)) {
         playWarningSound();
         toast.error('Este envío no está listo para entregar', {
           description: `Estado actual: ${STATUS_CONFIG[shipment.estado]?.label || shipment.estado}`,
@@ -378,7 +378,7 @@ export default function ScanQR() {
     } else if (isOperator && ['recogido', 'pendiente'].includes(shipment.estado)) {
       setReceiveType('center');
       setShowReceiveDialog(true);
-    } else if (isBranchOperator && ['en_bodega', 'en_transito'].includes(shipment.estado)) {
+    } else if (isBranchOperator && ['en_sucursal', 'en_transito'].includes(shipment.estado)) {
       setReceiveType('branch');
       setShowReceiveDialog(true);
     } else if (isDriver) {

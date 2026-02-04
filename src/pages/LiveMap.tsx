@@ -73,7 +73,7 @@ export default function LiveMap() {
       const { data: envios, error: envError } = await supabase
         .from("envios")
         .select("sucursal_origen_id, sucursal_destino_id, estado")
-        .in("estado", ["pendiente", "recogido", "en_bodega", "en_reparto"]);
+        .in("estado", ["pendiente", "recogido", "en_sucursal", "en_reparto"]);
 
       if (envError) throw envError;
 
@@ -84,7 +84,7 @@ export default function LiveMap() {
 
         const enviosEnBodega = envios?.filter(e =>
           (e.sucursal_destino_id === s.id || e.sucursal_origen_id === s.id) && 
-          e.estado === "en_bodega"
+          e.estado === "en_sucursal"
         ).length || 0;
 
         const enviosEnReparto = envios?.filter(e =>

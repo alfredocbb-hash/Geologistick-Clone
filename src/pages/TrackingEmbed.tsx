@@ -11,7 +11,7 @@ import { Package, MapPin, Search, Clock, CheckCircle2, Truck, AlertCircle, Calen
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
-type ShipmentStatus = 'pendiente' | 'recogido' | 'en_bodega' | 'en_transito' | 'en_reparto' | 'entregado' | 'devuelto' | 'cancelado';
+type ShipmentStatus = 'pendiente' | 'recogido' | 'en_sucursal' | 'en_transito' | 'en_reparto' | 'entregado' | 'devuelto' | 'cancelado';
 
 interface TrackingResponse {
   tracking_number: string;
@@ -62,7 +62,7 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; icon:
   pendiente: { label: "Pendiente", color: "bg-yellow-500", icon: Clock },
   recogido: { label: "Recogido", color: "bg-blue-500", icon: Package },
   en_transito: { label: "En Tránsito", color: "bg-purple-500", icon: Truck },
-  en_bodega: { label: "En Sucursal", color: "bg-indigo-500", icon: MapPin },
+  en_sucursal: { label: "En Sucursal", color: "bg-indigo-500", icon: MapPin },
   en_reparto: { label: "En Reparto", color: "bg-orange-500", icon: Truck },
   entregado: { label: "Entregado", color: "bg-green-500", icon: CheckCircle2 },
   devuelto: { label: "Devuelto", color: "bg-red-500", icon: AlertCircle },
@@ -73,7 +73,7 @@ const statusOrder: ShipmentStatus[] = [
   "pendiente",
   "recogido", 
   "en_transito",
-  "en_bodega",
+  "en_sucursal",
   "en_reparto",
   "entregado",
 ];

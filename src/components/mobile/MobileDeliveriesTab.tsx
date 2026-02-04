@@ -35,7 +35,7 @@ export function MobileDeliveriesTab() {
           destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, telefono)
         `)
         .eq('sucursal_entrega_id', profile.sucursal_id)
-        .in('estado', ['en_bodega', 'en_reparto', 'recogido'])
+        .in('estado', ['en_sucursal', 'en_reparto', 'recogido'])
         .order('created_at', { ascending: false })
         .limit(20);
 
@@ -47,7 +47,7 @@ export function MobileDeliveriesTab() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'en_bodega':
+      case 'en_sucursal':
         return <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30">En Sucursal</Badge>;
       case 'recogido':
         return <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/30">Recogido</Badge>;
