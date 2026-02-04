@@ -12,7 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Search, MoreHorizontal, Package, Eye, Truck, ShoppingBag, Clock, CheckCircle, XCircle, Printer, Edit, MapPin } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Search, MoreHorizontal, Package, Eye, Truck, ShoppingBag, Clock, CheckCircle, XCircle, Printer, Edit, MapPin, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from '@/hooks/use-toast';
@@ -82,6 +83,52 @@ export default function Orders() {
   const [detailsOrder, setDetailsOrder] = useState<Order | null>(null);
   const [createShipmentOrder, setCreateShipmentOrder] = useState<Order | null>(null);
   const [editOrder, setEditOrder] = useState<Order | null>(null);
+  const [deleteOrder, setDeleteOrder] = useState<Order | null>(null);
+
+  // Mutation para eliminar envío
+  const deleteShipmentMutation = useMutation({
+    mutationFn: async (order: Order) => {
+      if (!order.envio_id) throw new Error('No hay envío asociado');
+      
+      // 1. Eliminar historial del envío
+      await supabase
+        .from('envio_historial')
+        .delete()
+        .eq('envio_id', order.envio_id);
+      
+      // 2. Eliminar detalles del envío
+      await supabase
+        .from('envio_detalles')
+        .delete()
+        .eq('envio_id', order.envio_id);
+      
+      // 3. Desvincular la orden del envío
+      await supabase
+        .from('ecommerce_orders')
+        .update({ envio_id: null })
+        .eq('id', order.id);
+      
+      // 4. Eliminar el envío
+      const { error } = await supabase
+        .from('envios')
+        .delete()
+        .eq('id', order.envio_id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({ title: 'Envío eliminado correctamente' });
+      queryClient.invalidateQueries({ queryKey: ['ecommerce-orders'] });
+      setDeleteOrder(null);
+    },
+    onError: (error: Error) => {
+      toast({ 
+        title: 'Error al eliminar', 
+        description: error.message,
+        variant: 'destructive' 
+      });
+    },
+  });
 
   // Fetch orders with seller info
   const { data: orders, isLoading } = useQuery({
@@ -373,6 +420,15 @@ export default function Orders() {
                                 Crear Envío
                               </DropdownMenuItem>
                             )}
+                            {order.envio_id && order.order_status !== 'delivered' && (
+                              <DropdownMenuItem 
+                                className="text-destructive"
+                                onClick={() => setDeleteOrder(order)}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Eliminar Envío
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -424,6 +480,29 @@ export default function Orders() {
           }}
         />
       )}
+
+      {/* Delete Shipment Dialog */}
+      <AlertDialog open={!!deleteOrder} onOpenChange={() => setDeleteOrder(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar este envío?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se eliminará el envío asociado al pedido #{deleteOrder?.external_order_number || deleteOrder?.external_order_id}.
+              La orden quedará disponible para crear un nuevo envío o re-sincronizar.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleteOrder && deleteShipmentMutation.mutate(deleteOrder)}
+              disabled={deleteShipmentMutation.isPending}
+            >
+              {deleteShipmentMutation.isPending ? 'Eliminando...' : 'Eliminar Envío'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
