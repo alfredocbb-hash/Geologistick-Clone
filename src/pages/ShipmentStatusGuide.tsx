@@ -33,7 +33,7 @@ const statusData = [
     color: 'bg-blue-500',
     icon: Truck,
     actions: ['Operador/Bodega escanea al ingresar a centro'],
-    nextStatus: 'en_bodega',
+    nextStatus: 'en_sucursal',
   },
   {
     status: 'en_sucursal',

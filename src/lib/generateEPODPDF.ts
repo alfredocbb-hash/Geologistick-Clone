@@ -92,7 +92,7 @@ const sanitizeText = (text: string | null | undefined): string => {
 const STATUS_LABELS: Record<string, string> = {
   pendiente: 'Pendiente',
   recogido: 'Recogido',
-  en_bodega: 'En Sucursal',
+  en_sucursal: 'En Sucursal',
   en_transito: 'En Transito',
   en_reparto: 'En Reparto',
   entregado: 'Entregado',

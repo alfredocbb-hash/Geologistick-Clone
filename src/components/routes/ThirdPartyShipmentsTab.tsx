@@ -196,7 +196,7 @@ export default function ThirdPartyShipmentsTab() {
         .from("envios")
         .select("*, empresa:empresas_terciarizadas(id, codigo, nombre)")
         .eq("es_terciarizado", true)
-        .in("estado", ["pendiente", "recogido", "en_bodega"])
+        .in("estado", ["pendiente", "recogido", "en_sucursal"])
         .is("chofer_id", null)
         .order("created_at", { ascending: false });
 

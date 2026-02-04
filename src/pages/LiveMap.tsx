@@ -21,7 +21,7 @@ interface SucursalConEnvios {
   lng: number | null;
   es_centro_logistico: boolean;
   envios_pendientes: number;
-  envios_en_bodega: number;
+  envios_en_sucursal: number;
   envios_en_reparto: number;
 }
 
@@ -82,7 +82,7 @@ export default function LiveMap() {
           e.sucursal_origen_id === s.id && e.estado === "pendiente"
         ).length || 0;
 
-        const enviosEnBodega = envios?.filter(e =>
+        const enviosEnSucursal = envios?.filter(e =>
           (e.sucursal_destino_id === s.id || e.sucursal_origen_id === s.id) && 
           e.estado === "en_sucursal"
         ).length || 0;
@@ -94,7 +94,7 @@ export default function LiveMap() {
         return {
           ...s,
           envios_pendientes: enviosPendientes,
-          envios_en_bodega: enviosEnBodega,
+          envios_en_sucursal: enviosEnSucursal,
           envios_en_reparto: enviosEnReparto,
         } as SucursalConEnvios;
       }) || [];
@@ -280,7 +280,7 @@ export default function LiveMap() {
 
   // Stats
   const totalPendientes = sucursalesData.reduce((acc, s) => acc + s.envios_pendientes, 0);
-  const totalEnBodega = sucursalesData.reduce((acc, s) => acc + s.envios_en_bodega, 0);
+  const totalEnSucursal = sucursalesData.reduce((acc, s) => acc + s.envios_en_sucursal, 0);
   const totalEnReparto = sucursalesData.reduce((acc, s) => acc + s.envios_en_reparto, 0);
   const centrosLogisticos = sucursalesData.filter(s => s.es_centro_logistico).length;
 
@@ -329,7 +329,7 @@ export default function LiveMap() {
                 <Building2 className="h-5 w-5 text-blue-600 dark:text-blue-400" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{totalEnBodega}</p>
+                <p className="text-2xl font-bold">{totalEnSucursal}</p>
                 <p className="text-xs text-muted-foreground">En Sucursal</p>
               </div>
             </div>
@@ -471,10 +471,10 @@ export default function LiveMap() {
                               {sucursal.envios_pendientes} pend.
                             </Badge>
                           )}
-                          {sucursal.envios_en_bodega > 0 && (
+                          {sucursal.envios_en_sucursal > 0 && (
                             <Badge variant="outline" className="text-xs">
                               <Building2 className="mr-1 h-3 w-3" />
-                              {sucursal.envios_en_bodega} en suc.
+                              {sucursal.envios_en_sucursal} en suc.
                             </Badge>
                           )}
                           {sucursal.envios_en_reparto > 0 && (
@@ -484,7 +484,7 @@ export default function LiveMap() {
                             </Badge>
                           )}
                           {sucursal.envios_pendientes === 0 && 
-                           sucursal.envios_en_bodega === 0 && 
+                           sucursal.envios_en_sucursal === 0 && 
                            sucursal.envios_en_reparto === 0 && (
                             <span className="text-xs text-muted-foreground">Sin envíos activos</span>
                           )}

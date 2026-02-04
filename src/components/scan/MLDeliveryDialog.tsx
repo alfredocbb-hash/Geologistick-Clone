@@ -130,7 +130,7 @@ export function MLDeliveryDialog({ open, shipment, onClose, onSuccess }: MLDeliv
     const labels: Record<string, string> = {
       pendiente: 'Pendiente',
       recogido: 'Recogido',
-      en_bodega: 'En Sucursal',
+      en_sucursal: 'En Sucursal',
       en_transito: 'En tránsito',
       en_reparto: 'En reparto',
       entregado: 'Entregado',
@@ -145,7 +145,7 @@ export function MLDeliveryDialog({ open, shipment, onClose, onSuccess }: MLDeliv
     const colors: Record<string, string> = {
       pendiente: 'bg-yellow-500',
       recogido: 'bg-blue-500',
-      en_bodega: 'bg-purple-500',
+      en_sucursal: 'bg-purple-500',
       en_transito: 'bg-cyan-500',
       en_reparto: 'bg-orange-500',
       entregado: 'bg-green-500',
@@ -188,7 +188,7 @@ export function MLDeliveryDialog({ open, shipment, onClose, onSuccess }: MLDeliv
         });
         break;
       case 'recogido':
-      case 'en_bodega':
+      case 'en_sucursal':
         actions.push({
           label: 'Salir a Reparto',
           status: 'en_reparto',

@@ -508,7 +508,7 @@ export default function Drivers() {
               <TabsContent value="pending" className="mt-4">
                 <div className="space-y-2 max-h-[300px] overflow-auto">
                   {driverShipments
-                    .filter(s => ['pendiente', 'recogido', 'en_bodega'].includes(s.estado))
+                    .filter(s => ['pendiente', 'recogido', 'en_sucursal'].includes(s.estado))
                     .map((shipment) => (
                       <div 
                         key={shipment.id} 
@@ -526,7 +526,7 @@ export default function Drivers() {
                         <div className="text-right font-medium">${shipment.precio_total.toFixed(2)}</div>
                       </div>
                     ))}
-                  {driverShipments.filter(s => ['pendiente', 'recogido', 'en_bodega'].includes(s.estado)).length === 0 && (
+                  {driverShipments.filter(s => ['pendiente', 'recogido', 'en_sucursal'].includes(s.estado)).length === 0 && (
                     <div className="text-center py-8 text-muted-foreground">No hay envíos pendientes</div>
                   )}
                 </div>

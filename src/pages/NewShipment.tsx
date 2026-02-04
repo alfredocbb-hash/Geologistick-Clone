@@ -830,9 +830,9 @@ export default function NewShipment() {
       const precioTotal = precioCalculado;
 
       // 4. Create shipment with all new fields
-      // Estado inicial: si no requiere retiro (paquete ya en sucursal) → en_bodega
+      // Estado inicial: si no requiere retiro (paquete ya en sucursal) → en_sucursal
       // Si requiere retiro (hay que ir a buscar) → pendiente
-      const estadoInicial = tieneRetiro ? 'pendiente' : 'en_bodega';
+      const estadoInicial = tieneRetiro ? 'pendiente' : 'en_sucursal';
       
       const { data: envio, error: envioError } = await supabase
         .from('envios')
