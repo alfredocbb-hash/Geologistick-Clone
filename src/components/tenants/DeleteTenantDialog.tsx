@@ -112,68 +112,98 @@ export function DeleteTenantDialog({
         await supabase.from('ruta_paradas').delete().in('ruta_id', rutaIds);
       }
 
-      // 4. Delete planned routes
+      // 4. Nullify sucursal references in rutas_planificadas before deleting
+      await supabase.from('rutas_planificadas')
+        .update({ sucursal_id: null } as any)
+        .eq('tenant_id', tenant.id);
+
+      // 5. Delete planned routes
       await supabase.from('rutas_planificadas').delete().eq('tenant_id', tenant.id);
 
-      // 5. Delete frequent route stops
+      // 6. Delete frequent route stops
       if (rutaFrecuenteIds.length > 0) {
         await supabase.from('ruta_frecuente_paradas').delete().in('ruta_frecuente_id', rutaFrecuenteIds);
       }
 
-      // 6. Delete frequent routes
+      // 7. Nullify sucursal references in rutas_frecuentes before deleting
+      await supabase.from('rutas_frecuentes')
+        .update({ sucursal_id: null } as any)
+        .eq('tenant_id', tenant.id);
+
+      // 8. Delete frequent routes
       await supabase.from('rutas_frecuentes').delete().eq('tenant_id', tenant.id);
 
-      // 7. Delete route sheet shipments (hoja_ruta_envios) via hojas_ruta
+      // 9. Delete route sheet shipments (hoja_ruta_envios) via hojas_ruta
       if (hojaIds.length > 0) {
         await supabase.from('hoja_ruta_envios').delete().in('hoja_ruta_id', hojaIds);
       }
 
-      // 8. Delete route sheets
+      // 10. Nullify sucursal references in hojas_ruta before deleting
+      await supabase.from('hojas_ruta')
+        .update({ sucursal_origen_id: null, sucursal_destino_id: null } as any)
+        .eq('tenant_id', tenant.id);
+
+      // 11. Delete route sheets
       await supabase.from('hojas_ruta').delete().eq('tenant_id', tenant.id);
 
-      // 9. Delete ecommerce_orders (references envio_id and seller_id)
+      // 12. Delete ecommerce_orders (references envio_id and seller_id)
       await supabase.from('ecommerce_orders').delete().eq('tenant_id', tenant.id);
 
-      // 10. Delete seller account movements
+      // 13. Delete seller account movements
       if (sellerIds.length > 0) {
         await supabase.from('seller_cuenta_corriente').delete().in('seller_id', sellerIds);
         await supabase.from('liquidaciones_seller').delete().in('seller_id', sellerIds);
       }
 
-      // 11. Delete ecommerce sellers
+      // 14. Nullify sucursal_pickup_id in ecommerce_sellers before deleting
+      await supabase.from('ecommerce_sellers')
+        .update({ sucursal_pickup_id: null } as any)
+        .eq('tenant_id', tenant.id);
+
+      // 15. Delete ecommerce sellers
       await supabase.from('ecommerce_sellers').delete().eq('tenant_id', tenant.id);
 
-      // 12. Delete shipment details and history
+      // 16. Delete shipment details and history
       if (envioIds.length > 0) {
         await supabase.from('envio_detalles').delete().in('envio_id', envioIds);
         await supabase.from('envio_historial').delete().in('envio_id', envioIds);
       }
 
-      // 13. Delete commissions and settlements
+      // 17. Delete commissions and settlements
       await supabase.from('comisiones').delete().eq('tenant_id', tenant.id);
       await supabase.from('liquidaciones').delete().eq('tenant_id', tenant.id);
       await supabase.from('liquidaciones_sucursal').delete().eq('tenant_id', tenant.id);
 
-      // 14. Delete payments and invoices
+      // 18. Delete payments and invoices
       await supabase.from('pagos').delete().eq('tenant_id', tenant.id);
       await supabase.from('facturas').delete().eq('tenant_id', tenant.id);
 
-      // 15. Delete shipments
+      // 19. Nullify sucursal references in envios before deleting
+      await supabase.from('envios')
+        .update({ 
+          sucursal_origen_id: null, 
+          sucursal_destino_id: null, 
+          sucursal_entrega_id: null, 
+          sucursal_retiro_id: null 
+        } as any)
+        .eq('tenant_id', tenant.id);
+
+      // 20. Delete shipments
       await supabase.from('envios').delete().eq('tenant_id', tenant.id);
 
-      // 16. Delete incidents
+      // 21. Delete incidents
       await supabase.from('incidentes').delete().eq('tenant_id', tenant.id);
 
-      // 17. Delete notifications
+      // 22. Delete notifications
       await supabase.from('notifications').delete().eq('tenant_id', tenant.id);
 
-      // 18. Delete ARCA config
+      // 23. Delete ARCA config
       await supabase.from('arca_config').delete().eq('tenant_id', tenant.id);
 
-      // 19. Delete insurance config
+      // 24. Delete insurance config
       await supabase.from('configuracion_seguro').delete().eq('tenant_id', tenant.id);
 
-      // 20. Delete cash sessions and movements
+      // 25. Delete cash sessions and movements
       if (sucursalIds.length > 0) {
         const { data: sesiones } = await supabase
           .from('sesiones_caja')
@@ -187,34 +217,62 @@ export function DeleteTenantDialog({
         await supabase.from('sesiones_caja').delete().in('sucursal_id', sucursalIds);
       }
 
-      // 21. Delete client settlements and accounts
+      // 26. Nullify sucursal_id in clientes before deleting
+      await supabase.from('clientes')
+        .update({ sucursal_id: null } as any)
+        .eq('tenant_id', tenant.id);
+
+      // 27. Delete client settlements and accounts
       if (clienteIds.length > 0) {
         await supabase.from('cliente_cuenta_corriente').delete().in('cliente_id', clienteIds);
         await supabase.from('liquidaciones_cliente').delete().in('cliente_id', clienteIds);
       }
 
-      // 22. Delete clients
+      // 28. Delete clients
       await supabase.from('clientes').delete().eq('tenant_id', tenant.id);
 
-      // 23. Delete tarifa concepts (tarifa_concepto_precios will be handled by cascade)
+      // 29. Delete tarifa concepts (tarifa_concepto_precios will be handled by cascade)
       await supabase.from('tarifa_conceptos').delete().eq('tenant_id', tenant.id);
 
-      // 24. Delete sucursal_tarifas and sucursal_conceptos
+      // 30. Delete sucursal_tarifas, sucursal_conceptos, sucursal_comisiones, sucursal_zonas
       for (const sucursalId of sucursalIds) {
         await supabase.from('sucursal_tarifas').delete().eq('sucursal_id', sucursalId);
         await supabase.from('sucursal_conceptos').delete().eq('sucursal_id', sucursalId);
+        await supabase.from('sucursal_comisiones').delete().eq('sucursal_id', sucursalId);
+        await supabase.from('sucursal_zonas').delete().eq('sucursal_id', sucursalId);
       }
 
-      // 25. Delete tarifas
+      // 31. Delete tarifas
       await supabase.from('tarifas').delete().eq('tenant_id', tenant.id);
 
-      // 26. Delete historial ajustes tarifas
+      // 32. Delete historial ajustes tarifas
       await supabase.from('historial_ajustes_tarifas').delete().eq('tenant_id', tenant.id);
 
-      // 27. Delete branches
+      // 33. Delete transferencias that reference sucursales (filter by sucursal IDs)
+      if (sucursalIds.length > 0) {
+        await supabase.from('transferencias').delete().in('sucursal_origen_id', sucursalIds);
+        await supabase.from('transferencias').delete().in('sucursal_destino_id', sucursalIds);
+      }
+
+      // 34. Nullify centro_logistico_id (self-reference) in sucursales
+      await supabase.from('sucursales')
+        .update({ centro_logistico_id: null } as any)
+        .eq('tenant_id', tenant.id);
+
+      // 35. Nullify sucursal_id in vehiculos before deleting sucursales
+      await supabase.from('vehiculos')
+        .update({ sucursal_id: null } as any)
+        .eq('tenant_id', tenant.id);
+
+      // 36. Nullify sucursal_id in profiles before deleting sucursales
+      await supabase.from('profiles')
+        .update({ sucursal_id: null } as any)
+        .eq('tenant_id', tenant.id);
+
+      // 37. Delete branches (after all FK references nullified)
       await supabase.from('sucursales').delete().eq('tenant_id', tenant.id);
 
-      // 28. Delete vehicles
+      // 38. Delete vehicles
       await supabase.from('vehiculos').delete().eq('tenant_id', tenant.id);
 
       // 29. Delete third party companies
