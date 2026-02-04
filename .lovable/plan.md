@@ -1,101 +1,119 @@
 
-# Plan: Corrección de 3 Problemas Reportados
+# Plan: Corrección de Captura del Importe de Envío ML
 
-## Problema 1: Inputs de comisiones no permiten editar
+## Causa Raíz
 
-### Causa Raíz
-El `useEffect` que inicializa los datos de comisiones tiene `conceptosFiltrados` como dependencia. Como `conceptosFiltrados` se recalcula en **cada render** (porque `filter` siempre crea un nuevo array), el `useEffect` se ejecuta continuamente, sobrescribiendo los valores que el usuario intenta ingresar.
+El código actual busca el costo de envío en campos que **no existen** en la respuesta del API de MercadoLibre:
+- `shipping_option.cost` (no existe)
+- `cost` (no existe en la raíz)
+- `base_cost` (no existe)
+- `shipping_cost.receiver` (puede existir pero no contiene el flete)
 
-### Solución
-Usar `useMemo` para memorizar `conceptosFiltrados` y evitar que cambie innecesariamente:
+Según la documentación oficial de ML, el costo del envío viene en:
+- **`lead_time.cost`** - Costo del envío en la estructura correcta
 
+---
+
+## Cambios Necesarios
+
+### 1. Función `register-ml-shipment` (registro por QR)
+
+**Archivo**: `supabase/functions/register-ml-shipment/index.ts`
+
+| Linea | Problema | Solución |
+|-------|----------|----------|
+| 72-76 | Usa `key`/`value` (incorrecto) | Cambiar a `config_key`/`config_value` |
+| 78 | Mapeo con campos incorrectos | Usar nombres de columnas correctos |
+| 146-149 | Busca cost en campos incorrectos | Buscar en `lead_time.cost` |
+
+**Código corregido**:
 ```typescript
-const conceptosFiltrados = useMemo(() => 
-  conceptos.filter(c => !['recepcion', 'cobros'].includes(c.codigo)),
-  [conceptos]
-);
-```
+// Líneas 72-78: Credenciales
+const { data: credentials } = await supabase
+  .from('system_integrations')
+  .select('config_key, config_value')
+  .eq('tenant_id', seller.tenant_id)
+  .eq('integration_type', 'mercadolibre')
+  .in('config_key', ['client_id', 'client_secret']);
 
----
-
-## Problema 2: Insertar tarifa de MercadoLibre en envíos Flex
-
-### Situación Actual
-Cuando se registra un envío ML Flex via QR, el sistema usa la tarifa del seller (`seller.tarifa_id`) para calcular el precio, **ignorando** la tarifa que ML ya tiene definida para ese envío.
-
-### Solución
-Obtener el costo del envío desde la respuesta del API de MercadoLibre y guardarlo en el campo `precio_flete_ml`:
-
-1. Extraer `mlShipment.shipping_option.cost` o `mlShipment.cost` de la respuesta del API
-2. Agregar columna `precio_flete_ml` a la tabla `envios` (si no existe)
-3. Guardar este valor junto con el envío para referencia
-
----
-
-## Problema 3: Página OAuth muestra código en lugar de HTML
-
-### Posible Causa
-La función edge ya tiene el HTML correcto pero puede no estar desplegada correctamente o el navegador puede estar mostrando una respuesta JSON de una etapa anterior del proceso.
-
-### Solución
-Redesplegar la edge function para asegurar que el código actualizado esté en producción.
-
----
-
-## Archivos a Modificar
-
-| Archivo | Cambios |
-|---------|---------|
-| `src/pages/Branches.tsx` | Envolver `conceptosFiltrados` en `useMemo` |
-| `supabase/functions/register-ml-shipment/index.ts` | Capturar y guardar `shipping_option.cost` de ML API |
-| Nueva migración SQL | Agregar campo `precio_flete_ml` a tabla `envios` (si no existe) |
-| `supabase/functions/mercadolibre-oauth/index.ts` | Redesplegar para asegurar HTML de éxito |
-
----
-
-## Sección Tecnica
-
-### Cambio 1: Memorizar conceptos filtrados
-
-```typescript
-// ANTES (línea ~207)
-const conceptosFiltrados = conceptos.filter(
-  c => !['recepcion', 'cobros'].includes(c.codigo)
+const credMap = Object.fromEntries(
+  (credentials || []).map(c => [c.config_key, c.config_value])
 );
 
-// DESPUÉS
-const conceptosFiltrados = useMemo(() => 
-  conceptos.filter(c => !['recepcion', 'cobros'].includes(c.codigo)),
-  [conceptos]
-);
-```
-
-### Cambio 2: Capturar tarifa ML en registro de envíos
-
-```typescript
-// En register-ml-shipment/index.ts, después de obtener mlShipment:
-
-// Extraer costo de envío de ML
-const mlShippingCost = mlShipment.shipping_option?.cost 
+// Líneas 146-149: Costo del envío
+const mlShippingCost = mlShipment.lead_time?.cost 
+  || mlShipment.shipping_option?.cost 
   || mlShipment.cost 
   || mlShipment.base_cost 
   || 0;
 
-console.log('[register-ml-shipment] ML shipping cost:', mlShippingCost);
+console.log('[register-ml-shipment] ML shipping cost from lead_time:', mlShippingCost);
+console.log('[register-ml-shipment] Full lead_time:', JSON.stringify(mlShipment.lead_time));
+```
 
-// Al crear el envío, agregar el campo:
+### 2. Función `mercadolibre-sync` (sincronización masiva)
+
+**Archivo**: `supabase/functions/mercadolibre-sync/index.ts`
+
+Agregar extracción del costo de ML y guardarlo en el campo `precio_flete_ml`:
+
+```typescript
+// Después de obtener shipment (línea 162), extraer costo
+const mlShippingCost = shipment.lead_time?.cost 
+  || shipment.shipping_option?.cost 
+  || 0;
+
+console.log('[ML Sync] ML shipping cost:', mlShippingCost);
+
+// Al crear envio (línea 229-255), agregar:
 {
-  // ... otros campos
-  precio_flete_ml: mlShippingCost,
+  // ... otros campos existentes
+  precio_flete_ml: mlShippingCost, // <-- AGREGAR
 }
 ```
 
-### Migración SQL (si el campo no existe)
+---
 
-```sql
-ALTER TABLE envios 
-ADD COLUMN IF NOT EXISTS precio_flete_ml numeric(10,2) DEFAULT 0;
+## Sección Técnica
 
-COMMENT ON COLUMN envios.precio_flete_ml IS 
-  'Costo de envío definido por MercadoLibre para envíos Flex';
+### Estructura de respuesta API MercadoLibre (`/shipments/{id}`)
+
+```json
+{
+  "id": 46399291666,
+  "status": "ready_to_ship",
+  "logistic_type": "self_service",
+  "lead_time": {
+    "option_id": 123456,
+    "shipping_method": {
+      "id": 509245,
+      "type": "next_day",
+      "name": "Envío a domicilio"
+    },
+    "currency_id": "ARS",
+    "cost": 2500.00,         // <-- AQUÍ ESTÁ EL COSTO
+    "cost_type": "charged"
+  },
+  "receiver_address": { ... }
+}
 ```
+
+### Campos probados (orden de prioridad)
+
+1. `lead_time.cost` - Campo principal según documentación
+2. `shipping_option.cost` - Posible alternativa en algunos países
+3. `cost` - Fallback en caso de estructura distinta
+4. `base_cost` - Último fallback
+
+### Logging adicional
+
+Se agregará logging detallado de la estructura `lead_time` para depurar futuras discrepancias en la respuesta del API.
+
+---
+
+## Resumen de Archivos
+
+| Archivo | Cambios |
+|---------|---------|
+| `supabase/functions/register-ml-shipment/index.ts` | Corregir credenciales y extraer `lead_time.cost` |
+| `supabase/functions/mercadolibre-sync/index.ts` | Extraer `lead_time.cost` y guardar en `precio_flete_ml` |
