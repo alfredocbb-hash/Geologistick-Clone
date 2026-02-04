@@ -46,7 +46,7 @@ export default function RescheduledShipmentsList({
           destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, direccion, ciudad, telefono)
         `)
         .gt('reprogramado_count', 0)
-        .in('estado', ['pendiente', 'recogido', 'en_bodega'])
+        .in('estado', ['pendiente', 'recogido', 'en_sucursal'])
         .is('chofer_id', null)
         .order('ultima_reprogramacion', { ascending: false });
 

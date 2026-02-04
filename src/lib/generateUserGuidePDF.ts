@@ -311,19 +311,19 @@ Vehículos (/vehicles)
     {
       title: '13. FLUJO COMPLETO DE UN ENVÍO',
       content: `Escenario 1: Sucursal a Sucursal
-1. Cliente trae paquete a Sucursal A → Estado: en_bodega
+1. Cliente trae paquete a Sucursal A → Estado: en_sucursal
 2. Operador crea hoja de ruta hacia Sucursal B
 3. Chofer recoge hoja de ruta → Estado: en_transito
-4. Chofer llega a Sucursal B → Estado: en_bodega
+4. Chofer llega a Sucursal B → Estado: en_sucursal
 5. Cliente retira en Sucursal B → Estado: entregado
 
 Escenario 2: Puerta a Puerta
 1. Operador crea envío con retiro → Estado: pendiente
 2. Planificador crea ruta de retiros
 3. Chofer retira del domicilio → Estado: recogido
-4. Chofer regresa a sucursal → Estado: en_bodega
+4. Chofer regresa a sucursal → Estado: en_sucursal
 5. Se crea hoja de ruta hacia destino → Estado: en_transito
-6. Llegada a sucursal destino → Estado: en_bodega
+6. Llegada a sucursal destino → Estado: en_sucursal
 7. Planificador crea ruta de entregas
 8. Chofer entrega en domicilio → Estado: entregado`
     },

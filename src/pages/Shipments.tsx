@@ -37,6 +37,7 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; icon:
   pendiente: { label: 'Pendiente', color: 'bg-yellow-500', icon: Clock },
   recogido: { label: 'Recogido', color: 'bg-blue-500', icon: Package },
   en_sucursal: { label: 'En Sucursal', color: 'bg-purple-500', icon: Package },
+  en_bodega: { label: 'En Sucursal', color: 'bg-purple-500', icon: Package },
   en_transito: { label: 'En Tránsito', color: 'bg-blue-600', icon: Truck },
   en_reparto: { label: 'En Reparto', color: 'bg-orange-500', icon: Truck },
   entregado: { label: 'Entregado', color: 'bg-green-500', icon: CheckCircle },

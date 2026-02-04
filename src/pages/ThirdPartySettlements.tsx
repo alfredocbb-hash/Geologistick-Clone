@@ -142,7 +142,7 @@ export default function ThirdPartySettlements() {
         .select("id, tracking_number, tracking_externo, nombre_destinatario, precio_total, created_at")
         .eq("empresa_terciarizada_id", selectedEmpresaId)
         .eq("es_terciarizado", true)
-        .in("estado", ["pendiente", "recogido", "en_bodega", "en_transito"])
+        .in("estado", ["pendiente", "recogido", "en_sucursal", "en_transito"])
         .order("created_at", { ascending: false });
 
       if (error) throw error;

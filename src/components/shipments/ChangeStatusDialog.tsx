@@ -57,6 +57,12 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; icon:
     icon: Building2, 
     description: 'El paquete está en la sucursal listo para despacho' 
   },
+  en_bodega: { 
+    label: 'En Sucursal', 
+    color: 'bg-purple-500', 
+    icon: Building2, 
+    description: 'El paquete está en la sucursal listo para despacho' 
+  },
   en_transito: { 
     label: 'En Tránsito', 
     color: 'bg-blue-600', 
