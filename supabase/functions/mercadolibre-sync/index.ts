@@ -98,9 +98,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Search for ready_to_ship Flex shipments
-    const searchUrl = `${ML_API_BASE}/users/${seller.store_id}/shipping_labels/shipments/search?status=ready_to_ship&shipping_mode=self_service&limit=50`;
-    console.log('[ML Sync] Fetching shipments from:', searchUrl);
+    // Search for orders with shipping ready_to_ship - use /orders/search endpoint
+    // Filter by seller and shipping status
+    const searchUrl = `${ML_API_BASE}/orders/search?seller=${seller.store_id}&shipping.status=ready_to_ship&sort=date_desc&limit=50`;
+    console.log('[ML Sync] Fetching orders from:', searchUrl);
 
     const searchResponse = await fetch(searchUrl, {
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -108,24 +109,32 @@ Deno.serve(async (req) => {
 
     if (!searchResponse.ok) {
       const errorText = await searchResponse.text();
-      console.error('[ML Sync] Failed to search shipments:', errorText);
+      console.error('[ML Sync] Failed to search orders:', searchResponse.status, errorText);
       return new Response(
-        JSON.stringify({ error: 'Failed to fetch shipments from MercadoLibre' }),
+        JSON.stringify({ error: 'Failed to fetch orders from MercadoLibre', details: errorText }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     const searchData = await searchResponse.json();
-    const shipmentIds = searchData.results || [];
-    console.log('[ML Sync] Found', shipmentIds.length, 'shipments');
+    const orders = searchData.results || [];
+    console.log('[ML Sync] Found', orders.length, 'orders');
 
     let created = 0;
     let existing = 0;
     let errors = 0;
 
-    // Process each shipment
-    for (const shipmentId of shipmentIds) {
+    // Process each order
+    for (const orderItem of orders) {
       try {
+        const orderId = orderItem.id;
+        const shipmentId = orderItem.shipping?.id;
+
+        if (!shipmentId) {
+          console.log('[ML Sync] Order without shipment:', orderId);
+          continue;
+        }
+
         // Check if already exists
         const { data: existingEnvio } = await supabase
           .from('envios')
@@ -139,7 +148,7 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Get shipment details
+        // Get full shipment details
         const shipmentResponse = await fetch(`${ML_API_BASE}/shipments/${shipmentId}`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
@@ -154,21 +163,12 @@ Deno.serve(async (req) => {
 
         // Only process self_service (Flex)
         if (shipment.logistic_type !== 'self_service') {
-          console.log('[ML Sync] Skipping non-Flex shipment:', shipmentId);
+          console.log('[ML Sync] Skipping non-Flex shipment:', shipmentId, 'type:', shipment.logistic_type);
           continue;
         }
 
-        // Get order details for items and buyer info
-        const orderId = shipment.order_id;
-        let orderData = null;
-        if (orderId) {
-          const orderResponse = await fetch(`${ML_API_BASE}/orders/${orderId}`, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          });
-          if (orderResponse.ok) {
-            orderData = await orderResponse.json();
-          }
-        }
+        // Use orderItem data which already has buyer info
+        const orderData = orderItem;
 
         // Extract receiver info
         const receiver = shipment.receiver_address || {};
@@ -320,7 +320,7 @@ Deno.serve(async (req) => {
 
         created++;
       } catch (err) {
-        console.error('[ML Sync] Error processing shipment:', shipmentId, err);
+        console.error('[ML Sync] Error processing order:', orderItem?.id, err);
         errors++;
       }
     }
@@ -339,7 +339,7 @@ Deno.serve(async (req) => {
         created, 
         existing, 
         errors,
-        total: shipmentIds.length
+        total: orders.length
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
