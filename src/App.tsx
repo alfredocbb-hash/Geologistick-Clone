@@ -65,6 +65,7 @@ import ShipmentStatusGuide from "./pages/ShipmentStatusGuide";
 import LandingContentAdmin from "./pages/LandingContentAdmin";
 import TrialRequests from "./pages/TrialRequests";
 import NotFound from "./pages/NotFound";
+import Incidents from "./pages/Incidents";
 
 // Seller Portal Pages
 import { SellerLayout } from "./components/seller/SellerLayout";
@@ -183,6 +184,7 @@ function AppRoutes() {
       <Route path="/print-route-sheet" element={<PrintRouteSheet />} />
       <Route path="/print/planned-route" element={<PrintPlannedRoute />} />
       <Route path="/live-map" element={<DashboardLayout><LiveMap /></DashboardLayout>} />
+      <Route path="/incidents" element={<DashboardLayout><Incidents /></DashboardLayout>} />
       <Route path="/drivers" element={<DashboardLayout><Drivers /></DashboardLayout>} />
       <Route path="/vehicles" element={<DashboardLayout><Vehicles /></DashboardLayout>} />
       <Route path="/routes" element={<DashboardLayout><RoutesPage /></DashboardLayout>} />

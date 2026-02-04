@@ -116,12 +116,10 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
 
       if (incidentError) throw incidentError;
 
-      // Update shipment status to show delivery attempt failed
-      // We use 'devuelto' as a fallback since there's no 'intento_fallido' in the enum
-      // In a real scenario, you might want to add this status to the enum
+      // Update shipment status to 'incidencia' - requires admin resolution
       const { error: updateError } = await supabase
         .from('envios')
-        .update({ estado: 'devuelto' })
+        .update({ estado: 'incidencia' })
         .eq('id', shipment.id);
 
       if (updateError) throw updateError;
@@ -133,7 +131,7 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
         .insert({
           envio_id: shipment.id,
           estado_anterior: shipment.estado as any,
-          estado_nuevo: 'devuelto',
+          estado_nuevo: 'incidencia',
           notas: `Incidente reportado: ${incidentLabel}. ${description || ''}`.trim(),
           created_by: user.id,
         });
@@ -151,7 +149,7 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
         if (!old) return old;
         return old.map((p: any) => 
           p.envio?.id === shipment.id 
-            ? { ...p, envio: { ...p.envio, estado: 'devuelto' } }
+            ? { ...p, envio: { ...p.envio, estado: 'incidencia' } }
             : p
         );
       });
@@ -160,7 +158,7 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
         if (!old) return old;
         return old.map((e: any) => 
           e.envio?.id === shipment.id 
-            ? { ...e, envio: { ...e.envio, estado: 'devuelto' } }
+            ? { ...e, envio: { ...e.envio, estado: 'incidencia' } }
             : e
         );
       });

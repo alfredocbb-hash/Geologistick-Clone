@@ -63,6 +63,7 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; icon:
   entregado: { label: 'Entregado', color: 'bg-green-500', icon: CheckCircle },
   devuelto: { label: 'Devuelto', color: 'bg-red-500', icon: AlertCircle },
   cancelado: { label: 'Cancelado', color: 'bg-gray-500', icon: AlertCircle },
+  incidencia: { label: 'Incidencia', color: 'bg-amber-500', icon: AlertCircle },
 };
 
 const TIPO_PAGO_LABELS: Record<string, string> = {

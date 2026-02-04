@@ -1501,6 +1501,7 @@ export type Database = {
       }
       incidentes: {
         Row: {
+          accion_tomada: string | null
           chofer_id: string
           created_at: string
           descripcion: string | null
@@ -1509,10 +1510,13 @@ export type Database = {
           foto_evidencia: string | null
           id: string
           resolucion: string | null
+          resuelto_at: string | null
+          resuelto_por: string | null
           tenant_id: string | null
           tipo: string
         }
         Insert: {
+          accion_tomada?: string | null
           chofer_id: string
           created_at?: string
           descripcion?: string | null
@@ -1521,10 +1525,13 @@ export type Database = {
           foto_evidencia?: string | null
           id?: string
           resolucion?: string | null
+          resuelto_at?: string | null
+          resuelto_por?: string | null
           tenant_id?: string | null
           tipo: string
         }
         Update: {
+          accion_tomada?: string | null
           chofer_id?: string
           created_at?: string
           descripcion?: string | null
@@ -1533,6 +1540,8 @@ export type Database = {
           foto_evidencia?: string | null
           id?: string
           resolucion?: string | null
+          resuelto_at?: string | null
+          resuelto_por?: string | null
           tenant_id?: string | null
           tipo?: string
         }
@@ -3905,6 +3914,7 @@ export type Database = {
         | "entregado"
         | "devuelto"
         | "cancelado"
+        | "incidencia"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -4069,6 +4079,7 @@ export const Constants = {
         "entregado",
         "devuelto",
         "cancelado",
+        "incidencia",
       ],
     },
   },
