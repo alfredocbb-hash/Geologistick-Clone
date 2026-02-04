@@ -48,6 +48,9 @@ interface TrackingResponse {
     logo: string | null;
     color_primario: string | null;
   } | null;
+  // New fields for branch information
+  sucursal_actual: string | null;
+  entregado_en_sucursal: boolean;
   historial: Array<{
     id: string;
     estado_anterior: string | null;
@@ -199,7 +202,11 @@ const TrackingEmbed = () => {
                     <Badge 
                       className={`${statusConfig[envio.estado].color} text-white`}
                     >
-                      {statusConfig[envio.estado].label}
+                      {envio.estado === 'en_sucursal' && envio.sucursal_actual
+                        ? `En Sucursal (${envio.sucursal_actual})`
+                        : envio.estado === 'entregado' && envio.entregado_en_sucursal && envio.sucursal_actual
+                          ? `Entregado en Sucursal (${envio.sucursal_actual})`
+                          : statusConfig[envio.estado].label}
                     </Badge>
                   )}
                 </div>
