@@ -1,140 +1,114 @@
 
-# Plan: Caché de Segmentos + Mejoras Visuales del Recorrido
+# Plan: Limpieza de Datos y Mejora del Mapa en Vivo
 
-## Estado: ✅ IMPLEMENTADO
+## Resumen del Problema
+
+Analizando la base de datos encontré:
+
+| Problema | Detalle |
+|----------|---------|
+| **Registros huérfanos** | 2 de 6 ubicaciones pertenecen a usuarios sin perfil válido o sin rol de chofer |
+| **Sin rutas activas** | 0 rutas en estado `confirmada` o `en_curso` (todas están `completada`) |
+| **Historial disponible** | Kevin Bernard tiene historial GPS reciente con 19-45 puntos por ruta |
 
 ---
 
-## Resumen
+## Fase 1: Limpiar Datos Huérfanos
 
-Se implementaron dos mejoras clave para la trazabilidad de choferes:
+### 1.1 Eliminar ubicaciones de usuarios inválidos
 
-1. **✅ Caché de Segmentos Procesados**: Tabla `driver_route_segments` que almacena rutas ya procesadas por Google Roads API
-2. **✅ Mejoras Visuales**: Polyline con gradiente temporal, marcadores de paradas y panel de estadísticas
+Se eliminarán registros de `driver_locations` donde:
+- El `chofer_id` no tiene perfil en `profiles`
+- El `chofer_id` no tiene rol `chofer` en `user_roles`
+
+**Registros a eliminar:**
+- `6f51e0c7-3202-4164-a92e-17ce4a52a595` (sin perfil)
+- `0defccf3-f154-479d-858c-ff4162d2f91c` (sin rol chofer, usuario "prueba chofer")
 
 ---
 
-## Fase 1: ✅ Tabla de Caché para Segmentos Procesados
+## Fase 2: Mejorar Filtro en LiveMap
 
-### Estructura de la Tabla (Creada)
+### 2.1 Modificar la consulta de choferes
+
+Actualmente la consulta obtiene TODAS las ubicaciones sin validar roles:
 
 ```text
-┌────────────────────────────────────────────────────────────────┐
-│  driver_route_segments                                         │
-├────────────────────────────────────────────────────────────────┤
-│  id              UUID (PK)                                     │
-│  ruta_id         UUID (FK → rutas_planificadas)               │
-│  chofer_id       UUID (FK → auth.users)                       │
-│  tenant_id       UUID (FK → tenants)                          │
-│  raw_points      JSONB  (puntos GPS originales)               │
-│  snapped_points  JSONB  (puntos ajustados a calles)           │
-│  points_hash     TEXT   (hash para detectar cambios)          │
-│  created_at      TIMESTAMP                                     │
-│  updated_at      TIMESTAMP                                     │
-│  total_distance  NUMERIC (metros calculados)                  │
-└────────────────────────────────────────────────────────────────┘
+Actual:
+  driver_locations → profiles (LEFT JOIN)
+
+Mejorado:
+  driver_locations → profiles → user_roles (INNER JOIN where role = 'chofer')
 ```
 
-### Flujo de Funcionamiento (Implementado)
+### 2.2 Cambios en LiveMap.tsx
+
+La consulta en `queryFn` de "driver-locations" se modificará para:
+1. Hacer join con `user_roles` verificando `role = 'chofer'`
+2. Filtrar solo choferes activos (con perfil y rol válido)
+3. Mostrar indicador si un chofer tiene ruta activa vs historial reciente
+
+---
+
+## Fase 3: Permitir Ver Historial de Rutas Completadas
+
+Dado que actualmente no hay rutas activas, pero sí hay historial GPS, modificaremos la lógica para:
+
+### 3.1 Mostrar última ruta del chofer (activa o completada)
 
 ```text
-┌─────────────────────────────────────────────────────────────────┐
-│  SOLICITUD DE RECORRIDO                                         │
-│                                                                 │
-│  1. Cargar historial GPS de driver_location_history            │
-│                          ↓                                      │
-│  2. Calcular hash de los puntos (cantidad + coordenadas)       │
-│                          ↓                                      │
-│  3. ¿Existe caché con mismo hash?                              │
-│       │                                                         │
-│    SI ↓ NO                                                      │
-│       │    │                                                    │
-│       │    └──→ Llamar snap-to-roads API                       │
-│       │              ↓                                          │
-│       │         Guardar en driver_route_segments               │
-│       │              ↓                                          │
-│       └────────────────→ Retornar puntos snapped               │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  CHOFER CON RUTA ACTIVA          CHOFER SIN RUTA ACTIVA    │
+│                                                             │
+│  🟢 Kevin Bernard                 🟡 Lucas Galarza           │
+│  Ruta: RP-20260204-1751          Última ruta: hace 2 días  │
+│  Estado: en_curso                 Estado: completada        │
+│  [Ver en Mapa]                   [Ver Último Recorrido]    │
+└─────────────────────────────────────────────────────────────┘
 ```
 
----
+### 3.2 Buscar última ruta con historial GPS
 
-## Fase 2: ✅ Hook Mejorado con Caché
-
-Se modificó `useDriverRoute.ts` para:
-
-- ✅ Verificar caché antes de llamar a la Edge Function
-- ✅ Calcular hash de puntos para detectar si hay datos nuevos
-- ✅ Guardar resultados procesados en la tabla de caché
-- ✅ Calcular estadísticas (distancia total, velocidad promedio, duración)
-- ✅ Cargar entregas completadas como paradas
-
-### Beneficios
-
-| Sin Caché | Con Caché |
-|-----------|-----------|
-| Llamada API cada visualización | Llamada solo cuando hay datos nuevos |
-| ~2-3s de procesamiento | <100ms desde base de datos |
-| Costo por 1000 elementos | Costo reducido ~80-90% |
+Cuando un chofer no tiene ruta activa, buscar la ruta más reciente que tenga registros en `driver_location_history`.
 
 ---
 
-## Fase 3: ✅ Mejoras Visuales del Recorrido
-
-### 3.1 ✅ Marcadores de Entregas Completadas
-
-Se creó `DeliveryStopMarker.tsx` que muestra marcadores verdes numerados en cada entrega.
-
-### 3.2 ✅ Gradiente Temporal en Polyline
-
-Se creó `GradientPolyline.tsx` que divide el path en 10 segmentos con colores progresivos:
-
-- **Verde claro** → Inicio del recorrido
-- **Verde oscuro** → Medio del recorrido  
-- **Azul** → Reciente/actual
-
-### 3.3 ✅ Panel de Estadísticas Mejorado
-
-Se creó `RouteStatsPanel.tsx` que muestra:
-
-| Estadística | Descripción |
-|-------------|-------------|
-| Distancia total | Km recorridos (Haversine) |
-| Tiempo en ruta | Duración desde inicio |
-| Velocidad promedio | Km/h calculado |
-| Paradas realizadas | Entregas completadas |
-
----
-
-## Archivos Creados/Modificados
+## Archivos a Modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `driver_route_segments` (tabla) | ✅ Nueva tabla con RLS |
-| `src/hooks/useDriverRoute.ts` | ✅ Lógica de caché + hash + estadísticas |
-| `src/components/maps/GradientPolyline.tsx` | ✅ Nuevo componente |
-| `src/components/maps/DeliveryStopMarker.tsx` | ✅ Nuevo componente |
-| `src/components/maps/RouteStatsPanel.tsx` | ✅ Nuevo componente |
-| `src/components/maps/MapView.tsx` | ✅ Soporte para gradiente y paradas |
-| `src/pages/LiveMap.tsx` | ✅ Panel de estadísticas integrado |
+| `src/pages/LiveMap.tsx` | Mejorar query de choferes + mostrar última ruta si no hay activa |
+| Migración SQL | Limpiar registros huérfanos de `driver_locations` |
 
 ---
 
-## Detalles Técnicos Implementados
+## Detalles Técnicos
 
-### Cálculo de Hash para Caché
+### Nueva Consulta de Choferes
 
-```typescript
-hash = cantidad_puntos + "|" + 
-       primer_punto.lat + "," + primer_punto.lng + "|" +
-       ultimo_punto.lat + "," + ultimo_punto.lng
-// Convertido a base36 para compacidad
+```text
+1. Obtener ubicaciones de driver_locations
+2. JOIN con profiles para nombre/apellido  
+3. JOIN con user_roles WHERE role = 'chofer'
+4. LEFT JOIN con rutas_planificadas estado = 'en_curso'
+5. Si no hay ruta activa, buscar última ruta completada con historial GPS
 ```
 
-### Cálculo de Distancia (Haversine)
+### Indicadores Visuales Mejorados
 
-Función `calculateHaversineDistance()` suma la distancia entre puntos consecutivos.
+| Estado | Color | Icono |
+|--------|-------|-------|
+| Ruta activa | Verde | 🟢 Truck |
+| Sin ruta, historial reciente | Amarillo | 🟡 Clock |
+| Sin señal (>15min) | Rojo | 🔴 AlertCircle |
 
-### Polyline con Gradiente
+---
 
-10 segmentos con colores RGB interpolados de verde claro (#90EE90) a azul (#4285F4).
+## Resultado Esperado
+
+Después de implementar:
+1. Solo aparecerán los 4 choferes válidos (con perfil + rol)
+2. Kevin Bernard mostrará opción "Ver Último Recorrido" con su ruta completada más reciente
+3. Se podrá visualizar el historial GPS con gradiente temporal y estadísticas
+4. El caché de segmentos funcionará correctamente para rutas históricas
+
