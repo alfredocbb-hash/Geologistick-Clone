@@ -74,7 +74,7 @@ export default function Incidents() {
   const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
 
   // Fetch incidents
-  const { data: incidents, isLoading, refetch } = useQuery({
+  const { data: incidents, isLoading, error, refetch } = useQuery({
     queryKey: ['incidents', activeTab, profile?.tenant_id],
     queryFn: async () => {
       if (!profile?.tenant_id) return [];
@@ -122,6 +122,9 @@ export default function Incidents() {
       return incidentsWithResolver as Incident[];
     },
     enabled: !!profile?.tenant_id,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 
   // Filter incidents by search term
@@ -259,6 +262,30 @@ export default function Incidents() {
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : error ? (
+            <div className="text-center py-12 space-y-4">
+              <XCircle className="h-12 w-12 mx-auto text-destructive/70" />
+              <div>
+                <p className="text-destructive font-medium">Error al cargar incidencias</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  No se pudo obtener la lista. Intenta nuevamente.
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => refetch()}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Reintentar
+              </Button>
+              {import.meta.env.DEV && (
+                <details className="mt-4 text-left max-w-md mx-auto">
+                  <summary className="text-xs text-muted-foreground cursor-pointer">
+                    Detalle técnico
+                  </summary>
+                  <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-auto">
+                    {(error as Error).message}
+                  </pre>
+                </details>
+              )}
             </div>
           ) : !filteredIncidents?.length ? (
             <div className="text-center py-12">
