@@ -1,92 +1,126 @@
 
 ## Objetivo
-Que los envíos en estado **“incidencia”** aparezcan en **Bandeja de Incidencias** para poder asignarles una acción.
-
-## Hallazgo (causa raíz)
-El módulo **Incidencias** no está mostrando nada porque la consulta está fallando con **HTTP 400** (no es que no existan datos).
-
-En los requests de la app aparece este error:
-
-- `PGRST200 ... Could not find a relationship between 'incidentes' and 'profiles' ... hint 'incidentes_chofer_id_fkey'`
-
-Esto ocurre porque el frontend pide un join así:
-- `chofer:profiles!incidentes_chofer_id_fkey(nombre, apellido)`
-
-pero en la base **no existe** el foreign key `incidentes_chofer_id_fkey` entre `incidentes.chofer_id` y `profiles` (hoy `incidentes` solo tiene FK a `envios`, `tenants` y `auth.users` para `resuelto_por`).
-
-Resultado: la query falla, React Query no muestra error en UI, y termina pareciendo “no hay incidencias”.
-
-## Verificación de datos (ya en backend)
-Existe el envío y existe su incidencia pendiente:
-- `envios.estado = 'incidencia'`
-- `incidentes.estado = 'pendiente'`
-- `tenant_id` coincide
-
-O sea: los datos están, el problema es el join roto.
+Permitir editar la direccion y geolocalización de un envío directamente desde el popup del Planificador de Rutas, sin necesidad de salir de la vista.
 
 ---
 
-## Cambios propuestos
+## Analisis del Estado Actual
 
-### 1) Backend (migración): agregar FK faltante para habilitar el join
-Crear el foreign key exactamente con el nombre que usa el frontend, apuntando a `profiles.user_id` (que es UNIQUE):
+El popup `ShipmentMapPopup` actualmente muestra:
+- Tracking, tipo (retiro/entrega), estado
+- Cliente, direccion, ciudad, telefono
+- Estado de coordenadas (geolocalizado o sin coordenadas)
+- Botones: "Geolocalizar" (solo si no tiene coords) y "Ver detalles"
 
-1. Verificación previa (solo para seguridad):
-   - Confirmar que no haya incidentes con `chofer_id` sin profile (ya validé y da 0, pero lo re-chequeamos antes de aplicar en el entorno que corresponda).
-
-2. Migración SQL:
-   - `ALTER TABLE public.incidentes ADD CONSTRAINT incidentes_chofer_id_fkey FOREIGN KEY (chofer_id) REFERENCES public.profiles(user_id);`
-   - (Opcional recomendado) índice:
-     - `CREATE INDEX IF NOT EXISTS incidentes_chofer_id_idx ON public.incidentes(chofer_id);`
-
-Con esto PostgREST puede “entender” la relación y el select con `profiles!incidentes_chofer_id_fkey` deja de fallar.
-
-Notas:
-- Mantengo `chofer_id` como NOT NULL (así está hoy). Si en el futuro quieren permitir incidentes “sin chofer”, ahí sí conviene hacerlo nullable + `ON DELETE SET NULL`, pero eso sería un cambio funcional más grande.
-
-### 2) Frontend (Incidents.tsx): mostrar errores de consulta (en vez de “no hay incidencias”)
-Mejora necesaria para que si algo vuelve a fallar, el usuario lo vea claramente.
-
-Cambios en `src/pages/Incidents.tsx`:
-- Leer `error` desde `useQuery`.
-- Renderizar un estado “Error cargando incidencias” con:
-  - Mensaje breve
-  - Botón “Reintentar” (llama `refetch()`)
-  - (Opcional) detalle técnico colapsable en modo dev
-
-### 3) Frontend (Incidents.tsx): refresco más confiable
-Para evitar confusiones por caché:
-- En esa query setear opciones más “operativas”, por ejemplo:
-  - `staleTime: 0`
-  - `refetchOnMount: 'always'`
-  - `refetchOnWindowFocus: true`
-Esto no rompe nada y hace que “Incidencias” siempre esté fresco aunque el resto del sistema tenga caché más largo.
+La funcionalidad existente de "Geolocalizar" usa geocodificacion automatica basada en la direccion actual, pero no permite **corregir manualmente** la direccion antes de geolocalizar.
 
 ---
 
-## Pasos de prueba (end-to-end)
-1. Iniciar sesión con el usuario admin del tenant.
-2. Ir a **/incidents**:
-   - Confirmar que el request a `/rest/v1/incidentes?...chofer:profiles!...` ya no devuelve 400.
-   - Confirmar que la incidencia pendiente aparece listada.
-3. Abrir la incidencia y ejecutar una acción (re_intento / reprogramar / devolver / cancelar):
-   - Verificar que:
-     - `incidentes.estado` pase a `resuelto`
-     - `envios.estado` cambie según la acción
-     - Se inserte registro en `envio_historial`
-4. Volver a **/shipments** y confirmar que el envío ya no queda “trabado” en incidencia.
+## Cambios Propuestos
+
+### 1) Nuevo componente: `EditShipmentLocationDialog`
+Ubicacion: `src/components/routes/EditShipmentLocationDialog.tsx`
+
+Un dialogo dedicado para editar la direccion y coordenadas de un envío:
+- Input de direccion con **AddressAutocomplete** (Google Places)
+- Campos manuales para ciudad
+- Muestra coordenadas capturadas automaticamente al seleccionar del autocompletado
+- Boton "Guardar" que actualiza la tabla `envios` con:
+  - Si es tipo "retiro": `direccion_retiro`, `ciudad_retiro`, `remitente_lat`, `remitente_lng`
+  - Si es tipo "entrega": `direccion_entrega`, `ciudad_entrega`, `destinatario_lat`, `destinatario_lng`
+
+### 2) Modificar `ShipmentMapPopup`
+Agregar un boton "Editar Ubicacion" junto a los botones existentes:
+- Visible siempre (tenga o no coordenadas)
+- Al hacer clic, abre el nuevo `EditShipmentLocationDialog`
+- Incluir callback para refrescar datos del planificador tras edicion exitosa
+
+### 3) Integrar en `RoutePlanner.tsx`
+- Agregar estado para controlar apertura del dialogo de edicion
+- Pasar la funcion de invalidacion de queries para refrescar la lista de envíos
 
 ---
 
-## Archivos / componentes involucrados
-- Backend (migración SQL):
-  - Agregar FK `incidentes_chofer_id_fkey` → `profiles(user_id)`
-  - (Opcional) index `incidentes_chofer_id_idx`
-- Frontend:
-  - `src/pages/Incidents.tsx` (manejo de error + opciones de refetch)
+## Flujo de Usuario
+
+1. Usuario selecciona envíos en el planificador
+2. Hace clic en un marcador del mapa o en la tabla
+3. Aparece el popup con informacion del envío
+4. Hace clic en "Editar Ubicacion"
+5. Se abre un dialogo con:
+   - Campo de direccion con autocompletado de Google
+   - Campo de ciudad (auto-rellenado)
+   - Indicador visual de coordenadas capturadas
+6. Usuario busca/selecciona nueva direccion
+7. Guarda cambios
+8. El popup se cierra y la lista se actualiza automaticamente
 
 ---
 
-## Resultado esperado
-- La Bandeja de Incidencias vuelve a funcionar: lista las incidencias pendientes y permite “Resolver”.
-- Si hay un problema futuro de consulta/RLS/relaciones, el módulo mostrará **error explícito** en lugar de “0 incidencias”.
+## Detalles Tecnicos
+
+### Estructura del nuevo dialogo
+
+```text
++------------------------------------------+
+| Editar Ubicacion                         |
+|------------------------------------------|
+| Tracking: ADMIN-ENV-XXXXX                |
+| Tipo: [Retiro/Entrega]                   |
+|                                          |
+| Direccion actual:                        |
+| [Calle 9 5343, Berazategui]              |
+|                                          |
+| Nueva direccion: *                       |
+| [____________________________] (autocomplete)
+|                                          |
+| Ciudad:                                  |
+| [____________________________]           |
+|                                          |
+| [check] Coordenadas: -34.76, -58.21      |
+|                                          |
+|              [Cancelar] [Guardar]        |
++------------------------------------------+
+```
+
+### Campos a actualizar segun tipo
+
+| Campo              | Retiro              | Entrega              |
+|--------------------|---------------------|----------------------|
+| Direccion          | direccion_retiro    | direccion_entrega    |
+| Ciudad             | ciudad_retiro       | ciudad_entrega       |
+| Latitud            | remitente_lat       | destinatario_lat     |
+| Longitud           | remitente_lng       | destinatario_lng     |
+
+### Dependencias utilizadas
+- `AddressAutocomplete` (ya existe en `src/components/maps/`)
+- `GoogleMapsProvider` (ya existe)
+- `useMutation` + `useQueryClient` para actualizar y refrescar
+
+---
+
+## Archivos Involucrados
+
+| Archivo | Accion |
+|---------|--------|
+| `src/components/routes/EditShipmentLocationDialog.tsx` | **Crear** - Nuevo dialogo de edicion |
+| `src/components/maps/ShipmentMapPopup.tsx` | **Modificar** - Agregar boton "Editar Ubicacion" y prop de callback |
+| `src/pages/RoutePlanner.tsx` | **Modificar** - Integrar estado y dialogo de edicion |
+
+---
+
+## Validaciones
+
+- La direccion es requerida
+- Mostrar advertencia si se guarda sin coordenadas (aunque permitirlo)
+- Al guardar exitosamente:
+  - Invalidar query `envios-planificador`
+  - Cerrar dialogo de edicion
+  - Cerrar popup del mapa
+  - Mostrar toast de confirmacion
+
+---
+
+## Resultado Esperado
+
+Los usuarios podran corregir direcciones incorrectas o mal geolocalizadas directamente desde el planificador, mejorando la precision de las rutas sin necesidad de ir a otra pantalla.
