@@ -1,119 +1,149 @@
 
-# Plan: Corrección de Captura del Importe de Envío ML
 
-## Causa Raíz
+# Plan: Corrección de Eliminación de Tenant y Precio Flete ML
 
-El código actual busca el costo de envío en campos que **no existen** en la respuesta del API de MercadoLibre:
-- `shipping_option.cost` (no existe)
-- `cost` (no existe en la raíz)
-- `base_cost` (no existe)
-- `shipping_cost.receiver` (puede existir pero no contiene el flete)
+## Problema 1: Error al Eliminar Tenant
 
-Según la documentación oficial de ML, el costo del envío viene en:
-- **`lead_time.cost`** - Costo del envío en la estructura correcta
+### Causa Raíz
+El error `"update or delete on table 'tenants' violates foreign key constraint 'sucursales_tenant_id_fkey'"` ocurre porque hay envíos con referencias a sucursales (`sucursal_entrega_id`, `sucursal_origen_id`, etc.) que no se limpian antes de eliminar las sucursales.
 
----
+### Tablas que Referencian Sucursales (21 constraints):
+| Tabla | Columna FK |
+|-------|------------|
+| clientes | sucursal_id |
+| ecommerce_sellers | sucursal_pickup_id |
+| envios | sucursal_origen_id, sucursal_destino_id, sucursal_entrega_id, sucursal_retiro_id |
+| hojas_ruta | sucursal_origen_id, sucursal_destino_id |
+| liquidaciones_sucursal | sucursal_id |
+| profiles | sucursal_id |
+| rutas_frecuentes | sucursal_id |
+| rutas_planificadas | sucursal_id |
+| sesiones_caja | sucursal_id |
+| sucursal_comisiones | sucursal_id |
+| sucursal_conceptos | sucursal_id |
+| sucursal_tarifas | sucursal_id |
+| sucursal_zonas | sucursal_id |
+| sucursales | centro_logistico_id (auto-referencia) |
+| transferencias | sucursal_origen_id, sucursal_destino_id |
+| vehiculos | sucursal_id |
 
-## Cambios Necesarios
+### Solución
+Corregir el orden de eliminación en `DeleteTenantDialog.tsx`:
 
-### 1. Función `register-ml-shipment` (registro por QR)
+1. **Paso crítico agregado**: Antes de eliminar sucursales, limpiar todas las columnas que referencian sucursales:
+   - Limpiar `sucursal_pickup_id` en ecommerce_sellers
+   - Limpiar `sucursal_id` en profiles
+   - Limpiar `sucursal_origen_id`, `sucursal_destino_id`, `sucursal_entrega_id`, `sucursal_retiro_id` en envíos
+   - Limpiar `sucursal_origen_id`, `sucursal_destino_id` en hojas_ruta
+   - Limpiar `sucursal_id` en rutas_frecuentes y rutas_planificadas
+   - Limpiar `centro_logistico_id` auto-referencia en sucursales
+   - Eliminar transferencias, sucursal_comisiones, sucursal_zonas
 
-**Archivo**: `supabase/functions/register-ml-shipment/index.ts`
-
-| Linea | Problema | Solución |
-|-------|----------|----------|
-| 72-76 | Usa `key`/`value` (incorrecto) | Cambiar a `config_key`/`config_value` |
-| 78 | Mapeo con campos incorrectos | Usar nombres de columnas correctos |
-| 146-149 | Busca cost en campos incorrectos | Buscar en `lead_time.cost` |
-
-**Código corregido**:
-```typescript
-// Líneas 72-78: Credenciales
-const { data: credentials } = await supabase
-  .from('system_integrations')
-  .select('config_key, config_value')
-  .eq('tenant_id', seller.tenant_id)
-  .eq('integration_type', 'mercadolibre')
-  .in('config_key', ['client_id', 'client_secret']);
-
-const credMap = Object.fromEntries(
-  (credentials || []).map(c => [c.config_key, c.config_value])
-);
-
-// Líneas 146-149: Costo del envío
-const mlShippingCost = mlShipment.lead_time?.cost 
-  || mlShipment.shipping_option?.cost 
-  || mlShipment.cost 
-  || mlShipment.base_cost 
-  || 0;
-
-console.log('[register-ml-shipment] ML shipping cost from lead_time:', mlShippingCost);
-console.log('[register-ml-shipment] Full lead_time:', JSON.stringify(mlShipment.lead_time));
-```
-
-### 2. Función `mercadolibre-sync` (sincronización masiva)
-
-**Archivo**: `supabase/functions/mercadolibre-sync/index.ts`
-
-Agregar extracción del costo de ML y guardarlo en el campo `precio_flete_ml`:
-
-```typescript
-// Después de obtener shipment (línea 162), extraer costo
-const mlShippingCost = shipment.lead_time?.cost 
-  || shipment.shipping_option?.cost 
-  || 0;
-
-console.log('[ML Sync] ML shipping cost:', mlShippingCost);
-
-// Al crear envio (línea 229-255), agregar:
-{
-  // ... otros campos existentes
-  precio_flete_ml: mlShippingCost, // <-- AGREGAR
-}
-```
+2. **Orden corregido de eliminación**:
+   - Eliminar tablas hijas ANTES de eliminar sucursales
+   - Finalmente eliminar sucursales y luego tenant
 
 ---
 
-## Sección Técnica
+## Problema 2: precio_flete_ml Siempre en 0
 
-### Estructura de respuesta API MercadoLibre (`/shipments/{id}`)
-
-```json
-{
-  "id": 46399291666,
-  "status": "ready_to_ship",
-  "logistic_type": "self_service",
-  "lead_time": {
-    "option_id": 123456,
-    "shipping_method": {
-      "id": 509245,
-      "type": "next_day",
-      "name": "Envío a domicilio"
-    },
-    "currency_id": "ARS",
-    "cost": 2500.00,         // <-- AQUÍ ESTÁ EL COSTO
-    "cost_type": "charged"
-  },
-  "receiver_address": { ... }
-}
+### Causa Raíz
+El envío ML existente fue creado **antes** de que se corrigiera el código para extraer `lead_time.cost`. Los logs muestran:
+```
+[ML Sync] Shipment already exists: 46399291666
 ```
 
-### Campos probados (orden de prioridad)
+El código actual ya está corregido para guardar el precio, pero los envíos existentes no se actualizan.
 
-1. `lead_time.cost` - Campo principal según documentación
-2. `shipping_option.cost` - Posible alternativa en algunos países
-3. `cost` - Fallback en caso de estructura distinta
-4. `base_cost` - Último fallback
+### Evidencia en Base de Datos
+```
+ml_shipment_id: 46399291666  precio_flete_ml: 0.00
+```
 
-### Logging adicional
+### Solución
+Opciones disponibles:
 
-Se agregará logging detallado de la estructura `lead_time` para depurar futuras discrepancias en la respuesta del API.
+**Opción A - Actualización Manual** (recomendada):
+1. Eliminar el envío existente desde la UI
+2. Sincronizar nuevamente para que se cree con el precio correcto
+
+**Opción B - Script de Actualización**:
+Ejecutar un SQL para re-procesar envíos ML existentes con precio 0 (requiere llamar a la API de ML para obtener lead_time.cost)
 
 ---
 
-## Resumen de Archivos
+## Archivos a Modificar
 
 | Archivo | Cambios |
 |---------|---------|
-| `supabase/functions/register-ml-shipment/index.ts` | Corregir credenciales y extraer `lead_time.cost` |
-| `supabase/functions/mercadolibre-sync/index.ts` | Extraer `lead_time.cost` y guardar en `precio_flete_ml` |
+| `src/components/tenants/DeleteTenantDialog.tsx` | Corregir orden de eliminación y agregar limpieza de FKs |
+
+---
+
+## Sección Técnica - Código de DeleteTenantDialog
+
+```typescript
+// ORDEN CORREGIDO DE ELIMINACIÓN:
+
+// A. Limpiar referencias en ecommerce_sellers (ANTES de eliminar sellers)
+await supabase.from('ecommerce_sellers')
+  .update({ sucursal_pickup_id: null })
+  .eq('tenant_id', tenant.id);
+
+// B. Limpiar referencias FK en envíos que apuntan a sucursales
+await supabase.from('envios')
+  .update({ 
+    sucursal_origen_id: null,
+    sucursal_destino_id: null,
+    sucursal_entrega_id: null,
+    sucursal_retiro_id: null
+  })
+  .eq('tenant_id', tenant.id);
+
+// C. Limpiar referencias en hojas_ruta
+await supabase.from('hojas_ruta')
+  .update({
+    sucursal_origen_id: null,
+    sucursal_destino_id: null
+  })
+  .eq('tenant_id', tenant.id);
+
+// D. Limpiar auto-referencia centro_logistico_id antes de eliminar
+await supabase.from('sucursales')
+  .update({ centro_logistico_id: null })
+  .eq('tenant_id', tenant.id);
+
+// E. Eliminar transferencias (referencia doble a sucursales)
+await supabase.from('transferencias')
+  .delete()
+  .or(`sucursal_origen_id.in.(${sucursalIds.join(',')}),sucursal_destino_id.in.(${sucursalIds.join(',')})`);
+
+// F. Eliminar sucursal_comisiones
+if (sucursalIds.length > 0) {
+  await supabase.from('sucursal_comisiones').delete().in('sucursal_id', sucursalIds);
+  await supabase.from('sucursal_zonas').delete().in('sucursal_id', sucursalIds);
+}
+
+// G. Limpiar sucursal_id en profiles ANTES de eliminar sucursales
+await supabase.from('profiles')
+  .update({ sucursal_id: null })
+  .eq('tenant_id', tenant.id);
+
+// H. Limpiar vehiculos.sucursal_id
+await supabase.from('vehiculos')
+  .update({ sucursal_id: null })
+  .eq('tenant_id', tenant.id);
+
+// I. Ahora sí eliminar sucursales (después de limpiar todas las FKs)
+await supabase.from('sucursales').delete().eq('tenant_id', tenant.id);
+```
+
+---
+
+## Resumen de Cambios
+
+| Problema | Solución | Estado |
+|----------|----------|--------|
+| Error FK al eliminar tenant | Corregir orden y limpiar referencias | Pendiente aprobación |
+| precio_flete_ml = 0 | Eliminar y re-sincronizar el envío existente | Código ya corregido, datos antiguos |
+
