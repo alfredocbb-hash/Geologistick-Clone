@@ -47,6 +47,7 @@ import { downloadBranchSettlementPDF } from '@/lib/generateSettlementPDF';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { SettlementDetailDialog } from '@/components/settlements/SettlementDetailDialog';
+import { ConceptBreakdownTable, type ConceptoResumen, type ResumenPorTipoPago } from '@/components/settlements/ConceptBreakdownTable';
 import type { Database } from '@/integrations/supabase/types';
 
 type PaymentMethod = Database['public']['Enums']['payment_method'];
@@ -80,6 +81,7 @@ interface LiquidacionSucursal {
   metodo_pago: string | null;
   referencia_pago: string | null;
   sucursal?: { nombre: string };
+  resumen_conceptos?: ResumenPorTipoPago | null;
 }
 
 export default function BranchSettlements() {
@@ -93,6 +95,8 @@ export default function BranchSettlements() {
     totalCobrado: number;
     totalComisiones: number;
     saldo: number;
+    resumenConceptos: ResumenPorTipoPago;
+    enviosDesglose: Record<string, Record<string, { venta: number; porcentaje: number; comision: number }>>;
   } | null>(null);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [notas, setNotas] = useState('');
@@ -132,7 +136,7 @@ export default function BranchSettlements() {
         .order('created_at', { ascending: false })
         .limit(50);
       if (error) throw error;
-      return data as LiquidacionSucursal[];
+      return data as unknown as LiquidacionSucursal[];
     },
   });
 
@@ -190,6 +194,16 @@ export default function BranchSettlements() {
 
       if (recepcionError) throw recepcionError;
 
+      // Fetch all concept names for display
+      const { data: conceptosCatalogo } = await supabase
+        .from('tarifa_conceptos')
+        .select('id, nombre');
+      
+      const conceptoNombres: Record<string, string> = {};
+      (conceptosCatalogo || []).forEach(c => {
+        conceptoNombres[c.id] = c.nombre;
+      });
+
       // Calculate totals
       let totalCobrado = 0;
       let totalComisiones = 0;
@@ -199,86 +213,174 @@ export default function BranchSettlements() {
         : 1;
       const ivaDivisor = 1 + ((sucursalConfig?.porcentaje_iva || 21) / 100);
 
-      // Helper function to calculate commission for a set of configs
-      const calcularComisionPorConfigs = (
-        envio: any, 
-        comisiones: typeof comisionesEmision, 
-        fleteMonto: number
+      // Track concept breakdown by payment type
+      const resumenConceptos: ResumenPorTipoPago = {
+        contado: [],
+        destino: [],
+        cta_cte: [],
+      };
+
+      // Helper to accumulate concept data
+      const conceptoAcumulado: Record<string, Record<string, { venta: number; porcentaje: number; comision: number; nombre: string }>> = {
+        contado: {},
+        destino: {},
+        cta_cte: {},
+      };
+
+      // Track per-shipment concept breakdown
+      const enviosDesglose: Record<string, Record<string, { venta: number; porcentaje: number; comision: number }>> = {};
+
+      // Helper function to calculate commission for a concept
+      const calcularComisionConcepto = (
+        conceptoId: string | null,
+        conceptoNombre: string,
+        monto: number,
+        tipoPago: string,
+        comisiones: typeof comisionesEmision,
+        envioTotal: number,
+        envioId: string
       ) => {
-        let envioComision = 0;
-        (comisiones || []).forEach((comisionConfig) => {
-          // Determine base value based on base_comision setting
-          let baseCalculo = 0;
-          switch (comisionConfig.base_comision || 'total') {
+        const tipoKey = tipoPago === 'cta_cte' ? 'cta_cte' : tipoPago === 'destino' ? 'destino' : 'contado';
+        
+        // Find commission config for this concept
+        const config = (comisiones || []).find(c => c.concepto_id === conceptoId);
+        
+        let porcentaje = 0;
+        let baseCalculo = monto;
+        
+        if (config) {
+          // Determine base based on config
+          switch (config.base_comision || 'total') {
             case 'flete':
-              baseCalculo = fleteMonto;
+              // We're already iterating by concept, so use concept amount
+              baseCalculo = monto;
               break;
             case 'neto':
-              baseCalculo = envio.precio_total / ivaDivisor;
+              baseCalculo = monto / ivaDivisor;
               break;
             case 'total':
             default:
-              baseCalculo = envio.precio_total;
+              baseCalculo = monto;
           }
-
+          
           // Get percentage based on payment type
-          let porcentaje = 0;
-          switch (envio.tipo_pago) {
+          switch (tipoPago) {
             case 'contado':
-              porcentaje = comisionConfig.porcentaje_contado || 0;
+              porcentaje = config.porcentaje_contado || 0;
               break;
             case 'destino':
-              porcentaje = comisionConfig.porcentaje_destino || 0;
+              porcentaje = config.porcentaje_destino || 0;
               break;
             case 'cta_cte':
-              porcentaje = comisionConfig.porcentaje_cta_cte || 0;
+              porcentaje = config.porcentaje_cta_cte || 0;
               break;
             default:
-              porcentaje = comisionConfig.porcentaje_contado || 0;
+              porcentaje = config.porcentaje_contado || 0;
           }
-
-          let comision = baseCalculo * (porcentaje / 100);
-          
-          // Apply IVA if configured
-          if (sucursalConfig?.incluye_iva) {
-            comision *= ivaMultiplier;
-          }
-
-          envioComision += comision;
-        });
-        return envioComision;
+        }
+        
+        let comision = baseCalculo * (porcentaje / 100);
+        
+        // Apply IVA if configured
+        if (sucursalConfig?.incluye_iva) {
+          comision *= ivaMultiplier;
+        }
+        
+        // Accumulate in resumen
+        const conceptoKey = conceptoId || conceptoNombre;
+        if (!conceptoAcumulado[tipoKey][conceptoKey]) {
+          conceptoAcumulado[tipoKey][conceptoKey] = {
+            venta: 0,
+            porcentaje,
+            comision: 0,
+            nombre: conceptoNombres[conceptoId || ''] || conceptoNombre,
+          };
+        }
+        conceptoAcumulado[tipoKey][conceptoKey].venta += monto;
+        conceptoAcumulado[tipoKey][conceptoKey].comision += comision;
+        
+        // Track per-shipment breakdown
+        if (!enviosDesglose[envioId]) {
+          enviosDesglose[envioId] = {};
+        }
+        enviosDesglose[envioId][conceptoKey] = {
+          venta: monto,
+          porcentaje,
+          comision,
+        };
+        
+        return comision;
       };
 
       const enviosData = (envios || []).map(envio => {
-        // Calculate flete (sum of "Flete" concept or fallback to precio_total)
         const detalles = (envio as any).envio_detalles || [];
-        const fleteMonto = detalles.find((d: any) => 
-          d.nombre_concepto?.toLowerCase().includes('flete')
-        )?.monto || envio.precio_total;
-
         const esOrigen = envio.sucursal_origen_id === selectedSucursal;
         const esDestino = envio.sucursal_destino_id === selectedSucursal;
+        const tipoPago = envio.tipo_pago || 'contado';
         
         let envioComision = 0;
 
-        // Si es ORIGEN → usar comisiones de EMISIÓN
-        if (esOrigen) {
-          envioComision += calcularComisionPorConfigs(envio, comisionesEmision, fleteMonto);
-          
-          // Cobrado solo si es contado (la sucursal origen cobra)
-          if (envio.tipo_pago === 'contado') {
-            totalCobrado += envio.precio_total;
+        // Process each concept from envio_detalles
+        if (detalles.length > 0) {
+          detalles.forEach((detalle: any) => {
+            // Si es ORIGEN → usar comisiones de EMISIÓN
+            if (esOrigen) {
+              envioComision += calcularComisionConcepto(
+                detalle.concepto_id,
+                detalle.nombre_concepto,
+                detalle.monto || 0,
+                tipoPago,
+                comisionesEmision,
+                envio.precio_total,
+                envio.id
+              );
+            }
+
+            // Si es DESTINO y está entregado → usar comisiones de RECEPCIÓN
+            if (esDestino && envio.estado === 'entregado') {
+              envioComision += calcularComisionConcepto(
+                detalle.concepto_id,
+                detalle.nombre_concepto,
+                detalle.monto || 0,
+                tipoPago,
+                comisionesRecepcion,
+                envio.precio_total,
+                envio.id
+              );
+            }
+          });
+        } else {
+          // Fallback: no details, use precio_total as "Flete" concept
+          if (esOrigen) {
+            envioComision += calcularComisionConcepto(
+              null,
+              'Flete',
+              envio.precio_total,
+              tipoPago,
+              comisionesEmision,
+              envio.precio_total,
+              envio.id
+            );
+          }
+          if (esDestino && envio.estado === 'entregado') {
+            envioComision += calcularComisionConcepto(
+              null,
+              'Flete',
+              envio.precio_total,
+              tipoPago,
+              comisionesRecepcion,
+              envio.precio_total,
+              envio.id
+            );
           }
         }
 
-        // Si es DESTINO y está entregado → usar comisiones de RECEPCIÓN
-        if (esDestino && envio.estado === 'entregado') {
-          envioComision += calcularComisionPorConfigs(envio, comisionesRecepcion, fleteMonto);
-          
-          // Cobrado si es pago destino (la sucursal destino cobra)
-          if (envio.tipo_pago === 'destino') {
-            totalCobrado += envio.precio_total;
-          }
+        // Cobrado logic
+        if (esOrigen && tipoPago === 'contado') {
+          totalCobrado += envio.precio_total;
+        }
+        if (esDestino && envio.estado === 'entregado' && tipoPago === 'destino') {
+          totalCobrado += envio.precio_total;
         }
 
         // If no commissions configured for the applicable role, use default 10%
@@ -288,6 +390,18 @@ export default function BranchSettlements() {
         if ((esOrigen && !hasEmisionConfig) || (esDestino && !hasRecepcionConfig)) {
           if (envioComision === 0) {
             envioComision = envio.precio_total * 0.10;
+            // Track default commission as "General" concept
+            const tipoKey = tipoPago === 'cta_cte' ? 'cta_cte' : tipoPago === 'destino' ? 'destino' : 'contado';
+            if (!conceptoAcumulado[tipoKey]['default']) {
+              conceptoAcumulado[tipoKey]['default'] = {
+                venta: 0,
+                porcentaje: 10,
+                comision: 0,
+                nombre: 'Comisión General (10%)',
+              };
+            }
+            conceptoAcumulado[tipoKey]['default'].venta += envio.precio_total;
+            conceptoAcumulado[tipoKey]['default'].comision += envioComision;
           }
         }
 
@@ -297,10 +411,23 @@ export default function BranchSettlements() {
           id: envio.id,
           tracking_number: envio.tracking_number,
           precio_total: envio.precio_total,
-          tipo_pago: envio.tipo_pago,
+          tipo_pago: tipoPago,
           created_at: envio.created_at,
           estado: envio.estado,
         };
+      });
+
+      // Convert accumulated data to array format for ResumenPorTipoPago
+      (['contado', 'destino', 'cta_cte'] as const).forEach(tipo => {
+        resumenConceptos[tipo] = Object.entries(conceptoAcumulado[tipo])
+          .map(([key, value]) => ({
+            concepto_id: key === 'default' ? null : key,
+            nombre: value.nombre,
+            ventas: value.venta,
+            porcentaje: value.porcentaje,
+            comision: value.comision,
+          }))
+          .sort((a, b) => b.ventas - a.ventas); // Sort by sales descending
       });
 
       const saldo = totalCobrado - totalComisiones;
@@ -310,6 +437,8 @@ export default function BranchSettlements() {
         totalCobrado,
         totalComisiones,
         saldo,
+        resumenConceptos,
+        enviosDesglose,
       };
     },
     onSuccess: (data) => {
@@ -328,7 +457,7 @@ export default function BranchSettlements() {
         throw new Error('No hay datos para guardar');
       }
 
-      // Create liquidacion
+      // Create liquidacion with resumen_conceptos
       const { data: liquidacion, error: liquidacionError } = await supabase
         .from('liquidaciones_sucursal')
         .insert({
@@ -342,25 +471,33 @@ export default function BranchSettlements() {
           notas: notas || null,
           created_by: user?.id,
           tenant_id: profile?.tenant_id,
-        })
+          resumen_conceptos: calculatedData.resumenConceptos as unknown as null,
+        } as any)
         .select()
         .single();
 
       if (liquidacionError) throw liquidacionError;
 
-      // Create detalles
-      const detalles = calculatedData.envios.map((envio) => ({
-        liquidacion_id: liquidacion.id,
-        envio_id: envio.id,
-        monto_envio: envio.precio_total,
-        tipo_pago: envio.tipo_pago || 'contado',
-        comision_aplicada: (envio.precio_total * 10) / 100,
-      }));
+      // Create detalles with desglose_conceptos
+      const detalles = calculatedData.envios.map((envio) => {
+        // Get per-concept breakdown for this shipment
+        const desglose = calculatedData.enviosDesglose[envio.id] || {};
+        const totalComision = Object.values(desglose).reduce((sum, c) => sum + c.comision, 0);
+        
+        return {
+          liquidacion_id: liquidacion.id,
+          envio_id: envio.id,
+          monto_envio: envio.precio_total,
+          tipo_pago: envio.tipo_pago || 'contado',
+          comision_aplicada: totalComision,
+          desglose_conceptos: desglose,
+        };
+      });
 
       if (detalles.length > 0) {
         const { error: detallesError } = await supabase
           .from('liquidacion_sucursal_detalles')
-          .insert(detalles);
+          .insert(detalles as any);
 
         if (detallesError) throw detallesError;
       }
@@ -608,7 +745,8 @@ export default function BranchSettlements() {
                 </Card>
               </div>
 
-              {/* Envíos incluidos */}
+              {/* Concept Breakdown */}
+              <ConceptBreakdownTable resumen={calculatedData.resumenConceptos} />
               <div className="rounded-md border">
                 <Table>
                   <TableHeader>

@@ -1651,6 +1651,7 @@ export type Database = {
         Row: {
           comision_aplicada: number
           created_at: string | null
+          desglose_conceptos: Json | null
           envio_id: string
           id: string
           liquidacion_id: string
@@ -1660,6 +1661,7 @@ export type Database = {
         Insert: {
           comision_aplicada: number
           created_at?: string | null
+          desglose_conceptos?: Json | null
           envio_id: string
           id?: string
           liquidacion_id: string
@@ -1669,6 +1671,7 @@ export type Database = {
         Update: {
           comision_aplicada?: number
           created_at?: string | null
+          desglose_conceptos?: Json | null
           envio_id?: string
           id?: string
           liquidacion_id?: string
@@ -1920,6 +1923,7 @@ export type Database = {
           periodo_fin: string
           periodo_inicio: string
           referencia_pago: string | null
+          resumen_conceptos: Json | null
           saldo: number | null
           sucursal_id: string
           tenant_id: string | null
@@ -1939,6 +1943,7 @@ export type Database = {
           periodo_fin: string
           periodo_inicio: string
           referencia_pago?: string | null
+          resumen_conceptos?: Json | null
           saldo?: number | null
           sucursal_id: string
           tenant_id?: string | null
@@ -1958,6 +1963,7 @@ export type Database = {
           periodo_fin?: string
           periodo_inicio?: string
           referencia_pago?: string | null
+          resumen_conceptos?: Json | null
           saldo?: number | null
           sucursal_id?: string
           tenant_id?: string | null

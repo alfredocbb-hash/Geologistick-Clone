@@ -19,10 +19,12 @@ import {
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
-import { Download, FileText, Printer, Building2, Calendar, DollarSign, CreditCard, User } from 'lucide-react';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Download, FileText, Printer, Building2, Calendar, DollarSign, CreditCard, User, Receipt, Wallet } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import jsPDF from 'jspdf';
+import { ConceptBreakdownTable, type ResumenPorTipoPago } from './ConceptBreakdownTable';
 
 interface BranchSettlement {
   id: string;
@@ -39,6 +41,7 @@ interface BranchSettlement {
   fecha_pago: string | null;
   metodo_pago: string | null;
   referencia_pago: string | null;
+  resumen_conceptos?: ResumenPorTipoPago | null;
 }
 
 interface DriverSettlement {
@@ -394,6 +397,11 @@ export function SettlementDetailDialog({
                 </Card>
               )}
             </div>
+
+            {/* Payment info if paid */}
+            {isBranch && branchData.resumen_conceptos && (
+              <ConceptBreakdownTable resumen={branchData.resumen_conceptos} />
+            )}
 
             {/* Payment info if paid */}
             {settlement.estado === 'pagada' && settlement.fecha_pago && (
