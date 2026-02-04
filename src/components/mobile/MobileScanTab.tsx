@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { QrCode, Package, Truck, History, CheckCircle2, Scan, ArrowRight } from 'lucide-react';
+import { QrCode, Package, Truck, History, CheckCircle2, Scan, ArrowRight, Building2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -13,6 +13,8 @@ import { BranchDeliveryDialog } from '@/components/scan/BranchDeliveryDialog';
 import { UltimaMillaDialog } from '@/components/scan/UltimaMillaDialog';
 import { MLDeliveryDialog } from '@/components/scan/MLDeliveryDialog';
 import { MLRegisterDialog } from '@/components/scan/MLRegisterDialog';
+import { ReceiveRouteSheetDialog } from '@/components/scan/ReceiveRouteSheetDialog';
+import { CollectRouteSheetDialog } from '@/components/scan/CollectRouteSheetDialog';
 import { parseQRCode } from '@/lib/qrParser';
 
 type ScanMode = 'idle' | 'scanning';
@@ -59,6 +61,11 @@ export function MobileScanTab() {
   const [showMLRegisterDialog, setShowMLRegisterDialog] = useState(false);
   const [pendingMLData, setPendingMLData] = useState<{ mlShipmentId: string; mlSenderId?: string } | null>(null);
   const [isPulsing, setIsPulsing] = useState(true);
+  
+  // Route sheet states
+  const [showReceiveRouteSheetDialog, setShowReceiveRouteSheetDialog] = useState(false);
+  const [showCollectRouteSheetDialog, setShowCollectRouteSheetDialog] = useState(false);
+  const [scannedRouteSheetId, setScannedRouteSheetId] = useState<string | null>(null);
 
   // Fetch recent scans
   const { data: recentScans } = useQuery({
@@ -93,10 +100,39 @@ export function MobileScanTab() {
     console.log('[MobileScanTab] Parsed QR:', parsed);
     
     if (parsed.type === 'route_sheet') {
-      toast.info('Código de hoja de ruta detectado', {
-        description: `HR: ${parsed.value}`
-      });
-      setIsPulsing(true);
+      const hojaId = parsed.value;
+      
+      // Verify route sheet exists
+      const { data: hojaRuta, error } = await supabase
+        .from('hojas_ruta')
+        .select('id, estado, chofer_id')
+        .eq('id', hojaId)
+        .single();
+      
+      if (error || !hojaRuta) {
+        toast.error('Hoja de ruta no encontrada');
+        setIsPulsing(true);
+        return;
+      }
+      
+      // Play success sound and vibrate
+      playBeepSound();
+      vibrateDevice();
+      
+      setScannedRouteSheetId(hojaId);
+      
+      // Show different dialogs based on user role
+      if (hasRole('chofer')) {
+        setShowCollectRouteSheetDialog(true);
+        toast.success('Hoja de ruta encontrada', {
+          description: `Preparar recolección de envíos`
+        });
+      } else {
+        setShowReceiveRouteSheetDialog(true);
+        toast.success('Hoja de ruta encontrada', {
+          description: `Proceder con recepción de envíos`
+        });
+      }
       return;
     }
     
@@ -294,8 +330,11 @@ export function MobileScanTab() {
     setShowUltimaMillaDialog(false);
     setShowMLDeliveryDialog(false);
     setShowMLRegisterDialog(false);
+    setShowReceiveRouteSheetDialog(false);
+    setShowCollectRouteSheetDialog(false);
     setScannedShipment(null);
     setPendingMLData(null);
+    setScannedRouteSheetId(null);
     setIsPulsing(true);
     
     // Refresh recent scans
@@ -407,7 +446,7 @@ export function MobileScanTab() {
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className={`grid gap-3 ${(hasRole('operador') || hasRole('bodega') || hasRole('sucursal') || hasRole('admin')) ? 'grid-cols-3' : 'grid-cols-2'}`}>
         <Card 
           className="bg-slate-900/60 border-slate-800/50 cursor-pointer hover:border-blue-500/50 transition-all active:scale-[0.98]"
           onClick={handleScanClick}
@@ -443,6 +482,27 @@ export function MobileScanTab() {
             <ArrowRight className="w-4 h-4 text-slate-500 absolute top-4 right-4" />
           </CardContent>
         </Card>
+
+        {/* Third card - Receive Route Sheet (only for admin/operator roles) */}
+        {(hasRole('operador') || hasRole('bodega') || hasRole('sucursal') || hasRole('admin')) && (
+          <Card 
+            className="bg-slate-900/60 border-slate-800/50 cursor-pointer hover:border-purple-500/50 transition-all active:scale-[0.98]"
+            onClick={handleScanClick}
+          >
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500/20 to-purple-500/10 flex items-center justify-center">
+                  <Building2 className="h-6 w-6 text-purple-400" />
+                </div>
+                <div>
+                  <p className="font-semibold text-white">Recibir</p>
+                  <p className="text-xs text-slate-400">Hoja de ruta</p>
+                </div>
+              </div>
+              <ArrowRight className="w-4 h-4 text-slate-500 absolute top-4 right-4" />
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Recent Scans */}
@@ -553,6 +613,23 @@ export function MobileScanTab() {
           userId={user?.id}
           onClose={handleDialogClose}
           onSuccess={handleMLRegisterSuccess}
+        />
+      )}
+
+      {/* Route Sheet Reception Dialog (for admin/operator roles) */}
+      {showReceiveRouteSheetDialog && scannedRouteSheetId && (
+        <ReceiveRouteSheetDialog
+          hojaRutaId={scannedRouteSheetId}
+          onClose={handleDialogClose}
+        />
+      )}
+
+      {/* Route Sheet Collection Dialog (for drivers) */}
+      {showCollectRouteSheetDialog && scannedRouteSheetId && (
+        <CollectRouteSheetDialog
+          hojaRutaId={scannedRouteSheetId}
+          onClose={handleDialogClose}
+          onSuccess={handleDialogSuccess}
         />
       )}
     </div>
