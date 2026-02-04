@@ -360,7 +360,7 @@ export function MobileScanTab() {
       case 'recogido':
         return 'Recogido';
       case 'en_bodega':
-        return 'En bodega';
+        return 'En Sucursal';
       case 'cancelado':
         return 'Cancelado';
       case 'devuelto':

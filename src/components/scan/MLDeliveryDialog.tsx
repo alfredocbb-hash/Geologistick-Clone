@@ -130,7 +130,7 @@ export function MLDeliveryDialog({ open, shipment, onClose, onSuccess }: MLDeliv
     const labels: Record<string, string> = {
       pendiente: 'Pendiente',
       recogido: 'Recogido',
-      en_bodega: 'En bodega',
+      en_bodega: 'En Sucursal',
       en_transito: 'En tránsito',
       en_reparto: 'En reparto',
       entregado: 'Entregado',
