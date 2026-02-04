@@ -330,7 +330,7 @@ export default function LiveMap() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{totalEnBodega}</p>
-                <p className="text-xs text-muted-foreground">En Bodega</p>
+                <p className="text-xs text-muted-foreground">En Sucursal</p>
               </div>
             </div>
           </CardContent>
@@ -474,7 +474,7 @@ export default function LiveMap() {
                           {sucursal.envios_en_bodega > 0 && (
                             <Badge variant="outline" className="text-xs">
                               <Building2 className="mr-1 h-3 w-3" />
-                              {sucursal.envios_en_bodega} bodega
+                              {sucursal.envios_en_bodega} en suc.
                             </Badge>
                           )}
                           {sucursal.envios_en_reparto > 0 && (

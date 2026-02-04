@@ -189,7 +189,7 @@ export default function Drivers() {
     const statusConfig: Record<string, { label: string; className: string }> = {
       pendiente: { label: 'Pendiente', className: 'bg-warning/10 text-warning border-warning' },
       recogido: { label: 'Recogido', className: 'bg-info/10 text-info border-info' },
-      en_bodega: { label: 'En Bodega', className: 'bg-muted text-muted-foreground border-muted-foreground' },
+      en_bodega: { label: 'En Sucursal', className: 'bg-muted text-muted-foreground border-muted-foreground' },
       en_transito: { label: 'En Tránsito', className: 'bg-chofer/10 text-chofer border-chofer' },
       en_reparto: { label: 'En Reparto', className: 'bg-primary/10 text-primary border-primary' },
       entregado: { label: 'Entregado', className: 'bg-success/10 text-success border-success' },

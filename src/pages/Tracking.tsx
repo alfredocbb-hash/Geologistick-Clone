@@ -60,7 +60,7 @@ interface TrackingResponse {
 const statusConfig: Record<ShipmentStatus, { label: string; color: string; bgColor: string; icon: React.ElementType }> = {
   pendiente: { label: 'Pendiente', color: 'text-yellow-600', bgColor: 'bg-yellow-100', icon: Clock },
   recogido: { label: 'Recogido', color: 'text-blue-600', bgColor: 'bg-blue-100', icon: Package },
-  en_bodega: { label: 'En Bodega', color: 'text-purple-600', bgColor: 'bg-purple-100', icon: Package },
+  en_bodega: { label: 'En Sucursal', color: 'text-purple-600', bgColor: 'bg-purple-100', icon: Package },
   en_transito: { label: 'En Tránsito', color: 'text-blue-600', bgColor: 'bg-blue-100', icon: Truck },
   en_reparto: { label: 'En Reparto', color: 'text-orange-600', bgColor: 'bg-orange-100', icon: Truck },
   entregado: { label: 'Entregado', color: 'text-green-600', bgColor: 'bg-green-100', icon: CheckCircle },
