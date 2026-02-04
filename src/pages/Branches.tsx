@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -203,9 +203,10 @@ export default function Branches() {
     enabled: !!selectedSucursalForCommissions,
   });
 
-  // Conceptos a mostrar (excluir recepcion y cobros)
-  const conceptosFiltrados = conceptos.filter(
-    c => !['recepcion', 'cobros'].includes(c.codigo)
+  // Conceptos a mostrar (excluir recepcion y cobros) - memoizado para evitar re-renders
+  const conceptosFiltrados = useMemo(() => 
+    conceptos.filter(c => !['recepcion', 'cobros'].includes(c.codigo)),
+    [conceptos]
   );
 
   // Initialize commission data when dialog opens - separado por tipo_rol
