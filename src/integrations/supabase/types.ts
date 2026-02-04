@@ -3915,6 +3915,7 @@ export type Database = {
       shipment_status:
         | "pendiente"
         | "recogido"
+        | "en_sucursal"
         | "en_bodega"
         | "en_transito"
         | "en_reparto"
@@ -4080,6 +4081,7 @@ export const Constants = {
       shipment_status: [
         "pendiente",
         "recogido",
+        "en_sucursal",
         "en_bodega",
         "en_transito",
         "en_reparto",
