@@ -1,105 +1,92 @@
 
+## Objetivo
+Que los envíos en estado **“incidencia”** aparezcan en **Bandeja de Incidencias** para poder asignarles una acción.
 
-# Plan: Mostrar Envíos Devueltos sin Incidente en la Bandeja
+## Hallazgo (causa raíz)
+El módulo **Incidencias** no está mostrando nada porque la consulta está fallando con **HTTP 400** (no es que no existan datos).
 
-## Situación Actual
+En los requests de la app aparece este error:
 
-La bandeja de incidencias solo muestra registros de la tabla `incidentes`. Sin embargo, existen envíos con estado "devuelto" que:
+- `PGRST200 ... Could not find a relationship between 'incidentes' and 'profiles' ... hint 'incidentes_chofer_id_fkey'`
 
-1. Fueron marcados antes de implementar el nuevo flujo de incidencias
-2. No tienen un registro asociado en la tabla `incidentes`
-3. Deberían poder ser gestionados (re-intentar, reprogramar, etc.)
+Esto ocurre porque el frontend pide un join así:
+- `chofer:profiles!incidentes_chofer_id_fkey(nombre, apellido)`
 
-## Opciones de Solución
+pero en la base **no existe** el foreign key `incidentes_chofer_id_fkey` entre `incidentes.chofer_id` y `profiles` (hoy `incidentes` solo tiene FK a `envios`, `tenants` y `auth.users` para `resuelto_por`).
 
-| Opcion | Descripcion | Ventajas | Desventajas |
-|--------|-------------|----------|-------------|
-| **A) Migrar datos** | Crear registros de incidente para envios devueltos sin incidente | Mantiene logica actual, datos consistentes | Requiere migracion, asignar tipo de incidente generico |
-| **B) Vista combinada** | Mostrar en bandeja: incidentes + envios devueltos sin incidente | No requiere migracion, solucion inmediata | Query mas compleja, logica duplicada |
-| **C) Nueva pestana** | Agregar pestana "Devueltos sin gestionar" en la bandeja | Separacion clara, facil de entender | Duplicacion de UI |
+Resultado: la query falla, React Query no muestra error en UI, y termina pareciendo “no hay incidencias”.
 
-## Solucion Recomendada: Opcion A - Migracion de Datos
+## Verificación de datos (ya en backend)
+Existe el envío y existe su incidencia pendiente:
+- `envios.estado = 'incidencia'`
+- `incidentes.estado = 'pendiente'`
+- `tenant_id` coincide
 
-La opcion mas limpia es crear registros de incidente para los envios devueltos que no tienen uno, y luego corregir el flujo para que siempre use el estado "incidencia" primero.
-
----
-
-## Cambios a Realizar
-
-### 1. Migracion de Datos
-
-Crear registros de incidente para envios con estado "devuelto" que no tienen incidente:
-
-```sql
-INSERT INTO incidentes (envio_id, tenant_id, tipo, descripcion, estado, created_at)
-SELECT 
-  e.id,
-  e.tenant_id,
-  'otro',
-  'Incidente creado automaticamente - envio marcado como devuelto sin registro de incidencia',
-  'pendiente',
-  COALESCE(e.updated_at, NOW())
-FROM envios e
-LEFT JOIN incidentes i ON i.envio_id = e.id
-WHERE e.estado = 'devuelto'
-  AND i.id IS NULL;
-```
-
-### 2. Actualizar Estado de Envios
-
-Cambiar los envios de "devuelto" a "incidencia" para que puedan ser gestionados:
-
-```sql
-UPDATE envios 
-SET estado = 'incidencia'
-WHERE estado = 'devuelto'
-  AND id IN (
-    SELECT e.id FROM envios e
-    INNER JOIN incidentes i ON i.envio_id = e.id
-    WHERE i.estado = 'pendiente'
-  );
-```
-
-### 3. Limpiar Incidentes Inconsistentes (Opcional)
-
-Resolver incidentes cuyo envio ya fue entregado:
-
-```sql
-UPDATE incidentes 
-SET estado = 'resuelto', 
-    accion_tomada = 'entregado_posteriormente',
-    resolucion = 'El envio fue entregado despues de reportar incidencia',
-    resuelto_at = NOW()
-WHERE estado = 'pendiente'
-  AND envio_id IN (
-    SELECT id FROM envios WHERE estado = 'entregado'
-  );
-```
+O sea: los datos están, el problema es el join roto.
 
 ---
 
-## Archivos a Modificar
+## Cambios propuestos
 
-| Archivo | Cambios |
-|---------|---------|
-| Nueva migracion SQL | Migrar datos inconsistentes |
-| `IncidentActionDialog.tsx` | Manejar caso donde estado anterior no es "incidencia" |
+### 1) Backend (migración): agregar FK faltante para habilitar el join
+Crear el foreign key exactamente con el nombre que usa el frontend, apuntando a `profiles.user_id` (que es UNIQUE):
 
-## Flujo Corregido
+1. Verificación previa (solo para seguridad):
+   - Confirmar que no haya incidentes con `chofer_id` sin profile (ya validé y da 0, pero lo re-chequeamos antes de aplicar en el entorno que corresponda).
 
-Despues de esta migracion:
+2. Migración SQL:
+   - `ALTER TABLE public.incidentes ADD CONSTRAINT incidentes_chofer_id_fkey FOREIGN KEY (chofer_id) REFERENCES public.profiles(user_id);`
+   - (Opcional recomendado) índice:
+     - `CREATE INDEX IF NOT EXISTS incidentes_chofer_id_idx ON public.incidentes(chofer_id);`
 
-1. Todos los envios con problemas tendran un registro en `incidentes`
-2. El estado del envio sera "incidencia" hasta que el admin decida la accion
-3. Solo despues de resolver el incidente, el envio pasara a "devuelto", "pendiente", o "cancelado"
+Con esto PostgREST puede “entender” la relación y el select con `profiles!incidentes_chofer_id_fkey` deja de fallar.
+
+Notas:
+- Mantengo `chofer_id` como NOT NULL (así está hoy). Si en el futuro quieren permitir incidentes “sin chofer”, ahí sí conviene hacerlo nullable + `ON DELETE SET NULL`, pero eso sería un cambio funcional más grande.
+
+### 2) Frontend (Incidents.tsx): mostrar errores de consulta (en vez de “no hay incidencias”)
+Mejora necesaria para que si algo vuelve a fallar, el usuario lo vea claramente.
+
+Cambios en `src/pages/Incidents.tsx`:
+- Leer `error` desde `useQuery`.
+- Renderizar un estado “Error cargando incidencias” con:
+  - Mensaje breve
+  - Botón “Reintentar” (llama `refetch()`)
+  - (Opcional) detalle técnico colapsable en modo dev
+
+### 3) Frontend (Incidents.tsx): refresco más confiable
+Para evitar confusiones por caché:
+- En esa query setear opciones más “operativas”, por ejemplo:
+  - `staleTime: 0`
+  - `refetchOnMount: 'always'`
+  - `refetchOnWindowFocus: true`
+Esto no rompe nada y hace que “Incidencias” siempre esté fresco aunque el resto del sistema tenga caché más largo.
 
 ---
 
-## Resultado Esperado
+## Pasos de prueba (end-to-end)
+1. Iniciar sesión con el usuario admin del tenant.
+2. Ir a **/incidents**:
+   - Confirmar que el request a `/rest/v1/incidentes?...chofer:profiles!...` ya no devuelve 400.
+   - Confirmar que la incidencia pendiente aparece listada.
+3. Abrir la incidencia y ejecutar una acción (re_intento / reprogramar / devolver / cancelar):
+   - Verificar que:
+     - `incidentes.estado` pase a `resuelto`
+     - `envios.estado` cambie según la acción
+     - Se inserte registro en `envio_historial`
+4. Volver a **/shipments** y confirmar que el envío ya no queda “trabado” en incidencia.
 
-| Antes | Despues |
-|-------|---------|
-| 1 envio devuelto sin incidente visible | Todos los devueltos aparecen en bandeja |
-| Estados inconsistentes | Estados sincronizados |
-| Incidentes de envios entregados en pendiente | Incidentes resueltos automaticamente |
+---
 
+## Archivos / componentes involucrados
+- Backend (migración SQL):
+  - Agregar FK `incidentes_chofer_id_fkey` → `profiles(user_id)`
+  - (Opcional) index `incidentes_chofer_id_idx`
+- Frontend:
+  - `src/pages/Incidents.tsx` (manejo de error + opciones de refetch)
+
+---
+
+## Resultado esperado
+- La Bandeja de Incidencias vuelve a funcionar: lista las incidencias pendientes y permite “Resolver”.
+- Si hay un problema futuro de consulta/RLS/relaciones, el módulo mostrará **error explícito** en lugar de “0 incidencias”.
