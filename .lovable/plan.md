@@ -1,126 +1,130 @@
 
-## Objetivo
-Permitir editar la direccion y geolocalización de un envío directamente desde el popup del Planificador de Rutas, sin necesidad de salir de la vista.
+
+# Plan: Habilitar botón "Llamar" en la APK del chofer
+
+## Problema Identificado
+
+El botón **"Llamar"** está deshabilitado porque:
+
+1. La query que trae los envíos **no incluye el campo `whatsapp_destinatario`** de la tabla `envios`
+2. El código usa `contact?.telefono` donde `contact` es el cliente vinculado (`envio.destinatario`)
+3. Para envíos importados (MercadoLibre, CSV, etc.), **no hay cliente vinculado** - los datos van directo en `nombre_destinatario`, `whatsapp_destinatario`, etc.
+4. Por lo tanto, `contact` es `null` y el botón queda deshabilitado
+
+**Evidencia:** El envío de "Romina Brites" tiene `whatsapp_destinatario: 1162858618` en la base de datos, pero la app no lo está usando.
 
 ---
 
-## Analisis del Estado Actual
+## Solución
 
-El popup `ShipmentMapPopup` actualmente muestra:
-- Tracking, tipo (retiro/entrega), estado
-- Cliente, direccion, ciudad, telefono
-- Estado de coordenadas (geolocalizado o sin coordenadas)
-- Botones: "Geolocalizar" (solo si no tiene coords) y "Ver detalles"
+### 1. Agregar campos de teléfono a las queries
 
-La funcionalidad existente de "Geolocalizar" usa geocodificacion automatica basada en la direccion actual, pero no permite **corregir manualmente** la direccion antes de geolocalizar.
+Modificar las 2 queries en `ActiveRouteNavigation.tsx`:
 
----
+**Query de envíos de hoja de ruta (líneas 121-145):**
+- Agregar: `whatsapp_destinatario`
 
-## Cambios Propuestos
+**Query de paradas de ruta planificada (líneas 159-183):**
+- Agregar: `whatsapp_destinatario`
 
-### 1) Nuevo componente: `EditShipmentLocationDialog`
-Ubicacion: `src/components/routes/EditShipmentLocationDialog.tsx`
+### 2. Usar el teléfono directo como fallback
 
-Un dialogo dedicado para editar la direccion y coordenadas de un envío:
-- Input de direccion con **AddressAutocomplete** (Google Places)
-- Campos manuales para ciudad
-- Muestra coordenadas capturadas automaticamente al seleccionar del autocompletado
-- Boton "Guardar" que actualiza la tabla `envios` con:
-  - Si es tipo "retiro": `direccion_retiro`, `ciudad_retiro`, `remitente_lat`, `remitente_lng`
-  - Si es tipo "entrega": `direccion_entrega`, `ciudad_entrega`, `destinatario_lat`, `destinatario_lng`
-
-### 2) Modificar `ShipmentMapPopup`
-Agregar un boton "Editar Ubicacion" junto a los botones existentes:
-- Visible siempre (tenga o no coordenadas)
-- Al hacer clic, abre el nuevo `EditShipmentLocationDialog`
-- Incluir callback para refrescar datos del planificador tras edicion exitosa
-
-### 3) Integrar en `RoutePlanner.tsx`
-- Agregar estado para controlar apertura del dialogo de edicion
-- Pasar la funcion de invalidacion de queries para refrescar la lista de envíos
-
----
-
-## Flujo de Usuario
-
-1. Usuario selecciona envíos en el planificador
-2. Hace clic en un marcador del mapa o en la tabla
-3. Aparece el popup con informacion del envío
-4. Hace clic en "Editar Ubicacion"
-5. Se abre un dialogo con:
-   - Campo de direccion con autocompletado de Google
-   - Campo de ciudad (auto-rellenado)
-   - Indicador visual de coordenadas capturadas
-6. Usuario busca/selecciona nueva direccion
-7. Guarda cambios
-8. El popup se cierra y la lista se actualiza automaticamente
-
----
-
-## Detalles Tecnicos
-
-### Estructura del nuevo dialogo
+Modificar la lógica de obtención de teléfono (línea 442) para usar el teléfono del campo directo cuando no hay cliente vinculado:
 
 ```text
-+------------------------------------------+
-| Editar Ubicacion                         |
-|------------------------------------------|
-| Tracking: ADMIN-ENV-XXXXX                |
-| Tipo: [Retiro/Entrega]                   |
-|                                          |
-| Direccion actual:                        |
-| [Calle 9 5343, Berazategui]              |
-|                                          |
-| Nueva direccion: *                       |
-| [____________________________] (autocomplete)
-|                                          |
-| Ciudad:                                  |
-| [____________________________]           |
-|                                          |
-| [check] Coordenadas: -34.76, -58.21      |
-|                                          |
-|              [Cancelar] [Guardar]        |
-+------------------------------------------+
+Antes:
+  contact?.telefono
+
+Después:
+  contact?.telefono || envio?.whatsapp_destinatario
 ```
 
-### Campos a actualizar segun tipo
+### 3. Actualizar las funciones de llamada y WhatsApp
 
-| Campo              | Retiro              | Entrega              |
-|--------------------|---------------------|----------------------|
-| Direccion          | direccion_retiro    | direccion_entrega    |
-| Ciudad             | ciudad_retiro       | ciudad_entrega       |
-| Latitud            | remitente_lat       | destinatario_lat     |
-| Longitud           | remitente_lng       | destinatario_lng     |
+Modificar los botones para usar la lógica de fallback:
 
-### Dependencias utilizadas
-- `AddressAutocomplete` (ya existe en `src/components/maps/`)
-- `GoogleMapsProvider` (ya existe)
-- `useMutation` + `useQueryClient` para actualizar y refrescar
+- **Botón Llamar**: `onClick={() => phone && callCustomer(phone)}`
+- **Botón WhatsApp**: `onClick={() => phone && whatsAppCustomer(phone, name)}`
+
+Donde `phone` se define como:
+```text
+const phone = isPickup 
+  ? (contact?.telefono || nextEnvio?.whatsapp_remitente)
+  : (contact?.telefono || nextEnvio?.whatsapp_destinatario);
+```
 
 ---
 
-## Archivos Involucrados
+## Archivos a Modificar
 
-| Archivo | Accion |
+| Archivo | Cambio |
 |---------|--------|
-| `src/components/routes/EditShipmentLocationDialog.tsx` | **Crear** - Nuevo dialogo de edicion |
-| `src/components/maps/ShipmentMapPopup.tsx` | **Modificar** - Agregar boton "Editar Ubicacion" y prop de callback |
-| `src/pages/RoutePlanner.tsx` | **Modificar** - Integrar estado y dialogo de edicion |
+| `src/pages/ActiveRouteNavigation.tsx` | Agregar campos a queries + lógica de fallback |
 
 ---
 
-## Validaciones
+## Detalles Técnicos
 
-- La direccion es requerida
-- Mostrar advertencia si se guarda sin coordenadas (aunque permitirlo)
-- Al guardar exitosamente:
-  - Invalidar query `envios-planificador`
-  - Cerrar dialogo de edicion
-  - Cerrar popup del mapa
-  - Mostrar toast de confirmacion
+### Cambio en Query de Envíos Hoja de Ruta (líneas ~125-142)
+```text
+envio:envios(
+  id,
+  tracking_number,
+  ...
+  nombre_destinatario,
+  nombre_remitente,
++ whatsapp_destinatario,
+  destinatario:clientes!...(nombre, apellido, telefono, ...),
+  remitente:clientes!...(nombre, apellido, telefono, ...)
+)
+```
+
+### Cambio en Query de Paradas Planificadas (líneas ~163-180)
+```text
+envio:envios(
+  ...
+  nombre_destinatario,
+  nombre_remitente,
++ whatsapp_destinatario,
+  destinatario:clientes!...(nombre, apellido, telefono, ...),
+  remitente:clientes!...(nombre, apellido, telefono, ...)
+)
+```
+
+### Nueva lógica de teléfono (después de línea 442)
+```text
+const contact = isPickup ? nextEnvio?.remitente : nextEnvio?.destinatario;
+const phone = isPickup
+  ? (contact?.telefono)
+  : (contact?.telefono || nextEnvio?.whatsapp_destinatario);
+```
+
+### Actualización de botones (líneas ~606-622)
+```text
+<Button 
+  variant="outline"
+  onClick={() => phone && callCustomer(phone)}
+  disabled={!phone}
+>
+  <Phone className="h-4 w-4 mr-1" />
+  Llamar
+</Button>
+<Button 
+  variant="outline"
+  className="bg-green-500/10 border-green-500/30 text-green-600"
+  onClick={() => phone && whatsAppCustomer(phone, clienteName)}
+  disabled={!phone}
+>
+  <MessageCircle className="h-4 w-4 mr-1" />
+  WhatsApp
+</Button>
+```
 
 ---
 
 ## Resultado Esperado
 
-Los usuarios podran corregir direcciones incorrectas o mal geolocalizadas directamente desde el planificador, mejorando la precision de las rutas sin necesidad de ir a otra pantalla.
+- El botón **"Llamar"** estará habilitado cuando exista teléfono (ya sea en el cliente vinculado O en `whatsapp_destinatario`)
+- El botón **"WhatsApp"** funcionará de la misma manera
+- Envíos importados desde MercadoLibre/CSV mostrarán el teléfono correctamente
+
