@@ -203,16 +203,18 @@ export default function ActiveRouteNavigation() {
       }))
     : enviosHoja;
 
-  // Calculate stats
+  // Calculate stats - incidencia counts as "completed" for driver (no further action needed)
   const stats = useMemo(() => {
     const total = envios.length;
     const completed = envios.filter(e => 
       e.envio?.estado === 'entregado' || 
       e.envio?.estado === 'devuelto' ||
+      e.envio?.estado === 'incidencia' ||
       e.envio?.estado_retiro === 'retirado'
     ).length;
     const failed = envios.filter(e => 
       e.envio?.estado === 'devuelto' ||
+      e.envio?.estado === 'incidencia' ||
       e.envio?.estado_retiro === 'fallido'
     ).length;
     const pending = total - completed;
@@ -221,11 +223,14 @@ export default function ActiveRouteNavigation() {
     return { total, completed, failed, pending, progress };
   }, [envios]);
 
-  // Get next stop
+  // Get next stop - skip shipments with incident (no further driver action)
   const nextStop = useMemo(() => {
     return envios.find(e => {
       const envio = e.envio;
       if (!envio) return false;
+      
+      // Skip shipments with incident - no further action needed from driver
+      if (envio.estado === 'incidencia') return false;
       
       const isPickupStop = envio.requiere_retiro;
       

@@ -47,6 +47,7 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
   const [description, setDescription] = useState('');
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Handle photo selection
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -95,10 +96,14 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
 
       let photoUrl: string | null = null;
 
-      // Upload photo if provided
+      // Upload photo if provided - throw error if upload fails
       if (photo) {
         const photoPath = `incidents/${shipment.id}/evidence_${Date.now()}.jpg`;
         photoUrl = await uploadFile(photo, photoPath);
+        
+        if (!photoUrl) {
+          throw new Error('Error al subir la foto de evidencia. Por favor intenta nuevamente.');
+        }
       }
 
       // Create incident record
@@ -179,6 +184,9 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
       onClose();
     },
     onError: (error, _, context) => {
+      // Reset submitting state to allow retry
+      setIsSubmitting(false);
+      
       if (context?.previousParadas) {
         queryClient.setQueryData(['my-active-route-paradas'], context.previousParadas);
       }
@@ -297,12 +305,16 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
             Cancelar
           </Button>
           <Button 
-            onClick={() => reportMutation.mutate()}
-            disabled={reportMutation.isPending || !incidentType}
+            onClick={() => {
+              if (isSubmitting || reportMutation.isPending) return;
+              setIsSubmitting(true);
+              reportMutation.mutate();
+            }}
+            disabled={isSubmitting || reportMutation.isPending || !incidentType}
             variant="destructive"
             className="gap-2"
           >
-            {reportMutation.isPending ? (
+            {(isSubmitting || reportMutation.isPending) ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <AlertTriangle className="h-4 w-4" />
