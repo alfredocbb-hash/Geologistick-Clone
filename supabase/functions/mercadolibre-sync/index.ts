@@ -375,10 +375,10 @@ async function getValidAccessToken(supabase: any, seller: any): Promise<string |
   // Get ML credentials using key-value schema (same pattern as mercadolibre-oauth)
   const { data: credentials, error: credError } = await supabase
     .from('system_integrations')
-    .select('key, value')
+    .select('config_key, config_value')
     .eq('tenant_id', seller.tenant_id)
     .eq('integration_type', 'mercadolibre')
-    .in('key', ['client_id', 'client_secret']);
+    .in('config_key', ['client_id', 'client_secret']);
 
   if (credError || !credentials || credentials.length === 0) {
     console.error('[ML Sync] No integration credentials found:', credError);
@@ -388,7 +388,7 @@ async function getValidAccessToken(supabase: any, seller: any): Promise<string |
   // Convert key-value rows to object
   const config: Record<string, string> = {};
   for (const row of credentials) {
-    config[row.key] = row.value;
+    config[row.config_key] = row.config_value;
   }
 
   if (!config.client_id || !config.client_secret) {
