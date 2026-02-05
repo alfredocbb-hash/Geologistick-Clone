@@ -18,6 +18,7 @@ const Navbar = () => {
 
   const navLinks = [
     { label: "Características", href: "#features" },
+    { label: "Clientes", href: "#clients" },
     { label: "Precios", href: "#pricing" },
     { label: "Tracking", href: "/tracking" },
   ];
@@ -68,7 +69,7 @@ const Navbar = () => {
             <Button asChild variant="ghost" className="text-gray-300 hover:text-white hover:bg-white/10">
               <Link to="/login">Iniciar sesión</Link>
             </Button>
-            <Button asChild className="bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 shadow-lg shadow-primary/25">
+            <Button asChild className="bg-gradient-to-r from-[hsl(var(--geo-teal))] to-[hsl(var(--geo-blue))] hover:from-[hsl(var(--geo-teal)/0.9)] hover:to-[hsl(var(--geo-blue)/0.9)] shadow-lg shadow-[hsl(var(--geo-teal)/0.25)]">
               <Link to="/login">Comenzar gratis</Link>
             </Button>
           </div>
@@ -111,7 +112,7 @@ const Navbar = () => {
                 <Button asChild variant="outline" className="border-gray-700 text-white">
                   <Link to="/login" onClick={() => setIsMobileMenuOpen(false)}>Iniciar sesión</Link>
                 </Button>
-                <Button asChild className="bg-gradient-to-r from-primary to-purple-600">
+                <Button asChild className="bg-gradient-to-r from-[hsl(var(--geo-teal))] to-[hsl(var(--geo-blue))]">
                   <Link to="/login" onClick={() => setIsMobileMenuOpen(false)}>Comenzar gratis</Link>
                 </Button>
               </div>

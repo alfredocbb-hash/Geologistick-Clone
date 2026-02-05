@@ -12,6 +12,12 @@ Sistema Logístico - Tema moderno y colorido
     --background: 210 20% 98%;
     --foreground: 222 47% 11%;
 
+    /* Colores Geologistick */
+    --geo-dark: 210 60% 15%;
+    --geo-teal: 174 50% 50%;
+    --geo-blue: 207 50% 35%;
+    --geo-cyan: 187 70% 45%;
+
     --card: 0 0% 100%;
     --card-foreground: 222 47% 11%;
 
