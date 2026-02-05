@@ -357,9 +357,26 @@ function drawReceipt(
     doc.text(`V.Decl: ${formatCurrency(shipment.valor_declarado)}`, margin + thirdWidth + 4, y + 14);
   }
   
-  // Concepts (right)
+  // Concepts (right) - Calculate dynamic height based on concept count
+  // Detectar si Flete ya está en los detalles
+  const fleteEnDetalles = detalles.find(d => 
+    d.nombre_concepto?.toLowerCase() === 'flete'
+  );
+  
+  // Si Flete ya está en detalles, usarlos directamente
+  // Si no, agregar Flete calculado al inicio (compatibilidad con envíos antiguos)
+  const totalConceptos = detalles.reduce((sum, d) => sum + (d.monto || 0), 0);
+  const fleteCalculado = shipment.precio_total - totalConceptos;
+  
+  const conceptosAMostrar = fleteEnDetalles 
+    ? detalles 
+    : [{ nombre_concepto: 'Flete', monto: fleteCalculado > 0 ? fleteCalculado : shipment.precio_total }, ...detalles];
+  
+  // Altura dinámica: 4mm por header + 3.5mm por cada concepto
+  const conceptBoxHeight = Math.max(18, 5 + conceptosAMostrar.length * 3.5);
+  
   doc.setLineWidth(0.4);
-  doc.rect(margin + (thirdWidth + 2) * 2, y, thirdWidth, 18);
+  doc.rect(margin + (thirdWidth + 2) * 2, y, thirdWidth, conceptBoxHeight);
   doc.setFillColor(245, 245, 245);
   doc.rect(margin + (thirdWidth + 2) * 2, y, thirdWidth, 4, 'F');
   doc.setFont('helvetica', 'bold');
@@ -373,21 +390,17 @@ function drawReceipt(
   const conceptX = margin + (thirdWidth + 2) * 2 + 2;
   const conceptXEnd = margin + (thirdWidth + 2) * 2 + thirdWidth - 2;
   
-  const totalConceptos = detalles.reduce((sum, d) => sum + (d.monto || 0), 0);
-  const flete = shipment.precio_total - totalConceptos;
-  
   let conceptY = y + 8;
   doc.setTextColor(30, 30, 30);
-  doc.text('Flete:', conceptX, conceptY);
-  doc.text(formatCurrency(flete > 0 ? flete : shipment.precio_total), conceptXEnd, conceptY, { align: 'right' });
   
-  for (const detalle of detalles.slice(0, 2)) {
-    conceptY += 4;
+  // Mostrar TODOS los conceptos sin slice
+  for (const detalle of conceptosAMostrar) {
     doc.text(`${detalle.nombre_concepto}:`, conceptX, conceptY);
     doc.text(formatCurrency(detalle.monto), conceptXEnd, conceptY, { align: 'right' });
+    conceptY += 3.5;
   }
   
-  y += 20;
+  y += conceptBoxHeight + 2;
 
   // ========== QR + TOTAL + FIRMAS ==========
   const qrSize = 20;

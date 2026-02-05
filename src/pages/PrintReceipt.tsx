@@ -153,8 +153,19 @@ export default function PrintReceipt() {
     ? `${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}` 
     : envio.nombre_destinatario || '-';
 
+  // Detectar si Flete ya está en los detalles
+  const fleteEnDetalles = (detalles || []).find(d => 
+    d.nombre_concepto?.toLowerCase() === 'flete'
+  );
+  
   const totalConceptos = (detalles || []).reduce((sum, d) => sum + (d.monto || 0), 0);
-  const flete = envio.precio_total - totalConceptos;
+  const fleteCalculado = envio.precio_total - totalConceptos;
+  
+  // Si Flete ya está en detalles, usarlos directamente
+  // Si no, agregar Flete calculado al inicio (compatibilidad con envíos antiguos)
+  const conceptosAMostrar = fleteEnDetalles 
+    ? (detalles || [])
+    : [{ nombre_concepto: 'Flete', monto: fleteCalculado > 0 ? fleteCalculado : envio.precio_total }, ...(detalles || [])];
 
   return (
     <div className="min-h-screen bg-slate-100 py-8 px-4">
@@ -315,11 +326,7 @@ export default function PrintReceipt() {
               <div className="border rounded-lg p-4">
                 <p className="text-xs font-semibold text-muted-foreground mb-3">CONCEPTOS</p>
                 <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Flete:</span>
-                    <span>{formatCurrency(flete > 0 ? flete : envio.precio_total)}</span>
-                  </div>
-                  {(detalles || []).map((detalle, i) => (
+                  {conceptosAMostrar.map((detalle, i) => (
                     <div key={i} className="flex justify-between">
                       <span className="text-muted-foreground">{detalle.nombre_concepto}:</span>
                       <span>{formatCurrency(detalle.monto)}</span>
