@@ -307,17 +307,13 @@ export default function Branches() {
     },
   });
 
-  // Helper function to save a single commission
+  // Helper function to save a single commission using upsert for concurrency safety
   const saveCommission = async (
     conceptoId: string,
     values: CommissionValues,
     tipoRol: 'emision' | 'recepcion'
   ) => {
     if (!selectedSucursalForCommissions) return;
-    
-    const existing = sucursalComisiones.find(
-      (c) => c.concepto_id === conceptoId && c.tipo_rol === tipoRol
-    );
     
     const data = {
       sucursal_id: selectedSucursalForCommissions.id,
@@ -329,16 +325,15 @@ export default function Branches() {
       tipo_rol: tipoRol,
     };
 
-    if (existing) {
-      const { error } = await supabase
-        .from('sucursal_comisiones')
-        .update(data)
-        .eq('id', existing.id);
-      if (error) throw error;
-    } else {
-      const { error } = await supabase.from('sucursal_comisiones').insert(data);
-      if (error) throw error;
-    }
+    // Usar upsert nativo para manejar concurrencia correctamente
+    const { error } = await supabase
+      .from('sucursal_comisiones')
+      .upsert(data, { 
+        onConflict: 'sucursal_id,concepto_id,tipo_rol',
+        ignoreDuplicates: false 
+      });
+    
+    if (error) throw error;
   };
 
   // Save commissions mutation - guarda ambos roles (emisión y recepción)
