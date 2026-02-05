@@ -166,18 +166,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
 
       if (updateError) throw updateError;
 
-      // Add history entry and calculate commission in parallel
-      const historyPromise = supabase
-        .from('envio_historial')
-        .insert({
-          envio_id: shipment.id,
-          estado_anterior: shipment.estado as any,
-          estado_nuevo: 'entregado',
-          notas: notes || 'Entrega confirmada con foto y firma',
-          ubicacion: shipment.direccion_entrega || null,
-          created_by: user.id,
-        });
-
+      // Calculate commission (history is auto-created by DB trigger)
       const commissionPromise = (async () => {
         if (!user?.id) return;
         
@@ -305,7 +294,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
         }
       })();
 
-      await Promise.all([historyPromise, commissionPromise]);
+      await commissionPromise;
     },
     onMutate: async () => {
       // Cancel any outgoing refetches

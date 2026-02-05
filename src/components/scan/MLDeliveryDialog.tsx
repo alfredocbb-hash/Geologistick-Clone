@@ -86,14 +86,7 @@ export function MLDeliveryDialog({ open, shipment, onClose, onSuccess }: MLDeliv
 
       if (updateError) throw updateError;
 
-      // Add history entry
-      await supabase.from('envio_historial').insert({
-        envio_id: shipment.id,
-        estado_anterior: shipment.estado as any,
-        estado_nuevo: newStatus as any,
-        created_by: user?.id,
-        notas: 'Estado actualizado desde app móvil (ML Flex)',
-      });
+      // Note: History entry is auto-created by DB trigger log_envio_estado_change
 
       // Sync with MercadoLibre API
       try {

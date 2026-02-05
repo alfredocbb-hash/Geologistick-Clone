@@ -168,14 +168,7 @@ export function BranchDeliveryDialog({
 
       if (updateError) throw updateError;
 
-      // 2. Add history entry
-      await supabase.from('envio_historial').insert([{
-        envio_id: shipment.id,
-        estado_anterior: 'en_transito',
-        estado_nuevo: 'entregado',
-        notas: `Entregado en sucursal a ${nombreRetira} (DNI: ${dniRetira})${requiereFactura ? ` - Requiere Factura ${facturaTipo}` : ''}`,
-        created_by: user.id,
-      }]);
+      // Note: History entry is auto-created by DB trigger log_envio_estado_change
 
       // 3. Record payment if pago destino
       if (isPagoDestino && paymentCompleted && paymentMethod) {
