@@ -1,80 +1,93 @@
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
 const CTASection = () => {
+  // Get count of active tenants
+  const { data: tenantCount } = useQuery({
+    queryKey: ['active-tenants-count'],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from('tenants')
+        .select('*', { count: 'exact', head: true })
+        .eq('activo', true);
+      return count || 0;
+    },
+    staleTime: 1000 * 60 * 30, // 30 minutes
+  });
+
   return (
-    <section className="relative py-24 overflow-hidden">
-      {/* Gradient background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-[hsl(var(--geo-dark))] via-[hsl(var(--geo-blue)/0.8)] to-[hsl(var(--geo-teal)/0.6)]" />
-      
-      {/* Animated orbs */}
-      <div className="absolute top-1/4 left-1/4 w-[400px] h-[400px] bg-[hsl(var(--geo-teal)/0.3)] rounded-full blur-[100px] animate-pulse" />
-      <div className="absolute bottom-1/4 right-1/4 w-[300px] h-[300px] bg-[hsl(var(--geo-cyan)/0.3)] rounded-full blur-[80px] animate-pulse" style={{ animationDelay: '1s' }} />
-      
-      {/* Grid pattern overlay */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:4rem_4rem]" />
+    <section className="relative py-32 overflow-hidden bg-[#050507]">
+      {/* Large gradient glow */}
+      <div 
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1200px] h-[600px] rounded-full blur-[200px]"
+        style={{
+          background: 'radial-gradient(ellipse, hsl(174 50% 50% / 0.08) 0%, transparent 70%)'
+        }}
+      />
 
       <div className="container relative z-10 mx-auto px-4">
         <div className="max-w-4xl mx-auto text-center">
           {/* Badge */}
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 border border-white/20 backdrop-blur-sm mb-8">
-            <Sparkles className="h-4 w-4 text-[hsl(var(--geo-cyan))]" />
-            <span className="text-sm font-medium text-white">14 días de prueba gratis</span>
+          <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full border border-[hsl(var(--geo-teal)/0.3)] bg-[hsl(var(--geo-teal)/0.05)] backdrop-blur-xl mb-10">
+            <Sparkles className="h-4 w-4 text-[hsl(var(--geo-teal))]" />
+            <span className="text-sm font-medium text-[hsl(var(--geo-teal))]">
+              Únete a {tenantCount && tenantCount > 3 ? `${tenantCount}+` : 'empresas'} que ya optimizan sus envíos
+            </span>
           </div>
 
-          <h2 className="text-4xl lg:text-6xl font-bold text-white mb-6 leading-tight">
-            Comienza a optimizar{" "}
-            <span className="bg-gradient-to-r from-white to-[hsl(var(--geo-cyan))] bg-clip-text text-transparent">
-              tus entregas hoy
+          {/* Headline */}
+          <h2 className="text-5xl lg:text-7xl font-bold text-white mb-8 tracking-tight leading-tight">
+            ¿Listo para
+            <br />
+            <span className="bg-gradient-to-r from-[hsl(var(--geo-teal))] via-[hsl(var(--geo-cyan))] to-[hsl(var(--geo-blue))] bg-clip-text text-transparent">
+              transformar tu logística?
             </span>
           </h2>
 
-          <p className="text-xl text-white/80 max-w-2xl mx-auto mb-10 leading-relaxed">
-            Únete a las empresas que ya transformaron su logística con nuestra plataforma inteligente. Sin tarjeta de crédito requerida.
+          {/* Subtitle */}
+          <p className="text-xl text-gray-400 max-w-2xl mx-auto mb-12">
+            Comienza tu prueba gratuita hoy. Sin compromisos, sin tarjeta de crédito.
           </p>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          {/* CTA Buttons */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-5">
             <Button 
               asChild 
               size="lg" 
-              className="text-lg px-10 py-7 bg-white text-[hsl(var(--geo-dark))] hover:bg-white/90 shadow-2xl shadow-black/20 font-semibold"
+              className="text-lg px-12 py-7 bg-white text-black hover:bg-gray-100 rounded-full font-semibold transition-all duration-300 hover:scale-105 shadow-2xl shadow-white/10"
             >
               <Link to="/login">
-                Comenzar gratis
+                Comenzar ahora
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Link>
             </Button>
             <Button 
               asChild 
-              variant="outline" 
+              variant="ghost" 
               size="lg" 
-              className="text-lg px-10 py-7 border-white/30 bg-white/10 text-white hover:bg-white/20 backdrop-blur-sm"
+              className="text-lg px-12 py-7 text-gray-400 hover:text-white hover:bg-white/5 rounded-full font-medium"
             >
-              <Link to="/tracking">
-                Ver demo en vivo
-              </Link>
+              <a href="#pricing">
+                Ver planes
+              </a>
             </Button>
           </div>
 
           {/* Trust indicators */}
-          <div className="mt-12 flex flex-wrap items-center justify-center gap-8 text-white/60 text-sm">
+          <div className="flex items-center justify-center gap-8 mt-16 text-sm text-gray-600">
             <div className="flex items-center gap-2">
-              <svg className="h-5 w-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              <span>Sin tarjeta de crédito</span>
+              <div className="h-2 w-2 rounded-full bg-green-500" />
+              <span>Setup en 5 min</span>
             </div>
             <div className="flex items-center gap-2">
-              <svg className="h-5 w-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              <span>Configuración en minutos</span>
+              <div className="h-2 w-2 rounded-full bg-green-500" />
+              <span>Sin tarjeta</span>
             </div>
             <div className="flex items-center gap-2">
-              <svg className="h-5 w-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
+              <div className="h-2 w-2 rounded-full bg-green-500" />
               <span>Soporte 24/7</span>
             </div>
           </div>
