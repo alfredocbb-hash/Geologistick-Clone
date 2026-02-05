@@ -74,21 +74,21 @@ const Features = () => {
   const featuresContent = content?.features || defaultLandingContent.features!;
 
   return (
-    <section id="features" className="relative py-32 overflow-hidden bg-[#050507]">
+    <section id="features" className="relative py-32 overflow-hidden bg-muted dark:bg-[#050507]">
       {/* Subtle gradient */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1200px] h-[600px] bg-[hsl(var(--geo-teal)/0.03)] rounded-full blur-[150px]" />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1200px] h-[600px] bg-[hsl(var(--geo-teal)/0.03)] rounded-full blur-[150px] opacity-50 dark:opacity-100" />
 
       <div className="container relative z-10 mx-auto px-4">
         {/* Header */}
         <div className="max-w-3xl mx-auto text-center mb-20">
-          <h2 className="text-5xl lg:text-6xl font-bold text-white mb-6 tracking-tight">
+          <h2 className="text-5xl lg:text-6xl font-bold text-foreground dark:text-white mb-6 tracking-tight">
             Todo lo que necesitas
             <br />
             <span className="bg-gradient-to-r from-[hsl(var(--geo-teal))] to-[hsl(var(--geo-cyan))] bg-clip-text text-transparent">
               en un solo lugar
             </span>
           </h2>
-          <p className="text-xl text-gray-400">
+          <p className="text-xl text-muted-foreground dark:text-gray-400">
             {featuresContent.subtitle}
           </p>
         </div>
@@ -101,7 +101,7 @@ const Features = () => {
             return (
               <div 
                 key={i}
-                className={`group relative p-8 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-[hsl(var(--geo-teal)/0.3)] transition-all duration-500 hover:bg-white/[0.04] ${
+                className={`group relative p-8 rounded-2xl bg-background/50 dark:bg-white/[0.02] border border-border dark:border-white/5 hover:border-[hsl(var(--geo-teal)/0.3)] transition-all duration-500 hover:bg-background dark:hover:bg-white/[0.04] ${
                   isLarge ? 'md:col-span-2 lg:col-span-1' : ''
                 }`}
                 style={{
@@ -123,10 +123,10 @@ const Features = () => {
                 </div>
                 
                 {/* Content */}
-                <h3 className="text-xl font-semibold text-white mb-3 group-hover:text-[hsl(var(--geo-teal))] transition-colors duration-300">
+                <h3 className="text-xl font-semibold text-foreground dark:text-white mb-3 group-hover:text-[hsl(var(--geo-teal))] transition-colors duration-300">
                   {feature.title}
                 </h3>
-                <p className="text-gray-500 leading-relaxed">
+                <p className="text-muted-foreground dark:text-gray-500 leading-relaxed">
                   {feature.description}
                 </p>
 

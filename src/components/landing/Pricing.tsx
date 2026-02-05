@@ -57,18 +57,18 @@ const Pricing = () => {
   };
 
   return (
-    <section id="pricing" className="relative py-32 overflow-hidden bg-[#050507]">
+    <section id="pricing" className="relative py-32 overflow-hidden bg-background dark:bg-[#050507]">
       {/* Subtle gradient */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1000px] h-[600px] bg-[hsl(var(--geo-teal)/0.03)] rounded-full blur-[200px]" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1000px] h-[600px] bg-[hsl(var(--geo-teal)/0.03)] rounded-full blur-[200px] opacity-50 dark:opacity-100" />
 
       <div className="container relative z-10 mx-auto px-4">
         {/* Header */}
         <div className="max-w-3xl mx-auto text-center mb-20">
-          <h2 className="text-5xl lg:text-6xl font-bold text-white mb-6 tracking-tight">
+          <h2 className="text-5xl lg:text-6xl font-bold text-foreground dark:text-white mb-6 tracking-tight">
             Precios
             <span className="bg-gradient-to-r from-[hsl(var(--geo-teal))] to-[hsl(var(--geo-cyan))] bg-clip-text text-transparent"> simples</span>
           </h2>
-          <p className="text-xl text-gray-400">
+          <p className="text-xl text-muted-foreground dark:text-gray-400">
             {generalContent.pricing_subtitle}
           </p>
         </div>
@@ -105,40 +105,40 @@ const Pricing = () => {
                   <div className={`h-full p-8 rounded-2xl border transition-all duration-500 ${
                     isPopular 
                       ? "bg-gradient-to-b from-[hsl(var(--geo-teal)/0.05)] to-transparent border-[hsl(var(--geo-teal)/0.3)]" 
-                      : "bg-white/[0.02] border-white/5 hover:border-white/10"
+                      : "bg-muted/50 dark:bg-white/[0.02] border-border dark:border-white/5 hover:border-border/80 dark:hover:border-white/10"
                   }`}>
                     {/* Plan header */}
                     <div className="mb-8">
-                      <h3 className="text-2xl font-bold text-white mb-2">{plan.name}</h3>
-                      <p className="text-gray-500 text-sm">{plan.description}</p>
+                      <h3 className="text-2xl font-bold text-foreground dark:text-white mb-2">{plan.name}</h3>
+                      <p className="text-muted-foreground dark:text-gray-500 text-sm">{plan.description}</p>
                     </div>
 
                     {/* Price */}
                     <div className="mb-8">
                       <div className="flex items-baseline gap-1">
-                        <span className="text-gray-500 text-lg">$</span>
-                        <span className="text-5xl font-bold text-white">
+                        <span className="text-muted-foreground dark:text-gray-500 text-lg">$</span>
+                        <span className="text-5xl font-bold text-foreground dark:text-white">
                           {formatPrice(plan.price_monthly)}
                         </span>
                       </div>
-                      <span className="text-gray-600 text-sm">/mes · {generalContent.currency_label}</span>
+                      <span className="text-muted-foreground/70 dark:text-gray-600 text-sm">/mes · {generalContent.currency_label}</span>
                     </div>
 
                     {/* Limits */}
-                    <div className="flex items-center justify-between py-4 border-y border-white/5 mb-6">
+                    <div className="flex items-center justify-between py-4 border-y border-border dark:border-white/5 mb-6">
                       <div className="text-center">
-                        <p className="text-2xl font-bold text-white">{formatLimit(plan.max_shipments_month)}</p>
-                        <p className="text-xs text-gray-500">envíos/mes</p>
+                        <p className="text-2xl font-bold text-foreground dark:text-white">{formatLimit(plan.max_shipments_month)}</p>
+                        <p className="text-xs text-muted-foreground dark:text-gray-500">envíos/mes</p>
                       </div>
-                      <div className="h-8 w-px bg-white/10" />
+                      <div className="h-8 w-px bg-border dark:bg-white/10" />
                       <div className="text-center">
-                        <p className="text-2xl font-bold text-white">{formatLimit(plan.max_branches)}</p>
-                        <p className="text-xs text-gray-500">sucursales</p>
+                        <p className="text-2xl font-bold text-foreground dark:text-white">{formatLimit(plan.max_branches)}</p>
+                        <p className="text-xs text-muted-foreground dark:text-gray-500">sucursales</p>
                       </div>
-                      <div className="h-8 w-px bg-white/10" />
+                      <div className="h-8 w-px bg-border dark:bg-white/10" />
                       <div className="text-center">
-                        <p className="text-2xl font-bold text-white">{formatLimit(plan.max_users)}</p>
-                        <p className="text-xs text-gray-500">usuarios</p>
+                        <p className="text-2xl font-bold text-foreground dark:text-white">{formatLimit(plan.max_users)}</p>
+                        <p className="text-xs text-muted-foreground dark:text-gray-500">usuarios</p>
                       </div>
                     </div>
 
@@ -147,7 +147,7 @@ const Pricing = () => {
                       {plan.features.slice(0, 5).map((feature, j) => (
                         <li key={j} className="flex items-start gap-3">
                           <Check className="h-5 w-5 text-[hsl(var(--geo-teal))] flex-shrink-0 mt-0.5" />
-                          <span className="text-gray-400 text-sm">{feature}</span>
+                          <span className="text-muted-foreground dark:text-gray-400 text-sm">{feature}</span>
                         </li>
                       ))}
                     </ul>
@@ -157,8 +157,8 @@ const Pricing = () => {
                       onClick={() => handleRequestTrial(plan.name)}
                       className={`w-full py-6 rounded-xl font-medium transition-all duration-300 group ${
                         isPopular 
-                          ? "bg-white text-black hover:bg-gray-100" 
-                          : "bg-white/5 text-white hover:bg-white/10 border border-white/10"
+                          ? "bg-foreground dark:bg-white text-background dark:text-black hover:bg-foreground/90 dark:hover:bg-gray-100" 
+                          : "bg-muted dark:bg-white/5 text-foreground dark:text-white hover:bg-muted/80 dark:hover:bg-white/10 border border-border dark:border-white/10"
                       }`}
                       size="lg"
                     >
@@ -174,7 +174,7 @@ const Pricing = () => {
 
         {/* Bottom text */}
         <div className="text-center mt-16">
-          <p className="text-gray-600 text-sm">
+          <p className="text-muted-foreground/70 dark:text-gray-600 text-sm">
             {generalContent.trial_text}. Sin tarjeta de crédito.
           </p>
         </div>

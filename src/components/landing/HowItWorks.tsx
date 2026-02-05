@@ -23,18 +23,18 @@ const steps = [
 
 const HowItWorks = () => {
   return (
-    <section className="relative py-32 overflow-hidden bg-[#050507]">
+    <section className="relative py-32 overflow-hidden bg-background dark:bg-[#050507]">
       {/* Gradient accent */}
-      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-[hsl(var(--geo-blue)/0.05)] rounded-full blur-[150px]" />
+      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-[hsl(var(--geo-blue)/0.05)] rounded-full blur-[150px] opacity-50 dark:opacity-100" />
 
       <div className="container relative z-10 mx-auto px-4">
         {/* Header */}
         <div className="max-w-3xl mx-auto text-center mb-20">
-          <h2 className="text-5xl lg:text-6xl font-bold text-white mb-6 tracking-tight">
+          <h2 className="text-5xl lg:text-6xl font-bold text-foreground dark:text-white mb-6 tracking-tight">
             Comienza en
             <span className="bg-gradient-to-r from-[hsl(var(--geo-teal))] to-[hsl(var(--geo-cyan))] bg-clip-text text-transparent"> minutos</span>
           </h2>
-          <p className="text-xl text-gray-400">
+          <p className="text-xl text-muted-foreground dark:text-gray-400">
             Tres simples pasos para transformar tu operación logística
           </p>
         </div>
@@ -51,7 +51,7 @@ const HowItWorks = () => {
                 className="relative group"
               >
                 {/* Card */}
-                <div className="relative p-8 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-[hsl(var(--geo-teal)/0.3)] transition-all duration-500 hover:bg-white/[0.04] text-center">
+                <div className="relative p-8 rounded-2xl bg-muted/50 dark:bg-white/[0.02] border border-border dark:border-white/5 hover:border-[hsl(var(--geo-teal)/0.3)] transition-all duration-500 hover:bg-muted dark:hover:bg-white/[0.04] text-center">
                   {/* Step number badge */}
                   <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-[hsl(var(--geo-teal)/0.1)] border border-[hsl(var(--geo-teal)/0.3)]">
                     <span className="text-sm font-mono text-[hsl(var(--geo-teal))]">{step.number}</span>
@@ -63,10 +63,10 @@ const HowItWorks = () => {
                   </div>
                   
                   {/* Content */}
-                  <h3 className="text-2xl font-semibold text-white mb-3">
+                  <h3 className="text-2xl font-semibold text-foreground dark:text-white mb-3">
                     {step.title}
                   </h3>
-                  <p className="text-gray-500 leading-relaxed">
+                  <p className="text-muted-foreground dark:text-gray-500 leading-relaxed">
                     {step.description}
                   </p>
                 </div>
@@ -74,7 +74,7 @@ const HowItWorks = () => {
                 {/* Arrow connector (mobile) */}
                 {i < steps.length - 1 && (
                   <div className="md:hidden flex justify-center my-4">
-                    <ArrowRight className="h-6 w-6 text-gray-700 rotate-90" />
+                    <ArrowRight className="h-6 w-6 text-muted-foreground/50 dark:text-gray-700 rotate-90" />
                   </div>
                 )}
               </div>
