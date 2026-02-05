@@ -1,7 +1,8 @@
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Receipt, CreditCard, Wallet } from 'lucide-react';
+ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
+ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+ import { Receipt, CreditCard, Wallet, AlertTriangle } from 'lucide-react';
 
 export interface ConceptoResumen {
   concepto_id: string | null;
@@ -9,6 +10,7 @@ export interface ConceptoResumen {
   ventas: number;
   porcentaje: number;
   comision: number;
+   sinConfiguracion?: boolean;
 }
 
 export interface ResumenPorTipoPago {
@@ -39,7 +41,8 @@ function ConceptTable({ conceptos, title }: { conceptos: ConceptoResumen[]; titl
   }
 
   return (
-    <Table>
+     <TooltipProvider>
+       <Table>
       <TableHeader>
         <TableRow>
           <TableHead className="w-[40%]">Concepto</TableHead>
@@ -49,16 +52,40 @@ function ConceptTable({ conceptos, title }: { conceptos: ConceptoResumen[]; titl
         </TableRow>
       </TableHeader>
       <TableBody>
-        {conceptos.map((c, idx) => (
-          <TableRow key={c.concepto_id || idx}>
-            <TableCell className="font-medium">{c.nombre}</TableCell>
-            <TableCell className="text-right">${c.ventas.toFixed(2)}</TableCell>
-            <TableCell className="text-right">{c.porcentaje.toFixed(2)}%</TableCell>
-            <TableCell className="text-right text-warning font-medium">
-              ${c.comision.toFixed(2)}
-            </TableCell>
-          </TableRow>
-        ))}
+         {conceptos.map((c, idx) => {
+           // Calcular porcentaje efectivo real
+           const porcentajeEfectivo = c.ventas > 0 
+             ? (c.comision / c.ventas) * 100 
+             : 0;
+           const sinConfig = c.sinConfiguracion || (porcentajeEfectivo === 0 && c.ventas > 0);
+           
+           return (
+             <TableRow key={c.concepto_id || idx}>
+               <TableCell className="font-medium">{c.nombre}</TableCell>
+               <TableCell className="text-right">${c.ventas.toFixed(2)}</TableCell>
+               <TableCell className="text-right">
+                 {sinConfig ? (
+                   <Tooltip>
+                     <TooltipTrigger asChild>
+                       <span className="text-amber-500 flex items-center justify-end gap-1 cursor-help">
+                         <AlertTriangle className="h-3 w-3" />
+                         sin config
+                       </span>
+                     </TooltipTrigger>
+                     <TooltipContent>
+                       <p>Este concepto no tiene comisión configurada para este rol/tipo de pago</p>
+                     </TooltipContent>
+                   </Tooltip>
+                 ) : (
+                   <span>{porcentajeEfectivo.toFixed(2)}%</span>
+                 )}
+               </TableCell>
+               <TableCell className="text-right text-warning font-medium">
+                 ${c.comision.toFixed(2)}
+               </TableCell>
+             </TableRow>
+           );
+         })}
       </TableBody>
       <TableFooter>
         <TableRow className="bg-muted/50">
@@ -71,6 +98,7 @@ function ConceptTable({ conceptos, title }: { conceptos: ConceptoResumen[]; titl
         </TableRow>
       </TableFooter>
     </Table>
+     </TooltipProvider>
   );
 }
 

@@ -21,6 +21,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Download, FileText, Printer, Building2, Calendar, DollarSign, CreditCard, User, Receipt, Wallet } from 'lucide-react';
+ import { AlertTriangle } from 'lucide-react';
+ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import jsPDF from 'jspdf';
@@ -42,6 +44,15 @@ interface BranchSettlement {
   metodo_pago: string | null;
   referencia_pago: string | null;
   resumen_conceptos?: ResumenPorTipoPago | null;
+   remitos_cancelados?: {
+     cantidad: number;
+     totalCobrado: number;
+   } | null;
+   conceptos_sin_config?: Array<{
+     concepto: string;
+     tipoPago: string;
+     rol: string;
+   }> | null;
 }
 
 interface DriverSettlement {
@@ -402,6 +413,40 @@ export function SettlementDetailDialog({
             {isBranch && branchData.resumen_conceptos && (
               <ConceptBreakdownTable resumen={branchData.resumen_conceptos} />
             )}
+
+             {/* Remitos Cancelados section for branch settlements */}
+             {isBranch && branchData.remitos_cancelados && branchData.remitos_cancelados.cantidad > 0 && (
+               <Card className="bg-blue-500/5 border-blue-500/20">
+                 <CardContent className="p-4">
+                   <div className="flex items-center gap-2 mb-2">
+                     <Receipt className="h-4 w-4 text-blue-500" />
+                     <span className="text-sm text-muted-foreground">Cancelación de Remitos</span>
+                   </div>
+                   <p className="text-2xl font-bold text-blue-500">
+                     {branchData.remitos_cancelados.cantidad} remitos
+                   </p>
+                   <p className="text-sm text-muted-foreground">
+                     Total cobrado: ${branchData.remitos_cancelados.totalCobrado.toFixed(2)}
+                   </p>
+                 </CardContent>
+               </Card>
+             )}
+
+             {/* Missing configurations warning */}
+             {isBranch && branchData.conceptos_sin_config && branchData.conceptos_sin_config.length > 0 && (
+               <Alert variant="default" className="border-amber-500/50 bg-amber-500/5">
+                 <AlertTriangle className="h-4 w-4 text-amber-500" />
+                 <AlertTitle className="text-amber-600">Configuración Incompleta</AlertTitle>
+                 <AlertDescription className="text-amber-600/80">
+                   Los siguientes conceptos no tienen comisión configurada:
+                   <ul className="mt-2 list-disc list-inside">
+                     {branchData.conceptos_sin_config.map((c, i) => (
+                       <li key={i}>{c.concepto} ({c.tipoPago} - {c.rol})</li>
+                     ))}
+                   </ul>
+                 </AlertDescription>
+               </Alert>
+             )}
 
             {/* Payment info if paid */}
             {settlement.estado === 'pagada' && settlement.fecha_pago && (

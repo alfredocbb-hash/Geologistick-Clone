@@ -32,7 +32,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Building2, Calculator, FileText, Check, DollarSign, Calendar, Eye, CreditCard, Download, Trash2 } from 'lucide-react';
+ import { Building2, Calculator, FileText, Check, DollarSign, Calendar, Eye, CreditCard, Download, Trash2, AlertTriangle, Receipt } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,6 +43,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { downloadBranchSettlementPDF } from '@/lib/generateSettlementPDF';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -97,6 +98,15 @@ export default function BranchSettlements() {
     saldo: number;
     resumenConceptos: ResumenPorTipoPago;
     enviosDesglose: Record<string, Record<string, { venta: number; porcentaje: number; comision: number }>>;
+     remitosCancelados: {
+       cantidad: number;
+       totalCobrado: number;
+     };
+     conceptosSinConfig: Array<{
+       concepto: string;
+       tipoPago: string;
+       rol: string;
+     }>;
   } | null>(null);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [notas, setNotas] = useState('');
@@ -220,8 +230,8 @@ export default function BranchSettlements() {
         cta_cte: [],
       };
 
-      // Helper to accumulate concept data
-      const conceptoAcumulado: Record<string, Record<string, { venta: number; porcentaje: number; comision: number; nombre: string }>> = {
+       // Helper to accumulate concept data
+       const conceptoAcumulado: Record<string, Record<string, { venta: number; porcentaje: number; comision: number; nombre: string; sinConfiguracion?: boolean }>> = {
         contado: {},
         destino: {},
         cta_cte: {},
@@ -229,6 +239,18 @@ export default function BranchSettlements() {
 
       // Track per-shipment concept breakdown
       const enviosDesglose: Record<string, Record<string, { venta: number; porcentaje: number; comision: number }>> = {};
+
+       // Track missing configurations
+       const conceptosSinConfig: Array<{
+         concepto: string;
+         tipoPago: string;
+         rol: string;
+       }> = [];
+       const conceptosSinConfigSet = new Set<string>(); // To avoid duplicates
+
+       // Track remitos cancelados (pago destino delivered at branch)
+       let remitosCanceladosCantidad = 0;
+       let remitosCanceladosTotal = 0;
 
       // Helper function to calculate commission for a concept
       const calcularComisionConcepto = (
@@ -238,7 +260,8 @@ export default function BranchSettlements() {
         tipoPago: string,
         comisiones: typeof comisionesEmision,
         envioTotal: number,
-        envioId: string
+         envioId: string,
+         rol: 'emisión' | 'recepción'
       ) => {
         const tipoKey = tipoPago === 'cta_cte' ? 'cta_cte' : tipoPago === 'destino' ? 'destino' : 'contado';
         
@@ -247,6 +270,7 @@ export default function BranchSettlements() {
         
         let porcentaje = 0;
         let baseCalculo = monto;
+         let sinConfiguracion = false;
         
         if (config) {
           // Determine base based on config
@@ -277,6 +301,18 @@ export default function BranchSettlements() {
             default:
               porcentaje = config.porcentaje_contado || 0;
           }
+         } else {
+           // Track missing configuration
+           sinConfiguracion = true;
+           const configKey = `${conceptoNombre}-${tipoPago}-${rol}`;
+           if (!conceptosSinConfigSet.has(configKey)) {
+             conceptosSinConfigSet.add(configKey);
+             conceptosSinConfig.push({
+               concepto: conceptoNombre,
+               tipoPago: tipoPago === 'cta_cte' ? 'Cta. Cte.' : tipoPago === 'destino' ? 'Pago Destino' : 'Contado',
+               rol,
+             });
+           }
         }
         
         let comision = baseCalculo * (porcentaje / 100);
@@ -294,10 +330,15 @@ export default function BranchSettlements() {
             porcentaje,
             comision: 0,
             nombre: conceptoNombres[conceptoId || ''] || conceptoNombre,
+             sinConfiguracion,
           };
         }
         conceptoAcumulado[tipoKey][conceptoKey].venta += monto;
         conceptoAcumulado[tipoKey][conceptoKey].comision += comision;
+         // Mark as sin config if any occurrence lacks config
+         if (sinConfiguracion) {
+           conceptoAcumulado[tipoKey][conceptoKey].sinConfiguracion = true;
+         }
         
         // Track per-shipment breakdown
         if (!enviosDesglose[envioId]) {
@@ -332,7 +373,8 @@ export default function BranchSettlements() {
                 tipoPago,
                 comisionesEmision,
                 envio.precio_total,
-                envio.id
+                 envio.id,
+                 'emisión'
               );
             }
 
@@ -345,7 +387,8 @@ export default function BranchSettlements() {
                 tipoPago,
                 comisionesRecepcion,
                 envio.precio_total,
-                envio.id
+                 envio.id,
+                 'recepción'
               );
             }
           });
@@ -359,7 +402,8 @@ export default function BranchSettlements() {
               tipoPago,
               comisionesEmision,
               envio.precio_total,
-              envio.id
+               envio.id,
+               'emisión'
             );
           }
           if (esDestino && envio.estado === 'entregado') {
@@ -370,7 +414,8 @@ export default function BranchSettlements() {
               tipoPago,
               comisionesRecepcion,
               envio.precio_total,
-              envio.id
+               envio.id,
+               'recepción'
             );
           }
         }
@@ -381,6 +426,9 @@ export default function BranchSettlements() {
         }
         if (esDestino && envio.estado === 'entregado' && tipoPago === 'destino') {
           totalCobrado += envio.precio_total;
+           // Track as "remito cancelado"
+           remitosCanceladosCantidad++;
+           remitosCanceladosTotal += envio.precio_total;
         }
 
         // If no commissions configured for the applicable role, use default 10%
@@ -426,6 +474,7 @@ export default function BranchSettlements() {
             ventas: value.venta,
             porcentaje: value.porcentaje,
             comision: value.comision,
+             sinConfiguracion: value.sinConfiguracion,
           }))
           .sort((a, b) => b.ventas - a.ventas); // Sort by sales descending
       });
@@ -439,6 +488,11 @@ export default function BranchSettlements() {
         saldo,
         resumenConceptos,
         enviosDesglose,
+         remitosCancelados: {
+           cantidad: remitosCanceladosCantidad,
+           totalCobrado: remitosCanceladosTotal,
+         },
+         conceptosSinConfig,
       };
     },
     onSuccess: (data) => {
@@ -709,7 +763,23 @@ export default function BranchSettlements() {
           {/* Results */}
           {calculatedData && (
             <div className="mt-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+               {/* Alert for missing configurations */}
+               {calculatedData.conceptosSinConfig.length > 0 && (
+                 <Alert variant="default" className="border-amber-500/50 bg-amber-500/5">
+                   <AlertTriangle className="h-4 w-4 text-amber-500" />
+                   <AlertTitle className="text-amber-600">Configuración Incompleta</AlertTitle>
+                   <AlertDescription className="text-amber-600/80">
+                     Los siguientes conceptos no tienen comisión configurada:
+                     <ul className="mt-2 list-disc list-inside">
+                       {calculatedData.conceptosSinConfig.map((c, i) => (
+                         <li key={i}>{c.concepto} ({c.tipoPago} - {c.rol})</li>
+                       ))}
+                     </ul>
+                   </AlertDescription>
+                 </Alert>
+               )}
+
+               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <Card className="bg-success/5 border-success/20">
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-2">
@@ -743,6 +813,23 @@ export default function BranchSettlements() {
                     </p>
                   </CardContent>
                 </Card>
+                 {/* Remitos Cancelados Card */}
+                 {calculatedData.remitosCancelados.cantidad > 0 && (
+                   <Card className="bg-sky-500/5 border-sky-500/20">
+                     <CardContent className="p-4">
+                       <div className="flex items-center gap-2 mb-2">
+                         <Receipt className="h-4 w-4 text-sky-500" />
+                         <span className="text-sm text-muted-foreground">Cancelación de Remitos</span>
+                       </div>
+                       <p className="text-2xl font-bold text-sky-600">
+                         {calculatedData.remitosCancelados.cantidad} remitos
+                       </p>
+                       <p className="text-sm text-muted-foreground">
+                         Total cobrado: ${calculatedData.remitosCancelados.totalCobrado.toFixed(2)}
+                       </p>
+                     </CardContent>
+                   </Card>
+                 )}
               </div>
 
               {/* Concept Breakdown */}
