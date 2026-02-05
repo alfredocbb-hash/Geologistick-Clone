@@ -661,7 +661,7 @@ export function ShipmentDetailsDialog({
                       rel="noopener noreferrer"
                       className="block"
                     >
-                      <div className="bg-white rounded-lg border p-4">
+                      <div className="bg-white rounded-lg border-2 border-gray-300 p-4 shadow-sm">
                         <img 
                           src={envio.firma_destinatario} 
                           alt="Firma del destinatario"

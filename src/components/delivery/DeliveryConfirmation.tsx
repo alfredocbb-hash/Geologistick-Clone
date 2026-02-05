@@ -354,7 +354,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
     },
   });
 
-  const canSubmit = !requiresPayment || (amountCollected && parseFloat(amountCollected) > 0);
+  const canSubmit = (!requiresPayment || (amountCollected && parseFloat(amountCollected) > 0)) && !!photo;
 
   return (
     <Dialog open onOpenChange={onClose}>
@@ -399,9 +399,9 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
             )}
           </div>
 
-          {/* Photo capture */}
+          {/* Photo capture - OBLIGATORIO */}
           <div className="space-y-2">
-            <Label>📸 Foto de Entrega</Label>
+            <Label className="text-destructive font-medium">📸 Foto de Entrega *</Label>
             <input
               ref={fileInputRef}
               type="file"
@@ -416,7 +416,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
                 <img 
                   src={photoPreview} 
                   alt="Preview" 
-                  className="w-full h-48 object-cover rounded-lg"
+                  className="w-full h-48 object-cover rounded-lg border-2 border-success"
                 />
                 <Button
                   type="button"
@@ -432,11 +432,11 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
               <Button
                 type="button"
                 variant="outline"
-                className="w-full h-24 flex flex-col items-center justify-center gap-2"
+                className="w-full h-24 flex flex-col items-center justify-center gap-2 border-destructive border-2"
                 onClick={() => fileInputRef.current?.click()}
               >
-                <Camera className="h-8 w-8 text-muted-foreground" />
-                <span>Tomar Foto</span>
+                <Camera className="h-8 w-8 text-destructive" />
+                <span className="text-destructive font-medium">Tomar Foto (Obligatorio)</span>
               </Button>
             )}
           </div>
