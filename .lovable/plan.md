@@ -1,174 +1,167 @@
 
+# Plan: Corregir Guardado de Conceptos en envio_detalles
 
-# Plan: Corregir Cálculo de Porcentajes y Agregar "Cancelación de Remitos"
+## Problema Identificado
 
-## Contexto de la Imagen MD Cargas
+El sistema de liquidación muestra 0% de comisión porque los **conceptos no se guardan correctamente** al crear un envío.
 
-Basándome en la imagen de liquidación de MD Cargas que compartiste, identifico la siguiente estructura:
+### Situación Actual
+El envío `SUC01-ENV-20260204-B863B5` tiene:
+- **precio_total:** $4,500
+- **Concepto guardado:** Solo "Servicio de Agencia" por $1,000
+- **Faltante:** El Flete ($3,500) NUNCA se guardó en `envio_detalles`
 
-| Sección | Descripción |
-|---------|-------------|
-| **CONTADO (Facturas)** | Envíos pagados al momento de emisión |
-| **PAGO EN DESTINO** | Envíos donde el destinatario paga al recibir |
-| **CANCELACIÓN DE REMITOS** | Monto total cobrado por la sucursal al entregar envíos con Pago Destino |
-| **CUENTA CORRIENTE** | Envíos facturados a clientes con crédito |
+### Causa Raíz
+En `NewShipment.tsx` líneas 895-908, al crear el envío:
+1. El **Flete calculado** (basado en peso, distancia, volumen) se incluye en el `precio_total` pero **NO se guarda como concepto** en `envio_detalles`
+2. Los **conceptos porcentuales** (Seguro) se guardan con `cp.monto` (monto fijo de la tarifa) en lugar del monto calculado
+3. Resultado: La suma de `envio_detalles` no coincide con `precio_total`
 
-La "Cancelación de remitos" es clave: representa el dinero que la sucursal destino **cobró físicamente** cuando entregó paquetes con Pago Destino en sucursal.
+### Configuración de Comisiones (Correcta)
+Berazategui tiene configurado para **emisión**:
+- Flete: 25% (contado/destino), 10% (cta_cte)
+- Servicio de Agencia: 0% (todos los tipos) ← Esto es correcto según tu configuración
 
----
-
-## Problemas Identificados
-
-### 1. Porcentaje Mostrado Incorrecto
-El sistema guarda el porcentaje del **primer envío** que encuentra para cada concepto, en lugar de calcular el porcentaje efectivo real.
-
-**Solución:** Calcular el porcentaje como `(Total Comisión / Total Ventas) × 100`
-
-### 2. Conceptos Sin Configuración = 0% Silencioso
-Si un concepto no tiene configuración en `sucursal_comisiones`, usa 0% sin advertir al usuario.
-
-**Datos actuales en la base de datos:**
-- Solo "Administración" tiene configuración de **recepción**
-- Berazategui y Central Buenos Aires **NO tienen** configuración de recepción
-
-**Solución:** Mostrar advertencia visual cuando hay conceptos sin configurar
-
-### 3. Falta Sección "Cancelación de Remitos"
-En la imagen de MD Cargas hay una sección separada que muestra el total de remitos cancelados (cobrados) por la sucursal.
-
-**Solución:** Agregar una sección de resumen de "Cancelación de Remitos" que muestre cuántos envíos con Pago Destino fueron cobrados y el monto total.
+El problema NO es la configuración de comisiones, sino que **el Flete nunca se guardó** como concepto.
 
 ---
 
-## Cambios Propuestos
+## Solución Propuesta
 
-### Archivo 1: `src/components/settlements/ConceptBreakdownTable.tsx`
+### Archivo: `src/pages/NewShipment.tsx`
 
-**Cambios:**
-1. Calcular porcentaje efectivo en la tabla: `(comision / ventas) × 100`
-2. Marcar conceptos con 0% y ventas > 0 como "sin config"
-3. Agregar badge de advertencia para configuraciones faltantes
+Modificar la lógica de guardado de `envio_detalles` (líneas 894-908) para:
 
-```tsx
-// Calcular porcentaje efectivo real
-const porcentajeEfectivo = c.ventas > 0 
-  ? (c.comision / c.ventas) * 100 
-  : 0;
+1. **Guardar el Flete como concepto explícito**
+   - Buscar el concepto "Flete" del catálogo (`tarifa_conceptos`)
+   - Guardar `{ concepto_id: flete_id, nombre_concepto: 'Flete', monto: fleteCalculado }`
 
-// Mostrar advertencia si comisión es 0 pero hay ventas
-{porcentajeEfectivo === 0 && c.ventas > 0 && (
-  <span className="text-amber-500 text-xs ml-1 flex items-center gap-1">
-    <AlertTriangle className="h-3 w-3" />
-    sin config
-  </span>
-)}
-```
+2. **Calcular montos reales para conceptos porcentuales**
+   - Si `cp.es_porcentaje === true`, calcular: `valorDeclarado × porcentaje / 100`
+   - Si `cp.multiplicar_por_bultos === true`, multiplicar por cantidad de bultos
 
-### Archivo 2: `src/pages/BranchSettlements.tsx`
+3. **Validar que la suma de detalles = precio_total**
+   - Agregar verificación antes de guardar
 
-**Cambios en lógica de cálculo:**
-1. Trackear conceptos sin configuración durante el cálculo
-2. Agregar conteo de "Remitos Cancelados" (envíos pago destino entregados)
-3. Pasar flag `sinConfiguracion` a cada concepto del resumen
-
-**Nuevo estado:**
+### Código Actual (Problemático)
 ```typescript
-interface CalculatedData {
-  // ... campos existentes ...
-  remitosCongelados: {
-    cantidad: number;
-    totalCobrado: number;
-  };
-  conceptosSinConfig: Array<{
-    concepto: string;
-    tipoPago: string;
-    rol: string;
-  }>;
+// Líneas 894-908
+if (conceptosPreciosFiltrados.length > 0) {
+  const detalles = conceptosPreciosFiltrados.map((cp) => ({
+    envio_id: envio.id,
+    concepto_id: cp.concepto_id,
+    nombre_concepto: cp.concepto?.nombre || 'Sin nombre',
+    monto: cp.monto, // ❌ Usa monto fijo, no el calculado
+  }));
+  // NO incluye el Flete calculado ❌
+  await supabase.from('envio_detalles').insert(detalles);
 }
 ```
 
-**Cambios en UI:**
-1. Mostrar tarjeta "Cancelación de Remitos" con cantidad y monto
-2. Mostrar alerta amarilla si hay conceptos sin configurar
-3. Agregar tooltip explicando qué configuración falta
+### Código Corregido
+```typescript
+// Nuevo código para insertar detalles correctamente
+const valorDeclarado = parseFloat(formData.valor_declarado) || 
+  (configSeguro?.valor_minimo_declarado || 0);
+const cantidadBultos = parseInt(formData.cantidad_bultos) || 1;
 
-**Nueva tarjeta de Cancelación de Remitos:**
-```tsx
-{calculatedData.remitosCongelados.cantidad > 0 && (
-  <Card className="bg-blue-500/5 border-blue-500/20">
-    <CardContent className="p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <Receipt className="h-4 w-4 text-blue-500" />
-        <span className="text-sm text-muted-foreground">
-          Cancelación de Remitos
-        </span>
-      </div>
-      <p className="text-2xl font-bold text-blue-500">
-        {calculatedData.remitosCongelados.cantidad} remitos
-      </p>
-      <p className="text-sm text-muted-foreground">
-        Total cobrado: ${calculatedData.remitosCongelados.totalCobrado.toFixed(2)}
-      </p>
-    </CardContent>
-  </Card>
-)}
+// Buscar el concepto "Flete" del catálogo
+const conceptoFlete = conceptos.find(c => 
+  c.codigo?.toLowerCase() === 'flete' || 
+  c.nombre?.toLowerCase() === 'flete'
+);
+
+const detalles: Array<{envio_id: string; concepto_id: string | null; nombre_concepto: string; monto: number}> = [];
+
+// 1. Agregar FLETE como concepto (siempre si hay flete calculado)
+if (fleteCalculado > 0) {
+  detalles.push({
+    envio_id: envio.id,
+    concepto_id: conceptoFlete?.id || null,
+    nombre_concepto: 'Flete',
+    monto: fleteCalculado, // ✅ Monto calculado real
+  });
+}
+
+// 2. Agregar otros conceptos con montos calculados
+conceptosPreciosFiltrados.forEach((cp) => {
+  // No duplicar flete si ya está incluido arriba
+  if (cp.concepto?.codigo?.toLowerCase() === 'flete' || 
+      cp.concepto?.nombre?.toLowerCase() === 'flete') {
+    return;
+  }
+  
+  let montoConcepto = 0;
+  if (cp.es_porcentaje && cp.porcentaje) {
+    // Calcular monto porcentual basado en valor declarado
+    montoConcepto = valorDeclarado * Number(cp.porcentaje) / 100;
+  } else {
+    montoConcepto = Number(cp.monto);
+  }
+  
+  // Multiplicar por bultos si aplica
+  if (cp.multiplicar_por_bultos) {
+    montoConcepto *= cantidadBultos;
+  }
+  
+  if (montoConcepto > 0) {
+    detalles.push({
+      envio_id: envio.id,
+      concepto_id: cp.concepto_id,
+      nombre_concepto: cp.concepto?.nombre || 'Sin nombre',
+      monto: montoConcepto, // ✅ Monto calculado real
+    });
+  }
+});
+
+if (detalles.length > 0) {
+  const { error: detallesError } = await supabase
+    .from('envio_detalles')
+    .insert(detalles);
+  if (detallesError) throw detallesError;
+}
 ```
-
-**Alerta de configuraciones faltantes:**
-```tsx
-{calculatedData.conceptosSinConfig.length > 0 && (
-  <Alert variant="warning">
-    <AlertTriangle className="h-4 w-4" />
-    <AlertTitle>Configuración Incompleta</AlertTitle>
-    <AlertDescription>
-      Los siguientes conceptos no tienen comisión configurada:
-      <ul className="mt-2 list-disc list-inside">
-        {calculatedData.conceptosSinConfig.map((c, i) => (
-          <li key={i}>{c.concepto} ({c.tipoPago} - {c.rol})</li>
-        ))}
-      </ul>
-    </AlertDescription>
-  </Alert>
-)}
-```
-
-### Archivo 3: `src/components/settlements/SettlementDetailDialog.tsx`
-
-**Cambios:**
-1. Mostrar sección "Cancelación de Remitos" si está disponible
-2. Mostrar advertencias de conceptos sin configurar si aplica
 
 ---
 
-## Resultado Visual Esperado
+## Resultado Esperado
 
-### Después de Calcular
-
-```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  [Total Cobrado]    [Total Comisiones]   [Saldo]    [Cancelación Remitos]  │
-│    $532,804.00         $40,729.39      $492,074.61      25 remitos         │
-│                                                      ($1,527,462 cobrado)   │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-┌─ ADVERTENCIA ───────────────────────────────────────────────────────────────┐
-│ ⚠️ Los siguientes conceptos no tienen comisión configurada:                 │
-│    • Servicio de Agencia (contado - emisión)                               │
-│    • Traslado (destino - recepción)                                        │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-┌─ RESUMEN POR CONCEPTO ──────────────────────────────────────────────────────┐
-│  [Contado] [Pago Destino] [Cta. Cte.]                                      │
-│                                                                             │
-│  Concepto          │   Ventas    │  Comisión %  │  Total Comisión          │
-│────────────────────│─────────────│──────────────│───────────────────       │
-│  Flete             │  $350,503   │    10.00%    │     $35,050.39           │
-│  Seguro            │   $56,790   │    10.00%    │      $5,679.00           │
-│  Serv. Agencia     │   $30,451   │  ⚠️ sin config│         $0.00           │
-│────────────────────│─────────────│──────────────│───────────────────       │
-│  SUBTOTAL          │  $437,744   │              │     $40,729.39           │
-└─────────────────────────────────────────────────────────────────────────────┘
+### Antes (Problema)
 ```
+envio_detalles para SUC01-ENV-20260204-B863B5:
+- Servicio de Agencia: $1,000
+- (Flete falta) ❌
+Total guardado: $1,000 vs precio_total: $4,500
+```
+
+### Después (Correcto)
+```
+envio_detalles para un nuevo envío:
+- Flete: $3,500 ✅
+- Servicio de Agencia: $1,000
+Total guardado: $4,500 = precio_total ✅
+```
+
+### Liquidación Calculará Correctamente
+```
+Flete ($3,500) × 25% = $875 comisión ✅
+Serv. Agencia ($1,000) × 0% = $0 (configuración correcta)
+Total comisión: $875
+```
+
+---
+
+## Consideración: Envíos Existentes
+
+Los envíos ya creados (como el de la imagen) tienen datos incompletos en `envio_detalles`. Hay dos opciones:
+
+**Opción A: Solo arreglar hacia adelante** (recomendado)
+- Nuevos envíos se guardarán correctamente
+- Envíos antiguos se pueden recalcular manualmente o con un script de migración
+
+**Opción B: Script de corrección de datos históricos**
+- Crear un script SQL que calcule el Flete faltante: `precio_total - SUM(monto de detalles existentes)`
+- Insertar el concepto "Flete" con la diferencia
 
 ---
 
@@ -176,16 +169,12 @@ interface CalculatedData {
 
 | Archivo | Cambios |
 |---------|---------|
-| `src/components/settlements/ConceptBreakdownTable.tsx` | Calcular % efectivo, mostrar "sin config" |
-| `src/pages/BranchSettlements.tsx` | Trackear conceptos sin config, agregar conteo remitos cancelados, mostrar alertas |
-| `src/components/settlements/SettlementDetailDialog.tsx` | Mostrar info de remitos cancelados |
+| `src/pages/NewShipment.tsx` | Corregir guardado de envio_detalles (líneas 894-908) para incluir Flete y calcular montos reales |
 
 ---
 
-## Resultado Esperado
+## Impacto
 
-1. **Porcentajes precisos:** Mostrar el % real calculado de ventas/comisión
-2. **Transparencia:** Identificar claramente conceptos sin configuración
-3. **Cancelación de Remitos:** Mostrar cuántos y cuánto se cobró por pago destino
-4. **Auditoría mejorada:** Poder verificar que cada concepto tiene el % correcto configurado
-
+1. **Nuevos envíos** guardarán todos los conceptos correctamente
+2. **Liquidaciones** calcularán comisiones con el desglose completo
+3. **Auditoría** será posible verificar cada concepto vs. precio total
