@@ -1,142 +1,146 @@
 
 
-## Diagnóstico (por qué “ahora no aparecen”)
+# Plan: Corregir Error de Duplicado al Guardar Comisiones de Sucursal
 
-En la landing, el componente `src/components/landing/Clients.tsx` está consultando así:
+## Problema Identificado
 
-- `tenants` (filtra `activo = true`)
-- con un join a `tenant_branding(logo_light, logo_dark)`
-- luego filtra los que tengan algún logo.
-
-El problema es que **para visitantes anónimos la tabla `tenants` no es visible por RLS**, entonces la request pública devuelve:
-
-- `GET /rest/v1/tenants?...&activo=eq.true` → `200` pero **`[]` (vacío)**
-
-Si `tenants` devuelve vacío, el componente hace `return null` y **desaparece toda la sección**.
-
-Importante: la política que se agregó para `tenant_branding` (“Acceso público a logos…”) no arregla esto porque el query empieza en `tenants`.  
-Además, esa política pública en `tenant_branding` **no es ideal de seguridad**, porque al permitir `SELECT` sobre la tabla, un visitante podría leer **todas las columnas** del branding (no solo logos).
-
----
-
-## Enfoque propuesto (seguro y estable)
-
-En vez de hacer pública la tabla `tenants` (que expondría columnas que no queremos), vamos a:
-
-1) **Crear una función de base de datos “pública” (RPC) SECURITY DEFINER** que devuelva únicamente los campos necesarios para la landing:
-   - `id`, `nombre`, `slug`, `logo_light`, `logo_dark`
-   - solo para tenants `activo=true`
-   - solo donde haya logo configurado
-
-2) **Dar permiso de ejecución** de esa función a usuarios anónimos y autenticados.
-
-3) **Actualizar `Clients.tsx`** para llamar a `supabase.rpc('get_public_client_logos')` en lugar de consultar `tenants` directamente.
-
-4) **(Recomendado) Remover la política pública** recién creada en `tenant_branding`, para evitar exponer accidentalmente campos extra.
-
-Con esto:
-- la landing vuelve a mostrar los logos (aunque el visitante sea anónimo),
-- no se hace pública la tabla `tenants`,
-- no se expone el resto del branding por accidente.
-
----
-
-## Cambios en Backend (migración SQL)
-
-### A) Crear RPC segura para la landing
-
-Crear función (ejemplo de forma; lo implementaré como migración):
-
-```sql
-create or replace function public.get_public_client_logos()
-returns table (
-  id uuid,
-  nombre text,
-  slug text,
-  logo_light text,
-  logo_dark text
-)
-language sql
-security definer
-set search_path = public
-as $$
-  select
-    t.id,
-    t.nombre,
-    t.slug,
-    tb.logo_light,
-    tb.logo_dark
-  from public.tenants t
-  join public.tenant_branding tb on tb.tenant_id = t.id
-  where
-    t.activo = true
-    and (tb.logo_light is not null or tb.logo_dark is not null)
-  order by t.nombre;
-$$;
-
-grant execute on function public.get_public_client_logos() to anon, authenticated;
+El administrador de BlackBox recibe el error:
+```
+Error: duplicate key value violates unique constraint "sucursal_comisiones_unique_rol"
 ```
 
-### B) Cerrar el agujero de seguridad (recomendado)
+### Causa Raíz
 
-Eliminar la policy pública que habilita `SELECT` directo en `tenant_branding`:
+El código actual en `src/pages/Branches.tsx` usa un patrón de "verificar-luego-insertar" que falla bajo concurrencia:
 
-```sql
-drop policy if exists "Acceso público a logos para landing" on public.tenant_branding;
+```typescript
+// Código problemático (líneas 318-341)
+const existing = sucursalComisiones.find(
+  (c) => c.concepto_id === conceptoId && c.tipo_rol === tipoRol
+);
+
+if (existing) {
+  // UPDATE
+} else {
+  // INSERT
+}
 ```
 
-Esto fuerza a que la landing solo pueda acceder a logos vía la función (que devuelve solo lo necesario).
+Cuando una sucursal **no tiene comisiones previas** (como QUILMES que tiene 0 registros):
+
+1. `sucursalComisiones` está vacío al abrir el diálogo
+2. Para cada concepto (5 conceptos × 2 roles = 10 operaciones), todas pasan la condición `!existing`
+3. `Promise.all()` ejecuta los 10 INSERTs **en paralelo**
+4. Si el usuario hace doble clic o hay cualquier race condition, el mismo registro se intenta insertar múltiples veces
 
 ---
 
-## Cambios en Frontend
+## Solución: Usar UPSERT Nativo
 
-### 1) `src/components/landing/Clients.tsx`
+Reemplazar el patrón manual por `upsert()` de Supabase con `onConflict`:
 
-- Reemplazar el `.from('tenants').select(...).eq('activo', true)` por:
-
-```ts
-const { data, error } = await supabase.rpc('get_public_client_logos');
+```typescript
+const { error } = await supabase
+  .from('sucursal_comisiones')
+  .upsert(data, { 
+    onConflict: 'sucursal_id,concepto_id,tipo_rol',
+    ignoreDuplicates: false 
+  });
 ```
 
-- Ajustar el type/interface local para coincidir con el retorno de la RPC:
-  - `id`, `nombre`, `slug`, `logo_light`, `logo_dark` (ya “aplanados”, sin `tenant_branding` anidado).
-
-- Mantener:
-  - el `getLogoSrc` por tema claro/oscuro
-  - el duplicado 4x + animación marquee
-  - el tamaño y centrado que ya mejoramos
-
-- Agregar manejo explícito de error (para debug):
-  - si `error`, loguear en consola y devolver `null` (o un fallback).
-
-### 2) (Opcional, pero coherente) `src/components/landing/CTASection.tsx`
-
-Hoy `CTASection` intenta contar `tenants` activos con un query directo a `tenants`, que para anónimos también puede dar incorrecto.  
-Podemos crear otra RPC simple:
-
-- `get_public_active_tenant_count()` y usarla para el contador del badge.
-
-Esto es opcional porque no bloquea logos, pero evita inconsistencias públicas.
+Esto es atómico a nivel de base de datos y maneja correctamente la concurrencia.
 
 ---
 
-## Pruebas / Verificación (checklist)
+## Cambios Requeridos
 
-1) Probar landing en ventana incógnito (sin sesión):
-   - La sección “Empresas que confían en nosotros” debe mostrarse.
-   - Deben aparecer los 3 logos (Beraexpress, BlackBox Cargas, PlataBus Cargas).
-2) Probar con tema claro y oscuro:
-   - En claro usa `logo_light` si existe; en oscuro usa `logo_dark` si existe.
-3) Verificar en Network:
-   - request a `/rest/v1/rpc/get_public_client_logos` devuelve array con filas.
-4) Confirmar que ya no se puede leer `tenant_branding` completo como anónimo (si quitamos la policy pública).
+### Archivo: `src/pages/Branches.tsx`
+
+**Función `saveCommission` (líneas 311-342)**
+
+Reemplazar:
+```typescript
+const saveCommission = async (
+  conceptoId: string,
+  values: CommissionValues,
+  tipoRol: 'emision' | 'recepcion'
+) => {
+  if (!selectedSucursalForCommissions) return;
+  
+  const existing = sucursalComisiones.find(
+    (c) => c.concepto_id === conceptoId && c.tipo_rol === tipoRol
+  );
+  
+  const data = {
+    sucursal_id: selectedSucursalForCommissions.id,
+    concepto_id: conceptoId,
+    porcentaje_contado: parseFloat(values.contado) || 0,
+    porcentaje_destino: parseFloat(values.destino) || 0,
+    porcentaje_cta_cte: parseFloat(values.cta_cte) || 0,
+    base_comision: values.base || 'total',
+    tipo_rol: tipoRol,
+  };
+
+  if (existing) {
+    const { error } = await supabase
+      .from('sucursal_comisiones')
+      .update(data)
+      .eq('id', existing.id);
+    if (error) throw error;
+  } else {
+    const { error } = await supabase.from('sucursal_comisiones').insert(data);
+    if (error) throw error;
+  }
+};
+```
+
+Por:
+```typescript
+const saveCommission = async (
+  conceptoId: string,
+  values: CommissionValues,
+  tipoRol: 'emision' | 'recepcion'
+) => {
+  if (!selectedSucursalForCommissions) return;
+  
+  const data = {
+    sucursal_id: selectedSucursalForCommissions.id,
+    concepto_id: conceptoId,
+    porcentaje_contado: parseFloat(values.contado) || 0,
+    porcentaje_destino: parseFloat(values.destino) || 0,
+    porcentaje_cta_cte: parseFloat(values.cta_cte) || 0,
+    base_comision: values.base || 'total',
+    tipo_rol: tipoRol,
+  };
+
+  // Usar upsert nativo para manejar concurrencia correctamente
+  const { error } = await supabase
+    .from('sucursal_comisiones')
+    .upsert(data, { 
+      onConflict: 'sucursal_id,concepto_id,tipo_rol',
+      ignoreDuplicates: false 
+    });
+  
+  if (error) throw error;
+};
+```
 
 ---
 
-## Impacto y trade-offs
+## Beneficios
 
-- Ventaja: no publicamos tablas completas, solo una “salida controlada” para la landing.
-- Ventaja: no dependemos de policies complejas cruzando tablas.
-- Consideración: la función es `SECURITY DEFINER` (lo correcto para este caso), por eso debe ser muy estricta en lo que devuelve (solo logos + nombre/slug).
+| Aspecto | Antes | Después |
+|---------|-------|---------|
+| Concurrencia | Race condition posible | Atómico en BD |
+| Código | 20 líneas | 15 líneas |
+| Doble clic | Error de duplicado | Se sobrescribe sin error |
+| Rendimiento | Similar | Similar |
+
+---
+
+## Verificación
+
+1. El administrador de BlackBox podrá guardar comisiones en QUILMES sin error
+2. Las sucursales con comisiones existentes seguirán funcionando (UPSERT actualiza si existe)
+3. No se requieren cambios en la base de datos
 
