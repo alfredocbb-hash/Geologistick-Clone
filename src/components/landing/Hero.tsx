@@ -19,25 +19,25 @@ const Hero = () => {
       {/* Animated grid background */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#1a1a2e_1px,transparent_1px),linear-gradient(to_bottom,#1a1a2e_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_110%)]" />
       
-      {/* Glowing orbs */}
-      <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-primary/30 rounded-full blur-[120px] animate-pulse" />
-      <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-purple-500/20 rounded-full blur-[100px] animate-pulse" style={{ animationDelay: '1s' }} />
-      <div className="absolute top-1/2 right-1/3 w-[300px] h-[300px] bg-cyan-500/20 rounded-full blur-[80px] animate-pulse" style={{ animationDelay: '2s' }} />
+      {/* Glowing orbs - Geologistick colors */}
+      <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-[hsl(var(--geo-teal)/0.3)] rounded-full blur-[120px] animate-pulse" />
+      <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-[hsl(var(--geo-blue)/0.25)] rounded-full blur-[100px] animate-pulse" style={{ animationDelay: '1s' }} />
+      <div className="absolute top-1/2 right-1/3 w-[300px] h-[300px] bg-[hsl(var(--geo-cyan)/0.2)] rounded-full blur-[80px] animate-pulse" style={{ animationDelay: '2s' }} />
 
       <div className="container relative z-10 mx-auto px-4 py-20">
         <div className="grid lg:grid-cols-2 gap-16 items-center">
           {/* Text content */}
           <div className="space-y-8">
             {/* Badge */}
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-primary/50 bg-primary/10 backdrop-blur-sm">
-              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-              <span className="text-sm font-medium text-primary">{hero.badge_text}</span>
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-[hsl(var(--geo-teal)/0.5)] bg-[hsl(var(--geo-teal)/0.1)] backdrop-blur-sm">
+              <div className="w-2 h-2 rounded-full bg-[hsl(var(--geo-cyan))] animate-pulse" />
+              <span className="text-sm font-medium text-[hsl(var(--geo-teal))]">{hero.badge_text}</span>
             </div>
             
             <h1 className="text-5xl lg:text-7xl font-bold leading-tight">
               <span className="text-white">{hero.title_line1}</span>
               <br />
-              <span className="bg-gradient-to-r from-primary via-purple-400 to-cyan-400 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-[hsl(var(--geo-teal))] via-[hsl(var(--geo-cyan))] to-[hsl(var(--geo-blue))] bg-clip-text text-transparent">
                 {hero.title_line2}
               </span>
             </h1>
@@ -47,13 +47,13 @@ const Hero = () => {
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4">
-              <Button asChild size="lg" className="text-lg px-8 py-6 bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 border-0 shadow-lg shadow-primary/25">
+              <Button asChild size="lg" className="text-lg px-8 py-6 bg-gradient-to-r from-[hsl(var(--geo-teal))] to-[hsl(var(--geo-blue))] hover:from-[hsl(var(--geo-teal)/0.9)] hover:to-[hsl(var(--geo-blue)/0.9)] border-0 shadow-lg shadow-[hsl(var(--geo-teal)/0.25)]">
                 <Link to="/login">
                   {hero.cta_primary}
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Link>
               </Button>
-              <Button asChild variant="outline" size="lg" className="text-lg px-8 py-6 border-gray-700 bg-white/5 hover:bg-white/10 text-white backdrop-blur-sm">
+              <Button asChild variant="outline" size="lg" className="text-lg px-8 py-6 border-[hsl(var(--geo-teal)/0.3)] bg-white/5 hover:bg-[hsl(var(--geo-teal)/0.1)] text-white backdrop-blur-sm">
                 <a href="#features">{hero.cta_secondary}</a>
               </Button>
             </div>
@@ -65,8 +65,8 @@ const Hero = () => {
                 return (
                   <div key={i} className="group">
                     <div className="flex items-center gap-2 mb-1">
-                      <StatIcon className="h-4 w-4 text-primary" />
-                      <p className="text-2xl lg:text-3xl font-bold text-white group-hover:text-primary transition-colors">{stat.value}</p>
+                      <StatIcon className="h-4 w-4 text-[hsl(var(--geo-teal))]" />
+                      <p className="text-2xl lg:text-3xl font-bold text-white group-hover:text-[hsl(var(--geo-teal))] transition-colors">{stat.value}</p>
                     </div>
                     <p className="text-sm text-gray-500">{stat.label}</p>
                   </div>
@@ -78,11 +78,11 @@ const Hero = () => {
           {/* 3D-like Dashboard Preview */}
           <div className="relative hidden lg:block perspective-1000">
             {/* Main card */}
-            <div className="relative z-20 bg-gradient-to-br from-gray-900/90 to-gray-800/90 rounded-2xl border border-gray-700/50 p-6 backdrop-blur-xl shadow-2xl transform hover:rotate-y-0 transition-transform duration-500" style={{ transform: 'rotateY(-5deg) rotateX(5deg)' }}>
+            <div className="relative z-20 bg-gradient-to-br from-gray-900/90 to-gray-800/90 rounded-2xl border border-[hsl(var(--geo-teal)/0.3)] p-6 backdrop-blur-xl shadow-2xl transform hover:rotate-y-0 transition-transform duration-500" style={{ transform: 'rotateY(-5deg) rotateX(5deg)' }}>
               {/* Header */}
               <div className="flex items-center justify-between pb-4 border-b border-gray-700/50">
                 <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center">
+                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-[hsl(var(--geo-teal))] to-[hsl(var(--geo-blue))] flex items-center justify-center">
                     <Truck className="h-5 w-5 text-white" />
                   </div>
                   <div>
@@ -119,12 +119,12 @@ const Hero = () => {
                 ].map((shipment, i) => (
                   <div 
                     key={i} 
-                    className="group p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-gray-700/50 hover:border-primary/50 transition-all duration-300"
+                    className="group p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-gray-700/50 hover:border-[hsl(var(--geo-teal)/0.5)] transition-all duration-300"
                   >
-                    <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded-lg bg-primary/20 flex items-center justify-center">
-                          <MapPin className="h-4 w-4 text-primary" />
+                        <div className="h-8 w-8 rounded-lg bg-[hsl(var(--geo-teal)/0.2)] flex items-center justify-center">
+                          <MapPin className="h-4 w-4 text-[hsl(var(--geo-teal))]" />
                         </div>
                         <div>
                           <p className="font-medium text-white text-sm">{shipment.id}</p>
@@ -158,10 +158,10 @@ const Hero = () => {
             </div>
             
             {/* Floating elements */}
-            <div className="absolute -top-6 -right-6 p-4 rounded-xl bg-gradient-to-br from-purple-600/90 to-purple-800/90 border border-purple-500/50 backdrop-blur-sm shadow-xl animate-fade-in" style={{ animationDelay: '0.3s' }}>
+            <div className="absolute -top-6 -right-6 p-4 rounded-xl bg-gradient-to-br from-[hsl(var(--geo-blue))] to-[hsl(var(--geo-dark))] border border-[hsl(var(--geo-blue)/0.5)] backdrop-blur-sm shadow-xl animate-fade-in" style={{ animationDelay: '0.3s' }}>
               <Globe className="h-6 w-6 text-white" />
             </div>
-            <div className="absolute -bottom-4 -left-4 px-4 py-3 rounded-xl bg-gradient-to-br from-cyan-600/90 to-cyan-800/90 border border-cyan-500/50 backdrop-blur-sm shadow-xl animate-fade-in" style={{ animationDelay: '0.5s' }}>
+            <div className="absolute -bottom-4 -left-4 px-4 py-3 rounded-xl bg-gradient-to-br from-[hsl(var(--geo-teal))] to-[hsl(var(--geo-cyan))] border border-[hsl(var(--geo-teal)/0.5)] backdrop-blur-sm shadow-xl animate-fade-in" style={{ animationDelay: '0.5s' }}>
               <div className="flex items-center gap-2">
                 <Zap className="h-5 w-5 text-white" />
                 <span className="text-white font-medium text-sm">IA Activa</span>
