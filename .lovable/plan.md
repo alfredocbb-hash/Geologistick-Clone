@@ -1,129 +1,70 @@
 
+# Plan: Aplicar Tema Oscuro a Páginas Legales
 
-# Plan: Foto Opcional y Nuevo Diseño de Landing Page
+## Problema Identificado
 
-## Parte 1: Hacer la Foto Opcional en Entrega
+Las páginas legales (Privacy, Terms, Cookies) usan `bg-background` que depende del tema del sistema/usuario. La landing page usa un fondo fijo `#050507` creando una inconsistencia visual.
 
-### Archivo: `src/components/delivery/DeliveryConfirmation.tsx`
+## Solución
 
-**Cambio en línea 357:**
-```typescript
-// ANTES (foto obligatoria)
-const canSubmit = (!requiresPayment || (amountCollected && parseFloat(amountCollected) > 0)) && !!photo;
+Actualizar el `LegalPageLayout.tsx` para que use el mismo estilo ultra minimalista oscuro que la landing page, manteniendo consistencia visual.
 
-// DESPUÉS (foto opcional)
-const canSubmit = !requiresPayment || (amountCollected && parseFloat(amountCollected) > 0);
+---
+
+## Archivo a Modificar
+
+### `src/components/legal/LegalPageLayout.tsx`
+
+**Cambios:**
+1. Cambiar fondo de `bg-background` a `bg-[#050507]`
+2. Agregar efectos sutiles de fondo (gradientes, textura)
+3. Ajustar colores de texto para mejor contraste
+4. Actualizar estilos de Cards para consistencia
+
+**Antes (línea 12):**
+```tsx
+<div className="min-h-screen bg-background flex flex-col">
 ```
 
-**Cambios adicionales en la UI (líneas 402-441):**
-- Quitar el label "Obligatorio" y estilos rojos
-- Cambiar a estilo neutral indicando "Opcional"
-- Quitar bordes destructive/rojos
-
----
-
-## Parte 2: Nuevo Diseño Moderno de Landing Page
-
-Propongo un diseño estilo **"Minimal Glassmorphism"** o **"Bento Grid"** - muy populares en 2024/2025. Opciones:
-
-### Opción A: Bento Grid (estilo Apple/Linear)
-
-```text
-+----------------------------------------------------------+
-|                    NAVBAR (glassmorphism)                 |
-+----------------------------------------------------------+
-|                                                           |
-|  ┌─────────────────────────────────────────────────────┐ |
-|  │                    HERO CENTRADO                     │ |
-|  │    Gran titulo con gradiente + subtitulo corto      │ |
-|  │         [CTA Principal]  [CTA Secundario]           │ |
-|  └─────────────────────────────────────────────────────┘ |
-|                                                           |
-|  ┌──────────────┐ ┌──────────────┐ ┌──────────────────┐  |
-|  │   Feature 1  │ │   Feature 2  │ │   Feature 3      │  |
-|  │   (grande)   │ │   (mediano)  │ │   (mediano)      │  |
-|  └──────────────┘ └──────────────┘ └──────────────────┘  |
-|  ┌────────────────────────┐ ┌────────────────────────┐   |
-|  │      Clientes          │ │      Feature 4         │   |
-|  │   (logos animados)     │ │    (con preview)       │   |
-|  └────────────────────────┘ └────────────────────────┘   |
-|                                                           |
-+----------------------------------------------------------+
+**Después:**
+```tsx
+<div className="min-h-screen bg-[#050507] flex flex-col relative">
+  {/* Subtle gradient background */}
+  <div className="absolute inset-0 pointer-events-none">
+    <div 
+      className="absolute top-0 left-1/4 w-[600px] h-[400px] rounded-full blur-[150px] opacity-50"
+      style={{ 
+        background: 'radial-gradient(ellipse, hsl(174 50% 50% / 0.08) 0%, transparent 70%)'
+      }}
+    />
+  </div>
 ```
 
-### Opción B: Split Hero + Scroll Reveal (estilo Stripe/Vercel)
-
-```text
-+----------------------------------------------------------+
-|                       NAVBAR                              |
-+----------------------------------------------------------+
-|                                                           |
-|   Texto Hero            │     Video/Preview animado      |
-|   titulo grande         │     del dashboard               |
-|   subtitulo             │     flotando                    |
-|   [CTAs]                │                                 |
-|                                                           |
-+----------------------------------------------------------+
-|                    LOGOS CLIENTES                         |
-|        (cinta animada horizontal infinita)                |
-+----------------------------------------------------------+
-|                                                           |
-|              FEATURES EN CARDS GRANDES                    |
-|     con screenshots del producto que aparecen al scroll   |
-|                                                           |
-+----------------------------------------------------------+
-```
-
-### Opción C: Gradiente Oscuro Minimalista (estilo Arc Browser)
-
-- Fondo completamente oscuro con gradientes sutiles
-- Tipografia muy grande y bold
-- Espaciado generoso
-- Animaciones micro-interacciones
-- Cards con bordes brillantes al hover
+**Cambios adicionales:**
+- Título: `text-foreground` → `text-white`
+- Subtítulo: `text-muted-foreground` → `text-gray-400`
+- Secciones h2: `text-foreground` → `text-white`
+- Párrafos: `text-muted-foreground` → `text-gray-400`
+- Cards: agregar estilos glassmorphism oscuros
 
 ---
 
-## Archivos a Modificar (según opción elegida)
+## Resumen Visual
 
-| Archivo | Cambios |
-|---------|---------|
-| `src/components/landing/Hero.tsx` | Rediseño completo del hero section |
-| `src/components/landing/Navbar.tsx` | Glassmorphism o diseño minimalista |
-| `src/components/landing/Clients.tsx` | Carrusel animado infinito |
-| `src/components/landing/Features.tsx` | Bento grid o cards grandes |
-| `src/components/landing/HowItWorks.tsx` | Timeline mas visual |
-| `src/components/landing/Pricing.tsx` | Cards con glassmorphism |
-| `src/components/landing/CTASection.tsx` | CTA final impactante |
-| `src/components/landing/Footer.tsx` | Footer minimalista |
-| `src/index.css` | Nuevas utilidades CSS si necesarias |
+| Elemento | Antes | Después |
+|----------|-------|---------|
+| Fondo | `bg-background` (claro/oscuro variable) | `bg-[#050507]` (fijo oscuro) |
+| Títulos | `text-foreground` | `text-white` |
+| Texto | `text-muted-foreground` | `text-gray-400` |
+| Cards | `bg-card/50` | `bg-white/[0.02] border-white/10` |
+| Links | `text-primary` | `text-[hsl(var(--geo-teal))]` |
 
 ---
 
-## Preguntas para Definir el Diseño
+## Archivos Afectados
 
-Para crear el diseño correcto, necesito saber:
+Solo se modifica **1 archivo** ya que el layout es compartido:
 
-1. **¿Cual estilo prefieres?**
-   - A) Bento Grid (cuadriculas tipo Apple)
-   - B) Split Hero con scroll animations (tipo Stripe)
-   - C) Ultra minimalista oscuro (tipo Arc)
+- `src/components/legal/LegalPageLayout.tsx`
 
-2. **¿El fondo debe ser claro u oscuro?**
-   - Oscuro (como el actual)
-   - Claro/Blanco
-   - Mixto (hero oscuro, resto claro)
-
-3. **¿Animaciones?**
-   - Sutiles (solo hover effects)
-   - Moderadas (scroll reveals, transiciones)
-   - Llamativas (parallax, 3D effects)
-
----
-
-## Orden de Implementacion
-
-1. Hacer la foto opcional en DeliveryConfirmation (rapido)
-2. Discutir/confirmar estilo de landing preferido
-3. Implementar nuevo diseño de landing
-
+Las páginas individuales (Privacy.tsx, Terms.tsx, Cookies.tsx) heredarán automáticamente los nuevos estilos.
