@@ -1,102 +1,228 @@
 
+# Plan: Rediseño Profesional Landing Page con Colores Geologistick
 
-# Plan: Verificar y Corregir Visualización de Fotos y Firmas
+## Paleta de Colores del Logo
 
-## Resumen del Problema
+Basado en el logo de Geologistick, estos son los colores a utilizar:
 
-El usuario reporta que no puede ver fotos y firmas desde el tracking interno ni en el EPOD.
+| Color | Uso | HSL Aproximado |
+|-------|-----|----------------|
+| Azul Oscuro | Fondos, sidebar | 210 60% 15% |
+| Teal/Cyan | Acentos, CTAs secundarios | 174 50% 50% |
+| Azul Medio | Gradientes, elementos secundarios | 207 50% 35% |
+| Blanco | Texto principal, iconos | 0 0% 100% |
 
-## Hallazgos del Analisis
+## Estructura Nueva de la Landing
 
-### Estado de los Datos en la Base de Datos
+```text
++----------------------------------------------------------+
+|                      NAVBAR                               |
+|  Logo | Caracteristicas | Clientes | Precios | Tracking  |
++----------------------------------------------------------+
+                           |
++----------------------------------------------------------+
+|                   HERO (Rediseñado)                       |
+|  Gradiente azul oscuro → teal                            |
+|  Badge "Plataforma #1 en Argentina"                      |
+|  Estadisticas con datos reales                           |
++----------------------------------------------------------+
+                           |
++----------------------------------------------------------+
+|              CLIENTES (NUEVA SECCION)                     |
+|  "Empresas que confian en nosotros"                      |
+|  [Beraexpress] [BlackBox] [PlataBus]                     |
+|  Logos en grayscale → color on hover                     |
++----------------------------------------------------------+
+                           |
++----------------------------------------------------------+
+|                 COMO FUNCIONA                             |
+|  3 pasos: Registro → Configura → Opera                   |
+|  Iconos con colores teal del logo                        |
++----------------------------------------------------------+
+                           |
++----------------------------------------------------------+
+|                    FEATURES                               |
+|  Grid mejorado con iconos consistentes                   |
++----------------------------------------------------------+
+                           |
++----------------------------------------------------------+
+|                    PRICING                                |
+|  Cards con bordes teal, CTA azul oscuro                  |
++----------------------------------------------------------+
+                           |
++----------------------------------------------------------+
+|                 CTA FINAL                                 |
+|  Gradiente teal → azul, formulario trial                 |
++----------------------------------------------------------+
+                           |
++----------------------------------------------------------+
+|                    FOOTER                                 |
+|  Fondo azul oscuro, links organizados                    |
++----------------------------------------------------------+
+```
 
-| Metrica | Valor |
-|---------|-------|
-| Envios con foto de entrega | 4 (ultimo: 20 de enero) |
-| Envios con firma | 100+ (activos diariamente) |
-| Bucket `delivery-photos` | Publico y funcional |
+---
 
-### Codigo de Visualizacion
+## Archivos a Crear
 
-| Componente | Estado | Ubicacion |
-|------------|--------|-----------|
-| `ShipmentDetailsDialog` (tab Evidencia) | Correcto | Lineas 621-681 |
-| `generateEPODPDF` (seccion Evidencia) | Correcto | Lineas 156-454 |
-| `Tracking.tsx` (publico) | NO incluye fotos/firmas | - |
+### 1. `src/components/landing/Clients.tsx`
 
-### Causa Raiz Identificada
+Seccion que muestra logos de tenants activos:
 
-1. **Fotos**: Los choferes **no estan tomando fotos** antes de confirmar entrega. La foto es opcional y el boton no es prominente.
+- Query a `tenants` + `tenant_branding` para obtener logos
+- Solo mostrar tenants con `activo = true` y logo configurado
+- Logos en grayscale que se colorean al hover
+- Animacion suave de entrada
+- Responsive: carrusel en mobile, grid en desktop
 
-2. **Firmas**: Se estan guardando correctamente, pero las URLs en la BD apuntan a imagenes PNG con **fondo blanco y trazo oscuro** - visualmente podrian parecer vacias si se ven sobre fondo blanco.
+### 2. `src/components/landing/HowItWorks.tsx`
 
-3. **Visualizacion interna**: El codigo es correcto. Si el envio tiene `foto_entrega` o `firma_destinatario` con URLs validas, se muestran.
+Proceso en 3 pasos con iconos:
 
-## Verificacion Propuesta
+1. **Registrate** - UserPlus icon, color teal
+2. **Configura** - Settings icon, color azul medio
+3. **Opera** - Truck icon, color azul oscuro
 
-Para confirmar que el sistema funciona correctamente:
+Timeline horizontal con lineas conectoras animadas.
 
-### Archivo: `src/components/shipments/ShipmentDetailsDialog.tsx`
+### 3. `src/components/landing/CTASection.tsx`
 
-Agregar logging para depuracion temporal:
+Seccion final antes del footer:
+
+- Gradiente de teal a azul oscuro
+- Titulo: "Comienza a optimizar tus entregas hoy"
+- Boton CTA prominente
+- Estadistica: "Unete a X+ empresas"
+
+---
+
+## Archivos a Modificar
+
+### 1. `src/pages/Index.tsx`
+
+Agregar nuevos componentes en orden:
+
+```tsx
+<Navbar />
+<Hero />
+<Clients />      // NUEVO
+<HowItWorks />   // NUEVO  
+<Features />
+<Pricing />
+<CTASection />   // NUEVO
+<Footer />
+```
+
+### 2. `src/components/landing/Hero.tsx`
+
+Cambios visuales:
+
+- Cambiar gradiente de purple a **teal → azul oscuro**
+- Orbs de fondo: cyan-500 y teal-500 en lugar de purple
+- Badge: color teal en lugar de primary generico
+- Stats: iconos con color teal
+
+### 3. `src/components/landing/Navbar.tsx`
+
+- Agregar enlace "Clientes" que scrollea a #clients
+- Reordenar: Caracteristicas | Clientes | Precios | Tracking
+- Gradiente del boton CTA: teal → azul oscuro
+
+### 4. `src/components/landing/Footer.tsx`
+
+- Fondo azul oscuro consistente con el logo
+- Links organizados en columnas
+- Iconos de redes sociales con color teal al hover
+
+---
+
+## Nuevas Variables CSS
+
+Agregar en `src/index.css`:
+
+```css
+/* Colores Geologistick */
+--geo-dark: 210 60% 15%;      /* Azul oscuro del fondo */
+--geo-teal: 174 50% 50%;      /* Teal del pin izquierdo */
+--geo-blue: 207 50% 35%;      /* Azul medio del pin derecho */
+--geo-cyan: 187 70% 45%;      /* Cyan para acentos */
+
+/* Gradientes Geologistick */
+--gradient-geo: linear-gradient(135deg, hsl(174 50% 50%) 0%, hsl(210 60% 15%) 100%);
+--gradient-geo-light: linear-gradient(135deg, hsl(187 70% 45%) 0%, hsl(174 50% 50%) 100%);
+```
+
+---
+
+## Logica del Componente Clients
 
 ```typescript
-// En la seccion de Evidencia (linea ~620)
-// Agregar para verificar que los datos llegan
-console.log('EPOD Evidence:', {
-  foto: envio.foto_entrega,
-  firma: envio.firma_destinatario,
-  envioId: envio.id
+// Query para obtener tenants con logos
+const { data: clients } = useQuery({
+  queryKey: ['landing-clients'],
+  queryFn: async () => {
+    const { data } = await supabase
+      .from('tenants')
+      .select(`
+        id, 
+        nombre, 
+        slug,
+        tenant_branding!inner (
+          logo_light, 
+          logo_dark
+        )
+      `)
+      .eq('activo', true);
+    
+    // Filtrar solo los que tienen logo
+    return data?.filter(t => 
+      t.tenant_branding?.logo_light || 
+      t.tenant_branding?.logo_dark
+    ) || [];
+  }
 });
 ```
 
-### Prueba con Envio que Tiene Foto
+---
 
-El envio con tracking `46301030565` tiene tanto foto como firma. Se puede usar este envio para verificar que:
-1. La tab "Evidencia" muestra ambas imagenes
-2. El EPOD descargado incluye las imagenes
+## Diseño Visual del Componente Clients
 
-## Mejoras Recomendadas (Opcionales)
-
-### 1. Mejorar Visibilidad de Firmas
-
-Agregar borde visible alrededor de la imagen de firma para que sea mas facil de ver:
-
-```tsx
-// ShipmentDetailsDialog.tsx linea ~664
-<div className="bg-white rounded-lg border-2 border-gray-200 p-4">
-  <img 
-    src={envio.firma_destinatario} 
-    alt="Firma del destinatario"
-    className="max-h-32 w-full object-contain"
-  />
-</div>
+```text
++----------------------------------------------------------+
+|                                                           |
+|         Empresas que confian en Geologistick             |
+|    Procesamos miles de envios para negocios como el tuyo |
+|                                                           |
+|   +----------+    +----------+    +----------+           |
+|   |          |    |          |    |          |           |
+|   | BERAEX   |    | BLACKBOX |    | PLATABUS |           |
+|   |          |    |          |    |          |           |
+|   +----------+    +----------+    +----------+           |
+|                                                           |
+|           Logos grayscale → color al hover               |
+|                                                           |
++----------------------------------------------------------+
 ```
 
-### 2. Hacer Foto Obligatoria
+---
 
-Modificar `DeliveryConfirmation.tsx` para requerir foto:
+## Orden de Implementacion
 
-```typescript
-// Linea ~235 (antes de canSubmit)
-const canSubmit = 
-  (!requiresPayment || (amountCollected && parseFloat(amountCollected) > 0))
-  && !!photo; // Agregar validacion de foto obligatoria
-```
+1. Agregar variables CSS de colores Geologistick
+2. Crear componente `Clients.tsx` con query a tenants
+3. Crear componente `HowItWorks.tsx` con proceso en 3 pasos
+4. Crear componente `CTASection.tsx` con call-to-action final
+5. Actualizar `Hero.tsx` con nuevos colores
+6. Actualizar `Navbar.tsx` con enlace a clientes
+7. Actualizar `Index.tsx` para incluir nuevos componentes
+8. Actualizar `Footer.tsx` con colores consistentes
 
-### 3. Agregar Indicador Visual de Evidencia Faltante
+---
 
-En la lista de envios, mostrar un icono si falta foto o firma.
+## Consideraciones
 
-## Acciones Inmediatas
-
-1. **Verificar** el envio `46301030565` en el tracking interno - deberia mostrar foto y firma
-2. **Descargar EPOD** de ese envio - deberia incluir ambas imagenes
-3. Si funciona correctamente, el problema es que **los envios recientes no tienen fotos**
-
-## Proximos Pasos
-
-1. Probar con el envio `46301030565` que tiene evidencia
-2. Si funciona, el codigo esta bien y el problema es operativo (choferes no toman fotos)
-3. Opcionalmente, implementar foto obligatoria para forzar captura de evidencia
-
+- **RLS**: Los logos estan en bucket publico, no hay problema de seguridad
+- **Performance**: Lazy load de imagenes de logos
+- **Responsive**: Mobile-first, carrusel en < 768px
+- **Accesibilidad**: Alt text para logos, contraste adecuado
+- **Animaciones**: Suaves, respetan prefers-reduced-motion
