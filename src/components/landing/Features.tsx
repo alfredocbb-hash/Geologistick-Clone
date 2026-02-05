@@ -8,7 +8,7 @@ import {
   QrCode,
   Bell,
   Building2,
-  Sparkles
+  ArrowUpRight
 } from "lucide-react";
 import { useLandingContent, defaultLandingContent } from "@/hooks/useLandingContent";
 
@@ -17,142 +17,126 @@ const features = [
     icon: Package,
     title: "Gestión de Envíos",
     description: "Crea, rastrea y gestiona todos tus envíos desde un solo lugar. Etiquetas, rótulos y EPOD automáticos.",
-    gradient: "from-blue-500 to-cyan-500"
+    size: "large"
   },
   {
     icon: MapPin,
     title: "Tracking en Tiempo Real",
     description: "Seguimiento GPS de choferes y envíos. Tus clientes pueden rastrear sus paquetes con un código único.",
-    gradient: "from-green-500 to-emerald-500"
+    size: "normal"
   },
   {
     icon: Truck,
     title: "Optimización con IA",
-    description: "Algoritmos inteligentes optimizan rutas automáticamente. Reduce costos y tiempos de entrega.",
-    gradient: "from-purple-500 to-pink-500"
+    description: "Algoritmos inteligentes optimizan rutas automáticamente.",
+    size: "normal"
   },
   {
     icon: Users,
     title: "Multi-sucursal",
     description: "Gestiona múltiples sucursales con su propio personal, vehículos y zona de cobertura.",
-    gradient: "from-orange-500 to-red-500"
+    size: "normal"
   },
   {
     icon: CreditCard,
     title: "Liquidaciones Automáticas",
     description: "Calcula comisiones de choferes y sucursales. Genera liquidaciones con un solo click.",
-    gradient: "from-yellow-500 to-orange-500"
+    size: "large"
   },
   {
     icon: BarChart3,
     title: "Analytics Avanzado",
     description: "Dashboard con métricas clave. Envíos, ingresos, rendimiento de choferes y predicciones.",
-    gradient: "from-indigo-500 to-purple-500"
+    size: "normal"
   },
   {
     icon: QrCode,
     title: "Escaneo QR",
-    description: "Escanea códigos QR para recibir, entregar y transferir envíos. Compatible con móviles.",
-    gradient: "from-teal-500 to-cyan-500"
+    description: "Escanea códigos QR para recibir, entregar y transferir envíos.",
+    size: "normal"
   },
   {
     icon: Bell,
     title: "Notificaciones Push",
     description: "Alertas en tiempo real para nuevos envíos, entregas completadas e incidentes críticos.",
-    gradient: "from-rose-500 to-pink-500"
+    size: "normal"
   },
   {
     icon: Building2,
     title: "White Label",
     description: "Personaliza colores, logo y dominio. Tu marca, nuestra tecnología invisible.",
-    gradient: "from-slate-500 to-zinc-500"
+    size: "normal"
   }
 ];
 
 const Features = () => {
   const { data: content } = useLandingContent();
   const featuresContent = content?.features || defaultLandingContent.features!;
-  const generalContent = content?.general || defaultLandingContent.general!;
-
-  // Split the title to highlight part after "para"
-  const titleParts = featuresContent.title.split(" para ");
-  const titleMain = titleParts[0] + " para";
-  const titleHighlight = titleParts[1] || "escalar tu operación";
 
   return (
-    <section id="features" className="relative py-32 overflow-hidden">
-      {/* Background */}
-      <div className="absolute inset-0 bg-gradient-to-b from-background via-muted/30 to-background" />
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-primary/5 rounded-full blur-[100px]" />
+    <section id="features" className="relative py-32 overflow-hidden bg-[#050507]">
+      {/* Subtle gradient */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1200px] h-[600px] bg-[hsl(var(--geo-teal)/0.03)] rounded-full blur-[150px]" />
 
       <div className="container relative z-10 mx-auto px-4">
         {/* Header */}
-        <div className="text-center max-w-3xl mx-auto mb-20">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-6">
-            <Sparkles className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium text-primary">{featuresContent.badge_text}</span>
-          </div>
-          <h2 className="text-4xl lg:text-5xl font-bold text-foreground mb-6">
-            {titleMain}{" "}
-            <span className="bg-gradient-to-r from-primary to-purple-500 bg-clip-text text-transparent">
-              {titleHighlight}
+        <div className="max-w-3xl mx-auto text-center mb-20">
+          <h2 className="text-5xl lg:text-6xl font-bold text-white mb-6 tracking-tight">
+            Todo lo que necesitas
+            <br />
+            <span className="bg-gradient-to-r from-[hsl(var(--geo-teal))] to-[hsl(var(--geo-cyan))] bg-clip-text text-transparent">
+              en un solo lugar
             </span>
           </h2>
-          <p className="text-xl text-muted-foreground">
+          <p className="text-xl text-gray-400">
             {featuresContent.subtitle}
           </p>
         </div>
 
-        {/* Features grid */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {features.map((feature, i) => (
-            <div 
-              key={i}
-              className="group relative p-6 rounded-2xl bg-card/50 backdrop-blur-sm border border-border hover:border-primary/50 transition-all duration-500 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/5"
-            >
-              {/* Gradient glow on hover */}
-              <div className={`absolute inset-0 rounded-2xl bg-gradient-to-br ${feature.gradient} opacity-0 group-hover:opacity-5 transition-opacity duration-500`} />
-              
-              {/* Icon */}
-              <div className={`relative h-14 w-14 rounded-xl bg-gradient-to-br ${feature.gradient} p-[1px] mb-5`}>
-                <div className="h-full w-full rounded-xl bg-background flex items-center justify-center group-hover:bg-transparent transition-colors duration-500">
-                  <feature.icon className={`h-6 w-6 bg-gradient-to-br ${feature.gradient} bg-clip-text text-transparent group-hover:text-white transition-colors duration-500`} style={{ stroke: 'url(#gradient)' }} />
+        {/* Bento grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-6xl mx-auto">
+          {features.map((feature, i) => {
+            const isLarge = feature.size === "large";
+            
+            return (
+              <div 
+                key={i}
+                className={`group relative p-8 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-[hsl(var(--geo-teal)/0.3)] transition-all duration-500 hover:bg-white/[0.04] ${
+                  isLarge ? 'md:col-span-2 lg:col-span-1' : ''
+                }`}
+                style={{
+                  animationDelay: `${i * 0.1}s`
+                }}
+              >
+                {/* Glow effect on hover */}
+                <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
+                  style={{
+                    background: 'radial-gradient(400px at 50% 50%, hsl(174 50% 50% / 0.05), transparent 70%)'
+                  }}
+                />
+                
+                {/* Icon */}
+                <div className="relative mb-6">
+                  <div className="h-14 w-14 rounded-xl bg-gradient-to-br from-[hsl(var(--geo-teal)/0.2)] to-[hsl(var(--geo-blue)/0.1)] flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                    <feature.icon className="h-7 w-7 text-[hsl(var(--geo-teal))]" />
+                  </div>
+                </div>
+                
+                {/* Content */}
+                <h3 className="text-xl font-semibold text-white mb-3 group-hover:text-[hsl(var(--geo-teal))] transition-colors duration-300">
+                  {feature.title}
+                </h3>
+                <p className="text-gray-500 leading-relaxed">
+                  {feature.description}
+                </p>
+
+                {/* Arrow */}
+                <div className="absolute top-8 right-8 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-x-2 group-hover:translate-x-0">
+                  <ArrowUpRight className="h-5 w-5 text-[hsl(var(--geo-teal))]" />
                 </div>
               </div>
-              
-              <h3 className="text-xl font-semibold text-foreground mb-3 group-hover:text-primary transition-colors">
-                {feature.title}
-              </h3>
-              <p className="text-muted-foreground leading-relaxed">
-                {feature.description}
-              </p>
-
-              {/* Arrow indicator */}
-              <div className="absolute bottom-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                <div className={`h-8 w-8 rounded-full bg-gradient-to-br ${feature.gradient} flex items-center justify-center`}>
-                  <svg className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Bottom CTA */}
-        <div className="text-center mt-16">
-          <p className="text-muted-foreground mb-4">
-            {featuresContent.contact_text}
-          </p>
-          <a 
-            href={`mailto:${generalContent.contact_email}`} 
-            className="inline-flex items-center gap-2 text-primary hover:underline font-medium"
-          >
-            {featuresContent.contact_cta}
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-            </svg>
-          </a>
+            );
+          })}
         </div>
       </div>
     </section>
