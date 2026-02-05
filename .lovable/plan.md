@@ -1,178 +1,173 @@
 
 
-# Plan: Desglose por Concepto en Liquidaciones de Sucursal
+# Plan: Corregir Cálculo de Porcentajes y Agregar "Cancelación de Remitos"
 
-## Problema Actual
+## Contexto de la Imagen MD Cargas
 
-La pantalla de liquidaciones muestra los envíos de forma individual pero no desglosa los conceptos de tarifa (Flete, Seguro, Retiro, Entrega, etc.) ni permite verificar si las comisiones se estan calculando correctamente por cada concepto.
+Basándome en la imagen de liquidación de MD Cargas que compartiste, identifico la siguiente estructura:
 
-| Vista Actual | Vista Objetivo (como MD Cargas) |
-|--------------|--------------------------------|
-| Solo lista envíos con monto total | Desglose por concepto con Ventas, % Comision y Total Comision |
-| Comision unica por envio | Comision separada por cada concepto |
-| No hay resumen por categorias | Separado por Facturas (Contado), Pagos Destino, Cta Cte |
+| Sección | Descripción |
+|---------|-------------|
+| **CONTADO (Facturas)** | Envíos pagados al momento de emisión |
+| **PAGO EN DESTINO** | Envíos donde el destinatario paga al recibir |
+| **CANCELACIÓN DE REMITOS** | Monto total cobrado por la sucursal al entregar envíos con Pago Destino |
+| **CUENTA CORRIENTE** | Envíos facturados a clientes con crédito |
 
-## Solucion Propuesta
-
-### Parte 1: Mejorar el Calculo para Guardar Desglose por Concepto
-
-Modificar la logica de calculo en `BranchSettlements.tsx` para:
-
-1. **Almacenar comision por concepto** - Guardar en `calculatedData` el desglose de cada concepto con su venta y comision calculada
-2. **Separar por categoria de pago** - Agrupar envios por tipo_pago (contado, destino, cta_cte)
-
-### Parte 2: Nueva Vista de Resumen por Concepto
-
-Agregar una nueva seccion en la pantalla de calculo que muestre el desglose similar a MD Cargas:
-
-```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  RESUMEN POR CONCEPTO                                                       │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  ┌─ CONTADO (Facturas) ────────────────────────────────────────────────┐   │
-│  │  Concepto          │   Ventas    │  Comision %  │  Total Comision   │   │
-│  │────────────────────│─────────────│──────────────│───────────────────│   │
-│  │  Flete             │  $350,503   │    10.00%    │     $35,050.39    │   │
-│  │  Seguro            │   $56,790   │    10.00%    │      $5,679.00    │   │
-│  │  Retiro Domicilio  │   $16,600   │     0.00%    │          $0.00    │   │
-│  │  Entrega Domicilio │   $54,000   │     0.00%    │          $0.00    │   │
-│  │  Serv. Agencia     │   $30,451   │    99.99%    │          $0.00    │   │
-│  │  Transporte        │   $24,460   │     0.00%    │          $0.00    │   │
-│  │────────────────────│─────────────│──────────────│───────────────────│   │
-│  │  SUBTOTAL          │  $532,804   │              │     $40,729.39    │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                                                                             │
-│  ┌─ PAGO EN DESTINO ───────────────────────────────────────────────────┐   │
-│  │  Concepto          │   Ventas    │  Comision %  │  Total Comision   │   │
-│  │────────────────────│─────────────│──────────────│───────────────────│   │
-│  │  Flete             │$1,527,462   │    20.00%    │    $305,492.55    │   │
-│  │  Seguro            │   $82,000   │    20.00%    │     $16,400.00    │   │
-│  │  ...               │             │              │                   │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                                                                             │
-│  ┌─ CUENTA CORRIENTE ──────────────────────────────────────────────────┐   │
-│  │  (misma estructura)                                                  │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Parte 3: Actualizar Modelo de Datos
-
-Actualmente `liquidacion_sucursal_detalles` guarda solo `monto_envio` y `comision_aplicada` por envio. Necesitamos una tabla adicional o una columna JSON para almacenar el desglose por concepto:
-
-**Opcion A (recomendada):** Agregar columna `desglose_conceptos` tipo JSONB en `liquidacion_sucursal_detalles`:
-```json
-{
-  "flete": { "venta": 5000, "porcentaje": 25, "comision": 1250 },
-  "seguro": { "venta": 300, "porcentaje": 10, "comision": 30 },
-  ...
-}
-```
-
-**Opcion B:** Nueva tabla `liquidacion_sucursal_concepto_detalle` relacionada.
+La "Cancelación de remitos" es clave: representa el dinero que la sucursal destino **cobró físicamente** cuando entregó paquetes con Pago Destino en sucursal.
 
 ---
 
-## Detalles Tecnicos
+## Problemas Identificados
 
-### Archivo 1: `src/pages/BranchSettlements.tsx`
+### 1. Porcentaje Mostrado Incorrecto
+El sistema guarda el porcentaje del **primer envío** que encuentra para cada concepto, en lugar de calcular el porcentaje efectivo real.
 
-**Cambios en la estructura de datos calculados:**
+**Solución:** Calcular el porcentaje como `(Total Comisión / Total Ventas) × 100`
 
-```typescript
-interface ConceptoResumen {
-  concepto_id: string;
-  nombre: string;
-  ventas: number;
-  porcentaje: number;
-  comision: number;
-}
+### 2. Conceptos Sin Configuración = 0% Silencioso
+Si un concepto no tiene configuración en `sucursal_comisiones`, usa 0% sin advertir al usuario.
 
-interface ResumenPorTipoPago {
-  contado: ConceptoResumen[];
-  destino: ConceptoResumen[];
-  cta_cte: ConceptoResumen[];
-}
+**Datos actuales en la base de datos:**
+- Solo "Administración" tiene configuración de **recepción**
+- Berazategui y Central Buenos Aires **NO tienen** configuración de recepción
 
-// En calculatedData agregar:
-resumenConceptos: ResumenPorTipoPago;
-```
+**Solución:** Mostrar advertencia visual cuando hay conceptos sin configurar
 
-**Modificar calculateMutation:**
+### 3. Falta Sección "Cancelación de Remitos"
+En la imagen de MD Cargas hay una sección separada que muestra el total de remitos cancelados (cobrados) por la sucursal.
 
-1. Traer nombres de conceptos con `tarifa_conceptos`
-2. Acumular ventas y comisiones por concepto separado por tipo_pago
-3. Retornar estructura adicional `resumenConceptos`
+**Solución:** Agregar una sección de resumen de "Cancelación de Remitos" que muestre cuántos envíos con Pago Destino fueron cobrados y el monto total.
 
-**Agregar nueva seccion en UI:**
+---
 
-Debajo de las tarjetas de resumen (Total Cobrado, Total Comisiones, Saldo a Transferir), agregar un Tabs o Accordion con el desglose:
+## Cambios Propuestos
+
+### Archivo 1: `src/components/settlements/ConceptBreakdownTable.tsx`
+
+**Cambios:**
+1. Calcular porcentaje efectivo en la tabla: `(comision / ventas) × 100`
+2. Marcar conceptos con 0% y ventas > 0 como "sin config"
+3. Agregar badge de advertencia para configuraciones faltantes
 
 ```tsx
-<Tabs defaultValue="contado">
-  <TabsList>
-    <TabsTrigger value="contado">Contado</TabsTrigger>
-    <TabsTrigger value="destino">Pago Destino</TabsTrigger>
-    <TabsTrigger value="cta_cte">Cta Cte</TabsTrigger>
-  </TabsList>
-  <TabsContent value="contado">
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Concepto</TableHead>
-          <TableHead className="text-right">Ventas</TableHead>
-          <TableHead className="text-right">Comision %</TableHead>
-          <TableHead className="text-right">Total Comision</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {resumenConceptos.contado.map(c => (...))}
-      </TableBody>
-    </Table>
-  </TabsContent>
-  ...
-</Tabs>
+// Calcular porcentaje efectivo real
+const porcentajeEfectivo = c.ventas > 0 
+  ? (c.comision / c.ventas) * 100 
+  : 0;
+
+// Mostrar advertencia si comisión es 0 pero hay ventas
+{porcentajeEfectivo === 0 && c.ventas > 0 && (
+  <span className="text-amber-500 text-xs ml-1 flex items-center gap-1">
+    <AlertTriangle className="h-3 w-3" />
+    sin config
+  </span>
+)}
 ```
 
-### Archivo 2: Migracion SQL (opcional pero recomendado)
+### Archivo 2: `src/pages/BranchSettlements.tsx`
 
-Agregar columna para persistir el desglose:
+**Cambios en lógica de cálculo:**
+1. Trackear conceptos sin configuración durante el cálculo
+2. Agregar conteo de "Remitos Cancelados" (envíos pago destino entregados)
+3. Pasar flag `sinConfiguracion` a cada concepto del resumen
 
-```sql
-ALTER TABLE liquidacion_sucursal_detalles 
-ADD COLUMN desglose_conceptos JSONB DEFAULT '{}';
+**Nuevo estado:**
+```typescript
+interface CalculatedData {
+  // ... campos existentes ...
+  remitosCongelados: {
+    cantidad: number;
+    totalCobrado: number;
+  };
+  conceptosSinConfig: Array<{
+    concepto: string;
+    tipoPago: string;
+    rol: string;
+  }>;
+}
+```
+
+**Cambios en UI:**
+1. Mostrar tarjeta "Cancelación de Remitos" con cantidad y monto
+2. Mostrar alerta amarilla si hay conceptos sin configurar
+3. Agregar tooltip explicando qué configuración falta
+
+**Nueva tarjeta de Cancelación de Remitos:**
+```tsx
+{calculatedData.remitosCongelados.cantidad > 0 && (
+  <Card className="bg-blue-500/5 border-blue-500/20">
+    <CardContent className="p-4">
+      <div className="flex items-center gap-2 mb-2">
+        <Receipt className="h-4 w-4 text-blue-500" />
+        <span className="text-sm text-muted-foreground">
+          Cancelación de Remitos
+        </span>
+      </div>
+      <p className="text-2xl font-bold text-blue-500">
+        {calculatedData.remitosCongelados.cantidad} remitos
+      </p>
+      <p className="text-sm text-muted-foreground">
+        Total cobrado: ${calculatedData.remitosCongelados.totalCobrado.toFixed(2)}
+      </p>
+    </CardContent>
+  </Card>
+)}
+```
+
+**Alerta de configuraciones faltantes:**
+```tsx
+{calculatedData.conceptosSinConfig.length > 0 && (
+  <Alert variant="warning">
+    <AlertTriangle className="h-4 w-4" />
+    <AlertTitle>Configuración Incompleta</AlertTitle>
+    <AlertDescription>
+      Los siguientes conceptos no tienen comisión configurada:
+      <ul className="mt-2 list-disc list-inside">
+        {calculatedData.conceptosSinConfig.map((c, i) => (
+          <li key={i}>{c.concepto} ({c.tipoPago} - {c.rol})</li>
+        ))}
+      </ul>
+    </AlertDescription>
+  </Alert>
+)}
 ```
 
 ### Archivo 3: `src/components/settlements/SettlementDetailDialog.tsx`
 
-Actualizar el dialog de detalle para mostrar el desglose por concepto cuando esta disponible.
+**Cambios:**
+1. Mostrar sección "Cancelación de Remitos" si está disponible
+2. Mostrar advertencias de conceptos sin configurar si aplica
 
 ---
 
-## Flujo de Datos
+## Resultado Visual Esperado
+
+### Después de Calcular
 
 ```text
-1. Usuario selecciona sucursal y periodo → Clic "Calcular"
-   ↓
-2. Query trae envios con envio_detalles (conceptos individuales)
-   ↓
-3. Query trae sucursal_comisiones (% por concepto y tipo_rol)
-   ↓
-4. Para cada envio:
-   - Determinar si es origen (emision) o destino (recepcion)
-   - Para cada concepto en envio_detalles:
-     - Buscar config de comision para ese concepto
-     - Calcular comision individual
-     - Acumular en resumenConceptos por tipo_pago
-   ↓
-5. Mostrar:
-   - Totales consolidados (como ahora)
-   - NUEVO: Desglose por concepto en tabs por tipo_pago
-   - Lista de envios (como ahora)
-   ↓
-6. Al guardar: almacenar desglose en JSONB para auditoria
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  [Total Cobrado]    [Total Comisiones]   [Saldo]    [Cancelación Remitos]  │
+│    $532,804.00         $40,729.39      $492,074.61      25 remitos         │
+│                                                      ($1,527,462 cobrado)   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─ ADVERTENCIA ───────────────────────────────────────────────────────────────┐
+│ ⚠️ Los siguientes conceptos no tienen comisión configurada:                 │
+│    • Servicio de Agencia (contado - emisión)                               │
+│    • Traslado (destino - recepción)                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─ RESUMEN POR CONCEPTO ──────────────────────────────────────────────────────┐
+│  [Contado] [Pago Destino] [Cta. Cte.]                                      │
+│                                                                             │
+│  Concepto          │   Ventas    │  Comisión %  │  Total Comisión          │
+│────────────────────│─────────────│──────────────│───────────────────       │
+│  Flete             │  $350,503   │    10.00%    │     $35,050.39           │
+│  Seguro            │   $56,790   │    10.00%    │      $5,679.00           │
+│  Serv. Agencia     │   $30,451   │  ⚠️ sin config│         $0.00           │
+│────────────────────│─────────────│──────────────│───────────────────       │
+│  SUBTOTAL          │  $437,744   │              │     $40,729.39           │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -181,17 +176,16 @@ Actualizar el dialog de detalle para mostrar el desglose por concepto cuando est
 
 | Archivo | Cambios |
 |---------|---------|
-| `src/pages/BranchSettlements.tsx` | Logica de calculo mejorada + UI de desglose por concepto |
-| Migracion SQL | Nueva columna JSONB para desglose (opcional) |
-| `src/components/settlements/SettlementDetailDialog.tsx` | Mostrar desglose guardado |
+| `src/components/settlements/ConceptBreakdownTable.tsx` | Calcular % efectivo, mostrar "sin config" |
+| `src/pages/BranchSettlements.tsx` | Trackear conceptos sin config, agregar conteo remitos cancelados, mostrar alertas |
+| `src/components/settlements/SettlementDetailDialog.tsx` | Mostrar info de remitos cancelados |
 
 ---
 
 ## Resultado Esperado
 
-1. Al calcular liquidacion, se muestra tabla con desglose por concepto
-2. Separado por tipo de pago (Contado, Destino, Cta Cte)
-3. Cada concepto muestra: Ventas totales, % Comision aplicado, Total Comision
-4. Se puede verificar que los porcentajes configurados coinciden con los montos calculados
-5. El PDF de liquidacion incluye el desglose para auditoria
+1. **Porcentajes precisos:** Mostrar el % real calculado de ventas/comisión
+2. **Transparencia:** Identificar claramente conceptos sin configuración
+3. **Cancelación de Remitos:** Mostrar cuántos y cuánto se cobró por pago destino
+4. **Auditoría mejorada:** Poder verificar que cada concepto tiene el % correcto configurado
 
