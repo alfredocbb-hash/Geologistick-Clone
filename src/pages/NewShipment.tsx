@@ -892,18 +892,65 @@ export default function NewShipment() {
       if (envioError) throw envioError;
 
       // 5. Create shipment details by concept (solo los filtrados según tipo de servicio)
-      if (conceptosPreciosFiltrados.length > 0) {
-        const detalles = conceptosPreciosFiltrados.map((cp) => ({
+      // Build shipment details with REAL calculated amounts
+      const valorDeclaradoReal = parseFloat(formData.valor_declarado) || 
+        (configSeguro?.valor_minimo_declarado || 0);
+      const cantidadBultosReal = parseInt(formData.cantidad_bultos) || 1;
+      
+      // Find the "Flete" concept from catalog
+      const conceptoFlete = conceptos.find(c => 
+        c.codigo?.toLowerCase() === 'flete' || 
+        c.nombre?.toLowerCase() === 'flete'
+      );
+      
+      const detallesEnvio: Array<{envio_id: string; concepto_id: string | null; nombre_concepto: string; monto: number}> = [];
+      
+      // 1. Add FLETE as explicit concept (always if calculated flete > 0)
+      if (fleteCalculado > 0) {
+        detallesEnvio.push({
           envio_id: envio.id,
-          concepto_id: cp.concepto_id,
-          nombre_concepto: cp.concepto?.nombre || 'Sin nombre',
-          monto: cp.monto,
-        }));
-
+          concepto_id: conceptoFlete?.id || null,
+          nombre_concepto: 'Flete',
+          monto: fleteCalculado,
+        });
+      }
+      
+      // 2. Add other concepts with CALCULATED amounts
+      conceptosPreciosFiltrados.forEach((cp) => {
+        // Skip flete if already included above (avoid duplicates)
+        const conceptoCode = cp.concepto?.codigo?.toLowerCase();
+        const conceptoName = cp.concepto?.nombre?.toLowerCase();
+        if (conceptoCode === 'flete' || conceptoName === 'flete') {
+          return;
+        }
+        
+        let montoConcepto = 0;
+        if (cp.es_porcentaje && cp.porcentaje) {
+          // Calculate percentage-based amount from declared value
+          montoConcepto = valorDeclaradoReal * Number(cp.porcentaje) / 100;
+        } else {
+          montoConcepto = Number(cp.monto);
+        }
+        
+        // Multiply by package count if configured
+        if (cp.multiplicar_por_bultos) {
+          montoConcepto *= cantidadBultosReal;
+        }
+        
+        if (montoConcepto > 0) {
+          detallesEnvio.push({
+            envio_id: envio.id,
+            concepto_id: cp.concepto_id,
+            nombre_concepto: cp.concepto?.nombre || 'Sin nombre',
+            monto: montoConcepto,
+          });
+        }
+      });
+      
+      if (detallesEnvio.length > 0) {
         const { error: detallesError } = await supabase
           .from('envio_detalles')
-          .insert(detalles);
-
+          .insert(detallesEnvio);
         if (detallesError) throw detallesError;
       }
 
