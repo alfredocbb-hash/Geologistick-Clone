@@ -207,11 +207,17 @@ export default function BranchSettlements() {
       // Fetch all concept names for display
       const { data: conceptosCatalogo } = await supabase
         .from('tarifa_conceptos')
-        .select('id, nombre');
+        .select('id, nombre, codigo');
       
       const conceptoNombres: Record<string, string> = {};
+      let conceptoFleteId: string | null = null;
+      
       (conceptosCatalogo || []).forEach(c => {
         conceptoNombres[c.id] = c.nombre;
+        // Guardar el ID del concepto Flete para uso en fallback
+        if (c.codigo?.toLowerCase() === 'flete' || c.nombre?.toLowerCase() === 'flete') {
+          conceptoFleteId = c.id;
+        }
       });
 
       // Calculate totals
@@ -396,7 +402,7 @@ export default function BranchSettlements() {
           // Fallback: no details, use precio_total as "Flete" concept
           if (esOrigen) {
             envioComision += calcularComisionConcepto(
-              null,
+              conceptoFleteId,
               'Flete',
               envio.precio_total,
               tipoPago,
@@ -408,7 +414,7 @@ export default function BranchSettlements() {
           }
           if (esDestino && envio.estado === 'entregado') {
             envioComision += calcularComisionConcepto(
-              null,
+              conceptoFleteId,
               'Flete',
               envio.precio_total,
               tipoPago,
