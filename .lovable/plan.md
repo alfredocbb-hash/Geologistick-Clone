@@ -1,129 +1,120 @@
 
-# Plan: Corregir Fallback de Comisiones Sin envio_detalles
+# Plan: Filtrar Paradas de Entrega por Ruta Específica
 
 ## Problema Identificado
 
-Cuando un envío **no tiene registros en `envio_detalles`**, el sistema de liquidación entra en modo fallback (líneas 395-420 de `BranchSettlements.tsx`) pero este fallback tiene un bug:
-
-```typescript
-// Código actual problemático
-calcularComisionConcepto(
-  null,           // ← concepto_id = null
-  'Flete',
-  envio.precio_total,
-  ...
-);
-```
-
-Luego en `calcularComisionConcepto`:
-```typescript
-const config = (comisiones || []).find(c => c.concepto_id === conceptoId);
-// Busca: concepto_id === null
-// Pero la configuración tiene: concepto_id = '1cd05d8a-ebe5-4ecb-b5ec-aa6c2a2b5271'
-// Resultado: config = undefined → porcentaje = 0%
-```
+Al hacer clic en "Ver último recorrido" en el Mapa en Vivo, el sistema muestra **todas las entregas históricas** del chofer en lugar de solo las entregas de la ruta seleccionada.
 
 ### Datos del Problema
+- Kevin Bernard tiene **117 envíos entregados** con coordenadas GPS en total
+- La ruta específica `RP-20260204-6391` tiene solo **5 paradas**
+- El mapa está mostrando 17+ marcadores cuando debería mostrar solo los de esa ruta
 
-De 15 envíos recientes de "Administración" con precio > $0:
-- 9 envíos tienen **0 detalles** → caen en fallback → 0% comisión
-- 6 envíos tienen detalles → calculan correctamente
+### Causa Raíz
+En `src/hooks/useDriverRoute.ts`, líneas 169-177, cuando se carga una ruta por `ruta_id`:
 
-### Configuración Correcta Existente
-La sucursal "Administración" SÍ tiene configurado:
-- Flete: 30% contado/destino, 10% cta_cte
-- Seguro: 30%
-- Servicio de Agencia: 100%
+```typescript
+// Código actual - INCORRECTO
+deliveriesQuery = await supabase
+  .from('envios')
+  .select('tracking_number, entrega_lat, entrega_lng, fecha_entrega')
+  .eq('chofer_id', driverId)     // ← Solo filtra por chofer
+  .eq('estado', 'entregado')      // ← NO filtra por ruta_id!
+  ...
+```
+
+Esto obtiene **todos los envíos entregados** del chofer, no solo los de la ruta actual.
 
 ---
 
 ## Solución Propuesta
 
-### Archivo: `src/pages/BranchSettlements.tsx`
+### Archivo: `src/hooks/useDriverRoute.ts`
 
-Modificar la lógica de fallback para buscar el ID real del concepto "Flete" antes de calcular:
+Modificar la consulta de delivery stops para filtrar usando la tabla `ruta_paradas` (que vincula rutas con envíos):
 
-### Cambios en líneas 207-215
-Agregar búsqueda del concepto "Flete" por nombre:
+### Código Corregido
 
 ```typescript
-// Fetch all concept names for display
-const { data: conceptosCatalogo } = await supabase
-  .from('tarifa_conceptos')
-  .select('id, nombre, codigo');
-
-const conceptoNombres: Record<string, string> = {};
-let conceptoFleteId: string | null = null;
-
-(conceptosCatalogo || []).forEach(c => {
-  conceptoNombres[c.id] = c.nombre;
-  // Guardar el ID del concepto Flete para uso en fallback
-  if (c.codigo?.toLowerCase() === 'flete' || c.nombre?.toLowerCase() === 'flete') {
-    conceptoFleteId = c.id;
-  }
-});
+// ANTES (líneas 168-178) - Obtiene TODOS los envíos del chofer
+} else {
+  deliveriesQuery = await supabase
+    .from('envios')
+    .select('tracking_number, entrega_lat, entrega_lng, fecha_entrega')
+    .eq('chofer_id', driverId)
+    .eq('estado', 'entregado')
+    ...
+}
 ```
 
-### Cambios en líneas 395-420
-Usar `conceptoFleteId` en el fallback:
-
 ```typescript
+// DESPUÉS - Filtrar envíos por ruta específica usando ruta_paradas
 } else {
-  // Fallback: no details, use precio_total as "Flete" concept
-  if (esOrigen) {
-    envioComision += calcularComisionConcepto(
-      conceptoFleteId,  // ← Usar ID real del Flete
-      'Flete',
-      envio.precio_total,
-      tipoPago,
-      comisionesEmision,
-      envio.precio_total,
-      envio.id,
-      'emisión'
-    );
-  }
-  if (esDestino && envio.estado === 'entregado') {
-    envioComision += calcularComisionConcepto(
-      conceptoFleteId,  // ← Usar ID real del Flete
-      'Flete',
-      envio.precio_total,
-      tipoPago,
-      comisionesRecepcion,
-      envio.precio_total,
-      envio.id,
-      'recepción'
-    );
+  // Primero obtener los envio_id de la ruta específica
+  const { data: rutaParadas } = await supabase
+    .from('ruta_paradas')
+    .select('envio_id')
+    .eq('ruta_id', identifier.rutaId);
+  
+  const envioIds = rutaParadas?.map(p => p.envio_id).filter(Boolean) || [];
+  
+  if (envioIds.length > 0) {
+    deliveriesQuery = await supabase
+      .from('envios')
+      .select('tracking_number, entrega_lat, entrega_lng, fecha_entrega')
+      .in('id', envioIds)  // ← Filtrar por envíos de esta ruta
+      .eq('estado', 'entregado')
+      .not('entrega_lat', 'is', null)
+      .not('entrega_lng', 'is', null)
+      .not('fecha_entrega', 'is', null)
+      .order('fecha_entrega', { ascending: true });
   }
 }
 ```
 
 ---
 
-## Resultado Esperado
+## Flujo de Datos Corregido
 
-### Antes (Problema)
-```
-Envío ADMIN-ENV-20260203-8460DA ($6,000):
-- Sin detalles → fallback con concepto_id = null
-- No encuentra config → porcentaje = 0%
-- Comisión: $0
-```
-
-### Después (Correcto)
-```
-Envío ADMIN-ENV-20260203-8460DA ($6,000):
-- Sin detalles → fallback con concepto_id = '1cd05d8a...' (Flete)
-- Encuentra config → porcentaje = 30%
-- Comisión: $6,000 × 30% = $1,800
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│  Usuario hace clic en "Ver último recorrido" de Kevin          │
+└─────────────────────────────────────────────────────────────────┘
+                                ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  loadRoute(chofer_id: 'kevin', ruta_id: 'RP-6391')             │
+└─────────────────────────────────────────────────────────────────┘
+                                ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  1. Obtener historial GPS de driver_location_history           │
+│     WHERE chofer_id = 'kevin' AND ruta_id = 'RP-6391'          │
+│     ✓ Correcto - ya filtra por ruta_id                         │
+└─────────────────────────────────────────────────────────────────┘
+                                ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  2. Obtener paradas de entrega:                                │
+│                                                                 │
+│  ANTES: envios WHERE chofer_id = 'kevin' → 117 resultados     │
+│                                                                 │
+│  DESPUÉS: ruta_paradas WHERE ruta_id = 'RP-6391' → 5 envio_id │
+│           envios WHERE id IN (5 ids) → 5 resultados           │
+└─────────────────────────────────────────────────────────────────┘
+                                ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  Mapa muestra: polyline GPS + 5 marcadores de entrega          │
+│  (en lugar de 17+ marcadores de todas las entregas históricas) │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Impacto
+## Resultado Visual Esperado
 
-1. **Envíos sin detalles** usarán la configuración real de "Flete"
-2. **Cálculos correctos** para todos los envíos, con o sin `envio_detalles`
-3. **Retrocompatibilidad** - funciona con envíos antiguos que no tienen desglose
+### Antes (Problema)
+El mapa muestra marcadores 1-17 dispersos por toda el área, incluyendo entregas de rutas anteriores.
+
+### Después (Correcto)
+El mapa muestra solo los marcadores de las 5 paradas que pertenecen a la ruta seleccionada, alineados con la polilínea del recorrido GPS.
 
 ---
 
@@ -131,4 +122,12 @@ Envío ADMIN-ENV-20260203-8460DA ($6,000):
 
 | Archivo | Cambios |
 |---------|---------|
-| `src/pages/BranchSettlements.tsx` | Buscar ID de Flete y usarlo en fallback (líneas ~207-215 y ~395-420) |
+| `src/hooks/useDriverRoute.ts` | Filtrar delivery stops por ruta_id usando la tabla ruta_paradas (líneas ~168-178) |
+
+---
+
+## Impacto
+
+1. **Visualización correcta**: Solo se muestran las paradas de la ruta seleccionada
+2. **Consistencia**: La polilínea GPS y los marcadores de entrega corresponden a la misma ruta
+3. **Mejor auditoría**: Los administradores pueden verificar qué entregas se realizaron en cada ruta específica
