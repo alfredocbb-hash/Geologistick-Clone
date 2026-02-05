@@ -238,16 +238,7 @@ export default function EditRouteDialog({ route, onClose }: EditRouteDialogProps
 
           if (resetError) throw resetError;
 
-          // Add history entry
-          await supabase.from('envio_historial').insert({
-            envio_id: envioId,
-            estado_anterior: 'en_reparto' as const,
-            estado_nuevo: 'pendiente' as const,
-            notas: rescheduleDate 
-              ? `Removido de ruta ${route.numero}. Reprogramado para ${format(new Date(rescheduleDate), 'dd/MM/yyyy', { locale: es })}`
-              : `Removido de ruta ${route.numero}`,
-            created_by: user?.id,
-          });
+          // Note: History entry is auto-created by DB trigger log_envio_estado_change
         }
       }
 

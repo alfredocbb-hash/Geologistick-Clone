@@ -155,15 +155,7 @@ export default function Routes() {
 
       if (error) throw error;
 
-      // Create history entries
-      for (const shipmentId of shipmentIds) {
-        await supabase.from('envio_historial').insert({
-          envio_id: shipmentId,
-          estado_anterior: 'pendiente' as ShipmentStatus,
-          estado_nuevo: 'pendiente' as ShipmentStatus,
-          notas: 'Asignado a chofer',
-        });
-      }
+      // Note: History entries are auto-created by DB trigger log_envio_estado_change when estado changes
     },
     onSuccess: () => {
       toast.success('Envíos asignados correctamente');
