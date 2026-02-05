@@ -166,15 +166,25 @@ export function useDriverRoute(): UseDriverRouteReturn {
             .order('fecha_entrega', { ascending: true });
         }
       } else {
-        deliveriesQuery = await supabase
-          .from('envios')
-          .select('tracking_number, entrega_lat, entrega_lng, fecha_entrega')
-          .eq('chofer_id', driverId)
-          .eq('estado', 'entregado')
-          .not('entrega_lat', 'is', null)
-          .not('entrega_lng', 'is', null)
-          .not('fecha_entrega', 'is', null)
-          .order('fecha_entrega', { ascending: true });
+        // For ruta_id: get envio_ids from ruta_paradas junction table
+        const { data: rutaParadas } = await supabase
+          .from('ruta_paradas')
+          .select('envio_id')
+          .eq('ruta_id', identifier.rutaId);
+        
+        const envioIds = rutaParadas?.map(p => p.envio_id).filter(Boolean) || [];
+        
+        if (envioIds.length > 0) {
+          deliveriesQuery = await supabase
+            .from('envios')
+            .select('tracking_number, entrega_lat, entrega_lng, fecha_entrega')
+            .in('id', envioIds)
+            .eq('estado', 'entregado')
+            .not('entrega_lat', 'is', null)
+            .not('entrega_lng', 'is', null)
+            .not('fecha_entrega', 'is', null)
+            .order('fecha_entrega', { ascending: true });
+        }
       }
       
       const deliveries = deliveriesQuery?.data;
