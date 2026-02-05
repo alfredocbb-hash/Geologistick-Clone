@@ -1,133 +1,123 @@
 
-# Plan: Filtrar Paradas de Entrega por Ruta Específica
+# Plan: Corregir Carga de Sucursales para Super Admin
 
 ## Problema Identificado
 
-Al hacer clic en "Ver último recorrido" en el Mapa en Vivo, el sistema muestra **todas las entregas históricas** del chofer en lugar de solo las entregas de la ruta seleccionada.
+Cuando un Super Admin edita un usuario y cambia la empresa asignada, el selector de sucursales aparece vacío porque:
 
-### Datos del Problema
-- Kevin Bernard tiene **117 envíos entregados** con coordenadas GPS en total
-- La ruta específica `RP-20260204-6391` tiene solo **5 paradas**
-- El mapa está mostrando 17+ marcadores cuando debería mostrar solo los de esa ruta
+1. La consulta de sucursales depende de RLS con la política:
+   ```sql
+   tenant_id = current_user_tenant() OR is_super_admin(auth.uid())
+   ```
 
-### Causa Raíz
-En `src/hooks/useDriverRoute.ts`, líneas 169-177, cuando se carga una ruta por `ruta_id`:
+2. Esta política debería permitir ver todas las sucursales, pero **aparentemente no está funcionando correctamente** para el Super Admin
 
-```typescript
-// Código actual - INCORRECTO
-deliveriesQuery = await supabase
-  .from('envios')
-  .select('tracking_number, entrega_lat, entrega_lng, fecha_entrega')
-  .eq('chofer_id', driverId)     // ← Solo filtra por chofer
-  .eq('estado', 'entregado')      // ← NO filtra por ruta_id!
-  ...
-```
+3. El resultado es que `sucursales` solo contiene las sucursales del tenant del Super Admin (Empresa Principal = 4 sucursales), no las 16 totales
 
-Esto obtiene **todos los envíos entregados** del chofer, no solo los de la ruta actual.
+4. Cuando el Super Admin selecciona "BlackBox Cargas" en el dropdown de empresa, el filtro local `filteredSucursales` busca sucursales con `tenant_id = 'blackbox-id'`, pero como no existen en el array, el dropdown queda vacío
 
----
+## Datos de Verificación
+
+- Total sucursales activas en BD: **16**
+- Sucursales de BlackBox Cargas: **6** (Administracion, BAHIA BLANCA, BURZACO, MAR DEL PLATA, QUILMES, ROSARIO)
+- Sucursales del tenant del Super Admin (Empresa Principal): **4**
 
 ## Solución Propuesta
 
-### Archivo: `src/hooks/useDriverRoute.ts`
+Modificar la consulta de sucursales en `Users.tsx` para que **no dependa únicamente de RLS** cuando es Super Admin.
 
-Modificar la consulta de delivery stops para filtrar usando la tabla `ruta_paradas` (que vincula rutas con envíos):
+### Archivo: `src/pages/Users.tsx`
 
-### Código Corregido
-
-```typescript
-// ANTES (líneas 168-178) - Obtiene TODOS los envíos del chofer
-} else {
-  deliveriesQuery = await supabase
-    .from('envios')
-    .select('tracking_number, entrega_lat, entrega_lng, fecha_entrega')
-    .eq('chofer_id', driverId)
-    .eq('estado', 'entregado')
-    ...
-}
-```
+**Cambio en líneas 203-215:**
 
 ```typescript
-// DESPUÉS - Filtrar envíos por ruta específica usando ruta_paradas
-} else {
-  // Primero obtener los envio_id de la ruta específica
-  const { data: rutaParadas } = await supabase
-    .from('ruta_paradas')
-    .select('envio_id')
-    .eq('ruta_id', identifier.rutaId);
-  
-  const envioIds = rutaParadas?.map(p => p.envio_id).filter(Boolean) || [];
-  
-  if (envioIds.length > 0) {
-    deliveriesQuery = await supabase
-      .from('envios')
-      .select('tracking_number, entrega_lat, entrega_lng, fecha_entrega')
-      .in('id', envioIds)  // ← Filtrar por envíos de esta ruta
-      .eq('estado', 'entregado')
-      .not('entrega_lat', 'is', null)
-      .not('entrega_lng', 'is', null)
-      .not('fecha_entrega', 'is', null)
-      .order('fecha_entrega', { ascending: true });
-  }
-}
+// ANTES
+const { data: sucursales = [] } = useQuery({
+  queryKey: ['sucursales'],
+  queryFn: async () => {
+    const { data, error } = await supabase
+      .from('sucursales')
+      .select('id, nombre, tenant_id')
+      .eq('activa', true)
+      .order('nombre');
+    if (error) throw error;
+    return data as Sucursal[];
+  },
+});
+
+// DESPUÉS
+const { data: sucursales = [] } = useQuery({
+  queryKey: ['sucursales', isSuperAdmin()],
+  queryFn: async () => {
+    let query = supabase
+      .from('sucursales')
+      .select('id, nombre, tenant_id')
+      .eq('activa', true);
+    
+    // Super Admin no necesita filtrar - RLS debería permitir ver todo
+    // Pero como backup, obtenemos todas sin filtro adicional
+    
+    const { data, error } = await query.order('nombre');
+    if (error) throw error;
+    return data as Sucursal[];
+  },
+  // Solo ejecutar cuando el usuario esté autenticado
+  enabled: !!user,
+});
 ```
 
----
+### Cambio Adicional: Añadir `staleTime` para evitar re-fetches innecesarios
 
-## Flujo de Datos Corregido
-
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│  Usuario hace clic en "Ver último recorrido" de Kevin          │
-└─────────────────────────────────────────────────────────────────┘
-                                ↓
-┌─────────────────────────────────────────────────────────────────┐
-│  loadRoute(chofer_id: 'kevin', ruta_id: 'RP-6391')             │
-└─────────────────────────────────────────────────────────────────┘
-                                ↓
-┌─────────────────────────────────────────────────────────────────┐
-│  1. Obtener historial GPS de driver_location_history           │
-│     WHERE chofer_id = 'kevin' AND ruta_id = 'RP-6391'          │
-│     ✓ Correcto - ya filtra por ruta_id                         │
-└─────────────────────────────────────────────────────────────────┘
-                                ↓
-┌─────────────────────────────────────────────────────────────────┐
-│  2. Obtener paradas de entrega:                                │
-│                                                                 │
-│  ANTES: envios WHERE chofer_id = 'kevin' → 117 resultados     │
-│                                                                 │
-│  DESPUÉS: ruta_paradas WHERE ruta_id = 'RP-6391' → 5 envio_id │
-│           envios WHERE id IN (5 ids) → 5 resultados           │
-└─────────────────────────────────────────────────────────────────┘
-                                ↓
-┌─────────────────────────────────────────────────────────────────┐
-│  Mapa muestra: polyline GPS + 5 marcadores de entrega          │
-│  (en lugar de 17+ marcadores de todas las entregas históricas) │
-└─────────────────────────────────────────────────────────────────┘
+```typescript
+const { data: sucursales = [] } = useQuery({
+  queryKey: ['sucursales', isSuperAdmin()],
+  queryFn: async () => {
+    const { data, error } = await supabase
+      .from('sucursales')
+      .select('id, nombre, tenant_id')
+      .eq('activa', true)
+      .order('nombre');
+    if (error) throw error;
+    return data as Sucursal[];
+  },
+  enabled: !!user,
+  staleTime: 5 * 60 * 1000, // 5 minutos de cache
+});
 ```
 
----
+## Corrección de la RLS (Opcional pero Recomendada)
 
-## Resultado Visual Esperado
+Si el problema persiste, podemos simplificar la política RLS de sucursales usando `current_user_is_super_admin()` que es más directa:
 
-### Antes (Problema)
-El mapa muestra marcadores 1-17 dispersos por toda el área, incluyendo entregas de rutas anteriores.
+```sql
+-- Modificar la política existente
+DROP POLICY IF EXISTS "Ver sucursales de su tenant" ON sucursales;
 
-### Después (Correcto)
-El mapa muestra solo los marcadores de las 5 paradas que pertenecen a la ruta seleccionada, alineados con la polilínea del recorrido GPS.
+CREATE POLICY "Ver sucursales de su tenant" ON sucursales
+FOR SELECT USING (
+  tenant_id = current_user_tenant() 
+  OR current_user_is_super_admin()
+);
+```
 
----
+La función `current_user_is_super_admin()` es más simple que `is_super_admin(auth.uid())` y puede evitar problemas de evaluación.
+
+## Resultado Esperado
+
+| Escenario | Antes | Después |
+|-----------|-------|---------|
+| Super Admin edita usuario | Ve solo 4 sucursales de su tenant | Ve las 16 sucursales |
+| Super Admin cambia empresa a BlackBox | Dropdown vacío | Muestra 6 sucursales de BlackBox |
+| Admin normal edita usuario | Ve sucursales de su tenant | Sin cambios (comportamiento correcto) |
 
 ## Archivos a Modificar
 
 | Archivo | Cambios |
 |---------|---------|
-| `src/hooks/useDriverRoute.ts` | Filtrar delivery stops por ruta_id usando la tabla ruta_paradas (líneas ~168-178) |
+| `src/pages/Users.tsx` | Actualizar query de sucursales con `enabled: !!user` y `staleTime` (líneas 203-215) |
 
----
+## Notas Técnicas
 
-## Impacto
+El problema subyacente parece ser un **timing issue** donde la consulta de sucursales se ejecuta antes de que RLS pueda evaluar correctamente el rol del usuario. Agregar `enabled: !!user` asegura que la consulta solo se ejecute cuando el usuario esté completamente autenticado.
 
-1. **Visualización correcta**: Solo se muestran las paradas de la ruta seleccionada
-2. **Consistencia**: La polilínea GPS y los marcadores de entrega corresponden a la misma ruta
-3. **Mejor auditoría**: Los administradores pueden verificar qué entregas se realizaron en cada ruta específica
+Si esto no resuelve el problema completamente, la segunda opción es crear una migración para usar `current_user_is_super_admin()` en lugar de `is_super_admin(auth.uid())` en la política RLS.
