@@ -1,86 +1,102 @@
 
-# Análisis: Fotos y Firmas en el Sistema de Entregas
 
-## Estado Actual
+# Plan: Verificar y Corregir Visualización de Fotos y Firmas
 
-### ✅ Lo que funciona correctamente:
-1. **Bucket de storage** `delivery-photos` está público y funcional
-2. **Firmas se guardan correctamente** - Los últimos 20 registros del storage son firmas
-3. **El diálogo de detalles internos** (`ShipmentDetailsDialog.tsx`) muestra correctamente fotos y firmas
-4. **URLs de las firmas** están almacenadas en `firma_destinatario` en la tabla `envios`
+## Resumen del Problema
 
-### ❌ Problemas Identificados:
+El usuario reporta que no puede ver fotos y firmas desde el tracking interno ni en el EPOD.
 
-| Problema | Evidencia |
-|----------|-----------|
-| **Fotos no se guardan** | Últimos 10 envíos entregados: `foto_entrega: nil` |
-| **Última foto:** 20 de enero | `tracking_number: 46301030565` |
-| **Últimas 20 firmas:** 4 de febrero | Todas recientes y funcionando |
+## Hallazgos del Analisis
 
-### Causa Probable de Fotos Faltantes
+### Estado de los Datos en la Base de Datos
 
-Los choferes **no están tomando fotos** antes de confirmar la entrega. El sistema lo permite porque la foto es opcional. Esto puede deberse a:
-1. El botón de foto no es prominente
-2. Los choferes saltan directamente a la firma
-3. No hay validación que exija foto
+| Metrica | Valor |
+|---------|-------|
+| Envios con foto de entrega | 4 (ultimo: 20 de enero) |
+| Envios con firma | 100+ (activos diariamente) |
+| Bucket `delivery-photos` | Publico y funcional |
 
-## Componentes de Visualización
+### Codigo de Visualizacion
 
-### Tracking Interno (ShipmentDetailsDialog)
+| Componente | Estado | Ubicacion |
+|------------|--------|-----------|
+| `ShipmentDetailsDialog` (tab Evidencia) | Correcto | Lineas 621-681 |
+| `generateEPODPDF` (seccion Evidencia) | Correcto | Lineas 156-454 |
+| `Tracking.tsx` (publico) | NO incluye fotos/firmas | - |
 
-**Ubicación:** `src/components/shipments/ShipmentDetailsDialog.tsx` (líneas 621-680)
+### Causa Raiz Identificada
+
+1. **Fotos**: Los choferes **no estan tomando fotos** antes de confirmar entrega. La foto es opcional y el boton no es prominente.
+
+2. **Firmas**: Se estan guardando correctamente, pero las URLs en la BD apuntan a imagenes PNG con **fondo blanco y trazo oscuro** - visualmente podrian parecer vacias si se ven sobre fondo blanco.
+
+3. **Visualizacion interna**: El codigo es correcto. Si el envio tiene `foto_entrega` o `firma_destinatario` con URLs validas, se muestran.
+
+## Verificacion Propuesta
+
+Para confirmar que el sistema funciona correctamente:
+
+### Archivo: `src/components/shipments/ShipmentDetailsDialog.tsx`
+
+Agregar logging para depuracion temporal:
 
 ```typescript
-// ✅ Ya muestra foto de entrega
-{envio.foto_entrega ? (
-  <img src={envio.foto_entrega} alt="Foto de entrega" />
-) : (
-  <div>Sin foto de entrega</div>
-)}
-
-// ✅ Ya muestra firma
-{envio.firma_destinatario ? (
-  <img src={envio.firma_destinatario} alt="Firma" />
-) : (
-  <div>Sin firma registrada</div>
-)}
+// En la seccion de Evidencia (linea ~620)
+// Agregar para verificar que los datos llegan
+console.log('EPOD Evidence:', {
+  foto: envio.foto_entrega,
+  firma: envio.firma_destinatario,
+  envioId: envio.id
+});
 ```
 
-### Tracking Público (/tracking y /tracking-embed)
+### Prueba con Envio que Tiene Foto
 
-**Problema:** El tracking público actualmente NO muestra fotos ni firmas, solo muestra:
-- Estado del envío
-- Historial de movimientos
-- Información de origen/destino
+El envio con tracking `46301030565` tiene tanto foto como firma. Se puede usar este envio para verificar que:
+1. La tab "Evidencia" muestra ambas imagenes
+2. El EPOD descargado incluye las imagenes
 
-## Acciones Sugeridas
+## Mejoras Recomendadas (Opcionales)
 
-### Opción 1: Hacer la foto obligatoria (Recomendado)
+### 1. Mejorar Visibilidad de Firmas
 
-Modificar `DeliveryConfirmation.tsx` para requerir foto antes de confirmar:
+Agregar borde visible alrededor de la imagen de firma para que sea mas facil de ver:
+
+```tsx
+// ShipmentDetailsDialog.tsx linea ~664
+<div className="bg-white rounded-lg border-2 border-gray-200 p-4">
+  <img 
+    src={envio.firma_destinatario} 
+    alt="Firma del destinatario"
+    className="max-h-32 w-full object-contain"
+  />
+</div>
+```
+
+### 2. Hacer Foto Obligatoria
+
+Modificar `DeliveryConfirmation.tsx` para requerir foto:
 
 ```typescript
-// Cambiar la validación
+// Linea ~235 (antes de canSubmit)
 const canSubmit = 
-  (!requiresPayment || (amountCollected && parseFloat(amountCollected) > 0)) 
-  && photo; // ← Añadir validación de foto obligatoria
+  (!requiresPayment || (amountCollected && parseFloat(amountCollected) > 0))
+  && !!photo; // Agregar validacion de foto obligatoria
 ```
 
-### Opción 2: Hacer la firma y foto más prominentes
+### 3. Agregar Indicador Visual de Evidencia Faltante
 
-Mejorar la UI del diálogo de confirmación para que el chofer sea guiado a capturar evidencia primero.
+En la lista de envios, mostrar un icono si falta foto o firma.
 
-### Opción 3: Añadir fotos/firmas al tracking público
+## Acciones Inmediatas
 
-Modificar el edge function `public-tracking` y la página de tracking para incluir estas imágenes.
+1. **Verificar** el envio `46301030565` en el tracking interno - deberia mostrar foto y firma
+2. **Descargar EPOD** de ese envio - deberia incluir ambas imagenes
+3. Si funciona correctamente, el problema es que **los envios recientes no tienen fotos**
 
----
+## Proximos Pasos
 
-## ¿Qué desea hacer?
+1. Probar con el envio `46301030565` que tiene evidencia
+2. Si funciona, el codigo esta bien y el problema es operativo (choferes no toman fotos)
+3. Opcionalmente, implementar foto obligatoria para forzar captura de evidencia
 
-1. **Hacer la foto obligatoria** - Los choferes deberán tomar foto para confirmar
-2. **Mejorar la UI** - Hacer más visible el botón de foto
-3. **Añadir al tracking público** - Mostrar fotos/firmas en la página de seguimiento
-4. **Todas las anteriores** - Implementar las 3 mejoras
-
-Por favor indique qué opción prefiere para proceder con la implementación.
