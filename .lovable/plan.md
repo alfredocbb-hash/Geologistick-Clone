@@ -1,180 +1,86 @@
 
+# Análisis: Fotos y Firmas en el Sistema de Entregas
 
-# Plan: Eliminar Entradas Duplicadas de Estado "Entregado" en el Historial
+## Estado Actual
 
-## Problema Identificado
+### ✅ Lo que funciona correctamente:
+1. **Bucket de storage** `delivery-photos` está público y funcional
+2. **Firmas se guardan correctamente** - Los últimos 20 registros del storage son firmas
+3. **El diálogo de detalles internos** (`ShipmentDetailsDialog.tsx`) muestra correctamente fotos y firmas
+4. **URLs de las firmas** están almacenadas en `firma_destinatario` en la tabla `envios`
 
-Al revisar el historial de envíos, se muestran **estados duplicados de "entregado"** (y otros estados). La investigación revela:
+### ❌ Problemas Identificados:
 
-### Datos de Evidencia
-- **20+ envíos** tienen múltiples entradas de "entregado" en el historial
-- Ejemplo: Envío `53e2594a...` tiene **5 entradas** de "entregado"
-- Muchos duplicados ocurren en el **mismo segundo exacto** (diferencia de milisegundos)
+| Problema | Evidencia |
+|----------|-----------|
+| **Fotos no se guardan** | Últimos 10 envíos entregados: `foto_entrega: nil` |
+| **Última foto:** 20 de enero | `tracking_number: 46301030565` |
+| **Últimas 20 firmas:** 4 de febrero | Todas recientes y funcionando |
 
-### Causa Raíz: Doble Inserción de Historial
+### Causa Probable de Fotos Faltantes
 
-Existe un **trigger en la base de datos** que inserta automáticamente una entrada de historial cuando cambia el estado del envío:
+Los choferes **no están tomando fotos** antes de confirmar la entrega. El sistema lo permite porque la foto es opcional. Esto puede deberse a:
+1. El botón de foto no es prominente
+2. Los choferes saltan directamente a la firma
+3. No hay validación que exija foto
 
-```sql
--- Trigger: log_envio_estado (ACTIVO)
-CREATE OR REPLACE FUNCTION log_envio_estado_change()
-RETURNS TRIGGER AS $$
-BEGIN
-  IF OLD.estado IS DISTINCT FROM NEW.estado THEN
-    INSERT INTO public.envio_historial (envio_id, estado_anterior, estado_nuevo, created_by)
-    VALUES (NEW.id, OLD.estado, NEW.estado, auth.uid());
-  END IF;
-  RETURN NEW;
-END;
-$$
-```
+## Componentes de Visualización
 
-**Problema**: El código frontend **también inserta manualmente** una entrada de historial después de actualizar el envío:
+### Tracking Interno (ShipmentDetailsDialog)
 
-```typescript
-// DeliveryConfirmation.tsx (líneas 162-179)
-await supabase.from('envios').update({ estado: 'entregado' }); // ← Trigger inserta historial
-
-// Y TAMBIÉN hace insert manual:
-await supabase.from('envio_historial').insert({
-  envio_id: shipment.id,
-  estado_nuevo: 'entregado',  // ← Duplicado!
-});
-```
-
-### Archivos Afectados (insertan historial manualmente)
-
-| Archivo | Líneas | Estado |
-|---------|--------|--------|
-| `src/components/delivery/DeliveryConfirmation.tsx` | 170-179 | `entregado` |
-| `src/components/scan/BranchDeliveryDialog.tsx` | 172-178 | `entregado` |
-| `src/components/scan/MLDeliveryDialog.tsx` | 89-96 | varios estados |
-| `src/pages/Routes.tsx` | 158-166 | `en_reparto` |
-| `src/components/routes/EditRouteDialog.tsx` | 242-249 | `devuelto` |
-
----
-
-## Solución Propuesta
-
-**Opción recomendada**: Eliminar las inserciones manuales de historial en el código frontend, ya que el trigger de base de datos ya lo hace automáticamente.
-
-### Archivos a Modificar
-
-#### 1. `src/components/delivery/DeliveryConfirmation.tsx`
-
-**Eliminar** el insert manual de historial (líneas 169-180):
+**Ubicación:** `src/components/shipments/ShipmentDetailsDialog.tsx` (líneas 621-680)
 
 ```typescript
-// ELIMINAR este bloque:
-const historyPromise = supabase
-  .from('envio_historial')
-  .insert({
-    envio_id: shipment.id,
-    estado_anterior: shipment.estado as any,
-    estado_nuevo: 'entregado',
-    notas: notes || 'Entrega confirmada con foto y firma',
-    ubicacion: shipment.direccion_entrega || null,
-    created_by: user.id,
-  });
+// ✅ Ya muestra foto de entrega
+{envio.foto_entrega ? (
+  <img src={envio.foto_entrega} alt="Foto de entrega" />
+) : (
+  <div>Sin foto de entrega</div>
+)}
+
+// ✅ Ya muestra firma
+{envio.firma_destinatario ? (
+  <img src={envio.firma_destinatario} alt="Firma" />
+) : (
+  <div>Sin firma registrada</div>
+)}
 ```
 
-**Nota**: El trigger no soporta `notas` ni `ubicacion`. Si estos campos son importantes, mantener el insert pero **modificar el trigger** para no ejecutarse cuando ya hay un insert manual reciente.
+### Tracking Público (/tracking y /tracking-embed)
 
-#### 2. `src/components/scan/BranchDeliveryDialog.tsx`
+**Problema:** El tracking público actualmente NO muestra fotos ni firmas, solo muestra:
+- Estado del envío
+- Historial de movimientos
+- Información de origen/destino
 
-**Eliminar** líneas 171-178 (insert manual de historial).
+## Acciones Sugeridas
 
-#### 3. `src/components/scan/MLDeliveryDialog.tsx`
+### Opción 1: Hacer la foto obligatoria (Recomendado)
 
-**Eliminar** líneas 89-96 (insert manual de historial).
+Modificar `DeliveryConfirmation.tsx` para requerir foto antes de confirmar:
 
-#### 4. `src/pages/Routes.tsx`
-
-**Eliminar** líneas 158-166 (loop de inserts de historial).
-
-#### 5. `src/components/routes/EditRouteDialog.tsx`
-
-**Eliminar** líneas 242-249 (insert manual de historial).
-
----
-
-## Alternativa: Mantener Inserts Manuales (para campos adicionales)
-
-Si se necesitan guardar `notas` y `ubicacion` (que el trigger no soporta), la alternativa es:
-
-1. **Deshabilitar el trigger** para evitar duplicados
-2. Mantener todos los inserts manuales en el código
-
-```sql
--- Deshabilitar el trigger de auto-historial
-ALTER TABLE envios DISABLE TRIGGER log_envio_estado;
+```typescript
+// Cambiar la validación
+const canSubmit = 
+  (!requiresPayment || (amountCollected && parseFloat(amountCollected) > 0)) 
+  && photo; // ← Añadir validación de foto obligatoria
 ```
 
----
+### Opción 2: Hacer la firma y foto más prominentes
 
-## Limpieza de Datos Existentes (Opcional)
+Mejorar la UI del diálogo de confirmación para que el chofer sea guiado a capturar evidencia primero.
 
-Para eliminar los duplicados históricos:
+### Opción 3: Añadir fotos/firmas al tracking público
 
-```sql
--- Eliminar entradas duplicadas manteniendo solo la primera de cada grupo
-DELETE FROM envio_historial
-WHERE id IN (
-  SELECT id FROM (
-    SELECT id,
-           ROW_NUMBER() OVER (
-             PARTITION BY envio_id, estado_nuevo, DATE_TRUNC('minute', created_at)
-             ORDER BY created_at
-           ) as rn
-    FROM envio_historial
-  ) sub
-  WHERE rn > 1
-);
-```
+Modificar el edge function `public-tracking` y la página de tracking para incluir estas imágenes.
 
 ---
 
-## Flujo Corregido
+## ¿Qué desea hacer?
 
-```text
-┌────────────────────────────────────────────────────────────┐
-│  Usuario confirma entrega                                  │
-└────────────────────────────────────────────────────────────┘
-                            ↓
-┌────────────────────────────────────────────────────────────┐
-│  Frontend: UPDATE envios SET estado = 'entregado'          │
-└────────────────────────────────────────────────────────────┘
-                            ↓
-┌────────────────────────────────────────────────────────────┐
-│  Trigger log_envio_estado_change:                          │
-│  INSERT INTO envio_historial (estado_nuevo: 'entregado')  │
-│  ✓ UNA SOLA ENTRADA                                        │
-└────────────────────────────────────────────────────────────┘
-                            ↓
-        ┌─────────────────────────────────────┐
-        │ ELIMINADO: Frontend ya NO inserta   │
-        │ historial manualmente               │
-        └─────────────────────────────────────┘
-```
+1. **Hacer la foto obligatoria** - Los choferes deberán tomar foto para confirmar
+2. **Mejorar la UI** - Hacer más visible el botón de foto
+3. **Añadir al tracking público** - Mostrar fotos/firmas en la página de seguimiento
+4. **Todas las anteriores** - Implementar las 3 mejoras
 
----
-
-## Decisión Requerida
-
-**¿Qué enfoque prefiere?**
-
-1. **Eliminar inserts manuales** (más limpio, pero pierde `notas` y `ubicacion` en historial)
-2. **Deshabilitar el trigger** (mantiene campos adicionales, requiere migración SQL)
-
-La opción **2** es más completa ya que preserva los campos `notas` y `ubicacion` que son útiles para auditoría.
-
----
-
-## Impacto
-
-| Aspecto | Antes | Después |
-|---------|-------|---------|
-| Entradas duplicadas | 2+ por cambio de estado | 1 por cambio de estado |
-| Campos notas/ubicacion | Disponibles en duplicado | Depende de la opción elegida |
-| Consistencia de datos | Duplicados en historial | Historial limpio |
-
+Por favor indique qué opción prefiere para proceder con la implementación.
