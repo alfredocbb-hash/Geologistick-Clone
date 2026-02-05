@@ -1,146 +1,122 @@
 
 
-# Plan: Corregir Error de Duplicado al Guardar Comisiones de Sucursal
+# Plan: Corregir Flete Duplicado y Mostrar Todos los Conceptos en el Comprobante PDF
 
 ## Problema Identificado
 
-El administrador de BlackBox recibe el error:
-```
-Error: duplicate key value violates unique constraint "sucursal_comisiones_unique_rol"
-```
+El comprobante PDF muestra:
+1. **"Flete" dos veces** con importes diferentes ($25.280,00 y $17.280,00)
+2. **Faltan conceptos adicionales** (Seguro, Servicio de Agencia)
 
 ### Causa Raíz
 
-El código actual en `src/pages/Branches.tsx` usa un patrón de "verificar-luego-insertar" que falla bajo concurrencia:
+En la base de datos, el envío A2F54D tiene correctamente guardados estos conceptos en `envio_detalles`:
+- Flete: $17.280
+- Entrega a Domicilio: $5.000  
+- Seguro: $2.000
+- Servicio de Agencia: $1.000
+- **Total: $25.280**
+
+El código del PDF (`generateShipmentReceiptPDF.ts`) fue escrito **antes** de que el Flete se guardara en `envio_detalles`. La lógica actual:
+
+```text
+1. Calcula Flete = precio_total - suma(detalles)
+   → 25280 - 25280 = 0, entonces usa precio_total = $25.280
+
+2. Dibuja "Flete: $25.280" (¡incorrecto!)
+
+3. Itera sobre detalles (que incluyen Flete $17.280)
+   → Dibuja "Flete: $17.280" (¡duplicado!)
+   → Solo muestra 2 conceptos (slice(0,2))
+```
+
+---
+
+## Solución
+
+Actualizar la lógica del PDF para detectar si "Flete" ya existe en los detalles y mostrar TODOS los conceptos.
+
+### Cambios en `src/lib/generateShipmentReceiptPDF.ts`
+
+**Sección de Conceptos (líneas 370-390 aprox):**
+
+```text
+ANTES:
+- Calcula flete como precio_total - suma(detalles)
+- Siempre dibuja "Flete" primero
+- Luego itera detalles.slice(0, 2)
+
+DESPUÉS:
+- Verifica si "Flete" ya existe en detalles
+- Si existe → usa detalles directamente
+- Si no existe → agrega Flete calculado al inicio
+- Muestra TODOS los conceptos (sin slice)
+- Ajusta el alto del box de conceptos dinámicamente
+```
+
+### Cambios en `src/pages/PrintReceipt.tsx`
+
+**Sección de Conceptos (líneas 317-327):**
+
+```text
+ANTES:
+- Siempre muestra "Flete" calculado primero
+- Luego itera todos los detalles (incluyendo Flete duplicado)
+
+DESPUÉS:
+- Detectar si Flete está en detalles
+- Si está → solo mostrar detalles
+- Si no está → calcular y mostrar Flete + detalles
+```
+
+---
+
+## Lógica de Detección
 
 ```typescript
-// Código problemático (líneas 318-341)
-const existing = sucursalComisiones.find(
-  (c) => c.concepto_id === conceptoId && c.tipo_rol === tipoRol
+// Detectar si Flete ya está en los detalles
+const fleteEnDetalles = detalles.find(d => 
+  d.nombre_concepto?.toLowerCase() === 'flete'
 );
 
-if (existing) {
-  // UPDATE
-} else {
-  // INSERT
-}
-```
-
-Cuando una sucursal **no tiene comisiones previas** (como QUILMES que tiene 0 registros):
-
-1. `sucursalComisiones` está vacío al abrir el diálogo
-2. Para cada concepto (5 conceptos × 2 roles = 10 operaciones), todas pasan la condición `!existing`
-3. `Promise.all()` ejecuta los 10 INSERTs **en paralelo**
-4. Si el usuario hace doble clic o hay cualquier race condition, el mismo registro se intenta insertar múltiples veces
-
----
-
-## Solución: Usar UPSERT Nativo
-
-Reemplazar el patrón manual por `upsert()` de Supabase con `onConflict`:
-
-```typescript
-const { error } = await supabase
-  .from('sucursal_comisiones')
-  .upsert(data, { 
-    onConflict: 'sucursal_id,concepto_id,tipo_rol',
-    ignoreDuplicates: false 
-  });
-```
-
-Esto es atómico a nivel de base de datos y maneja correctamente la concurrencia.
-
----
-
-## Cambios Requeridos
-
-### Archivo: `src/pages/Branches.tsx`
-
-**Función `saveCommission` (líneas 311-342)**
-
-Reemplazar:
-```typescript
-const saveCommission = async (
-  conceptoId: string,
-  values: CommissionValues,
-  tipoRol: 'emision' | 'recepcion'
-) => {
-  if (!selectedSucursalForCommissions) return;
-  
-  const existing = sucursalComisiones.find(
-    (c) => c.concepto_id === conceptoId && c.tipo_rol === tipoRol
-  );
-  
-  const data = {
-    sucursal_id: selectedSucursalForCommissions.id,
-    concepto_id: conceptoId,
-    porcentaje_contado: parseFloat(values.contado) || 0,
-    porcentaje_destino: parseFloat(values.destino) || 0,
-    porcentaje_cta_cte: parseFloat(values.cta_cte) || 0,
-    base_comision: values.base || 'total',
-    tipo_rol: tipoRol,
-  };
-
-  if (existing) {
-    const { error } = await supabase
-      .from('sucursal_comisiones')
-      .update(data)
-      .eq('id', existing.id);
-    if (error) throw error;
-  } else {
-    const { error } = await supabase.from('sucursal_comisiones').insert(data);
-    if (error) throw error;
-  }
-};
-```
-
-Por:
-```typescript
-const saveCommission = async (
-  conceptoId: string,
-  values: CommissionValues,
-  tipoRol: 'emision' | 'recepcion'
-) => {
-  if (!selectedSucursalForCommissions) return;
-  
-  const data = {
-    sucursal_id: selectedSucursalForCommissions.id,
-    concepto_id: conceptoId,
-    porcentaje_contado: parseFloat(values.contado) || 0,
-    porcentaje_destino: parseFloat(values.destino) || 0,
-    porcentaje_cta_cte: parseFloat(values.cta_cte) || 0,
-    base_comision: values.base || 'total',
-    tipo_rol: tipoRol,
-  };
-
-  // Usar upsert nativo para manejar concurrencia correctamente
-  const { error } = await supabase
-    .from('sucursal_comisiones')
-    .upsert(data, { 
-      onConflict: 'sucursal_id,concepto_id,tipo_rol',
-      ignoreDuplicates: false 
-    });
-  
-  if (error) throw error;
-};
+// Si Flete ya está en detalles, usarlos directamente
+// Si no, agregar Flete calculado al inicio
+const conceptosAMostrar = fleteEnDetalles 
+  ? detalles 
+  : [{ nombre_concepto: 'Flete', monto: flete > 0 ? flete : envio.precio_total }, ...detalles];
 ```
 
 ---
 
-## Beneficios
+## Archivos a Modificar
 
-| Aspecto | Antes | Después |
-|---------|-------|---------|
-| Concurrencia | Race condition posible | Atómico en BD |
-| Código | 20 líneas | 15 líneas |
-| Doble clic | Error de duplicado | Se sobrescribe sin error |
-| Rendimiento | Similar | Similar |
+1. **`src/lib/generateShipmentReceiptPDF.ts`**
+   - Actualizar lógica de renderizado de conceptos
+   - Eliminar el slice(0,2) para mostrar todos los conceptos
+   - Ajustar altura del box dinámicamente según cantidad de conceptos
+
+2. **`src/pages/PrintReceipt.tsx`**
+   - Actualizar la vista previa para que sea consistente con el PDF
+   - Usar la misma lógica de detección de Flete
 
 ---
 
-## Verificación
+## Resultado Esperado
 
-1. El administrador de BlackBox podrá guardar comisiones en QUILMES sin error
-2. Las sucursales con comisiones existentes seguirán funcionando (UPSERT actualiza si existe)
-3. No se requieren cambios en la base de datos
+El comprobante mostrará correctamente:
+
+| Concepto | Monto |
+|----------|-------|
+| Flete | $17.280,00 |
+| Entrega a Domicilio | $5.000,00 |
+| Seguro | $2.000,00 |
+| Servicio de Agencia | $1.000,00 |
+| **TOTAL** | **$25.280,00** |
+
+---
+
+## Compatibilidad
+
+- **Envíos nuevos** (con Flete en detalles): se muestran correctamente
+- **Envíos antiguos** (sin Flete en detalles): el sistema calcula el Flete como diferencia (comportamiento existente preservado)
 
