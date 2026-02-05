@@ -354,7 +354,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
     },
   });
 
-  const canSubmit = (!requiresPayment || (amountCollected && parseFloat(amountCollected) > 0)) && !!photo;
+  const canSubmit = !requiresPayment || (amountCollected && parseFloat(amountCollected) > 0);
 
   return (
     <Dialog open onOpenChange={onClose}>
@@ -399,9 +399,9 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
             )}
           </div>
 
-          {/* Photo capture - OBLIGATORIO */}
+          {/* Photo capture - OPCIONAL */}
           <div className="space-y-2">
-            <Label className="text-destructive font-medium">📸 Foto de Entrega *</Label>
+            <Label className="text-muted-foreground">📸 Foto de Entrega (Opcional)</Label>
             <input
               ref={fileInputRef}
               type="file"
@@ -432,11 +432,11 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
               <Button
                 type="button"
                 variant="outline"
-                className="w-full h-24 flex flex-col items-center justify-center gap-2 border-destructive border-2"
+                className="w-full h-24 flex flex-col items-center justify-center gap-2 border-muted-foreground"
                 onClick={() => fileInputRef.current?.click()}
               >
-                <Camera className="h-8 w-8 text-destructive" />
-                <span className="text-destructive font-medium">Tomar Foto (Obligatorio)</span>
+                <Camera className="h-8 w-8 text-muted-foreground" />
+                <span className="text-muted-foreground">Tomar Foto</span>
               </Button>
             )}
           </div>
