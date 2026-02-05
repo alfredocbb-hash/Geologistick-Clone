@@ -1,123 +1,180 @@
 
-# Plan: Corregir Carga de Sucursales para Super Admin
+
+# Plan: Eliminar Entradas Duplicadas de Estado "Entregado" en el Historial
 
 ## Problema Identificado
 
-Cuando un Super Admin edita un usuario y cambia la empresa asignada, el selector de sucursales aparece vacío porque:
+Al revisar el historial de envíos, se muestran **estados duplicados de "entregado"** (y otros estados). La investigación revela:
 
-1. La consulta de sucursales depende de RLS con la política:
-   ```sql
-   tenant_id = current_user_tenant() OR is_super_admin(auth.uid())
-   ```
+### Datos de Evidencia
+- **20+ envíos** tienen múltiples entradas de "entregado" en el historial
+- Ejemplo: Envío `53e2594a...` tiene **5 entradas** de "entregado"
+- Muchos duplicados ocurren en el **mismo segundo exacto** (diferencia de milisegundos)
 
-2. Esta política debería permitir ver todas las sucursales, pero **aparentemente no está funcionando correctamente** para el Super Admin
+### Causa Raíz: Doble Inserción de Historial
 
-3. El resultado es que `sucursales` solo contiene las sucursales del tenant del Super Admin (Empresa Principal = 4 sucursales), no las 16 totales
+Existe un **trigger en la base de datos** que inserta automáticamente una entrada de historial cuando cambia el estado del envío:
 
-4. Cuando el Super Admin selecciona "BlackBox Cargas" en el dropdown de empresa, el filtro local `filteredSucursales` busca sucursales con `tenant_id = 'blackbox-id'`, pero como no existen en el array, el dropdown queda vacío
+```sql
+-- Trigger: log_envio_estado (ACTIVO)
+CREATE OR REPLACE FUNCTION log_envio_estado_change()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF OLD.estado IS DISTINCT FROM NEW.estado THEN
+    INSERT INTO public.envio_historial (envio_id, estado_anterior, estado_nuevo, created_by)
+    VALUES (NEW.id, OLD.estado, NEW.estado, auth.uid());
+  END IF;
+  RETURN NEW;
+END;
+$$
+```
 
-## Datos de Verificación
+**Problema**: El código frontend **también inserta manualmente** una entrada de historial después de actualizar el envío:
 
-- Total sucursales activas en BD: **16**
-- Sucursales de BlackBox Cargas: **6** (Administracion, BAHIA BLANCA, BURZACO, MAR DEL PLATA, QUILMES, ROSARIO)
-- Sucursales del tenant del Super Admin (Empresa Principal): **4**
+```typescript
+// DeliveryConfirmation.tsx (líneas 162-179)
+await supabase.from('envios').update({ estado: 'entregado' }); // ← Trigger inserta historial
+
+// Y TAMBIÉN hace insert manual:
+await supabase.from('envio_historial').insert({
+  envio_id: shipment.id,
+  estado_nuevo: 'entregado',  // ← Duplicado!
+});
+```
+
+### Archivos Afectados (insertan historial manualmente)
+
+| Archivo | Líneas | Estado |
+|---------|--------|--------|
+| `src/components/delivery/DeliveryConfirmation.tsx` | 170-179 | `entregado` |
+| `src/components/scan/BranchDeliveryDialog.tsx` | 172-178 | `entregado` |
+| `src/components/scan/MLDeliveryDialog.tsx` | 89-96 | varios estados |
+| `src/pages/Routes.tsx` | 158-166 | `en_reparto` |
+| `src/components/routes/EditRouteDialog.tsx` | 242-249 | `devuelto` |
+
+---
 
 ## Solución Propuesta
 
-Modificar la consulta de sucursales en `Users.tsx` para que **no dependa únicamente de RLS** cuando es Super Admin.
+**Opción recomendada**: Eliminar las inserciones manuales de historial en el código frontend, ya que el trigger de base de datos ya lo hace automáticamente.
 
-### Archivo: `src/pages/Users.tsx`
+### Archivos a Modificar
 
-**Cambio en líneas 203-215:**
+#### 1. `src/components/delivery/DeliveryConfirmation.tsx`
 
-```typescript
-// ANTES
-const { data: sucursales = [] } = useQuery({
-  queryKey: ['sucursales'],
-  queryFn: async () => {
-    const { data, error } = await supabase
-      .from('sucursales')
-      .select('id, nombre, tenant_id')
-      .eq('activa', true)
-      .order('nombre');
-    if (error) throw error;
-    return data as Sucursal[];
-  },
-});
-
-// DESPUÉS
-const { data: sucursales = [] } = useQuery({
-  queryKey: ['sucursales', isSuperAdmin()],
-  queryFn: async () => {
-    let query = supabase
-      .from('sucursales')
-      .select('id, nombre, tenant_id')
-      .eq('activa', true);
-    
-    // Super Admin no necesita filtrar - RLS debería permitir ver todo
-    // Pero como backup, obtenemos todas sin filtro adicional
-    
-    const { data, error } = await query.order('nombre');
-    if (error) throw error;
-    return data as Sucursal[];
-  },
-  // Solo ejecutar cuando el usuario esté autenticado
-  enabled: !!user,
-});
-```
-
-### Cambio Adicional: Añadir `staleTime` para evitar re-fetches innecesarios
+**Eliminar** el insert manual de historial (líneas 169-180):
 
 ```typescript
-const { data: sucursales = [] } = useQuery({
-  queryKey: ['sucursales', isSuperAdmin()],
-  queryFn: async () => {
-    const { data, error } = await supabase
-      .from('sucursales')
-      .select('id, nombre, tenant_id')
-      .eq('activa', true)
-      .order('nombre');
-    if (error) throw error;
-    return data as Sucursal[];
-  },
-  enabled: !!user,
-  staleTime: 5 * 60 * 1000, // 5 minutos de cache
-});
+// ELIMINAR este bloque:
+const historyPromise = supabase
+  .from('envio_historial')
+  .insert({
+    envio_id: shipment.id,
+    estado_anterior: shipment.estado as any,
+    estado_nuevo: 'entregado',
+    notas: notes || 'Entrega confirmada con foto y firma',
+    ubicacion: shipment.direccion_entrega || null,
+    created_by: user.id,
+  });
 ```
 
-## Corrección de la RLS (Opcional pero Recomendada)
+**Nota**: El trigger no soporta `notas` ni `ubicacion`. Si estos campos son importantes, mantener el insert pero **modificar el trigger** para no ejecutarse cuando ya hay un insert manual reciente.
 
-Si el problema persiste, podemos simplificar la política RLS de sucursales usando `current_user_is_super_admin()` que es más directa:
+#### 2. `src/components/scan/BranchDeliveryDialog.tsx`
+
+**Eliminar** líneas 171-178 (insert manual de historial).
+
+#### 3. `src/components/scan/MLDeliveryDialog.tsx`
+
+**Eliminar** líneas 89-96 (insert manual de historial).
+
+#### 4. `src/pages/Routes.tsx`
+
+**Eliminar** líneas 158-166 (loop de inserts de historial).
+
+#### 5. `src/components/routes/EditRouteDialog.tsx`
+
+**Eliminar** líneas 242-249 (insert manual de historial).
+
+---
+
+## Alternativa: Mantener Inserts Manuales (para campos adicionales)
+
+Si se necesitan guardar `notas` y `ubicacion` (que el trigger no soporta), la alternativa es:
+
+1. **Deshabilitar el trigger** para evitar duplicados
+2. Mantener todos los inserts manuales en el código
 
 ```sql
--- Modificar la política existente
-DROP POLICY IF EXISTS "Ver sucursales de su tenant" ON sucursales;
+-- Deshabilitar el trigger de auto-historial
+ALTER TABLE envios DISABLE TRIGGER log_envio_estado;
+```
 
-CREATE POLICY "Ver sucursales de su tenant" ON sucursales
-FOR SELECT USING (
-  tenant_id = current_user_tenant() 
-  OR current_user_is_super_admin()
+---
+
+## Limpieza de Datos Existentes (Opcional)
+
+Para eliminar los duplicados históricos:
+
+```sql
+-- Eliminar entradas duplicadas manteniendo solo la primera de cada grupo
+DELETE FROM envio_historial
+WHERE id IN (
+  SELECT id FROM (
+    SELECT id,
+           ROW_NUMBER() OVER (
+             PARTITION BY envio_id, estado_nuevo, DATE_TRUNC('minute', created_at)
+             ORDER BY created_at
+           ) as rn
+    FROM envio_historial
+  ) sub
+  WHERE rn > 1
 );
 ```
 
-La función `current_user_is_super_admin()` es más simple que `is_super_admin(auth.uid())` y puede evitar problemas de evaluación.
+---
 
-## Resultado Esperado
+## Flujo Corregido
 
-| Escenario | Antes | Después |
-|-----------|-------|---------|
-| Super Admin edita usuario | Ve solo 4 sucursales de su tenant | Ve las 16 sucursales |
-| Super Admin cambia empresa a BlackBox | Dropdown vacío | Muestra 6 sucursales de BlackBox |
-| Admin normal edita usuario | Ve sucursales de su tenant | Sin cambios (comportamiento correcto) |
+```text
+┌────────────────────────────────────────────────────────────┐
+│  Usuario confirma entrega                                  │
+└────────────────────────────────────────────────────────────┘
+                            ↓
+┌────────────────────────────────────────────────────────────┐
+│  Frontend: UPDATE envios SET estado = 'entregado'          │
+└────────────────────────────────────────────────────────────┘
+                            ↓
+┌────────────────────────────────────────────────────────────┐
+│  Trigger log_envio_estado_change:                          │
+│  INSERT INTO envio_historial (estado_nuevo: 'entregado')  │
+│  ✓ UNA SOLA ENTRADA                                        │
+└────────────────────────────────────────────────────────────┘
+                            ↓
+        ┌─────────────────────────────────────┐
+        │ ELIMINADO: Frontend ya NO inserta   │
+        │ historial manualmente               │
+        └─────────────────────────────────────┘
+```
 
-## Archivos a Modificar
+---
 
-| Archivo | Cambios |
-|---------|---------|
-| `src/pages/Users.tsx` | Actualizar query de sucursales con `enabled: !!user` y `staleTime` (líneas 203-215) |
+## Decisión Requerida
 
-## Notas Técnicas
+**¿Qué enfoque prefiere?**
 
-El problema subyacente parece ser un **timing issue** donde la consulta de sucursales se ejecuta antes de que RLS pueda evaluar correctamente el rol del usuario. Agregar `enabled: !!user` asegura que la consulta solo se ejecute cuando el usuario esté completamente autenticado.
+1. **Eliminar inserts manuales** (más limpio, pero pierde `notas` y `ubicacion` en historial)
+2. **Deshabilitar el trigger** (mantiene campos adicionales, requiere migración SQL)
 
-Si esto no resuelve el problema completamente, la segunda opción es crear una migración para usar `current_user_is_super_admin()` en lugar de `is_super_admin(auth.uid())` en la política RLS.
+La opción **2** es más completa ya que preserva los campos `notas` y `ubicacion` que son útiles para auditoría.
+
+---
+
+## Impacto
+
+| Aspecto | Antes | Después |
+|---------|-------|---------|
+| Entradas duplicadas | 2+ por cambio de estado | 1 por cambio de estado |
+| Campos notas/ubicacion | Disponibles en duplicado | Depende de la opción elegida |
+| Consistencia de datos | Duplicados en historial | Historial limpio |
+
