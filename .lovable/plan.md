@@ -1,124 +1,99 @@
 
-# Plan: Corregir Guardado de Conceptos en envio_detalles
+# Plan: Corregir Fallback de Comisiones Sin envio_detalles
 
 ## Problema Identificado
 
-El sistema de liquidación muestra 0% de comisión porque los **conceptos no se guardan correctamente** al crear un envío.
+Cuando un envío **no tiene registros en `envio_detalles`**, el sistema de liquidación entra en modo fallback (líneas 395-420 de `BranchSettlements.tsx`) pero este fallback tiene un bug:
 
-### Situación Actual
-El envío `SUC01-ENV-20260204-B863B5` tiene:
-- **precio_total:** $4,500
-- **Concepto guardado:** Solo "Servicio de Agencia" por $1,000
-- **Faltante:** El Flete ($3,500) NUNCA se guardó en `envio_detalles`
+```typescript
+// Código actual problemático
+calcularComisionConcepto(
+  null,           // ← concepto_id = null
+  'Flete',
+  envio.precio_total,
+  ...
+);
+```
 
-### Causa Raíz
-En `NewShipment.tsx` líneas 895-908, al crear el envío:
-1. El **Flete calculado** (basado en peso, distancia, volumen) se incluye en el `precio_total` pero **NO se guarda como concepto** en `envio_detalles`
-2. Los **conceptos porcentuales** (Seguro) se guardan con `cp.monto` (monto fijo de la tarifa) en lugar del monto calculado
-3. Resultado: La suma de `envio_detalles` no coincide con `precio_total`
+Luego en `calcularComisionConcepto`:
+```typescript
+const config = (comisiones || []).find(c => c.concepto_id === conceptoId);
+// Busca: concepto_id === null
+// Pero la configuración tiene: concepto_id = '1cd05d8a-ebe5-4ecb-b5ec-aa6c2a2b5271'
+// Resultado: config = undefined → porcentaje = 0%
+```
 
-### Configuración de Comisiones (Correcta)
-Berazategui tiene configurado para **emisión**:
-- Flete: 25% (contado/destino), 10% (cta_cte)
-- Servicio de Agencia: 0% (todos los tipos) ← Esto es correcto según tu configuración
+### Datos del Problema
 
-El problema NO es la configuración de comisiones, sino que **el Flete nunca se guardó** como concepto.
+De 15 envíos recientes de "Administración" con precio > $0:
+- 9 envíos tienen **0 detalles** → caen en fallback → 0% comisión
+- 6 envíos tienen detalles → calculan correctamente
+
+### Configuración Correcta Existente
+La sucursal "Administración" SÍ tiene configurado:
+- Flete: 30% contado/destino, 10% cta_cte
+- Seguro: 30%
+- Servicio de Agencia: 100%
 
 ---
 
 ## Solución Propuesta
 
-### Archivo: `src/pages/NewShipment.tsx`
+### Archivo: `src/pages/BranchSettlements.tsx`
 
-Modificar la lógica de guardado de `envio_detalles` (líneas 894-908) para:
+Modificar la lógica de fallback para buscar el ID real del concepto "Flete" antes de calcular:
 
-1. **Guardar el Flete como concepto explícito**
-   - Buscar el concepto "Flete" del catálogo (`tarifa_conceptos`)
-   - Guardar `{ concepto_id: flete_id, nombre_concepto: 'Flete', monto: fleteCalculado }`
+### Cambios en líneas 207-215
+Agregar búsqueda del concepto "Flete" por nombre:
 
-2. **Calcular montos reales para conceptos porcentuales**
-   - Si `cp.es_porcentaje === true`, calcular: `valorDeclarado × porcentaje / 100`
-   - Si `cp.multiplicar_por_bultos === true`, multiplicar por cantidad de bultos
-
-3. **Validar que la suma de detalles = precio_total**
-   - Agregar verificación antes de guardar
-
-### Código Actual (Problemático)
 ```typescript
-// Líneas 894-908
-if (conceptosPreciosFiltrados.length > 0) {
-  const detalles = conceptosPreciosFiltrados.map((cp) => ({
-    envio_id: envio.id,
-    concepto_id: cp.concepto_id,
-    nombre_concepto: cp.concepto?.nombre || 'Sin nombre',
-    monto: cp.monto, // ❌ Usa monto fijo, no el calculado
-  }));
-  // NO incluye el Flete calculado ❌
-  await supabase.from('envio_detalles').insert(detalles);
-}
-```
+// Fetch all concept names for display
+const { data: conceptosCatalogo } = await supabase
+  .from('tarifa_conceptos')
+  .select('id, nombre, codigo');
 
-### Código Corregido
-```typescript
-// Nuevo código para insertar detalles correctamente
-const valorDeclarado = parseFloat(formData.valor_declarado) || 
-  (configSeguro?.valor_minimo_declarado || 0);
-const cantidadBultos = parseInt(formData.cantidad_bultos) || 1;
+const conceptoNombres: Record<string, string> = {};
+let conceptoFleteId: string | null = null;
 
-// Buscar el concepto "Flete" del catálogo
-const conceptoFlete = conceptos.find(c => 
-  c.codigo?.toLowerCase() === 'flete' || 
-  c.nombre?.toLowerCase() === 'flete'
-);
-
-const detalles: Array<{envio_id: string; concepto_id: string | null; nombre_concepto: string; monto: number}> = [];
-
-// 1. Agregar FLETE como concepto (siempre si hay flete calculado)
-if (fleteCalculado > 0) {
-  detalles.push({
-    envio_id: envio.id,
-    concepto_id: conceptoFlete?.id || null,
-    nombre_concepto: 'Flete',
-    monto: fleteCalculado, // ✅ Monto calculado real
-  });
-}
-
-// 2. Agregar otros conceptos con montos calculados
-conceptosPreciosFiltrados.forEach((cp) => {
-  // No duplicar flete si ya está incluido arriba
-  if (cp.concepto?.codigo?.toLowerCase() === 'flete' || 
-      cp.concepto?.nombre?.toLowerCase() === 'flete') {
-    return;
-  }
-  
-  let montoConcepto = 0;
-  if (cp.es_porcentaje && cp.porcentaje) {
-    // Calcular monto porcentual basado en valor declarado
-    montoConcepto = valorDeclarado * Number(cp.porcentaje) / 100;
-  } else {
-    montoConcepto = Number(cp.monto);
-  }
-  
-  // Multiplicar por bultos si aplica
-  if (cp.multiplicar_por_bultos) {
-    montoConcepto *= cantidadBultos;
-  }
-  
-  if (montoConcepto > 0) {
-    detalles.push({
-      envio_id: envio.id,
-      concepto_id: cp.concepto_id,
-      nombre_concepto: cp.concepto?.nombre || 'Sin nombre',
-      monto: montoConcepto, // ✅ Monto calculado real
-    });
+(conceptosCatalogo || []).forEach(c => {
+  conceptoNombres[c.id] = c.nombre;
+  // Guardar el ID del concepto Flete para uso en fallback
+  if (c.codigo?.toLowerCase() === 'flete' || c.nombre?.toLowerCase() === 'flete') {
+    conceptoFleteId = c.id;
   }
 });
+```
 
-if (detalles.length > 0) {
-  const { error: detallesError } = await supabase
-    .from('envio_detalles')
-    .insert(detalles);
-  if (detallesError) throw detallesError;
+### Cambios en líneas 395-420
+Usar `conceptoFleteId` en el fallback:
+
+```typescript
+} else {
+  // Fallback: no details, use precio_total as "Flete" concept
+  if (esOrigen) {
+    envioComision += calcularComisionConcepto(
+      conceptoFleteId,  // ← Usar ID real del Flete
+      'Flete',
+      envio.precio_total,
+      tipoPago,
+      comisionesEmision,
+      envio.precio_total,
+      envio.id,
+      'emisión'
+    );
+  }
+  if (esDestino && envio.estado === 'entregado') {
+    envioComision += calcularComisionConcepto(
+      conceptoFleteId,  // ← Usar ID real del Flete
+      'Flete',
+      envio.precio_total,
+      tipoPago,
+      comisionesRecepcion,
+      envio.precio_total,
+      envio.id,
+      'recepción'
+    );
+  }
 }
 ```
 
@@ -128,40 +103,27 @@ if (detalles.length > 0) {
 
 ### Antes (Problema)
 ```
-envio_detalles para SUC01-ENV-20260204-B863B5:
-- Servicio de Agencia: $1,000
-- (Flete falta) ❌
-Total guardado: $1,000 vs precio_total: $4,500
+Envío ADMIN-ENV-20260203-8460DA ($6,000):
+- Sin detalles → fallback con concepto_id = null
+- No encuentra config → porcentaje = 0%
+- Comisión: $0
 ```
 
 ### Después (Correcto)
 ```
-envio_detalles para un nuevo envío:
-- Flete: $3,500 ✅
-- Servicio de Agencia: $1,000
-Total guardado: $4,500 = precio_total ✅
-```
-
-### Liquidación Calculará Correctamente
-```
-Flete ($3,500) × 25% = $875 comisión ✅
-Serv. Agencia ($1,000) × 0% = $0 (configuración correcta)
-Total comisión: $875
+Envío ADMIN-ENV-20260203-8460DA ($6,000):
+- Sin detalles → fallback con concepto_id = '1cd05d8a...' (Flete)
+- Encuentra config → porcentaje = 30%
+- Comisión: $6,000 × 30% = $1,800
 ```
 
 ---
 
-## Consideración: Envíos Existentes
+## Impacto
 
-Los envíos ya creados (como el de la imagen) tienen datos incompletos en `envio_detalles`. Hay dos opciones:
-
-**Opción A: Solo arreglar hacia adelante** (recomendado)
-- Nuevos envíos se guardarán correctamente
-- Envíos antiguos se pueden recalcular manualmente o con un script de migración
-
-**Opción B: Script de corrección de datos históricos**
-- Crear un script SQL que calcule el Flete faltante: `precio_total - SUM(monto de detalles existentes)`
-- Insertar el concepto "Flete" con la diferencia
+1. **Envíos sin detalles** usarán la configuración real de "Flete"
+2. **Cálculos correctos** para todos los envíos, con o sin `envio_detalles`
+3. **Retrocompatibilidad** - funciona con envíos antiguos que no tienen desglose
 
 ---
 
@@ -169,12 +131,4 @@ Los envíos ya creados (como el de la imagen) tienen datos incompletos en `envio
 
 | Archivo | Cambios |
 |---------|---------|
-| `src/pages/NewShipment.tsx` | Corregir guardado de envio_detalles (líneas 894-908) para incluir Flete y calcular montos reales |
-
----
-
-## Impacto
-
-1. **Nuevos envíos** guardarán todos los conceptos correctamente
-2. **Liquidaciones** calcularán comisiones con el desglose completo
-3. **Auditoría** será posible verificar cada concepto vs. precio total
+| `src/pages/BranchSettlements.tsx` | Buscar ID de Flete y usarlo en fallback (líneas ~207-215 y ~395-420) |
