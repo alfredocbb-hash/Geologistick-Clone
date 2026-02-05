@@ -200,9 +200,9 @@ export default function Users() {
     enabled: isSuperAdmin(),
   });
 
-  // Fetch sucursales
+  // Fetch sucursales - Super Admin needs all branches across tenants
   const { data: sucursales = [] } = useQuery({
-    queryKey: ['sucursales'],
+    queryKey: ['sucursales', isSuperAdmin()],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('sucursales')
@@ -212,6 +212,8 @@ export default function Users() {
       if (error) throw error;
       return data as Sucursal[];
     },
+    enabled: !!currentUser,
+    staleTime: 5 * 60 * 1000, // 5 minutes cache
   });
 
   // Filter sucursales based on selected tenant (for super admin editing)
