@@ -69,39 +69,24 @@ const Clients = () => {
           <div className="absolute left-0 top-0 bottom-0 w-32 bg-gradient-to-r from-muted dark:from-[#050507] to-transparent z-10 pointer-events-none" />
           <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-muted dark:from-[#050507] to-transparent z-10 pointer-events-none" />
           
-          {/* Scrolling logos */}
-          <div className="flex animate-marquee">
-            {/* First set */}
-            {clients.map((client) => (
-              <div 
-                key={client.id}
-                className="flex-shrink-0 mx-12 group"
-              >
-                <div className="h-16 w-40 flex items-center justify-center grayscale opacity-50 hover:grayscale-0 hover:opacity-100 transition-all duration-500">
-                  <img 
-                    src={getLogoSrc(client)} 
-                    alt={client.nombre}
-                    className="max-h-12 max-w-full object-contain dark:invert-0"
-                    loading="lazy"
-                  />
+          {/* Scrolling logos - 4x duplicated for smooth infinite scroll */}
+          <div className="flex animate-marquee items-center">
+            {[...Array(4)].map((_, setIndex) => (
+              clients.map((client) => (
+                <div 
+                  key={`set-${setIndex}-${client.id}`}
+                  className="flex-shrink-0 mx-16 group"
+                >
+                  <div className="h-24 w-52 flex items-center justify-center grayscale opacity-50 hover:grayscale-0 hover:opacity-100 transition-all duration-500">
+                    <img 
+                      src={getLogoSrc(client)} 
+                      alt={client.nombre}
+                      className="max-h-20 max-w-full object-contain"
+                      loading="lazy"
+                    />
+                  </div>
                 </div>
-              </div>
-            ))}
-            {/* Duplicate for seamless loop */}
-            {clients.map((client) => (
-              <div 
-                key={`dup-${client.id}`}
-                className="flex-shrink-0 mx-12 group"
-              >
-                <div className="h-16 w-40 flex items-center justify-center grayscale opacity-50 hover:grayscale-0 hover:opacity-100 transition-all duration-500">
-                  <img 
-                    src={getLogoSrc(client)} 
-                    alt={client.nombre}
-                    className="max-h-12 max-w-full object-contain dark:invert-0"
-                    loading="lazy"
-                  />
-                </div>
-              </div>
+              ))
             ))}
           </div>
         </div>
