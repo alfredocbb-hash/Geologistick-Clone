@@ -1,228 +1,129 @@
 
-# Plan: Rediseño Profesional Landing Page con Colores Geologistick
 
-## Paleta de Colores del Logo
+# Plan: Foto Opcional y Nuevo Diseño de Landing Page
 
-Basado en el logo de Geologistick, estos son los colores a utilizar:
+## Parte 1: Hacer la Foto Opcional en Entrega
 
-| Color | Uso | HSL Aproximado |
-|-------|-----|----------------|
-| Azul Oscuro | Fondos, sidebar | 210 60% 15% |
-| Teal/Cyan | Acentos, CTAs secundarios | 174 50% 50% |
-| Azul Medio | Gradientes, elementos secundarios | 207 50% 35% |
-| Blanco | Texto principal, iconos | 0 0% 100% |
+### Archivo: `src/components/delivery/DeliveryConfirmation.tsx`
 
-## Estructura Nueva de la Landing
-
-```text
-+----------------------------------------------------------+
-|                      NAVBAR                               |
-|  Logo | Caracteristicas | Clientes | Precios | Tracking  |
-+----------------------------------------------------------+
-                           |
-+----------------------------------------------------------+
-|                   HERO (Rediseñado)                       |
-|  Gradiente azul oscuro → teal                            |
-|  Badge "Plataforma #1 en Argentina"                      |
-|  Estadisticas con datos reales                           |
-+----------------------------------------------------------+
-                           |
-+----------------------------------------------------------+
-|              CLIENTES (NUEVA SECCION)                     |
-|  "Empresas que confian en nosotros"                      |
-|  [Beraexpress] [BlackBox] [PlataBus]                     |
-|  Logos en grayscale → color on hover                     |
-+----------------------------------------------------------+
-                           |
-+----------------------------------------------------------+
-|                 COMO FUNCIONA                             |
-|  3 pasos: Registro → Configura → Opera                   |
-|  Iconos con colores teal del logo                        |
-+----------------------------------------------------------+
-                           |
-+----------------------------------------------------------+
-|                    FEATURES                               |
-|  Grid mejorado con iconos consistentes                   |
-+----------------------------------------------------------+
-                           |
-+----------------------------------------------------------+
-|                    PRICING                                |
-|  Cards con bordes teal, CTA azul oscuro                  |
-+----------------------------------------------------------+
-                           |
-+----------------------------------------------------------+
-|                 CTA FINAL                                 |
-|  Gradiente teal → azul, formulario trial                 |
-+----------------------------------------------------------+
-                           |
-+----------------------------------------------------------+
-|                    FOOTER                                 |
-|  Fondo azul oscuro, links organizados                    |
-+----------------------------------------------------------+
-```
-
----
-
-## Archivos a Crear
-
-### 1. `src/components/landing/Clients.tsx`
-
-Seccion que muestra logos de tenants activos:
-
-- Query a `tenants` + `tenant_branding` para obtener logos
-- Solo mostrar tenants con `activo = true` y logo configurado
-- Logos en grayscale que se colorean al hover
-- Animacion suave de entrada
-- Responsive: carrusel en mobile, grid en desktop
-
-### 2. `src/components/landing/HowItWorks.tsx`
-
-Proceso en 3 pasos con iconos:
-
-1. **Registrate** - UserPlus icon, color teal
-2. **Configura** - Settings icon, color azul medio
-3. **Opera** - Truck icon, color azul oscuro
-
-Timeline horizontal con lineas conectoras animadas.
-
-### 3. `src/components/landing/CTASection.tsx`
-
-Seccion final antes del footer:
-
-- Gradiente de teal a azul oscuro
-- Titulo: "Comienza a optimizar tus entregas hoy"
-- Boton CTA prominente
-- Estadistica: "Unete a X+ empresas"
-
----
-
-## Archivos a Modificar
-
-### 1. `src/pages/Index.tsx`
-
-Agregar nuevos componentes en orden:
-
-```tsx
-<Navbar />
-<Hero />
-<Clients />      // NUEVO
-<HowItWorks />   // NUEVO  
-<Features />
-<Pricing />
-<CTASection />   // NUEVO
-<Footer />
-```
-
-### 2. `src/components/landing/Hero.tsx`
-
-Cambios visuales:
-
-- Cambiar gradiente de purple a **teal → azul oscuro**
-- Orbs de fondo: cyan-500 y teal-500 en lugar de purple
-- Badge: color teal en lugar de primary generico
-- Stats: iconos con color teal
-
-### 3. `src/components/landing/Navbar.tsx`
-
-- Agregar enlace "Clientes" que scrollea a #clients
-- Reordenar: Caracteristicas | Clientes | Precios | Tracking
-- Gradiente del boton CTA: teal → azul oscuro
-
-### 4. `src/components/landing/Footer.tsx`
-
-- Fondo azul oscuro consistente con el logo
-- Links organizados en columnas
-- Iconos de redes sociales con color teal al hover
-
----
-
-## Nuevas Variables CSS
-
-Agregar en `src/index.css`:
-
-```css
-/* Colores Geologistick */
---geo-dark: 210 60% 15%;      /* Azul oscuro del fondo */
---geo-teal: 174 50% 50%;      /* Teal del pin izquierdo */
---geo-blue: 207 50% 35%;      /* Azul medio del pin derecho */
---geo-cyan: 187 70% 45%;      /* Cyan para acentos */
-
-/* Gradientes Geologistick */
---gradient-geo: linear-gradient(135deg, hsl(174 50% 50%) 0%, hsl(210 60% 15%) 100%);
---gradient-geo-light: linear-gradient(135deg, hsl(187 70% 45%) 0%, hsl(174 50% 50%) 100%);
-```
-
----
-
-## Logica del Componente Clients
-
+**Cambio en línea 357:**
 ```typescript
-// Query para obtener tenants con logos
-const { data: clients } = useQuery({
-  queryKey: ['landing-clients'],
-  queryFn: async () => {
-    const { data } = await supabase
-      .from('tenants')
-      .select(`
-        id, 
-        nombre, 
-        slug,
-        tenant_branding!inner (
-          logo_light, 
-          logo_dark
-        )
-      `)
-      .eq('activo', true);
-    
-    // Filtrar solo los que tienen logo
-    return data?.filter(t => 
-      t.tenant_branding?.logo_light || 
-      t.tenant_branding?.logo_dark
-    ) || [];
-  }
-});
+// ANTES (foto obligatoria)
+const canSubmit = (!requiresPayment || (amountCollected && parseFloat(amountCollected) > 0)) && !!photo;
+
+// DESPUÉS (foto opcional)
+const canSubmit = !requiresPayment || (amountCollected && parseFloat(amountCollected) > 0);
 ```
+
+**Cambios adicionales en la UI (líneas 402-441):**
+- Quitar el label "Obligatorio" y estilos rojos
+- Cambiar a estilo neutral indicando "Opcional"
+- Quitar bordes destructive/rojos
 
 ---
 
-## Diseño Visual del Componente Clients
+## Parte 2: Nuevo Diseño Moderno de Landing Page
+
+Propongo un diseño estilo **"Minimal Glassmorphism"** o **"Bento Grid"** - muy populares en 2024/2025. Opciones:
+
+### Opción A: Bento Grid (estilo Apple/Linear)
 
 ```text
 +----------------------------------------------------------+
+|                    NAVBAR (glassmorphism)                 |
++----------------------------------------------------------+
 |                                                           |
-|         Empresas que confian en Geologistick             |
-|    Procesamos miles de envios para negocios como el tuyo |
+|  ┌─────────────────────────────────────────────────────┐ |
+|  │                    HERO CENTRADO                     │ |
+|  │    Gran titulo con gradiente + subtitulo corto      │ |
+|  │         [CTA Principal]  [CTA Secundario]           │ |
+|  └─────────────────────────────────────────────────────┘ |
 |                                                           |
-|   +----------+    +----------+    +----------+           |
-|   |          |    |          |    |          |           |
-|   | BERAEX   |    | BLACKBOX |    | PLATABUS |           |
-|   |          |    |          |    |          |           |
-|   +----------+    +----------+    +----------+           |
-|                                                           |
-|           Logos grayscale → color al hover               |
+|  ┌──────────────┐ ┌──────────────┐ ┌──────────────────┐  |
+|  │   Feature 1  │ │   Feature 2  │ │   Feature 3      │  |
+|  │   (grande)   │ │   (mediano)  │ │   (mediano)      │  |
+|  └──────────────┘ └──────────────┘ └──────────────────┘  |
+|  ┌────────────────────────┐ ┌────────────────────────┐   |
+|  │      Clientes          │ │      Feature 4         │   |
+|  │   (logos animados)     │ │    (con preview)       │   |
+|  └────────────────────────┘ └────────────────────────┘   |
 |                                                           |
 +----------------------------------------------------------+
 ```
+
+### Opción B: Split Hero + Scroll Reveal (estilo Stripe/Vercel)
+
+```text
++----------------------------------------------------------+
+|                       NAVBAR                              |
++----------------------------------------------------------+
+|                                                           |
+|   Texto Hero            │     Video/Preview animado      |
+|   titulo grande         │     del dashboard               |
+|   subtitulo             │     flotando                    |
+|   [CTAs]                │                                 |
+|                                                           |
++----------------------------------------------------------+
+|                    LOGOS CLIENTES                         |
+|        (cinta animada horizontal infinita)                |
++----------------------------------------------------------+
+|                                                           |
+|              FEATURES EN CARDS GRANDES                    |
+|     con screenshots del producto que aparecen al scroll   |
+|                                                           |
++----------------------------------------------------------+
+```
+
+### Opción C: Gradiente Oscuro Minimalista (estilo Arc Browser)
+
+- Fondo completamente oscuro con gradientes sutiles
+- Tipografia muy grande y bold
+- Espaciado generoso
+- Animaciones micro-interacciones
+- Cards con bordes brillantes al hover
+
+---
+
+## Archivos a Modificar (según opción elegida)
+
+| Archivo | Cambios |
+|---------|---------|
+| `src/components/landing/Hero.tsx` | Rediseño completo del hero section |
+| `src/components/landing/Navbar.tsx` | Glassmorphism o diseño minimalista |
+| `src/components/landing/Clients.tsx` | Carrusel animado infinito |
+| `src/components/landing/Features.tsx` | Bento grid o cards grandes |
+| `src/components/landing/HowItWorks.tsx` | Timeline mas visual |
+| `src/components/landing/Pricing.tsx` | Cards con glassmorphism |
+| `src/components/landing/CTASection.tsx` | CTA final impactante |
+| `src/components/landing/Footer.tsx` | Footer minimalista |
+| `src/index.css` | Nuevas utilidades CSS si necesarias |
+
+---
+
+## Preguntas para Definir el Diseño
+
+Para crear el diseño correcto, necesito saber:
+
+1. **¿Cual estilo prefieres?**
+   - A) Bento Grid (cuadriculas tipo Apple)
+   - B) Split Hero con scroll animations (tipo Stripe)
+   - C) Ultra minimalista oscuro (tipo Arc)
+
+2. **¿El fondo debe ser claro u oscuro?**
+   - Oscuro (como el actual)
+   - Claro/Blanco
+   - Mixto (hero oscuro, resto claro)
+
+3. **¿Animaciones?**
+   - Sutiles (solo hover effects)
+   - Moderadas (scroll reveals, transiciones)
+   - Llamativas (parallax, 3D effects)
 
 ---
 
 ## Orden de Implementacion
 
-1. Agregar variables CSS de colores Geologistick
-2. Crear componente `Clients.tsx` con query a tenants
-3. Crear componente `HowItWorks.tsx` con proceso en 3 pasos
-4. Crear componente `CTASection.tsx` con call-to-action final
-5. Actualizar `Hero.tsx` con nuevos colores
-6. Actualizar `Navbar.tsx` con enlace a clientes
-7. Actualizar `Index.tsx` para incluir nuevos componentes
-8. Actualizar `Footer.tsx` con colores consistentes
+1. Hacer la foto opcional en DeliveryConfirmation (rapido)
+2. Discutir/confirmar estilo de landing preferido
+3. Implementar nuevo diseño de landing
 
----
-
-## Consideraciones
-
-- **RLS**: Los logos estan en bucket publico, no hay problema de seguridad
-- **Performance**: Lazy load de imagenes de logos
-- **Responsive**: Mobile-first, carrusel en < 768px
-- **Accesibilidad**: Alt text para logos, contraste adecuado
-- **Animaciones**: Suaves, respetan prefers-reduced-motion
