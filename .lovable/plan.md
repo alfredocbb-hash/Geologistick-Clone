@@ -1,72 +1,79 @@
 
 
-# Plan: Corregir Sección de Logos de Clientes
+# Plan: Corregir Visualización de Logos en Landing
 
-## Problemas Identificados
+## Problema Identificado
 
-1. **Logos muy pequeños**: El tamaño actual `max-h-12` (48px) es muy reducido
-2. **Contenedor limitado**: `h-16 w-40` restringe el espacio disponible
-3. **Falta de centrado**: Los logos no están centrados cuando hay pocos clientes
-4. **Efecto marquee incompleto**: Cuando hay pocos logos, el efecto de scroll infinito no funciona correctamente
+La tabla `tenant_branding` tiene políticas RLS que solo permiten ver el branding del propio tenant:
 
-## Datos Actuales en Base de Datos
+```sql
+-- Política actual
+qual: (tenant_id = current_user_tenant()) OR is_super_admin(auth.uid())
+```
 
-Hay 3 empresas con logos configurados:
-- Beraexpress
-- BlackBox Cargas  
-- PlataBus Cargas
+Esto significa que:
+- Visitantes anónimos de la landing page no pueden ver ningún logo
+- Solo el logo de Beraexpress aparece (probablemente porque es el tenant por defecto o hay algún cache)
 
-## Solucion Propuesta
+## Solución
 
-### Archivo: `src/components/landing/Clients.tsx`
-
-**Cambios a realizar:**
-
-1. **Aumentar tamano de logos**
-   - Cambiar `max-h-12` a `max-h-20` (80px)
-   - Cambiar `h-16 w-40` a `h-24 w-48` para el contenedor
-
-2. **Mejorar centrado del contenedor**
-   - Agregar centrado con `justify-center` cuando hay pocos logos
-   - Usar flexbox centrado para el container del marquee
-
-3. **Ajustar espaciado entre logos**
-   - Cambiar `mx-12` a `mx-16` para mejor separacion
-
-4. **Duplicar logos multiples veces para efecto fluido**
-   - Triplicar o cuadruplicar la lista de logos para asegurar continuidad del scroll
-
-5. **Mantener efectos visuales**
-   - Conservar grayscale con hover a color
-   - Mantener fade en bordes izquierdo/derecho
-   - Mantener pausa en hover
+Agregar una política RLS pública que permita leer únicamente los campos de logo para mostrar en la landing page.
 
 ---
 
-## Cambios Especificos
+## Cambios Necesarios
 
-```text
-Antes:
-- h-16 w-40 (altura 64px, ancho 160px)
-- max-h-12 (max altura logo 48px)
-- mx-12 (margen horizontal 48px)
-- 2 copias de logos (original + duplicado)
+### 1. Nueva Política RLS en `tenant_branding`
 
-Despues:
-- h-24 w-52 (altura 96px, ancho 208px)  
-- max-h-20 (max altura logo 80px)
-- mx-16 (margen horizontal 64px)
-- 4 copias de logos para scroll continuo
+Crear una política que permita acceso público de lectura a los logos:
+
+```sql
+CREATE POLICY "Acceso público a logos para landing"
+ON tenant_branding
+FOR SELECT
+USING (
+  -- Solo permitir lectura de registros con logos configurados
+  logo_light IS NOT NULL OR logo_dark IS NOT NULL
+);
+```
+
+**Nota**: Esta política permitirá que visitantes anónimos vean los logos públicos. Los datos sensibles como colores internos estarán expuestos pero no son críticos.
+
+### 2. Alternativa más segura (opcional)
+
+Si se prefiere más control, crear una vista pública solo con los campos necesarios:
+
+```sql
+CREATE VIEW public_client_logos AS
+SELECT 
+  t.id,
+  t.nombre,
+  tb.logo_light,
+  tb.logo_dark
+FROM tenants t
+JOIN tenant_branding tb ON tb.tenant_id = t.id
+WHERE t.activo = true
+AND (tb.logo_light IS NOT NULL OR tb.logo_dark IS NOT NULL);
+
+-- Dar acceso público a la vista
+GRANT SELECT ON public_client_logos TO anon;
 ```
 
 ---
 
-## Estructura Visual Final
+## Resumen
 
-```text
-|  [fade] [Logo1] [Logo2] [Logo3] [Logo1] [Logo2] [Logo3] ... [fade]  |
-                         <-- scroll continuo -->
-```
+| Elemento | Estado Actual | Cambio |
+|----------|---------------|--------|
+| Política RLS | Solo propio tenant | Agregar política pública para logos |
+| Datos expuestos | Ninguno a anónimos | Solo logo_light, logo_dark |
+| Efecto | 1 logo visible | 3 logos visibles |
 
-Con logos mas grandes, centrados, y animacion fluida.
+---
+
+## Implementación
+
+1. Ejecutar migración SQL para agregar la nueva política RLS
+2. No se requieren cambios en el código de `Clients.tsx`
+3. La landing mostrará automáticamente los 3 logos
 
