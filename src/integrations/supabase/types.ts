@@ -3911,6 +3911,17 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      get_public_active_tenant_count: { Args: never; Returns: number }
+      get_public_client_logos: {
+        Args: never
+        Returns: {
+          id: string
+          logo_dark: string
+          logo_light: string
+          nombre: string
+          slug: string
+        }[]
+      }
       get_tenant_subscription_details: {
         Args: { p_tenant_id: string }
         Returns: {

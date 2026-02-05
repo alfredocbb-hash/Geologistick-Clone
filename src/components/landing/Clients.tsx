@@ -2,14 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useTheme } from "next-themes";
 
-interface ClientWithBranding {
+interface PublicClientLogo {
   id: string;
   nombre: string;
   slug: string;
-  tenant_branding: {
-    logo_light: string | null;
-    logo_dark: string | null;
-  } | null;
+  logo_light: string | null;
+  logo_dark: string | null;
 }
 
 const Clients = () => {
@@ -18,24 +16,14 @@ const Clients = () => {
   const { data: clients } = useQuery({
     queryKey: ['landing-clients'],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('tenants')
-        .select(`
-          id, 
-          nombre, 
-          slug,
-          tenant_branding (
-            logo_light, 
-            logo_dark
-          )
-        `)
-        .eq('activo', true);
+      const { data, error } = await supabase.rpc('get_public_client_logos');
       
-      // Filter only those with logos
-      return (data || []).filter(t => 
-        t.tenant_branding?.logo_light || 
-        t.tenant_branding?.logo_dark
-      ) as ClientWithBranding[];
+      if (error) {
+        console.error('Error fetching client logos:', error);
+        return [];
+      }
+      
+      return (data || []) as PublicClientLogo[];
     },
     staleTime: 1000 * 60 * 10, // 10 minutes
   });
@@ -44,11 +32,11 @@ const Clients = () => {
     return null;
   }
 
-  const getLogoSrc = (client: ClientWithBranding) => {
+  const getLogoSrc = (client: PublicClientLogo) => {
     if (resolvedTheme === 'dark') {
-      return client.tenant_branding?.logo_dark || client.tenant_branding?.logo_light || '';
+      return client.logo_dark || client.logo_light || '';
     }
-    return client.tenant_branding?.logo_light || client.tenant_branding?.logo_dark || '';
+    return client.logo_light || client.logo_dark || '';
   };
 
   return (

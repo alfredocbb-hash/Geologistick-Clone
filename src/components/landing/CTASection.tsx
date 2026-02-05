@@ -5,15 +5,16 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
 const CTASection = () => {
-  // Get count of active tenants
+  // Get count of active tenants via public RPC
   const { data: tenantCount } = useQuery({
     queryKey: ['active-tenants-count'],
     queryFn: async () => {
-      const { count } = await supabase
-        .from('tenants')
-        .select('*', { count: 'exact', head: true })
-        .eq('activo', true);
-      return count || 0;
+      const { data, error } = await supabase.rpc('get_public_active_tenant_count');
+      if (error) {
+        console.error('Error fetching tenant count:', error);
+        return 0;
+      }
+      return data || 0;
     },
     staleTime: 1000 * 60 * 30, // 30 minutes
   });
