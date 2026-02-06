@@ -3882,6 +3882,10 @@ export type Database = {
       }
       close_hoja_ruta: { Args: { p_hoja_id: string }; Returns: Json }
       close_ruta_planificada: { Args: { p_ruta_id: string }; Returns: Json }
+      create_hoja_ruta_flex: {
+        Args: { p_envio_ids: string[]; p_sucursal_destino_id: string }
+        Returns: Json
+      }
       current_user_has_role: {
         Args: { _role: Database["public"]["Enums"]["app_role"] }
         Returns: boolean
