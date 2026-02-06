@@ -1,140 +1,125 @@
 
-# Causa raiz: RLS bloquea la entrega porque chofer_id es NULL
 
-## Problema encontrado
+# Modo Flex: Crear Hoja de Ruta desde el Movil
 
-Al investigar los datos de la ruta `FLX-20260206-QEWS`, descubri que los 3 envios tienen `chofer_id = NULL`:
+## Contexto
 
-```text
-ADMIN-ENV-20260206-4AC589  →  chofer_id: NULL  →  estado: en_reparto
-ADMIN-ENV-20260206-C19CBA  →  chofer_id: NULL  →  estado: en_reparto
-ADMIN-ENV-20260206-0DA651  →  chofer_id: NULL  →  estado: en_reparto
-```
+Actualmente el Modo Flex solo permite crear **rutas planificadas** (reparto a puerta). Cuando un chofer necesita transportar paquetes entre sucursales, la hoja de ruta debe ser creada por la sucursal desde el panel web. Esta funcionalidad agrega una alternativa para que el chofer pueda crear la hoja de ruta directamente desde la app movil.
 
-La ruta planificada SI tiene el chofer asignado (`f23d3df2...`), pero los envios individuales no.
-
-La politica de seguridad (RLS) para actualizar envios requiere:
-```text
-tenant_id = tenant_del_usuario 
-  AND (es_admin OR chofer_id = usuario_actual)
-```
-
-Como `chofer_id` es NULL, la condicion `NULL = usuario_actual` evalua como FALSE, y la base de datos **rechaza silenciosamente** la actualizacion. El chofer toca "Confirmar Entrega" pero la base de datos no hace nada - sin error visible.
-
-## Por que chofer_id es NULL
-
-Hay 2 momentos donde deberia asignarse, y ambos fallan:
-
-1. **Al escanear en Modo Flex** (`handleAutoTransfer`): intenta hacer `UPDATE envios SET chofer_id = user.id` desde el navegador, pero la misma politica RLS lo bloquea porque `chofer_id` es NULL (el chofer no es "dueno" del envio todavia).
-
-2. **Al iniciar la ruta** (`start_ruta_planificada`): esta funcion cambia el estado a `en_reparto` pero **nunca asigna el chofer_id** a los envios. Solo actualiza `estado` y `updated_at`.
-
-## Solucion (3 cambios)
-
-### 1. Corregir la funcion `start_ruta_planificada` (migracion SQL)
-
-Agregar `chofer_id` y `chofer_ultima_milla_id` a las sentencias UPDATE de envios dentro de la funcion. Como esta funcion usa SECURITY DEFINER (no se aplica RLS), puede asignar el chofer_id sin restricciones.
+## Flujo propuesto
 
 ```text
-UPDATE envios SET 
-  estado = 'en_reparto',
-  chofer_id = v_ruta.chofer_id,                          -- NUEVO
-  chofer_ultima_milla_id = v_ruta.chofer_id,             -- NUEVO
-  fecha_asignacion_ultima_milla = now(),                  -- NUEVO
-  updated_at = now()
-WHERE ...
+Chofer escanea paquetes (igual que ahora)
+          |
+          v
+   Tiene paquetes escaneados
+          |
+    +-----+------+
+    |             |
+    v             v
+ [INICIAR      [CREAR HOJA
+  REPARTO]      DE RUTA]
+    |              |
+    v              v
+ Ruta           Seleccionar
+ planificada    sucursal destino
+ (a puerta)        |
+                   v
+                Crea hoja de ruta
+                con paquetes escaneados
+                   |
+                   v
+                Estado envios: en_transito
+                Hoja estado: en_transito
+                Navega a ruta activa
 ```
 
-Esto resuelve el problema principal: al iniciar la ruta, los envios quedan asignados al chofer y las entregas posteriores pasan la verificacion de seguridad.
+## Problema de permisos (RLS)
 
-### 2. Corregir datos existentes (fix inmediato)
+La politica actual de INSERT en `hojas_ruta` permite: `admin`, `supervisor`, `operador`, `despachador`, pero **NO** incluye `chofer`.
 
-Ejecutar un UPDATE para corregir los 3 envios de la ruta actual que ya estan en estado `en_reparto` con `chofer_id` NULL.
+Lo mismo para `hoja_ruta_envios`: la politica de escritura (ALL) solo permite los mismos roles.
 
-### 3. Corregir codigo muerto en `useFlexPackages.ts`
+**Solucion**: Crear una funcion RPC `create_hoja_ruta_flex` con `SECURITY DEFINER` que maneje toda la logica del lado del servidor, igual que ya hacemos con `start_ruta_planificada`. Esto evita modificar las politicas RLS existentes y mantiene la seguridad.
 
-La ultima edicion dejo una linea de codigo inalcanzable (despues de `return null`):
+## Cambios necesarios
 
-```text
-return null;                          // <-- retorna aqui
-return await addPackage(envio.id);    // <-- NUNCA se ejecuta (codigo muerto)
-```
+### 1. Migracion SQL: Funcion `create_hoja_ruta_flex`
 
-Remover la linea muerta para evitar posibles errores de compilacion.
+Crear una funcion RPC que:
+- Recibe: `sucursal_destino_id`, array de `envio_ids`
+- Obtiene la sucursal del chofer desde su perfil (sucursal_id del profile)
+- Genera el numero de hoja de ruta usando `generate_hoja_ruta_number()`
+- Crea la `hoja_ruta` con el chofer actual como `chofer_id`
+- Crea los registros en `hoja_ruta_envios`
+- Actualiza los envios a `en_transito` y asigna `chofer_id`
+- Inicia la hoja directamente (estado `en_transito`, `inicio_real = now()`)
+- Retorna el ID de la hoja creada
 
-### 4. Agregar `tipo_pago` a la consulta de ActiveRouteNavigation
+Tambien: actualizar `start_hoja_ruta` para que asigne `chofer_id` a los envios (misma correccion que hicimos con `start_ruta_planificada`).
 
-El componente `DeliveryConfirmation` usa `shipment.tipo_pago` para determinar si requiere cobro, pero la consulta en `ActiveRouteNavigation.tsx` no incluye este campo. Agregar `tipo_pago` a las consultas de `enviosHoja` y `paradasRuta`.
+### 2. Nuevo componente: `CreateRouteSheetDialog.tsx`
 
-## Archivos a modificar
+Un dialog movil que:
+- Muestra la cantidad de paquetes escaneados
+- Lista las sucursales disponibles para seleccionar destino
+- Boton de confirmacion para crear la hoja de ruta
+- Al confirmar, llama a la funcion RPC y navega a la ruta activa
 
-| Archivo | Cambio |
-|---------|--------|
-| Migracion SQL | Recrear `start_ruta_planificada` con asignacion de chofer_id + fix datos actuales |
-| `src/hooks/useFlexPackages.ts` | Remover linea de codigo muerto (linea 315) |
-| `src/pages/ActiveRouteNavigation.tsx` | Agregar `tipo_pago` a las consultas de envios |
+### 3. Modificar `FlexScanScreen.tsx`
+
+Agregar un segundo boton de accion junto a "INICIAR REPARTO":
+- **INICIAR REPARTO**: funciona igual (ruta planificada, entrega a puerta)
+- **HOJA DE RUTA**: abre el `CreateRouteSheetDialog` (transporte entre sucursales)
+
+El boton de hoja de ruta solo aparece si el chofer tiene una sucursal asignada en su perfil (necesaria como sucursal origen).
+
+### 4. Modificar `useFlexPackages.ts`
+
+Agregar nueva funcion `createRouteSheet`:
+- Recibe `sucursalDestinoId` como parametro
+- Llama a la funcion RPC `create_hoja_ruta_flex`
+- Limpia los paquetes al finalizar
+- Retorna el ID de la hoja creada para navegar a la ruta activa
 
 ## Detalle tecnico
 
-### Migracion SQL
+### Funcion SQL `create_hoja_ruta_flex`
 
-La funcion `start_ruta_planificada` sera reemplazada con la misma logica pero agregando la asignacion de chofer. Los dos bloques UPDATE existentes (entregas y retiros) se modifican asi:
+```text
+Parametros:
+  - p_sucursal_destino_id: UUID
+  - p_envio_ids: UUID[]
 
-**Entregas:**
-```sql
-UPDATE public.envios e
-SET estado = 'en_reparto',
-    chofer_id = v_ruta.chofer_id,
-    chofer_ultima_milla_id = v_ruta.chofer_id,
-    fecha_asignacion_ultima_milla = now(),
-    updated_at = now()
-FROM public.ruta_paradas rp
-WHERE rp.ruta_id = p_ruta_id
-  AND rp.envio_id = e.id
-  AND rp.tipo = 'entrega'
-  AND e.estado NOT IN ('entregado', 'devuelto', 'cancelado');
+Logica:
+  1. Obtener sucursal_id del perfil del chofer actual
+  2. Validar que tiene sucursal asignada
+  3. Validar que sucursal destino es diferente de origen
+  4. Generar numero con generate_hoja_ruta_number()
+  5. INSERT en hojas_ruta (origen, destino, chofer, estado=en_transito)
+  6. INSERT en hoja_ruta_envios (un registro por envio)
+  7. UPDATE envios: estado=en_transito, chofer_id=usuario actual
+  8. Retornar {success: true, hoja_id: id, numero: numero}
 ```
 
-**Retiros:**
-```sql
-UPDATE public.envios e
-SET estado_retiro = 'en_camino',
-    chofer_id = v_ruta.chofer_id,
-    chofer_ultima_milla_id = v_ruta.chofer_id,
-    fecha_asignacion_ultima_milla = now(),
-    updated_at = now()
-FROM public.ruta_paradas rp
-WHERE rp.ruta_id = p_ruta_id
-  AND rp.envio_id = e.id
-  AND rp.tipo = 'retiro'
-  AND (e.estado_retiro IS NULL OR e.estado_retiro NOT IN ('retirado', 'fallido'));
-```
+### Correccion de `start_hoja_ruta`
 
-Ademas, se incluye un fix para los datos actuales:
-```sql
-UPDATE public.envios e
-SET chofer_id = rp2.chofer_id,
-    chofer_ultima_milla_id = rp2.chofer_id
-FROM public.ruta_paradas rp
-JOIN public.rutas_planificadas rp2 ON rp2.id = rp.ruta_id
-WHERE rp.envio_id = e.id
-  AND e.chofer_id IS NULL
-  AND rp2.estado = 'en_curso';
-```
+Agregar asignacion de `chofer_id` y `chofer_ultima_milla_id` en el UPDATE de envios, igual que la correccion ya aplicada a `start_ruta_planificada`.
 
-### `useFlexPackages.ts` - Linea 315
+### UI del boton en FlexScanScreen
 
-Remover la linea inalcanzable `return await addPackage(envio.id)` que quedo despues del `return null`.
+Los dos botones de accion se muestran apilados:
+- "INICIAR REPARTO" (verde, igual que ahora) - para entregas a puerta
+- "HOJA DE RUTA" (azul) - para transporte entre sucursales
 
-### `ActiveRouteNavigation.tsx` - Agregar tipo_pago
+Si el chofer no tiene sucursal asignada, el boton de hoja de ruta no aparece (no tiene sucursal origen).
 
-Agregar `tipo_pago` a las dos consultas de envios (paradas planificadas y envios de hoja de ruta) para que `DeliveryConfirmation` tenga acceso al campo.
+## Archivos a modificar/crear
 
-## Impacto
+| Archivo | Cambio |
+|---------|--------|
+| Migracion SQL | Crear `create_hoja_ruta_flex` + corregir `start_hoja_ruta` |
+| `src/components/scan/CreateRouteSheetDialog.tsx` | **Nuevo** - Dialog para seleccionar sucursal destino |
+| `src/hooks/useFlexPackages.ts` | Agregar `createRouteSheet(sucursalDestinoId)` |
+| `src/components/mobile/FlexScanScreen.tsx` | Agregar boton "Hoja de Ruta" y dialog |
 
-| Problema | Causa | Como se resuelve |
-|----------|-------|-----------------|
-| No marca como entregado | RLS bloquea UPDATE porque chofer_id es NULL | start_ruta_planificada asigna chofer_id al iniciar ruta |
-| Foto lleva a pagina principal | APK vieja sin persistencia (ya corregido en codigo web, pendiente rebuild) | Rebuild de APK con server.url |
-| Datos actuales rotos | 3 envios en reparto sin chofer_id | Fix directo en migracion SQL |
-| Codigo muerto en useFlexPackages | Linea inalcanzable despues de return | Remover linea |
