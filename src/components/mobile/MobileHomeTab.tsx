@@ -48,7 +48,7 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
         .from('rutas_planificadas')
         .select('*')
         .eq('chofer_id', user?.id)
-        .in('estado', ['asignada', 'confirmada', 'en_progreso'])
+        .in('estado', ['asignada', 'confirmada', 'en_curso', 'pendiente'])
         .order('fecha', { ascending: true })
         .limit(5);
       
@@ -93,7 +93,7 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
 
   // Get the most relevant active route
   const activeRoute = hojasRuta?.find(h => h.estado === 'en_transito') || 
-                      rutasPlanificadas?.find(r => r.estado === 'en_progreso');
+                      rutasPlanificadas?.find(r => r.estado === 'en_curso');
 
   const isLoading = loadingHojas || loadingRutas;
 
