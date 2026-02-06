@@ -1,117 +1,65 @@
 
+# Plan: Permitir al Chofer Crear Rutas desde Modo Flex
 
-# Plan: Historial de Estados Descriptivo
+## Problema Detectado
 
-## Objetivo
+El error "Error al crear ruta" ocurre porque la politica de seguridad (RLS) de la tabla `rutas_planificadas` **no permite que un chofer cree rutas**. Solo permite a admin, supervisor y operador.
 
-Transformar el historial de estados de envíos para que muestre mensajes descriptivos que incluyan nombres de sucursales y choferes según el contexto del movimiento.
-
----
-
-## Ejemplos de Resultados
-
-| Flujo | Estado | Mensaje Descriptivo |
-|-------|--------|-------------------|
-| **Sucursal a Sucursal** | Pendiente | "Sucursal Origen Berazategui" |
-| | En Tránsito | "Camino hacia Centro Logístico - Recolectado por Juan Pérez" |
-| | En Sucursal | "Ingreso a Centro Logístico Quilmes" |
-| | En Tránsito | "Camino hacia Córdoba - Recolectado por María García" |
-| | En Sucursal | "Ingreso a Sucursal Destino Córdoba - Listo para retirar" |
-| | Entregado | "Entregado en Sucursal Córdoba" |
-| **A Domicilio** | En Reparto | "En reparto - Repartidor: Carlos López" |
-| | Entregado | "Entregado en domicilio - Entregó: Carlos López" |
-
----
-
-## Cambios en Base de Datos
-
-### 1. Nueva Función Auxiliar
-
-```sql
-CREATE OR REPLACE FUNCTION public.get_user_display_name(p_user_id uuid)
-RETURNS TEXT
-LANGUAGE sql
-STABLE SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT TRIM(COALESCE(nombre, '') || ' ' || COALESCE(apellido, ''))
-  FROM profiles
-  WHERE user_id = p_user_id;
-$$;
+**Politica actual:**
+```text
+"Gestionar rutas planificadas" (INSERT/UPDATE/DELETE):
+  is_admin() OR has_role('supervisor') OR has_role('operador')
 ```
 
-### 2. Trigger Mejorado `log_envio_estado_change`
+El chofer solo puede VER sus rutas, pero no CREAR nuevas. Cuando toca "INICIAR REPARTO", el INSERT falla silenciosamente por RLS.
 
-El trigger actualizado hará lookups a:
-- `sucursales` (origen, destino, actual del usuario)
-- `profiles` (nombre del chofer y usuario actual)
-
-Y generará notas descriptivas basadas en:
-- Tipo de transición de estado
-- Si la sucursal actual es centro logístico o destino final
-- Si la entrega es a domicilio o en sucursal
-- Nombre del chofer/repartidor involucrado
-
-**Lógica clave:**
-
-```sql
-v_notas := CASE
-  -- Creación
-  WHEN NEW.estado = 'pendiente' THEN
-    'Sucursal Origen ' || v_suc_origen_nombre
-    
-  -- En tránsito
-  WHEN NEW.estado = 'en_transito' THEN
-    'Camino hacia ' || v_suc_destino_nombre || 
-    ' - Recolectado por ' || v_chofer_nombre
-    
-  -- Ingreso a sucursal destino
-  WHEN NEW.estado = 'en_sucursal' AND v_is_destino_final THEN
-    'Ingreso a Sucursal Destino ' || v_suc_actual_nombre || 
-    ' - Listo para retirar'
-    
-  -- En reparto
-  WHEN NEW.estado = 'en_reparto' THEN
-    'En reparto - Repartidor: ' || v_chofer_nombre
-    
-  -- Entregado en domicilio
-  WHEN NEW.estado = 'entregado' AND NOT NEW.entregado_en_sucursal THEN
-    'Entregado en domicilio - Entregó: ' || v_usuario_nombre
-END;
-```
+Lo mismo pasa con `ruta_paradas`: al no existir la ruta, las paradas tampoco se pueden insertar.
 
 ---
 
-## Cambios en Frontend
+## Solucion
 
-### 1. `ShipmentHistoryDialog.tsx`
+### 1. Migracion SQL: Actualizar politicas RLS
 
-Actualizar la presentación para priorizar las notas descriptivas:
+Reemplazar la politica `ALL` por politicas especificas que permitan al chofer crear y gestionar **sus propias rutas**:
 
-**Antes:**
-- Muestra badge con label genérico ("En Sucursal")
-- Notas aparecen secundarias
+**Para `rutas_planificadas`:**
+- **INSERT**: Permitir a chofer crear rutas donde `chofer_id = auth.uid()`
+- **UPDATE**: Permitir a chofer actualizar sus propias rutas
+- **DELETE**: Mantener solo para admin/supervisor/operador
 
-**Después:**
-- Las notas descriptivas se muestran como texto principal
-- Badge se mantiene para referencia visual del estado
+**Para `ruta_paradas`:**
+- La politica actual ya permite al chofer gestionar paradas de sus propias rutas (verifica `rp.chofer_id = auth.uid()`), asi que deberia funcionar una vez que la ruta se cree exitosamente.
 
-```tsx
+```sql
+-- Eliminar politica ALL restrictiva
+DROP POLICY "Gestionar rutas planificadas" ON rutas_planificadas;
+
+-- Nueva politica: admin/supervisor/operador pueden hacer todo
+CREATE POLICY "Admin gestionar rutas" ON rutas_planificadas
+  FOR ALL TO public
+  USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'supervisor') OR has_role(auth.uid(), 'operador'))
+  WITH CHECK (is_admin(auth.uid()) OR has_role(auth.uid(), 'supervisor') OR has_role(auth.uid(), 'operador'));
+
+-- Nueva politica: chofer puede crear y gestionar SUS rutas
+CREATE POLICY "Chofer gestionar sus rutas" ON rutas_planificadas
+  FOR ALL TO public
+  USING (chofer_id = auth.uid() AND has_role(auth.uid(), 'chofer'))
+  WITH CHECK (chofer_id = auth.uid() AND has_role(auth.uid(), 'chofer'));
+```
+
+### 2. Mejorar el manejo de errores en `useFlexPackages.ts`
+
+Agregar mejor logging del error real de Supabase para facilitar el debug futuro:
+
+```typescript
 // Cambiar de:
-<Badge>{statusConfig[entry.estado_nuevo]?.label}</Badge>
-{entry.notas && <p className="text-sm">{entry.notas}</p>}
+throw new Error('Error al crear la ruta');
 
 // A:
-{entry.notas ? (
-  <p className="font-medium">{entry.notas}</p>
-) : (
-  <Badge>{statusConfig[entry.estado_nuevo]?.label}</Badge>
-)}
+console.error('Error creating route:', rutaError);
+throw new Error(rutaError?.message || 'Error al crear la ruta');
 ```
-
-### 2. `Tracking.tsx` (público)
-
-Misma mejora: priorizar la nota descriptiva en el historial de movimientos.
 
 ---
 
@@ -119,23 +67,22 @@ Misma mejora: priorizar la nota descriptiva en el historial de movimientos.
 
 | Archivo | Cambio |
 |---------|--------|
-| Nueva migración SQL | Crear función auxiliar + reemplazar trigger |
-| `src/components/shipments/ShipmentHistoryDialog.tsx` | Priorizar notas descriptivas |
-| `src/pages/Tracking.tsx` | Mejorar presentación del historial público |
+| Nueva migracion SQL | Actualizar RLS de `rutas_planificadas` para permitir INSERT/UPDATE a choferes |
+| `src/hooks/useFlexPackages.ts` | Mejorar mensajes de error con detalles de Supabase |
 
 ---
 
-## Historial Existente
+## Sobre el Mapa
 
-- Los registros anteriores sin notas seguirán mostrando el label del estado
-- Solo los nuevos cambios generarán notas descriptivas
-- El cambio es progresivo y no retroactivo
+El boton "Ver Mapa" funciona segun el codigo. Si el mapa no muestra los paquetes, es posible que los envios no tengan coordenadas (`entrega_lat`/`entrega_lng`). Esto se resuelve automaticamente si las direcciones se geocodifican al crear el envio. No requiere cambios de codigo.
 
 ---
 
-## Secuencia de Implementación
+## Resultado Esperado
 
-1. **Migración SQL**: Crear `get_user_display_name` y actualizar trigger
-2. **ShipmentHistoryDialog**: Actualizar presentación de notas
-3. **Tracking.tsx**: Actualizar vista pública del historial
-
+Despues del cambio:
+1. El chofer escanea paquetes en Modo Flex
+2. Toca "INICIAR REPARTO"
+3. Se crea la ruta planificada exitosamente (RLS lo permite porque `chofer_id = auth.uid()`)
+4. Las paradas se insertan correctamente
+5. Se navega automaticamente a la pantalla de ruta activa
