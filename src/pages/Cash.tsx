@@ -46,8 +46,10 @@ import {
   Lock,
   Unlock,
   Calculator,
+  Banknote,
 } from 'lucide-react';
 import type { Database } from '@/integrations/supabase/types';
+import { ReceiveRenditionDialog } from '@/components/renditions/ReceiveRenditionDialog';
 
 type PaymentMethod = Database['public']['Enums']['payment_method'];
 type CashSessionStatus = Database['public']['Enums']['cash_session_status'];
@@ -106,6 +108,7 @@ export default function Cash() {
   const [isOpenDialogOpen, setIsOpenDialogOpen] = useState(false);
   const [isCloseDialogOpen, setIsCloseDialogOpen] = useState(false);
   const [isMovementDialogOpen, setIsMovementDialogOpen] = useState(false);
+  const [isRenditionDialogOpen, setIsRenditionDialogOpen] = useState(false);
   const [selectedSession, setSelectedSession] = useState<CashSession | null>(null);
   const [openFormData, setOpenFormData] = useState({
     monto_inicial: '',
@@ -474,6 +477,14 @@ export default function Cash() {
                 >
                   <Minus className="h-4 w-4 mr-2" />
                   Egreso
+                </Button>
+                <Button
+                  onClick={() => setIsRenditionDialogOpen(true)}
+                  variant="outline"
+                  className="border-primary text-primary hover:bg-primary/10"
+                >
+                  <Banknote className="h-4 w-4 mr-2" />
+                  Rendición COD
                 </Button>
                 <div className="flex-1" />
                 <Button
@@ -951,6 +962,12 @@ export default function Cash() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Rendition Dialog */}
+      <ReceiveRenditionDialog
+        open={isRenditionDialogOpen}
+        onOpenChange={setIsRenditionDialogOpen}
+      />
     </div>
   );
 }
