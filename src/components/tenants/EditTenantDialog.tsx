@@ -48,6 +48,7 @@ interface EditTenantDialogProps {
 export function EditTenantDialog({ open, onOpenChange, tenant, onSuccess }: EditTenantDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [ecommerceEnabled, setEcommerceEnabled] = useState(tenant.ecommerce_enabled ?? false);
+  const [modoFlexEnabled, setModoFlexEnabled] = useState((tenant as any).modo_flex ?? false);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -75,6 +76,7 @@ export function EditTenantDialog({ open, onOpenChange, tenant, onSuccess }: Edit
       trial_ends_at: tenant.trial_ends_at ? format(new Date(tenant.trial_ends_at), 'yyyy-MM-dd') : ''
     });
     setEcommerceEnabled(tenant.ecommerce_enabled ?? false);
+    setModoFlexEnabled((tenant as any).modo_flex ?? false);
   }, [tenant, form]);
 
   const extendTrial = (days: number) => {
@@ -99,7 +101,8 @@ export function EditTenantDialog({ open, onOpenChange, tenant, onSuccess }: Edit
           trial_ends_at: values.plan === 'trial' && values.trial_ends_at
             ? new Date(values.trial_ends_at).toISOString()
             : null,
-          ecommerce_enabled: ecommerceEnabled
+          ecommerce_enabled: ecommerceEnabled,
+          modo_flex: modoFlexEnabled
         })
         .eq('id', tenant.id);
 
@@ -297,6 +300,20 @@ export function EditTenantDialog({ open, onOpenChange, tenant, onSuccess }: Edit
               <Switch 
                 checked={ecommerceEnabled} 
                 onCheckedChange={setEcommerceEnabled} 
+              />
+            </div>
+
+            {/* Modo Flex Toggle */}
+            <div className="flex items-center justify-between rounded-lg border p-4">
+              <div>
+                <Label className="text-base font-medium">Modo Flex</Label>
+                <p className="text-sm text-muted-foreground">
+                  Interfaz simplificada para operación de última milla
+                </p>
+              </div>
+              <Switch 
+                checked={modoFlexEnabled} 
+                onCheckedChange={setModoFlexEnabled} 
               />
             </div>
 

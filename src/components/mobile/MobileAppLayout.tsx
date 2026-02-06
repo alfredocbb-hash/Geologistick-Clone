@@ -12,9 +12,11 @@ import { MobileProfileTab } from './MobileProfileTab';
 import { MobileReceptionTab } from './MobileReceptionTab';
 import { MobileDeliveriesTab } from './MobileDeliveriesTab';
 import { MobileHistoryTab } from './MobileHistoryTab';
+import { FlexScanScreen } from './FlexScanScreen';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useAuth } from '@/lib/auth';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useTenant } from '@/hooks/useTenant';
 import { NotificationPopover } from '@/components/notifications/NotificationPopover';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 
@@ -27,6 +29,7 @@ export function MobileAppLayout() {
   const { unreadCount } = useNotifications();
   const { hasRole, profile } = useAuth();
   const { hasPermission, isLoading: permissionsLoading } = usePermissions();
+  const { tenant } = useTenant();
   const queryClient = useQueryClient();
 
   // Show splash screen briefly on first load
@@ -113,9 +116,9 @@ export function MobileAppLayout() {
       case 'deliveries':
         return <MobileDeliveriesTab />;
       
-      // Common tabs
+      // Common tabs - Modo Flex replaces standard scan
       case 'scan':
-        return <MobileScanTab />;
+        return tenant?.modo_flex ? <FlexScanScreen /> : <MobileScanTab />;
       case 'history':
         return <MobileHistoryTab />;
       case 'profile':

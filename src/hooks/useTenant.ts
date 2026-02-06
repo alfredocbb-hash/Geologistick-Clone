@@ -20,6 +20,7 @@ export interface Tenant {
   configuracion: Record<string, unknown>;
   created_at: string;
   ecommerce_enabled?: boolean;
+  modo_flex?: boolean;
 }
 
 export interface TenantBranding {
