@@ -28,6 +28,7 @@ interface UseFlexPackagesReturn {
   clearPackages: () => void;
   optimizeRoute: (currentLocation: { lat: number; lng: number }) => void;
   createRoute: () => Promise<string | null>;
+  createRouteSheet: (sucursalDestinoId: string) => Promise<string | null>;
   hasPackages: boolean;
   packagesWithCoords: FlexPackage[];
 }
@@ -427,6 +428,40 @@ export function useFlexPackages(): UseFlexPackagesReturn {
     }
   }, [user?.id, profile, packages, clearPackages]);
 
+  // Create route sheet (hoja de ruta) for inter-branch transport
+  const createRouteSheet = useCallback(async (sucursalDestinoId: string): Promise<string | null> => {
+    if (!user?.id || packages.length === 0) {
+      toast.error('No hay paquetes para la hoja de ruta');
+      return null;
+    }
+
+    setIsLoading(true);
+    try {
+      const envioIds = packages.map(p => p.id);
+      const { data, error } = await supabase.rpc('create_hoja_ruta_flex', {
+        p_sucursal_destino_id: sucursalDestinoId,
+        p_envio_ids: envioIds,
+      });
+
+      if (error) throw error;
+
+      const result = data as { success?: boolean; error?: string; hoja_id?: string; numero?: string } | null;
+
+      if (!result?.success) {
+        throw new Error(result?.error || 'Error al crear hoja de ruta');
+      }
+
+      clearPackages();
+      return result.hoja_id!;
+    } catch (error: any) {
+      console.error('Error creating route sheet:', error);
+      toast.error('Error al crear hoja de ruta', { description: error.message });
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user?.id, packages, clearPackages]);
+
   const packagesWithCoords = packages.filter(p => p.entrega_lat && p.entrega_lng);
 
   return {
@@ -438,6 +473,7 @@ export function useFlexPackages(): UseFlexPackagesReturn {
     clearPackages,
     optimizeRoute,
     createRoute,
+    createRouteSheet,
     hasPackages: packages.length > 0,
     packagesWithCoords,
   };

@@ -14,6 +14,7 @@ import {
   Loader2,
   Users,
   Navigation,
+  FileText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useFlexPackages } from '@/hooks/useFlexPackages';
@@ -24,18 +25,20 @@ import QRScanner from '@/components/qr/QRScanner';
 import { MLRegisterDialog } from '@/components/scan/MLRegisterDialog';
 import { FlexMapPreview } from './FlexMapPreview';
 import { TransferFlexPackagesDialog } from '@/components/scan/TransferFlexPackagesDialog';
+import { CreateRouteSheetDialog } from '@/components/scan/CreateRouteSheetDialog';
 import { parseQRCode } from '@/lib/qrParser';
 import { useNavigate } from 'react-router-dom';
 import type { FlexPackage } from '@/hooks/useFlexPackages';
 
 export function FlexScanScreen() {
   const navigate = useNavigate();
-  const { user, hasRole } = useAuth();
+  const { user, hasRole, profile } = useAuth();
   const { hasPermission } = usePermissions();
   
   const [showScanner, setShowScanner] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const [showTransferDialog, setShowTransferDialog] = useState(false);
+  const [showRouteSheetDialog, setShowRouteSheetDialog] = useState(false);
   const [mlRegisterData, setMlRegisterData] = useState<{ shipmentId: string; senderId?: string } | null>(null);
   const [scanSessionCount, setScanSessionCount] = useState(0);
   
@@ -48,6 +51,7 @@ export function FlexScanScreen() {
     clearPackages,
     optimizeRoute,
     createRoute,
+    createRouteSheet,
     hasPackages,
     packagesWithCoords,
   } = useFlexPackages();
@@ -113,8 +117,18 @@ export function FlexScanScreen() {
     }
   }, [createRoute, navigate]);
 
+  // Handle route sheet creation success
+  const handleRouteSheetSuccess = useCallback((hojaId: string) => {
+    setShowRouteSheetDialog(false);
+    clearPackages();
+    navigate(`/active-route?id=${hojaId}&type=hoja_ruta`);
+  }, [navigate, clearPackages]);
+
   // Check if user can transfer packages (operator/admin)
   const canTransfer = hasRole('operador') || hasRole('admin') || hasRole('bodega');
+  
+  // Check if user has a branch assigned (required for route sheets)
+  const hasBranch = !!(profile as any)?.sucursal_id;
 
   return (
     <div className="flex flex-col h-full">
@@ -232,6 +246,19 @@ export function FlexScanScreen() {
             )}
             INICIAR REPARTO
           </Button>
+
+          {/* Route Sheet Button (only if user has branch assigned) */}
+          {hasBranch && (
+            <Button
+              onClick={() => setShowRouteSheetDialog(true)}
+              disabled={isLoading}
+              variant="outline"
+              className="w-full h-12 text-base font-semibold gap-3 border-blue-600 bg-blue-950/30 text-blue-400 hover:bg-blue-900/40 hover:text-blue-300"
+            >
+              <FileText className="h-5 w-5" />
+              HOJA DE RUTA
+            </Button>
+          )}
         </div>
       )}
 
@@ -281,6 +308,15 @@ export function FlexScanScreen() {
           clearPackages();
           setShowTransferDialog(false);
         }}
+      />
+
+      {/* Route Sheet Dialog */}
+      <CreateRouteSheetDialog
+        open={showRouteSheetDialog}
+        packagesCount={packages.length}
+        packageIds={packages.map(p => p.id)}
+        onClose={() => setShowRouteSheetDialog(false)}
+        onSuccess={handleRouteSheetSuccess}
       />
     </div>
   );
