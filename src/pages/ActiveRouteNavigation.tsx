@@ -846,7 +846,10 @@ export default function ActiveRouteNavigation() {
             setDialogType(null);
           }}
           onSuccess={() => {
-            queryClient.invalidateQueries({ queryKey: ['my-active-route-envios'] });
+            queryClient.invalidateQueries({ queryKey: ['my-active-route-paradas'] });
+            queryClient.invalidateQueries({ queryKey: ['my-active-route-envios-hoja'] });
+            queryClient.invalidateQueries({ queryKey: ['my-active-route-planificada'] });
+            queryClient.invalidateQueries({ queryKey: ['my-active-route-hoja'] });
           }}
         />
       )}
@@ -859,7 +862,10 @@ export default function ActiveRouteNavigation() {
             setDialogType(null);
           }}
           onSuccess={() => {
-            queryClient.invalidateQueries({ queryKey: ['my-active-route-envios'] });
+            queryClient.invalidateQueries({ queryKey: ['my-active-route-paradas'] });
+            queryClient.invalidateQueries({ queryKey: ['my-active-route-envios-hoja'] });
+            queryClient.invalidateQueries({ queryKey: ['my-active-route-planificada'] });
+            queryClient.invalidateQueries({ queryKey: ['my-active-route-hoja'] });
           }}
         />
       )}
@@ -872,7 +878,10 @@ export default function ActiveRouteNavigation() {
             setDialogType(null);
           }}
           onSuccess={() => {
-            queryClient.invalidateQueries({ queryKey: ['my-active-route-envios'] });
+            queryClient.invalidateQueries({ queryKey: ['my-active-route-paradas'] });
+            queryClient.invalidateQueries({ queryKey: ['my-active-route-envios-hoja'] });
+            queryClient.invalidateQueries({ queryKey: ['my-active-route-planificada'] });
+            queryClient.invalidateQueries({ queryKey: ['my-active-route-hoja'] });
           }}
         />
       )}
@@ -885,7 +894,10 @@ export default function ActiveRouteNavigation() {
             setDialogType(null);
           }}
           onSuccess={() => {
-            queryClient.invalidateQueries({ queryKey: ['my-active-route-envios'] });
+            queryClient.invalidateQueries({ queryKey: ['my-active-route-paradas'] });
+            queryClient.invalidateQueries({ queryKey: ['my-active-route-envios-hoja'] });
+            queryClient.invalidateQueries({ queryKey: ['my-active-route-planificada'] });
+            queryClient.invalidateQueries({ queryKey: ['my-active-route-hoja'] });
           }}
         />
       )}
