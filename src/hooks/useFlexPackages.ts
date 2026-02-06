@@ -172,6 +172,33 @@ export function useFlexPackages(): UseFlexPackagesReturn {
     return { wasTransferred: true, previousDriver: previousDriverName };
   }, [user?.id]);
 
+  // Auto-geocode packages missing coordinates
+  const geocodePackage = useCallback(async (pkg: FlexPackage): Promise<FlexPackage> => {
+    if ((pkg.entrega_lat && pkg.entrega_lng) || !pkg.direccion_entrega) return pkg;
+
+    try {
+      const { data, error } = await supabase.functions.invoke('geocode-address', {
+        body: {
+          address: pkg.direccion_entrega,
+          city: pkg.ciudad_entrega || undefined,
+        }
+      });
+
+      if (error || !data?.lat || !data?.lng) return pkg;
+
+      // Update coordinates in DB
+      await supabase.from('envios').update({
+        entrega_lat: data.lat,
+        entrega_lng: data.lng,
+      }).eq('id', pkg.id);
+
+      return { ...pkg, entrega_lat: data.lat, entrega_lng: data.lng };
+    } catch (e) {
+      console.error('Error geocoding package:', e);
+      return pkg;
+    }
+  }, []);
+
   // Add package by ID
   const addPackage = useCallback(async (envioId: string): Promise<FlexPackage | null> => {
     if (!user?.id) return null;
@@ -213,6 +240,15 @@ export function useFlexPackages(): UseFlexPackagesReturn {
 
       setPackages(prev => [...prev, flexPackage]);
 
+      // Auto-geocode if missing coordinates (fire and forget)
+      if (!flexPackage.entrega_lat && !flexPackage.entrega_lng && flexPackage.direccion_entrega) {
+        geocodePackage(flexPackage).then(geocoded => {
+          if (geocoded.entrega_lat && geocoded.entrega_lng) {
+            setPackages(prev => prev.map(p => p.id === geocoded.id ? geocoded : p));
+          }
+        });
+      }
+
       if (wasTransferred) {
         toast.success(`Paquete transferido de ${previousDriver}`, {
           description: envio.tracking_number,
@@ -231,7 +267,7 @@ export function useFlexPackages(): UseFlexPackagesReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [user?.id, packages, handleAutoTransfer]);
+  }, [user?.id, packages, handleAutoTransfer, geocodePackage]);
 
   // Add package by tracking number
   const addPackageByTracking = useCallback(async (tracking: string): Promise<FlexPackage | null> => {

@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -36,6 +37,7 @@ export function FlexScanScreen() {
   const [showMap, setShowMap] = useState(false);
   const [showTransferDialog, setShowTransferDialog] = useState(false);
   const [mlRegisterData, setMlRegisterData] = useState<{ shipmentId: string; senderId?: string } | null>(null);
+  const [scanSessionCount, setScanSessionCount] = useState(0);
   
   const {
     packages,
@@ -62,34 +64,31 @@ export function FlexScanScreen() {
   // Handle QR code scanned
   const handleQRScanned = useCallback(async (result: string) => {
     ensureGpsTracking();
-    setShowScanner(false);
     
     const parsed = parseQRCode(result);
+    let added = false;
     
     if (parsed.type === 'ml_shipment') {
-      // Try to find by ML tracking number first
       const mlTracking = `ML-${parsed.value}`;
-      const added = await addPackageByTracking(mlTracking);
+      const pkg = await addPackageByTracking(mlTracking);
+      added = !!pkg;
       
       if (!added) {
-        // Not found in DB - show registration dialog
-        setMlRegisterData({
-          shipmentId: parsed.value,
-          senderId: parsed.mlSenderId,
-        });
+        // In continuous mode, just show toast; user can register after closing scanner
+        toast.warning(`ML-${parsed.value}: no encontrado, escanea otro o cierra para registrar`);
       }
     } else if (parsed.type === 'tracking') {
       const trackingNumber = parsed.value;
-      const added = await addPackageByTracking(trackingNumber);
+      const pkg = await addPackageByTracking(trackingNumber);
+      added = !!pkg;
       
       if (!added) {
-        // Could still be ML format - check if starts with ML-
-        if (trackingNumber.startsWith('ML-')) {
-          setMlRegisterData({
-            shipmentId: trackingNumber.replace('ML-', ''),
-          });
-        }
+        toast.warning(`${trackingNumber}: no encontrado`);
       }
+    }
+    
+    if (added) {
+      setScanSessionCount(prev => prev + 1);
     }
   }, [addPackageByTracking, ensureGpsTracking]);
 
@@ -110,7 +109,7 @@ export function FlexScanScreen() {
   const handleStartDelivery = useCallback(async () => {
     const routeId = await createRoute();
     if (routeId) {
-      navigate(`/active-route/${routeId}`);
+      navigate(`/active-route?id=${routeId}&type=planificada`);
     }
   }, [createRoute, navigate]);
 
@@ -241,7 +240,12 @@ export function FlexScanScreen() {
         <div className="fixed inset-0 z-50 bg-black">
           <QRScanner
             onScan={handleQRScanned}
-            onClose={() => setShowScanner(false)}
+            onClose={() => {
+              setShowScanner(false);
+              setScanSessionCount(0);
+            }}
+            continuousMode
+            scannedCount={scanSessionCount}
           />
         </div>
       )}

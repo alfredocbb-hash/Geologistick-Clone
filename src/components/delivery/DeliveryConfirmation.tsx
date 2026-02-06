@@ -45,11 +45,11 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
   const { user, profile } = useAuth();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const STORAGE_KEY = `delivery-state-${shipment.id}`;
   
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [signature, setSignature] = useState<string | null>(null);
-  // Check if payment is required - either by flag or tipo_pago
   const requiresPayment = shipment.pago_contra_entrega || shipment.tipo_pago === 'destino';
   
   const [amountCollected, setAmountCollected] = useState(
@@ -57,6 +57,23 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
   );
   const [notes, setNotes] = useState('');
   const [deliveryLocation, setDeliveryLocation] = useState<{ lat: number; lng: number } | null>(null);
+
+  // Restore state from sessionStorage (survives WebView reloads on Android)
+  useEffect(() => {
+    const saved = sessionStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.photoPreview) setPhotoPreview(parsed.photoPreview);
+        if (parsed.signature) setSignature(parsed.signature);
+        if (parsed.notes) setNotes(parsed.notes);
+        if (parsed.amountCollected) setAmountCollected(parsed.amountCollected);
+      } catch (e) {
+        console.error('Error restoring delivery state:', e);
+      }
+      sessionStorage.removeItem(STORAGE_KEY);
+    }
+  }, []);
 
   // Capture GPS location on mount
   useEffect(() => {
@@ -76,17 +93,42 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
     }
   }, []);
 
-  // Handle photo selection
+  // Handle photo selection - persist to sessionStorage
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setPhoto(file);
       const reader = new FileReader();
       reader.onloadend = () => {
-        setPhotoPreview(reader.result as string);
+        const preview = reader.result as string;
+        setPhotoPreview(preview);
+        // Persist to survive WebView reload
+        try {
+          sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
+            photoPreview: preview,
+            signature,
+            notes,
+            amountCollected,
+          }));
+        } catch (e) {
+          console.warn('Could not persist photo to sessionStorage:', e);
+        }
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  // Save state before opening camera (Android WebView may reload)
+  const handleOpenCamera = () => {
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
+        photoPreview,
+        signature,
+        notes,
+        amountCollected,
+      }));
+    } catch (e) {}
+    fileInputRef.current?.click();
   };
 
   // Remove photo
@@ -96,6 +138,12 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  };
+
+  // Clean up and close
+  const handleClose = () => {
+    sessionStorage.removeItem(STORAGE_KEY);
+    onClose();
   };
 
   // Upload file to Supabase Storage
@@ -131,18 +179,19 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
 
   const confirmMutation = useMutation({
     mutationFn: async () => {
-      // Validar que el usuario esté autenticado
       if (!user?.id) {
         throw new Error('Sesión expirada. Por favor, inicia sesión nuevamente.');
       }
 
       const timestamp = Date.now();
       
-      // Upload photo and signature in parallel
+      // Upload photo (from File or restored dataURL) and signature in parallel
       const [photoUrl, signatureUrl] = await Promise.all([
         photo 
           ? uploadFile(photo, `deliveries/${shipment.id}/photo_${timestamp}.jpg`)
-          : Promise.resolve(null),
+          : photoPreview
+            ? uploadFile(dataURLtoBlob(photoPreview), `deliveries/${shipment.id}/photo_${timestamp}.jpg`)
+            : Promise.resolve(null),
         signature
           ? uploadFile(dataURLtoBlob(signature), `deliveries/${shipment.id}/signature_${timestamp}.png`)
           : Promise.resolve(null),
@@ -170,7 +219,6 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
       const commissionPromise = (async () => {
         if (!user?.id) return;
         
-        // First get driver's commission config from profile
         const { data: driverProfile } = await supabase
           .from('profiles')
           .select('comision_tipo, comision_porcentaje, comision_fija')
@@ -196,7 +244,6 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
         let porcentajeAplicado = 0;
         let montoFijoAplicado = 0;
 
-        // Calculate commission based on driver's config or fallback to tariff
         const comisionTipo = driverProfile?.comision_tipo || 'tarifa';
 
         if (comisionTipo === 'tarifa' && envioData.tarifas) {
@@ -217,7 +264,6 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
           montoTotal = (envioData.precio_total * porcentajeAplicado) / 100 + montoFijoAplicado;
         }
 
-        // Insert delivery commission
         if (montoTotal > 0) {
           const { data: existingCommission } = await supabase
             .from('comisiones')
@@ -240,11 +286,10 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
           }
         }
 
-        // Check if there was a pickup by a different driver and calculate their commission
+        // Check if there was a pickup by a different driver
         if (envioData.requiere_retiro && envioData.chofer_id && envioData.chofer_id !== user.id) {
           const pickupDriverId = envioData.chofer_id;
           
-          // Get pickup driver's commission config
           const { data: pickupDriverProfile } = await supabase
             .from('profiles')
             .select('comision_retiro_tipo, comision_retiro_porcentaje, comision_retiro_fija')
@@ -269,7 +314,6 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
             }
 
             if (montoRetiro > 0) {
-              // Check if pickup commission already exists
               const { data: existingPickupCommission } = await supabase
                 .from('comisiones')
                 .select('id')
@@ -297,40 +341,40 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
       await commissionPromise;
     },
     onMutate: async () => {
-      // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['my-active-route-paradas'] });
       await queryClient.cancelQueries({ queryKey: ['my-active-route-envios-hoja'] });
       
-      // Snapshot previous values
-      const previousParadas = queryClient.getQueryData(['my-active-route-paradas']);
-      const previousEnviosHoja = queryClient.getQueryData(['my-active-route-envios-hoja']);
+      // Use fuzzy matching to find and update all route queries (key includes routeId)
+      const paradasSnapshot = queryClient.getQueriesData<any[]>({ queryKey: ['my-active-route-paradas'] });
+      const enviosHojaSnapshot = queryClient.getQueriesData<any[]>({ queryKey: ['my-active-route-envios-hoja'] });
       
-      // Optimistically update paradas
-      queryClient.setQueryData(['my-active-route-paradas'], (old: any) => {
-        if (!old) return old;
-        return old.map((p: any) => 
+      for (const [key, data] of paradasSnapshot) {
+        if (!data) continue;
+        queryClient.setQueryData(key, data.map((p: any) => 
           p.envio?.id === shipment.id 
             ? { ...p, envio: { ...p.envio, estado: 'entregado' } }
             : p
-        );
-      });
+        ));
+      }
       
-      // Optimistically update envios hoja
-      queryClient.setQueryData(['my-active-route-envios-hoja'], (old: any) => {
-        if (!old) return old;
-        return old.map((e: any) => 
+      for (const [key, data] of enviosHojaSnapshot) {
+        if (!data) continue;
+        queryClient.setQueryData(key, data.map((e: any) => 
           e.envio?.id === shipment.id 
             ? { ...e, envio: { ...e.envio, estado: 'entregado' } }
             : e
-        );
-      });
+        ));
+      }
       
-      return { previousParadas, previousEnviosHoja };
+      return { paradasSnapshot, enviosHojaSnapshot };
     },
     onSuccess: () => {
       // Play success sound
       const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdGWEjJCLhX51aV1RR0BGUFxnc36IkJaZl5GIe21fTj45Njg+R1FdaXeCjpeepKaknZOGdmNQPjEqKS00P0xbaoKSnaewtLKsoJF+aVQ/Ly');
       audio.play().catch(() => {});
+      
+      // Clear persisted state
+      sessionStorage.removeItem(STORAGE_KEY);
       
       // Invalidate to ensure we have fresh data
       queryClient.invalidateQueries({ queryKey: ['my-active-route-paradas'] });
@@ -343,12 +387,16 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
       onClose();
     },
     onError: (error, _, context) => {
-      // Rollback on error
-      if (context?.previousParadas) {
-        queryClient.setQueryData(['my-active-route-paradas'], context.previousParadas);
+      // Rollback using snapshots
+      if (context?.paradasSnapshot) {
+        for (const [key, data] of context.paradasSnapshot) {
+          queryClient.setQueryData(key, data);
+        }
       }
-      if (context?.previousEnviosHoja) {
-        queryClient.setQueryData(['my-active-route-envios-hoja'], context.previousEnviosHoja);
+      if (context?.enviosHojaSnapshot) {
+        for (const [key, data] of context.enviosHojaSnapshot) {
+          queryClient.setQueryData(key, data);
+        }
       }
       toast.error('Error al confirmar entrega: ' + error.message);
     },
@@ -357,7 +405,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
   const canSubmit = !requiresPayment || (amountCollected && parseFloat(amountCollected) > 0);
 
   return (
-    <Dialog open onOpenChange={onClose}>
+    <Dialog open onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -433,7 +481,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
                 type="button"
                 variant="outline"
                 className="w-full h-24 flex flex-col items-center justify-center gap-2 border-muted-foreground"
-                onClick={() => fileInputRef.current?.click()}
+                onClick={handleOpenCamera}
               >
                 <Camera className="h-8 w-8 text-muted-foreground" />
                 <span className="text-muted-foreground">Tomar Foto</span>
@@ -483,7 +531,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={handleClose}>
             Cancelar
           </Button>
           <Button 

@@ -9,6 +9,8 @@ import { useNativePlatform } from '@/hooks/useNativePlatform';
 interface QRScannerProps {
   onScan: (data: string) => void;
   onClose: () => void;
+  continuousMode?: boolean;
+  scannedCount?: number;
 }
 
 type NativeStep = 
@@ -32,7 +34,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, errorMsg: string): Prom
   ]);
 }
 
-export default function QRScanner({ onScan, onClose }: QRScannerProps) {
+export default function QRScanner({ onScan, onClose, continuousMode = false, scannedCount = 0 }: QRScannerProps) {
   const [error, setError] = useState<string | null>(null);
   const [cameras, setCameras] = useState<{ id: string; label: string }[]>([]);
   const [currentCameraIndex, setCurrentCameraIndex] = useState(0);
@@ -49,6 +51,8 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const scanningRef = useRef(false);
   const listenerCleanupRef = useRef<(() => void) | null>(null);
+  const scanCooldownRef = useRef(false);
+  const scannedCodesRef = useRef<Set<string>>(new Set());
   const autoFallbackTriggeredRef = useRef(false);
   
   // Use centralized native platform detection
@@ -303,13 +307,22 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
       const barcodeListener = await BarcodeScanner.addListener('barcodesScanned', async (event) => {
         console.log('[QRScanner] Barcodes scanned:', event);
         
-        // Get first detected barcode
         const barcode = event.barcodes?.[0];
         if (barcode?.rawValue) {
-          // Cleanup and return result
-          await cleanupNativeScanner();
-          toast.success(`Código escaneado: ${barcode.rawValue.substring(0, 20)}...`);
-          onScan(barcode.rawValue);
+          if (continuousMode) {
+            if (scannedCodesRef.current.has(barcode.rawValue) || scanCooldownRef.current) return;
+            scannedCodesRef.current.add(barcode.rawValue);
+            scanCooldownRef.current = true;
+            setTimeout(() => { scanCooldownRef.current = false; }, 2000);
+            try { navigator.vibrate?.(200); } catch(e) {}
+            const beep = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1f');
+            beep.play().catch(() => {});
+            onScan(barcode.rawValue);
+          } else {
+            await cleanupNativeScanner();
+            toast.success(`Código escaneado: ${barcode.rawValue.substring(0, 20)}...`);
+            onScan(barcode.rawValue);
+          }
         }
       });
       
@@ -520,7 +533,18 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
           aspectRatio: 1,
         },
         (decodedText) => {
-          onScan(decodedText);
+          if (continuousMode) {
+            if (scannedCodesRef.current.has(decodedText) || scanCooldownRef.current) return;
+            scannedCodesRef.current.add(decodedText);
+            scanCooldownRef.current = true;
+            setTimeout(() => { scanCooldownRef.current = false; }, 2000);
+            try { navigator.vibrate?.(200); } catch(e) {}
+            const beep = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1f');
+            beep.play().catch(() => {});
+            onScan(decodedText);
+          } else {
+            onScan(decodedText);
+          }
         },
         () => {}
       );
@@ -599,6 +623,11 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
         <div className="flex items-center gap-2 text-white">
           <Camera className="h-5 w-5" />
           <span className="font-medium">Escáner QR</span>
+          {continuousMode && scannedCount > 0 && (
+            <span className="bg-primary text-primary-foreground text-xs font-bold px-2.5 py-1 rounded-full animate-pulse">
+              {scannedCount} ✓
+            </span>
+          )}
           <span className="text-xs text-white/50 ml-2">
             ({forceWebScanner ? 'web' : platform})
           </span>
