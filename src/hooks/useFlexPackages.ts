@@ -311,8 +311,6 @@ export function useFlexPackages(): UseFlexPackagesReturn {
       }
 
       return null; // Return null so caller can handle ML registration
-
-      return await addPackage(envio.id);
     } catch (error: any) {
       console.error('Error adding package by tracking:', error);
       return null;
