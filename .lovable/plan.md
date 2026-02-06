@@ -1,96 +1,138 @@
 
+# Plan: Causa raiz encontrada - Configuracion de Capacitor y bugs del scanner
 
-# Plan: Corregir la perdida del dialogo de entrega al sacar foto en Android
+## Problema Principal (CAUSA RAIZ)
 
-## Problema
-
-Cuando el chofer toca "Tomar Foto" en el dialogo de Confirmacion de Entrega, Android abre la camara nativa y puede recargar la WebView al volver. Esto causa que:
-
-1. `ActiveRouteNavigation` se vuelve a montar desde cero
-2. Los estados `selectedShipment` y `dialogType` se pierden (son `useState` normales)
-3. El usuario ve el listado de paradas en vez de volver al dialogo con su foto
-
-El componente `DeliveryConfirmation` YA guarda su estado interno (foto, firma, notas) en `sessionStorage`, pero nunca llega a montarse porque el padre no sabe que dialogo tenia abierto.
-
-## Solucion
-
-Persistir `selectedShipment` y `dialogType` en `sessionStorage` dentro de `ActiveRouteNavigation`, de manera que al recargar la WebView, el dialogo se reabra automaticamente con el envio correcto, y luego `DeliveryConfirmation` restaure la foto desde su propia clave de sessionStorage.
-
-## Cambios
-
-### Archivo: `src/pages/ActiveRouteNavigation.tsx`
-
-1. **Agregar persistencia del dialogo activo**: Crear una clave de sessionStorage (`active-route-dialog-state`) que guarde `selectedShipment` y `dialogType` cada vez que se abran.
-
-2. **Restaurar al montar**: En un `useEffect` inicial, verificar si existe estado guardado en sessionStorage. Si existe, restaurar `selectedShipment` y `dialogType` para que el dialogo se reabra automaticamente.
-
-3. **Limpiar al cerrar**: Cuando el dialogo se cierra (en los callbacks `onClose`), remover la clave de sessionStorage.
-
-### Flujo corregido
+El archivo `capacitor.config.ts` **NO tiene configurado `server.url`**. Esto significa que la APK carga la interfaz web desde los archivos empaquetados dentro del APK (la carpeta `dist/`), **NO desde la URL publicada**.
 
 ```text
-[Chofer toca "Tomar Foto"]
-       |
-       v
-[DeliveryConfirmation guarda foto/firma/notas en sessionStorage]
-[handleOpenCamera -> sessionStorage.setItem('delivery-state-{id}')]
-       |
-       v
-[Android abre camara nativa, recarga WebView]
-       |
-       v
-[ActiveRouteNavigation se monta de nuevo]
-[useEffect detecta 'active-route-dialog-state' en sessionStorage]
-[Restaura selectedShipment + dialogType = 'delivery']
-       |
-       v
-[DeliveryConfirmation se monta]
-[useEffect detecta 'delivery-state-{id}' en sessionStorage]
-[Restaura la foto tomada + firma + notas]
-       |
-       v
-[El chofer ve su foto y puede confirmar la entrega]
+// Configuracion actual (sin server.url):
+appId: 'com.geologic.choferapp'
+webDir: 'dist'          <-- Carga archivos LOCALES del APK
+// NO hay server.url    <-- Los cambios web NUNCA llegan al dispositivo
 ```
 
-### Detalle tecnico
+Por eso el usuario no ve ningun cambio: todos los fixes que hicimos (dialog persistence, route activation, map markers, etc.) estan en el codigo web publicado, pero la APK sigue usando el codigo viejo empaquetado al momento de compilarla.
 
-En `ActiveRouteNavigation.tsx`:
+---
 
-- Cada vez que se ejecuta `setSelectedShipment(envio)` + `setDialogType(tipo)`, tambien se guarda en sessionStorage:
-```typescript
-const DIALOG_STATE_KEY = 'active-route-dialog-state';
+## Solucion (2 partes)
 
-// Al abrir un dialogo:
-sessionStorage.setItem(DIALOG_STATE_KEY, JSON.stringify({
-  shipment: envio,
-  dialogType: tipo
-}));
+### Parte 1: Configurar `server.url` en `capacitor.config.ts`
+
+Agregar la URL publicada al config para que la APK cargue el contenido desde la web en lugar de los archivos locales. Esto requiere **una ultima reconstruccion** de la APK, pero despues de eso, todos los cambios futuros estaran disponibles automaticamente al publicar.
+
+```text
+// Configuracion corregida:
+server: {
+  url: "https://geologic.lovable.app?forceHideBadge=true",
+  cleartext: true
+}
 ```
 
-- Al montar el componente, se busca si hay estado guardado:
-```typescript
-useEffect(() => {
-  const saved = sessionStorage.getItem(DIALOG_STATE_KEY);
-  if (saved) {
-    const { shipment, dialogType } = JSON.parse(saved);
-    setSelectedShipment(shipment);
-    setDialogType(dialogType);
-  }
-}, []);
+**Impacto**: Despues de reconstruir la APK con este cambio, el usuario nunca mas necesitara actualizar la APK para ver cambios de codigo. Solo necesitara Publicar los cambios aqui.
+
+### Parte 2: Corregir el QRScanner (auto-inicio en Android)
+
+Hay un bug independiente en el componente `QRScanner.tsx`: cuando se detecta Android nativo, el scanner cambia a modo web pero **no se inicia automaticamente**. En su lugar, muestra un boton "Activar camara" que el usuario tiene que tocar manualmente cada vez. Esto es lo que el usuario percibe como "pide permiso cada vez".
+
+**El flujo actual (problematico):**
+
+```text
+[Usuario abre scanner]
+  -> Android detectado, forzar modo web
+  -> setForceWebScanner(true)
+  -> Muestra boton "Activar camara"      <-- PROBLEMA: paso manual innecesario
+  -> Usuario toca boton
+  -> getUserMedia() pide permiso
+  -> Scanner arranca
 ```
 
-- Al cerrar cualquier dialogo, se limpia:
+**El flujo corregido:**
+
+```text
+[Usuario abre scanner]
+  -> Android detectado, forzar modo web
+  -> setForceWebScanner(true) + setWebStarted(true)
+  -> Auto-iniciar web scanner inmediatamente
+  -> getUserMedia() pide permiso (solo la primera vez, luego recuerda)
+  -> Scanner arranca automaticamente
+```
+
+---
+
+## Archivos a Modificar
+
+| Archivo | Cambio |
+|---------|--------|
+| `capacitor.config.ts` | Agregar `server.url` apuntando a la URL publicada |
+| `src/components/qr/QRScanner.tsx` | Auto-iniciar el web scanner en Android sin paso manual; usar ref para callback de scan para evitar closures obsoletos |
+
+---
+
+## Detalle Tecnico
+
+### 1. `capacitor.config.ts`
+
+Agregar la seccion `server` con la URL publicada:
+
 ```typescript
-const closeDialog = () => {
-  setSelectedShipment(null);
-  setDialogType(null);
-  sessionStorage.removeItem(DIALOG_STATE_KEY);
+const config: CapacitorConfig = {
+  appId: 'com.geologic.choferapp',
+  appName: 'ChoferApp',
+  webDir: 'dist',
+  server: {
+    url: "https://geologic.lovable.app?forceHideBadge=true",
+    cleartext: true,
+  },
+  plugins: { /* sin cambios */ }
 };
 ```
 
-### Puntos a considerar
+### 2. `QRScanner.tsx` - Auto-inicio del web scanner
 
-- Solo se necesita modificar `ActiveRouteNavigation.tsx` - el `DeliveryConfirmation` ya tiene toda la logica de restauracion de foto/firma/notas
-- Se crea una funcion helper `openDialog(envio, tipo)` que centraliza el setState + sessionStorage para evitar repetir codigo en los ~8 lugares donde se abren dialogos
-- Se crea una funcion helper `closeDialog()` que centraliza la limpieza
-- La clave de sessionStorage se limpia automaticamente en `onSuccess` y `onClose` de todos los dialogos
+**Cambio 1**: En el `useEffect` principal (linea 147), cuando se detecta Android y se fuerza modo web, tambien iniciar el scanner automaticamente:
+
+```typescript
+if (shouldStartWithWeb && !forceWebScanner) {
+  setForceWebScanner(true);
+  setWebStarted(true);   // <-- NUEVO: marcar como iniciado
+  setIsLoading(true);     // <-- NUEVO: mostrar loading mientras arranca
+  // Auto-iniciar despues de que el DOM se actualice
+  setTimeout(() => initWebScanner(), 200);
+}
+```
+
+**Cambio 2**: Agregar una ref para el callback `onScan` para evitar closures obsoletos en modo continuo:
+
+```typescript
+const onScanRef = useRef(onScan);
+useEffect(() => { onScanRef.current = onScan; }, [onScan]);
+```
+
+Y usar `onScanRef.current(decodedText)` en lugar de `onScan(decodedText)` en los callbacks del scanner, tanto en el web scanner como en el nativo. Esto asegura que el callback siempre sea el mas actualizado, evitando que el scanner use funciones obsoletas despues de re-renders.
+
+**Cambio 3**: Remover el toast de diagnostico que se muestra cada vez que se abre el scanner (linea 160: `toast.info('Plataforma: ...')`), ya que es solo para debug y molesta en produccion.
+
+---
+
+## Pasos para el usuario despues de los cambios
+
+1. **Publicar** los cambios aqui en Lovable
+2. Hacer `git pull` en el proyecto local
+3. Ejecutar `npm install && npm run build && npx cap sync`
+4. Reconstruir la APK con `npx cap run android`
+5. Instalar la nueva APK en el dispositivo
+6. A partir de ahora, cada vez que se publique un cambio, la app lo cargara automaticamente sin necesidad de actualizar la APK
+
+---
+
+## Por que esto resuelve TODOS los problemas reportados
+
+| Problema | Por que ocurre | Como se resuelve |
+|----------|---------------|-----------------|
+| Scanner pide permiso cada vez | APK tiene codigo viejo + boton manual "Activar camara" | Auto-inicio del scanner + APK carga codigo actualizado |
+| Scanner se cierra despues de escanear | APK tiene codigo viejo sin fix de continuousMode | APK carga codigo actualizado con todos los fixes |
+| Foto de entrega vuelve a pagina principal | APK no tiene la persistencia de dialog state | APK carga codigo actualizado con sessionStorage |
+| No deja marcar como entregado | Dialog no se reabre despues del reload del WebView | Persistencia de dialog state ya implementada |
+| Cambios futuros no se ven | APK carga desde dist/ local | APK carga desde URL publicada |
