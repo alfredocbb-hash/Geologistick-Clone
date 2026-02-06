@@ -1,164 +1,141 @@
 
 
-# Plan: Correcciones y Mejoras del Modo Flex (basado en videos)
+# Plan: Corregir los bugs restantes del Modo Flex
 
-## Problemas Detectados en los Videos
+## Problemas encontrados en el codigo (post-fixes anteriores)
 
-Del video de tu app (ChoferApp):
-1. **Escaneo se cierra tras cada paquete** - Hay que reabrir la camara cada vez
-2. **El mapa no muestra paradas antes de iniciar reparto** - Posible falta de coordenadas
-3. **Despues de INICIAR REPARTO no navega correctamente** - Bug critico de navegacion
-4. **La foto no se guarda y el dialogo vuelve al principio** - Bug en DeliveryConfirmation
-5. **No hay opcion de solo escanear sin iniciar ruta** - Quiere dejar paquetes como "escaneados"
-
-Del video de Mercado Envios Flex (referencia):
-- Escaneo continuo: la camara queda abierta, va sumando paquetes abajo con contador
-- Despues de "Empezar a repartir" muestra mapa con todas las paradas
+Despues de analizar el flujo completo y las correcciones recientes, encontre **3 bugs criticos** que impiden el funcionamiento correcto del Modo Flex:
 
 ---
 
-## Solucion por Problema
+### Bug 1: La ruta se crea pero nunca se "inicia"
 
-### 1. Escaneo Continuo (sin cerrar camara)
+Cuando el chofer toca "INICIAR REPARTO":
+1. `createRoute()` crea la ruta con `estado: 'pendiente'`
+2. Navega directamente a `/active-route?id=...&type=planificada`
+3. **Nunca llama a `start_ruta_planificada`** (la funcion RPC que cambia el estado a `en_curso` y actualiza los envios a `en_reparto`)
 
-Actualmente, al escanear un QR se ejecuta `setShowScanner(false)` inmediatamente. Esto cierra la camara y obliga al chofer a tocar "ESCANEAR" de nuevo.
+**Consecuencias:**
+- La ruta queda en estado `pendiente` indefinidamente
+- Los envios no se actualizan a `en_reparto`
+- Si el chofer cierra la app y vuelve a abrir, la ruta no aparece como "activa"
+- En la pantalla Home, no se muestra la ruta activa
 
-**Cambio:** Implementar modo "batch" en el QRScanner:
-- Agregar prop `continuousMode` al QRScanner
-- En vez de cerrar al detectar un QR, mostrar un overlay con feedback visual (badge con contador)
-- El chofer cierra manualmente cuando termina de escanear
-- Sonido/vibracion al detectar cada paquete
-- Mostrar un mini-contador flotante: "3 paquetes escaneados"
+**Solucion:** Llamar a `start_ruta_planificada` en `createRoute()` despues de crear la ruta y las paradas, antes de navegar.
 
-**Archivos:**
-- `src/components/qr/QRScanner.tsx` - Agregar soporte para modo continuo
-- `src/components/mobile/FlexScanScreen.tsx` - Usar modo continuo, acumular resultados
+---
 
-### 2. Bug Critico: Navegacion rota al iniciar reparto
+### Bug 2: El mapa no muestra paradas (ActiveRouteNavigation)
 
-**Problema encontrado en el codigo:**
+El mapa en la pantalla de ruta activa esta vacio porque:
 
+1. La query de envios **no incluye** `entrega_lat` ni `entrega_lng`:
 ```text
-FlexScanScreen.tsx linea 89:
-  navigate(`/active-route/${routeId}`)
-
-Pero la ruta en App.tsx es:
-  <Route path="/active-route" element={<ActiveRouteNavigation />} />
-
-Y ActiveRouteNavigation lee:
-  const routeId = searchParams.get('id')
-  const routeType = searchParams.get('type') || 'hoja'
+envio:envios(id, tracking_number, estado, ... direccion_entrega, ciudad_entrega, ...)
+// Faltan: entrega_lat, entrega_lng
 ```
 
-El ID se pasa como segmento de URL (`/active-route/abc123`) pero la pagina lo busca como query parameter (`?id=abc123`). Ademas falta `type=planificada`.
-
-**Correccion:**
-```typescript
-// De:
-navigate(`/active-route/${routeId}`);
-
-// A:
-navigate(`/active-route?id=${routeId}&type=planificada`);
+2. El codigo de markers busca en los campos equivocados:
+```text
+// Busca en:
+(envio).destinatario_lat  --> No existe en la query
+(envio).destinatario?.lat --> clientes no tiene campo 'lat'
 ```
 
-**Archivo:** `src/hooks/useFlexPackages.ts` o `src/components/mobile/FlexScanScreen.tsx`
-
-### 3. La foto no se guarda y el dialogo se reinicia
-
-**Problema:** El `<input type="file" capture="environment">` en Android Capacitor puede causar que la WebView se recargue al volver de la camara nativa, perdiendo el estado del componente (foto, firma, todo).
+3. Las coordenadas en `ruta_paradas.lat/lng` (que SI tienen datos del escaneo Flex) son completamente ignoradas.
 
 **Solucion:**
-- Guardar el estado del formulario (foto capturada) en `sessionStorage` antes de abrir la camara
-- Al montar el componente, recuperar el estado guardado
-- Alternativa: usar `URL.createObjectURL` en vez de FileReader para evitar re-renders pesados
-- Agregar un `key` estable al Dialog para evitar re-montajes
-
-**Archivo:** `src/components/delivery/DeliveryConfirmation.tsx`
-
-### 4. Cache Invalidation desalineado
-
-**Problema:** En `ActiveRouteNavigation.tsx`, los callbacks `onSuccess` de los dialogos invalidan:
-```text
-queryKey: ['my-active-route-envios']
-```
-
-Pero las queries reales usan:
-```text
-queryKey: ['my-active-route-paradas', routeId]      (rutas planificadas)
-queryKey: ['my-active-route-envios-hoja', routeId]  (hojas de ruta)
-```
-
-La clave `'my-active-route-envios'` no coincide con ninguna query real, asi que la lista nunca se refresca despues de confirmar una entrega.
-
-**Correccion:** Actualizar los callbacks para usar las claves correctas. El `DeliveryConfirmation` ya invalida las claves correctas internamente (`onMutate`/`onSuccess`), pero los callbacks padre tambien necesitan alinearse.
-
-**Archivo:** `src/pages/ActiveRouteNavigation.tsx`
-
-### 5. Mapa no muestra paradas (antes de iniciar ruta)
-
-El mapa en `FlexMapPreview` funciona correctamente en codigo - muestra paquetes que tienen `entrega_lat` y `entrega_lng`. Si no se ven paradas, es porque los envios no tienen coordenadas geocodificadas.
-
-**Mejora:** Agregar geocodificacion automatica al agregar un paquete en modo Flex:
-- Si el paquete tiene `direccion_entrega` pero no tiene `entrega_lat/lng`, llamar al edge function `geocode-address` para obtener las coordenadas
-- Actualizar el envio en la base de datos con las coordenadas
-- Mostrar indicador visual de cuantos paquetes tienen/no tienen ubicacion
-
-**Archivos:**
-- `src/hooks/useFlexPackages.ts` - Agregar geocodificacion automatica
-- `src/components/mobile/FlexScanScreen.tsx` - Mostrar indicador de ubicaciones
+- Agregar `entrega_lat, entrega_lng` al SELECT de la query de paradas
+- Usar `entrega_lat/lng` como fuente principal de coordenadas
+- Como fallback, usar `ruta_paradas.lat/lng` (ya tienen las coordenadas guardadas)
 
 ---
 
-## Secuencia de Implementacion
+### Bug 3: La pantalla Home no muestra rutas Flex activas
 
-1. **Corregir navegacion** (bug critico - `FlexScanScreen.tsx`)
-2. **Corregir cache invalidation** (bug - `ActiveRouteNavigation.tsx`)
-3. **Corregir foto en DeliveryConfirmation** (bug - `DeliveryConfirmation.tsx`)
-4. **Implementar escaneo continuo** (`QRScanner.tsx` + `FlexScanScreen.tsx`)
-5. **Geocodificacion automatica** (`useFlexPackages.ts`)
+En `MobileHomeTab.tsx`, la query de rutas planificadas filtra por:
+```text
+.in('estado', ['asignada', 'confirmada', 'en_progreso'])
+```
+
+Pero el estado correcto (definido en la funcion `start_ruta_planificada`) es `'en_curso'`, no `'en_progreso'`. Por eso la ruta activa nunca aparece en Home.
+
+**Solucion:** Cambiar `'en_progreso'` por `'en_curso'`.
+
+---
+
+## Archivos a Modificar
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/hooks/useFlexPackages.ts` | Llamar a `start_ruta_planificada` despues de crear la ruta |
+| `src/pages/ActiveRouteNavigation.tsx` | Agregar `entrega_lat, entrega_lng` al SELECT; usar coordenadas correctas para markers; usar `ruta_paradas.lat/lng` como fallback |
+| `src/components/mobile/MobileHomeTab.tsx` | Cambiar `'en_progreso'` por `'en_curso'` en el filtro de estados |
 
 ---
 
 ## Detalle Tecnico
 
-### Escaneo Continuo - Flujo
+### useFlexPackages.ts - Agregar inicio de ruta
 
 ```text
-[Chofer toca ESCANEAR]
-       |
-       v
-[Camara se abre - modo continuo]
-       |
-       v
-[Detecta QR] --> [Sonido + vibracion]
-       |              |
-       |         [Badge: "1 escaneado"]
-       |              |
-       v              v
-[Sigue escaneando] --> [Detecta otro QR]
-       |                    |
-       |              [Badge: "2 escaneados"]
-       |
-[Chofer toca X para cerrar]
-       |
-       v
-[Camara se cierra, paquetes en lista]
+// Despues de crear ruta y paradas:
+const { data: startResult, error: startError } = await supabase.rpc(
+  'start_ruta_planificada',
+  { p_ruta_id: ruta.id }
+);
+
+if (startError || !(startResult as any)?.success) {
+  console.error('Error starting route:', startError || startResult);
+  // No bloquear - la ruta ya esta creada, simplemente seguir
+}
 ```
 
-### DeliveryConfirmation - Persistencia de foto
+### ActiveRouteNavigation.tsx - Arreglar coordenadas del mapa
+
+En la query de paradas (linea ~163), agregar campos de coordenadas:
+```text
+envio:envios(
+  id, tracking_number, estado, ...
+  entrega_lat,      <-- NUEVO
+  entrega_lng,      <-- NUEVO
+  ...
+)
+```
+
+En el builder de markers (linea ~262), usar las coordenadas correctas:
+```text
+// Para entregas, priorizar entrega_lat/lng del envio,
+// fallback a ruta_paradas.lat/lng
+const lat = isItemPickup
+  ? (envio as any).remitente_lat
+  : ((envio as any).entrega_lat || item.lat);
+const lng = isItemPickup
+  ? (envio as any).remitente_lng
+  : ((envio as any).entrega_lng || item.lng);
+```
+
+### MobileHomeTab.tsx - Estado correcto
 
 ```text
-[Chofer toca "Tomar Foto"]
-       |
-       v
-[Se abre camara nativa (capture="environment")]
-       |
-       v
-[Android puede recargar WebView]
-       |
-       v
-[Al re-montar, recuperar de sessionStorage]
-       |
-       v
-[Foto restaurada, chofer continua con firma y confirmar]
+// De:
+.in('estado', ['asignada', 'confirmada', 'en_progreso'])
+
+// A:
+.in('estado', ['asignada', 'confirmada', 'en_curso', 'pendiente'])
 ```
+
+Incluir `'pendiente'` tambien para que las rutas recien creadas (pre-inicio) tambien aparezcan en Home.
+
+---
+
+## Resultado Esperado
+
+1. El chofer escanea paquetes en Modo Flex
+2. Toca "INICIAR REPARTO"
+3. La ruta se crea Y se inicia automaticamente (estado `en_curso`)
+4. Los envios se actualizan a `en_reparto`
+5. La pantalla ActiveRoute muestra la lista de paradas con coordenadas
+6. El mapa muestra las paradas correctamente
+7. La ruta aparece como "activa" en Home si el chofer vuelve a la pantalla principal
+
