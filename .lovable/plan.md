@@ -1,141 +1,96 @@
 
 
-# Plan: Corregir los bugs restantes del Modo Flex
+# Plan: Corregir la perdida del dialogo de entrega al sacar foto en Android
 
-## Problemas encontrados en el codigo (post-fixes anteriores)
+## Problema
 
-Despues de analizar el flujo completo y las correcciones recientes, encontre **3 bugs criticos** que impiden el funcionamiento correcto del Modo Flex:
+Cuando el chofer toca "Tomar Foto" en el dialogo de Confirmacion de Entrega, Android abre la camara nativa y puede recargar la WebView al volver. Esto causa que:
 
----
+1. `ActiveRouteNavigation` se vuelve a montar desde cero
+2. Los estados `selectedShipment` y `dialogType` se pierden (son `useState` normales)
+3. El usuario ve el listado de paradas en vez de volver al dialogo con su foto
 
-### Bug 1: La ruta se crea pero nunca se "inicia"
+El componente `DeliveryConfirmation` YA guarda su estado interno (foto, firma, notas) en `sessionStorage`, pero nunca llega a montarse porque el padre no sabe que dialogo tenia abierto.
 
-Cuando el chofer toca "INICIAR REPARTO":
-1. `createRoute()` crea la ruta con `estado: 'pendiente'`
-2. Navega directamente a `/active-route?id=...&type=planificada`
-3. **Nunca llama a `start_ruta_planificada`** (la funcion RPC que cambia el estado a `en_curso` y actualiza los envios a `en_reparto`)
+## Solucion
 
-**Consecuencias:**
-- La ruta queda en estado `pendiente` indefinidamente
-- Los envios no se actualizan a `en_reparto`
-- Si el chofer cierra la app y vuelve a abrir, la ruta no aparece como "activa"
-- En la pantalla Home, no se muestra la ruta activa
+Persistir `selectedShipment` y `dialogType` en `sessionStorage` dentro de `ActiveRouteNavigation`, de manera que al recargar la WebView, el dialogo se reabra automaticamente con el envio correcto, y luego `DeliveryConfirmation` restaure la foto desde su propia clave de sessionStorage.
 
-**Solucion:** Llamar a `start_ruta_planificada` en `createRoute()` despues de crear la ruta y las paradas, antes de navegar.
+## Cambios
 
----
+### Archivo: `src/pages/ActiveRouteNavigation.tsx`
 
-### Bug 2: El mapa no muestra paradas (ActiveRouteNavigation)
+1. **Agregar persistencia del dialogo activo**: Crear una clave de sessionStorage (`active-route-dialog-state`) que guarde `selectedShipment` y `dialogType` cada vez que se abran.
 
-El mapa en la pantalla de ruta activa esta vacio porque:
+2. **Restaurar al montar**: En un `useEffect` inicial, verificar si existe estado guardado en sessionStorage. Si existe, restaurar `selectedShipment` y `dialogType` para que el dialogo se reabra automaticamente.
 
-1. La query de envios **no incluye** `entrega_lat` ni `entrega_lng`:
-```text
-envio:envios(id, tracking_number, estado, ... direccion_entrega, ciudad_entrega, ...)
-// Faltan: entrega_lat, entrega_lng
-```
+3. **Limpiar al cerrar**: Cuando el dialogo se cierra (en los callbacks `onClose`), remover la clave de sessionStorage.
 
-2. El codigo de markers busca en los campos equivocados:
-```text
-// Busca en:
-(envio).destinatario_lat  --> No existe en la query
-(envio).destinatario?.lat --> clientes no tiene campo 'lat'
-```
-
-3. Las coordenadas en `ruta_paradas.lat/lng` (que SI tienen datos del escaneo Flex) son completamente ignoradas.
-
-**Solucion:**
-- Agregar `entrega_lat, entrega_lng` al SELECT de la query de paradas
-- Usar `entrega_lat/lng` como fuente principal de coordenadas
-- Como fallback, usar `ruta_paradas.lat/lng` (ya tienen las coordenadas guardadas)
-
----
-
-### Bug 3: La pantalla Home no muestra rutas Flex activas
-
-En `MobileHomeTab.tsx`, la query de rutas planificadas filtra por:
-```text
-.in('estado', ['asignada', 'confirmada', 'en_progreso'])
-```
-
-Pero el estado correcto (definido en la funcion `start_ruta_planificada`) es `'en_curso'`, no `'en_progreso'`. Por eso la ruta activa nunca aparece en Home.
-
-**Solucion:** Cambiar `'en_progreso'` por `'en_curso'`.
-
----
-
-## Archivos a Modificar
-
-| Archivo | Cambio |
-|---------|--------|
-| `src/hooks/useFlexPackages.ts` | Llamar a `start_ruta_planificada` despues de crear la ruta |
-| `src/pages/ActiveRouteNavigation.tsx` | Agregar `entrega_lat, entrega_lng` al SELECT; usar coordenadas correctas para markers; usar `ruta_paradas.lat/lng` como fallback |
-| `src/components/mobile/MobileHomeTab.tsx` | Cambiar `'en_progreso'` por `'en_curso'` en el filtro de estados |
-
----
-
-## Detalle Tecnico
-
-### useFlexPackages.ts - Agregar inicio de ruta
+### Flujo corregido
 
 ```text
-// Despues de crear ruta y paradas:
-const { data: startResult, error: startError } = await supabase.rpc(
-  'start_ruta_planificada',
-  { p_ruta_id: ruta.id }
-);
-
-if (startError || !(startResult as any)?.success) {
-  console.error('Error starting route:', startError || startResult);
-  // No bloquear - la ruta ya esta creada, simplemente seguir
-}
+[Chofer toca "Tomar Foto"]
+       |
+       v
+[DeliveryConfirmation guarda foto/firma/notas en sessionStorage]
+[handleOpenCamera -> sessionStorage.setItem('delivery-state-{id}')]
+       |
+       v
+[Android abre camara nativa, recarga WebView]
+       |
+       v
+[ActiveRouteNavigation se monta de nuevo]
+[useEffect detecta 'active-route-dialog-state' en sessionStorage]
+[Restaura selectedShipment + dialogType = 'delivery']
+       |
+       v
+[DeliveryConfirmation se monta]
+[useEffect detecta 'delivery-state-{id}' en sessionStorage]
+[Restaura la foto tomada + firma + notas]
+       |
+       v
+[El chofer ve su foto y puede confirmar la entrega]
 ```
 
-### ActiveRouteNavigation.tsx - Arreglar coordenadas del mapa
+### Detalle tecnico
 
-En la query de paradas (linea ~163), agregar campos de coordenadas:
-```text
-envio:envios(
-  id, tracking_number, estado, ...
-  entrega_lat,      <-- NUEVO
-  entrega_lng,      <-- NUEVO
-  ...
-)
+En `ActiveRouteNavigation.tsx`:
+
+- Cada vez que se ejecuta `setSelectedShipment(envio)` + `setDialogType(tipo)`, tambien se guarda en sessionStorage:
+```typescript
+const DIALOG_STATE_KEY = 'active-route-dialog-state';
+
+// Al abrir un dialogo:
+sessionStorage.setItem(DIALOG_STATE_KEY, JSON.stringify({
+  shipment: envio,
+  dialogType: tipo
+}));
 ```
 
-En el builder de markers (linea ~262), usar las coordenadas correctas:
-```text
-// Para entregas, priorizar entrega_lat/lng del envio,
-// fallback a ruta_paradas.lat/lng
-const lat = isItemPickup
-  ? (envio as any).remitente_lat
-  : ((envio as any).entrega_lat || item.lat);
-const lng = isItemPickup
-  ? (envio as any).remitente_lng
-  : ((envio as any).entrega_lng || item.lng);
+- Al montar el componente, se busca si hay estado guardado:
+```typescript
+useEffect(() => {
+  const saved = sessionStorage.getItem(DIALOG_STATE_KEY);
+  if (saved) {
+    const { shipment, dialogType } = JSON.parse(saved);
+    setSelectedShipment(shipment);
+    setDialogType(dialogType);
+  }
+}, []);
 ```
 
-### MobileHomeTab.tsx - Estado correcto
-
-```text
-// De:
-.in('estado', ['asignada', 'confirmada', 'en_progreso'])
-
-// A:
-.in('estado', ['asignada', 'confirmada', 'en_curso', 'pendiente'])
+- Al cerrar cualquier dialogo, se limpia:
+```typescript
+const closeDialog = () => {
+  setSelectedShipment(null);
+  setDialogType(null);
+  sessionStorage.removeItem(DIALOG_STATE_KEY);
+};
 ```
 
-Incluir `'pendiente'` tambien para que las rutas recien creadas (pre-inicio) tambien aparezcan en Home.
+### Puntos a considerar
 
----
-
-## Resultado Esperado
-
-1. El chofer escanea paquetes en Modo Flex
-2. Toca "INICIAR REPARTO"
-3. La ruta se crea Y se inicia automaticamente (estado `en_curso`)
-4. Los envios se actualizan a `en_reparto`
-5. La pantalla ActiveRoute muestra la lista de paradas con coordenadas
-6. El mapa muestra las paradas correctamente
-7. La ruta aparece como "activa" en Home si el chofer vuelve a la pantalla principal
-
+- Solo se necesita modificar `ActiveRouteNavigation.tsx` - el `DeliveryConfirmation` ya tiene toda la logica de restauracion de foto/firma/notas
+- Se crea una funcion helper `openDialog(envio, tipo)` que centraliza el setState + sessionStorage para evitar repetir codigo en los ~8 lugares donde se abren dialogos
+- Se crea una funcion helper `closeDialog()` que centraliza la limpieza
+- La clave de sessionStorage se limpia automaticamente en `onSuccess` y `onClose` de todos los dialogos
