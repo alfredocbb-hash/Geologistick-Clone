@@ -339,6 +339,24 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
       })();
 
       await commissionPromise;
+
+      // Register COD payment if applicable
+      if (requiresPayment && amountCollected && parseFloat(amountCollected) > 0) {
+        try {
+          const { data: codResult, error: codError } = await supabase.rpc('register_cod_payment', {
+            p_envio_id: shipment.id,
+            p_monto: parseFloat(amountCollected),
+            p_metodo: 'efectivo' as any,
+          });
+          if (codError) {
+            console.error('Error registering COD payment:', codError);
+          } else {
+            console.log('COD payment registered:', codResult);
+          }
+        } catch (e) {
+          console.error('Error in COD payment registration:', e);
+        }
+      }
     },
     onMutate: async () => {
       await queryClient.cancelQueries({ queryKey: ['my-active-route-paradas'] });

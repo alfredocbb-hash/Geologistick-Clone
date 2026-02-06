@@ -2127,6 +2127,7 @@ export type Database = {
           monto: number
           notas: string | null
           referencia: string | null
+          rendicion_id: string | null
           tenant_id: string | null
           updated_at: string | null
         }
@@ -2143,6 +2144,7 @@ export type Database = {
           monto: number
           notas?: string | null
           referencia?: string | null
+          rendicion_id?: string | null
           tenant_id?: string | null
           updated_at?: string | null
         }
@@ -2159,6 +2161,7 @@ export type Database = {
           monto?: number
           notas?: string | null
           referencia?: string | null
+          rendicion_id?: string | null
           tenant_id?: string | null
           updated_at?: string | null
         }
@@ -2175,6 +2178,13 @@ export type Database = {
             columns: ["envio_id"]
             isOneToOne: false
             referencedRelation: "envios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pagos_rendicion_id_fkey"
+            columns: ["rendicion_id"]
+            isOneToOne: false
+            referencedRelation: "rendiciones"
             referencedColumns: ["id"]
           },
           {
@@ -2260,6 +2270,73 @@ export type Database = {
           },
           {
             foreignKeyName: "profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rendiciones: {
+        Row: {
+          cantidad_cobros: number
+          chofer_id: string
+          created_at: string
+          id: string
+          metodo_recepcion: Database["public"]["Enums"]["payment_method"]
+          monto_total: number
+          notas: string | null
+          recibido_por: string
+          referencia: string | null
+          sesion_caja_id: string | null
+          sucursal_id: string
+          tenant_id: string
+        }
+        Insert: {
+          cantidad_cobros?: number
+          chofer_id: string
+          created_at?: string
+          id?: string
+          metodo_recepcion?: Database["public"]["Enums"]["payment_method"]
+          monto_total: number
+          notas?: string | null
+          recibido_por: string
+          referencia?: string | null
+          sesion_caja_id?: string | null
+          sucursal_id: string
+          tenant_id: string
+        }
+        Update: {
+          cantidad_cobros?: number
+          chofer_id?: string
+          created_at?: string
+          id?: string
+          metodo_recepcion?: Database["public"]["Enums"]["payment_method"]
+          monto_total?: number
+          notas?: string | null
+          recibido_por?: string
+          referencia?: string | null
+          sesion_caja_id?: string | null
+          sucursal_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rendiciones_sesion_caja_id_fkey"
+            columns: ["sesion_caja_id"]
+            isOneToOne: false
+            referencedRelation: "sesiones_caja"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rendiciones_sucursal_id_fkey"
+            columns: ["sucursal_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rendiciones_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -3956,6 +4033,24 @@ export type Database = {
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
+      receive_rendition: {
+        Args: {
+          p_chofer_id: string
+          p_metodo_recepcion: Database["public"]["Enums"]["payment_method"]
+          p_notas?: string
+          p_pago_ids: string[]
+          p_referencia?: string
+        }
+        Returns: Json
+      }
+      register_cod_payment: {
+        Args: {
+          p_envio_id: string
+          p_metodo?: Database["public"]["Enums"]["payment_method"]
+          p_monto: number
+        }
+        Returns: Json
+      }
       start_hoja_ruta: { Args: { p_hoja_id: string }; Returns: Json }
       start_ruta_planificada: { Args: { p_ruta_id: string }; Returns: Json }
       user_belongs_to_tenant: {
@@ -3989,7 +4084,13 @@ export type Database = {
         | "tiendanube"
         | "mercadolibre"
       payment_method: "efectivo" | "mercado_pago" | "transferencia" | "tarjeta"
-      payment_status: "pendiente" | "pagado" | "fallido" | "reembolsado"
+      payment_status:
+        | "pendiente"
+        | "pagado"
+        | "fallido"
+        | "reembolsado"
+        | "cobrado_chofer"
+        | "rendido"
       settlement_status: "generada" | "enviada" | "pagada" | "rechazada"
       shipment_status:
         | "pendiente"
@@ -4155,7 +4256,14 @@ export const Constants = {
         "mercadolibre",
       ],
       payment_method: ["efectivo", "mercado_pago", "transferencia", "tarjeta"],
-      payment_status: ["pendiente", "pagado", "fallido", "reembolsado"],
+      payment_status: [
+        "pendiente",
+        "pagado",
+        "fallido",
+        "reembolsado",
+        "cobrado_chofer",
+        "rendido",
+      ],
       settlement_status: ["generada", "enviada", "pagada", "rechazada"],
       shipment_status: [
         "pendiente",

@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { MobileCODSection } from './MobileCODSection';
 
 export function MobileEarningsTab() {
   const { user } = useAuth();
@@ -154,6 +155,9 @@ export function MobileEarningsTab() {
           </CardContent>
         </Card>
       </div>
+
+      {/* COD Pending Collections */}
+      <MobileCODSection />
 
       {/* Recent Settlements */}
       {liquidaciones && liquidaciones.length > 0 && (

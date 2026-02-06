@@ -31,6 +31,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PaymentMethodDialog } from '@/components/shipments/PaymentMethodDialog';
+import { ReceiveRenditionDialog } from '@/components/renditions/ReceiveRenditionDialog';
 import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
 
@@ -122,12 +123,16 @@ const getStatusBadge = (status: PaymentStatus | null) => {
       return <Badge className="bg-green-500/10 text-green-600 border-green-500/20"><CheckCircle className="h-3 w-3 mr-1" />Pagado</Badge>;
     case 'pendiente':
       return <Badge variant="outline" className="text-amber-600 border-amber-500/50"><Clock className="h-3 w-3 mr-1" />Pendiente</Badge>;
+    case 'cobrado_chofer' as any:
+      return <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20"><Banknote className="h-3 w-3 mr-1" />Cobrado (Chofer)</Badge>;
+    case 'rendido' as any:
+      return <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/20"><CheckCircle className="h-3 w-3 mr-1" />Rendido</Badge>;
     case 'fallido':
       return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />Fallido</Badge>;
     case 'reembolsado':
       return <Badge variant="secondary"><AlertCircle className="h-3 w-3 mr-1" />Reembolsado</Badge>;
     default:
-      return <Badge variant="outline">Desconocido</Badge>;
+      return <Badge variant="outline">{status || 'Desconocido'}</Badge>;
   }
 };
 
@@ -161,6 +166,7 @@ export default function Payments() {
   
   // Payment dialog state
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [renditionDialogOpen, setRenditionDialogOpen] = useState(false);
   const [selectedEnvio, setSelectedEnvio] = useState<EnvioPendiente | null>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
@@ -376,14 +382,20 @@ export default function Payments() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <CreditCard className="h-6 w-6 text-primary" />
-          Gestión de Pagos
-        </h1>
-        <p className="text-muted-foreground">
-          Administra todos los pagos del sistema
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            <CreditCard className="h-6 w-6 text-primary" />
+            Gestión de Pagos
+          </h1>
+          <p className="text-muted-foreground">
+            Administra todos los pagos del sistema
+          </p>
+        </div>
+        <Button onClick={() => setRenditionDialogOpen(true)} variant="outline">
+          <Banknote className="h-4 w-4 mr-2" />
+          Recibir Rendición COD
+        </Button>
       </div>
 
       {/* Statistics Cards */}
@@ -921,6 +933,11 @@ export default function Payments() {
           isLoading={isProcessingPayment}
         />
       )}
+
+      <ReceiveRenditionDialog
+        open={renditionDialogOpen}
+        onOpenChange={setRenditionDialogOpen}
+      />
     </div>
   );
 }
