@@ -1,125 +1,160 @@
 
 
-# Modo Flex: Crear Hoja de Ruta desde el Movil
+# Sistema de Rendicion de Cobros COD del Chofer
 
-## Contexto
+## Resumen
 
-Actualmente el Modo Flex solo permite crear **rutas planificadas** (reparto a puerta). Cuando un chofer necesita transportar paquetes entre sucursales, la hoja de ruta debe ser creada por la sucursal desde el panel web. Esta funcionalidad agrega una alternativa para que el chofer pueda crear la hoja de ruta directamente desde la app movil.
+Actualmente, cuando un chofer cobra un envio "pago destino" (COD), el monto cobrado se muestra en la pantalla de confirmacion pero **no se registra** en las tablas de `pagos` ni `movimientos_caja`. Solo existe como dato visual. Este plan implementa un flujo completo de rendicion: desde el registro automatico del cobro, hasta la entrega del dinero en sucursal con impacto en la caja.
 
-## Flujo propuesto
+## Flujo Propuesto
 
 ```text
-Chofer escanea paquetes (igual que ahora)
-          |
-          v
-   Tiene paquetes escaneados
-          |
-    +-----+------+
-    |             |
-    v             v
- [INICIAR      [CREAR HOJA
-  REPARTO]      DE RUTA]
-    |              |
-    v              v
- Ruta           Seleccionar
- planificada    sucursal destino
- (a puerta)        |
-                   v
-                Crea hoja de ruta
-                con paquetes escaneados
-                   |
-                   v
-                Estado envios: en_transito
-                Hoja estado: en_transito
-                Navega a ruta activa
+1. Chofer confirma entrega COD
+   -> Se registra automaticamente en tabla "pagos" (estado: "cobrado_chofer")
+   -> El chofer acumula cobros pendientes de rendir
+
+2. Chofer ve en la app movil sus cobros pendientes
+   -> Tab "Dinero" muestra seccion "Cobros a Rendir" con total acumulado
+
+3. Chofer llega a sucursal y rinde el dinero
+   -> Sucursal/Admin abre pantalla de "Recibir Rendicion"
+   -> Selecciona el chofer
+   -> Ve los cobros COD pendientes de ese chofer
+   -> Confirma la recepcion del dinero (metodo: efectivo/transferencia)
+   -> Se crea movimiento de caja automaticamente (ingreso)
+   -> Los pagos se marcan como "rendido"
+
 ```
 
-## Problema de permisos (RLS)
+## Cambios de Base de Datos
 
-La politica actual de INSERT en `hojas_ruta` permite: `admin`, `supervisor`, `operador`, `despachador`, pero **NO** incluye `chofer`.
+### Tabla `pagos` - Nuevos estados
 
-Lo mismo para `hoja_ruta_envios`: la politica de escritura (ALL) solo permite los mismos roles.
+Actualmente la tabla `pagos` usa el enum `payment_status` con valores como `pendiente`, `pagado`. Se necesita agregar un nuevo valor al enum para diferenciar:
+- `cobrado_chofer`: el chofer cobro el dinero al destinatario pero aun no lo rindio
+- `rendido`: el chofer entrego el dinero en sucursal
 
-**Solucion**: Crear una funcion RPC `create_hoja_ruta_flex` con `SECURITY DEFINER` que maneje toda la logica del lado del servidor, igual que ya hacemos con `start_ruta_planificada`. Esto evita modificar las politicas RLS existentes y mantiene la seguridad.
+### Nueva tabla `rendiciones`
 
-## Cambios necesarios
+Para mantener trazabilidad de cada acto de rendicion:
 
-### 1. Migracion SQL: Funcion `create_hoja_ruta_flex`
+| Columna | Tipo | Descripcion |
+|---------|------|-------------|
+| id | UUID | PK |
+| chofer_id | UUID | Quien rinde |
+| recibido_por | UUID | Quien recibe |
+| sucursal_id | UUID | Donde se recibe |
+| monto_total | numeric | Total rendido |
+| cantidad_cobros | int | Cantidad de pagos incluidos |
+| metodo_recepcion | payment_method | Como entrego el dinero |
+| referencia | text | Referencia de transferencia, etc |
+| notas | text | Observaciones |
+| sesion_caja_id | UUID | Sesion de caja impactada (nullable) |
+| tenant_id | UUID | Aislamiento multi-tenant |
+| created_at | timestamptz | Fecha de la rendicion |
 
-Crear una funcion RPC que:
-- Recibe: `sucursal_destino_id`, array de `envio_ids`
-- Obtiene la sucursal del chofer desde su perfil (sucursal_id del profile)
-- Genera el numero de hoja de ruta usando `generate_hoja_ruta_number()`
-- Crea la `hoja_ruta` con el chofer actual como `chofer_id`
-- Crea los registros en `hoja_ruta_envios`
-- Actualiza los envios a `en_transito` y asigna `chofer_id`
-- Inicia la hoja directamente (estado `en_transito`, `inicio_real = now()`)
-- Retorna el ID de la hoja creada
+### Tabla `pagos` - Nueva columna
 
-Tambien: actualizar `start_hoja_ruta` para que asigne `chofer_id` a los envios (misma correccion que hicimos con `start_ruta_planificada`).
+- `rendicion_id` (UUID, nullable): vincula cada pago COD con la rendicion en la que fue entregado.
 
-### 2. Nuevo componente: `CreateRouteSheetDialog.tsx`
+### Politicas RLS
 
-Un dialog movil que:
-- Muestra la cantidad de paquetes escaneados
-- Lista las sucursales disponibles para seleccionar destino
-- Boton de confirmacion para crear la hoja de ruta
-- Al confirmar, llama a la funcion RPC y navega a la ruta activa
+- `rendiciones`: INSERT/SELECT para `admin`, `super_admin`, `operador`, `sucursal` (quienes reciben la rendicion).
+- `rendiciones`: SELECT para `chofer` (ver sus propias rendiciones).
+- Se actualizaran los permisos de `pagos` si es necesario para que el chofer pueda INSERT al confirmar entregas.
 
-### 3. Modificar `FlexScanScreen.tsx`
+## Cambios en Codigo
 
-Agregar un segundo boton de accion junto a "INICIAR REPARTO":
-- **INICIAR REPARTO**: funciona igual (ruta planificada, entrega a puerta)
-- **HOJA DE RUTA**: abre el `CreateRouteSheetDialog` (transporte entre sucursales)
+### 1. DeliveryConfirmation.tsx - Registro automatico del cobro
 
-El boton de hoja de ruta solo aparece si el chofer tiene una sucursal asignada en su perfil (necesaria como sucursal origen).
+Al confirmar una entrega COD, ademas de actualizar el envio, se insertara un registro en `pagos`:
+- `envio_id`: el envio entregado
+- `monto`: el monto cobrado (`amountCollected`)
+- `metodo`: `efectivo` (por defecto en entrega a domicilio)
+- `estado`: `cobrado_chofer`
+- `created_by`: el chofer
+- `tenant_id`: del perfil del chofer
 
-### 4. Modificar `useFlexPackages.ts`
+Esto se hara mediante una funcion RPC `register_cod_payment` con SECURITY DEFINER, ya que el chofer puede no tener permisos directos de INSERT en `pagos`.
 
-Agregar nueva funcion `createRouteSheet`:
-- Recibe `sucursalDestinoId` como parametro
-- Llama a la funcion RPC `create_hoja_ruta_flex`
-- Limpia los paquetes al finalizar
-- Retorna el ID de la hoja creada para navegar a la ruta activa
+### 2. MobileEarningsTab.tsx - Mostrar cobros pendientes de rendir
 
-## Detalle tecnico
+Agregar una seccion nueva "Cobros a Rendir" que muestre:
+- Total acumulado de cobros COD con estado `cobrado_chofer`
+- Lista de cobros individuales con tracking number y monto
+- Indicador visual claro del total que el chofer debe entregar
 
-### Funcion SQL `create_hoja_ruta_flex`
+### 3. Nuevo componente: ReceiveRenditionDialog.tsx
+
+Dialog para que el personal de sucursal/admin reciba la rendicion del chofer:
+- Selector de chofer (muestra solo choferes con cobros pendientes)
+- Lista de cobros COD pendientes de ese chofer
+- Checkbox para seleccionar cuales incluir
+- Total a recibir
+- Selector de metodo de recepcion (efectivo, transferencia)
+- Al confirmar:
+  - Crea registro en `rendiciones`
+  - Actualiza los `pagos` seleccionados a estado `rendido` y asigna `rendicion_id`
+  - Si hay sesion de caja abierta, crea `movimiento_caja` de ingreso
+  - Todo via funcion RPC `receive_rendition` con SECURITY DEFINER
+
+### 4. Integracion en la UI de escritorio
+
+La funcionalidad de "Recibir Rendicion" se puede acceder desde:
+- Pagina de Pagos (`Payments.tsx`): nueva tab o boton "Recibir Rendicion"
+- O desde la pagina de Caja (`Cash.tsx`): boton de accion rapida cuando hay caja abierta
+
+### 5. Funcion RPC `register_cod_payment`
 
 ```text
 Parametros:
-  - p_sucursal_destino_id: UUID
-  - p_envio_ids: UUID[]
+  - p_envio_id: UUID
+  - p_monto: numeric
+  - p_metodo: payment_method (default 'efectivo')
 
 Logica:
-  1. Obtener sucursal_id del perfil del chofer actual
-  2. Validar que tiene sucursal asignada
-  3. Validar que sucursal destino es diferente de origen
-  4. Generar numero con generate_hoja_ruta_number()
-  5. INSERT en hojas_ruta (origen, destino, chofer, estado=en_transito)
-  6. INSERT en hoja_ruta_envios (un registro por envio)
-  7. UPDATE envios: estado=en_transito, chofer_id=usuario actual
-  8. Retornar {success: true, hoja_id: id, numero: numero}
+  1. Verificar que el envio existe y esta en estado 'entregado'
+  2. Verificar que no existe ya un pago para este envio
+  3. Obtener tenant_id del perfil del chofer
+  4. INSERT en pagos con estado 'cobrado_chofer'
+  5. Retornar el pago creado
 ```
 
-### Correccion de `start_hoja_ruta`
+### 6. Funcion RPC `receive_rendition`
 
-Agregar asignacion de `chofer_id` y `chofer_ultima_milla_id` en el UPDATE de envios, igual que la correccion ya aplicada a `start_ruta_planificada`.
+```text
+Parametros:
+  - p_chofer_id: UUID
+  - p_pago_ids: UUID[]
+  - p_metodo_recepcion: payment_method
+  - p_referencia: text (nullable)
+  - p_notas: text (nullable)
 
-### UI del boton en FlexScanScreen
+Logica:
+  1. Validar que todos los pagos pertenecen al chofer y estan en 'cobrado_chofer'
+  2. Calcular monto total
+  3. Obtener sucursal_id del perfil de quien recibe
+  4. INSERT en rendiciones
+  5. UPDATE pagos: estado='rendido', rendicion_id=nuevo_id
+  6. Buscar sesion de caja abierta en la sucursal
+  7. Si existe, INSERT movimiento_caja de tipo 'ingreso'
+  8. Retornar {success, rendicion_id, monto_total, caja_impactada}
+```
 
-Los dos botones de accion se muestran apilados:
-- "INICIAR REPARTO" (verde, igual que ahora) - para entregas a puerta
-- "HOJA DE RUTA" (azul) - para transporte entre sucursales
-
-Si el chofer no tiene sucursal asignada, el boton de hoja de ruta no aparece (no tiene sucursal origen).
-
-## Archivos a modificar/crear
+## Archivos a crear/modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| Migracion SQL | Crear `create_hoja_ruta_flex` + corregir `start_hoja_ruta` |
-| `src/components/scan/CreateRouteSheetDialog.tsx` | **Nuevo** - Dialog para seleccionar sucursal destino |
-| `src/hooks/useFlexPackages.ts` | Agregar `createRouteSheet(sucursalDestinoId)` |
-| `src/components/mobile/FlexScanScreen.tsx` | Agregar boton "Hoja de Ruta" y dialog |
+| Migracion SQL | Extender enum payment_status, crear tabla rendiciones, agregar rendicion_id a pagos, crear RPCs |
+| `src/components/delivery/DeliveryConfirmation.tsx` | Llamar a `register_cod_payment` al confirmar entrega COD |
+| `src/components/mobile/MobileEarningsTab.tsx` | Agregar seccion "Cobros a Rendir" |
+| `src/components/renditions/ReceiveRenditionDialog.tsx` | **Nuevo** - Dialog para recibir rendicion |
+| `src/pages/Payments.tsx` | Agregar boton/tab para recibir rendiciones |
+
+## Consideraciones
+
+- La rendicion es un proceso de sucursal/admin, no del chofer. El chofer solo ve sus cobros pendientes.
+- El movimiento de caja se crea automaticamente si hay caja abierta; si no hay caja abierta se muestra una advertencia pero se permite la rendicion igual (el dinero queda registrado en la rendicion).
+- Los cobros COD del chofer aparecen tambien en la liquidacion de comisiones como "Descuentos COD" (funcionalidad existente), pero ahora con trazabilidad completa.
+- Se usa SECURITY DEFINER en las RPCs para evitar modificar las politicas RLS existentes de `pagos`.
 
