@@ -1,88 +1,164 @@
 
-# Plan: Permitir al Chofer Crear Rutas desde Modo Flex
 
-## Problema Detectado
+# Plan: Correcciones y Mejoras del Modo Flex (basado en videos)
 
-El error "Error al crear ruta" ocurre porque la politica de seguridad (RLS) de la tabla `rutas_planificadas` **no permite que un chofer cree rutas**. Solo permite a admin, supervisor y operador.
+## Problemas Detectados en los Videos
 
-**Politica actual:**
-```text
-"Gestionar rutas planificadas" (INSERT/UPDATE/DELETE):
-  is_admin() OR has_role('supervisor') OR has_role('operador')
-```
+Del video de tu app (ChoferApp):
+1. **Escaneo se cierra tras cada paquete** - Hay que reabrir la camara cada vez
+2. **El mapa no muestra paradas antes de iniciar reparto** - Posible falta de coordenadas
+3. **Despues de INICIAR REPARTO no navega correctamente** - Bug critico de navegacion
+4. **La foto no se guarda y el dialogo vuelve al principio** - Bug en DeliveryConfirmation
+5. **No hay opcion de solo escanear sin iniciar ruta** - Quiere dejar paquetes como "escaneados"
 
-El chofer solo puede VER sus rutas, pero no CREAR nuevas. Cuando toca "INICIAR REPARTO", el INSERT falla silenciosamente por RLS.
-
-Lo mismo pasa con `ruta_paradas`: al no existir la ruta, las paradas tampoco se pueden insertar.
+Del video de Mercado Envios Flex (referencia):
+- Escaneo continuo: la camara queda abierta, va sumando paquetes abajo con contador
+- Despues de "Empezar a repartir" muestra mapa con todas las paradas
 
 ---
 
-## Solucion
+## Solucion por Problema
 
-### 1. Migracion SQL: Actualizar politicas RLS
+### 1. Escaneo Continuo (sin cerrar camara)
 
-Reemplazar la politica `ALL` por politicas especificas que permitan al chofer crear y gestionar **sus propias rutas**:
+Actualmente, al escanear un QR se ejecuta `setShowScanner(false)` inmediatamente. Esto cierra la camara y obliga al chofer a tocar "ESCANEAR" de nuevo.
 
-**Para `rutas_planificadas`:**
-- **INSERT**: Permitir a chofer crear rutas donde `chofer_id = auth.uid()`
-- **UPDATE**: Permitir a chofer actualizar sus propias rutas
-- **DELETE**: Mantener solo para admin/supervisor/operador
+**Cambio:** Implementar modo "batch" en el QRScanner:
+- Agregar prop `continuousMode` al QRScanner
+- En vez de cerrar al detectar un QR, mostrar un overlay con feedback visual (badge con contador)
+- El chofer cierra manualmente cuando termina de escanear
+- Sonido/vibracion al detectar cada paquete
+- Mostrar un mini-contador flotante: "3 paquetes escaneados"
 
-**Para `ruta_paradas`:**
-- La politica actual ya permite al chofer gestionar paradas de sus propias rutas (verifica `rp.chofer_id = auth.uid()`), asi que deberia funcionar una vez que la ruta se cree exitosamente.
+**Archivos:**
+- `src/components/qr/QRScanner.tsx` - Agregar soporte para modo continuo
+- `src/components/mobile/FlexScanScreen.tsx` - Usar modo continuo, acumular resultados
 
-```sql
--- Eliminar politica ALL restrictiva
-DROP POLICY "Gestionar rutas planificadas" ON rutas_planificadas;
+### 2. Bug Critico: Navegacion rota al iniciar reparto
 
--- Nueva politica: admin/supervisor/operador pueden hacer todo
-CREATE POLICY "Admin gestionar rutas" ON rutas_planificadas
-  FOR ALL TO public
-  USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'supervisor') OR has_role(auth.uid(), 'operador'))
-  WITH CHECK (is_admin(auth.uid()) OR has_role(auth.uid(), 'supervisor') OR has_role(auth.uid(), 'operador'));
+**Problema encontrado en el codigo:**
 
--- Nueva politica: chofer puede crear y gestionar SUS rutas
-CREATE POLICY "Chofer gestionar sus rutas" ON rutas_planificadas
-  FOR ALL TO public
-  USING (chofer_id = auth.uid() AND has_role(auth.uid(), 'chofer'))
-  WITH CHECK (chofer_id = auth.uid() AND has_role(auth.uid(), 'chofer'));
+```text
+FlexScanScreen.tsx linea 89:
+  navigate(`/active-route/${routeId}`)
+
+Pero la ruta en App.tsx es:
+  <Route path="/active-route" element={<ActiveRouteNavigation />} />
+
+Y ActiveRouteNavigation lee:
+  const routeId = searchParams.get('id')
+  const routeType = searchParams.get('type') || 'hoja'
 ```
 
-### 2. Mejorar el manejo de errores en `useFlexPackages.ts`
+El ID se pasa como segmento de URL (`/active-route/abc123`) pero la pagina lo busca como query parameter (`?id=abc123`). Ademas falta `type=planificada`.
 
-Agregar mejor logging del error real de Supabase para facilitar el debug futuro:
-
+**Correccion:**
 ```typescript
-// Cambiar de:
-throw new Error('Error al crear la ruta');
+// De:
+navigate(`/active-route/${routeId}`);
 
 // A:
-console.error('Error creating route:', rutaError);
-throw new Error(rutaError?.message || 'Error al crear la ruta');
+navigate(`/active-route?id=${routeId}&type=planificada`);
 ```
 
+**Archivo:** `src/hooks/useFlexPackages.ts` o `src/components/mobile/FlexScanScreen.tsx`
+
+### 3. La foto no se guarda y el dialogo se reinicia
+
+**Problema:** El `<input type="file" capture="environment">` en Android Capacitor puede causar que la WebView se recargue al volver de la camara nativa, perdiendo el estado del componente (foto, firma, todo).
+
+**Solucion:**
+- Guardar el estado del formulario (foto capturada) en `sessionStorage` antes de abrir la camara
+- Al montar el componente, recuperar el estado guardado
+- Alternativa: usar `URL.createObjectURL` en vez de FileReader para evitar re-renders pesados
+- Agregar un `key` estable al Dialog para evitar re-montajes
+
+**Archivo:** `src/components/delivery/DeliveryConfirmation.tsx`
+
+### 4. Cache Invalidation desalineado
+
+**Problema:** En `ActiveRouteNavigation.tsx`, los callbacks `onSuccess` de los dialogos invalidan:
+```text
+queryKey: ['my-active-route-envios']
+```
+
+Pero las queries reales usan:
+```text
+queryKey: ['my-active-route-paradas', routeId]      (rutas planificadas)
+queryKey: ['my-active-route-envios-hoja', routeId]  (hojas de ruta)
+```
+
+La clave `'my-active-route-envios'` no coincide con ninguna query real, asi que la lista nunca se refresca despues de confirmar una entrega.
+
+**Correccion:** Actualizar los callbacks para usar las claves correctas. El `DeliveryConfirmation` ya invalida las claves correctas internamente (`onMutate`/`onSuccess`), pero los callbacks padre tambien necesitan alinearse.
+
+**Archivo:** `src/pages/ActiveRouteNavigation.tsx`
+
+### 5. Mapa no muestra paradas (antes de iniciar ruta)
+
+El mapa en `FlexMapPreview` funciona correctamente en codigo - muestra paquetes que tienen `entrega_lat` y `entrega_lng`. Si no se ven paradas, es porque los envios no tienen coordenadas geocodificadas.
+
+**Mejora:** Agregar geocodificacion automatica al agregar un paquete en modo Flex:
+- Si el paquete tiene `direccion_entrega` pero no tiene `entrega_lat/lng`, llamar al edge function `geocode-address` para obtener las coordenadas
+- Actualizar el envio en la base de datos con las coordenadas
+- Mostrar indicador visual de cuantos paquetes tienen/no tienen ubicacion
+
+**Archivos:**
+- `src/hooks/useFlexPackages.ts` - Agregar geocodificacion automatica
+- `src/components/mobile/FlexScanScreen.tsx` - Mostrar indicador de ubicaciones
+
 ---
 
-## Archivos a Modificar
+## Secuencia de Implementacion
 
-| Archivo | Cambio |
-|---------|--------|
-| Nueva migracion SQL | Actualizar RLS de `rutas_planificadas` para permitir INSERT/UPDATE a choferes |
-| `src/hooks/useFlexPackages.ts` | Mejorar mensajes de error con detalles de Supabase |
-
----
-
-## Sobre el Mapa
-
-El boton "Ver Mapa" funciona segun el codigo. Si el mapa no muestra los paquetes, es posible que los envios no tengan coordenadas (`entrega_lat`/`entrega_lng`). Esto se resuelve automaticamente si las direcciones se geocodifican al crear el envio. No requiere cambios de codigo.
+1. **Corregir navegacion** (bug critico - `FlexScanScreen.tsx`)
+2. **Corregir cache invalidation** (bug - `ActiveRouteNavigation.tsx`)
+3. **Corregir foto en DeliveryConfirmation** (bug - `DeliveryConfirmation.tsx`)
+4. **Implementar escaneo continuo** (`QRScanner.tsx` + `FlexScanScreen.tsx`)
+5. **Geocodificacion automatica** (`useFlexPackages.ts`)
 
 ---
 
-## Resultado Esperado
+## Detalle Tecnico
 
-Despues del cambio:
-1. El chofer escanea paquetes en Modo Flex
-2. Toca "INICIAR REPARTO"
-3. Se crea la ruta planificada exitosamente (RLS lo permite porque `chofer_id = auth.uid()`)
-4. Las paradas se insertan correctamente
-5. Se navega automaticamente a la pantalla de ruta activa
+### Escaneo Continuo - Flujo
+
+```text
+[Chofer toca ESCANEAR]
+       |
+       v
+[Camara se abre - modo continuo]
+       |
+       v
+[Detecta QR] --> [Sonido + vibracion]
+       |              |
+       |         [Badge: "1 escaneado"]
+       |              |
+       v              v
+[Sigue escaneando] --> [Detecta otro QR]
+       |                    |
+       |              [Badge: "2 escaneados"]
+       |
+[Chofer toca X para cerrar]
+       |
+       v
+[Camara se cierra, paquetes en lista]
+```
+
+### DeliveryConfirmation - Persistencia de foto
+
+```text
+[Chofer toca "Tomar Foto"]
+       |
+       v
+[Se abre camara nativa (capture="environment")]
+       |
+       v
+[Android puede recargar WebView]
+       |
+       v
+[Al re-montar, recuperar de sessionStorage]
+       |
+       v
+[Foto restaurada, chofer continua con firma y confirmar]
+```
