@@ -134,6 +134,10 @@ export default function ActiveRouteNavigation() {
             ciudad_retiro,
             direccion_entrega,
             ciudad_entrega,
+            entrega_lat,
+            entrega_lng,
+            remitente_lat,
+            remitente_lng,
             notas,
             nombre_destinatario,
             nombre_remitente,
@@ -173,6 +177,10 @@ export default function ActiveRouteNavigation() {
             ciudad_retiro,
             direccion_entrega,
             ciudad_entrega,
+            entrega_lat,
+            entrega_lng,
+            remitente_lat,
+            remitente_lng,
             notas,
             nombre_destinatario,
             nombre_remitente,
@@ -258,13 +266,13 @@ export default function ActiveRouteNavigation() {
         const isCompleted = envio.estado === 'entregado' || envio.estado === 'devuelto' || envio.estado_retiro === 'retirado';
         const isCurrent = nextStop?.id === item.id;
         
-        // Try to get lat/lng from destinatario or use placeholders
+        // Get coordinates: prioritize envio fields, fallback to ruta_paradas lat/lng
         const lat = isItemPickup 
-          ? (envio as any).remitente_lat 
-          : ((envio as any).destinatario_lat || (envio as any).destinatario?.lat);
+          ? ((envio as any).remitente_lat || (item as any).lat)
+          : ((envio as any).entrega_lat || (item as any).lat);
         const lng = isItemPickup 
-          ? (envio as any).remitente_lng 
-          : ((envio as any).destinatario_lng || (envio as any).destinatario?.lng);
+          ? ((envio as any).remitente_lng || (item as any).lng)
+          : ((envio as any).entrega_lng || (item as any).lng);
         
         // Skip if no coordinates
         if (!lat || !lng) return null;

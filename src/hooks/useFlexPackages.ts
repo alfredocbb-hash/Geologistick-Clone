@@ -376,11 +376,27 @@ export function useFlexPackages(): UseFlexPackagesReturn {
         throw new Error('Error al agregar paradas');
       }
 
+      // Start the route immediately (changes status to 'en_curso' and shipments to 'en_reparto')
+      const { data: startResult, error: startError } = await supabase.rpc(
+        'start_ruta_planificada',
+        { p_ruta_id: ruta.id }
+      );
+
+      if (startError) {
+        console.error('Error starting route:', startError);
+        // Don't block - route is already created, just continue
+      } else {
+        const result = startResult as { success?: boolean; error?: string } | null;
+        if (result && !result.success) {
+          console.error('Route start returned error:', result.error);
+        }
+      }
+
       // Clear the flex packages list
       clearPackages();
 
-      toast.success('Ruta creada', {
-        description: `${packages.length} paradas agregadas`,
+      toast.success('Ruta iniciada', {
+        description: `${packages.length} paradas en reparto`,
       });
 
       return ruta.id;
