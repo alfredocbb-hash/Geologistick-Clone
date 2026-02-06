@@ -281,16 +281,36 @@ export function useFlexPackages(): UseFlexPackagesReturn {
 
     setIsLoading(true);
     try {
-      const { data: envio, error } = await supabase
+      const tenantId = (profile as any)?.tenant_id;
+      
+      // Primary search: case-insensitive exact match
+      const { data: envio } = await supabase
         .from('envios')
         .select('*')
-        .eq('tracking_number', tracking)
-        .eq('tenant_id', (profile as any)?.tenant_id)
-        .single();
+        .ilike('tracking_number', tracking)
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
 
-      if (error || !envio) {
-        return null; // Return null so caller can handle ML registration
+      if (envio) {
+        return await addPackage(envio.id);
       }
+
+      // Fallback: try removing any remaining suffix and search with wildcard
+      const baseTracking = tracking.replace(/-\d{1,2}$/, '');
+      if (baseTracking !== tracking) {
+        const { data: envioFallback } = await supabase
+          .from('envios')
+          .select('*')
+          .ilike('tracking_number', baseTracking)
+          .eq('tenant_id', tenantId)
+          .maybeSingle();
+
+        if (envioFallback) {
+          return await addPackage(envioFallback.id);
+        }
+      }
+
+      return null; // Return null so caller can handle ML registration
 
       return await addPackage(envio.id);
     } catch (error: any) {
