@@ -3940,6 +3940,7 @@ export type Database = {
           subscription_id: string
         }[]
       }
+      get_user_display_name: { Args: { p_user_id: string }; Returns: string }
       get_user_sucursal: { Args: { _user_id: string }; Returns: string }
       get_user_tenant: { Args: { p_user_id: string }; Returns: string }
       has_role: {

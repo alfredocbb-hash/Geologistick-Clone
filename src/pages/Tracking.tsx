@@ -331,16 +331,25 @@ export default function Tracking() {
                           {index < envio.historial.length - 1 && <div className="w-0.5 h-full bg-muted" />}
                         </div>
                         <div className="flex-1 pb-4">
-                          <div className="flex items-center gap-2">
+                          {/* Descriptive Note (primary) or Status Badge (fallback) */}
+                          {item.notas ? (
+                            <p className="font-medium text-sm">{item.notas}</p>
+                          ) : (
                             <Badge variant="outline">
                               {statusConfig[item.estado_nuevo as ShipmentStatus]?.label || item.estado_nuevo}
                             </Badge>
-                            <span className="text-sm text-muted-foreground">
+                          )}
+                          <div className="flex items-center gap-2 mt-1">
+                            {item.notas && (
+                              <Badge variant="outline" className="text-xs">
+                                {statusConfig[item.estado_nuevo as ShipmentStatus]?.label || item.estado_nuevo}
+                              </Badge>
+                            )}
+                            <span className="text-xs text-muted-foreground">
                               {item.fecha && format(new Date(item.fecha), "dd MMM yyyy, HH:mm", { locale: es })}
                             </span>
                           </div>
-                          {item.notas && <p className="text-sm mt-1">{item.notas}</p>}
-                          {item.ubicacion && <p className="text-xs text-muted-foreground">{item.ubicacion}</p>}
+                          {item.ubicacion && <p className="text-xs text-muted-foreground mt-1">{item.ubicacion}</p>}
                         </div>
                       </div>
                     ))}

@@ -133,47 +133,43 @@ export function ShipmentHistoryDialog({
                     {/* Content */}
                     <div className="flex-1 pb-6">
                       <div className="bg-muted/50 rounded-lg p-4">
-                        {/* Status Change */}
-                        <div className="flex items-center gap-2 mb-2">
-                          {entry.estado_anterior && (
-                            <>
-                              <Badge variant="outline" className="text-xs">
-                                {statusConfig[entry.estado_anterior as ShipmentStatus]?.label || entry.estado_anterior}
-                              </Badge>
-                              <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                            </>
-                          )}
-                          <Badge className={`${statusConfig[entry.estado_nuevo as ShipmentStatus]?.color} text-white`}>
+                        {/* Descriptive Note (primary) or Status Badge (fallback) */}
+                        {entry.notas ? (
+                          <p className="font-medium text-sm mb-2">{entry.notas}</p>
+                        ) : (
+                          <div className="flex items-center gap-2 mb-2">
+                            {entry.estado_anterior && (
+                              <>
+                                <Badge variant="outline" className="text-xs">
+                                  {statusConfig[entry.estado_anterior as ShipmentStatus]?.label || entry.estado_anterior}
+                                </Badge>
+                                <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                              </>
+                            )}
+                            <Badge className={`${statusConfig[entry.estado_nuevo as ShipmentStatus]?.color} text-white`}>
+                              {statusConfig[entry.estado_nuevo as ShipmentStatus]?.label || entry.estado_nuevo}
+                            </Badge>
+                          </div>
+                        )}
+                        
+                        {/* Status badge (secondary when notes exist) */}
+                        {entry.notas && (
+                          <Badge variant="outline" className="text-xs mb-2">
                             {statusConfig[entry.estado_nuevo as ShipmentStatus]?.label || entry.estado_nuevo}
                           </Badge>
-                        </div>
+                        )}
                         
                         {/* Date & Time */}
                         <p className="text-xs text-muted-foreground mb-2">
                           {entry.created_at && format(new Date(entry.created_at), "d 'de' MMMM yyyy, HH:mm", { locale: es })}
                         </p>
                         
-                        {/* User */}
-                        {entry.profile && (
-                          <div className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
-                            <User className="h-3 w-3" />
-                            <span>{entry.profile.nombre} {entry.profile.apellido}</span>
-                          </div>
-                        )}
-                        
                         {/* Location */}
                         {entry.ubicacion && (
-                          <div className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
                             <MapPin className="h-3 w-3" />
                             <span>{entry.ubicacion}</span>
                           </div>
-                        )}
-                        
-                        {/* Notes */}
-                        {entry.notas && (
-                          <p className="text-sm mt-2 p-2 bg-background rounded border">
-                            {entry.notas}
-                          </p>
                         )}
                       </div>
                     </div>
