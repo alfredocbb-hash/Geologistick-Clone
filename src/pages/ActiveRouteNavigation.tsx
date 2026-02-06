@@ -55,6 +55,43 @@ export default function ActiveRouteNavigation() {
   const [selectedShipment, setSelectedShipment] = useState<any>(null);
   const [dialogType, setDialogType] = useState<'pickup' | 'delivery' | 'incident' | 'reschedule' | null>(null);
 
+  const DIALOG_STATE_KEY = 'active-route-dialog-state';
+
+  // Helper to open a dialog and persist state to sessionStorage (survives Android WebView reload)
+  const openDialog = useCallback((shipment: any, type: 'pickup' | 'delivery' | 'incident' | 'reschedule') => {
+    setSelectedShipment(shipment);
+    setDialogType(type);
+    try {
+      sessionStorage.setItem(DIALOG_STATE_KEY, JSON.stringify({ shipment, dialogType: type }));
+    } catch (e) {
+      console.warn('Could not persist dialog state:', e);
+    }
+  }, []);
+
+  // Helper to close dialog and clean up sessionStorage
+  const closeDialog = useCallback(() => {
+    setSelectedShipment(null);
+    setDialogType(null);
+    sessionStorage.removeItem(DIALOG_STATE_KEY);
+  }, []);
+
+  // Restore dialog state after Android WebView reload
+  useEffect(() => {
+    const saved = sessionStorage.getItem(DIALOG_STATE_KEY);
+    if (saved) {
+      try {
+        const { shipment, dialogType: savedType } = JSON.parse(saved);
+        if (shipment && savedType) {
+          setSelectedShipment(shipment);
+          setDialogType(savedType);
+        }
+      } catch (e) {
+        console.error('Error restoring dialog state:', e);
+        sessionStorage.removeItem(DIALOG_STATE_KEY);
+      }
+    }
+  }, []);
+
   const isPlannedRoute = routeType === 'planificada';
 
   // Enable geolocation tracking with route context
@@ -414,9 +451,8 @@ export default function ActiveRouteNavigation() {
     const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1f');
     audio.play().catch(() => {});
 
-    setSelectedShipment(envio);
-    setDialogType('pickup');
-  }, []);
+    openDialog(envio, 'pickup');
+  }, [openDialog]);
 
   // Call customer
   const callCustomer = useCallback((phone: string) => {
@@ -650,10 +686,7 @@ export default function ActiveRouteNavigation() {
                 <Button 
                   variant="outline"
                   className="border-destructive/30 text-destructive"
-                  onClick={() => {
-                    setSelectedShipment(nextEnvio);
-                    setDialogType('incident');
-                  }}
+                  onClick={() => openDialog(nextEnvio, 'incident')}
                 >
                   <AlertTriangle className="h-4 w-4 mr-1" />
                   Problema
@@ -661,20 +694,14 @@ export default function ActiveRouteNavigation() {
                 <Button 
                   variant="outline"
                   className="border-amber-500/30 text-amber-600"
-                  onClick={() => {
-                    setSelectedShipment(nextEnvio);
-                    setDialogType('reschedule');
-                  }}
+                  onClick={() => openDialog(nextEnvio, 'reschedule')}
                 >
                   <CalendarClock className="h-4 w-4 mr-1" />
                   Reprogramar
                 </Button>
                 <Button 
                   className={isPickup ? 'bg-chofer hover:bg-chofer/90' : 'bg-success hover:bg-success/90'}
-                  onClick={() => {
-                    setSelectedShipment(nextEnvio);
-                    setDialogType(isPickup ? 'pickup' : 'delivery');
-                  }}
+                  onClick={() => openDialog(nextEnvio, isPickup ? 'pickup' : 'delivery')}
                 >
                   <CheckCircle className="h-4 w-4 mr-1" />
                   {isPickup ? 'Retiro OK' : 'Entrega OK'}
@@ -707,8 +734,7 @@ export default function ActiveRouteNavigation() {
               className={`${isCurrent ? 'border-primary border-2' : ''} ${isCompleted ? 'opacity-60' : 'cursor-pointer hover:border-primary/50'}`}
               onClick={() => {
                 if (!isCompleted) {
-                  setSelectedShipment(envio);
-                  setDialogType(isItemPickup ? 'pickup' : 'delivery');
+                  openDialog(envio, isItemPickup ? 'pickup' : 'delivery');
                 }
               }}
             >
@@ -772,8 +798,7 @@ export default function ActiveRouteNavigation() {
                     className={isItemPickup ? 'text-chofer hover:bg-chofer/10' : 'text-success hover:bg-success/10'}
                     onClick={(e) => {
                       e.stopPropagation();
-                      setSelectedShipment(envio);
-                      setDialogType(isItemPickup ? 'pickup' : 'delivery');
+                      openDialog(envio, isItemPickup ? 'pickup' : 'delivery');
                     }}
                   >
                     <CheckCircle className="h-4 w-4" />
@@ -801,8 +826,7 @@ export default function ActiveRouteNavigation() {
                     item.envio.estado === 'devuelto' || 
                     item.envio.estado_retiro === 'retirado';
                   if (!isCompleted) {
-                    setSelectedShipment(item.envio);
-                    setDialogType(isItemPickup ? 'pickup' : 'delivery');
+                    openDialog(item.envio, isItemPickup ? 'pickup' : 'delivery');
                   }
                 }
               }}
@@ -849,11 +873,9 @@ export default function ActiveRouteNavigation() {
       {selectedShipment && dialogType === 'pickup' && (
         <PickupConfirmation
           shipment={selectedShipment}
-          onClose={() => {
-            setSelectedShipment(null);
-            setDialogType(null);
-          }}
+          onClose={closeDialog}
           onSuccess={() => {
+            closeDialog();
             queryClient.invalidateQueries({ queryKey: ['my-active-route-paradas'] });
             queryClient.invalidateQueries({ queryKey: ['my-active-route-envios-hoja'] });
             queryClient.invalidateQueries({ queryKey: ['my-active-route-planificada'] });
@@ -865,11 +887,9 @@ export default function ActiveRouteNavigation() {
       {selectedShipment && dialogType === 'delivery' && (
         <DeliveryConfirmation
           shipment={selectedShipment}
-          onClose={() => {
-            setSelectedShipment(null);
-            setDialogType(null);
-          }}
+          onClose={closeDialog}
           onSuccess={() => {
+            closeDialog();
             queryClient.invalidateQueries({ queryKey: ['my-active-route-paradas'] });
             queryClient.invalidateQueries({ queryKey: ['my-active-route-envios-hoja'] });
             queryClient.invalidateQueries({ queryKey: ['my-active-route-planificada'] });
@@ -881,11 +901,9 @@ export default function ActiveRouteNavigation() {
       {selectedShipment && dialogType === 'incident' && (
         <ReportIncidentDialog
           shipment={selectedShipment}
-          onClose={() => {
-            setSelectedShipment(null);
-            setDialogType(null);
-          }}
+          onClose={closeDialog}
           onSuccess={() => {
+            closeDialog();
             queryClient.invalidateQueries({ queryKey: ['my-active-route-paradas'] });
             queryClient.invalidateQueries({ queryKey: ['my-active-route-envios-hoja'] });
             queryClient.invalidateQueries({ queryKey: ['my-active-route-planificada'] });
@@ -897,11 +915,9 @@ export default function ActiveRouteNavigation() {
       {selectedShipment && dialogType === 'reschedule' && (
         <RescheduleDialog
           shipment={selectedShipment}
-          onClose={() => {
-            setSelectedShipment(null);
-            setDialogType(null);
-          }}
+          onClose={closeDialog}
           onSuccess={() => {
+            closeDialog();
             queryClient.invalidateQueries({ queryKey: ['my-active-route-paradas'] });
             queryClient.invalidateQueries({ queryKey: ['my-active-route-envios-hoja'] });
             queryClient.invalidateQueries({ queryKey: ['my-active-route-planificada'] });
