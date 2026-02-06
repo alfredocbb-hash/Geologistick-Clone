@@ -55,6 +55,10 @@ export default function QRScanner({ onScan, onClose, continuousMode = false, sca
   const scannedCodesRef = useRef<Set<string>>(new Set());
   const autoFallbackTriggeredRef = useRef(false);
   
+  // Ref to always have the latest onScan callback (avoids stale closures in continuous mode)
+  const onScanRef = useRef(onScan);
+  useEffect(() => { onScanRef.current = onScan; }, [onScan]);
+  
   // Use centralized native platform detection
   const { isNative, isAndroid, isIOS, platform } = useNativePlatform();
   
@@ -157,18 +161,21 @@ export default function QRScanner({ onScan, onClose, continuousMode = false, sca
       href: window.location.href,
     });
     
-    toast.info(`Plataforma: ${platform}, Nativo: ${isNative}, Android: ${isAndroid}`);
+    // (debug toast removed for production)
 
     // Reset auto-fallback flag on mode change
     autoFallbackTriggeredRef.current = false;
 
     if (shouldStartWithWeb && !forceWebScanner) {
-      // Android native: Start with web by default (skip native that hangs)
-      console.log('[QRScanner] Android native detected - starting with web scanner');
-      setIsLoading(false);
+      // Android native: Start with web scanner automatically (skip native that hangs)
+      console.log('[QRScanner] Android native detected - auto-starting web scanner');
+      setForceWebScanner(true);
+      setWebStarted(true);
+      setIsLoading(true);
       setError(null);
       setShowOpenSettings(false);
-      setForceWebScanner(true); // Force web mode
+      // Auto-init web scanner after DOM updates with the new state
+      setTimeout(() => initWebScanner(), 200);
     } else if (shouldUseNative) {
       initNativeScannerWithStartScan();
     } else {
@@ -317,11 +324,11 @@ export default function QRScanner({ onScan, onClose, continuousMode = false, sca
             try { navigator.vibrate?.(200); } catch(e) {}
             const beep = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1f');
             beep.play().catch(() => {});
-            onScan(barcode.rawValue);
+            onScanRef.current(barcode.rawValue);
           } else {
             await cleanupNativeScanner();
             toast.success(`Código escaneado: ${barcode.rawValue.substring(0, 20)}...`);
-            onScan(barcode.rawValue);
+            onScanRef.current(barcode.rawValue);
           }
         }
       });
@@ -541,9 +548,9 @@ export default function QRScanner({ onScan, onClose, continuousMode = false, sca
             try { navigator.vibrate?.(200); } catch(e) {}
             const beep = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1f');
             beep.play().catch(() => {});
-            onScan(decodedText);
+            onScanRef.current(decodedText);
           } else {
-            onScan(decodedText);
+            onScanRef.current(decodedText);
           }
         },
         () => {}

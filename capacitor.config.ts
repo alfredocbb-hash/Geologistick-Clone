@@ -4,6 +4,10 @@ const config: CapacitorConfig = {
   appId: 'com.geologic.choferapp',
   appName: 'ChoferApp',
   webDir: 'dist',
+  server: {
+    url: "https://geologic.lovable.app?forceHideBadge=true",
+    cleartext: true,
+  },
   plugins: {
     StatusBar: {
       style: 'DARK',
