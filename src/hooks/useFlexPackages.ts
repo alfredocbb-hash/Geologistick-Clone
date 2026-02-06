@@ -316,7 +316,8 @@ export function useFlexPackages(): UseFlexPackagesReturn {
         .single();
 
       if (rutaError || !ruta) {
-        throw new Error('Error al crear la ruta');
+        console.error('Error creating route:', rutaError);
+        throw new Error(rutaError?.message || 'Error al crear la ruta');
       }
 
       // Add shipments to the route
