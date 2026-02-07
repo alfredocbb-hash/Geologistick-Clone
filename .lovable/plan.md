@@ -1,79 +1,82 @@
 
 
-# Corregir rendición de chofer y actualización de pagos MP
+# Corregir paginas de error en OAuth de Tiendanube y MercadoLibre
 
-## Problema 1: Error al rendir chofer
+## Estado Actual
 
-El error es: `new row for relation "movimientos_caja" violates check constraint "movimientos_caja_tipo_check"`
+Las paginas de **exito** ya estan correctamente implementadas en ambas integraciones:
+- **Tiendanube**: Muestra una pagina con fondo degradado violeta, animacion de check, mensaje "Conexion Exitosa!" y agradecimiento
+- **MercadoLibre**: Muestra una pagina con fondo amarillo (branding ML), animacion de check, mensaje "Conexion Exitosa!" y agradecimiento
 
-**Causa raíz**: La tabla `movimientos_caja` tiene un CHECK constraint que solo permite los valores `'entrada'` y `'salida'`, pero todo el código de la aplicación (Cash.tsx y el RPC `receive_rendition`) usa `'ingreso'` y `'egreso'`. La tabla está vacía porque nunca se pudo insertar un registro con estos valores.
+Sin embargo, hay **5 puntos donde el usuario veria JSON crudo** en lugar de una pagina amigable si ocurre un error:
 
-**Solución**: Actualizar el CHECK constraint para que acepte `'ingreso'` y `'egreso'` en lugar de `'entrada'` y `'salida'`.
+## Problemas Identificados
 
----
+### 1. MercadoLibre - Errores en authorize (3 puntos)
+Cuando un seller intenta conectar su tienda de ML y algo falla ANTES de redirigir a MercadoLibre, ve JSON crudo:
 
-## Problema 2: Pagos de Mercado Pago no se actualizan
+- **seller_id faltante** (linea 59-62): Responde `{"error": "seller_id is required"}`
+- **Seller no encontrado** (linea 74-77): Responde `{"error": "Seller not found"}`
+- **Integracion no configurada** (linea 85-88): Responde `{"error": "MercadoLibre integration not configured..."}`
 
-Los logs muestran que el webhook sigue fallando con "Could not find matching tenant for payment 144620464845", sin mostrar ningún log intermedio de la Estrategia 2. Esto indica que la corrección anterior del webhook no se desplegó correctamente o que `fetchPaymentFromMP` está fallando silenciosamente (sin log antes del `continue`).
+### 2. MercadoLibre - Error general catch (linea 318-324)
+Si ocurre un error inesperado, responde JSON: `{"error": "..."}`
 
-**Causa raíz doble**:
-1. Cuando `fetchPaymentFromMP` retorna `null` (error de API), el loop hace `continue` sin ningún log, haciendo imposible diagnosticar por qué falla
-2. El código no tiene un `unique constraint` en `(envio_id, metodo)` de la tabla `pagos`, lo que hace que el `upsert` con `onConflict` falle silenciosamente
+### 3. Tiendanube - Error general catch (linea 455-461)
+Si ocurre un error inesperado en el flujo OAuth de Tiendanube, responde JSON: `{"error": "..."}`
 
-**Solución**:
-- Agregar logs detallados en cada punto de decisión de la Estrategia 2
-- Agregar un unique constraint parcial en `pagos(envio_id, metodo)` para que el upsert funcione
-- Re-desplegar la función asegurando que los cambios anteriores también estén incluidos
+## Solucion
 
----
+### Archivo: `supabase/functions/mercadolibre-oauth/index.ts`
 
-## Cambios técnicos
+Cambios:
+1. Convertir las 3 respuestas de error del endpoint `authorize` de JSON a HTML, usando la funcion `generateHtmlResponse(false, ...)` que ya existe
+2. Convertir el catch general a HTML usando `generateHtmlResponse(false, ...)`
+3. Convertir el "Unknown endpoint" a HTML
 
-### Migración SQL
+### Archivo: `supabase/functions/tiendanube-oauth/index.ts`
 
-1. Eliminar el CHECK constraint viejo y crear uno nuevo con los valores correctos:
+Cambios:
+1. Convertir el catch general (linea 455-461) para usar la funcion `errorPage()` que ya existe en lugar de JSON
 
-```sql
-ALTER TABLE movimientos_caja DROP CONSTRAINT movimientos_caja_tipo_check;
-ALTER TABLE movimientos_caja ADD CONSTRAINT movimientos_caja_tipo_check 
-  CHECK (tipo = ANY (ARRAY['ingreso'::text, 'egreso'::text]));
+## Seccion Tecnica
+
+### MercadoLibre OAuth - authorize endpoint
+
+```
+ANTES (linea 59-62):
+  return new Response(JSON.stringify({ error: 'seller_id is required' }), ...)
+
+DESPUES:
+  return new Response(
+    generateHtmlResponse(false, 'Enlace invalido. Solicita un nuevo enlace a tu proveedor logistico.', ''),
+    { status: 400, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+  )
 ```
 
-2. Agregar unique constraint parcial para el upsert de pagos MP:
+Aplicar el mismo patron a:
+- Seller no encontrado (linea 74-77)
+- Integracion no configurada (linea 85-88)
+- Catch general (linea 318-324)
+- Unknown endpoint (linea 313-315)
 
-```sql
-CREATE UNIQUE INDEX IF NOT EXISTS pagos_envio_metodo_unique 
-  ON pagos(envio_id, metodo) 
-  WHERE estado = 'pendiente';
+### Tiendanube OAuth - catch general
+
 ```
+ANTES (linea 457-460):
+  return new Response(JSON.stringify({ error: message }), ...)
 
-### Webhook: `supabase/functions/mercadopago-webhook/index.ts`
-
-Agregar logs detallados en la Estrategia 2 para diagnosticar cada paso:
-
-- Log al entrar al loop con el tenant ID
-- Log si `fetchPaymentFromMP` falla (antes del `continue`)
-- Log si `external_reference` está vacío
-- Log si no se encuentra el envío del tenant
-- Cambiar el `upsert` por un `update` directo ya que siempre debería existir un pago pendiente
+DESPUES:
+  return new Response(
+    errorPage("Error inesperado", "Ocurrio un error procesando la conexion. Intenta nuevamente."),
+    { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+  )
+```
 
 ### Re-despliegue
+Desplegar ambas funciones: `tiendanube-oauth` y `mercadolibre-oauth`
 
-Desplegar la función `mercadopago-webhook` para asegurar que todos los cambios (incluyendo los de la iteración anterior) estén activos.
-
----
-
-## Archivos a modificar
-
-| Archivo | Cambio |
-|---------|--------|
-| Migración SQL | Fix CHECK constraint `movimientos_caja`, agregar index único en `pagos` |
-| `supabase/functions/mercadopago-webhook/index.ts` | Agregar logs detallados en Strategy 2 |
-
-## Resultado esperado
-
-- La rendición de chofer se procesa correctamente y crea movimientos de caja con tipo `'ingreso'`
-- El módulo de Control de Caja también puede registrar ingresos y egresos sin errores
-- Los pagos de Mercado Pago se actualizan automáticamente cuando el webhook recibe la notificación
-- Los logs permiten diagnosticar cualquier fallo futuro en el webhook
+## Resultado Esperado
+- En cualquier escenario (exito o error), el usuario siempre vera una pagina HTML estilizada con un mensaje claro en espanol
+- Nunca vera JSON crudo ni codigo fuente
 
