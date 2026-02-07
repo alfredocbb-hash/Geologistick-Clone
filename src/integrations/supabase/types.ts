@@ -2984,7 +2984,7 @@ export type Database = {
       sucursal_zonas: {
         Row: {
           activa: boolean | null
-          ciudad: string
+          ciudad: string | null
           codigo_postal_desde: string | null
           codigo_postal_hasta: string | null
           created_at: string | null
@@ -2994,7 +2994,7 @@ export type Database = {
         }
         Insert: {
           activa?: boolean | null
-          ciudad: string
+          ciudad?: string | null
           codigo_postal_desde?: string | null
           codigo_postal_hasta?: string | null
           created_at?: string | null
@@ -3004,7 +3004,7 @@ export type Database = {
         }
         Update: {
           activa?: boolean | null
-          ciudad?: string
+          ciudad?: string | null
           codigo_postal_desde?: string | null
           codigo_postal_hasta?: string | null
           created_at?: string | null
