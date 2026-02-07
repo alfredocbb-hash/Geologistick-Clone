@@ -16,6 +16,7 @@ import { DollarSign, Banknote, CreditCard, Building2, Smartphone, Loader2, Exter
 import { useMercadoPagoConfig } from '@/hooks/useIntegrationConfig';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { QRCodeSVG } from 'qrcode.react';
 
 type PaymentMethod = 'efectivo' | 'mercado_pago' | 'transferencia' | 'tarjeta';
 
@@ -213,6 +214,16 @@ export function PaymentMethodDialog({
                 {mpEnvironment === 'sandbox' && (
                   <Badge variant="outline" className="text-xs">Sandbox</Badge>
                 )}
+              </div>
+
+              {/* QR Code */}
+              <div className="flex justify-center p-4 bg-white rounded-lg">
+                <QRCodeSVG
+                  value={mpEnvironment === 'sandbox' ? mpPayment.sandbox_init_point : mpPayment.init_point}
+                  size={200}
+                  level="M"
+                  includeMargin
+                />
               </div>
               
               <Button 

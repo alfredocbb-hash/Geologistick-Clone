@@ -15,9 +15,12 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, CheckCircle2, Package, MapPin, User, Camera, X } from 'lucide-react';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Loader2, CheckCircle2, Package, MapPin, User, Camera, X, Banknote, Smartphone, Building2, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import SignatureCanvas from './SignatureCanvas';
+import { QRCodeSVG } from 'qrcode.react';
+import { useMercadoPagoConfig } from '@/hooks/useIntegrationConfig';
 
 interface Shipment {
   id: string;
@@ -41,6 +44,14 @@ interface DeliveryConfirmationProps {
   onSuccess: () => void;
 }
 
+type PaymentMethodType = 'efectivo' | 'mercado_pago' | 'transferencia';
+
+interface MpPaymentData {
+  preference_id: string;
+  init_point: string;
+  sandbox_init_point: string;
+}
+
 export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: DeliveryConfirmationProps) {
   const { user, profile } = useAuth();
   const queryClient = useQueryClient();
@@ -57,6 +68,11 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
   );
   const [notes, setNotes] = useState('');
   const [deliveryLocation, setDeliveryLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>('efectivo');
+  const [mpPayment, setMpPayment] = useState<MpPaymentData | null>(null);
+  const [isCreatingMpPayment, setIsCreatingMpPayment] = useState(false);
+
+  const { isConfigured: isMpConfigured, environment: mpEnvironment } = useMercadoPagoConfig();
 
   // Restore state from sessionStorage (survives WebView reloads on Android)
   useEffect(() => {
@@ -343,15 +359,21 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
       // Register COD payment if applicable
       if (requiresPayment && amountCollected && parseFloat(amountCollected) > 0) {
         try {
-          const { data: codResult, error: codError } = await supabase.rpc('register_cod_payment', {
-            p_envio_id: shipment.id,
-            p_monto: parseFloat(amountCollected),
-            p_metodo: 'efectivo' as any,
-          });
-          if (codError) {
-            console.error('Error registering COD payment:', codError);
+          if (paymentMethod === 'mercado_pago') {
+            // MP payment is already registered as "pendiente" by the edge function
+            // The webhook will update it when payment completes
+            console.log('MP payment already registered, skipping COD registration');
           } else {
-            console.log('COD payment registered:', codResult);
+            const { data: codResult, error: codError } = await supabase.rpc('register_cod_payment', {
+              p_envio_id: shipment.id,
+              p_monto: parseFloat(amountCollected),
+              p_metodo: paymentMethod as any,
+            });
+            if (codError) {
+              console.error('Error registering COD payment:', codError);
+            } else {
+              console.log('COD payment registered:', codResult);
+            }
           }
         } catch (e) {
           console.error('Error in COD payment registration:', e);
@@ -420,7 +442,44 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
     },
   });
 
-  const canSubmit = !requiresPayment || (amountCollected && parseFloat(amountCollected) > 0);
+  const canSubmit = (!requiresPayment || (amountCollected && parseFloat(amountCollected) > 0)) && 
+    (paymentMethod !== 'mercado_pago' || mpPayment !== null);
+
+  const handleCreateMpPayment = async () => {
+    setIsCreatingMpPayment(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mercadopago-payment`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({
+            envio_id: shipment.id,
+            tracking_number: shipment.tracking_number,
+            amount: parseFloat(amountCollected) || shipment.precio_total,
+            description: `Envío ${shipment.tracking_number}`,
+            environment: mpEnvironment,
+          }),
+        }
+      );
+      const data = await response.json();
+      if (!response.ok) {
+        toast.error(data.error || 'Error al crear pago de Mercado Pago');
+        return;
+      }
+      setMpPayment(data);
+      toast.success('QR de pago generado');
+    } catch (error) {
+      console.error('Error creating MP payment:', error);
+      toast.error('Error al conectar con Mercado Pago');
+    } finally {
+      setIsCreatingMpPayment(false);
+    }
+  };
 
   return (
     <Dialog open onOpenChange={handleClose}>
@@ -515,7 +574,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
 
           {/* Amount collected (if COD or pago en destino) */}
           {requiresPayment && (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <Label htmlFor="amount" className="text-destructive font-medium">💵 Monto a Cobrar *</Label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
@@ -532,6 +591,75 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
               <p className="text-sm text-destructive font-medium">
                 ⚠️ COBRAR AL DESTINATARIO: ${shipment.precio_total.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
               </p>
+
+              {/* Payment method selector */}
+              <Label>Método de Cobro</Label>
+              <RadioGroup
+                value={paymentMethod}
+                onValueChange={(v) => { setPaymentMethod(v as PaymentMethodType); setMpPayment(null); }}
+                className="grid gap-2"
+              >
+                <label className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors ${paymentMethod === 'efectivo' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'}`}>
+                  <RadioGroupItem value="efectivo" className="sr-only" />
+                  <Banknote className="h-5 w-5 text-muted-foreground" />
+                  <span className="font-medium text-sm">Efectivo</span>
+                </label>
+                {isMpConfigured && (
+                  <label className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors ${paymentMethod === 'mercado_pago' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'}`}>
+                    <RadioGroupItem value="mercado_pago" className="sr-only" />
+                    <Smartphone className="h-5 w-5 text-muted-foreground" />
+                    <span className="font-medium text-sm">Mercado Pago</span>
+                  </label>
+                )}
+                <label className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors ${paymentMethod === 'transferencia' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'}`}>
+                  <RadioGroupItem value="transferencia" className="sr-only" />
+                  <Building2 className="h-5 w-5 text-muted-foreground" />
+                  <span className="font-medium text-sm">Transferencia</span>
+                </label>
+              </RadioGroup>
+
+              {/* MP QR Section */}
+              {paymentMethod === 'mercado_pago' && !mpPayment && (
+                <Button
+                  type="button"
+                  onClick={handleCreateMpPayment}
+                  disabled={isCreatingMpPayment || !amountCollected || parseFloat(amountCollected) <= 0}
+                  className="w-full"
+                >
+                  {isCreatingMpPayment ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generando QR...</>
+                  ) : (
+                    <><Smartphone className="h-4 w-4 mr-2" /> Generar QR de Pago</>
+                  )}
+                </Button>
+              )}
+
+              {paymentMethod === 'mercado_pago' && mpPayment && (
+                <div className="rounded-lg border-2 border-primary bg-primary/5 p-4 space-y-3">
+                  <div className="flex justify-center p-3 bg-white rounded-lg">
+                    <QRCodeSVG
+                      value={mpEnvironment === 'sandbox' ? mpPayment.sandbox_init_point : mpPayment.init_point}
+                      size={180}
+                      level="M"
+                      includeMargin
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      const url = mpEnvironment === 'sandbox' ? mpPayment.sandbox_init_point : mpPayment.init_point;
+                      window.open(url, '_blank');
+                    }}
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" /> Abrir Link
+                  </Button>
+                  <p className="text-xs text-muted-foreground text-center">
+                    Muestre el QR al destinatario. El pago se registra automáticamente.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
