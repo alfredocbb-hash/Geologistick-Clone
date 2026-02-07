@@ -57,8 +57,8 @@ Deno.serve(async (req) => {
       
       if (!sellerId) {
         return new Response(
-          JSON.stringify({ error: 'seller_id is required' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          generateHtmlResponse(false, 'Enlace inválido. Por favor solicita un nuevo enlace de conexión a tu proveedor logístico.', ''),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' } }
         );
       }
 
@@ -72,8 +72,8 @@ Deno.serve(async (req) => {
       if (sellerError || !seller) {
         console.error('[ML OAuth] Seller not found:', sellerError);
         return new Response(
-          JSON.stringify({ error: 'Seller not found' }),
-          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          generateHtmlResponse(false, 'No pudimos encontrar tu tienda. Por favor contacta a tu proveedor logístico para obtener un nuevo enlace.', ''),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' } }
         );
       }
 
@@ -83,8 +83,8 @@ Deno.serve(async (req) => {
       if (!config || !config.client_id) {
         console.error('[ML OAuth] Integration config not found for tenant:', seller.tenant_id);
         return new Response(
-          JSON.stringify({ error: 'MercadoLibre integration not configured for this tenant' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          generateHtmlResponse(false, 'La integración con MercadoLibre aún no está configurada. Por favor contacta a tu proveedor logístico.', ''),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' } }
         );
       }
 
@@ -311,16 +311,15 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ error: 'Unknown endpoint' }),
-      { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      generateHtmlResponse(false, 'Página no encontrada. Verifica el enlace e intenta nuevamente.', ''),
+      { status: 404, headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' } }
     );
 
   } catch (error) {
     console.error('[ML OAuth] Error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      generateHtmlResponse(false, 'Ocurrió un error inesperado procesando la conexión. Por favor intenta nuevamente.', ''),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' } }
     );
   }
 });
