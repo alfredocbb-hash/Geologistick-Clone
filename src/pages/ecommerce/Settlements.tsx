@@ -17,7 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Search, DollarSign, TrendingUp, TrendingDown, Plus, Calculator, FileText, Eye, Check, X, CalendarIcon, Download, Loader2 } from 'lucide-react';
+import { Search, DollarSign, TrendingUp, TrendingDown, Plus, Calculator, FileText, Eye, Check, X, CalendarIcon, Download, Loader2, Printer } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -852,8 +852,19 @@ export default function Settlements() {
                               variant="ghost"
                               size="sm"
                               onClick={() => downloadSellerSettlementPDF(liq)}
+                              title="Descargar PDF"
                             >
                               <Download className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              asChild
+                              title="Imprimir"
+                            >
+                              <a href={`/print-settlement?id=${liq.id}&type=seller`} target="_blank" rel="noopener noreferrer">
+                                <Printer className="h-4 w-4" />
+                              </a>
                             </Button>
                             {liq.estado === 'generada' && (
                               <Button

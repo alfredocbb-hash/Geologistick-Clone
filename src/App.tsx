@@ -66,6 +66,8 @@ import LandingContentAdmin from "./pages/LandingContentAdmin";
 import TrialRequests from "./pages/TrialRequests";
 import NotFound from "./pages/NotFound";
 import Incidents from "./pages/Incidents";
+import PrintInvoice from "./pages/PrintInvoice";
+import PrintSettlement from "./pages/PrintSettlement";
 
 // Seller Portal Pages
 import { SellerLayout } from "./components/seller/SellerLayout";
@@ -176,6 +178,8 @@ function AppRoutes() {
       <Route path="/shipments/new" element={<DashboardLayout><NewShipment /></DashboardLayout>} />
       <Route path="/print-label" element={<PrintLabel />} />
       <Route path="/print-receipt" element={<PrintReceipt />} />
+      <Route path="/print-invoice" element={<PrintInvoice />} />
+      <Route path="/print-settlement" element={<PrintSettlement />} />
       
       {/* Operaciones */}
       <Route path="/scan" element={<DashboardLayout><ScanQR /></DashboardLayout>} />

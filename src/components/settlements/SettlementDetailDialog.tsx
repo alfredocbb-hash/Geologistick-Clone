@@ -297,9 +297,11 @@ export function SettlementDetailDialog({
               )}
             </DialogTitle>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={handlePrint}>
-                <Printer className="h-4 w-4 mr-1" />
-                Imprimir
+              <Button variant="outline" size="sm" asChild>
+                <a href={`/print-settlement?id=${settlementId}&type=${type}`} target="_blank" rel="noopener noreferrer">
+                  <Printer className="h-4 w-4 mr-1" />
+                  Imprimir
+                </a>
               </Button>
               <Button variant="outline" size="sm" onClick={generatePDF}>
                 <Download className="h-4 w-4 mr-1" />

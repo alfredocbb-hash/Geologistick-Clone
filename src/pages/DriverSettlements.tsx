@@ -32,7 +32,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Truck, Calculator, FileText, Check, DollarSign, Calendar, CreditCard, Eye, Edit2, Package, Clock, Download, Minus, Banknote, Trash2 } from 'lucide-react';
+import { Truck, Calculator, FileText, Check, DollarSign, Calendar, CreditCard, Eye, Edit2, Package, Clock, Download, Minus, Banknote, Trash2, Printer } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -829,6 +829,16 @@ export default function DriverSettlements() {
                           title="Descargar PDF"
                         >
                           <Download className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          asChild
+                          title="Imprimir"
+                        >
+                          <a href={`/print-settlement?id=${liq.id}&type=driver`} target="_blank" rel="noopener noreferrer">
+                            <Printer className="h-4 w-4" />
+                          </a>
                         </Button>
                         {liq.estado !== 'pagada' && (
                           <>

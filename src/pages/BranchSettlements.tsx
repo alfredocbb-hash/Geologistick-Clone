@@ -32,7 +32,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
- import { Building2, Calculator, FileText, Check, DollarSign, Calendar, Eye, CreditCard, Download, Trash2, AlertTriangle, Receipt } from 'lucide-react';
+ import { Building2, Calculator, FileText, Check, DollarSign, Calendar, Eye, CreditCard, Download, Trash2, AlertTriangle, Receipt, Printer } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -953,6 +953,16 @@ export default function BranchSettlements() {
                           title="Descargar PDF"
                         >
                           <Download className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          asChild
+                          title="Imprimir"
+                        >
+                          <a href={`/print-settlement?id=${liq.id}&type=branch`} target="_blank" rel="noopener noreferrer">
+                            <Printer className="h-4 w-4" />
+                          </a>
                         </Button>
                         {liq.estado !== 'pagada' && (
                           <>
