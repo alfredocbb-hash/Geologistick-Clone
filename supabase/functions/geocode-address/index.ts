@@ -64,10 +64,31 @@ serve(async (req) => {
       throw new Error('GOOGLE_MAPS_API_KEY not configured');
     }
 
-    const { address, city, province, country = 'Argentina' }: GeocodeRequest = await req.json();
+    let requestBody: GeocodeRequest;
+    try {
+      requestBody = await req.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ error: 'Invalid JSON body' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    if (!address) {
-      throw new Error('Address is required');
+    const { address, city, province, country = 'Argentina' } = requestBody;
+
+    if (!address || typeof address !== "string") {
+      return new Response(
+        JSON.stringify({ error: 'Address is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate input lengths to prevent abuse
+    if (address.length > 500 || (city && city.length > 200) || (province && province.length > 200)) {
+      return new Response(
+        JSON.stringify({ error: 'Input too long' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Build full address string

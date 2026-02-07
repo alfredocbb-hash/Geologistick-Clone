@@ -27,6 +27,24 @@ const sanitizeNotasForPublic = (notas: string | null): string | null => {
   return sanitized.trim() || null;
 };
 
+// Mask a name for public access: "Juan Pérez" -> "Juan P***"
+const maskName = (name: string | null): string | null => {
+  if (!name || name.length < 2) return name;
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) {
+    return parts[0].substring(0, 2) + "***";
+  }
+  // Show first name, mask last name
+  return parts[0] + " " + parts[parts.length - 1].substring(0, 1) + "***";
+};
+
+// Mask an address: "Av. Rivadavia 1234, CABA" -> "Av. Rivadavia ****, CABA"
+const maskAddress = (address: string | null): string | null => {
+  if (!address) return null;
+  // Replace house numbers with ****
+  return address.replace(/\b(\d{2,})\b/g, '****');
+};
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -53,9 +71,18 @@ serve(async (req: Request) => {
       );
     }
 
+    // Input validation: limit tracking code length
+    if (trackingCode.length > 100) {
+      return new Response(
+        JSON.stringify({ error: "Invalid tracking code" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     logStep("Looking up tracking", { code: trackingCode });
 
     let tenantId: string | null = null;
+    const isAuthenticated = !!apiKey;
 
     // If API key is provided, validate it and get tenant_id
     if (apiKey) {
@@ -85,13 +112,19 @@ serve(async (req: Request) => {
       logStep("API key validated", { tenantId });
     }
 
-    // Build the query
-    // If tracking code is short (< 15 chars), search by suffix using ILIKE '%code'
-    // Otherwise, do exact case-insensitive match
+    // SECURITY: Require full tracking number for unauthenticated public access
+    // This prevents enumeration attacks via short suffix matching
     const isShortCode = trackingCode.length < 15;
+    if (isShortCode && !isAuthenticated) {
+      return new Response(
+        JSON.stringify({ error: "Full tracking number required for public access" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const searchPattern = isShortCode ? `%${trackingCode}` : trackingCode;
     
-    logStep("Search mode", { isShortCode, searchPattern });
+    logStep("Search mode", { isShortCode, authenticated: isAuthenticated });
     
     let query = supabaseClient
       .from("envios")
@@ -177,10 +210,9 @@ serve(async (req: Request) => {
     const destinatario = Array.isArray(envio.destinatario) ? envio.destinatario[0] : envio.destinatario;
 
     // Determine current branch based on status
-    // If in sucursal_entrega, that's where the package is. Otherwise, use sucursal_destino
     const sucursalActual = sucursalEntrega?.nombre || sucursalDestino?.nombre || null;
 
-    // Build response
+    // Build response - mask PII for public (unauthenticated) access
     const response = {
       tracking_number: envio.tracking_number,
       estado: envio.estado,
@@ -190,37 +222,44 @@ serve(async (req: Request) => {
       fecha_entrega: envio.fecha_entrega,
       origen: {
         ciudad: envio.ciudad_retiro || sucursalOrigen?.ciudad,
-        direccion: envio.direccion_retiro,
+        // Only show full address for authenticated requests
+        direccion: isAuthenticated ? envio.direccion_retiro : maskAddress(envio.direccion_retiro),
         sucursal: sucursalOrigen?.nombre,
       },
       destino: {
         ciudad: envio.ciudad_entrega || sucursalDestino?.ciudad,
-        direccion: envio.direccion_entrega,
+        direccion: isAuthenticated ? envio.direccion_entrega : maskAddress(envio.direccion_entrega),
         sucursal: sucursalDestino?.nombre,
       },
       detalles: {
         bultos: envio.cantidad_bultos,
-        peso_kg: envio.peso_kg,
-        descripcion: envio.descripcion,
+        // Only expose weight and description for authenticated requests
+        ...(isAuthenticated ? {
+          peso_kg: envio.peso_kg,
+          descripcion: envio.descripcion,
+        } : {}),
       },
       remitente: {
-        nombre: envio.nombre_remitente || remitente?.nombre || null,
+        nombre: isAuthenticated
+          ? (envio.nombre_remitente || remitente?.nombre || null)
+          : maskName(envio.nombre_remitente || remitente?.nombre || null),
         ciudad: remitente?.ciudad || null,
       },
       destinatario: {
-        nombre: envio.nombre_destinatario || destinatario?.nombre || null,
+        nombre: isAuthenticated
+          ? (envio.nombre_destinatario || destinatario?.nombre || null)
+          : maskName(envio.nombre_destinatario || destinatario?.nombre || null),
         ciudad: destinatario?.ciudad || null,
       },
       branding,
-      // New field: current branch where the package is located
       sucursal_actual: sucursalActual,
       entregado_en_sucursal: envio.entregado_en_sucursal || false,
       historial: (historial || []).map((h) => ({
         id: h.id,
         estado_anterior: h.estado_anterior,
         estado_nuevo: h.estado_nuevo,
-        // Sanitize notes to remove sensitive data (DNI, CUIT)
-        notas: sanitizeNotasForPublic(h.notas),
+        // Always sanitize notes, and for public access only show status-based info
+        notas: isAuthenticated ? sanitizeNotasForPublic(h.notas) : null,
         ubicacion: h.ubicacion,
         fecha: h.created_at,
       })),

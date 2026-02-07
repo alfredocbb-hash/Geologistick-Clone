@@ -89,9 +89,17 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Validate HMAC signature if webhook_secret is configured
+    // Validate HMAC signature
     const receivedSignature = req.headers.get("x-linkedstore-hmac-sha256");
-    if (seller.webhook_secret && receivedSignature) {
+    if (seller.webhook_secret) {
+      if (!receivedSignature) {
+        console.error("Missing HMAC signature header for store:", storeId);
+        return new Response(
+          JSON.stringify({ error: "Missing signature" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       const encoder = new TextEncoder();
       const key = await crypto.subtle.importKey(
         "raw",
@@ -106,9 +114,15 @@ Deno.serve(async (req) => {
         .join('');
 
       if (calculatedSignature !== receivedSignature) {
-        console.warn("Invalid HMAC signature");
-        // Log but don't reject - some platforms don't always send valid signatures
+        console.error("Invalid HMAC signature - REJECTING webhook for store:", storeId);
+        return new Response(
+          JSON.stringify({ error: "Invalid signature" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
+      console.log("HMAC signature verified successfully");
+    } else {
+      console.warn("No webhook_secret configured for seller, skipping HMAC validation");
     }
 
     // Check if token needs refresh before making API calls

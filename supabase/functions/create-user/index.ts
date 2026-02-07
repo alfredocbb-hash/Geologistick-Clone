@@ -70,13 +70,55 @@ Deno.serve(async (req) => {
 
     const adminTenantId = adminProfile.tenant_id;
 
-    // Parse request body
-    const { email, password, nombre, apellido, telefono, sucursal_id, roles } = await req.json();
+    let body: Record<string, unknown>;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ error: "Cuerpo de solicitud inválido" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const { email, password, nombre, apellido, telefono, sucursal_id, roles } = body as Record<string, any>;
 
     // Validate required fields
-    if (!email || !password || !nombre) {
+    if (!email || typeof email !== "string" || !nombre || typeof nombre !== "string" || !password || typeof password !== "string") {
       return new Response(
         JSON.stringify({ error: "Email, contraseña y nombre son requeridos" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate email format
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 255) {
+      return new Response(
+        JSON.stringify({ error: "Formato de email inválido" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate field lengths
+    if (nombre.length > 100 || (apellido && apellido.length > 100) || (telefono && telefono.length > 30)) {
+      return new Response(
+        JSON.stringify({ error: "Los campos exceden la longitud máxima permitida" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate sucursal_id is UUID if provided
+    if (sucursal_id && (typeof sucursal_id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sucursal_id))) {
+      return new Response(
+        JSON.stringify({ error: "sucursal_id tiene formato inválido" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate roles array
+    const validRoles = ['admin', 'operador', 'operador_sucursal', 'chofer', 'super_admin'];
+    if (roles && (!Array.isArray(roles) || roles.length > 5 || roles.some((r: unknown) => typeof r !== "string" || !validRoles.includes(r as string)))) {
+      return new Response(
+        JSON.stringify({ error: "Roles inválidos" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -84,6 +126,13 @@ Deno.serve(async (req) => {
     if (password.length < 6) {
       return new Response(
         JSON.stringify({ error: "La contraseña debe tener al menos 6 caracteres" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (password.length > 128) {
+      return new Response(
+        JSON.stringify({ error: "La contraseña es demasiado larga" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

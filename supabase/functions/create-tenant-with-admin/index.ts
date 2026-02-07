@@ -55,28 +55,54 @@ Deno.serve(async (req) => {
     }
 
     // Parse request body
+    let body: Record<string, unknown>;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ error: "Cuerpo de solicitud inválido" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const { 
-      // Tenant data
-      nombre_empresa, 
-      slug, 
-      plan, 
-      activo, 
-      max_usuarios, 
-      max_sucursales, 
-      max_envios_mes, 
-      trial_days,
-      // Admin user data
-      admin_email, 
-      admin_password, 
-      admin_nombre, 
-      admin_apellido, 
-      admin_telefono 
-    } = await req.json();
+      nombre_empresa, slug, plan, activo, max_usuarios, max_sucursales, 
+      max_envios_mes, trial_days, admin_email, admin_password, 
+      admin_nombre, admin_apellido, admin_telefono 
+    } = body as Record<string, any>;
 
     // Validate required fields
-    if (!nombre_empresa || !slug || !admin_email || !admin_password || !admin_nombre) {
+    if (!nombre_empresa || typeof nombre_empresa !== "string" || nombre_empresa.length > 200) {
       return new Response(
-        JSON.stringify({ error: "Datos de empresa y administrador son requeridos" }),
+        JSON.stringify({ error: "Nombre de empresa inválido" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!slug || typeof slug !== "string" || !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(slug)) {
+      return new Response(
+        JSON.stringify({ error: "Slug inválido (solo letras minúsculas, números y guiones)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!admin_email || typeof admin_email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(admin_email) || admin_email.length > 255) {
+      return new Response(
+        JSON.stringify({ error: "Email de administrador inválido" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!admin_password || typeof admin_password !== "string") {
+      return new Response(
+        JSON.stringify({ error: "Contraseña de administrador requerida" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!admin_nombre || typeof admin_nombre !== "string" || admin_nombre.length > 100) {
+      return new Response(
+        JSON.stringify({ error: "Nombre de administrador inválido" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -84,6 +110,35 @@ Deno.serve(async (req) => {
     if (admin_password.length < 6) {
       return new Response(
         JSON.stringify({ error: "La contraseña debe tener al menos 6 caracteres" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (admin_password.length > 128) {
+      return new Response(
+        JSON.stringify({ error: "La contraseña es demasiado larga" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate numeric limits
+    if (max_usuarios !== undefined && (typeof max_usuarios !== "number" || max_usuarios < 1 || max_usuarios > 10000)) {
+      return new Response(
+        JSON.stringify({ error: "max_usuarios debe ser un número entre 1 y 10000" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (max_sucursales !== undefined && (typeof max_sucursales !== "number" || max_sucursales < 1 || max_sucursales > 10000)) {
+      return new Response(
+        JSON.stringify({ error: "max_sucursales debe ser un número entre 1 y 10000" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (max_envios_mes !== undefined && (typeof max_envios_mes !== "number" || max_envios_mes < 1 || max_envios_mes > 10000000)) {
+      return new Response(
+        JSON.stringify({ error: "max_envios_mes debe ser un número entre 1 y 10000000" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

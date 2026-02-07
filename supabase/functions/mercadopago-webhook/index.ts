@@ -80,6 +80,73 @@ async function getAccessTokenForTenant(
   return config.access_token || null;
 }
 
+async function getWebhookSecretForTenant(
+  supabaseClient: any,
+  tenantId: string,
+  environment: string
+): Promise<string | null> {
+  const { data, error } = await supabaseClient
+    .from("system_integrations")
+    .select("config_value")
+    .eq("integration_type", "mercado_pago")
+    .eq("config_key", "webhook_secret")
+    .eq("environment", environment)
+    .eq("is_active", true)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data.config_value || null;
+}
+
+async function verifyMpSignature(
+  req: Request,
+  paymentId: string,
+  webhookSecret: string
+): Promise<boolean> {
+  const xSignature = req.headers.get("x-signature");
+  const xRequestId = req.headers.get("x-request-id");
+
+  if (!xSignature || !xRequestId) {
+    console.warn("Missing MP signature headers (x-signature or x-request-id)");
+    return false;
+  }
+
+  // Parse x-signature: "ts=XXXXX,v1=YYYYY"
+  const parts = xSignature.split(",");
+  const ts = parts.find((p) => p.startsWith("ts="))?.split("=")[1];
+  const v1 = parts.find((p) => p.startsWith("v1="))?.split("=")[1];
+
+  if (!ts || !v1) {
+    console.warn("Invalid MP x-signature format");
+    return false;
+  }
+
+  // Build manifest string per MP docs
+  const manifest = `id:${paymentId};request-id:${xRequestId};ts:${ts};`;
+
+  try {
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(webhookSecret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+
+    const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(manifest));
+    const calculatedSignature = Array.from(new Uint8Array(signature))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+    return calculatedSignature === v1;
+  } catch (err) {
+    console.error("Error verifying MP signature:", err);
+    return false;
+  }
+}
+
 async function updatePaymentRecord(
   supabaseClient: any,
   envioId: string,
@@ -118,7 +185,24 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    const body: MercadoPagoWebhook = await req.json();
+    // Basic input validation
+    let body: MercadoPagoWebhook;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ error: "Invalid JSON body" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!body || typeof body !== "object" || !body.type || !body.data?.id) {
+      return new Response(
+        JSON.stringify({ error: "Invalid webhook payload" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     console.log(`Webhook received: type=${body.type}, action=${body.action}, data.id=${body.data?.id}`);
 
     // Only process payment notifications
@@ -140,6 +224,27 @@ serve(async (req) => {
       .maybeSingle();
 
     if (existingPayment?.tenant_id) {
+      // Verify webhook signature if webhook_secret is configured
+      const webhookSecret = await getWebhookSecretForTenant(
+        supabaseClient,
+        existingPayment.tenant_id,
+        environment
+      );
+
+      if (webhookSecret) {
+        const isValid = await verifyMpSignature(req, paymentId, webhookSecret);
+        if (!isValid) {
+          console.error("Invalid webhook signature for tenant", existingPayment.tenant_id);
+          return new Response(
+            JSON.stringify({ error: "Invalid signature" }),
+            { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        console.log("Webhook signature verified successfully");
+      } else {
+        console.warn("No webhook_secret configured for tenant, skipping signature verification");
+      }
+
       console.log(`Found payment by mercado_pago_id for tenant ${existingPayment.tenant_id}`);
       const accessToken = await getAccessTokenForTenant(supabaseClient, existingPayment.tenant_id, environment);
       if (!accessToken) {
@@ -192,6 +297,17 @@ serve(async (req) => {
     for (const configItem of allTokenConfigs) {
       const accessToken = configItem.config_value;
       const configTenantId = configItem.tenant_id;
+
+      // Verify signature per tenant if secret is configured
+      const webhookSecret = await getWebhookSecretForTenant(supabaseClient, configTenantId, environment);
+      if (webhookSecret) {
+        const isValid = await verifyMpSignature(req, paymentId, webhookSecret);
+        if (!isValid) {
+          // This tenant's secret doesn't match, skip
+          continue;
+        }
+        console.log(`Signature verified for tenant ${configTenantId}`);
+      }
 
       const payment = await fetchPaymentFromMP(paymentId, accessToken);
       if (!payment) continue;

@@ -102,8 +102,17 @@ serve(async (req) => {
       );
     }
 
-    // Parse request body
-    const body: SnapRequest = await req.json();
+    // Parse request body with validation
+    let body: SnapRequest;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ error: 'Invalid JSON body' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const { points, interpolate = true } = body;
 
     if (!points || !Array.isArray(points) || points.length < 2) {
@@ -111,6 +120,27 @@ serve(async (req) => {
         JSON.stringify({ error: 'At least 2 points are required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    // Limit array size to prevent resource exhaustion
+    if (points.length > 500) {
+      return new Response(
+        JSON.stringify({ error: 'Maximum 500 points allowed per request' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate each point has valid coordinates
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i];
+      if (!p || typeof p.lat !== "number" || typeof p.lng !== "number" ||
+          p.lat < -90 || p.lat > 90 || p.lng < -180 || p.lng > 180 ||
+          !isFinite(p.lat) || !isFinite(p.lng)) {
+        return new Response(
+          JSON.stringify({ error: `Invalid coordinates at index ${i}` }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     console.log(`Processing ${points.length} points for snap-to-roads`);
