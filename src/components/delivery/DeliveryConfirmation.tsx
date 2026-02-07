@@ -144,6 +144,10 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
         amountCollected,
       }));
     } catch (e) {}
+    // Reset input value so onChange fires even if user picks the same file
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
     fileInputRef.current?.click();
   };
 
@@ -531,7 +535,6 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
               ref={fileInputRef}
               type="file"
               accept="image/*"
-              capture="environment"
               onChange={handlePhotoSelect}
               className="hidden"
             />
