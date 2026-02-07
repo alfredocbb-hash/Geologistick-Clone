@@ -1,114 +1,79 @@
 
-# Corregir pagos Mercado Pago y filtrado por sucursal
 
-## Problema 1: Pagos de Mercado Pago no se actualizan
+# Corregir rendición de chofer y actualización de pagos MP
 
-### Diagnostico
+## Problema 1: Error al rendir chofer
 
-Los logs del webhook muestran: `Could not find matching tenant for payment 144620464845`
+El error es: `new row for relation "movimientos_caja" violates check constraint "movimientos_caja_tipo_check"`
 
-El problema esta en la verificacion de firma del webhook. Cuando Mercado Pago (especialmente en sandbox) no envia los headers `x-signature` y `x-request-id`, la funcion `verifyMpSignature` devuelve `false`. En la Estrategia 2 del webhook, esto hace que se salte al unico tenant configurado con `continue`, terminando en "Could not find matching tenant".
+**Causa raíz**: La tabla `movimientos_caja` tiene un CHECK constraint que solo permite los valores `'entrada'` y `'salida'`, pero todo el código de la aplicación (Cash.tsx y el RPC `receive_rendition`) usa `'ingreso'` y `'egreso'`. La tabla está vacía porque nunca se pudo insertar un registro con estos valores.
 
-```text
-Flujo actual (falla):
-  Webhook MP → body.data.id = 144620464845
-  → Estrategia 1: buscar por mercado_pago_id → NO (tiene preference_id guardado)
-  → Estrategia 2: verificar firma → FALLA (headers ausentes) → continue → salta tenant
-  → "Could not find matching tenant" ← ERROR
+**Solución**: Actualizar el CHECK constraint para que acepte `'ingreso'` y `'egreso'` en lugar de `'entrada'` y `'salida'`.
 
-Flujo corregido:
-  Webhook MP → body.data.id = 144620464845
-  → Estrategia 1: buscar por mercado_pago_id → NO
-  → Estrategia 2: verificar firma → headers ausentes → ADVERTENCIA pero continua
-  → Fetch payment de MP API → external_reference = envio_id → MATCH
-  → Actualizar pago a "pagado"
+---
+
+## Problema 2: Pagos de Mercado Pago no se actualizan
+
+Los logs muestran que el webhook sigue fallando con "Could not find matching tenant for payment 144620464845", sin mostrar ningún log intermedio de la Estrategia 2. Esto indica que la corrección anterior del webhook no se desplegó correctamente o que `fetchPaymentFromMP` está fallando silenciosamente (sin log antes del `continue`).
+
+**Causa raíz doble**:
+1. Cuando `fetchPaymentFromMP` retorna `null` (error de API), el loop hace `continue` sin ningún log, haciendo imposible diagnosticar por qué falla
+2. El código no tiene un `unique constraint` en `(envio_id, metodo)` de la tabla `pagos`, lo que hace que el `upsert` con `onConflict` falle silenciosamente
+
+**Solución**:
+- Agregar logs detallados en cada punto de decisión de la Estrategia 2
+- Agregar un unique constraint parcial en `pagos(envio_id, metodo)` para que el upsert funcione
+- Re-desplegar la función asegurando que los cambios anteriores también estén incluidos
+
+---
+
+## Cambios técnicos
+
+### Migración SQL
+
+1. Eliminar el CHECK constraint viejo y crear uno nuevo con los valores correctos:
+
+```sql
+ALTER TABLE movimientos_caja DROP CONSTRAINT movimientos_caja_tipo_check;
+ALTER TABLE movimientos_caja ADD CONSTRAINT movimientos_caja_tipo_check 
+  CHECK (tipo = ANY (ARRAY['ingreso'::text, 'egreso'::text]));
 ```
 
-### Solucion
+2. Agregar unique constraint parcial para el upsert de pagos MP:
 
-Modificar la funcion `verifyMpSignature` para que distinga entre "headers ausentes" (retornar `null`) y "firma invalida" (retornar `false`). En Strategy 2, solo saltar el tenant cuando la firma es invalida, no cuando los headers estan ausentes.
+```sql
+CREATE UNIQUE INDEX IF NOT EXISTS pagos_envio_metodo_unique 
+  ON pagos(envio_id, metodo) 
+  WHERE estado = 'pendiente';
+```
 
-**Archivo**: `supabase/functions/mercadopago-webhook/index.ts`
+### Webhook: `supabase/functions/mercadopago-webhook/index.ts`
 
-Cambios:
-- `verifyMpSignature` retorna `true | false | null` (`null` = headers ausentes)
-- En Strategy 2: si retorna `null`, continuar con advertencia. Si retorna `false`, saltar tenant
-- Agregar mas logs para diagnostico
+Agregar logs detallados en la Estrategia 2 para diagnosticar cada paso:
 
----
+- Log al entrar al loop con el tenant ID
+- Log si `fetchPaymentFromMP` falla (antes del `continue`)
+- Log si `external_reference` está vacío
+- Log si no se encuentra el envío del tenant
+- Cambiar el `upsert` por un `update` directo ya que siempre debería existir un pago pendiente
 
-## Problema 2: Sucursales ven todos los cobros
+### Re-despliegue
 
-### Diagnostico
-
-La politica RLS de `pagos` ya filtra por `sucursal_origen_id = get_user_sucursal(auth.uid())`, por lo que a nivel de base de datos las sucursales solo ven sus pagos. Sin embargo, las consultas en la pagina de Pagos necesitan reforzar este filtrado para los envios pendientes de pago y las estadisticas.
-
-El usuario `Clientes@beraexpress.com` tiene:
-- Rol: `sucursal` + `despachador`
-- Sucursal: Berazategui (`56cc685c-...`)
-
-### Solucion
-
-Agregar filtro por `sucursal_origen_id` en las consultas de envios pendientes para usuarios con rol `sucursal`. Esto garantiza que:
-- Las estadisticas (pendientes de cobro, monto pendiente) reflejen solo su sucursal
-- La lista de envios pendientes de cobro muestre solo los de su sucursal
-- El historial y pagos MP ya se filtran por RLS a nivel de base de datos
-
-**Archivo**: `src/pages/Payments.tsx`
-
-Cambios en las queries:
-- `envios-pendientes-pago`: agregar filtro `.eq('sucursal_origen_id', profile.sucursal_id)` cuando el usuario tiene rol `sucursal`
-- `pagos-mercado-pago`: agregar filtro via join con envios por sucursal_origen_id
-- Pasar `profile` y `hasRole` desde `useAuth()` a las queries
+Desplegar la función `mercadopago-webhook` para asegurar que todos los cambios (incluyendo los de la iteración anterior) estén activos.
 
 ---
 
-## Seccion Tecnica
-
-### Archivos a modificar
+## Archivos a modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `supabase/functions/mercadopago-webhook/index.ts` | Cambiar verificacion de firma para no bloquear cuando headers estan ausentes |
-| `src/pages/Payments.tsx` | Agregar filtrado por sucursal para usuarios con rol `sucursal` |
+| Migración SQL | Fix CHECK constraint `movimientos_caja`, agregar index único en `pagos` |
+| `supabase/functions/mercadopago-webhook/index.ts` | Agregar logs detallados en Strategy 2 |
 
-### Cambio en webhook - detalle
+## Resultado esperado
 
-```typescript
-// ANTES: retorna boolean
-async function verifyMpSignature(...): Promise<boolean>
+- La rendición de chofer se procesa correctamente y crea movimientos de caja con tipo `'ingreso'`
+- El módulo de Control de Caja también puede registrar ingresos y egresos sin errores
+- Los pagos de Mercado Pago se actualizan automáticamente cuando el webhook recibe la notificación
+- Los logs permiten diagnosticar cualquier fallo futuro en el webhook
 
-// DESPUES: retorna true (valido), false (invalido), null (sin headers)
-async function verifyMpSignature(...): Promise<boolean | null>
-
-// En el loop de Strategy 2:
-if (webhookSecret) {
-  const isValid = await verifyMpSignature(req, paymentId, webhookSecret);
-  if (isValid === false) {
-    continue; // Firma invalida, saltar tenant
-  }
-  if (isValid === null) {
-    console.warn("No signature headers, proceeding without verification");
-    // NO hace continue - sigue intentando matchear
-  }
-}
-```
-
-### Cambio en Payments.tsx - detalle
-
-```typescript
-// Para envios pendientes:
-const isBranchUser = hasRole('sucursal') && !isAdmin();
-
-let enviosQuery = supabase.from('envios').select(...)
-  .in('tipo_pago', ['contado', 'destino'])
-  .not('estado', 'eq', 'cancelado');
-
-if (isBranchUser && profile?.sucursal_id) {
-  enviosQuery = enviosQuery.eq('sucursal_origen_id', profile.sucursal_id);
-}
-```
-
-### Registro de pago duplicado
-
-Hay un pago duplicado sin `tenant_id` para el envio `SUC01-ENV-20260207-874A64`. Esto se genera porque el flujo de entrega en sucursal crea un segundo registro sin tenant. Se debe limpiar ese registro huerfano y asegurar que el flujo siempre incluya `tenant_id`.
