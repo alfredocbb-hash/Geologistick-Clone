@@ -1,89 +1,59 @@
 
-# Mejoras en Integracion Mercado Pago para Choferes y Webhooks
+# Corregir 3 problemas: Mercado Pago para choferes, cierre de ruta y fotos
 
-## Estado actual
+## Problema 1: Mercado Pago no aparece para choferes
 
-La configuracion de Beraexpress esta correcta (tokens `APP_USR-` y `TEST-` con longitudes validas). Sin embargo, hay tres problemas a resolver:
+La tabla de configuracion de integraciones solo permite lectura a administradores. Los choferes no pueden consultar si Mercado Pago esta configurado, por lo que la opcion nunca se muestra.
 
-1. **El chofer no tiene opcion de cobrar con Mercado Pago** al entregar un envio COD. Solo puede cobrar en efectivo.
-2. **No se genera QR real** — la API de Preferences genera un link de pago, pero no QR nativo. Se puede generar un QR con la URL del link.
-3. **El webhook podria no estar procesando correctamente** — hay un pago de prueba en estado "pendiente" desde hace un dia sin actualizacion.
+**Solucion**: Agregar una politica de lectura que permita a todos los usuarios autenticados del mismo tenant ver las configuraciones de integracion (sin exponer credenciales sensibles, ya que la consulta solo verifica existencia de registros activos).
 
-## Plan de cambios
+## Problema 2: Error "Solo se pueden cerrar rutas en curso" y modal trabado
 
-### 1. Agregar opcion de Mercado Pago al flujo de entrega del chofer
+Cuando el chofer completa todas las paradas, aparece un modal de "Ruta Completada" con el boton "Cerrar Ruta". Si el cierre falla (porque la ruta ya fue cerrada o cambio de estado), el error aparece como un toast pero el modal no se puede cerrar -- no tiene boton de cerrar ni forma de salir. El chofer queda atrapado.
 
-**Archivo**: `src/components/delivery/DeliveryConfirmation.tsx`
+**Solucion**:
+- Agregar un boton de cerrar (X) al modal de ruta completada para que el chofer pueda salir
+- Mejorar la logica de cierre para que si la ruta ya esta completada, se trate como exito y se navegue a "Mis Rutas"
+- Verificar el estado real de la ruta antes de intentar cerrarla
 
-Actualmente el chofer solo ve un campo de monto y se registra siempre como "efectivo". Modificar para:
+## Problema 3: Fotos requieren multiples intentos
 
-- Agregar un selector de metodo de pago (Efectivo / Mercado Pago / Transferencia) antes del campo de monto
-- Si elige Mercado Pago:
-  - Llamar a la edge function `mercadopago-payment` para generar un link de pago
-  - Mostrar un **codigo QR** generado con la libreria `qrcode.react` (ya instalada en el proyecto) que codifica la URL del `init_point`
-  - Mostrar tambien un boton para compartir/abrir el link directamente
-  - El chofer le muestra el QR al destinatario para que lo escanee con la app de MP
-  - El pago queda registrado como "pendiente" y el webhook de MP lo actualizara cuando se complete
-- Si elige Efectivo o Transferencia: comportamiento actual (registrar con `register_cod_payment`)
+En Android, el atributo `capture="environment"` fuerza la apertura de la camara nativa, lo cual puede causar que el WebView se recargue. Ademas, el valor del input de archivo no se limpia entre intentos, lo que puede causar que el navegador no dispare el evento de cambio.
 
-### 2. Generar QR a partir del link de pago
+**Solucion**:
+- Limpiar el valor del input (`value = ''`) antes de abrir la camara para asegurar que el evento `onChange` se dispare siempre
+- Quitar `capture="environment"` para usar el selector de archivos del sistema (mas confiable en WebView, y permite elegir entre camara y galeria)
+- Agregar manejo de error visual si la foto no se carga
 
-**Archivo**: `src/components/shipments/PaymentMethodDialog.tsx`
+## Detalle tecnico
 
-En el dialogo de pago usado desde sucursal, tambien agregar un QR visual usando `qrcode.react` con la URL del `init_point`, ademas del boton de abrir link. Asi el operador puede mostrarle el QR al cliente en pantalla.
+### Migracion SQL - Nueva politica RLS
 
-### 3. Mejorar validaciones en la edge function
+Agregar una politica SELECT en `system_integrations` para usuarios autenticados del mismo tenant:
 
-**Archivo**: `supabase/functions/mercadopago-payment/index.ts`
+```text
+CREATE POLICY "Users can view their tenant integrations"
+  ON system_integrations FOR SELECT
+  TO authenticated
+  USING (tenant_id = current_user_tenant());
+```
 
-- Validar formato del access_token antes de llamar a la API de MP (debe empezar con `APP_USR-` o `TEST-`)
-- Parseo defensivo de la respuesta de MP (verificar Content-Type antes de parsear JSON)
-- Devolver codigos de error especificos: `MP_INVALID_TOKEN`, `MP_UNAUTHORIZED`, `MP_API_ERROR`
-- Logging mejorado: status code de MP, longitud del token (sin exponer el valor)
+### Cambios en `ActiveRouteNavigation.tsx`
 
-### 4. Mejorar el webhook para mayor robustez
+1. Agregar boton X/cerrar al modal de ruta completada (lineas 932-963)
+2. Modificar `closeRouteMutation`:
+   - En `onError`: si el mensaje contiene "Solo se pueden cerrar", refrescar el estado de la ruta y si ya esta completada, navegar a Mis Rutas
+   - Agregar un boton "Volver a Mis Rutas" como alternativa al modal
 
-**Archivo**: `supabase/functions/mercadopago-webhook/index.ts`
+### Cambios en `DeliveryConfirmation.tsx`
 
-- Agregar logging mas detallado para diagnosticar por que no se procesan pagos
-- Parseo defensivo de la respuesta de MP al consultar el pago
-- Buscar pagos tanto por `mercado_pago_id` exacto como por `preference_id` (actualmente el pago se guarda con el `preference_id` en `mercado_pago_id`, pero el webhook recibe el `payment_id` real de MP que es diferente)
+1. En `handleOpenCamera` (linea 138): agregar `fileInputRef.current.value = ''` antes de hacer click
+2. En el input de foto (linea 534): quitar `capture="environment"` para mejor compatibilidad con WebView Android
 
-**Problema clave**: Cuando se crea el pago en `mercadopago-payment`, se guarda `preference.id` como `mercado_pago_id`. Pero el webhook recibe `body.data.id` que es el **payment ID** de MP (no el preference ID). El webhook intenta buscar por `mercado_pago_id = paymentId`, pero ese ID nunca va a coincidir porque guardamos el preference ID, no el payment ID. **Este es el bug principal por el cual los pagos no se actualizan.**
+### Archivos afectados
 
-Solucion: cambiar la busqueda del webhook para que, cuando no encuentre por `mercado_pago_id`, busque tambien pagos pendientes cuyo `mercado_pago_id` sea un preference ID y use el `external_reference` (envio_id) del pago de MP para hacer match.
-
-## Resumen de archivos a modificar
-
-| Archivo | Cambio |
+| Recurso | Cambio |
 |---------|--------|
-| `src/components/delivery/DeliveryConfirmation.tsx` | Agregar selector de metodo de pago con opcion MP, generar QR con link |
-| `src/components/shipments/PaymentMethodDialog.tsx` | Agregar QR visual del link de pago, manejar codigos de error |
-| `supabase/functions/mercadopago-payment/index.ts` | Validacion de token, parseo defensivo, codigos de error |
-| `supabase/functions/mercadopago-webhook/index.ts` | Corregir busqueda de pagos (preference_id vs payment_id), mejor logging |
-
-## Detalle tecnico del flujo QR para el chofer
-
-```text
-Chofer confirma entrega COD
-  -> Selecciona "Mercado Pago"
-  -> Se llama a mercadopago-payment con envio_id y monto
-  -> Edge function crea preference en MP y devuelve init_point
-  -> Se genera QR con qrcode.react usando la URL init_point
-  -> El destinatario escanea el QR y paga en MP
-  -> MP envia webhook a mercadopago-webhook
-  -> Webhook actualiza el pago de "pendiente" a "pagado"
-  -> Chofer puede confirmar la entrega (el pago queda registrado)
-```
-
-## Nota sobre el bug del webhook
-
-El flujo actual tiene una desconexion:
-
-```text
-mercadopago-payment guarda: mercado_pago_id = "816196571-f30810e1-..." (preference_id)
-MP webhook envia:          data.id = "12345678" (payment_id)
-webhook busca:             pagos WHERE mercado_pago_id = "12345678" -> NO ENCUENTRA
-```
-
-La solucion es que el webhook, al no encontrar por `mercado_pago_id`, consulte el pago en la API de MP para obtener el `external_reference` (que es el `envio_id`), y luego busque el pago pendiente por `envio_id + metodo = mercado_pago`.
+| Migracion SQL | Nueva politica RLS SELECT en `system_integrations` para todos los usuarios del tenant |
+| `src/pages/ActiveRouteNavigation.tsx` | Boton cerrar en modal completado, manejo de error mejorado |
+| `src/components/delivery/DeliveryConfirmation.tsx` | Reset del input de foto, quitar `capture="environment"` |
