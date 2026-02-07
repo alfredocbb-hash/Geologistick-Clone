@@ -1475,6 +1475,8 @@ export default function Branches() {
           onOpenChange={(open) => !open && setCoverageZonesSucursal(null)}
           sucursalId={coverageZonesSucursal.id}
           sucursalNombre={coverageZonesSucursal.nombre}
+          sucursalLat={coverageZonesSucursal.lat}
+          sucursalLng={coverageZonesSucursal.lng}
           allSucursales={sucursales.map(s => ({ id: s.id, nombre: s.nombre, codigo: s.codigo }))}
         />
       )}
