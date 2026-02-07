@@ -69,14 +69,20 @@ export function useCoverageValidation(sucursalId: string | undefined | null) {
 
       // Check ciudad match
       if (zone.ciudad && destCiudad) {
-        if (normalize(zone.ciudad) === destCiudad) {
+        const zoneCiudad = normalize(zone.ciudad);
+        if (zoneCiudad === destCiudad || 
+            destCiudad.includes(zoneCiudad) || 
+            zoneCiudad.includes(destCiudad)) {
           matches = true;
         }
       }
 
       // Check provincia match
       if (!matches && zone.provincia && destProvincia) {
-        if (normalize(zone.provincia) === destProvincia) {
+        const zoneProvincia = normalize(zone.provincia);
+        if (zoneProvincia === destProvincia || 
+            destProvincia.includes(zoneProvincia) || 
+            zoneProvincia.includes(destProvincia)) {
           matches = true;
         }
       }
