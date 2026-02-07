@@ -8,12 +8,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table,
   TableBody,
@@ -23,13 +22,17 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Plus, Trash2, MapPin, Copy, Loader2, Globe } from 'lucide-react';
+import { Trash2, MapPin, Copy, Loader2, Globe, Map, List } from 'lucide-react';
+import { CoverageMapSelector } from './CoverageMapSelector';
+import { CoverageZonesListForm } from './CoverageZonesListForm';
 
 interface BranchCoverageZonesDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   sucursalId: string;
   sucursalNombre: string;
+  sucursalLat?: number | null;
+  sucursalLng?: number | null;
   allSucursales: { id: string; nombre: string; codigo: string | null }[];
 }
 
@@ -42,6 +45,8 @@ interface CoverageZone {
   codigo_postal_hasta: string | null;
   activa: boolean | null;
   created_at: string | null;
+  lat: number | null;
+  lng: number | null;
 }
 
 export function BranchCoverageZonesDialog({
@@ -49,15 +54,11 @@ export function BranchCoverageZonesDialog({
   onOpenChange,
   sucursalId,
   sucursalNombre,
+  sucursalLat,
+  sucursalLng,
   allSucursales,
 }: BranchCoverageZonesDialogProps) {
   const queryClient = useQueryClient();
-  const [newZone, setNewZone] = useState({
-    ciudad: '',
-    provincia: '',
-    codigo_postal_desde: '',
-    codigo_postal_hasta: '',
-  });
   const [copySucursalId, setCopySucursalId] = useState('');
 
   // Fetch zones for this branch
@@ -80,7 +81,7 @@ export function BranchCoverageZonesDialog({
 
   // Add zone mutation
   const addZoneMutation = useMutation({
-    mutationFn: async (zone: typeof newZone) => {
+    mutationFn: async (zone: { ciudad: string; provincia: string; codigo_postal_desde: string; codigo_postal_hasta?: string; lat?: number; lng?: number }) => {
       if (!zone.ciudad && !zone.provincia && !zone.codigo_postal_desde) {
         throw new Error('Debe completar al menos un campo: Ciudad, Provincia o Código Postal');
       }
@@ -92,13 +93,14 @@ export function BranchCoverageZonesDialog({
           provincia: zone.provincia || null,
           codigo_postal_desde: zone.codigo_postal_desde || null,
           codigo_postal_hasta: zone.codigo_postal_hasta || null,
+          lat: zone.lat ?? null,
+          lng: zone.lng ?? null,
           activa: true,
         } as any);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sucursal-zonas', sucursalId] });
-      setNewZone({ ciudad: '', provincia: '', codigo_postal_desde: '', codigo_postal_hasta: '' });
       toast.success('Zona de cobertura agregada');
     },
     onError: (error: Error) => toast.error(error.message),
@@ -138,23 +140,23 @@ export function BranchCoverageZonesDialog({
   // Copy zones from another branch
   const copyZonesMutation = useMutation({
     mutationFn: async (fromSucursalId: string) => {
-      // Fetch zones from source branch
       const { data: sourceZones, error: fetchError } = await supabase
         .from('sucursal_zonas')
-        .select('ciudad, provincia, codigo_postal_desde, codigo_postal_hasta')
+        .select('ciudad, provincia, codigo_postal_desde, codigo_postal_hasta, lat, lng')
         .eq('sucursal_id', fromSucursalId);
       if (fetchError) throw fetchError;
       if (!sourceZones || sourceZones.length === 0) {
         throw new Error('La sucursal seleccionada no tiene zonas configuradas');
       }
 
-      // Insert copies for this branch
       const newZones = sourceZones.map(z => ({
         sucursal_id: sucursalId,
         ciudad: z.ciudad,
         provincia: z.provincia,
         codigo_postal_desde: z.codigo_postal_desde,
         codigo_postal_hasta: z.codigo_postal_hasta,
+        lat: z.lat,
+        lng: z.lng,
         activa: true,
       }));
 
@@ -171,9 +173,12 @@ export function BranchCoverageZonesDialog({
     onError: (error: Error) => toast.error(error.message),
   });
 
-  const handleAddZone = (e: React.FormEvent) => {
-    e.preventDefault();
-    addZoneMutation.mutate(newZone);
+  const handleAddZoneFromList = (zone: { ciudad: string; provincia: string; codigo_postal_desde: string; codigo_postal_hasta: string }) => {
+    addZoneMutation.mutate(zone);
+  };
+
+  const handleAddZoneFromMap = (zone: { ciudad: string; provincia: string; codigo_postal_desde: string; lat: number; lng: number }) => {
+    addZoneMutation.mutate(zone);
   };
 
   const otherBranches = allSucursales.filter(s => s.id !== sucursalId);
@@ -218,57 +223,37 @@ export function BranchCoverageZonesDialog({
 
         <Separator />
 
-        {/* Add new zone form */}
-        <form onSubmit={handleAddZone} className="space-y-3">
-          <Label className="font-semibold text-sm">Agregar nueva zona</Label>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Ciudad</Label>
-              <Input
-                placeholder="Ej: Córdoba"
-                value={newZone.ciudad}
-                onChange={e => setNewZone(prev => ({ ...prev, ciudad: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Provincia</Label>
-              <Input
-                placeholder="Ej: Buenos Aires"
-                value={newZone.provincia}
-                onChange={e => setNewZone(prev => ({ ...prev, provincia: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">CP Desde</Label>
-              <Input
-                placeholder="Ej: 1000"
-                value={newZone.codigo_postal_desde}
-                onChange={e => setNewZone(prev => ({ ...prev, codigo_postal_desde: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">CP Hasta</Label>
-              <Input
-                placeholder="Ej: 1499"
-                value={newZone.codigo_postal_hasta}
-                onChange={e => setNewZone(prev => ({ ...prev, codigo_postal_hasta: e.target.value }))}
-              />
-            </div>
-          </div>
-          <Button
-            type="submit"
-            size="sm"
-            disabled={addZoneMutation.isPending}
-            className="w-full"
-          >
-            {addZoneMutation.isPending ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Plus className="h-4 w-4 mr-2" />
-            )}
-            Agregar Zona
-          </Button>
-        </form>
+        {/* Tabs: Map / List */}
+        <Tabs defaultValue="mapa" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="mapa" className="gap-1.5">
+              <Map className="h-4 w-4" />
+              Mapa
+            </TabsTrigger>
+            <TabsTrigger value="lista" className="gap-1.5">
+              <List className="h-4 w-4" />
+              Lista
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="mapa">
+            <CoverageMapSelector
+              branchLat={sucursalLat ?? null}
+              branchLng={sucursalLng ?? null}
+              zones={zones}
+              onAddZone={handleAddZoneFromMap}
+              onDeleteZone={(id) => deleteZoneMutation.mutate(id)}
+              isAdding={addZoneMutation.isPending}
+            />
+          </TabsContent>
+
+          <TabsContent value="lista">
+            <CoverageZonesListForm
+              onAddZone={handleAddZoneFromList}
+              isAdding={addZoneMutation.isPending}
+            />
+          </TabsContent>
+        </Tabs>
 
         <Separator />
 
@@ -303,7 +288,7 @@ export function BranchCoverageZonesDialog({
           </div>
         )}
 
-        {/* Zones list */}
+        {/* Zones table */}
         {isLoading ? (
           <div className="text-center py-4 text-muted-foreground">Cargando zonas...</div>
         ) : zones.length === 0 ? (

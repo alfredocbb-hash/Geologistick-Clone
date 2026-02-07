@@ -2989,6 +2989,8 @@ export type Database = {
           codigo_postal_hasta: string | null
           created_at: string | null
           id: string
+          lat: number | null
+          lng: number | null
           provincia: string | null
           sucursal_id: string
         }
@@ -2999,6 +3001,8 @@ export type Database = {
           codigo_postal_hasta?: string | null
           created_at?: string | null
           id?: string
+          lat?: number | null
+          lng?: number | null
           provincia?: string | null
           sucursal_id: string
         }
@@ -3009,6 +3013,8 @@ export type Database = {
           codigo_postal_hasta?: string | null
           created_at?: string | null
           id?: string
+          lat?: number | null
+          lng?: number | null
           provincia?: string | null
           sucursal_id?: string
         }
