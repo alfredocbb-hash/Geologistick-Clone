@@ -1,40 +1,46 @@
 
-# Mejora de Validacion y Manejo de Errores en Mercado Pago Payment
+# Corregir mensaje de historial para recogido en sucursal
 
-## Problema Detectado
+## Problema
 
-La empresa **Beraexpress** cargo como `access_token` de Mercado Pago el valor `427014809579968` (15 caracteres, numerico). Esto es un **User ID o numero de cuenta**, no un access token. Los tokens validos de Mercado Pago tienen formato:
-- **Sandbox**: `TEST-1234567890123456-MMDDYY-hash-userId` (~60+ caracteres)
-- **Produccion**: `APP_USR-1234567890123456-MMDDYY-hash-userId` (~60+ caracteres)
+Cuando un paquete pasa de `en_sucursal` a `recogido`, el historial muestra "Paquete retirado del remitente", lo cual es incorrecto. El paquete fue recogido **desde la sucursal**, no del remitente. El trigger debe distinguir el contexto del pickup segun el estado anterior.
 
 ## Solucion
 
-### 1. Mejorar la Edge Function `mercadopago-payment`
+Modificar el caso `recogido` en el trigger `log_envio_estado_change` para que sea contextual segun `OLD.estado`:
 
-Agregar validaciones y mejor manejo de errores:
+- Si `OLD.estado = 'en_sucursal'`: el paquete fue recogido desde una sucursal, por lo tanto el mensaje sera: **"Recogido en Sucursal [nombre_sucursal] por [usuario]"**
+- En cualquier otro caso (pickup normal desde remitente): **"Paquete recogido del remitente por [usuario]"**
 
-- **Validar formato del token** antes de enviar a la API de MP. Si el token no empieza con `APP_USR-` o `TEST-`, devolver un error descriptivo indicando que el token es invalido.
-- **Parseo defensivo de la respuesta** de MP: verificar `Content-Type` antes de parsear como JSON, ya que MP puede devolver HTML en caso de errores de autenticacion.
-- **Logging mejorado**: registrar el status code de MP, la longitud del token (sin exponer el valor), y el cuerpo del error completo para facilitar el soporte tecnico.
-- **Mensaje de error claro para el usuario**: en lugar de "Error al crear preferencia de pago", indicar que el access token podria ser invalido y que contacte al administrador para revisarlo.
+## Cambio tecnico
 
-### 2. Mejorar el componente PaymentMethodDialog
+### Migracion SQL - Actualizar trigger
 
-- Cuando la respuesta del backend incluya detalles del error de MP (como `UNAUTHORIZED`), mostrar un toast mas descriptivo sugiriendo revisar la configuracion del access token.
+Modificar la seccion del CASE para `recogido` en la funcion `log_envio_estado_change`:
 
-## Archivos a Modificar
+```text
+Antes:
+  WHEN NEW.estado = 'recogido' THEN
+    'Paquete recogido' || [usuario]
 
-| Archivo | Cambio |
+Despues:
+  WHEN NEW.estado = 'recogido' THEN
+    CASE
+      WHEN OLD.estado = 'en_sucursal' THEN
+        'Recogido en Sucursal ' || COALESCE(v_suc_actual_nombre, v_suc_origen_nombre, '') ||
+        ' por ' || COALESCE(v_usuario_nombre, '')
+      ELSE
+        'Paquete recogido del remitente' ||
+        ' por ' || COALESCE(v_usuario_nombre, '')
+    END
+```
+
+La variable `v_suc_actual_nombre` ya contiene el nombre de la sucursal del usuario que realiza la accion, y `v_suc_origen_nombre` es la sucursal de origen del envio. De esta forma el mensaje refleja correctamente de donde se recogio el paquete.
+
+### Archivos afectados
+
+| Recurso | Cambio |
 |---------|--------|
-| `supabase/functions/mercadopago-payment/index.ts` | Validacion de formato de token, parseo defensivo de respuesta MP, mejor logging |
-| `src/components/shipments/PaymentMethodDialog.tsx` | Mejor manejo de errores especificos de MP |
+| Migracion SQL (trigger) | Actualizar la funcion `log_envio_estado_change` con la logica contextual para `recogido` |
 
-## Accion Manual Requerida
-
-Beraexpress necesita corregir su `access_token` en la configuracion de Mercado Pago. El token correcto se obtiene desde el panel de desarrolladores de Mercado Pago:
-1. Ir a https://www.mercadopago.com.ar/developers/panel/app
-2. Seleccionar la aplicacion
-3. Copiar el **Access Token** (no el User ID ni el Public Key)
-4. Para sandbox: usar el token de "Credenciales de prueba"
-5. Para produccion: usar el token de "Credenciales de produccion"
-
+No se requieren cambios en el frontend, ya que los componentes de historial (`ShipmentHistoryDialog`, `Tracking`) ya muestran el campo `notas` tal cual viene del trigger.
