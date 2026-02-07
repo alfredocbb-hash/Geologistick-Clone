@@ -103,13 +103,13 @@ async function verifyMpSignature(
   req: Request,
   paymentId: string,
   webhookSecret: string
-): Promise<boolean> {
+): Promise<boolean | null> {
   const xSignature = req.headers.get("x-signature");
   const xRequestId = req.headers.get("x-request-id");
 
   if (!xSignature || !xRequestId) {
-    console.warn("Missing MP signature headers (x-signature or x-request-id)");
-    return false;
+    console.warn("Missing MP signature headers (x-signature or x-request-id) - returning null");
+    return null;
   }
 
   // Parse x-signature: "ts=XXXXX,v1=YYYYY"
@@ -233,14 +233,18 @@ serve(async (req) => {
 
       if (webhookSecret) {
         const isValid = await verifyMpSignature(req, paymentId, webhookSecret);
-        if (!isValid) {
+        if (isValid === false) {
           console.error("Invalid webhook signature for tenant", existingPayment.tenant_id);
           return new Response(
             JSON.stringify({ error: "Invalid signature" }),
             { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-        console.log("Webhook signature verified successfully");
+        if (isValid === null) {
+          console.warn("No signature headers present, proceeding without verification");
+        } else {
+          console.log("Webhook signature verified successfully");
+        }
       } else {
         console.warn("No webhook_secret configured for tenant, skipping signature verification");
       }
@@ -302,11 +306,16 @@ serve(async (req) => {
       const webhookSecret = await getWebhookSecretForTenant(supabaseClient, configTenantId, environment);
       if (webhookSecret) {
         const isValid = await verifyMpSignature(req, paymentId, webhookSecret);
-        if (!isValid) {
-          // This tenant's secret doesn't match, skip
+        if (isValid === false) {
+          // Signature is explicitly invalid, skip this tenant
+          console.warn(`Invalid signature for tenant ${configTenantId}, skipping`);
           continue;
         }
-        console.log(`Signature verified for tenant ${configTenantId}`);
+        if (isValid === null) {
+          console.warn(`No signature headers present, proceeding without verification for tenant ${configTenantId}`);
+        } else {
+          console.log(`Signature verified for tenant ${configTenantId}`);
+        }
       }
 
       const payment = await fetchPaymentFromMP(paymentId, accessToken);

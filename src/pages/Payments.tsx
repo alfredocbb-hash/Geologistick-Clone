@@ -154,7 +154,8 @@ const getMpStatusBadge = (status: string | null) => {
 };
 
 export default function Payments() {
-  const { profile } = useAuth();
+  const { profile, hasRole, isAdmin } = useAuth();
+  const isBranchUser = hasRole('sucursal') && !isAdmin();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('historial');
   const [searchTerm, setSearchTerm] = useState('');
@@ -206,10 +207,10 @@ export default function Payments() {
 
   // Fetch pending shipments (need payment)
   const { data: enviosPendientes, isLoading: isLoadingPendientes } = useQuery({
-    queryKey: ['envios-pendientes-pago'],
+    queryKey: ['envios-pendientes-pago', isBranchUser, profile?.sucursal_id],
     queryFn: async () => {
       // Get shipments that need payment (contado or destino) and don't have a confirmed payment
-      const { data: envios, error } = await supabase
+      let enviosQuery = supabase
         .from('envios')
         .select(`
           id,
@@ -226,8 +227,14 @@ export default function Payments() {
           sucursal_origen:sucursales!envios_sucursal_origen_id_fkey(nombre)
         `)
         .in('tipo_pago', ['contado', 'destino'])
-        .not('estado', 'eq', 'cancelado')
-        .order('created_at', { ascending: false });
+        .not('estado', 'eq', 'cancelado');
+
+      // Branch users only see their own branch's shipments
+      if (isBranchUser && profile?.sucursal_id) {
+        enviosQuery = enviosQuery.eq('sucursal_origen_id', profile.sucursal_id);
+      }
+
+      const { data: envios, error } = await enviosQuery.order('created_at', { ascending: false });
 
       if (error) throw error;
 
