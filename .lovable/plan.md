@@ -1,123 +1,119 @@
 
 
-# Zonas de Cobertura por Sucursal
+# Mapa Interactivo para Zonas de Cobertura
 
-## Como funciona la limitacion
+## Que cambia
 
-La tarifa "General" define **cuanto cobrar** por un envio, pero no controla **a donde se puede enviar**. Para limitar los destinos, se usan las **Zonas de Cobertura** de cada sucursal, que ya tienen una tabla preparada en la base de datos (`sucursal_zonas`) pero actualmente esta vacia y sin interfaz.
+El dialogo actual de "Zonas de Cobertura" solo permite ingresar datos manualmente (Ciudad, Provincia, CP). Se va a agregar un **mapa interactivo** como modo principal para definir zonas, similar a como funciona en Mercado Libre.
 
-El flujo seria:
+## Como va a funcionar
+
+El dialogo tendra dos pestanas:
+
+- **Mapa**: Vista principal con un mapa interactivo de Google Maps donde el administrador puede:
+  - Hacer clic en cualquier punto del mapa para detectar automaticamente la ciudad/localidad
+  - Ver un popup de confirmacion con los datos detectados (ciudad, provincia, CP)
+  - Confirmar para agregar la zona a la lista
+  - Buscar localidades con un buscador integrado (autocompletado de Google Places)
+  - Ver las zonas ya agregadas representadas como circulos coloreados en el mapa
+
+- **Lista**: La interfaz actual con los campos manuales de Ciudad, Provincia y Codigo Postal (para cuando el administrador necesite ingresar datos especificos o rangos de CP)
 
 ```text
-Sucursal "Blackbox Centro"
-  -> Tarifa: General (define precios)
-  -> Zonas de Cobertura (define a donde puede enviar):
-     - Buenos Aires (provincia)
-     - Cordoba, Cordoba
-     - Rosario, Santa Fe
-     - CP 1000-1499
-
-Operador intenta crear envio a Mendoza:
-  -> Sistema verifica zonas de cobertura
-  -> Mendoza NO esta en la lista
-  -> Bloquea el envio con mensaje: "Sin cobertura en Mendoza"
++-------------------------------------------+
+|  Zonas de Cobertura -- Berazategui        |
+|  [Mapa]  [Lista]                          |
++-------------------------------------------+
+|  [Buscar localidad...              ]      |
+|  +-------------------------------------+  |
+|  |                                     |  |
+|  |     Google Map                      |  |
+|  |       (click para agregar)          |  |
+|  |                                     |  |
+|  |   [circulo azul] = zona activa      |  |
+|  |                                     |  |
+|  +-------------------------------------+  |
+|                                           |
+|  Zonas configuradas:                      |
+|  [San Isidro, Buenos Aires]  [x]          |
+|  [Pilar, Buenos Aires]      [x]          |
+|  [Campana, Buenos Aires]    [x]          |
++-------------------------------------------+
 ```
 
-Si una sucursal **no tiene zonas configuradas**, puede enviar a cualquier destino (sin restriccion, comportamiento actual).
+## Flujo del usuario
 
-## Cambios a implementar
-
-### 1. Boton "Zonas de Cobertura" en la pagina de Sucursales
-
-En cada tarjeta de sucursal, agregar un boton con icono de mapa que abre un dialogo para gestionar las zonas.
-
-### 2. Nuevo componente: BranchCoverageZonesDialog
-
-Un dialogo donde el administrador puede:
-
-- Ver las zonas de cobertura existentes para esa sucursal
-- Agregar nuevas zonas por **Ciudad**, **Provincia**, o **rango de Codigo Postal**
-- Activar/desactivar zonas individuales
-- Eliminar zonas que ya no aplican
-- Copiar zonas de otra sucursal (para configurar rapido varias sucursales)
-
-### 3. Validacion al crear envios en NewShipment
-
-Al momento de guardar un nuevo envio:
-
-1. Consultar `sucursal_zonas` para la sucursal del operador
-2. Si **no hay zonas** configuradas: permitir todo (sin restriccion)
-3. Si **hay zonas** configuradas: verificar que la ciudad/CP del destinatario coincida con alguna zona activa
-4. Si no coincide: mostrar alerta clara y bloquear el envio
-
-La validacion se aplica:
-- Para envios a **puerta**: verificar ciudad o CP del destinatario
-- Para envios a **sucursal destino**: verificar la ciudad de la sucursal destino
-
-### 4. Ajuste de seguridad (RLS)
-
-La tabla ya tiene una politica de lectura por tenant que funciona correctamente. Solo se necesita ajustar las politicas de escritura para que administradores del mismo tenant puedan gestionar zonas (actualmente solo admins globales pueden).
+1. Abre "Zonas de Cobertura" de una sucursal
+2. Ve el mapa centrado en la ubicacion de la sucursal (si tiene coordenadas) o en Buenos Aires
+3. Hace clic en una localidad del mapa (ej: San Isidro)
+4. Aparece un popup: "Agregar San Isidro, Buenos Aires? CP: 1642" con botones Confirmar/Cancelar
+5. Al confirmar, la zona se agrega a la lista y aparece como un circulo azul en el mapa
+6. Puede repetir para agregar mas zonas
+7. Tambien puede usar el buscador para encontrar localidades por nombre
+8. Las zonas se pueden eliminar desde los chips debajo del mapa
 
 ## Detalle tecnico
 
-### Archivos a crear
+### Archivo nuevo: `src/components/branches/CoverageMapSelector.tsx`
 
-| Archivo | Descripcion |
-|---------|-------------|
-| `src/components/branches/BranchCoverageZonesDialog.tsx` | Dialogo para gestionar zonas de cobertura por sucursal |
+Componente del mapa interactivo que:
+- Usa `GoogleMap` de `@react-google-maps/api` (ya disponible en el proyecto)
+- Implementa `onClick` en el mapa para capturar coordenadas
+- Usa `google.maps.Geocoder` para reverse-geocode el click y obtener ciudad/provincia/CP
+- Renderiza `google.maps.Circle` para cada zona activa existente (radio visual de ~5km)
+- Incluye un campo de busqueda con `google.maps.places.Autocomplete` para buscar localidades
+- Muestra un `InfoWindow` de confirmacion al hacer click con los datos detectados
 
-### Archivos a modificar
+### Archivo modificado: `src/components/branches/BranchCoverageZonesDialog.tsx`
 
-| Archivo | Cambio |
-|---------|--------|
-| `src/pages/Branches.tsx` | Agregar boton "Zonas" en cada tarjeta de sucursal |
-| `src/pages/NewShipment.tsx` | Agregar query de `sucursal_zonas` y validacion antes de guardar |
+- Agregar `Tabs` con dos pestanas: "Mapa" y "Lista"
+- La pestana "Mapa" renderiza el nuevo `CoverageMapSelector`
+- La pestana "Lista" mantiene el formulario actual (Ciudad, Provincia, CP desde/hasta)
+- Mover las funcionalidades compartidas (copiar zonas, tabla de zonas) fuera de las tabs para que sean visibles en ambas vistas
+- Recibir las coordenadas de la sucursal como props para centrar el mapa
+
+### Archivo modificado: `src/pages/Branches.tsx`
+
+- Pasar las coordenadas `lat`/`lng` de la sucursal al dialogo de cobertura para centrar el mapa correctamente
+
+### Logica del reverse geocoding al hacer click
+
+```text
+1. Usuario hace click en el mapa
+2. Se obtienen las coordenadas (lat, lng)
+3. Se llama a google.maps.Geocoder.geocode({ location: { lat, lng } })
+4. Del resultado se extraen:
+   - locality -> ciudad
+   - administrative_area_level_1 -> provincia
+   - postal_code -> codigo postal
+5. Se muestra InfoWindow con los datos y botones Confirmar/Cancelar
+6. Al confirmar: se ejecuta addZoneMutation con los datos
+7. Se cierra el InfoWindow y el circulo aparece en el mapa
+```
+
+### Visualizacion de zonas existentes en el mapa
+
+Las zonas ya agregadas se muestran como circulos semi-transparentes azules en el mapa. Para obtener la posicion del circulo:
+- Si la zona fue agregada desde el mapa, ya tenemos las coordenadas del click
+- Para zonas existentes (agregadas por texto), se geocodifica la ciudad al cargar el mapa
+- Se guarda la posicion en la tabla para no re-geocodificar cada vez
 
 ### Migracion SQL
 
-Agregar politica para que administradores del tenant puedan insertar, actualizar y eliminar zonas de sus sucursales:
+Agregar columnas `lat` y `lng` a la tabla `sucursal_zonas` para almacenar las coordenadas de cada zona y poder mostrarlas en el mapa sin necesidad de re-geocodificar:
 
 ```text
--- Permitir a admins del tenant gestionar zonas de sus sucursales
-CREATE POLICY "Admins manage coverage zones for their tenant"
-  ON sucursal_zonas FOR ALL TO authenticated
-  USING (
-    sucursal_id IN (
-      SELECT id FROM sucursales 
-      WHERE tenant_id = current_user_tenant()
-    )
-    AND is_admin(auth.uid())
-  )
-  WITH CHECK (
-    sucursal_id IN (
-      SELECT id FROM sucursales 
-      WHERE tenant_id = current_user_tenant()
-    )
-    AND is_admin(auth.uid())
-  );
+ALTER TABLE sucursal_zonas
+  ADD COLUMN lat double precision,
+  ADD COLUMN lng double precision;
 ```
 
-Tambien eliminar la politica anterior "Admins gestionan zonas" que usa `is_admin()` sin filtro de tenant.
+### Archivos afectados
 
-### Logica de validacion en NewShipment
-
-```text
-Al enviar formulario:
-  1. Buscar zonas activas de sucursal_zonas WHERE sucursal_id = sucursalOrigenId AND activa = true
-  2. Si count = 0 -> sin restriccion, continuar normalmente
-  3. Si count > 0 -> verificar destino:
-     a. Comparar ciudad destino (case-insensitive, sin acentos) contra zonas.ciudad
-     b. Comparar CP destino contra rangos [codigo_postal_desde, codigo_postal_hasta]
-     c. Comparar provincia destino contra zonas.provincia
-     d. Si alguna zona coincide -> permitir
-     e. Si ninguna coincide -> mostrar error y bloquear
-```
-
-### Interfaz del dialogo de zonas
-
-El dialogo tendra:
-- Formulario rapido para agregar zona: campos de Ciudad, Provincia, CP desde, CP hasta
-- Lista de zonas existentes con toggle activa/inactiva y boton eliminar
-- Contador de zonas activas
-- Selector para copiar zonas de otra sucursal
+| Archivo | Cambio |
+|---------|--------|
+| Migracion SQL | Agregar columnas lat/lng a sucursal_zonas |
+| `src/components/branches/CoverageMapSelector.tsx` | **Nuevo** - Mapa interactivo con click y busqueda |
+| `src/components/branches/BranchCoverageZonesDialog.tsx` | Agregar tabs Mapa/Lista, pasar coordenadas |
+| `src/pages/Branches.tsx` | Pasar lat/lng de sucursal al dialogo |
 
