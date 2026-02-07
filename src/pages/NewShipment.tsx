@@ -26,6 +26,7 @@ import {
   Building2, ArrowRight, Navigation, Plus
 } from 'lucide-react';
 import { PaymentMethodDialog } from '@/components/shipments/PaymentMethodDialog';
+import { useCoverageValidation } from '@/hooks/useCoverageValidation';
 
 interface TarifaConcepto {
   id: string;
@@ -218,6 +219,9 @@ export default function NewShipment() {
   
   // La sucursal de origen es fija - la del usuario
   const sucursalOrigenId = profile?.sucursal_id;
+
+  // Coverage validation
+  const { validateDestination, hasCoverageRestrictions } = useCoverageValidation(sucursalOrigenId);
 
   // Query para obtener datos de la sucursal del usuario
   const { data: sucursalUsuario, isLoading: loadingSucursalUsuario } = useQuery({
@@ -756,6 +760,36 @@ export default function NewShipment() {
 
       if (!profile?.tenant_id) {
         throw new Error('No se pudo determinar tu empresa (tenant). Cerrá sesión e ingresá nuevamente.');
+      }
+
+      // Coverage zone validation
+      if (hasCoverageRestrictions) {
+        let coverageError: string | null = null;
+
+        if (esRetiroAlmacenaje) {
+          // No coverage check for storage pickups (destination is same branch)
+        } else if (tieneEntrega) {
+          // Delivery to door: check destination city/province/CP
+          coverageError = validateDestination({
+            ciudad: formData.destinatario_ciudad,
+            provincia: null, // Province not collected in form, check by city/CP
+            codigo_postal: formData.destinatario_codigo_postal,
+          });
+        } else if (formData.sucursal_destino_id) {
+          // Delivery to branch: check destination branch city
+          const sucursalDestino = sucursales.find(s => s.id === formData.sucursal_destino_id);
+          if (sucursalDestino) {
+            coverageError = validateDestination({
+              ciudad: sucursalDestino.ciudad,
+              provincia: null,
+              codigo_postal: null,
+            });
+          }
+        }
+
+        if (coverageError) {
+          throw new Error(coverageError);
+        }
       }
 
       // Determinar la dirección del remitente

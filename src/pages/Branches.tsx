@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
+import { BranchCoverageZonesDialog } from '@/components/branches/BranchCoverageZonesDialog';
 import { useTenant } from '@/hooks/useTenant';
 import { useFormDraft } from '@/hooks/useFormDraft';
 import { DraftIndicator, DraftSavingIndicator } from '@/components/ui/draft-indicator';
@@ -47,6 +48,7 @@ import {
   Home,
   ArrowDownToLine,
   ArrowUpFromLine,
+  Globe,
   CheckCircle2,
   AlertTriangle,
   Navigation,
@@ -115,6 +117,7 @@ export default function Branches() {
   const [isCommissionsDialogOpen, setIsCommissionsDialogOpen] = useState(false);
   const [editingSucursal, setEditingSucursal] = useState<Sucursal | null>(null);
   const [selectedSucursalForCommissions, setSelectedSucursalForCommissions] = useState<Sucursal | null>(null);
+  const [coverageZonesSucursal, setCoverageZonesSucursal] = useState<Sucursal | null>(null);
   
   const defaultFormData = {
     nombre: '',
@@ -1084,6 +1087,14 @@ export default function Branches() {
                     <Button
                       variant="ghost"
                       size="icon"
+                      onClick={() => setCoverageZonesSucursal(sucursal)}
+                      title="Zonas de cobertura"
+                    >
+                      <Globe className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       onClick={() => handleOpenCommissions(sucursal)}
                       title="Configurar comisiones"
                     >
@@ -1456,6 +1467,17 @@ export default function Branches() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Coverage Zones Dialog */}
+      {coverageZonesSucursal && (
+        <BranchCoverageZonesDialog
+          open={!!coverageZonesSucursal}
+          onOpenChange={(open) => !open && setCoverageZonesSucursal(null)}
+          sucursalId={coverageZonesSucursal.id}
+          sucursalNombre={coverageZonesSucursal.nombre}
+          allSucursales={sucursales.map(s => ({ id: s.id, nombre: s.nombre, codigo: s.codigo }))}
+        />
+      )}
     </div>
   );
 }
