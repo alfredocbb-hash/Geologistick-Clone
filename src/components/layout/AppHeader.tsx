@@ -13,12 +13,14 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ChevronDown, LogOut, User, Settings, Building2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { NotificationPopover } from '@/components/notifications/NotificationPopover';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 
 export function AppHeader() {
   const { profile, roles, signOut } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const getInitials = () => {
     if (!profile) return 'U';
@@ -43,8 +45,14 @@ export function AppHeader() {
   };
 
   const handleSignOut = async () => {
-    await signOut();
-    navigate('/login');
+    try {
+      queryClient.clear();
+      await signOut();
+    } catch (e) {
+      console.error('Error during sign out:', e);
+    } finally {
+      navigate('/login', { replace: true });
+    }
   };
 
   return (
