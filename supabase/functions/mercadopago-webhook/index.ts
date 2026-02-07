@@ -19,6 +19,94 @@ interface MercadoPagoWebhook {
   };
 }
 
+function mapMpStatus(status: string): string {
+  switch (status) {
+    case "approved":
+      return "pagado";
+    case "pending":
+    case "in_process":
+    case "authorized":
+      return "pendiente";
+    case "rejected":
+    case "cancelled":
+      return "fallido";
+    case "refunded":
+    case "charged_back":
+      return "reembolsado";
+    default:
+      return "pendiente";
+  }
+}
+
+async function fetchPaymentFromMP(paymentId: string, accessToken: string) {
+  const mpResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!mpResponse.ok) {
+    const contentType = mpResponse.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      const errorData = await mpResponse.json();
+      console.error(`MP API error ${mpResponse.status}:`, errorData?.message || "Unknown");
+    } else {
+      console.error(`MP API error ${mpResponse.status}: non-JSON response`);
+    }
+    return null;
+  }
+
+  return await mpResponse.json();
+}
+
+async function getAccessTokenForTenant(
+  supabaseClient: any,
+  tenantId: string,
+  environment: string
+): Promise<string | null> {
+  const { data: mpConfigs, error } = await supabaseClient
+    .from("system_integrations")
+    .select("config_key, config_value")
+    .eq("integration_type", "mercado_pago")
+    .eq("environment", environment)
+    .eq("is_active", true)
+    .eq("tenant_id", tenantId);
+
+  if (error || !mpConfigs || mpConfigs.length === 0) return null;
+
+  const config: Record<string, string> = {};
+  mpConfigs.forEach((c: { config_key: string; config_value: string }) => {
+    config[c.config_key] = c.config_value;
+  });
+
+  return config.access_token || null;
+}
+
+async function updatePaymentRecord(
+  supabaseClient: any,
+  envioId: string,
+  tenantId: string,
+  paymentId: string,
+  payment: any,
+  paymentStatus: string
+) {
+  const { error } = await supabaseClient
+    .from("pagos")
+    .update({
+      estado: paymentStatus,
+      mercado_pago_id: paymentId,
+      mercado_pago_status: payment.status,
+      referencia: payment.id?.toString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("envio_id", envioId)
+    .eq("metodo", "mercado_pago")
+    .eq("tenant_id", tenantId);
+
+  if (error) {
+    console.error("Error updating payment:", error?.message || "Unknown error");
+  }
+  return error;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -31,8 +119,7 @@ serve(async (req) => {
     );
 
     const body: MercadoPagoWebhook = await req.json();
-    // Log only non-sensitive webhook metadata
-    console.log(`Webhook received: type=${body.type}, action=${body.action}`);
+    console.log(`Webhook received: type=${body.type}, action=${body.action}, data.id=${body.data?.id}`);
 
     // Only process payment notifications
     if (body.type !== "payment") {
@@ -43,230 +130,143 @@ serve(async (req) => {
     }
 
     const paymentId = body.data.id;
-    const environment = body.live_mode ? 'production' : 'sandbox';
+    const environment = body.live_mode ? "production" : "sandbox";
 
-    // We need to find the tenant from the external_reference (envio_id)
-    // First, we need to get the payment details to get external_reference
-    // But we don't have the access token yet since we don't know the tenant
-    
-    // Try to find existing payment record by mercado_pago_id
+    // Strategy 1: Try to find existing payment by mercado_pago_id (exact match)
     const { data: existingPayment } = await supabaseClient
       .from("pagos")
       .select("envio_id, tenant_id")
       .eq("mercado_pago_id", paymentId)
       .maybeSingle();
 
-    let tenantId: string | null = existingPayment?.tenant_id || null;
-    let envioId: string | null = existingPayment?.envio_id || null;
-
-    // If we have a tenant, get their MP config
-    if (tenantId) {
-      const { data: mpConfigs, error: configError } = await supabaseClient
-        .from("system_integrations")
-        .select("config_key, config_value")
-        .eq("integration_type", "mercado_pago")
-        .eq("environment", environment)
-        .eq("is_active", true)
-        .eq("tenant_id", tenantId);
-
-      if (configError || !mpConfigs || mpConfigs.length === 0) {
-        console.error("Mercado Pago not configured for tenant");
+    if (existingPayment?.tenant_id) {
+      console.log(`Found payment by mercado_pago_id for tenant ${existingPayment.tenant_id}`);
+      const accessToken = await getAccessTokenForTenant(supabaseClient, existingPayment.tenant_id, environment);
+      if (!accessToken) {
+        console.error("No access token for tenant");
         return new Response(
-          JSON.stringify({ error: "Mercado Pago not configured" }),
+          JSON.stringify({ error: "MP not configured for tenant" }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
-      // Build config object
-      const config: Record<string, string> = {};
-      mpConfigs.forEach((c: { config_key: string; config_value: string }) => {
-        config[c.config_key] = c.config_value;
-      });
-
-      if (!config.access_token) {
+      const payment = await fetchPaymentFromMP(paymentId, accessToken);
+      if (!payment) {
         return new Response(
-          JSON.stringify({ error: "Access token not configured" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // Get payment details from Mercado Pago
-      const mpResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-        headers: {
-          Authorization: `Bearer ${config.access_token}`,
-        },
-      });
-
-      if (!mpResponse.ok) {
-        const errorData = await mpResponse.json();
-        console.error("Error fetching payment from MP:", errorData?.message || "Unknown error");
-        return new Response(
-          JSON.stringify({ error: "Error fetching payment details" }),
+          JSON.stringify({ error: "Error fetching payment from MP" }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
-      const payment = await mpResponse.json();
-
-      envioId = payment.external_reference || envioId;
-      const status = payment.status;
-
-      // Map MP status to our status
-      let paymentStatus: string;
-      switch (status) {
-        case "approved":
-          paymentStatus = "pagado";
-          break;
-        case "pending":
-        case "in_process":
-        case "authorized":
-          paymentStatus = "pendiente";
-          break;
-        case "rejected":
-        case "cancelled":
-          paymentStatus = "fallido";
-          break;
-        case "refunded":
-        case "charged_back":
-          paymentStatus = "reembolsado";
-          break;
-        default:
-          paymentStatus = "pendiente";
-      }
-
-      // Update payment record in our database
-      const { error: updateError } = await supabaseClient
-        .from("pagos")
-        .update({
-          estado: paymentStatus,
-          mercado_pago_id: paymentId,
-          mercado_pago_status: status,
-          referencia: payment.id?.toString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("envio_id", envioId)
-        .eq("metodo", "mercado_pago")
-        .eq("tenant_id", tenantId);
-
-      if (updateError) {
-        console.error("Error updating payment:", updateError?.message || "Unknown error");
-      }
-
-      console.log(`Payment processed: status=${paymentStatus}`);
+      const paymentStatus = mapMpStatus(payment.status);
+      await updatePaymentRecord(supabaseClient, existingPayment.envio_id, existingPayment.tenant_id, paymentId, payment, paymentStatus);
+      console.log(`Payment updated: status=${paymentStatus}`);
 
       return new Response(
         JSON.stringify({ success: true, status: paymentStatus }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
-    } else {
-      // No existing payment record - try to find tenant from all active configs
-      // This is a fallback for edge cases
-      console.log("No existing payment record found, trying to match tenant from configs");
-      
-      // Get all active MP configs
-      const { data: allConfigs } = await supabaseClient
-        .from("system_integrations")
-        .select("config_key, config_value, tenant_id")
-        .eq("integration_type", "mercado_pago")
-        .eq("environment", environment)
-        .eq("is_active", true)
-        .eq("config_key", "access_token");
+    }
 
-      if (!allConfigs || allConfigs.length === 0) {
-        console.error("No active Mercado Pago configurations found");
-        return new Response(
-          JSON.stringify({ error: "No Mercado Pago configurations found" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+    // Strategy 2: No exact match found.
+    // The payment was stored with preference_id in mercado_pago_id, but webhook sends payment_id.
+    // Try each tenant's access token to fetch the payment from MP and use external_reference to match.
+    console.log("No exact match by mercado_pago_id, trying external_reference strategy");
 
-      // Try each config until one works
-      for (const configItem of allConfigs) {
-        const accessToken = configItem.config_value;
-        const configTenantId = configItem.tenant_id;
+    const { data: allTokenConfigs } = await supabaseClient
+      .from("system_integrations")
+      .select("config_value, tenant_id")
+      .eq("integration_type", "mercado_pago")
+      .eq("environment", environment)
+      .eq("is_active", true)
+      .eq("config_key", "access_token");
 
-        const mpResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        });
-
-        if (mpResponse.ok) {
-          const payment = await mpResponse.json();
-          const externalRef = payment.external_reference;
-          const status = payment.status;
-
-          // Verify this envio belongs to this tenant
-          if (externalRef) {
-            const { data: envio } = await supabaseClient
-              .from("envios")
-              .select("id, tenant_id")
-              .eq("id", externalRef)
-              .eq("tenant_id", configTenantId)
-              .maybeSingle();
-
-            if (envio) {
-              // Found the right tenant!
-              let paymentStatus: string;
-              switch (status) {
-                case "approved":
-                  paymentStatus = "pagado";
-                  break;
-                case "pending":
-                case "in_process":
-                case "authorized":
-                  paymentStatus = "pendiente";
-                  break;
-                case "rejected":
-                case "cancelled":
-                  paymentStatus = "fallido";
-                  break;
-                case "refunded":
-                case "charged_back":
-                  paymentStatus = "reembolsado";
-                  break;
-                default:
-                  paymentStatus = "pendiente";
-              }
-
-              // Insert or update payment record
-              const { error: upsertError } = await supabaseClient
-                .from("pagos")
-                .upsert({
-                  envio_id: externalRef,
-                  tenant_id: configTenantId,
-                  metodo: "mercado_pago",
-                  monto: payment.transaction_amount,
-                  estado: paymentStatus,
-                  mercado_pago_id: paymentId,
-                  mercado_pago_status: status,
-                  referencia: payment.id?.toString(),
-                  updated_at: new Date().toISOString(),
-                }, {
-                  onConflict: "envio_id,metodo"
-                });
-
-              if (upsertError) {
-                console.error("Error upserting payment:", upsertError?.message);
-              }
-
-              console.log(`Payment processed for tenant ${configTenantId}: status=${paymentStatus}`);
-
-              return new Response(
-                JSON.stringify({ success: true, status: paymentStatus }),
-                { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-              );
-            }
-          }
-        }
-      }
-
-      console.error("Could not find matching tenant for payment");
+    if (!allTokenConfigs || allTokenConfigs.length === 0) {
+      console.error("No active MP configurations found");
       return new Response(
-        JSON.stringify({ error: "Could not find matching tenant" }),
+        JSON.stringify({ error: "No MP configurations found" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    for (const configItem of allTokenConfigs) {
+      const accessToken = configItem.config_value;
+      const configTenantId = configItem.tenant_id;
+
+      const payment = await fetchPaymentFromMP(paymentId, accessToken);
+      if (!payment) continue;
+
+      const externalRef = payment.external_reference;
+      if (!externalRef) {
+        console.log(`Payment ${paymentId} has no external_reference, skipping tenant ${configTenantId}`);
+        continue;
+      }
+
+      // Verify the envio belongs to this tenant
+      const { data: envio } = await supabaseClient
+        .from("envios")
+        .select("id, tenant_id")
+        .eq("id", externalRef)
+        .eq("tenant_id", configTenantId)
+        .maybeSingle();
+
+      if (!envio) continue;
+
+      // Found the right tenant! Now find the pending payment record by envio_id
+      console.log(`Matched payment to tenant ${configTenantId} via external_reference=${externalRef}`);
+
+      const paymentStatus = mapMpStatus(payment.status);
+
+      // Try to update existing pending payment (stored with preference_id)
+      const { data: pendingPayment } = await supabaseClient
+        .from("pagos")
+        .select("id")
+        .eq("envio_id", externalRef)
+        .eq("metodo", "mercado_pago")
+        .eq("tenant_id", configTenantId)
+        .in("estado", ["pendiente"])
+        .maybeSingle();
+
+      if (pendingPayment) {
+        // Update the existing record (which had preference_id as mercado_pago_id)
+        await updatePaymentRecord(supabaseClient, externalRef, configTenantId, paymentId, payment, paymentStatus);
+        console.log(`Updated pending payment for envio ${externalRef}: status=${paymentStatus}`);
+      } else {
+        // No pending record found, upsert
+        const { error: upsertError } = await supabaseClient
+          .from("pagos")
+          .upsert(
+            {
+              envio_id: externalRef,
+              tenant_id: configTenantId,
+              metodo: "mercado_pago",
+              monto: payment.transaction_amount,
+              estado: paymentStatus,
+              mercado_pago_id: paymentId,
+              mercado_pago_status: payment.status,
+              referencia: payment.id?.toString(),
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "envio_id,metodo" }
+          );
+
+        if (upsertError) {
+          console.error("Error upserting payment:", upsertError?.message);
+        }
+        console.log(`Upserted payment for envio ${externalRef}: status=${paymentStatus}`);
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, status: paymentStatus }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.error("Could not find matching tenant for payment", paymentId);
+    return new Response(
+      JSON.stringify({ error: "Could not find matching tenant" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   } catch (error) {
     console.error("Webhook error:", error);
     const errorMessage = error instanceof Error ? error.message : "Internal server error";

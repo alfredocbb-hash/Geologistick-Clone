@@ -13,7 +13,7 @@ interface PaymentRequest {
   description?: string;
   payer_email?: string;
   payer_name?: string;
-  environment?: 'sandbox' | 'production';
+  environment?: "sandbox" | "production";
 }
 
 serve(async (req) => {
@@ -57,7 +57,7 @@ serve(async (req) => {
     if (profileError || !profile?.tenant_id) {
       console.error("Error getting user profile:", profileError?.message || "No tenant found");
       return new Response(
-        JSON.stringify({ error: "Usuario no tiene empresa asignada" }),
+        JSON.stringify({ error: "Usuario no tiene empresa asignada", code: "MP_NO_TENANT" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -65,11 +65,11 @@ serve(async (req) => {
     const tenantId = profile.tenant_id;
 
     const body: PaymentRequest = await req.json();
-    const { envio_id, tracking_number, amount, description, payer_email, payer_name, environment = 'production' } = body;
+    const { envio_id, tracking_number, amount, description, payer_email, payer_name, environment = "production" } = body;
 
     if (!envio_id || !tracking_number || !amount) {
       return new Response(
-        JSON.stringify({ error: "Missing required fields: envio_id, tracking_number, amount" }),
+        JSON.stringify({ error: "Missing required fields: envio_id, tracking_number, amount", code: "MP_MISSING_FIELDS" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -98,10 +98,22 @@ serve(async (req) => {
 
     if (!config.access_token) {
       return new Response(
-        JSON.stringify({ error: "Access token no configurado en Mercado Pago" }),
+        JSON.stringify({ error: "Access token no configurado en Mercado Pago", code: "MP_NO_TOKEN" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Validate token format
+    const tokenPrefix = config.access_token.substring(0, 8);
+    if (!config.access_token.startsWith("APP_USR-") && !config.access_token.startsWith("TEST-")) {
+      console.error(`Invalid token format: starts with "${tokenPrefix}..." (length: ${config.access_token.length})`);
+      return new Response(
+        JSON.stringify({ error: "El access token de Mercado Pago tiene un formato inválido", code: "MP_INVALID_TOKEN" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log(`Creating MP preference: env=${environment}, token_prefix=${tokenPrefix}, token_len=${config.access_token.length}`);
 
     // Create preference in Mercado Pago
     const preferenceData = {
@@ -130,7 +142,7 @@ serve(async (req) => {
       statement_descriptor: "LOGISTICA",
       expires: true,
       expiration_date_from: new Date().toISOString(),
-      expiration_date_to: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours
+      expiration_date_to: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     };
 
     const mpResponse = await fetch("https://api.mercadopago.com/checkout/preferences", {
@@ -142,16 +154,29 @@ serve(async (req) => {
       body: JSON.stringify(preferenceData),
     });
 
+    console.log(`MP API response: status=${mpResponse.status}`);
+
     if (!mpResponse.ok) {
-      const errorData = await mpResponse.json();
-      console.error("Mercado Pago error:", errorData?.message || "Preference creation failed");
+      const contentType = mpResponse.headers.get("content-type") || "";
+      let errorDetails: any = { status: mpResponse.status };
+
+      if (contentType.includes("application/json")) {
+        errorDetails = await mpResponse.json();
+        console.error("MP API error:", errorDetails?.message || "Preference creation failed");
+      } else {
+        const text = await mpResponse.text();
+        console.error("MP API non-JSON error:", text.substring(0, 200));
+      }
+
+      const code = mpResponse.status === 401 ? "MP_UNAUTHORIZED" : "MP_API_ERROR";
       return new Response(
-        JSON.stringify({ error: "Error al crear preferencia de pago", details: errorData }),
+        JSON.stringify({ error: "Error al crear preferencia de pago", code, details: errorDetails }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const preference = await mpResponse.json();
+    console.log(`Preference created: id=${preference.id}`);
 
     // Create pending payment record with tenant_id
     const { error: paymentError } = await supabaseClient
@@ -176,9 +201,6 @@ serve(async (req) => {
         preference_id: preference.id,
         init_point: preference.init_point,
         sandbox_init_point: preference.sandbox_init_point,
-        // For QR payments
-        qr_code: preference.point_of_interaction?.transaction_data?.qr_code,
-        qr_code_base64: preference.point_of_interaction?.transaction_data?.qr_code_base64,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
@@ -186,7 +208,7 @@ serve(async (req) => {
     console.error("Error:", error);
     const errorMessage = error instanceof Error ? error.message : "Internal server error";
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify({ error: errorMessage, code: "MP_INTERNAL_ERROR" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
