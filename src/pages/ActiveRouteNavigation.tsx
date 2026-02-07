@@ -371,7 +371,13 @@ export default function ActiveRouteNavigation() {
       navigate('/my-routes');
     },
     onError: (error) => {
-      toast.error('Error al cerrar ruta: ' + error.message);
+      // If the route is already closed/completed, treat as success
+      if (error.message?.includes('Solo se pueden cerrar')) {
+        toast.success('La ruta ya fue completada');
+        navigate('/my-routes');
+      } else {
+        toast.error('Error al cerrar ruta: ' + error.message);
+      }
     }
   });
 
@@ -931,7 +937,15 @@ export default function ActiveRouteNavigation() {
       {/* Route Complete Modal */}
       {stats.pending === 0 && stats.total > 0 && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <Card className="w-full max-w-sm">
+          <Card className="w-full max-w-sm relative">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute right-2 top-2 z-10"
+              onClick={() => navigate('/my-routes')}
+            >
+              <X className="h-4 w-4" />
+            </Button>
             <CardContent className="p-6 text-center">
               <div className="w-20 h-20 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-4">
                 <CheckCircle className="h-10 w-10 text-success" />
@@ -943,20 +957,29 @@ export default function ActiveRouteNavigation() {
                 Has completado {stats.completed} de {stats.total} paradas
               </p>
               
-              <Button
-                onClick={() => closeRouteMutation.mutate()}
-                disabled={closeRouteMutation.isPending}
-                className="w-full bg-success hover:bg-success/90"
-              >
-                {closeRouteMutation.isPending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Cerrando...
-                  </>
-                ) : (
-                  'Cerrar Ruta'
-                )}
-              </Button>
+              <div className="space-y-2">
+                <Button
+                  onClick={() => closeRouteMutation.mutate()}
+                  disabled={closeRouteMutation.isPending}
+                  className="w-full bg-success hover:bg-success/90"
+                >
+                  {closeRouteMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Cerrando...
+                    </>
+                  ) : (
+                    'Cerrar Ruta'
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => navigate('/my-routes')}
+                >
+                  Volver a Mis Rutas
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>
