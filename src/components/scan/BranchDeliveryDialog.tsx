@@ -34,6 +34,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import SignatureCanvas from '@/components/delivery/SignatureCanvas';
 import { PaymentMethodDialog } from '@/components/shipments/PaymentMethodDialog';
+import { InvoiceDataDialog } from '@/components/invoicing/InvoiceDataDialog';
 
 interface BranchDeliveryDialogProps {
   open: boolean;
@@ -80,6 +81,11 @@ export function BranchDeliveryDialog({
   const [paymentMethod, setPaymentMethod] = useState<string | null>(null);
   const [paymentReference, setPaymentReference] = useState<string | null>(null);
   
+  // Invoice state
+  const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
+  const [deliveredEnvioId, setDeliveredEnvioId] = useState<string | null>(null);
+  const [deliveredPrecio, setDeliveredPrecio] = useState<number>(0);
+  
   // UI state
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -94,7 +100,6 @@ export function BranchDeliveryDialog({
   };
 
   const handleClose = () => {
-    // Reset form
     setNombreRetira('');
     setDniRetira('');
     setParentesco('destinatario');
@@ -138,7 +143,6 @@ export function BranchDeliveryDialog({
   const handleConfirmDelivery = async () => {
     if (!shipment || !validateForm()) return;
 
-    // Validar que el usuario esté autenticado
     if (!user?.id) {
       toast.error('Sesión expirada', {
         description: 'Por favor, inicia sesión nuevamente'
@@ -149,7 +153,6 @@ export function BranchDeliveryDialog({
     setIsProcessing(true);
 
     try {
-      // 1. Update shipment with delivery data
       const { error: updateError } = await supabase
         .from('envios')
         .update({
@@ -168,11 +171,8 @@ export function BranchDeliveryDialog({
 
       if (updateError) throw updateError;
 
-      // Note: History entry is auto-created by DB trigger log_envio_estado_change
-
-      // 3. Record payment if pago destino
+      // Record payment if pago destino
       if (isPagoDestino && paymentCompleted && paymentMethod) {
-        // Insert payment record
         await supabase.from('pagos').insert([{
           envio_id: shipment.id,
           monto: shipment.precio_total,
@@ -182,7 +182,6 @@ export function BranchDeliveryDialog({
           created_by: user.id,
         }]);
 
-        // Check for open cash session and add movement
         if (profile?.sucursal_id) {
           const { data: sesionCaja } = await supabase
             .from('sesiones_caja')
@@ -209,9 +208,28 @@ export function BranchDeliveryDialog({
       toast.success('Entrega confirmada', {
         description: `Envío ${shipment.tracking_number} entregado correctamente`,
       });
-      
-      handleClose();
-      onSuccess();
+
+      // If invoice requested, open invoice dialog instead of closing
+      if (requiereFactura) {
+        setDeliveredEnvioId(shipment.id);
+        setDeliveredPrecio(shipment.precio_total);
+        setShowInvoiceDialog(true);
+        // Reset form but don't close yet
+        setNombreRetira('');
+        setDniRetira('');
+        setParentesco('destinatario');
+        setSignature(null);
+        setRequiereFactura(false);
+        setFacturaTipo('B');
+        setPaymentCompleted(false);
+        setPaymentMethod(null);
+        setPaymentReference(null);
+        onClose();
+        onSuccess();
+      } else {
+        handleClose();
+        onSuccess();
+      }
     } catch (error: any) {
       console.error('Error confirming delivery:', error);
       toast.error('Error al confirmar la entrega', {
@@ -367,28 +385,9 @@ export function BranchDeliveryDialog({
               </div>
 
               {requiereFactura && (
-                <div className="pl-6">
-                  <Label className="text-sm text-muted-foreground mb-2 block">
-                    Tipo de Factura
-                  </Label>
-                  <RadioGroup
-                    value={facturaTipo}
-                    onValueChange={(val) => setFacturaTipo(val as 'A' | 'B' | 'C')}
-                    className="flex gap-4"
-                  >
-                    {['A', 'B', 'C'].map((tipo) => (
-                      <div key={tipo} className="flex items-center space-x-2">
-                        <RadioGroupItem value={tipo} id={`factura-${tipo}`} />
-                        <Label htmlFor={`factura-${tipo}`} className="cursor-pointer">
-                          Factura {tipo}
-                        </Label>
-                      </div>
-                    ))}
-                  </RadioGroup>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    La factura será generada posteriormente y enviada al cliente
-                  </p>
-                </div>
+                <p className="text-sm text-muted-foreground pl-6">
+                  Después de confirmar la entrega se abrirá el formulario para completar los datos fiscales y emitir la factura electrónica.
+                </p>
               )}
             </div>
 
@@ -439,6 +438,23 @@ export function BranchDeliveryDialog({
           amount={shipment.precio_total}
           envioId={shipment.id}
           onConfirm={handlePaymentConfirm}
+        />
+      )}
+
+      {/* Invoice Dialog - opens after delivery if factura requested */}
+      {deliveredEnvioId && (
+        <InvoiceDataDialog
+          open={showInvoiceDialog}
+          onClose={() => {
+            setShowInvoiceDialog(false);
+            setDeliveredEnvioId(null);
+          }}
+          onSuccess={() => {
+            setShowInvoiceDialog(false);
+            setDeliveredEnvioId(null);
+          }}
+          envioId={deliveredEnvioId}
+          importeTotal={deliveredPrecio}
         />
       )}
     </>
