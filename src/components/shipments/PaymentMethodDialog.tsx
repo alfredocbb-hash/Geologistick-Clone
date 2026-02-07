@@ -142,6 +142,24 @@ export function PaymentMethodDialog({
     }
   };
 
+  const handleCancelMpPayment = async () => {
+    if (mpPayment) {
+      // Mark the MP preference as cancelled in the database
+      try {
+        await supabase
+          .from('pagos')
+          .update({ estado: 'fallido' })
+          .eq('mercado_pago_id', mpPayment.preference_id);
+      } catch (error) {
+        console.error('Error cancelling MP payment:', error);
+      }
+    }
+    // Reset MP state and go back to method selection
+    setMpPayment(null);
+    setIsWaitingForPayment(false);
+    setIsCreatingMpPayment(false);
+  };
+
   const handleCancel = () => {
     onOpenChange(false);
   };
@@ -319,24 +337,44 @@ export function PaymentMethodDialog({
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" onClick={handleCancel} disabled={isLoading || isCreatingMpPayment}>
-            Cancelar
-          </Button>
-          <Button 
-            onClick={handleConfirm} 
-            disabled={isLoading || isCreatingMpPayment || (selectedMethod === 'mercado_pago' && !isMpConfigured)}
-          >
-            {isLoading || isCreatingMpPayment ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {isCreatingMpPayment ? 'Generando link...' : 'Procesando...'}
-              </>
-            ) : selectedMethod === 'mercado_pago' && !mpPayment ? (
-              'Generar Link de Pago'
-            ) : (
-              'Confirmar Pago'
-            )}
-          </Button>
+          {selectedMethod === 'mercado_pago' && mpPayment ? (
+            <>
+              <Button variant="outline" onClick={handleCancelMpPayment} disabled={isLoading}>
+                Cambiar método de pago
+              </Button>
+              <Button onClick={handleConfirmMercadoPago} disabled={isLoading}>
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Procesando...
+                  </>
+                ) : (
+                  'Confirmar Pago'
+                )}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={handleCancel} disabled={isLoading || isCreatingMpPayment}>
+                Cancelar
+              </Button>
+              <Button 
+                onClick={handleConfirm} 
+                disabled={isLoading || isCreatingMpPayment || (selectedMethod === 'mercado_pago' && !isMpConfigured)}
+              >
+                {isLoading || isCreatingMpPayment ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {isCreatingMpPayment ? 'Generando link...' : 'Procesando...'}
+                  </>
+                ) : selectedMethod === 'mercado_pago' ? (
+                  'Generar Link de Pago'
+                ) : (
+                  'Confirmar Pago'
+                )}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
