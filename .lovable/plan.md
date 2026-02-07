@@ -1,63 +1,97 @@
 
-# Fix: Cancelar Pago Mercado Pago vuelve a seleccion de metodo
 
-## Problema detectado
+# Integrar Facturacion ARCA para Beraexpress
 
-Cuando se crea un envio con pago "contado", el flujo actual es:
+## Resumen
 
-1. Se crea el envio en la base de datos
-2. Se abre el dialogo de metodo de pago
-3. El usuario selecciona Mercado Pago y genera un link/QR
-4. Si el usuario presiona "Cancelar", el dialogo se cierra y redirige a la etiqueta
+El sistema tiene los componentes de facturacion creados pero desconectados. Este plan conecta todas las piezas para que cuando un cliente solicite factura, el operador pueda completar los datos fiscales y emitir la factura electronica (sandbox por ahora).
 
-El problema tiene dos partes:
+## Paso 1: Crear registro en `arca_config` para Beraexpress
 
-- **El boton "Cancelar" cierra todo el dialogo** en vez de volver a la pantalla de seleccion de metodo de pago. El usuario no puede cambiar de opinion y elegir otro metodo (ej: efectivo).
-- **La preferencia de Mercado Pago queda activa** (pendiente) en la base de datos aunque el usuario la cancelo.
+Insertar en la tabla `arca_config` los datos del contribuyente Beraexpress para que el hook `useARCAIntegration` pueda determinar automaticamente el tipo de factura segun condicion IVA.
 
-## Solucion
+Campos a completar:
+- `tenant_id`: 94a9ea85-43c5-49ac-9bfa-86843072c2ce
+- `cuit`: 30717265811
+- `razon_social`: Beraexpress (o la razon social fiscal correcta)
+- `condicion_iva`: (a confirmar, por defecto `responsable_inscripto`)
+- `punto_venta`: 7
+- `factura_a_habilitada`: true
+- `factura_b_habilitada`: true
+- `factura_c_habilitada`: true
+- `is_active`: true
+- `environment`: sandbox
 
-### 1. Boton "Cancelar" en la vista del QR vuelve a la seleccion de metodo
+## Paso 2: Integrar InvoiceDataDialog en el flujo de entrega en sucursal
 
-Cuando el QR de Mercado Pago esta visible y el usuario presiona "Cancelar":
-- Se limpia el estado del QR/preferencia (`mpPayment = null`)
-- Se vuelve a mostrar la lista de metodos de pago
-- El usuario puede elegir otro metodo (efectivo, transferencia, etc.)
+**Archivo**: `src/components/scan/BranchDeliveryDialog.tsx`
 
-### 2. Marcar la preferencia de MP como cancelada en la base de datos
+Cuando el operador marca "El cliente solicita factura" y confirma la entrega, se abrira automaticamente el `InvoiceDataDialog` para completar los datos fiscales del receptor (CUIT, razon social, condicion IVA, domicilio).
 
-Al cancelar el QR, se actualiza el registro en la tabla `pagos` para que quede con estado `cancelado`, evitando que un pago tardio por esa preferencia cause confusion.
+Cambios:
+- Importar `InvoiceDataDialog`
+- Agregar estado `showInvoiceDialog` y `deliveredEnvioId`
+- Despues de confirmar la entrega exitosamente, si `requiereFactura === true`, abrir el dialog de facturacion en vez de cerrar inmediatamente
+- Pasar `envioId` y `precio_total` al dialog
 
-### 3. Boton "Volver" separado del boton "Cancelar Envio"
+## Paso 3: Agregar boton "Emitir Factura" en el detalle del envio
 
-Se distinguen dos acciones:
-- **"Cambiar metodo"**: vuelve a la seleccion de metodo de pago (no cierra el dialogo)
-- **"Cancelar"** (en la vista de seleccion): cierra el dialogo y redirige a la etiqueta sin metodo de pago registrado
+**Archivo**: `src/components/shipments/ShipmentDetailsDialog.tsx`
 
-## Cambios tecnicos
+Agregar una seccion de facturacion visible en el detalle del envio:
+- Si el envio tiene `requiere_factura === true` y no tiene `factura_cae`, mostrar un boton "Emitir Factura" que abre el `InvoiceDataDialog`
+- Si el envio ya tiene `factura_cae`, mostrar los datos de la factura emitida (numero, CAE, fecha, tipo)
+- Importar y renderizar `InvoiceDataDialog` condicionalmente
 
-### Archivo: `src/components/shipments/PaymentMethodDialog.tsx`
+## Paso 4: Permitir solicitar factura desde el detalle del envio
 
-- Agregar una funcion `handleCancelMpPayment` que:
-  - Actualiza el pago en la tabla `pagos` a estado `cancelado` (si existe un registro con `mercado_pago_id` = `preference_id`)
-  - Limpia el estado `mpPayment` y `isWaitingForPayment`
-  - Vuelve a mostrar la pantalla de seleccion de metodo
-- En la vista del QR, reemplazar el boton "Cancelar" por dos botones:
-  - "Cambiar metodo de pago": ejecuta `handleCancelMpPayment` (vuelve a la seleccion)
-  - "Confirmar Pago": confirma que el pago se completo (comportamiento actual)
+Agregar un boton secundario "Solicitar Factura" en el detalle de cualquier envio que aun no tenga factura, permitiendo que un administrador pueda emitir factura en cualquier momento (no solo al entregar en sucursal).
 
-### Archivo: `src/pages/NewShipment.tsx`
-
-- Sin cambios necesarios (el comportamiento de cierre del dialogo sigue igual)
-
-### Resultado esperado
+## Resultado esperado
 
 ```text
-Flujo actual (con bug):
-  Seleccionar MP -> Generar QR -> Cancelar -> Cierra dialogo (envio sin pago, preferencia activa)
+Flujo 1 - Entrega en sucursal:
+  Escanear paquete -> Confirmar entrega -> Marcar "solicita factura"
+  -> Confirmar -> Se abre formulario de datos fiscales
+  -> Completar CUIT, razon social, condicion IVA -> Emitir Factura
+  -> Se genera CAE (sandbox) y se guarda en el envio
 
-Flujo corregido:
-  Seleccionar MP -> Generar QR -> "Cambiar metodo" -> Vuelve a seleccion de metodo
-                                                     -> Marca preferencia MP como cancelada
-                                                     -> Puede elegir Efectivo u otro metodo
+Flujo 2 - Desde detalle del envio:
+  Abrir detalle de cualquier envio -> Seccion Facturacion
+  -> Boton "Emitir Factura" -> Formulario de datos fiscales
+  -> Completar datos -> Emitir Factura -> CAE generado
+
+Flujo 3 - Envios pendientes de factura:
+  Envios con requiere_factura=true y sin CAE
+  -> Se pueden facturar desde el detalle del envio en cualquier momento
 ```
+
+## Seccion tecnica
+
+### Archivos a modificar
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/components/scan/BranchDeliveryDialog.tsx` | Importar InvoiceDataDialog, abrir despues de entrega si requiere factura |
+| `src/components/shipments/ShipmentDetailsDialog.tsx` | Agregar seccion de facturacion con boton y visualizacion de datos |
+
+### Migracion de base de datos
+
+Insertar registro en `arca_config` para Beraexpress con los datos fiscales del contribuyente.
+
+### Flujo de datos
+
+1. El operador marca `requiere_factura = true` en el envio (ya existente)
+2. Se abre `InvoiceDataDialog` con el `envio_id` y `importe_total`
+3. El dialog llama a la edge function `arca-factura` con los datos del receptor
+4. La funcion verifica la configuracion ARCA del tenant en `system_integrations`
+5. Crea registro en tabla `facturas`
+6. En sandbox: genera CAE simulado y actualiza el envio con `factura_cae`, `factura_numero`, etc.
+7. El dialog muestra confirmacion con el CAE generado
+
+### Consideraciones
+
+- La integracion real con AFIP (WSAA + WSFEv1) no esta implementada aun (hay un TODO en la edge function). En modo sandbox se generan CAEs ficticios para testing
+- Para pasar a produccion se necesitara implementar la autenticacion con certificados X.509 contra los webservices de AFIP
+- El certificado configurado es valido hasta 2028
+
