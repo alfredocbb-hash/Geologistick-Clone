@@ -64,12 +64,42 @@ serve(async (req) => {
 
     const tenantId = profile.tenant_id;
 
-    const body: PaymentRequest = await req.json();
+    let body: PaymentRequest;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ error: "Invalid JSON body", code: "MP_INVALID_BODY" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    
     const { envio_id, tracking_number, amount, description, payer_email, payer_name, environment = "production" } = body;
 
-    if (!envio_id || !tracking_number || !amount) {
+    if (!envio_id || typeof envio_id !== "string" || envio_id.length > 100) {
       return new Response(
-        JSON.stringify({ error: "Missing required fields: envio_id, tracking_number, amount", code: "MP_MISSING_FIELDS" }),
+        JSON.stringify({ error: "Invalid envio_id", code: "MP_MISSING_FIELDS" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!tracking_number || typeof tracking_number !== "string" || tracking_number.length > 100) {
+      return new Response(
+        JSON.stringify({ error: "Invalid tracking_number", code: "MP_MISSING_FIELDS" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!amount || typeof amount !== "number" || amount <= 0 || amount > 100000000 || !isFinite(amount)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid amount: must be a positive number", code: "MP_MISSING_FIELDS" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (environment !== "sandbox" && environment !== "production") {
+      return new Response(
+        JSON.stringify({ error: "Invalid environment", code: "MP_MISSING_FIELDS" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

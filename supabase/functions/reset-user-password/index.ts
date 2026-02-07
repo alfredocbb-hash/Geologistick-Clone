@@ -67,11 +67,21 @@ Deno.serve(async (req) => {
     }
 
     // Parse request body
-    const { user_id, new_password } = await req.json();
-
-    if (!user_id) {
+    let body: Record<string, unknown>;
+    try {
+      body = await req.json();
+    } catch {
       return new Response(
-        JSON.stringify({ error: 'user_id es requerido' }),
+        JSON.stringify({ error: "Cuerpo de solicitud inválido" }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { user_id, new_password } = body as { user_id?: string; new_password?: string };
+
+    if (!user_id || typeof user_id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(user_id)) {
+      return new Response(
+        JSON.stringify({ error: 'user_id es requerido y debe ser un UUID válido' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
