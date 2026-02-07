@@ -66,11 +66,13 @@ export function MobileProfileTab() {
 
   const handleLogout = async () => {
     try {
+      queryClient.clear();
       await signOut();
       toast.success('Sesión cerrada');
-      navigate('/login');
     } catch (error) {
-      toast.error('Error al cerrar sesión');
+      console.error('Error during sign out:', error);
+    } finally {
+      navigate('/login', { replace: true });
     }
   };
 

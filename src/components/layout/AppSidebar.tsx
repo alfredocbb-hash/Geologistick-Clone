@@ -1,6 +1,7 @@
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/lib/auth';
+import { useQueryClient } from '@tanstack/react-query';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useBranchConfig } from '@/hooks/useBranchConfig';
 import { useTenantContext } from '@/components/providers/TenantProvider';
@@ -273,7 +274,20 @@ export function AppSidebar() {
   const { tenant } = useTenantContext();
   const { branding } = useTenantContext();
   const location = useLocation();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const collapsed = state === 'collapsed';
+
+  const handleSignOut = async () => {
+    try {
+      queryClient.clear();
+      await signOut();
+    } catch (e) {
+      console.error('Error during sign out:', e);
+    } finally {
+      navigate('/login', { replace: true });
+    }
+  };
 
   // Super admin can see everything, but also check for super admin only sections
   const canAccessGroup = (group: NavGroup) => {
@@ -414,7 +428,7 @@ export function AppSidebar() {
               <p className="text-sm font-medium text-sidebar-foreground truncate">{profile?.nombre || 'Usuario'}</p>
               <p className="text-xs text-sidebar-foreground/60 truncate">{profile?.email}</p>
             </div>}
-          {!collapsed && <Button variant="ghost" size="icon" onClick={signOut} className="shrink-0 text-sidebar-foreground/60 hover:text-destructive hover:bg-destructive/10">
+          {!collapsed && <Button variant="ghost" size="icon" onClick={handleSignOut} className="shrink-0 text-sidebar-foreground/60 hover:text-destructive hover:bg-destructive/10">
               <LogOut className="h-4 w-4" />
             </Button>}
         </div>
