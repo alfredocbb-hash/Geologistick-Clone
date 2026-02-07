@@ -1,97 +1,116 @@
 
-
-# Integrar Facturacion ARCA para Beraexpress
+# Imprimir Factura y Liquidaciones
 
 ## Resumen
 
-El sistema tiene los componentes de facturacion creados pero desconectados. Este plan conecta todas las piezas para que cuando un cliente solicite factura, el operador pueda completar los datos fiscales y emitir la factura electronica (sandbox por ahora).
+Actualmente el sistema tiene:
+- **Facturas**: Los datos se guardan en la tabla `facturas` y en campos del envio (`factura_cae`, `factura_numero`, `factura_tipo`, `factura_fecha`), pero NO existe una pagina para imprimir/visualizar la factura.
+- **Liquidaciones**: Se generan PDFs descargables via `jsPDF` (descarga archivo), pero NO hay una vista previa imprimible en pantalla como la que existe para comprobantes de envio (`/print-receipt`).
 
-## Paso 1: Crear registro en `arca_config` para Beraexpress
+El plan es crear paginas de impresion dedicadas que sigan el mismo patron de `/print-receipt`: una vista previa en pantalla con boton de descarga PDF e impresion.
 
-Insertar en la tabla `arca_config` los datos del contribuyente Beraexpress para que el hook `useARCAIntegration` pueda determinar automaticamente el tipo de factura segun condicion IVA.
+---
 
-Campos a completar:
-- `tenant_id`: 94a9ea85-43c5-49ac-9bfa-86843072c2ce
-- `cuit`: 30717265811
-- `razon_social`: Beraexpress (o la razon social fiscal correcta)
-- `condicion_iva`: (a confirmar, por defecto `responsable_inscripto`)
-- `punto_venta`: 7
-- `factura_a_habilitada`: true
-- `factura_b_habilitada`: true
-- `factura_c_habilitada`: true
-- `is_active`: true
-- `environment`: sandbox
+## Parte 1: Pagina de impresion de Factura
 
-## Paso 2: Integrar InvoiceDataDialog en el flujo de entrega en sucursal
+### Nueva pagina: `src/pages/PrintInvoice.tsx`
 
-**Archivo**: `src/components/scan/BranchDeliveryDialog.tsx`
+Ruta: `/print-invoice?id={envio_id}`
 
-Cuando el operador marca "El cliente solicita factura" y confirma la entrega, se abrira automaticamente el `InvoiceDataDialog` para completar los datos fiscales del receptor (CUIT, razon social, condicion IVA, domicilio).
+Contenido:
+- Consulta la tabla `facturas` filtrando por `envio_id`
+- Consulta los datos del envio (remitente, destinatario, detalles de conceptos)
+- Consulta el branding del tenant (logo, nombre)
+- Muestra una vista previa de factura electronica con:
+  - Logo y datos del emisor (desde `arca_config`)
+  - Tipo y numero de comprobante (ej: "Factura B - 0007-00000001")
+  - Datos del receptor (CUIT/DNI, razon social, condicion IVA, domicilio)
+  - Detalle de conceptos con montos
+  - Si es Factura A: desglose neto + IVA
+  - CAE y fecha de vencimiento del CAE
+  - Codigo QR con datos fiscales (como las facturas reales de AFIP)
+  - Leyenda "DOCUMENTO NO FISCAL" (ya que estamos en sandbox)
+- Botones: "Descargar PDF" e "Imprimir" (window.print)
 
-Cambios:
-- Importar `InvoiceDataDialog`
-- Agregar estado `showInvoiceDialog` y `deliveredEnvioId`
-- Despues de confirmar la entrega exitosamente, si `requiereFactura === true`, abrir el dialog de facturacion en vez de cerrar inmediatamente
-- Pasar `envioId` y `precio_total` al dialog
-
-## Paso 3: Agregar boton "Emitir Factura" en el detalle del envio
+### Integracion con el detalle del envio
 
 **Archivo**: `src/components/shipments/ShipmentDetailsDialog.tsx`
 
-Agregar una seccion de facturacion visible en el detalle del envio:
-- Si el envio tiene `requiere_factura === true` y no tiene `factura_cae`, mostrar un boton "Emitir Factura" que abre el `InvoiceDataDialog`
-- Si el envio ya tiene `factura_cae`, mostrar los datos de la factura emitida (numero, CAE, fecha, tipo)
-- Importar y renderizar `InvoiceDataDialog` condicionalmente
+Cuando el envio ya tiene factura emitida (tiene `factura_cae`), agregar un boton "Imprimir Factura" que abre `/print-invoice?id={envioId}` en nueva pestana.
 
-## Paso 4: Permitir solicitar factura desde el detalle del envio
+---
 
-Agregar un boton secundario "Solicitar Factura" en el detalle de cualquier envio que aun no tenga factura, permitiendo que un administrador pueda emitir factura en cualquier momento (no solo al entregar en sucursal).
+## Parte 2: Pagina de impresion de Liquidaciones
 
-## Resultado esperado
+### Nueva pagina: `src/pages/PrintSettlement.tsx`
 
-```text
-Flujo 1 - Entrega en sucursal:
-  Escanear paquete -> Confirmar entrega -> Marcar "solicita factura"
-  -> Confirmar -> Se abre formulario de datos fiscales
-  -> Completar CUIT, razon social, condicion IVA -> Emitir Factura
-  -> Se genera CAE (sandbox) y se guarda en el envio
+Ruta: `/print-settlement?id={liquidacion_id}&type={branch|driver|seller}`
 
-Flujo 2 - Desde detalle del envio:
-  Abrir detalle de cualquier envio -> Seccion Facturacion
-  -> Boton "Emitir Factura" -> Formulario de datos fiscales
-  -> Completar datos -> Emitir Factura -> CAE generado
+Contenido:
+- Segun el `type`, consulta la tabla correspondiente (`liquidaciones`, `liquidacion_sucursales`, `seller_liquidaciones`)
+- Carga los detalles asociados (comisiones, detalles de sucursal, movimientos de seller)
+- Carga branding del tenant
+- Muestra una vista previa imprimible con:
+  - Logo y nombre de la empresa
+  - Titulo: "LIQUIDACION DE SUCURSAL / CHOFER / SELLER"
+  - Datos generales: entidad, periodo, estado, metodo de pago
+  - Resumen de totales
+  - Tabla de detalle de envios/movimientos
+  - Pie con fecha de generacion
+- Botones: "Descargar PDF" (reutiliza las funciones existentes de `generateSettlementPDF.ts`) e "Imprimir"
 
-Flujo 3 - Envios pendientes de factura:
-  Envios con requiere_factura=true y sin CAE
-  -> Se pueden facturar desde el detalle del envio en cualquier momento
-```
+### Integracion con las paginas existentes
 
-## Seccion tecnica
+Agregar un boton "Imprimir" junto al boton de "Descargar PDF" existente en:
+
+1. **`src/pages/DriverSettlements.tsx`**: Boton con icono de impresora al lado del Download
+2. **`src/pages/BranchSettlements.tsx`**: Igual
+3. **`src/pages/ecommerce/Settlements.tsx`**: Igual para liquidaciones de seller
+4. **`src/components/settlements/SettlementDetailDialog.tsx`**: El boton "Imprimir" ya existe pero usa `window.print()` del dialog. Cambiar para abrir la pagina dedicada
+5. **`src/components/ecommerce/SellerLiquidacionDetailDialog.tsx`**: Agregar boton "Imprimir" que abra la pagina
+
+---
+
+## Seccion Tecnica
+
+### Nuevos archivos
+
+| Archivo | Descripcion |
+|---------|-------------|
+| `src/pages/PrintInvoice.tsx` | Vista previa e impresion de factura electronica |
+| `src/pages/PrintSettlement.tsx` | Vista previa e impresion de liquidaciones (branch/driver/seller) |
 
 ### Archivos a modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/components/scan/BranchDeliveryDialog.tsx` | Importar InvoiceDataDialog, abrir despues de entrega si requiere factura |
-| `src/components/shipments/ShipmentDetailsDialog.tsx` | Agregar seccion de facturacion con boton y visualizacion de datos |
+| `src/App.tsx` | Agregar rutas `/print-invoice` y `/print-settlement` |
+| `src/components/shipments/ShipmentDetailsDialog.tsx` | Agregar boton "Imprimir Factura" cuando hay factura emitida |
+| `src/pages/DriverSettlements.tsx` | Agregar boton "Imprimir" que abre `/print-settlement` |
+| `src/pages/BranchSettlements.tsx` | Agregar boton "Imprimir" que abre `/print-settlement` |
+| `src/pages/ecommerce/Settlements.tsx` | Agregar boton "Imprimir" que abre `/print-settlement` |
+| `src/components/settlements/SettlementDetailDialog.tsx` | Actualizar boton "Imprimir" para abrir pagina dedicada |
+| `src/components/ecommerce/SellerLiquidacionDetailDialog.tsx` | Agregar boton "Imprimir" |
 
-### Migracion de base de datos
+### Patron de diseño
 
-Insertar registro en `arca_config` para Beraexpress con los datos fiscales del contribuyente.
+Ambas paginas siguen el mismo patron que `PrintReceipt.tsx`:
+- Fondo gris claro (`bg-slate-100`)
+- Card centrada con max-width
+- Header con boton "Volver" y botones de accion
+- Contenido formateado para impresion
+- CSS `@media print` para ocultar botones y maximizar el contenido
 
-### Flujo de datos
+### Consultas de base de datos
 
-1. El operador marca `requiere_factura = true` en el envio (ya existente)
-2. Se abre `InvoiceDataDialog` con el `envio_id` y `importe_total`
-3. El dialog llama a la edge function `arca-factura` con los datos del receptor
-4. La funcion verifica la configuracion ARCA del tenant en `system_integrations`
-5. Crea registro en tabla `facturas`
-6. En sandbox: genera CAE simulado y actualiza el envio con `factura_cae`, `factura_numero`, etc.
-7. El dialog muestra confirmacion con el CAE generado
+**PrintInvoice**:
+- `facturas` (por `envio_id`) - datos fiscales del comprobante
+- `envios` con joins a `clientes` y `sucursales` - datos del envio
+- `envio_detalles` - conceptos facturados
+- `arca_config` (por `tenant_id`) - datos del emisor
+- `tenant_branding` - logo y nombre
 
-### Consideraciones
-
-- La integracion real con AFIP (WSAA + WSFEv1) no esta implementada aun (hay un TODO en la edge function). En modo sandbox se generan CAEs ficticios para testing
-- Para pasar a produccion se necesitara implementar la autenticacion con certificados X.509 contra los webservices de AFIP
-- El certificado configurado es valido hasta 2028
-
+**PrintSettlement**:
+- Segun tipo, consulta la liquidacion principal
+- Detalles/comisiones asociados
+- `tenant_branding` - logo y nombre
