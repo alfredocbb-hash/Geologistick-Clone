@@ -1,59 +1,123 @@
 
-# Corregir 3 problemas: Mercado Pago para choferes, cierre de ruta y fotos
 
-## Problema 1: Mercado Pago no aparece para choferes
+# Zonas de Cobertura por Sucursal
 
-La tabla de configuracion de integraciones solo permite lectura a administradores. Los choferes no pueden consultar si Mercado Pago esta configurado, por lo que la opcion nunca se muestra.
+## Como funciona la limitacion
 
-**Solucion**: Agregar una politica de lectura que permita a todos los usuarios autenticados del mismo tenant ver las configuraciones de integracion (sin exponer credenciales sensibles, ya que la consulta solo verifica existencia de registros activos).
+La tarifa "General" define **cuanto cobrar** por un envio, pero no controla **a donde se puede enviar**. Para limitar los destinos, se usan las **Zonas de Cobertura** de cada sucursal, que ya tienen una tabla preparada en la base de datos (`sucursal_zonas`) pero actualmente esta vacia y sin interfaz.
 
-## Problema 2: Error "Solo se pueden cerrar rutas en curso" y modal trabado
+El flujo seria:
 
-Cuando el chofer completa todas las paradas, aparece un modal de "Ruta Completada" con el boton "Cerrar Ruta". Si el cierre falla (porque la ruta ya fue cerrada o cambio de estado), el error aparece como un toast pero el modal no se puede cerrar -- no tiene boton de cerrar ni forma de salir. El chofer queda atrapado.
+```text
+Sucursal "Blackbox Centro"
+  -> Tarifa: General (define precios)
+  -> Zonas de Cobertura (define a donde puede enviar):
+     - Buenos Aires (provincia)
+     - Cordoba, Cordoba
+     - Rosario, Santa Fe
+     - CP 1000-1499
 
-**Solucion**:
-- Agregar un boton de cerrar (X) al modal de ruta completada para que el chofer pueda salir
-- Mejorar la logica de cierre para que si la ruta ya esta completada, se trate como exito y se navegue a "Mis Rutas"
-- Verificar el estado real de la ruta antes de intentar cerrarla
+Operador intenta crear envio a Mendoza:
+  -> Sistema verifica zonas de cobertura
+  -> Mendoza NO esta en la lista
+  -> Bloquea el envio con mensaje: "Sin cobertura en Mendoza"
+```
 
-## Problema 3: Fotos requieren multiples intentos
+Si una sucursal **no tiene zonas configuradas**, puede enviar a cualquier destino (sin restriccion, comportamiento actual).
 
-En Android, el atributo `capture="environment"` fuerza la apertura de la camara nativa, lo cual puede causar que el WebView se recargue. Ademas, el valor del input de archivo no se limpia entre intentos, lo que puede causar que el navegador no dispare el evento de cambio.
+## Cambios a implementar
 
-**Solucion**:
-- Limpiar el valor del input (`value = ''`) antes de abrir la camara para asegurar que el evento `onChange` se dispare siempre
-- Quitar `capture="environment"` para usar el selector de archivos del sistema (mas confiable en WebView, y permite elegir entre camara y galeria)
-- Agregar manejo de error visual si la foto no se carga
+### 1. Boton "Zonas de Cobertura" en la pagina de Sucursales
+
+En cada tarjeta de sucursal, agregar un boton con icono de mapa que abre un dialogo para gestionar las zonas.
+
+### 2. Nuevo componente: BranchCoverageZonesDialog
+
+Un dialogo donde el administrador puede:
+
+- Ver las zonas de cobertura existentes para esa sucursal
+- Agregar nuevas zonas por **Ciudad**, **Provincia**, o **rango de Codigo Postal**
+- Activar/desactivar zonas individuales
+- Eliminar zonas que ya no aplican
+- Copiar zonas de otra sucursal (para configurar rapido varias sucursales)
+
+### 3. Validacion al crear envios en NewShipment
+
+Al momento de guardar un nuevo envio:
+
+1. Consultar `sucursal_zonas` para la sucursal del operador
+2. Si **no hay zonas** configuradas: permitir todo (sin restriccion)
+3. Si **hay zonas** configuradas: verificar que la ciudad/CP del destinatario coincida con alguna zona activa
+4. Si no coincide: mostrar alerta clara y bloquear el envio
+
+La validacion se aplica:
+- Para envios a **puerta**: verificar ciudad o CP del destinatario
+- Para envios a **sucursal destino**: verificar la ciudad de la sucursal destino
+
+### 4. Ajuste de seguridad (RLS)
+
+La tabla ya tiene una politica de lectura por tenant que funciona correctamente. Solo se necesita ajustar las politicas de escritura para que administradores del mismo tenant puedan gestionar zonas (actualmente solo admins globales pueden).
 
 ## Detalle tecnico
 
-### Migracion SQL - Nueva politica RLS
+### Archivos a crear
 
-Agregar una politica SELECT en `system_integrations` para usuarios autenticados del mismo tenant:
+| Archivo | Descripcion |
+|---------|-------------|
+| `src/components/branches/BranchCoverageZonesDialog.tsx` | Dialogo para gestionar zonas de cobertura por sucursal |
+
+### Archivos a modificar
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/pages/Branches.tsx` | Agregar boton "Zonas" en cada tarjeta de sucursal |
+| `src/pages/NewShipment.tsx` | Agregar query de `sucursal_zonas` y validacion antes de guardar |
+
+### Migracion SQL
+
+Agregar politica para que administradores del tenant puedan insertar, actualizar y eliminar zonas de sus sucursales:
 
 ```text
-CREATE POLICY "Users can view their tenant integrations"
-  ON system_integrations FOR SELECT
-  TO authenticated
-  USING (tenant_id = current_user_tenant());
+-- Permitir a admins del tenant gestionar zonas de sus sucursales
+CREATE POLICY "Admins manage coverage zones for their tenant"
+  ON sucursal_zonas FOR ALL TO authenticated
+  USING (
+    sucursal_id IN (
+      SELECT id FROM sucursales 
+      WHERE tenant_id = current_user_tenant()
+    )
+    AND is_admin(auth.uid())
+  )
+  WITH CHECK (
+    sucursal_id IN (
+      SELECT id FROM sucursales 
+      WHERE tenant_id = current_user_tenant()
+    )
+    AND is_admin(auth.uid())
+  );
 ```
 
-### Cambios en `ActiveRouteNavigation.tsx`
+Tambien eliminar la politica anterior "Admins gestionan zonas" que usa `is_admin()` sin filtro de tenant.
 
-1. Agregar boton X/cerrar al modal de ruta completada (lineas 932-963)
-2. Modificar `closeRouteMutation`:
-   - En `onError`: si el mensaje contiene "Solo se pueden cerrar", refrescar el estado de la ruta y si ya esta completada, navegar a Mis Rutas
-   - Agregar un boton "Volver a Mis Rutas" como alternativa al modal
+### Logica de validacion en NewShipment
 
-### Cambios en `DeliveryConfirmation.tsx`
+```text
+Al enviar formulario:
+  1. Buscar zonas activas de sucursal_zonas WHERE sucursal_id = sucursalOrigenId AND activa = true
+  2. Si count = 0 -> sin restriccion, continuar normalmente
+  3. Si count > 0 -> verificar destino:
+     a. Comparar ciudad destino (case-insensitive, sin acentos) contra zonas.ciudad
+     b. Comparar CP destino contra rangos [codigo_postal_desde, codigo_postal_hasta]
+     c. Comparar provincia destino contra zonas.provincia
+     d. Si alguna zona coincide -> permitir
+     e. Si ninguna coincide -> mostrar error y bloquear
+```
 
-1. En `handleOpenCamera` (linea 138): agregar `fileInputRef.current.value = ''` antes de hacer click
-2. En el input de foto (linea 534): quitar `capture="environment"` para mejor compatibilidad con WebView Android
+### Interfaz del dialogo de zonas
 
-### Archivos afectados
+El dialogo tendra:
+- Formulario rapido para agregar zona: campos de Ciudad, Provincia, CP desde, CP hasta
+- Lista de zonas existentes con toggle activa/inactiva y boton eliminar
+- Contador de zonas activas
+- Selector para copiar zonas de otra sucursal
 
-| Recurso | Cambio |
-|---------|--------|
-| Migracion SQL | Nueva politica RLS SELECT en `system_integrations` para todos los usuarios del tenant |
-| `src/pages/ActiveRouteNavigation.tsx` | Boton cerrar en modal completado, manejo de error mejorado |
-| `src/components/delivery/DeliveryConfirmation.tsx` | Reset del input de foto, quitar `capture="environment"` |
