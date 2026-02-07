@@ -1,119 +1,63 @@
 
+# Fix: Cancelar Pago Mercado Pago vuelve a seleccion de metodo
 
-# Mapa Interactivo para Zonas de Cobertura
+## Problema detectado
 
-## Que cambia
+Cuando se crea un envio con pago "contado", el flujo actual es:
 
-El dialogo actual de "Zonas de Cobertura" solo permite ingresar datos manualmente (Ciudad, Provincia, CP). Se va a agregar un **mapa interactivo** como modo principal para definir zonas, similar a como funciona en Mercado Libre.
+1. Se crea el envio en la base de datos
+2. Se abre el dialogo de metodo de pago
+3. El usuario selecciona Mercado Pago y genera un link/QR
+4. Si el usuario presiona "Cancelar", el dialogo se cierra y redirige a la etiqueta
 
-## Como va a funcionar
+El problema tiene dos partes:
 
-El dialogo tendra dos pestanas:
+- **El boton "Cancelar" cierra todo el dialogo** en vez de volver a la pantalla de seleccion de metodo de pago. El usuario no puede cambiar de opinion y elegir otro metodo (ej: efectivo).
+- **La preferencia de Mercado Pago queda activa** (pendiente) en la base de datos aunque el usuario la cancelo.
 
-- **Mapa**: Vista principal con un mapa interactivo de Google Maps donde el administrador puede:
-  - Hacer clic en cualquier punto del mapa para detectar automaticamente la ciudad/localidad
-  - Ver un popup de confirmacion con los datos detectados (ciudad, provincia, CP)
-  - Confirmar para agregar la zona a la lista
-  - Buscar localidades con un buscador integrado (autocompletado de Google Places)
-  - Ver las zonas ya agregadas representadas como circulos coloreados en el mapa
+## Solucion
 
-- **Lista**: La interfaz actual con los campos manuales de Ciudad, Provincia y Codigo Postal (para cuando el administrador necesite ingresar datos especificos o rangos de CP)
+### 1. Boton "Cancelar" en la vista del QR vuelve a la seleccion de metodo
 
-```text
-+-------------------------------------------+
-|  Zonas de Cobertura -- Berazategui        |
-|  [Mapa]  [Lista]                          |
-+-------------------------------------------+
-|  [Buscar localidad...              ]      |
-|  +-------------------------------------+  |
-|  |                                     |  |
-|  |     Google Map                      |  |
-|  |       (click para agregar)          |  |
-|  |                                     |  |
-|  |   [circulo azul] = zona activa      |  |
-|  |                                     |  |
-|  +-------------------------------------+  |
-|                                           |
-|  Zonas configuradas:                      |
-|  [San Isidro, Buenos Aires]  [x]          |
-|  [Pilar, Buenos Aires]      [x]          |
-|  [Campana, Buenos Aires]    [x]          |
-+-------------------------------------------+
-```
+Cuando el QR de Mercado Pago esta visible y el usuario presiona "Cancelar":
+- Se limpia el estado del QR/preferencia (`mpPayment = null`)
+- Se vuelve a mostrar la lista de metodos de pago
+- El usuario puede elegir otro metodo (efectivo, transferencia, etc.)
 
-## Flujo del usuario
+### 2. Marcar la preferencia de MP como cancelada en la base de datos
 
-1. Abre "Zonas de Cobertura" de una sucursal
-2. Ve el mapa centrado en la ubicacion de la sucursal (si tiene coordenadas) o en Buenos Aires
-3. Hace clic en una localidad del mapa (ej: San Isidro)
-4. Aparece un popup: "Agregar San Isidro, Buenos Aires? CP: 1642" con botones Confirmar/Cancelar
-5. Al confirmar, la zona se agrega a la lista y aparece como un circulo azul en el mapa
-6. Puede repetir para agregar mas zonas
-7. Tambien puede usar el buscador para encontrar localidades por nombre
-8. Las zonas se pueden eliminar desde los chips debajo del mapa
+Al cancelar el QR, se actualiza el registro en la tabla `pagos` para que quede con estado `cancelado`, evitando que un pago tardio por esa preferencia cause confusion.
 
-## Detalle tecnico
+### 3. Boton "Volver" separado del boton "Cancelar Envio"
 
-### Archivo nuevo: `src/components/branches/CoverageMapSelector.tsx`
+Se distinguen dos acciones:
+- **"Cambiar metodo"**: vuelve a la seleccion de metodo de pago (no cierra el dialogo)
+- **"Cancelar"** (en la vista de seleccion): cierra el dialogo y redirige a la etiqueta sin metodo de pago registrado
 
-Componente del mapa interactivo que:
-- Usa `GoogleMap` de `@react-google-maps/api` (ya disponible en el proyecto)
-- Implementa `onClick` en el mapa para capturar coordenadas
-- Usa `google.maps.Geocoder` para reverse-geocode el click y obtener ciudad/provincia/CP
-- Renderiza `google.maps.Circle` para cada zona activa existente (radio visual de ~5km)
-- Incluye un campo de busqueda con `google.maps.places.Autocomplete` para buscar localidades
-- Muestra un `InfoWindow` de confirmacion al hacer click con los datos detectados
+## Cambios tecnicos
 
-### Archivo modificado: `src/components/branches/BranchCoverageZonesDialog.tsx`
+### Archivo: `src/components/shipments/PaymentMethodDialog.tsx`
 
-- Agregar `Tabs` con dos pestanas: "Mapa" y "Lista"
-- La pestana "Mapa" renderiza el nuevo `CoverageMapSelector`
-- La pestana "Lista" mantiene el formulario actual (Ciudad, Provincia, CP desde/hasta)
-- Mover las funcionalidades compartidas (copiar zonas, tabla de zonas) fuera de las tabs para que sean visibles en ambas vistas
-- Recibir las coordenadas de la sucursal como props para centrar el mapa
+- Agregar una funcion `handleCancelMpPayment` que:
+  - Actualiza el pago en la tabla `pagos` a estado `cancelado` (si existe un registro con `mercado_pago_id` = `preference_id`)
+  - Limpia el estado `mpPayment` y `isWaitingForPayment`
+  - Vuelve a mostrar la pantalla de seleccion de metodo
+- En la vista del QR, reemplazar el boton "Cancelar" por dos botones:
+  - "Cambiar metodo de pago": ejecuta `handleCancelMpPayment` (vuelve a la seleccion)
+  - "Confirmar Pago": confirma que el pago se completo (comportamiento actual)
 
-### Archivo modificado: `src/pages/Branches.tsx`
+### Archivo: `src/pages/NewShipment.tsx`
 
-- Pasar las coordenadas `lat`/`lng` de la sucursal al dialogo de cobertura para centrar el mapa correctamente
+- Sin cambios necesarios (el comportamiento de cierre del dialogo sigue igual)
 
-### Logica del reverse geocoding al hacer click
+### Resultado esperado
 
 ```text
-1. Usuario hace click en el mapa
-2. Se obtienen las coordenadas (lat, lng)
-3. Se llama a google.maps.Geocoder.geocode({ location: { lat, lng } })
-4. Del resultado se extraen:
-   - locality -> ciudad
-   - administrative_area_level_1 -> provincia
-   - postal_code -> codigo postal
-5. Se muestra InfoWindow con los datos y botones Confirmar/Cancelar
-6. Al confirmar: se ejecuta addZoneMutation con los datos
-7. Se cierra el InfoWindow y el circulo aparece en el mapa
+Flujo actual (con bug):
+  Seleccionar MP -> Generar QR -> Cancelar -> Cierra dialogo (envio sin pago, preferencia activa)
+
+Flujo corregido:
+  Seleccionar MP -> Generar QR -> "Cambiar metodo" -> Vuelve a seleccion de metodo
+                                                     -> Marca preferencia MP como cancelada
+                                                     -> Puede elegir Efectivo u otro metodo
 ```
-
-### Visualizacion de zonas existentes en el mapa
-
-Las zonas ya agregadas se muestran como circulos semi-transparentes azules en el mapa. Para obtener la posicion del circulo:
-- Si la zona fue agregada desde el mapa, ya tenemos las coordenadas del click
-- Para zonas existentes (agregadas por texto), se geocodifica la ciudad al cargar el mapa
-- Se guarda la posicion en la tabla para no re-geocodificar cada vez
-
-### Migracion SQL
-
-Agregar columnas `lat` y `lng` a la tabla `sucursal_zonas` para almacenar las coordenadas de cada zona y poder mostrarlas en el mapa sin necesidad de re-geocodificar:
-
-```text
-ALTER TABLE sucursal_zonas
-  ADD COLUMN lat double precision,
-  ADD COLUMN lng double precision;
-```
-
-### Archivos afectados
-
-| Archivo | Cambio |
-|---------|--------|
-| Migracion SQL | Agregar columnas lat/lng a sucursal_zonas |
-| `src/components/branches/CoverageMapSelector.tsx` | **Nuevo** - Mapa interactivo con click y busqueda |
-| `src/components/branches/BranchCoverageZonesDialog.tsx` | Agregar tabs Mapa/Lista, pasar coordenadas |
-| `src/pages/Branches.tsx` | Pasar lat/lng de sucursal al dialogo |
-
