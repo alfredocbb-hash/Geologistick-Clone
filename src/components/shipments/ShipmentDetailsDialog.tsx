@@ -596,6 +596,17 @@ export function ShipmentDetailsDialog({
                             </div>
                           )}
                         </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                          asChild
+                        >
+                          <Link to={`/print-invoice?id=${envio.id}`} target="_blank">
+                            <Printer className="h-4 w-4 mr-2" />
+                            Imprimir Factura
+                          </Link>
+                        </Button>
                       </div>
                     ) : needsInvoice ? (
                       <div className="space-y-3">

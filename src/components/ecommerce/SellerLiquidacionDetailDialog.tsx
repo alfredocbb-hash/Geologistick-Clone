@@ -84,7 +84,7 @@ export function SellerLiquidacionDetailDialog({
   };
 
   const handlePrint = () => {
-    window.print();
+    window.open(`/print-settlement?id=${liquidacion.id}&type=seller`, '_blank');
   };
 
   const handleDownloadPDF = () => {
