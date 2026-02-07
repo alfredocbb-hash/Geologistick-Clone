@@ -1,82 +1,37 @@
 
+# Corregir filtro de pagos pendientes en Gestion de Pagos
 
-# Corregir paginas de error en OAuth de Tiendanube y MercadoLibre
+## Problema
 
-## Estado Actual
+En la solapa "Pendientes" de Gestion de Pagos, aparecen envios con el boton "Cobrar" aunque ya se hayan cobrado. Esto ocurre porque el filtro actual solo excluye envios con pagos en estado `pagado`, pero no considera otros estados que tambien indican que el cobro fue realizado:
 
-Las paginas de **exito** ya estan correctamente implementadas en ambas integraciones:
-- **Tiendanube**: Muestra una pagina con fondo degradado violeta, animacion de check, mensaje "Conexion Exitosa!" y agradecimiento
-- **MercadoLibre**: Muestra una pagina con fondo amarillo (branding ML), animacion de check, mensaje "Conexion Exitosa!" y agradecimiento
+- `cobrado_chofer`: el chofer ya cobro en destino
+- `rendido`: el chofer ya rindio ese cobro
 
-Sin embargo, hay **5 puntos donde el usuario veria JSON crudo** en lugar de una pagina amigable si ocurre un error:
-
-## Problemas Identificados
-
-### 1. MercadoLibre - Errores en authorize (3 puntos)
-Cuando un seller intenta conectar su tienda de ML y algo falla ANTES de redirigir a MercadoLibre, ve JSON crudo:
-
-- **seller_id faltante** (linea 59-62): Responde `{"error": "seller_id is required"}`
-- **Seller no encontrado** (linea 74-77): Responde `{"error": "Seller not found"}`
-- **Integracion no configurada** (linea 85-88): Responde `{"error": "MercadoLibre integration not configured..."}`
-
-### 2. MercadoLibre - Error general catch (linea 318-324)
-Si ocurre un error inesperado, responde JSON: `{"error": "..."}`
-
-### 3. Tiendanube - Error general catch (linea 455-461)
-Si ocurre un error inesperado en el flujo OAuth de Tiendanube, responde JSON: `{"error": "..."}`
+Actualmente en la base de datos existen pagos con estado `cobrado_chofer` que siguen apareciendo como pendientes de cobro.
 
 ## Solucion
 
-### Archivo: `supabase/functions/mercadolibre-oauth/index.ts`
+Ampliar el filtro para que excluya envios que tengan un pago en **cualquier** estado que indique cobro realizado: `pagado`, `cobrado_chofer` o `rendido`.
 
-Cambios:
-1. Convertir las 3 respuestas de error del endpoint `authorize` de JSON a HTML, usando la funcion `generateHtmlResponse(false, ...)` que ya existe
-2. Convertir el catch general a HTML usando `generateHtmlResponse(false, ...)`
-3. Convertir el "Unknown endpoint" a HTML
+## Cambio tecnico
 
-### Archivo: `supabase/functions/tiendanube-oauth/index.ts`
+### Archivo: `src/pages/Payments.tsx`
 
-Cambios:
-1. Convertir el catch general (linea 455-461) para usar la funcion `errorPage()` que ya existe en lugar de JSON
-
-## Seccion Tecnica
-
-### MercadoLibre OAuth - authorize endpoint
+Modificar la query de filtrado (lineas 242-245):
 
 ```
-ANTES (linea 59-62):
-  return new Response(JSON.stringify({ error: 'seller_id is required' }), ...)
+ANTES:
+  .eq('estado', 'pagado')
 
 DESPUES:
-  return new Response(
-    generateHtmlResponse(false, 'Enlace invalido. Solicita un nuevo enlace a tu proveedor logistico.', ''),
-    { status: 400, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
-  )
+  .in('estado', ['pagado', 'cobrado_chofer', 'rendido'])
 ```
 
-Aplicar el mismo patron a:
-- Seller no encontrado (linea 74-77)
-- Integracion no configurada (linea 85-88)
-- Catch general (linea 318-324)
-- Unknown endpoint (linea 313-315)
+Esto es un cambio de una sola linea que asegura que los envios cuyo pago ya fue cobrado por el chofer o ya fue rendido no aparezcan en la lista de pendientes ni muestren el boton "Cobrar".
 
-### Tiendanube OAuth - catch general
+## Resultado esperado
 
-```
-ANTES (linea 457-460):
-  return new Response(JSON.stringify({ error: message }), ...)
-
-DESPUES:
-  return new Response(
-    errorPage("Error inesperado", "Ocurrio un error procesando la conexion. Intenta nuevamente."),
-    { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
-  )
-```
-
-### Re-despliegue
-Desplegar ambas funciones: `tiendanube-oauth` y `mercadolibre-oauth`
-
-## Resultado Esperado
-- En cualquier escenario (exito o error), el usuario siempre vera una pagina HTML estilizada con un mensaje claro en espanol
-- Nunca vera JSON crudo ni codigo fuente
-
+- Solo apareceran en "Pendientes" los envios que realmente no tienen ningun cobro registrado
+- El boton "Cobrar" solo se mostrara para envios que efectivamente necesitan ser cobrados
+- Las estadisticas de "Pendientes de Cobro" tambien se actualizaran correctamente ya que usan la misma fuente de datos
