@@ -302,30 +302,39 @@ serve(async (req) => {
       const accessToken = configItem.config_value;
       const configTenantId = configItem.tenant_id;
 
+      console.log(`[Strategy 2] Trying tenant ${configTenantId}`);
+
       // Verify signature per tenant if secret is configured
       const webhookSecret = await getWebhookSecretForTenant(supabaseClient, configTenantId, environment);
       if (webhookSecret) {
         const isValid = await verifyMpSignature(req, paymentId, webhookSecret);
         if (isValid === false) {
           // Signature is explicitly invalid, skip this tenant
-          console.warn(`Invalid signature for tenant ${configTenantId}, skipping`);
+          console.warn(`[Strategy 2] Invalid signature for tenant ${configTenantId}, skipping`);
           continue;
         }
         if (isValid === null) {
-          console.warn(`No signature headers present, proceeding without verification for tenant ${configTenantId}`);
+          console.warn(`[Strategy 2] No signature headers present, proceeding without verification for tenant ${configTenantId}`);
         } else {
-          console.log(`Signature verified for tenant ${configTenantId}`);
+          console.log(`[Strategy 2] Signature verified for tenant ${configTenantId}`);
         }
+      } else {
+        console.log(`[Strategy 2] No webhook_secret configured for tenant ${configTenantId}, skipping signature check`);
       }
 
       const payment = await fetchPaymentFromMP(paymentId, accessToken);
-      if (!payment) continue;
+      if (!payment) {
+        console.warn(`[Strategy 2] fetchPaymentFromMP returned null for payment ${paymentId} with tenant ${configTenantId}, skipping`);
+        continue;
+      }
 
       const externalRef = payment.external_reference;
       if (!externalRef) {
-        console.log(`Payment ${paymentId} has no external_reference, skipping tenant ${configTenantId}`);
+        console.log(`[Strategy 2] Payment ${paymentId} has no external_reference, skipping tenant ${configTenantId}`);
         continue;
       }
+
+      console.log(`[Strategy 2] Payment ${paymentId} has external_reference=${externalRef}, checking envio for tenant ${configTenantId}`);
 
       // Verify the envio belongs to this tenant
       const { data: envio } = await supabaseClient
@@ -335,12 +344,16 @@ serve(async (req) => {
         .eq("tenant_id", configTenantId)
         .maybeSingle();
 
-      if (!envio) continue;
+      if (!envio) {
+        console.log(`[Strategy 2] No envio found with id=${externalRef} for tenant ${configTenantId}`);
+        continue;
+      }
 
       // Found the right tenant! Now find the pending payment record by envio_id
-      console.log(`Matched payment to tenant ${configTenantId} via external_reference=${externalRef}`);
+      console.log(`[Strategy 2] Matched payment to tenant ${configTenantId} via external_reference=${externalRef}`);
 
       const paymentStatus = mapMpStatus(payment.status);
+      console.log(`[Strategy 2] MP payment status=${payment.status} -> mapped to ${paymentStatus}`);
 
       // Try to update existing pending payment (stored with preference_id)
       const { data: pendingPayment } = await supabaseClient
@@ -354,14 +367,54 @@ serve(async (req) => {
 
       if (pendingPayment) {
         // Update the existing record (which had preference_id as mercado_pago_id)
-        await updatePaymentRecord(supabaseClient, externalRef, configTenantId, paymentId, payment, paymentStatus);
-        console.log(`Updated pending payment for envio ${externalRef}: status=${paymentStatus}`);
-      } else {
-        // No pending record found, upsert
-        const { error: upsertError } = await supabaseClient
+        const { error: updateError } = await supabaseClient
           .from("pagos")
-          .upsert(
-            {
+          .update({
+            estado: paymentStatus,
+            mercado_pago_id: paymentId,
+            mercado_pago_status: payment.status,
+            referencia: payment.id?.toString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", pendingPayment.id);
+
+        if (updateError) {
+          console.error(`[Strategy 2] Error updating pending payment ${pendingPayment.id}:`, updateError.message);
+        } else {
+          console.log(`[Strategy 2] Updated pending payment ${pendingPayment.id} for envio ${externalRef}: status=${paymentStatus}`);
+        }
+      } else {
+        // No pending record found, try to find any MP payment for this envio
+        const { data: anyPayment } = await supabaseClient
+          .from("pagos")
+          .select("id, estado")
+          .eq("envio_id", externalRef)
+          .eq("metodo", "mercado_pago")
+          .eq("tenant_id", configTenantId)
+          .maybeSingle();
+
+        if (anyPayment) {
+          console.log(`[Strategy 2] Found existing payment ${anyPayment.id} with estado=${anyPayment.estado}, updating`);
+          const { error: updateError } = await supabaseClient
+            .from("pagos")
+            .update({
+              estado: paymentStatus,
+              mercado_pago_id: paymentId,
+              mercado_pago_status: payment.status,
+              referencia: payment.id?.toString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", anyPayment.id);
+
+          if (updateError) {
+            console.error(`[Strategy 2] Error updating payment ${anyPayment.id}:`, updateError.message);
+          }
+        } else {
+          // No payment record at all, create one
+          console.log(`[Strategy 2] No payment record found for envio ${externalRef}, creating new one`);
+          const { error: insertError } = await supabaseClient
+            .from("pagos")
+            .insert({
               envio_id: externalRef,
               tenant_id: configTenantId,
               metodo: "mercado_pago",
@@ -370,15 +423,13 @@ serve(async (req) => {
               mercado_pago_id: paymentId,
               mercado_pago_status: payment.status,
               referencia: payment.id?.toString(),
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "envio_id,metodo" }
-          );
+            });
 
-        if (upsertError) {
-          console.error("Error upserting payment:", upsertError?.message);
+          if (insertError) {
+            console.error(`[Strategy 2] Error inserting payment:`, insertError.message);
+          }
         }
-        console.log(`Upserted payment for envio ${externalRef}: status=${paymentStatus}`);
+        console.log(`[Strategy 2] Processed payment for envio ${externalRef}: status=${paymentStatus}`);
       }
 
       return new Response(
