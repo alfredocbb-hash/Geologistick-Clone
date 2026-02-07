@@ -453,10 +453,9 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error("Error in tiendanube-oauth:", error);
-    const message = error instanceof Error ? error.message : "Unknown error";
     return new Response(
-      JSON.stringify({ error: message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      errorPage("Error inesperado", "Ocurrió un error procesando la conexión. Por favor intenta nuevamente."),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
     );
   }
 });
