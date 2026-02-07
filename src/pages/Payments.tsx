@@ -242,7 +242,7 @@ export default function Payments() {
       const { data: pagosPagados } = await supabase
         .from('pagos')
         .select('envio_id')
-        .eq('estado', 'pagado');
+        .in('estado', ['pagado', 'cobrado_chofer', 'rendido']);
 
       const enviosPagados = new Set((pagosPagados || []).map(p => p.envio_id));
       
