@@ -1,114 +1,77 @@
 
+# Actualizar Guia de Tarifas PDF con flujo completo y logica de calculo
 
-# Fix: Validación de zonas de cobertura por código postal
+## Resumen
 
-## Problema detectado
+Actualizar el contenido del PDF de tarifas (`src/lib/generateRatesGuidePDF.ts`) para reflejar con mayor precision el flujo real de carga de tarifas en la aplicacion y la logica de calculo implementada en el codigo. El PDF actual cubre los conceptos generales pero necesita alinearse mejor con la interfaz real y las formulas exactas.
 
-Hay dos bugs en la validación de cobertura:
+## Cambios propuestos en el contenido del PDF
 
-1. **Códigos postales alfanuméricos** (ej: `B7602` para Mar del Plata, `S2003` para Rosario): La función `cpInRange` usa `parseInt()` que devuelve `NaN` para estos CPs, haciendo que la comparación numérica falle. El fallback a comparación de strings tampoco funciona correctamente porque compara "7602" (input del usuario) con "B7602" (dato de la zona).
+### Seccion 2: Tipos de Tarifas - Mejorar precision
 
-2. **La lógica de matching es exclusiva cuando debería ser inclusiva**: Actualmente, si una zona tiene TANTO ciudad COMO rango de CP, solo chequea la ciudad. El CP range solo se evalúa si la ciudad no matcheó (`!matches`). Esto significa que una zona como "Zona Norte" con CP `1600-1699` no va a matchear si el usuario pone una ciudad que no es exactamente "Zona Norte".
+- Aclarar que en tarifa por Peso, el metodo escalonado (rangos_kg) tiene **prioridad sobre el metodo simple** cuando ambos estan configurados
+- Documentar que el **override por volumen** tiene la maxima prioridad: si alguna dimension del paquete supera el `umbral_volumen_cm` (por defecto 50cm), se usa el calculo volumetrico automaticamente, incluso en tarifas tipo "peso"
+- Agregar la formula exacta del override: `Flete = Precio Base + (Volumen en m3 x Precio por m3)`
 
-3. **La provincia no se envía** en el formulario (`provincia: null`), eliminando esa vía de validación.
+### Seccion 3: Crear Tarifa - Alinear con el formulario real
 
-## Datos actuales en la base
+- Documentar que al crear/editar una tarifa, los **precios por concepto** se configuran inline en el mismo formulario (no en un paso separado)
+- Aclarar que los conceptos activos aparecen automaticamente con campos de monto
+- Documentar el switch de porcentaje vs monto fijo por concepto (especialmente para Seguro)
+- Mencionar la opcion `multiplicar_por_bultos` a nivel de concepto individual
 
-| Zona | Ciudad | CP Desde | CP Hasta |
-|------|--------|----------|----------|
-| CABA | CABA | 1000 | 1440 |
-| Zona Norte | Zona Norte | 1600 | 1699 |
-| Zona Oeste | Zona Oeste | 1700 | 1799 |
-| Zona Sur | Zona Sur | 1800 | 1899 |
-| Mar del Plata | Mar del Plata | B7602 | - |
-| Rosario | Rosario | S2003 | - |
+### Seccion 4: Conceptos - Actualizar
 
-## Solución
+- Documentar que cada concepto puede tener precio fijo O porcentaje (con switch)
+- Aclarar que `multiplicar_por_bultos` existe tanto a nivel tarifa (para el flete) como a nivel concepto individual
+- Documentar el flujo de habilitar conceptos "Adicionales" por sucursal via `sucursal_conceptos`
 
-### 1. Arreglar `cpInRange` para CPs alfanuméricos
+### Seccion 6: Calculo del Flete - Agregar prioridades
 
-Extraer solo la parte numérica del CP argentino (ej: `B7602` -> `7602`, `S2003` -> `2003`, `1440` -> `1440`) antes de comparar.
+Documentar la logica de prioridad exacta del calculo:
 
-### 2. Hacer el CP check independiente de la ciudad
+```
+1. Override por Volumen (si dimension > umbral Y precio_por_m3 > 0)
+2. Rangos Escalonados (rangos_kg, si existen y peso > 0)
+3. Metodo Simple (peso_base_hasta + adicional_por_kg)
+4. Precio Base (fallback)
+```
 
-Cambiar la lógica para que el CP range se evalúe siempre (no solo cuando la ciudad no matcheó). Si una zona tiene CP range definido y el destino tiene CP, ese check debe ejecutarse como vía de match alternativa.
+Y luego:
+- Multiplicar por bultos si esta activado
+- Sumar conceptos basicos automaticos
+- Sumar conceptos adicionales seleccionados
+- Sumar seguro (formula de configuracion_seguro)
 
-### 3. Pasar la provincia desde el formulario
+### Seccion 7: Seguro - Actualizar formula
 
-Si el formulario tiene datos de provincia del destinatario, enviarlos a `validateDestination`.
+Alinear con la implementacion real en `InsuranceConfigDialog`:
+- `valorFinal = min(max(valorDeclarado, valor_minimo_declarado), valor_maximo_asegurado)`
+- Si `valorFinal <= valor_minimo_declarado`: Seguro = seguro_base
+- Si no: Seguro = seguro_base + ((valorFinal - valor_minimo_declarado) x porcentaje_excedente / 100)
+
+### Seccion 8: Ajustes Masivos - Sin cambios mayores
+
+El contenido actual esta correcto.
+
+### Seccion 9: e-Commerce - Sin cambios mayores
+
+El contenido actual esta correcto.
 
 ## Seccion tecnica
 
-### Archivo: `src/hooks/useCoverageValidation.ts`
+### Archivo afectado
 
-**Cambio 1** - Funcion para normalizar CPs argentinos (linea ~20):
-```typescript
-function extractNumericCP(cp: string): number {
-  // Argentine CPs can be like "B7602ABC" or "1440" 
-  // Extract numeric portion for comparison
-  const cleaned = cp.replace(/[^0-9]/g, '');
-  return cleaned ? parseInt(cleaned, 10) : NaN;
-}
-```
+- `src/lib/generateRatesGuidePDF.ts` - Actualizar el objeto `RATES_GUIDE_CONTENT` con los textos corregidos
 
-**Cambio 2** - Actualizar `cpInRange` para usar la nueva funcion (lineas 21-30):
-```typescript
-function cpInRange(cp: string, from: string, to: string): boolean {
-  const cpNum = extractNumericCP(cp);
-  const fromNum = extractNumericCP(from);
-  const toNum = extractNumericCP(to);
-  if (!isNaN(cpNum) && !isNaN(fromNum) && !isNaN(toNum)) {
-    return cpNum >= fromNum && cpNum <= toNum;
-  }
-  return cp >= from && cp <= to;
-}
-```
+### Detalle de cambios
 
-**Cambio 3** - Hacer el check de CP independiente del check de ciudad (lineas 67-98):
-```typescript
-for (const zone of zones) {
-  let matchesCiudad = false;
-  let matchesProvincia = false;
-  let matchesCp = false;
+Se modificaran las secciones 2, 3, 4, 6 y 7 del objeto `RATES_GUIDE_CONTENT` (lineas 33-405 aproximadamente) para reflejar:
 
-  // Check ciudad
-  if (zone.ciudad && destCiudad) {
-    const zoneCiudad = normalize(zone.ciudad);
-    if (zoneCiudad === destCiudad || 
-        destCiudad.includes(zoneCiudad) || 
-        zoneCiudad.includes(destCiudad)) {
-      matchesCiudad = true;
-    }
-  }
+1. **Seccion 2** (linea 33): Agregar parrafo sobre prioridad de calculo y override por volumen
+2. **Seccion 3** (linea 117): Agregar paso sobre configuracion de conceptos inline y opciones de porcentaje/multiplicar por bultos
+3. **Seccion 4** (linea 187): Agregar documentacion sobre switch porcentaje/fijo por concepto y multiplicar_por_bultos individual
+4. **Seccion 6** (linea 298): Reescribir con la cadena de prioridad exacta del calculo
+5. **Seccion 7** (linea 354): Actualizar formula para coincidir con `InsuranceConfigDialog`
 
-  // Check provincia
-  if (zone.provincia && destProvincia) {
-    const zoneProvincia = normalize(zone.provincia);
-    if (zoneProvincia === destProvincia || 
-        destProvincia.includes(zoneProvincia) || 
-        zoneProvincia.includes(destProvincia)) {
-      matchesProvincia = true;
-    }
-  }
-
-  // Check CP range - ALWAYS check, independent of city
-  if (zone.codigo_postal_desde && destCp) {
-    const cpHasta = zone.codigo_postal_hasta || zone.codigo_postal_desde;
-    if (cpInRange(destCp, zone.codigo_postal_desde, cpHasta)) {
-      matchesCp = true;
-    }
-  }
-
-  // Any match means destination is covered
-  if (matchesCiudad || matchesProvincia || matchesCp) return null;
-}
-```
-
-### Archivo: `src/pages/NewShipment.tsx`
-
-Pasar la provincia del destinatario si esta disponible en el formulario (linea ~773-777). Si el campo `destinatario_provincia` existe en formData, incluirlo en la llamada.
-
-### Archivos afectados
-- `src/hooks/useCoverageValidation.ts` (fix principal)
-- `src/pages/NewShipment.tsx` (pasar provincia si disponible)
-
+No se modifica la estructura del PDF ni la logica de generacion (lineas 593-795), solo el contenido textual.
