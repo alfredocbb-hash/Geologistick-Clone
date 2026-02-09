@@ -1,51 +1,66 @@
 
 
-# Fix: Pagina de conexion exitosa muestra codigo HTML crudo
+# Fix: Redirigir a pagina frontend en lugar de devolver HTML desde Edge Function
 
-## Problema
+## Problema real
 
-Al completar el flujo OAuth con Tiendanube, el navegador muestra el codigo fuente HTML en lugar de renderizar la pagina profesional de "Conexion Exitosa". Esto ocurre en la URL del callback (`/functions/v1/tiendanube-oauth/callback`).
-
-## Causa
-
-Las respuestas HTML del edge function `tiendanube-oauth` usan `{ ...corsHeaders, "Content-Type": "text/html; charset=utf-8" }` como un objeto plano. En algunos casos, Supabase Edge Functions no aplica correctamente el `Content-Type` cuando se mezclan headers CORS con headers de contenido HTML de esta forma.
-
-Ademas, los headers CORS no son necesarios para respuestas HTML que el navegador renderiza directamente (no son llamadas AJAX).
+El Edge Function ya usa `new Headers({ "Content-Type": "text/html; charset=utf-8" })` pero el navegador sigue mostrando el codigo HTML crudo. Esto ocurre porque la infraestructura de Supabase Edge Functions puede sobreescribir o ignorar el Content-Type para respuestas HTML largas.
 
 ## Solucion
 
-Modificar el archivo `supabase/functions/tiendanube-oauth/index.ts` para:
+En lugar de devolver HTML desde el Edge Function, **redirigir al frontend** con parametros en la URL. El frontend (React) se encarga de renderizar la pagina profesional.
 
-1. **Usar un objeto `Headers` explicito** para las respuestas HTML en lugar de un objeto plano spread
-2. **Eliminar los headers CORS de las respuestas HTML** (solo son necesarios para respuestas JSON de APIs, no para paginas que el navegador navega directamente)
-3. Aplicar el mismo fix a todas las respuestas HTML del archivo: la pagina de exito, las paginas de error (`errorPage`), y la redireccion
+### Flujo actual (falla)
 
-### Cambios concretos
-
-En cada `return new Response(...)` que devuelve HTML:
-
-**Antes:**
-```typescript
-return new Response(html, {
-  status: 200,
-  headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" }
-});
+```text
+Tiendanube --> Edge Function --> Devuelve HTML (el navegador no lo renderiza)
 ```
 
-**Despues:**
-```typescript
-return new Response(html, {
-  status: 200,
-  headers: new Headers({ "Content-Type": "text/html; charset=utf-8" })
-});
+### Flujo nuevo (confiable)
+
+```text
+Tiendanube --> Edge Function --> Redirect 302 a /oauth/tiendanube/success
+                                 El navegador carga la app React --> Renderiza la pagina bonita
 ```
 
-Esto aplica a:
-- La funcion `errorPage` y sus usos (6 lugares)
-- La pagina de conexion exitosa (1 lugar)
-- Las respuestas JSON y el redirect mantienen `corsHeaders` ya que son respuestas de API
+## Archivos a modificar/crear
 
-### Archivo afectado
+### 1. Crear: `src/pages/TiendanubeOAuthResult.tsx`
 
-- `supabase/functions/tiendanube-oauth/index.ts` - Unico archivo a modificar
+Pagina React que muestra el resultado de la conexion OAuth:
+- Recibe parametros via query string: `?status=success&seller_id=xxx` o `?status=error&title=...&message=...`
+- Si `status=success`: muestra la pagina profesional con el diseno actual (logo Tiendanube, animaciones, mensaje de exito, cierre automatico)
+- Si `status=error`: muestra la pagina de error con titulo y mensaje
+- Envia `postMessage` al opener y cierra la ventana despues de 4 segundos (igual que ahora)
+
+### 2. Modificar: `src/App.tsx`
+
+Agregar ruta publica `/oauth/tiendanube/result` que apunte a `TiendanubeOAuthResult`
+
+### 3. Modificar: `supabase/functions/tiendanube-oauth/index.ts`
+
+Cambiar todas las respuestas HTML por redirects 302:
+
+**Exito (callback exitoso):**
+```text
+Redirect a: https://geologic.lovable.app/oauth/tiendanube/result?status=success&seller_id=xxx
+```
+
+**Errores:**
+```text
+Redirect a: https://geologic.lovable.app/oauth/tiendanube/result?status=error&title=...&message=...
+```
+
+La URL base del frontend se obtiene de una variable de entorno o se hardcodea como la URL publicada.
+
+- Se elimina todo el HTML inline del edge function (mas de 100 lineas de HTML/CSS)
+- Se elimina la funcion `errorPage()`
+- El edge function solo hace logica de negocio + redirects (mas limpio y mantenible)
+
+## Beneficios
+
+- El navegador siempre renderiza correctamente (es una pagina React normal)
+- El edge function queda mas limpio sin HTML inline
+- Mas facil de mantener y modificar el diseno en el futuro
+- Funciona con cualquier navegador sin depender del Content-Type del edge function
 
