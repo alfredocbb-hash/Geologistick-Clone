@@ -1,49 +1,114 @@
 
 
-# Fix: Mapeo de estados y total en sincronización MercadoLibre
+# Historial ML + Corrección de pedidos existentes + Actualización de estados en sync
 
-## Problema
+## Resumen
 
-Cuando se sincronizan pedidos de MercadoLibre que ya están "en camino" (`shipped`), el sistema los crea con:
-- `fulfillment_status: 'pending'` (Sin Preparar) — incorrecto, ya están en camino
-- `estado: 'pendiente'` en envíos — debería reflejar que ya están en tránsito
-- `total: 0` — porque usa `shipping_cost.receiver` que es $0 en Flex
+Se implementarán 3 mejoras:
 
-## Solución
+1. **Botón de historial ML** en el detalle del pedido e-commerce que consulte el historial de estados directamente desde la API de MercadoLibre
+2. **Actualización de pedidos existentes** en el sync para que no solo cree nuevos sino que actualice estados y totales de los ya sincronizados
+3. **Script de corrección** para los 3 pedidos ML existentes con total $0 y fulfillment_status incorrecto
 
-Modificar `supabase/functions/mercadolibre-sync/index.ts` para:
+---
 
-1. **Detectar el estado del shipping de ML** y mapear correctamente:
-   - `ready_to_ship` → `fulfillment_status: 'pending'`, `estado: 'pendiente'`
-   - `shipped` → `fulfillment_status: 'shipped'`, `estado: 'en_transito'`
+## 1. Nueva Edge Function: `mercadolibre-shipment-history`
 
-2. **Calcular el total** sumando los precios de los items del pedido (`order_items`) en lugar de usar `shipping_cost.receiver`.
+Crear `supabase/functions/mercadolibre-shipment-history/index.ts` que:
+- Reciba `shipment_id` y `seller_id` como parámetros
+- Obtenga el access token válido del seller (reutilizando la lógica de refresh)
+- Llame a `GET /shipments/{shipment_id}/history` en la API de ML
+- Devuelva el array de eventos con timestamps y estados
+
+---
+
+## 2. UI: Sección de historial ML en OrderDetailsDialog
+
+Agregar en `src/components/ecommerce/OrderDetailsDialog.tsx`:
+- Un botón "Ver Historial ML" que aparece cuando el pedido tiene `ml_shipment_id`
+- Al hacer click, llama a la Edge Function y muestra un timeline con los eventos de ML
+- Formato similar al `ShipmentHistoryDialog` existente (timeline vertical con iconos)
+
+---
+
+## 3. Sync: Actualizar pedidos existentes
+
+En `supabase/functions/mercadolibre-sync/index.ts`, cuando un envío ya existe:
+- En lugar de solo hacer `continue`, consultar el estado actual del shipping en ML
+- Actualizar `fulfillment_status` y `estado` del envío si cambió
+- Actualizar el `total` si está en $0 (recalcular desde items)
+- Registrar un contador `updated` en la respuesta
+
+---
+
+## 4. Corrección de datos existentes
+
+Ejecutar una migración SQL para corregir los 3 pedidos con total $0:
+- Recalcular el total desde la columna `items` (que tiene `unit_price` y `quantity`)
+- Actualizar el `fulfillment_status` basado en el `order_status` actual
+
+---
 
 ## Sección técnica
 
-En `supabase/functions/mercadolibre-sync/index.ts`, dentro del loop de procesamiento de órdenes:
+### Edge Function `mercadolibre-shipment-history`
 
-**Agregar mapeo de estado** (antes de crear ecommerce_order, ~línea 185):
 ```typescript
-const mlShippingStatus = orderItem.shipping?.status || 'ready_to_ship';
-const fulfillmentStatus = mlShippingStatus === 'shipped' ? 'shipped' : 'pending';
-const envioEstado = mlShippingStatus === 'shipped' ? 'en_transito' : 'pendiente';
+// GET ?shipment_id=123&seller_id=abc
+// Calls ML API: GET /shipments/{shipment_id}/history
+// Returns: { history: [{ date, status, substatus, date_handling }] }
 ```
 
-**Calcular total desde items** (~línea 187):
+### OrderDetailsDialog cambios
+
+- Agregar estado `mlHistory` con `useQuery` que llama a la Edge Function
+- Renderizar timeline debajo de la card de "Envio MercadoLibre" cuando hay datos
+- Mapear estados ML (ready_to_ship, shipped, delivered) a labels en espanol
+
+### mercadolibre-sync cambios (bloque ~linea 148-158)
+
+Reemplazar el bloque que hace `continue` cuando ya existe:
+
 ```typescript
-const orderTotal = (orderItem.order_items || []).reduce(
-  (sum: number, item: any) => sum + (item.unit_price || 0) * (item.quantity || 1), 0
-);
+if (existingEnvio) {
+  // Update existing: check if status or total changed
+  const mlShippingStatus = orderItem.shipping?.status || 'ready_to_ship';
+  const newFulfillment = mlShippingStatus === 'shipped' ? 'shipped' : 
+                         mlShippingStatus === 'delivered' ? 'delivered' : 'pending';
+  const newEnvioEstado = mlShippingStatus === 'shipped' ? 'en_transito' :
+                         mlShippingStatus === 'delivered' ? 'entregado' : 'pendiente';
+  
+  // Update ecommerce_order
+  await supabase.from('ecommerce_orders')
+    .update({ fulfillment_status: newFulfillment, order_status: mlShippingStatus === 'delivered' ? 'delivered' : 'paid' })
+    .eq('ml_shipment_id', shipmentId);
+  
+  // Update envio estado
+  await supabase.from('envios')
+    .update({ estado: newEnvioEstado })
+    .eq('id', existingEnvio.id);
+
+  existing++;
+  continue;
+}
 ```
 
-**Usar las variables en el insert de ecommerce_orders** (~línea 196):
-- Cambiar `order_status: 'paid'` → mantener `'paid'` (es correcto, ML confirma pago)
-- Cambiar `fulfillment_status: 'pending'` → `fulfillment_status: fulfillmentStatus`
-- Cambiar `total: shipment.shipping_cost?.receiver || 0` → `total: orderTotal`
+### Migracion SQL para corregir datos
 
-**Usar la variable en el insert de envios** (~línea 216):
-- Cambiar `estado: 'pendiente'` → `estado: envioEstado`
+```sql
+-- Fix orders with items data but total = 0
+UPDATE ecommerce_orders 
+SET total = (
+  SELECT COALESCE(SUM((item->>'unit_price')::numeric * (item->>'quantity')::numeric), 0)
+  FROM jsonb_array_elements(items::jsonb) AS item
+)
+WHERE plataforma = 'mercadolibre' AND total = 0 AND items IS NOT NULL AND items::text != '[]';
+```
 
-Solo se modifica un archivo: `supabase/functions/mercadolibre-sync/index.ts`.
+### Archivos afectados
+
+- **Nuevo**: `supabase/functions/mercadolibre-shipment-history/index.ts`
+- **Editar**: `src/components/ecommerce/OrderDetailsDialog.tsx`
+- **Editar**: `supabase/functions/mercadolibre-sync/index.ts`
+- **Migración SQL**: corrección de totales existentes
 
