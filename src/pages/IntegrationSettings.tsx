@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { generarHomologacionPDF } from '@/lib/generateHomologacionPDF';
+import { generarDiagramaSecuenciaPDF } from '@/lib/generateDiagramaSecuenciaPDF';
+import { generarFAQsHomologacionPDF } from '@/lib/generateFAQsHomologacionPDF';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -158,6 +160,8 @@ export default function IntegrationSettings() {
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [isActive, setIsActive] = useState(true);
   const [generatingPDF, setGeneratingPDF] = useState(false);
+  const [generatingDiagrama, setGeneratingDiagrama] = useState(false);
+  const [generatingFAQs, setGeneratingFAQs] = useState(false);
   const queryClient = useQueryClient();
   const { tenantId, isLoading: tenantLoading } = useTenant();
 
@@ -467,35 +471,84 @@ export default function IntegrationSettings() {
                     </div>
                   )}
 
-                  {/* Homologation PDF - Tiendanube only */}
+                  {/* Homologation PDFs - Tiendanube only */}
                   {key === 'tiendanube' && (
-                    <div className="p-4 bg-muted/50 rounded-lg space-y-2">
-                      <Label className="font-medium">Documento de Homologación:</Label>
+                    <div className="p-4 bg-muted/50 rounded-lg space-y-3">
+                      <Label className="font-medium">Documentos de Homologación:</Label>
                       <p className="text-xs text-muted-foreground">
-                        Genera un PDF profesional con toda la información técnica de la integración OAuth para presentar en el proceso de homologación de Tiendanube.
+                        Genera los PDFs profesionales con toda la información técnica de la integración OAuth para presentar en el proceso de homologación de Tiendanube.
                       </p>
-                      <Button
-                        variant="outline"
-                        onClick={async () => {
-                          setGeneratingPDF(true);
-                          try {
-                            await generarHomologacionPDF();
-                            toast.success('Documento de homologación descargado');
-                          } catch {
-                            toast.error('Error al generar el documento');
-                          } finally {
-                            setGeneratingPDF(false);
-                          }
-                        }}
-                        disabled={generatingPDF}
-                      >
-                        {generatingPDF ? (
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        ) : (
-                          <FileText className="h-4 w-4 mr-2" />
-                        )}
-                        Descargar Documento de Homologación
-                      </Button>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={async () => {
+                            setGeneratingPDF(true);
+                            try {
+                              await generarHomologacionPDF();
+                              toast.success('Documento de homologación descargado');
+                            } catch {
+                              toast.error('Error al generar el documento');
+                            } finally {
+                              setGeneratingPDF(false);
+                            }
+                          }}
+                          disabled={generatingPDF}
+                          className="justify-start"
+                        >
+                          {generatingPDF ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <FileText className="h-4 w-4 mr-2" />
+                          )}
+                          Homologación
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={async () => {
+                            setGeneratingDiagrama(true);
+                            try {
+                              await generarDiagramaSecuenciaPDF();
+                              toast.success('Diagrama de secuencia descargado');
+                            } catch {
+                              toast.error('Error al generar el diagrama');
+                            } finally {
+                              setGeneratingDiagrama(false);
+                            }
+                          }}
+                          disabled={generatingDiagrama}
+                          className="justify-start"
+                        >
+                          {generatingDiagrama ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <FileText className="h-4 w-4 mr-2" />
+                          )}
+                          Diagrama de Secuencia
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={async () => {
+                            setGeneratingFAQs(true);
+                            try {
+                              await generarFAQsHomologacionPDF();
+                              toast.success('FAQs técnicas descargadas');
+                            } catch {
+                              toast.error('Error al generar las FAQs');
+                            } finally {
+                              setGeneratingFAQs(false);
+                            }
+                          }}
+                          disabled={generatingFAQs}
+                          className="justify-start"
+                        >
+                          {generatingFAQs ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <FileText className="h-4 w-4 mr-2" />
+                          )}
+                          FAQs Técnicas
+                        </Button>
+                      </div>
                     </div>
                   )}
 
