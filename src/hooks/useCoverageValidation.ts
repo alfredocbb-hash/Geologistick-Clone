@@ -17,11 +17,17 @@ function normalize(str: string): string {
     .trim();
 }
 
-/** Check if a CP falls within a from–to range (string comparison, works for numeric CPs) */
+/** Extract numeric portion from Argentine postal codes (e.g. "B7602" -> 7602, "1440" -> 1440) */
+function extractNumericCP(cp: string): number {
+  const cleaned = cp.replace(/[^0-9]/g, '');
+  return cleaned ? parseInt(cleaned, 10) : NaN;
+}
+
+/** Check if a CP falls within a from–to range, supporting alphanumeric Argentine CPs */
 function cpInRange(cp: string, from: string, to: string): boolean {
-  const cpNum = parseInt(cp, 10);
-  const fromNum = parseInt(from, 10);
-  const toNum = parseInt(to, 10);
+  const cpNum = extractNumericCP(cp);
+  const fromNum = extractNumericCP(from);
+  const toNum = extractNumericCP(to);
   if (!isNaN(cpNum) && !isNaN(fromNum) && !isNaN(toNum)) {
     return cpNum >= fromNum && cpNum <= toNum;
   }
@@ -65,7 +71,9 @@ export function useCoverageValidation(sucursalId: string | undefined | null) {
     const destCp = destino.codigo_postal?.trim() || '';
 
     for (const zone of zones) {
-      let matches = false;
+      let matchesCiudad = false;
+      let matchesProvincia = false;
+      let matchesCp = false;
 
       // Check ciudad match
       if (zone.ciudad && destCiudad) {
@@ -73,29 +81,30 @@ export function useCoverageValidation(sucursalId: string | undefined | null) {
         if (zoneCiudad === destCiudad || 
             destCiudad.includes(zoneCiudad) || 
             zoneCiudad.includes(destCiudad)) {
-          matches = true;
+          matchesCiudad = true;
         }
       }
 
       // Check provincia match
-      if (!matches && zone.provincia && destProvincia) {
+      if (zone.provincia && destProvincia) {
         const zoneProvincia = normalize(zone.provincia);
         if (zoneProvincia === destProvincia || 
             destProvincia.includes(zoneProvincia) || 
             zoneProvincia.includes(destProvincia)) {
-          matches = true;
+          matchesProvincia = true;
         }
       }
 
-      // Check CP range match
-      if (!matches && zone.codigo_postal_desde && destCp) {
+      // Check CP range - ALWAYS check, independent of city/province
+      if (zone.codigo_postal_desde && destCp) {
         const cpHasta = zone.codigo_postal_hasta || zone.codigo_postal_desde;
         if (cpInRange(destCp, zone.codigo_postal_desde, cpHasta)) {
-          matches = true;
+          matchesCp = true;
         }
       }
 
-      if (matches) return null; // Destination is covered
+      // Any match means destination is covered
+      if (matchesCiudad || matchesProvincia || matchesCp) return null;
     }
 
     // Build descriptive error
