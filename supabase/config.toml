@@ -86,3 +86,6 @@ verify_jwt = false
 
 [functions.register-ml-shipment]
 verify_jwt = false
+
+[functions.mercadolibre-label]
+verify_jwt = false

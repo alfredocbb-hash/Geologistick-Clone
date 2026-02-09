@@ -226,21 +226,28 @@ async function getValidAccessToken(supabase: any, seller: any): Promise<string |
 
   console.log('[ML Update] Token expired, refreshing...');
 
-  // Get ML credentials
-  const { data: integration } = await supabase
+  // Get ML credentials using key-value schema
+  const { data: credentials, error: credError } = await supabase
     .from('system_integrations')
-    .select('config')
+    .select('config_key, config_value')
     .eq('tenant_id', seller.tenant_id)
-    .eq('integration_type', 'mercado_libre')
-    .eq('is_active', true)
-    .single();
+    .eq('integration_type', 'mercadolibre')
+    .in('config_key', ['client_id', 'client_secret']);
 
-  if (!integration?.config) {
-    console.error('[ML Update] No integration config found');
+  if (credError || !credentials || credentials.length === 0) {
+    console.error('[ML Update] No integration credentials found:', credError);
     return null;
   }
 
-  const config = integration.config as Record<string, string>;
+  const config: Record<string, string> = {};
+  for (const row of credentials) {
+    config[row.config_key] = row.config_value;
+  }
+
+  if (!config.client_id || !config.client_secret) {
+    console.error('[ML Update] Missing client_id or client_secret');
+    return null;
+  }
 
   // Refresh token
   const tokenResponse = await fetch('https://api.mercadolibre.com/oauth/token', {

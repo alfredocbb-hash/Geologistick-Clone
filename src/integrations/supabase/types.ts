@@ -504,6 +504,8 @@ export type Database = {
           fulfillment_status: string | null
           id: string
           items: Json | null
+          ml_shipment_id: number | null
+          ml_tracking_number: string | null
           order_status: string | null
           payment_status: string | null
           plataforma: string
@@ -535,6 +537,8 @@ export type Database = {
           fulfillment_status?: string | null
           id?: string
           items?: Json | null
+          ml_shipment_id?: number | null
+          ml_tracking_number?: string | null
           order_status?: string | null
           payment_status?: string | null
           plataforma: string
@@ -566,6 +570,8 @@ export type Database = {
           fulfillment_status?: string | null
           id?: string
           items?: Json | null
+          ml_shipment_id?: number | null
+          ml_tracking_number?: string | null
           order_status?: string | null
           payment_status?: string | null
           plataforma?: string

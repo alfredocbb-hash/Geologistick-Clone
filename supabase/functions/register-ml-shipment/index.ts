@@ -199,9 +199,8 @@ serve(async (req) => {
     
     const fullAddress = [street, number].filter(Boolean).join(' ');
 
-    // 7. Generate tracking number
-    const { data: trackingData } = await supabase.rpc('generate_tracking_number');
-    const trackingNumber = trackingData || `ML-${ml_shipment_id}`;
+    // 7. Use ML shipment ID as tracking number (native ML tracking)
+    const trackingNumber = `ML-${ml_shipment_id}`;
 
     console.log('[register-ml-shipment] Generated tracking:', trackingNumber);
 
@@ -259,6 +258,8 @@ serve(async (req) => {
         shipping_lng: receiver.longitude,
         order_status: 'pending',
         fulfillment_status: 'pending',
+        ml_shipment_id: parseInt(ml_shipment_id),
+        ml_tracking_number: trackingNumber,
         synced_at: new Date().toISOString(),
         raw_data: mlShipment,
       })
