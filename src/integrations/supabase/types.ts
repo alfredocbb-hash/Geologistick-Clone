@@ -4063,6 +4063,10 @@ export type Database = {
         }
         Returns: Json
       }
+      reschedule_envio: {
+        Args: { p_envio_id: string; p_new_date: string; p_reason?: string }
+        Returns: undefined
+      }
       start_hoja_ruta: { Args: { p_hoja_id: string }; Returns: Json }
       start_ruta_planificada: { Args: { p_ruta_id: string }; Returns: Json }
       user_belongs_to_tenant: {
