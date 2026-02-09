@@ -1,77 +1,95 @@
 
-# Actualizar Guia de Tarifas PDF con flujo completo y logica de calculo
+# Fix: Chofer no puede reprogramar envío (RLS violation)
 
-## Resumen
+## Problema
 
-Actualizar el contenido del PDF de tarifas (`src/lib/generateRatesGuidePDF.ts`) para reflejar con mayor precision el flujo real de carga de tarifas en la aplicacion y la logica de calculo implementada en el codigo. El PDF actual cubre los conceptos generales pero necesita alinearse mejor con la interfaz real y las formulas exactas.
+El error "new row violates row-level security policy for table envios" ocurre porque:
 
-## Cambios propuestos en el contenido del PDF
+- La política RLS de UPDATE en `envios` requiere que `chofer_id = auth.uid()` para choferes
+- Al reprogramar, el código pone `chofer_id: null` para liberar el envío
+- Postgres evalúa la política contra los valores NUEVOS del row, y como `chofer_id` pasa a ser `null`, ya no cumple la condición y bloquea la operación
 
-### Seccion 2: Tipos de Tarifas - Mejorar precision
+Es un caso clásico: el chofer tiene permiso para modificar SU envío, pero al quitarse a sí mismo como chofer, la fila resultante ya no pasa el check.
 
-- Aclarar que en tarifa por Peso, el metodo escalonado (rangos_kg) tiene **prioridad sobre el metodo simple** cuando ambos estan configurados
-- Documentar que el **override por volumen** tiene la maxima prioridad: si alguna dimension del paquete supera el `umbral_volumen_cm` (por defecto 50cm), se usa el calculo volumetrico automaticamente, incluso en tarifas tipo "peso"
-- Agregar la formula exacta del override: `Flete = Precio Base + (Volumen en m3 x Precio por m3)`
+## Solución
 
-### Seccion 3: Crear Tarifa - Alinear con el formulario real
+Crear una función RPC con `SECURITY DEFINER` que ejecute la reprogramación con privilegios elevados, verificando internamente que el usuario sea el chofer asignado antes de proceder.
 
-- Documentar que al crear/editar una tarifa, los **precios por concepto** se configuran inline en el mismo formulario (no en un paso separado)
-- Aclarar que los conceptos activos aparecen automaticamente con campos de monto
-- Documentar el switch de porcentaje vs monto fijo por concepto (especialmente para Seguro)
-- Mencionar la opcion `multiplicar_por_bultos` a nivel de concepto individual
+### 1. Migración SQL: Crear función `reschedule_envio`
 
-### Seccion 4: Conceptos - Actualizar
+```sql
+CREATE OR REPLACE FUNCTION public.reschedule_envio(
+  p_envio_id UUID,
+  p_new_date TIMESTAMPTZ,
+  p_reason TEXT DEFAULT ''
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_envio RECORD;
+BEGIN
+  -- Get current shipment and verify caller is the assigned driver
+  SELECT id, estado, chofer_id, reprogramado_count, tenant_id
+  INTO v_envio
+  FROM envios
+  WHERE id = p_envio_id;
 
-- Documentar que cada concepto puede tener precio fijo O porcentaje (con switch)
-- Aclarar que `multiplicar_por_bultos` existe tanto a nivel tarifa (para el flete) como a nivel concepto individual
-- Documentar el flujo de habilitar conceptos "Adicionales" por sucursal via `sucursal_conceptos`
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Envío no encontrado';
+  END IF;
 
-### Seccion 6: Calculo del Flete - Agregar prioridades
+  -- Verify the caller is the assigned driver OR an admin
+  IF v_envio.chofer_id != auth.uid() 
+     AND NOT is_admin(auth.uid()) 
+     AND NOT is_super_admin(auth.uid()) THEN
+    RAISE EXCEPTION 'No tiene permisos para reprogramar este envío';
+  END IF;
 
-Documentar la logica de prioridad exacta del calculo:
+  -- Update the shipment
+  UPDATE envios SET
+    fecha_entrega = p_new_date,
+    estado = 'pendiente',
+    chofer_id = NULL,
+    reprogramado_count = COALESCE(v_envio.reprogramado_count, 0) + 1,
+    ultima_reprogramacion = NOW()
+  WHERE id = p_envio_id;
 
+  -- Insert history record
+  INSERT INTO envio_historial (envio_id, estado_anterior, estado_nuevo, notas, created_by)
+  VALUES (
+    p_envio_id,
+    v_envio.estado,
+    'pendiente',
+    'Entrega reprogramada para ' || to_char(p_new_date, 'DD/MM/YYYY') 
+      || '. Motivo: ' || COALESCE(NULLIF(p_reason, ''), 'No especificado')
+      || '. Intento #' || (COALESCE(v_envio.reprogramado_count, 0) + 1),
+    auth.uid()
+  );
+END;
+$$;
 ```
-1. Override por Volumen (si dimension > umbral Y precio_por_m3 > 0)
-2. Rangos Escalonados (rangos_kg, si existen y peso > 0)
-3. Metodo Simple (peso_base_hasta + adicional_por_kg)
-4. Precio Base (fallback)
+
+### 2. Actualizar RescheduleDialog.tsx
+
+Reemplazar las dos llamadas separadas (update envios + insert historial) por una sola llamada RPC:
+
+```typescript
+const { error } = await supabase.rpc('reschedule_envio', {
+  p_envio_id: shipment.id,
+  p_new_date: newDate.toISOString(),
+  p_reason: reason,
+});
+if (error) throw error;
 ```
 
-Y luego:
-- Multiplicar por bultos si esta activado
-- Sumar conceptos basicos automaticos
-- Sumar conceptos adicionales seleccionados
-- Sumar seguro (formula de configuracion_seguro)
-
-### Seccion 7: Seguro - Actualizar formula
-
-Alinear con la implementacion real en `InsuranceConfigDialog`:
-- `valorFinal = min(max(valorDeclarado, valor_minimo_declarado), valor_maximo_asegurado)`
-- Si `valorFinal <= valor_minimo_declarado`: Seguro = seguro_base
-- Si no: Seguro = seguro_base + ((valorFinal - valor_minimo_declarado) x porcentaje_excedente / 100)
-
-### Seccion 8: Ajustes Masivos - Sin cambios mayores
-
-El contenido actual esta correcto.
-
-### Seccion 9: e-Commerce - Sin cambios mayores
-
-El contenido actual esta correcto.
+Esto simplifica el código del componente y elimina el problema de RLS.
 
 ## Seccion tecnica
 
-### Archivo afectado
+### Archivos afectados
 
-- `src/lib/generateRatesGuidePDF.ts` - Actualizar el objeto `RATES_GUIDE_CONTENT` con los textos corregidos
-
-### Detalle de cambios
-
-Se modificaran las secciones 2, 3, 4, 6 y 7 del objeto `RATES_GUIDE_CONTENT` (lineas 33-405 aproximadamente) para reflejar:
-
-1. **Seccion 2** (linea 33): Agregar parrafo sobre prioridad de calculo y override por volumen
-2. **Seccion 3** (linea 117): Agregar paso sobre configuracion de conceptos inline y opciones de porcentaje/multiplicar por bultos
-3. **Seccion 4** (linea 187): Agregar documentacion sobre switch porcentaje/fijo por concepto y multiplicar_por_bultos individual
-4. **Seccion 6** (linea 298): Reescribir con la cadena de prioridad exacta del calculo
-5. **Seccion 7** (linea 354): Actualizar formula para coincidir con `InsuranceConfigDialog`
-
-No se modifica la estructura del PDF ni la logica de generacion (lineas 593-795), solo el contenido textual.
+- **Migración SQL**: nueva función `reschedule_envio` con SECURITY DEFINER
+- **`src/components/driver/RescheduleDialog.tsx`**: reemplazar mutationFn (lineas 46-88) para usar `supabase.rpc('reschedule_envio', ...)` en vez de update + insert manuales
