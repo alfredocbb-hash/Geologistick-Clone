@@ -155,10 +155,10 @@ export function useReportsData(filters: ReportsFilters) {
       // Fetch profiles for chofer names
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('id, nombre, apellido')
-        .in('id', choferIds);
+        .select('user_id, nombre, apellido')
+        .in('user_id', choferIds);
 
-      const profileMap = new Map((profiles || []).map(p => [p.id, `${p.nombre || ''} ${p.apellido || ''}`.trim() || 'Sin nombre']));
+      const profileMap = new Map((profiles || []).map(p => [p.user_id, `${p.nombre || ''} ${p.apellido || ''}`.trim() || 'Sin nombre']));
 
       // Fetch historial for time calculation
       const envioIds = (enviosData || []).filter(e => e.estado === 'entregado').map(e => e.id);
