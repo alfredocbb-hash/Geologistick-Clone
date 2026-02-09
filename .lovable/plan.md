@@ -1,43 +1,62 @@
 
 
-# Fix: Nombres de Choferes en Reportes
+# Fix: Incluir envíos Flex "en camino" en la sincronización de MercadoLibre
 
 ## Problema
-En la solapa "Rendimiento de Choferes", todos los choferes aparecen como **"Sin nombre"** porque la consulta a la tabla `profiles` busca por la columna `id` (clave primaria interna), pero `envios.chofer_id` almacena el `user_id` (ID de autenticacion).
 
-Ejemplo real del problema:
-- `envios.chofer_id` = `2c007134-cfbe-4872-a19a-7301d7c33b8c`
-- `profiles.user_id` = `2c007134-cfbe-4872-a19a-7301d7c33b8c` (Valentina Castano)
-- `profiles.id` = `f842ac80-5620-46fe-81b1-fc2cabb7ae18` (no coincide)
+El envío Flex con ID `46424630379` del seller PABLO GAUNA no se sincroniza porque la Edge Function `mercadolibre-sync` solo busca pedidos con `shipping.status=ready_to_ship`. Si el paquete ya fue marcado como "en camino" (`shipped`) en MercadoLibre, el sync lo ignora completamente.
 
-## Solucion
+## Solución
 
-Cambiar una sola linea en `src/hooks/useReportsData.ts`:
+Ampliar la búsqueda para incluir también pedidos con estado `shipped`, realizando dos llamadas a la API de MercadoLibre y combinando los resultados sin duplicados.
 
-**Linea 158 actual:**
-```typescript
-.in('id', choferIds);
+## Cambios en `supabase/functions/mercadolibre-sync/index.ts`
+
+**Línea 103** - Reemplazar la búsqueda única por dos búsquedas paralelas:
+
+```
+Actual:
+  shipping.status=ready_to_ship
+
+Nuevo:
+  1. shipping.status=ready_to_ship
+  2. shipping.status=shipped
 ```
 
-**Cambiar a:**
+Flujo:
+1. Hacer `fetch` a ambos endpoints en paralelo (`Promise.all`)
+2. Combinar los resultados en un solo array
+3. Deduplicar por `order.id` para evitar procesar el mismo pedido dos veces
+4. El resto del procesamiento (filtro `self_service`, creación de envío, cuenta corriente) permanece igual
+
+## Sección técnica
+
+Se reemplaza la línea 103 y el bloque de fetch (líneas 103-125) por:
+
 ```typescript
-.in('user_id', choferIds);
+const statuses = ['ready_to_ship', 'shipped'];
+const searchPromises = statuses.map(status => {
+  const url = `${ML_API_BASE}/orders/search?seller=${seller.store_id}&shipping.status=${status}&sort=date_desc&limit=50`;
+  return fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+});
+
+const responses = await Promise.all(searchPromises);
+const allOrders = [];
+const seenIds = new Set();
+
+for (const response of responses) {
+  if (response.ok) {
+    const data = await response.json();
+    for (const order of (data.results || [])) {
+      if (!seenIds.has(order.id)) {
+        seenIds.add(order.id);
+        allOrders.push(order);
+      }
+    }
+  }
+}
+
+const orders = allOrders;
 ```
 
-Y ajustar la linea 162 donde se construye el `profileMap` para usar `user_id` como clave del mapa en lugar de `id`:
-
-**Actual:**
-```typescript
-const profileMap = new Map((profiles || []).map(p => [p.id, `${p.nombre || ''} ${p.apellido || ''}`.trim() || 'Sin nombre']));
-```
-
-**Cambiar a:**
-```typescript
-const profileMap = new Map((profiles || []).map(p => [p.user_id, `${p.nombre || ''} ${p.apellido || ''}`.trim() || 'Sin nombre']));
-```
-
-## Impacto
-- Solo se modifica `src/hooks/useReportsData.ts`
-- Correccion de 2 lineas
-- Sin cambios en la UI ni en otros archivos
-
+Solo se modifica un archivo: `supabase/functions/mercadolibre-sync/index.ts`.
