@@ -31,22 +31,39 @@ El sistema soporta 5 tipos de calculo:
     },
     {
       title: '2. TIPOS DE TARIFAS EN DETALLE',
-      content: `TARIFA POR PESO (Kg)
+      content: `PRIORIDAD DE CALCULO DEL FLETE
+
+Antes de ver cada tipo, es importante entender que el sistema aplica esta prioridad al calcular el flete:
+
+1. Override por Volumen: Si alguna dimension del paquete supera el umbral (por defecto 50 cm) Y la tarifa tiene precio_por_m3 configurado, se usa calculo volumetrico automaticamente, incluso en tarifas tipo "peso"
+2. Rangos Escalonados (rangos_kg): Si la tarifa tiene rangos de peso definidos, tienen prioridad sobre el metodo simple
+3. Metodo Simple: Precio base hasta X kg + adicional por kg excedente
+4. Precio Base: Si nada de lo anterior aplica, se usa el precio base como fallback
+
+---
+
+TARIFA POR PESO (Kg)
 Es el tipo mas utilizado. Hay dos metodos de calculo:
 
 Metodo Simple
-• Precio base hasta X kg
-• Adicional por cada kg excedente
+• Precio base hasta X kg (peso_base_hasta)
+• Adicional por cada kg excedente (adicional_por_kg)
 • Ejemplo: $500 base (hasta 2kg) + $50 por kg adicional
 
 Metodo Escalonado (Rangos de Peso)
 • Precio diferente segun el rango
-• Permite tarifas mas precisas
+• Tiene PRIORIDAD sobre el metodo simple si ambos estan configurados
 • Ejemplo:
   - 0-5 kg: $800
   - 5.01-10 kg: $1,200
   - 10.01-20 kg: $1,800
   - Mas de 20 kg: $2,500
+
+Override por Volumen
+Si alguna dimension del paquete supera el umbral_volumen_cm (por defecto 50 cm):
+• Formula: Flete = Precio Base + (Volumen en m3 x Precio por m3)
+• Se aplica automaticamente, sin importar el tipo de tarifa
+• Evita perder dinero en paquetes grandes y livianos
 
 Cuando Usar Cada Metodo
 • Simple: Envios pequenos con pesos similares
@@ -82,9 +99,6 @@ Cuando Usar
 • Muebles y electrodomesticos grandes
 • Paquetes con mucho aire (cajas grandes, poco peso)
 • Cuando el volumen es mas limitante que el peso
-
-Umbral de Volumen
-El sistema puede cambiar automaticamente al calculo por volumen si alguna dimension del paquete supera el umbral configurado (por defecto 50 cm).
 
 ---
 
@@ -137,6 +151,7 @@ Para Peso Escalonado:
 2. Agregar rangos:
    - Desde kg / Hasta kg / Precio
 3. El sistema valida que no haya rangos superpuestos
+4. Si hay rangos configurados, tienen prioridad sobre el metodo simple
 
 Para Distancia:
 • Precio base: Monto minimo
@@ -145,11 +160,11 @@ Para Distancia:
 Para Volumen:
 • Precio base: Monto minimo
 • Precio por m3: Costo por metro cubico
-• Umbral de volumen: Dimension que activa calculo volumetrico
 
 Paso 4: Configurar Umbral de Volumen
-• umbral_volumen_cm: Si alguna dimension supera este valor, se usa precio por volumen
+• umbral_volumen_cm: Si alguna dimension supera este valor, se usa precio por volumen automaticamente
 • Por defecto: 50 cm
+• Aplica a TODOS los tipos de tarifa (no solo volumen)
 
 Paso 5: Multiplicar Flete por Bultos (Opcional)
 • Activar si el flete debe cobrarse POR BULTO en lugar de por envio
@@ -158,7 +173,17 @@ Paso 5: Multiplicar Flete por Bultos (Opcional)
   - Activado: Flete = $3,000 (1,000 x 3 bultos)
 • Util para empresas que cobran por cantidad de paquetes
 
-Paso 6: Guardar Tarifa
+Paso 6: Configurar Conceptos (Inline)
+Los conceptos se configuran DENTRO del mismo formulario de la tarifa:
+• Los conceptos activos aparecen automaticamente con campos de monto
+• Cada concepto tiene un switch para elegir entre Monto Fijo o Porcentaje
+  - Monto Fijo: Se cobra un valor constante (ej: $400 por retiro)
+  - Porcentaje: Se calcula sobre el flete (ej: 5%)
+• Cada concepto puede tener su propio flag "Multiplicar por bultos"
+  - Independiente del flag de multiplicar flete por bultos
+  - Ej: Si Embalaje = $200 y multiplicar_por_bultos = Si con 3 bultos: $600
+
+Paso 7: Guardar Tarifa
 • Clic en "Guardar"
 • La tarifa queda disponible para asignar a sucursales
 
@@ -169,7 +194,7 @@ EJEMPLO PRACTICO: Tarifa de Encomiendas
 Configuracion:
 • Nombre: "Encomiendas Standard"
 • Tipo: Por Peso
-• Multiplicar por bultos: Si
+• Multiplicar flete por bultos: Si
 • Rangos:
   - 0-2 kg: $800
   - 2.01-5 kg: $1,100
@@ -177,12 +202,14 @@ Configuracion:
   - 10.01-20 kg: $2,200
   - Mas de 20 kg: $3,000
 • Umbral volumen: 60 cm
+• Concepto Retiro: $400 (fijo)
+• Concepto Entrega: $350 (fijo)
 
 Resultado:
-• Envio de 3 kg (1 bulto) = $1,100
-• Envio de 12 kg (1 bulto) = $2,200
-• Envio de 3 kg (2 bultos) = $2,200 (1,100 x 2)
-• Envio de 8 kg pero con caja de 80 cm = Calculo por volumen`
+• Envio de 3 kg (1 bulto) = $1,100 + conceptos
+• Envio de 12 kg (1 bulto) = $2,200 + conceptos
+• Envio de 3 kg (2 bultos) = $2,200 (1,100 x 2) + conceptos
+• Envio de 8 kg pero con caja de 80 cm = Override por volumen`
     },
     {
       title: '4. CONCEPTOS ADICIONALES',
@@ -191,49 +218,47 @@ Son cargos adicionales al flete que se aplican segun el servicio o a solicitud d
 
 Tipos de Conceptos
 
-BASICOS (Aplican automaticamente)
+BASICOS (Aplican automaticamente segun tipo de servicio)
 • Retiro en Origen: Cargo por recoger el paquete
   - Aplica en servicios: Puerta a Sucursal, Puerta a Puerta
 • Entrega en Destino: Cargo por entregar a domicilio
   - Aplica en servicios: Sucursal a Puerta, Puerta a Puerta
+• Los conceptos basicos estan disponibles en TODAS las sucursales
 
-ADICIONALES (Opcionales)
+ADICIONALES (Opcionales, habilitados por sucursal)
 • Seguro: Cobertura sobre valor declarado
 • Embalaje: Caja, film, proteccion adicional
 • Urgente: Entrega prioritaria
 • Sabado: Entrega en fin de semana
 • Manipuleo Especial: Objetos fragiles o pesados
+• Los conceptos adicionales deben habilitarse por sucursal
 
-Configurar un Concepto
+---
 
-1. Acceder a Tarifas > Conceptos
-2. Crear o editar concepto
-3. Definir:
-   • Nombre: Descripcion clara
-   • Tipo: Basico o Adicional
-   • Precio Fijo: Monto constante (ej: $200)
-   • Porcentaje: Sobre el flete (ej: 10%)
-   • O ambos combinados
+CONFIGURACION DE PRECIO POR CONCEPTO
 
-Ejemplo de Configuracion
+Cada concepto puede usar UNO de dos metodos de cobro:
 
-Concepto "Retiro a Domicilio":
-• Tipo: Basico
-• Precio Fijo: $400
-• Porcentaje: 0%
-• Aplica cuando: Servicio incluye retiro
+Monto Fijo
+• Se cobra un valor constante independiente del flete
+• Ejemplo: Retiro a Domicilio = $400
 
-Concepto "Seguro":
-• Tipo: Adicional
-• Precio Fijo: $0
-• Porcentaje: 2% del valor declarado
-• Minimo: $150
+Porcentaje sobre el Flete
+• Se calcula como porcentaje del flete base calculado
+• Ejemplo: Concepto "Urgente" = 15% del flete
+• Se activa con un switch en la interfaz
+
+Multiplicar por Bultos (por concepto)
+• Cada concepto tiene su propio switch "multiplicar_por_bultos"
+• Es INDEPENDIENTE del multiplicar por bultos del flete
+• Ejemplo: Embalaje = $200, con 3 bultos y multiplicar activado = $600
+• Util para cargos que aplican por unidad (embalaje, manipuleo)
 
 ---
 
 HABILITAR CONCEPTOS POR SUCURSAL
 
-No todas las sucursales ofrecen los mismos servicios.
+Los conceptos de tipo "Adicional" no estan disponibles en todas las sucursales por defecto. Deben habilitarse explicitamente.
 
 Pasos:
 1. Ir a tarifa > ver detalles
@@ -241,11 +266,13 @@ Pasos:
 3. Seleccionar sucursales donde aplica
 4. Guardar
 
+La tabla sucursal_conceptos gestiona estas relaciones.
+
 Ejemplo:
 • Concepto "Entrega Sabado" habilitado solo en:
   - Casa Central
   - Sucursal Zona Norte
-• Las demas sucursales no muestran esta opcion`
+• Las demas sucursales no muestran esta opcion al crear envio`
     },
     {
       title: '5. ASIGNAR TARIFAS A SUCURSALES',
@@ -297,18 +324,40 @@ Sucursal Mendoza:
     },
     {
       title: '6. CALCULO DEL FLETE EN ENVIOS',
-      content: `Formula Completa
+      content: `CADENA DE PRIORIDAD DEL CALCULO
 
-El precio total de un envio se calcula asi:
+El sistema sigue esta cadena de prioridad para calcular el flete base:
 
-PRECIO TOTAL = Flete Base + Seguro + Retiro + Entrega + Conceptos Adicionales
+PASO 1: Override por Volumen
+• Condicion: Alguna dimension del paquete > umbral_volumen_cm Y precio_por_m3 > 0
+• Formula: Flete = Precio Base + (Volumen en m3 x Precio por m3)
+• Si aplica, se saltea los pasos 2 y 3
+
+PASO 2: Rangos Escalonados (rangos_kg)
+• Condicion: La tarifa tiene rangos de peso configurados Y peso > 0
+• El sistema busca el rango que contiene el peso del envio
+• Usa el precio definido para ese rango
+• Si aplica, se saltea el paso 3
+
+PASO 3: Metodo Simple
+• Condicion: peso_base_hasta y adicional_por_kg estan configurados
+• Formula: Flete = Precio Base + max(0, (Peso - peso_base_hasta)) x adicional_por_kg
+
+PASO 4: Fallback
+• Si ninguno de los anteriores aplica, Flete = Precio Base de la tarifa
+
+---
+
+FORMULA COMPLETA DEL ENVIO
+
+PRECIO TOTAL = Flete Base (x bultos si aplica) + Conceptos Basicos + Conceptos Adicionales + Seguro
 
 Donde:
-• Flete Base: Segun tipo de tarifa (peso, distancia, etc.)
-• Seguro: Si aplica, calculado sobre valor declarado
-• Retiro: Si el servicio incluye retiro a domicilio
-• Entrega: Si el servicio incluye entrega a domicilio
-• Adicionales: Conceptos seleccionados por el operador
+• Flete Base: Calculado segun la cadena de prioridad
+• x Bultos: Si multiplicar_flete_por_bultos esta activo, Flete x cantidad_bultos
+• Conceptos Basicos: Retiro y/o Entrega segun tipo de servicio (cada uno puede multiplicar por bultos independientemente)
+• Conceptos Adicionales: Seleccionados por el operador
+• Seguro: Calculado segun configuracion global (ver seccion 7)
 
 ---
 
@@ -317,6 +366,8 @@ EJEMPLO PASO A PASO
 Datos del Envio:
 • Servicio: Puerta a Puerta
 • Peso: 8 kg
+• Cantidad bultos: 1
+• Dimensiones: 40x30x25 cm (ninguna > 50 cm umbral)
 • Valor declarado: $25,000
 • Concepto adicional: Embalaje
 
@@ -326,19 +377,21 @@ Tarifa Configurada:
   - 0-5 kg: $1,000
   - 5.01-10 kg: $1,400
   - 10.01-20 kg: $1,900
-• Retiro: $400
-• Entrega: $350
-• Seguro: $100 base + 1% sobre valor declarado
-• Embalaje: $250
+• Multiplicar flete por bultos: No
+• Retiro: $400 (fijo)
+• Entrega: $350 (fijo)
+• Embalaje: $250 (fijo)
 
 Calculo:
-1. Flete Base: $1,400 (rango 5.01-10 kg)
-2. Seguro: $100 + (25,000 x 1%) = $100 + $250 = $350
-3. Retiro: $400 (servicio Puerta a Puerta)
-4. Entrega: $350 (servicio Puerta a Puerta)
-5. Embalaje: $250 (concepto adicional)
+1. Override volumen? No (ninguna dimension > 50 cm)
+2. Rangos escalonados? Si -> Rango 5.01-10 kg -> Flete = $1,400
+3. Multiplicar por bultos? No -> Flete = $1,400
+4. Retiro: $400 (servicio Puerta a Puerta)
+5. Entrega: $350 (servicio Puerta a Puerta)
+6. Embalaje: $250 (concepto adicional)
+7. Seguro: Se calcula aparte (ver seccion 7)
 
-TOTAL: $1,400 + $350 + $400 + $350 + $250 = $2,750
+SUBTOTAL (sin seguro): $1,400 + $400 + $350 + $250 = $2,400
 
 ---
 
@@ -355,13 +408,22 @@ Puerta a Puerta            | Si     | Si`
       title: '7. CONFIGURACION DE SEGURO',
       content: `Formula del Seguro
 
-Seguro = Base + ((Valor Declarado - Minimo) x Porcentaje)
-
-Parametros Configurables:
+El seguro se calcula globalmente para todo el tenant con estos parametros:
 • seguro_base: Monto fijo minimo (ej: $150)
 • valor_minimo_declarado: Umbral desde donde cobra porcentaje
-• porcentaje_excedente: Tasa sobre el valor excedente
+• porcentaje_excedente: Tasa sobre el valor que excede el minimo
 • valor_maximo_asegurado: Tope de cobertura
+
+FORMULA EXACTA
+
+1. Se determina el valor final:
+   valorFinal = min(max(valorDeclarado, valor_minimo_declarado), valor_maximo_asegurado)
+
+2. Se calcula el seguro:
+   Si valorFinal <= valor_minimo_declarado:
+     Seguro = seguro_base (solo la base)
+   Si no:
+     Seguro = seguro_base + ((valorFinal - valor_minimo_declarado) x porcentaje_excedente / 100)
 
 ---
 
@@ -374,34 +436,38 @@ Configuracion del Seguro:
 • Maximo asegurado: $500,000
 
 Caso 1: Valor declarado $3,000
-• Valor menor al minimo
+• valorFinal = min(max(3000, 5000), 500000) = 5,000
+• 5,000 <= 5,000 (valor minimo)
 • Seguro = $150 (solo la base)
 
 Caso 2: Valor declarado $20,000
-• Excedente: $20,000 - $5,000 = $15,000
-• Porcentaje: $15,000 x 1.5% = $225
+• valorFinal = min(max(20000, 5000), 500000) = 20,000
+• 20,000 > 5,000
+• Excedente: 20,000 - 5,000 = 15,000
+• Porcentaje: 15,000 x 1.5% = $225
 • Seguro = $150 + $225 = $375
 
 Caso 3: Valor declarado $600,000
-• Excede maximo asegurado
-• Se calcula sobre $500,000 (tope)
-• Excedente: $500,000 - $5,000 = $495,000
-• Porcentaje: $495,000 x 1.5% = $7,425
+• valorFinal = min(max(600000, 5000), 500000) = 500,000 (tope)
+• 500,000 > 5,000
+• Excedente: 500,000 - 5,000 = 495,000
+• Porcentaje: 495,000 x 1.5% = $7,425
 • Seguro = $150 + $7,425 = $7,575
 
 ---
 
 CONFIGURAR EL SEGURO
 
-1. Ir a Tarifas > Configuracion de Seguro
+1. Ir a Tarifas > Configuracion de Seguro (icono de escudo)
 2. Ajustar parametros:
    • Seguro base: Monto minimo obligatorio
-   • Valor minimo declarado: Desde donde cobra %
+   • Valor minimo declarado: Desde donde cobra porcentaje
    • Porcentaje excedente: Tasa del seguro
-   • Valor maximo: Tope de cobertura
+   • Valor maximo asegurado: Tope de cobertura
 3. Guardar cambios
 
-El seguro aplica globalmente a todas las tarifas del tenant.`
+El seguro aplica globalmente a todas las tarifas del tenant.
+Los cambios aplican a todos los envios nuevos (no retroactivo).`
     },
     {
       title: '8. AJUSTES MASIVOS DE PRECIOS',
