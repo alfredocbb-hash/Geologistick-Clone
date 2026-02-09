@@ -89,3 +89,6 @@ verify_jwt = false
 
 [functions.mercadolibre-label]
 verify_jwt = false
+
+[functions.mercadolibre-shipment-history]
+verify_jwt = false

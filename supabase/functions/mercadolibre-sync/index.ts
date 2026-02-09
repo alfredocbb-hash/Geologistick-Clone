@@ -152,7 +152,47 @@ Deno.serve(async (req) => {
           .maybeSingle();
 
         if (existingEnvio) {
-          console.log('[ML Sync] Shipment already exists:', shipmentId);
+          // Update existing: check if status or total changed
+          const mlShippingStatus = orderItem.shipping?.status || 'ready_to_ship';
+          const newFulfillment = mlShippingStatus === 'shipped' ? 'shipped' : 
+                                 mlShippingStatus === 'delivered' ? 'delivered' : 'pending';
+          const newEnvioEstado = mlShippingStatus === 'shipped' ? 'en_transito' :
+                                 mlShippingStatus === 'delivered' ? 'entregado' : 'pendiente';
+
+          // Update ecommerce_order status
+          await supabase.from('ecommerce_orders')
+            .update({ 
+              fulfillment_status: newFulfillment, 
+              order_status: mlShippingStatus === 'delivered' ? 'delivered' : 'paid',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('ml_shipment_id', shipmentId);
+
+          // Also fix total if it's 0 (recalculate from items)
+          const { data: existingOrder } = await supabase
+            .from('ecommerce_orders')
+            .select('total, items')
+            .eq('ml_shipment_id', shipmentId)
+            .maybeSingle();
+
+          if (existingOrder && (existingOrder.total === 0 || existingOrder.total === null)) {
+            const items = existingOrder.items as any[] || [];
+            const recalcTotal = items.reduce(
+              (sum: number, item: any) => sum + ((item.unit_price || 0) * (item.quantity || 1)), 0
+            );
+            if (recalcTotal > 0) {
+              await supabase.from('ecommerce_orders')
+                .update({ total: recalcTotal })
+                .eq('ml_shipment_id', shipmentId);
+            }
+          }
+
+          // Update envio estado
+          await supabase.from('envios')
+            .update({ estado: newEnvioEstado, updated_at: new Date().toISOString() })
+            .eq('id', existingEnvio.id);
+
+          console.log('[ML Sync] Updated existing shipment:', shipmentId, 'status:', mlShippingStatus);
           existing++;
           continue;
         }

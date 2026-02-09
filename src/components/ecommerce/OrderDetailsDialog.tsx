@@ -7,6 +7,7 @@ import { ShoppingCart, User, MapPin, Package, DollarSign, Calendar, ExternalLink
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { QRCodeSVG } from 'qrcode.react';
+import { MLShipmentHistorySection } from './MLShipmentHistorySection';
 
 interface OrderItem {
   sku?: string;
@@ -17,6 +18,7 @@ interface OrderItem {
 
 interface Order {
   id: string;
+  seller_id: string;
   external_order_id: string;
   external_order_number: string | null;
   plataforma: string;
@@ -149,6 +151,8 @@ export function OrderDetailsDialog({ open, onOpenChange, order }: OrderDetailsDi
                     </Button>
                   </div>
                 </div>
+                <Separator className="my-3" />
+                <MLShipmentHistorySection shipmentId={mlShipmentId} sellerId={order.seller_id || ''} />
               </CardContent>
             </Card>
           )}
