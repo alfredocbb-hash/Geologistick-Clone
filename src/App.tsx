@@ -65,6 +65,7 @@ import ShipmentStatusGuide from "./pages/ShipmentStatusGuide";
 import LandingContentAdmin from "./pages/LandingContentAdmin";
 import TrialRequests from "./pages/TrialRequests";
 import NotFound from "./pages/NotFound";
+import Reports from "./pages/Reports";
 import Incidents from "./pages/Incidents";
 import PrintInvoice from "./pages/PrintInvoice";
 import PrintSettlement from "./pages/PrintSettlement";
@@ -174,6 +175,7 @@ function AppRoutes() {
       
       {/* Protected Routes */}
       <Route path="/dashboard" element={<DashboardLayout><Dashboard /></DashboardLayout>} />
+      <Route path="/reports" element={<DashboardLayout><Reports /></DashboardLayout>} />
       
       {/* Envíos */}
       <Route path="/shipments" element={<DashboardLayout><Shipments /></DashboardLayout>} />
