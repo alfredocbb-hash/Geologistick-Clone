@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/lib/auth';
 import {
   Dialog,
   DialogContent,
@@ -37,7 +36,6 @@ interface RescheduleDialogProps {
 }
 
 export default function RescheduleDialog({ shipment, onClose, onSuccess }: RescheduleDialogProps) {
-  const { user } = useAuth();
   const queryClient = useQueryClient();
   
   const [newDate, setNewDate] = useState<Date | undefined>(addDays(new Date(), 1));
@@ -47,41 +45,13 @@ export default function RescheduleDialog({ shipment, onClose, onSuccess }: Resch
     mutationFn: async () => {
       if (!newDate) throw new Error('Selecciona una nueva fecha');
 
-      // Get current reprogramado_count
-      const { data: currentEnvio } = await supabase
-        .from('envios')
-        .select('reprogramado_count')
-        .eq('id', shipment.id)
-        .single();
+      const { error } = await supabase.rpc('reschedule_envio', {
+        p_envio_id: shipment.id,
+        p_new_date: newDate.toISOString(),
+        p_reason: reason,
+      });
 
-      const currentCount = currentEnvio?.reprogramado_count || 0;
-
-      // Update shipment with new delivery date, increment reprogramado_count, clear chofer_id
-      const { error: updateError } = await supabase
-        .from('envios')
-        .update({ 
-          fecha_entrega: newDate.toISOString(),
-          estado: 'pendiente', // Reset to pending for re-delivery
-          chofer_id: null, // Remove driver assignment so it can be reassigned
-          reprogramado_count: currentCount + 1,
-          ultima_reprogramacion: new Date().toISOString(),
-        })
-        .eq('id', shipment.id);
-
-      if (updateError) throw updateError;
-
-      // Add history entry
-      const { error: historyError } = await supabase
-        .from('envio_historial')
-        .insert({
-          envio_id: shipment.id,
-          estado_anterior: shipment.estado as any,
-          estado_nuevo: 'pendiente',
-          notas: `Entrega reprogramada para ${format(newDate, 'dd/MM/yyyy', { locale: es })}. Motivo: ${reason || 'No especificado'}. Intento #${currentCount + 1}`,
-          created_by: user?.id,
-        });
-
-      if (historyError) throw historyError;
+      if (error) throw error;
     },
     onMutate: async () => {
       await queryClient.cancelQueries({ queryKey: ['my-active-route-paradas'] });
