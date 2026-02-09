@@ -68,6 +68,7 @@ import NotFound from "./pages/NotFound";
 import Incidents from "./pages/Incidents";
 import PrintInvoice from "./pages/PrintInvoice";
 import PrintSettlement from "./pages/PrintSettlement";
+import TiendanubeOAuthResult from "./pages/TiendanubeOAuthResult";
 
 // Seller Portal Pages
 import { SellerLayout } from "./components/seller/SellerLayout";
@@ -169,6 +170,7 @@ function AppRoutes() {
       <Route path="/tracking/:code" element={<Tracking />} />
       <Route path="/tracking" element={<Tracking />} />
       <Route path="/tracking-embed" element={<TrackingEmbed />} />
+      <Route path="/oauth/tiendanube/result" element={<TiendanubeOAuthResult />} />
       
       {/* Protected Routes */}
       <Route path="/dashboard" element={<DashboardLayout><Dashboard /></DashboardLayout>} />
