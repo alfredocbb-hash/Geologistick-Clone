@@ -1,62 +1,49 @@
 
 
-# Fix: Incluir envíos Flex "en camino" en la sincronización de MercadoLibre
+# Fix: Mapeo de estados y total en sincronización MercadoLibre
 
 ## Problema
 
-El envío Flex con ID `46424630379` del seller PABLO GAUNA no se sincroniza porque la Edge Function `mercadolibre-sync` solo busca pedidos con `shipping.status=ready_to_ship`. Si el paquete ya fue marcado como "en camino" (`shipped`) en MercadoLibre, el sync lo ignora completamente.
+Cuando se sincronizan pedidos de MercadoLibre que ya están "en camino" (`shipped`), el sistema los crea con:
+- `fulfillment_status: 'pending'` (Sin Preparar) — incorrecto, ya están en camino
+- `estado: 'pendiente'` en envíos — debería reflejar que ya están en tránsito
+- `total: 0` — porque usa `shipping_cost.receiver` que es $0 en Flex
 
 ## Solución
 
-Ampliar la búsqueda para incluir también pedidos con estado `shipped`, realizando dos llamadas a la API de MercadoLibre y combinando los resultados sin duplicados.
+Modificar `supabase/functions/mercadolibre-sync/index.ts` para:
 
-## Cambios en `supabase/functions/mercadolibre-sync/index.ts`
+1. **Detectar el estado del shipping de ML** y mapear correctamente:
+   - `ready_to_ship` → `fulfillment_status: 'pending'`, `estado: 'pendiente'`
+   - `shipped` → `fulfillment_status: 'shipped'`, `estado: 'en_transito'`
 
-**Línea 103** - Reemplazar la búsqueda única por dos búsquedas paralelas:
-
-```
-Actual:
-  shipping.status=ready_to_ship
-
-Nuevo:
-  1. shipping.status=ready_to_ship
-  2. shipping.status=shipped
-```
-
-Flujo:
-1. Hacer `fetch` a ambos endpoints en paralelo (`Promise.all`)
-2. Combinar los resultados en un solo array
-3. Deduplicar por `order.id` para evitar procesar el mismo pedido dos veces
-4. El resto del procesamiento (filtro `self_service`, creación de envío, cuenta corriente) permanece igual
+2. **Calcular el total** sumando los precios de los items del pedido (`order_items`) en lugar de usar `shipping_cost.receiver`.
 
 ## Sección técnica
 
-Se reemplaza la línea 103 y el bloque de fetch (líneas 103-125) por:
+En `supabase/functions/mercadolibre-sync/index.ts`, dentro del loop de procesamiento de órdenes:
 
+**Agregar mapeo de estado** (antes de crear ecommerce_order, ~línea 185):
 ```typescript
-const statuses = ['ready_to_ship', 'shipped'];
-const searchPromises = statuses.map(status => {
-  const url = `${ML_API_BASE}/orders/search?seller=${seller.store_id}&shipping.status=${status}&sort=date_desc&limit=50`;
-  return fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-});
-
-const responses = await Promise.all(searchPromises);
-const allOrders = [];
-const seenIds = new Set();
-
-for (const response of responses) {
-  if (response.ok) {
-    const data = await response.json();
-    for (const order of (data.results || [])) {
-      if (!seenIds.has(order.id)) {
-        seenIds.add(order.id);
-        allOrders.push(order);
-      }
-    }
-  }
-}
-
-const orders = allOrders;
+const mlShippingStatus = orderItem.shipping?.status || 'ready_to_ship';
+const fulfillmentStatus = mlShippingStatus === 'shipped' ? 'shipped' : 'pending';
+const envioEstado = mlShippingStatus === 'shipped' ? 'en_transito' : 'pendiente';
 ```
 
+**Calcular total desde items** (~línea 187):
+```typescript
+const orderTotal = (orderItem.order_items || []).reduce(
+  (sum: number, item: any) => sum + (item.unit_price || 0) * (item.quantity || 1), 0
+);
+```
+
+**Usar las variables en el insert de ecommerce_orders** (~línea 196):
+- Cambiar `order_status: 'paid'` → mantener `'paid'` (es correcto, ML confirma pago)
+- Cambiar `fulfillment_status: 'pending'` → `fulfillment_status: fulfillmentStatus`
+- Cambiar `total: shipment.shipping_cost?.receiver || 0` → `total: orderTotal`
+
+**Usar la variable en el insert de envios** (~línea 216):
+- Cambiar `estado: 'pendiente'` → `estado: envioEstado`
+
 Solo se modifica un archivo: `supabase/functions/mercadolibre-sync/index.ts`.
+
