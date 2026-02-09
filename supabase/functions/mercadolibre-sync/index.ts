@@ -176,6 +176,16 @@ Deno.serve(async (req) => {
           continue;
         }
 
+        // Map ML shipping status to internal statuses
+        const mlShippingStatus = orderItem.shipping?.status || 'ready_to_ship';
+        const fulfillmentStatus = mlShippingStatus === 'shipped' ? 'shipped' : 'pending';
+        const envioEstado = mlShippingStatus === 'shipped' ? 'en_transito' : 'pendiente';
+
+        // Calculate total from order items
+        const orderTotal = (orderItem.order_items || []).reduce(
+          (sum: number, item: any) => sum + (item.unit_price || 0) * (item.quantity || 1), 0
+        );
+
         // Extract ML shipping cost - priority: lead_time.cost (documented), then fallbacks
         const mlShippingCost = shipment.lead_time?.cost 
           || shipment.shipping_option?.cost 
@@ -226,9 +236,9 @@ Deno.serve(async (req) => {
             shipping_lat: receiver.latitude || null,
             shipping_lng: receiver.longitude || null,
             items: orderData?.order_items || [],
-            total: shipment.shipping_cost?.receiver || 0,
+            total: orderTotal,
             order_status: 'paid',
-            fulfillment_status: 'pending',
+            fulfillment_status: fulfillmentStatus,
             raw_data: shipment,
           })
           .select()
@@ -250,7 +260,7 @@ Deno.serve(async (req) => {
             ml_order_id: orderId || null,
             ml_sync_status: 'synced',
             ml_last_sync_at: new Date().toISOString(),
-            estado: 'pendiente',
+            estado: envioEstado,
             nombre_destinatario: receiverName,
             direccion_entrega: address,
             ciudad_entrega: city,
