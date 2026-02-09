@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
       if (!sellerId) {
         return new Response(
           errorPage("Link inválido", "Este enlace no es válido. Por favor solicita un nuevo enlace de conexión a tu proveedor logístico."),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
+          { status: 400, headers: new Headers({ "Content-Type": "text/html; charset=utf-8" }) }
         );
       }
 
@@ -77,14 +77,14 @@ Deno.serve(async (req) => {
         console.error("Seller not found:", sellerError);
         return new Response(
           errorPage("Tienda no encontrada", "No pudimos encontrar tu tienda. Por favor contacta a tu proveedor logístico para obtener un nuevo enlace."),
-          { status: 404, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
+          { status: 404, headers: new Headers({ "Content-Type": "text/html; charset=utf-8" }) }
         );
       }
 
       if (seller.plataforma !== "tiendanube") {
         return new Response(
           errorPage("Plataforma incorrecta", "Esta tienda no está configurada como Tiendanube. Por favor contacta a tu proveedor logístico."),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
+          { status: 400, headers: new Headers({ "Content-Type": "text/html; charset=utf-8" }) }
         );
       }
 
@@ -100,7 +100,7 @@ Deno.serve(async (req) => {
         console.error("Tiendanube not configured:", intError);
         return new Response(
           errorPage("Integración no configurada", "La integración con Tiendanube aún no está configurada. Por favor contacta a tu proveedor logístico."),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
+          { status: 400, headers: new Headers({ "Content-Type": "text/html; charset=utf-8" }) }
         );
       }
 
@@ -110,7 +110,7 @@ Deno.serve(async (req) => {
       if (!clientId) {
         return new Response(
           errorPage("Configuración incompleta", "Falta el Client ID de Tiendanube. Por favor contacta a tu proveedor logístico."),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
+          { status: 400, headers: new Headers({ "Content-Type": "text/html; charset=utf-8" }) }
         );
       }
 
@@ -143,14 +143,14 @@ Deno.serve(async (req) => {
         console.error("OAuth error:", error);
         return new Response(
           errorPage("Error de autorización", `Tiendanube respondió con un error: ${error}`),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
+          { status: 400, headers: new Headers({ "Content-Type": "text/html; charset=utf-8" }) }
         );
       }
 
       if (!code || !state) {
         return new Response(
           errorPage("Parámetros faltantes", "La respuesta de Tiendanube no incluyó los parámetros necesarios."),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
+          { status: 400, headers: new Headers({ "Content-Type": "text/html; charset=utf-8" }) }
         );
       }
 
@@ -167,7 +167,7 @@ Deno.serve(async (req) => {
         console.error("Seller not found in callback:", sellerError);
         return new Response(
           errorPage("Seller no encontrado", "No pudimos encontrar la tienda asociada a esta conexión."),
-          { status: 404, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
+          { status: 404, headers: new Headers({ "Content-Type": "text/html; charset=utf-8" }) }
         );
       }
 
@@ -186,7 +186,7 @@ Deno.serve(async (req) => {
       if (!clientId || !clientSecret) {
         return new Response(
           errorPage("Credenciales faltantes", "Las credenciales de Tiendanube no están configuradas correctamente."),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
+          { status: 400, headers: new Headers({ "Content-Type": "text/html; charset=utf-8" }) }
         );
       }
 
@@ -212,7 +212,7 @@ Deno.serve(async (req) => {
         console.error("Token exchange failed:", errorText);
         return new Response(
           errorPage("Error de token", `No se pudo obtener el token de acceso: ${errorText}`),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
+          { status: 400, headers: new Headers({ "Content-Type": "text/html; charset=utf-8" }) }
         );
       }
 
@@ -263,7 +263,7 @@ Deno.serve(async (req) => {
         console.error("Failed to update seller:", updateError);
         return new Response(
           errorPage("Error al guardar", "No se pudieron guardar las credenciales de conexión."),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
+          { status: 500, headers: new Headers({ "Content-Type": "text/html; charset=utf-8" }) }
         );
       }
 
@@ -442,7 +442,7 @@ Deno.serve(async (req) => {
   </script>
 </body>
 </html>`,
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
+        { status: 200, headers: new Headers({ "Content-Type": "text/html; charset=utf-8" }) }
       );
     }
 
@@ -455,7 +455,7 @@ Deno.serve(async (req) => {
     console.error("Error in tiendanube-oauth:", error);
     return new Response(
       errorPage("Error inesperado", "Ocurrió un error procesando la conexión. Por favor intenta nuevamente."),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } }
+      { status: 500, headers: new Headers({ "Content-Type": "text/html; charset=utf-8" }) }
     );
   }
 });
