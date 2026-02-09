@@ -6,12 +6,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar, Download, Package, TrendingUp, Clock, DollarSign, BarChart3, Users, MapPin, FileText } from 'lucide-react';
+import { Calendar, Download, Package, TrendingUp, Clock, DollarSign, BarChart3, Users, MapPin, FileText, Loader2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import { useReportsData, type ReportsFilters } from '@/hooks/useReportsData';
-import { subDays, subMonths, format, startOfDay } from 'date-fns';
+import { subDays, subMonths, format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import jsPDF from 'jspdf';
+import { exportReportPDF } from '@/lib/exportReportPDF';
+import { toast } from 'sonner';
 
 const DATE_PRESETS = [
   { label: 'Hoy', getValue: () => ({ from: new Date(), to: new Date() }) },
@@ -42,43 +43,21 @@ const STATUS_LABELS: Record<string, string> = {
   incidencia: 'Incidencia',
 };
 
-function exportTabToPDF(title: string, headers: string[], rows: string[][]) {
-  const doc = new jsPDF();
-  doc.setFontSize(16);
-  doc.text(title, 14, 20);
-  doc.setFontSize(10);
-  doc.text(`Generado: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, 14, 28);
-
-  let y = 38;
-  const colWidth = (doc.internal.pageSize.width - 28) / headers.length;
-
-  // Headers
-  doc.setFontSize(9);
-  doc.setFont(undefined!, 'bold');
-  headers.forEach((h, i) => doc.text(h, 14 + i * colWidth, y));
-  y += 8;
-  doc.setFont(undefined!, 'normal');
-
-  // Rows
-  doc.setFontSize(8);
-  for (const row of rows) {
-    if (y > 280) {
-      doc.addPage();
-      y = 20;
-    }
-    row.forEach((cell, i) => doc.text(String(cell), 14 + i * colWidth, y));
-    y += 6;
-  }
-
-  doc.save(`${title.replace(/\s+/g, '_')}.pdf`);
-}
-
 export default function Reports() {
   const [datePreset, setDatePreset] = useState('Último Mes');
   const [sucursalId, setSucursalId] = useState<string>('all');
+  const [exporting, setExporting] = useState(false);
+
+  // Chart refs for PDF capture
+  const sucursalesChartRef = useRef<HTMLDivElement>(null);
+  const destinosChartRef = useRef<HTMLDivElement>(null);
+  const choferesChartRef = useRef<HTMLDivElement>(null);
+  const evolucionChartRef = useRef<HTMLDivElement>(null);
+  const estadosChartRef = useRef<HTMLDivElement>(null);
 
   const preset = DATE_PRESETS.find(p => p.label === datePreset) || DATE_PRESETS[2];
   const { from, to } = preset.getValue();
+  const dateRange = `${format(from, 'dd/MM/yy')} - ${format(to, 'dd/MM/yy')}`;
 
   const filters: ReportsFilters = {
     dateFrom: from,
@@ -87,6 +66,30 @@ export default function Reports() {
   };
 
   const { enviosPorSucursal, destinos, rendimientoChoferes, resumenGeneral, sucursales } = useReportsData(filters);
+
+  const handleExportPDF = async (
+    tab: 'sucursales' | 'destinos' | 'choferes' | 'resumen',
+    title: string,
+    chartRefs: React.RefObject<HTMLDivElement | null>[],
+    data: any
+  ) => {
+    setExporting(true);
+    try {
+      await exportReportPDF({
+        tab,
+        title,
+        subtitle: datePreset,
+        dateRange,
+        chartRefs,
+        data,
+      });
+      toast.success('PDF generado correctamente');
+    } catch (e) {
+      toast.error('Error al generar el PDF');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -133,7 +136,7 @@ export default function Reports() {
             <div className="flex items-end">
               <Badge variant="secondary" className="h-10 px-3 flex items-center gap-1.5">
                 <Calendar className="h-3.5 w-3.5" />
-                {format(from, 'dd/MM/yy')} - {format(to, 'dd/MM/yy')}
+                {dateRange}
               </Badge>
             </div>
           </div>
@@ -163,16 +166,11 @@ export default function Reports() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                const data = enviosPorSucursal.data || [];
-                exportTabToPDF(
-                  'Envíos por Sucursal',
-                  ['Sucursal', 'Total', 'Entregados', 'Pendientes', 'Cancelados', '% Efect.'],
-                  data.map(d => [d.sucursal_nombre, String(d.total), String(d.entregados), String(d.pendientes), String(d.cancelados), `${d.efectividad}%`])
-                );
-              }}
+              disabled={exporting}
+              onClick={() => handleExportPDF('sucursales', 'Envios por Sucursal', [sucursalesChartRef], enviosPorSucursal.data || [])}
             >
-              <Download className="h-4 w-4 mr-2" /> Exportar PDF
+              {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+              Exportar PDF
             </Button>
           </div>
 
@@ -183,17 +181,19 @@ export default function Reports() {
               <Card>
                 <CardHeader><CardTitle className="text-base">Envíos por Sucursal</CardTitle></CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={Math.max(200, (enviosPorSucursal.data?.length || 0) * 40)}>
-                    <BarChart data={enviosPorSucursal.data} layout="vertical" margin={{ left: 100 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis type="number" />
-                      <YAxis type="category" dataKey="sucursal_nombre" width={90} tick={{ fontSize: 12 }} />
-                      <Tooltip />
-                      <Bar dataKey="entregados" stackId="a" fill="hsl(var(--primary))" name="Entregados" />
-                      <Bar dataKey="pendientes" stackId="a" fill="hsl(var(--chart-2, 160 60% 45%))" name="Pendientes" />
-                      <Bar dataKey="cancelados" stackId="a" fill="hsl(var(--destructive))" name="Cancelados" />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <div ref={sucursalesChartRef}>
+                    <ResponsiveContainer width="100%" height={Math.max(200, (enviosPorSucursal.data?.length || 0) * 40)}>
+                      <BarChart data={enviosPorSucursal.data} layout="vertical" margin={{ left: 100 }}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis type="number" />
+                        <YAxis type="category" dataKey="sucursal_nombre" width={90} tick={{ fontSize: 12 }} />
+                        <Tooltip />
+                        <Bar dataKey="entregados" stackId="a" fill="hsl(var(--primary))" name="Entregados" />
+                        <Bar dataKey="pendientes" stackId="a" fill="hsl(var(--chart-2, 160 60% 45%))" name="Pendientes" />
+                        <Bar dataKey="cancelados" stackId="a" fill="hsl(var(--destructive))" name="Cancelados" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                 </CardContent>
               </Card>
 
@@ -242,16 +242,11 @@ export default function Reports() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                const data = destinos.data || [];
-                exportTabToPDF(
-                  'Destinos más frecuentes',
-                  ['Ciudad', 'Provincia', 'Cantidad', 'Ingresos'],
-                  data.map(d => [d.ciudad, d.provincia, String(d.cantidad), `$${d.ingresos.toLocaleString()}`])
-                );
-              }}
+              disabled={exporting}
+              onClick={() => handleExportPDF('destinos', 'Destinos mas frecuentes', [destinosChartRef], destinos.data || [])}
             >
-              <Download className="h-4 w-4 mr-2" /> Exportar PDF
+              {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+              Exportar PDF
             </Button>
           </div>
 
@@ -262,15 +257,17 @@ export default function Reports() {
               <Card>
                 <CardHeader><CardTitle className="text-base">Ciudades más frecuentes (Top 15)</CardTitle></CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={350}>
-                    <BarChart data={(destinos.data || []).slice(0, 15)}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="ciudad" tick={{ fontSize: 11 }} angle={-35} textAnchor="end" height={80} />
-                      <YAxis />
-                      <Tooltip />
-                      <Bar dataKey="cantidad" fill="hsl(var(--primary))" name="Envíos" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <div ref={destinosChartRef}>
+                    <ResponsiveContainer width="100%" height={350}>
+                      <BarChart data={(destinos.data || []).slice(0, 15)}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="ciudad" tick={{ fontSize: 11 }} angle={-35} textAnchor="end" height={80} />
+                        <YAxis />
+                        <Tooltip />
+                        <Bar dataKey="cantidad" fill="hsl(var(--primary))" name="Envíos" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                 </CardContent>
               </Card>
 
@@ -311,16 +308,11 @@ export default function Reports() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                const data = rendimientoChoferes.data || [];
-                exportTabToPDF(
-                  'Rendimiento de Choferes',
-                  ['Chofer', 'Total', 'Entregados', 'No Entregados', '% Efect.', 'T. Prom.'],
-                  data.map(d => [d.chofer_nombre, String(d.total), String(d.entregados), String(d.no_entregados), `${d.efectividad}%`, d.tiempo_promedio_minutos ? `${d.tiempo_promedio_minutos} min` : '-'])
-                );
-              }}
+              disabled={exporting}
+              onClick={() => handleExportPDF('choferes', 'Rendimiento de Choferes', [choferesChartRef], rendimientoChoferes.data || [])}
             >
-              <Download className="h-4 w-4 mr-2" /> Exportar PDF
+              {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+              Exportar PDF
             </Button>
           </div>
 
@@ -331,16 +323,18 @@ export default function Reports() {
               <Card>
                 <CardHeader><CardTitle className="text-base">Comparativo de Choferes</CardTitle></CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={350}>
-                    <BarChart data={(rendimientoChoferes.data || []).slice(0, 15)}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="chofer_nombre" tick={{ fontSize: 11 }} angle={-35} textAnchor="end" height={80} />
-                      <YAxis />
-                      <Tooltip />
-                      <Bar dataKey="entregados" fill="hsl(var(--primary))" name="Entregados" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="no_entregados" fill="hsl(var(--destructive))" name="No Entregados" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <div ref={choferesChartRef}>
+                    <ResponsiveContainer width="100%" height={350}>
+                      <BarChart data={(rendimientoChoferes.data || []).slice(0, 15)}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="chofer_nombre" tick={{ fontSize: 11 }} angle={-35} textAnchor="end" height={80} />
+                        <YAxis />
+                        <Tooltip />
+                        <Bar dataKey="entregados" fill="hsl(var(--primary))" name="Entregados" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="no_entregados" fill="hsl(var(--destructive))" name="No Entregados" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                 </CardContent>
               </Card>
 
@@ -393,22 +387,11 @@ export default function Reports() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                const r = resumenGeneral.data;
-                if (!r) return;
-                exportTabToPDF(
-                  'Resumen General',
-                  ['Métrica', 'Valor'],
-                  [
-                    ['Total Envíos', String(r.totalEnvios)],
-                    ['Tasa de Entrega', `${r.tasaEntrega}%`],
-                    ['Tiempo Promedio', r.tiempoPromedio ? `${r.tiempoPromedio} min` : 'N/A'],
-                    ['Ingresos Totales', `$${r.ingresosTotales.toLocaleString()}`],
-                  ]
-                );
-              }}
+              disabled={exporting}
+              onClick={() => handleExportPDF('resumen', 'Resumen General', [evolucionChartRef, estadosChartRef], resumenGeneral.data)}
             >
-              <Download className="h-4 w-4 mr-2" /> Exportar PDF
+              {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+              Exportar PDF
             </Button>
           </div>
 
@@ -479,40 +462,44 @@ export default function Reports() {
                 <Card>
                   <CardHeader><CardTitle className="text-base">Evolución Diaria</CardTitle></CardHeader>
                   <CardContent>
-                    <ResponsiveContainer width="100%" height={280}>
-                      <LineChart data={resumenGeneral.data?.evolucionDiaria || []}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="fecha" tick={{ fontSize: 10 }} tickFormatter={v => v.substring(5)} />
-                        <YAxis />
-                        <Tooltip labelFormatter={v => format(new Date(v + 'T12:00:00'), 'dd MMM yyyy', { locale: es })} />
-                        <Line type="monotone" dataKey="cantidad" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} name="Envíos" />
-                      </LineChart>
-                    </ResponsiveContainer>
+                    <div ref={evolucionChartRef}>
+                      <ResponsiveContainer width="100%" height={280}>
+                        <LineChart data={resumenGeneral.data?.evolucionDiaria || []}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="fecha" tick={{ fontSize: 10 }} tickFormatter={v => v.substring(5)} />
+                          <YAxis />
+                          <Tooltip labelFormatter={v => format(new Date(v + 'T12:00:00'), 'dd MMM yyyy', { locale: es })} />
+                          <Line type="monotone" dataKey="cantidad" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} name="Envíos" />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
                   </CardContent>
                 </Card>
 
                 <Card>
                   <CardHeader><CardTitle className="text-base">Distribución por Estado</CardTitle></CardHeader>
                   <CardContent>
-                    <ResponsiveContainer width="100%" height={280}>
-                      <PieChart>
-                        <Pie
-                          data={(resumenGeneral.data?.distribucionEstados || []).map(d => ({ ...d, label: STATUS_LABELS[d.estado] || d.estado }))}
-                          cx="50%"
-                          cy="50%"
-                          outerRadius={100}
-                          dataKey="cantidad"
-                          nameKey="label"
-                          label={({ label, percent }) => `${label} ${(percent * 100).toFixed(0)}%`}
-                          labelLine={false}
-                        >
-                          {(resumenGeneral.data?.distribucionEstados || []).map((_, i) => (
-                            <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip formatter={(value: number, name: string) => [value, STATUS_LABELS[name] || name]} />
-                      </PieChart>
-                    </ResponsiveContainer>
+                    <div ref={estadosChartRef}>
+                      <ResponsiveContainer width="100%" height={280}>
+                        <PieChart>
+                          <Pie
+                            data={(resumenGeneral.data?.distribucionEstados || []).map(d => ({ ...d, label: STATUS_LABELS[d.estado] || d.estado }))}
+                            cx="50%"
+                            cy="50%"
+                            outerRadius={100}
+                            dataKey="cantidad"
+                            nameKey="label"
+                            label={({ label, percent }) => `${label} ${(percent * 100).toFixed(0)}%`}
+                            labelLine={false}
+                          >
+                            {(resumenGeneral.data?.distribucionEstados || []).map((_, i) => (
+                              <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip formatter={(value: number, name: string) => [value, STATUS_LABELS[name] || name]} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
                   </CardContent>
                 </Card>
               </div>
