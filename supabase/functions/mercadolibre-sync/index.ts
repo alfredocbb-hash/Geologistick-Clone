@@ -98,27 +98,36 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Search for orders with shipping ready_to_ship - use /orders/search endpoint
-    // Filter by seller and shipping status
-    const searchUrl = `${ML_API_BASE}/orders/search?seller=${seller.store_id}&shipping.status=ready_to_ship&sort=date_desc&limit=50`;
-    console.log('[ML Sync] Fetching orders from:', searchUrl);
+    // Search for orders with shipping ready_to_ship AND shipped
+    const statuses = ['ready_to_ship', 'shipped'];
+    console.log('[ML Sync] Fetching orders for statuses:', statuses.join(', '));
 
-    const searchResponse = await fetch(searchUrl, {
-      headers: { Authorization: `Bearer ${accessToken}` },
+    const searchPromises = statuses.map(status => {
+      const url = `${ML_API_BASE}/orders/search?seller=${seller.store_id}&shipping.status=${status}&sort=date_desc&limit=50`;
+      return fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
     });
 
-    if (!searchResponse.ok) {
-      const errorText = await searchResponse.text();
-      console.error('[ML Sync] Failed to search orders:', searchResponse.status, errorText);
-      return new Response(
-        JSON.stringify({ error: 'Failed to fetch orders from MercadoLibre', details: errorText }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    const responses = await Promise.all(searchPromises);
+    const allOrders: any[] = [];
+    const seenIds = new Set();
+
+    for (let i = 0; i < responses.length; i++) {
+      const response = responses[i];
+      if (!response.ok) {
+        console.error('[ML Sync] Failed to search orders for status', statuses[i], ':', response.status);
+        continue;
+      }
+      const data = await response.json();
+      for (const order of (data.results || [])) {
+        if (!seenIds.has(order.id)) {
+          seenIds.add(order.id);
+          allOrders.push(order);
+        }
+      }
     }
 
-    const searchData = await searchResponse.json();
-    const orders = searchData.results || [];
-    console.log('[ML Sync] Found', orders.length, 'orders');
+    const orders = allOrders;
+    console.log('[ML Sync] Found', orders.length, 'orders (deduplicated)');
 
     let created = 0;
     let existing = 0;
