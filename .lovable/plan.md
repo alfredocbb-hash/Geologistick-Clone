@@ -1,98 +1,48 @@
 
 
-# Corregir cierre de sesion que no se completa correctamente
+# Generar PDF de Homologacion para Tiendanube
 
-## Problema
+## Alcance
 
-Al cerrar sesion:
-1. Se muestra "Hola, Usuario!" con datos en cero (el perfil se borra localmente)
-2. Pero el usuario NO es redirigido al login (la sesion sigue activa internamente)
-3. Al refrescar la pagina, vuelve a iniciar como "Alfredo" porque la sesion nunca se elimino realmente del navegador
+Crear el archivo `src/lib/generateHomologacionPDF.ts` y agregar un boton en `IntegrationSettings.tsx` (solapa Tiendanube) para descargar el documento.
 
-## Causa raiz
+## Archivos a crear / modificar
 
-La funcion `signOut` en `src/lib/auth.tsx` solo limpia `profile` y `roles`, pero **no limpia** `user` ni `session` directamente. Depende de que el evento `onAuthStateChange` lo haga, pero si `supabase.auth.signOut()` falla silenciosamente (por error de red, timeout, etc.), la sesion queda guardada en el navegador y el usuario nunca es redirigido.
+### 1. Nuevo archivo: `src/lib/generateHomologacionPDF.ts`
 
-Ademas, el cache de datos (React Query) no se limpia al cerrar sesion, lo que puede causar que datos del usuario anterior se muestren brevemente si alguien inicia sesion con otra cuenta.
+Seguira exactamente el mismo patron de `generateEcommerceGuidePDF.ts`:
 
-## Solucion
+- Importa `jsPDF` y los helpers compartidos de `pdfHelpers.ts` (`loadLogoAsBase64`, `addPageHeader`, `addPageFooter`, `drawCoverPage`, `drawSectionHeader`)
+- Define una constante `HOMOLOGACION_CONTENT` con las 10 secciones proporcionadas por el usuario
+- Color primario: `[47, 84, 150]` (Azul Tiendanube #2F5496)
+- Exporta la funcion `generarHomologacionPDF()`
+- Genera: portada, indice, y cada seccion con su header de color y contenido renderizado con word-wrap
 
-### 1. Mejorar la funcion `signOut` en `src/lib/auth.tsx`
+**Estructura del contenido (10 secciones):**
 
-- Limpiar **todos** los estados (`user`, `session`, `profile`, `roles`) de forma inmediata, sin depender del evento `onAuthStateChange`
-- Manejar errores de `supabase.auth.signOut()` para que si falla, igual se limpie el estado local
-- Limpiar la cache de React Query al cerrar sesion para evitar datos residuales
+1. Informacion General de la Aplicacion
+2. Flujo OAuth 2.0 (descripcion secuencial paso a paso)
+3. Endpoints Implementados (5 funciones)
+4. Webhooks Registrados (5 eventos incluyendo app/uninstalled)
+5. Seguridad (HMAC-SHA256, tokens, renovacion, limpieza)
+6. GDPR / Privacidad (3 eventos reconocidos)
+7. Transportista (registro automatico, tipos de envio)
+8. Ciclo de Vida (instalacion, desinstalacion, reinstalacion)
+9. URLs y Configuracion Tecnica (todas las URLs reales)
+10. Contacto e Informacion del Desarrollador
 
-### 2. Actualizar `AppHeader.tsx`
+**Nombre del archivo descargado:** `homologacion-geologistick-tiendanube.pdf`
 
-- Asegurar que la navegacion a `/login` ocurra incluso si `signOut()` lanza un error
+### 2. Modificar: `src/pages/IntegrationSettings.tsx`
 
-## Seccion tecnica
+Agregar un boton "Descargar Documento de Homologacion" en la solapa de Tiendanube, debajo de la seccion de Webhook URL. El boton:
 
-### Archivo: `src/lib/auth.tsx`
+- Importa `generarHomologacionPDF` del nuevo archivo
+- Muestra icono `FileText` + texto descriptivo
+- Llama a `generarHomologacionPDF()` al hacer clic
+- Muestra estado de carga mientras genera el PDF
 
-La funcion `signOut` cambia de:
+## Sin dependencias nuevas
 
-```typescript
-const signOut = async () => {
-    await supabase.auth.signOut();
-    setProfile(null);
-    setRoles([]);
-};
-```
+Todo se implementa con `jsPDF` (ya instalado) y los helpers existentes en `pdfHelpers.ts`.
 
-A una version robusta que:
-1. Limpia `user`, `session`, `profile` y `roles` de inmediato (antes de esperar a Supabase)
-2. Envuelve `supabase.auth.signOut()` en un try/catch para que errores de red no bloqueen el cierre
-3. Invalida el cache de React Query
-
-Se necesita recibir el `queryClient` como parametro o importarlo. La opcion mas limpia es que `signOut` reciba el `queryClient` como argumento opcional, o acceder a el via el contexto.
-
-Alternativa: exponer `signOut` de forma que el componente que lo llama (AppHeader) tambien limpie el cache.
-
-### Archivo: `src/components/layout/AppHeader.tsx`
-
-Actualizar `handleSignOut` para:
-1. Limpiar el cache de React Query usando `useQueryClient()`
-2. Navegar a `/login` en un bloque `finally` para garantizar la redireccion
-
-```
-ANTES:
-const handleSignOut = async () => {
-    await signOut();
-    navigate('/login');
-};
-
-DESPUES:
-const handleSignOut = async () => {
-    try {
-      queryClient.clear();
-      await signOut();
-    } catch (e) {
-      console.error('Error during sign out:', e);
-    } finally {
-      navigate('/login', { replace: true });
-    }
-};
-```
-
-### Archivo: `src/components/layout/AppSidebar.tsx`
-
-El boton de logout en el sidebar (linea 417) llama directamente a `signOut()` sin navegar ni limpiar cache. Se debe actualizar para usar la misma logica robusta:
-
-```
-ANTES:
-<Button ... onClick={signOut} ...>
-
-DESPUES:
-<Button ... onClick={handleSignOut} ...>
-```
-
-Donde `handleSignOut` es una funcion local que limpia cache, llama a signOut, y navega a `/login`.
-
-## Resultado esperado
-
-- Al hacer clic en "Cerrar Sesion" (desde el header o el sidebar), el usuario sera redirigido inmediatamente al login
-- La sesion se eliminara del navegador correctamente
-- Si se refresca la pagina despues de cerrar sesion, NO volvera a la cuenta anterior
-- Los datos en cache se limpian para evitar filtracion de informacion entre sesiones
