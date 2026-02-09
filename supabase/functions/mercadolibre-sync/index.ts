@@ -193,11 +193,8 @@ Deno.serve(async (req) => {
         const state = receiver.state?.name || '';
         const zipCode = receiver.zip_code || '';
 
-        // Generate tracking number
-        const trackingPrefix = seller.tenant_id?.substring(0, 3).toUpperCase() || 'ML';
-        const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-        const random = Math.random().toString(36).substring(2, 8).toUpperCase();
-        const trackingNumber = `${trackingPrefix}-ENV-${date}-${random}`;
+        // Use ML shipment ID as tracking number (native ML tracking)
+        const trackingNumber = `ML-${shipment.id}`;
 
         // Create ecommerce_order first
         const { data: order, error: orderError } = await supabase
@@ -208,6 +205,8 @@ Deno.serve(async (req) => {
             external_order_id: String(shipment.id),
             external_order_number: String(orderId || shipment.id),
             plataforma: 'mercadolibre',
+            ml_shipment_id: shipment.id,
+            ml_tracking_number: `ML-${shipment.id}`,
             buyer_name: receiverName,
             buyer_phone: receiverPhone,
             buyer_email: orderData?.buyer?.email || null,

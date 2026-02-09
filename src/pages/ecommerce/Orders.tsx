@@ -13,7 +13,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Search, MoreHorizontal, Package, Eye, Truck, ShoppingBag, Clock, CheckCircle, XCircle, Printer, Edit, MapPin, Trash2 } from 'lucide-react';
+import { Search, MoreHorizontal, Package, Eye, Truck, ShoppingBag, Clock, CheckCircle, XCircle, Printer, Edit, MapPin, Trash2, Download, Tag } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from '@/hooks/use-toast';
@@ -46,6 +46,9 @@ interface Order {
   shipping_cost: number | null;
   total: number;
   envio_id: string | null;
+  ml_shipment_id: number | null;
+  ml_tracking_number: string | null;
+  raw_data: any | null;
   created_at: string;
   seller?: {
     id: string;
@@ -416,7 +419,14 @@ export default function Orders() {
                       <TableCell>
                         {order.envio_id ? (
                           <div className="flex items-center gap-2">
-                            <Badge variant="default">Creado</Badge>
+                            {order.ml_tracking_number ? (
+                              <Badge variant="default" className="font-mono text-xs">
+                                <Tag className="mr-1 h-3 w-3" />
+                                {order.ml_tracking_number}
+                              </Badge>
+                            ) : (
+                              <Badge variant="default">Creado</Badge>
+                            )}
                             <Button 
                               variant="ghost" 
                               size="icon"
@@ -426,6 +436,20 @@ export default function Orders() {
                             >
                               <Printer className="h-3 w-3" />
                             </Button>
+                            {order.ml_shipment_id && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={() => {
+                                  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mercadolibre-label?shipment_id=${order.ml_shipment_id}`;
+                                  window.open(url, '_blank');
+                                }}
+                                title="Descargar etiqueta ML"
+                              >
+                                <Download className="h-3 w-3" />
+                              </Button>
+                            )}
                           </div>
                         ) : order.order_status !== 'cancelled' ? (
                           <Button 

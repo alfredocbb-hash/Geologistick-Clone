@@ -2,9 +2,11 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { ShoppingCart, User, MapPin, Package, DollarSign, Calendar, ExternalLink } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { ShoppingCart, User, MapPin, Package, DollarSign, Calendar, ExternalLink, Download, Truck } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface OrderItem {
   sku?: string;
@@ -34,10 +36,13 @@ interface Order {
   shipping_cost: number;
   total: number;
   envio_id: string | null;
+  ml_shipment_id?: number | null;
+  ml_tracking_number?: string | null;
   created_at: string;
   seller?: {
     nombre: string;
   };
+  raw_data?: any;
 }
 
 interface OrderDetailsDialogProps {
@@ -65,6 +70,15 @@ export function OrderDetailsDialog({ open, onOpenChange, order }: OrderDetailsDi
   const status = STATUS_LABELS[order.order_status] || STATUS_LABELS.pending;
   const fulfillment = FULFILLMENT_LABELS[order.fulfillment_status] || FULFILLMENT_LABELS.pending;
   const items = order.items as OrderItem[] || [];
+  const isML = order.plataforma === 'mercadolibre';
+  const mlShipmentId = order.ml_shipment_id || (order.raw_data?.id ? Number(order.raw_data.id) : null);
+  const mlSenderId = order.raw_data?.sender_id || order.raw_data?.sender?.id;
+
+  const handleDownloadLabel = () => {
+    if (!mlShipmentId) return;
+    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mercadolibre-label?shipment_id=${mlShipmentId}`;
+    window.open(url, '_blank');
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -82,19 +96,62 @@ export function OrderDetailsDialog({ open, onOpenChange, order }: OrderDetailsDi
         <div className="space-y-6">
           {/* Status Badges */}
           <div className="flex flex-wrap gap-2">
-            <Badge variant="outline" className={status.className}>
-              {status.label}
-            </Badge>
-            <Badge variant="outline" className={fulfillment.className}>
-              {fulfillment.label}
-            </Badge>
-            <Badge variant="outline">
-              {order.plataforma}
-            </Badge>
-            {order.envio_id && (
-              <Badge variant="default">Envío Creado</Badge>
-            )}
+            <Badge variant="outline" className={status.className}>{status.label}</Badge>
+            <Badge variant="outline" className={fulfillment.className}>{fulfillment.label}</Badge>
+            <Badge variant="outline">{order.plataforma}</Badge>
+            {order.envio_id && <Badge variant="default">Envío Creado</Badge>}
           </div>
+
+          {/* ML Shipment Section */}
+          {isML && mlShipmentId && (
+            <Card className="border-blue-500/30 bg-blue-500/5">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Truck className="h-4 w-4 text-blue-600" />
+                  Envío MercadoLibre
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col sm:flex-row gap-4 items-start">
+                  {/* QR Code */}
+                  {mlSenderId && (
+                    <div className="flex flex-col items-center gap-1">
+                      <QRCodeSVG
+                        value={JSON.stringify({ id: String(mlShipmentId), sender_id: String(mlSenderId) })}
+                        size={120}
+                        level="M"
+                      />
+                      <span className="text-xs text-muted-foreground">QR ML Flex</span>
+                    </div>
+                  )}
+                  <div className="flex-1 space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Nº Envío ML</span>
+                      <span className="font-mono font-medium">{mlShipmentId}</span>
+                    </div>
+                    {order.ml_tracking_number && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Tracking</span>
+                        <span className="font-mono">{order.ml_tracking_number}</span>
+                      </div>
+                    )}
+                    {order.raw_data?.logistic_type && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Tipo logístico</span>
+                        <Badge variant="outline" className="text-xs">
+                          {order.raw_data.logistic_type === 'self_service' ? 'Flex' : order.raw_data.logistic_type}
+                        </Badge>
+                      </div>
+                    )}
+                    <Button variant="outline" size="sm" className="w-full mt-2" onClick={handleDownloadLabel}>
+                      <Download className="mr-2 h-4 w-4" />
+                      Descargar Etiqueta ML
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Buyer Info */}
           <Card>
@@ -123,13 +180,9 @@ export function OrderDetailsDialog({ open, onOpenChange, order }: OrderDetailsDi
             <CardContent className="text-sm space-y-1">
               <p>{order.shipping_address}</p>
               <p className="text-muted-foreground">
-                {[order.shipping_city, order.shipping_province, order.shipping_postal_code]
-                  .filter(Boolean)
-                  .join(', ')}
+                {[order.shipping_city, order.shipping_province, order.shipping_postal_code].filter(Boolean).join(', ')}
               </p>
-              {order.shipping_notes && (
-                <p className="text-muted-foreground italic">Nota: {order.shipping_notes}</p>
-              )}
+              {order.shipping_notes && <p className="text-muted-foreground italic">Nota: {order.shipping_notes}</p>}
             </CardContent>
           </Card>
 
