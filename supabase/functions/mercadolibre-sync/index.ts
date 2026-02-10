@@ -99,7 +99,7 @@ Deno.serve(async (req) => {
     }
 
     // Search for orders with shipping ready_to_ship AND shipped — with full pagination
-    const statuses = ['ready_to_ship', 'shipped'];
+    const statuses = ['ready_to_ship', 'shipped', 'delivered', 'not_delivered'];
     console.log('[ML Sync] Fetching orders for statuses:', statuses.join(', '));
 
     const allOrders: any[] = [];
