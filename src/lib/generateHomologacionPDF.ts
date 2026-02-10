@@ -9,7 +9,7 @@ import {
 
 const PRIMARY_COLOR: [number, number, number] = [47, 84, 150]; // Azul Tiendanube #2F5496
 
-const HOMOLOGACION_CONTENT = {
+export const HOMOLOGACION_CONTENT = {
   title: 'Documento de Homologacion',
   subtitle: 'Integracion OAuth 2.0 - Tiendanube Argentina',
   sections: [

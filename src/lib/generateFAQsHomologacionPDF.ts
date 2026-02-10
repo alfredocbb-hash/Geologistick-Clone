@@ -13,7 +13,7 @@ interface FAQCategory {
   faqs: FAQ[];
 }
 
-const FAQ_CONTENT: FAQCategory[] = [
+export const FAQ_CONTENT: FAQCategory[] = [
   {
     title: 'Informacion General',
     faqs: [

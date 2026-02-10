@@ -3,7 +3,7 @@ import { loadLogoAsBase64, addPageHeader, addPageFooter, drawCoverPage, drawSect
 
 const PRIMARY_COLOR: [number, number, number] = [47, 84, 150]; // Azul Tiendanube #2F5496
 
-interface DiagramStep {
+export interface DiagramStep {
   from: string;
   to: string;
   description: string;
