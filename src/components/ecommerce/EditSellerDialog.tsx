@@ -294,9 +294,52 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
       }
       // If 'mantener', keep the current user_id
 
-      const { error } = await supabase
-        .from('ecommerce_sellers')
-        .update({
+      // Auto-link seller to cliente if not yet linked
+      let clienteId: string | undefined = undefined;
+      try {
+        // Check if seller already has a cliente_id by querying DB
+        const { data: currentSeller } = await supabase
+          .from('ecommerce_sellers')
+          .select('cliente_id')
+          .eq('id', seller.id)
+          .single();
+
+        if (!(currentSeller as any)?.cliente_id && tenantId) {
+          // Search for existing client by email or phone
+          const { data: existingCliente } = await supabase
+            .from('clientes')
+            .select('id')
+            .eq('tenant_id', tenantId)
+            .or(`email.eq.${values.email}${values.telefono ? `,telefono.eq.${values.telefono}` : ''}`)
+            .limit(1)
+            .maybeSingle();
+
+          if (existingCliente) {
+            clienteId = existingCliente.id;
+          } else {
+            const { data: newCliente } = await supabase
+              .from('clientes')
+              .insert({
+                tenant_id: tenantId,
+                nombre: values.nombre,
+                email: values.email,
+                telefono: values.telefono || 'Sin teléfono',
+                direccion: values.direccion || 'Sin dirección',
+                ciudad: values.ciudad || null,
+                codigo_postal: values.codigo_postal || null,
+                dni_cuit: values.cuit || null,
+                razon_social: values.razon_social || null,
+              })
+              .select('id')
+              .single();
+            if (newCliente) clienteId = newCliente.id;
+          }
+        }
+      } catch (linkError) {
+        console.error('Error linking seller to client:', linkError);
+      }
+
+      const updateData: any = {
           nombre: values.nombre,
           razon_social: values.razon_social || null,
           email: values.email,
@@ -313,7 +356,6 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
           tiene_cuenta_corriente: values.tiene_cuenta_corriente,
           limite_credito: values.limite_credito,
           activo: values.activo,
-          // Shipping options
           min_delivery_days: values.min_delivery_days,
           max_delivery_days: values.max_delivery_days,
           tarifa_express_id: values.tarifa_express_id === '__none__' ? null : (values.tarifa_express_id || null),
@@ -322,7 +364,12 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
           permite_pickup: values.permite_pickup,
           pickup_surcharge: values.pickup_surcharge,
           user_id: newUserId,
-        })
+      };
+      if (clienteId) updateData.cliente_id = clienteId;
+
+      const { error } = await supabase
+        .from('ecommerce_sellers')
+        .update(updateData)
         .eq('id', seller.id);
       if (error) throw error;
     },
