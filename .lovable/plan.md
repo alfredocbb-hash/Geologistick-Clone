@@ -1,73 +1,76 @@
 
+# Fix: Paginacion completa en sincronizacion MercadoLibre + Filtro por fecha en Pedidos
 
-# Sellers manuales multi-plataforma + Mostrar costo de envio en pedidos
+## Problema
 
-## Problema 1: Sellers manuales no pueden conectar tiendas
+Hay dos problemas relacionados:
 
-Cuando se crea un seller como "Manual", luego no hay forma de cambiar la plataforma ni conectar MercadoLibre u otra tienda. La columna "Conexion" muestra "N/A" sin opcion de accion.
+1. **Sincronizacion incompleta**: La funcion `mercadolibre-sync` solo trae los primeros 50 resultados por estado (sin paginacion con `offset`). Sellers como Kingdom con mas de 50 envios activos pierden pedidos.
 
-## Problema 2: Se muestra el importe del producto en vez del envio
-
-La columna "Total" en la tabla de pedidos e-Commerce muestra la suma de precios de los productos del vendedor (`unit_price * quantity`). Lo que necesitas ver es el costo de envio que cobra MercadoLibre (almacenado en `shipping_cost` de la orden y `precio_flete_ml` del envio).
+2. **Sin filtro por fecha de entrega**: La pagina de Pedidos e-Commerce no tiene filtro por fecha. Necesitas ver los pedidos con entrega para HOY (vendidos ayer despues del corte de las 12hs + vendidos hoy antes del corte).
 
 ## Cambios propuestos
 
-### 1. Permitir cambiar plataforma desde el EditSellerDialog
-
-**Archivo: `src/components/ecommerce/EditSellerDialog.tsx`**
-- Actualmente el campo `plataforma` se guarda pero no se puede editar visualmente en el formulario de edicion (no hay un Select para plataforma en el form de edicion, solo en el de creacion).
-- Agregar el Select de plataforma al formulario de edicion, permitiendo cambiar de "Manual" a "MercadoLibre", "Tiendanube", etc.
-
-### 2. Mostrar boton "Conectar" para sellers manuales en la tabla
-
-**Archivo: `src/pages/ecommerce/Sellers.tsx`**
-- Linea 456: donde dice `seller.plataforma === 'manual'` y muestra "N/A", cambiarlo por un dropdown con opciones de conexion: "Conectar MercadoLibre" y "Conectar Tiendanube".
-- Al elegir una opcion: actualizar la plataforma del seller en la DB y luego abrir el popup OAuth correspondiente.
-
-### 3. Mostrar costo de envio en vez de total de productos
-
-**Archivo: `src/pages/ecommerce/Orders.tsx`**
-- Linea 367: Cambiar el header de columna de "Total" a "Costo Envio"
-- Linea 416-418: En la celda, mostrar `order.shipping_cost` en lugar de `order.total`. Si `shipping_cost` es null o 0, mostrar un guion "-" como fallback.
-
-**Archivo: `src/components/ecommerce/OrderDetailsDialog.tsx`**
-- En la seccion de "Totales", agregar claramente la distincion entre el total de productos (subtotal) y el costo de envio de la plataforma.
-- Resaltar visualmente el costo de envio como el valor principal.
-
-### 4. Guardar shipping_cost desde ML sync
+### 1. Paginacion completa en mercadolibre-sync
 
 **Archivo: `supabase/functions/mercadolibre-sync/index.ts`**
-- Linea 279: Ademas de `total: orderTotal`, agregar `shipping_cost: mlShippingCost` al insert de la orden e-commerce, para que el costo de envio quede disponible en la tabla de ordenes.
 
-**Archivo: `supabase/functions/register-ml-shipment/index.ts`**
-- Misma logica: guardar `shipping_cost: mlShippingCost` en el insert de `ecommerce_orders`.
+Reemplazar el fetch simple (lineas 105-127) por un loop paginado:
 
-**Archivo: `supabase/functions/mercadolibre-webhook/index.ts`**
-- Misma logica al crear ordenes desde webhook.
+- Para cada estado (`ready_to_ship`, `shipped`), iterar con `offset` de 50 en 50.
+- Continuar hasta que los resultados sean menos de 50 (ultima pagina).
+- Delay de 200ms entre paginas para respetar rate limits de ML.
+- Maximo de seguridad: 500 ordenes (10 paginas por estado).
+- Mantener la deduplicacion existente con `seenIds`.
 
-### 5. Fix retroactivo
+### 2. Filtro por fecha en la pagina de Pedidos
 
-- Ejecutar un UPDATE para llenar `shipping_cost` en ordenes ML existentes usando el valor de `precio_flete_ml` del envio vinculado:
+**Archivo: `src/pages/ecommerce/Orders.tsx`**
 
-```sql
-UPDATE ecommerce_orders eo
-SET shipping_cost = e.precio_flete_ml
-FROM envios e
-WHERE eo.envio_id = e.id
-  AND e.precio_flete_ml IS NOT NULL
-  AND e.precio_flete_ml > 0
-  AND (eo.shipping_cost IS NULL OR eo.shipping_cost = 0);
-```
+- Agregar un filtro de fecha (DatePicker o input date) junto a los filtros existentes de estado y fulfillment.
+- Por defecto mostrar la fecha de HOY.
+- Filtrar las ordenes por `created_at` (fecha de creacion del pedido en la plataforma).
+- Cambiar la query de Supabase para filtrar por rango de fecha del lado del servidor (mas eficiente que filtrar 200 resultados en cliente).
+- Eliminar el `limit(200)` fijo y en su lugar usar el filtro de fecha como delimitador principal.
 
-## Seccion tecnica - Resumen de archivos
+### 3. Filtro por Seller
+
+**Archivo: `src/pages/ecommerce/Orders.tsx`**
+
+- Agregar un Select para filtrar por seller especifico (ej: "Kingdom"), ya que cuando hay multiples sellers es importante poder aislar los pedidos de cada uno.
+
+## Seccion tecnica
 
 | Archivo | Cambio |
 |---|---|
-| `src/pages/ecommerce/Sellers.tsx` | Reemplazar "N/A" en sellers manuales por dropdown de conexion con opciones ML/TN |
-| `src/components/ecommerce/EditSellerDialog.tsx` | Agregar Select de plataforma al formulario |
-| `src/pages/ecommerce/Orders.tsx` | Columna "Total" pasa a "Costo Envio", mostrar `shipping_cost` |
-| `src/components/ecommerce/OrderDetailsDialog.tsx` | Resaltar costo de envio en seccion Totales |
-| `supabase/functions/mercadolibre-sync/index.ts` | Agregar `shipping_cost` al insert de orden |
-| `supabase/functions/register-ml-shipment/index.ts` | Agregar `shipping_cost` al insert de orden |
-| `supabase/functions/mercadolibre-webhook/index.ts` | Agregar `shipping_cost` al insert de orden |
-| Migracion SQL | UPDATE retroactivo de `shipping_cost` en ordenes existentes |
+| `supabase/functions/mercadolibre-sync/index.ts` | Reemplazar fetch simple por loop paginado con offset, delay 200ms, max 500 ordenes |
+| `src/pages/ecommerce/Orders.tsx` | Agregar filtro de fecha (default HOY) y filtro por seller; query server-side por rango de fecha |
+
+### Detalle de la paginacion ML
+
+```text
+Para cada status en [ready_to_ship, shipped]:
+  offset = 0
+  loop:
+    GET /orders/search?seller={id}&shipping.status={status}&limit=50&offset={offset}
+    agregar resultados (deduplicados)
+    si resultados < 50 -> break
+    si offset >= 450 -> break (max seguridad)
+    offset += 50
+    await delay(200ms)
+```
+
+### Detalle del filtro de fecha
+
+La query pasara de:
+```
+.order('created_at', { ascending: false }).limit(200)
+```
+A:
+```
+.gte('created_at', fechaInicio)
+.lt('created_at', fechaFin)
+.order('created_at', { ascending: false })
+```
+
+Donde `fechaInicio` y `fechaFin` representan el dia seleccionado (00:00 a 23:59).
