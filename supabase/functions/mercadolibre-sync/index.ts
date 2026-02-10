@@ -98,36 +98,50 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Search for orders with shipping ready_to_ship AND shipped
+    // Search for orders with shipping ready_to_ship AND shipped — with full pagination
     const statuses = ['ready_to_ship', 'shipped'];
     console.log('[ML Sync] Fetching orders for statuses:', statuses.join(', '));
 
-    const searchPromises = statuses.map(status => {
-      const url = `${ML_API_BASE}/orders/search?seller=${seller.store_id}&shipping.status=${status}&sort=date_desc&limit=50`;
-      return fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-    });
-
-    const responses = await Promise.all(searchPromises);
     const allOrders: any[] = [];
     const seenIds = new Set();
+    const PAGE_LIMIT = 50;
+    const MAX_OFFSET = 450; // safety: max 10 pages per status = 500 orders
 
-    for (let i = 0; i < responses.length; i++) {
-      const response = responses[i];
-      if (!response.ok) {
-        console.error('[ML Sync] Failed to search orders for status', statuses[i], ':', response.status);
-        continue;
-      }
-      const data = await response.json();
-      for (const order of (data.results || [])) {
-        if (!seenIds.has(order.id)) {
-          seenIds.add(order.id);
-          allOrders.push(order);
+    for (const status of statuses) {
+      let offset = 0;
+      while (offset <= MAX_OFFSET) {
+        const url = `${ML_API_BASE}/orders/search?seller=${seller.store_id}&shipping.status=${status}&sort=date_desc&limit=${PAGE_LIMIT}&offset=${offset}`;
+        console.log(`[ML Sync] Fetching status=${status} offset=${offset}`);
+        
+        const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+        if (!response.ok) {
+          console.error('[ML Sync] Failed to search orders for status', status, 'offset', offset, ':', response.status);
+          break;
         }
+        
+        const data = await response.json();
+        const results = data.results || [];
+        
+        for (const order of results) {
+          if (!seenIds.has(order.id)) {
+            seenIds.add(order.id);
+            allOrders.push(order);
+          }
+        }
+        
+        console.log(`[ML Sync] Got ${results.length} results for status=${status} offset=${offset}`);
+        
+        // If fewer results than limit, we've reached the last page
+        if (results.length < PAGE_LIMIT) break;
+        
+        offset += PAGE_LIMIT;
+        // Delay to respect ML rate limits
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
     }
 
     const orders = allOrders;
-    console.log('[ML Sync] Found', orders.length, 'orders (deduplicated)');
+    console.log('[ML Sync] Found', orders.length, 'orders (deduplicated, paginated)');
 
     let created = 0;
     let existing = 0;

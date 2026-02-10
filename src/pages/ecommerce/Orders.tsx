@@ -13,14 +13,17 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Search, MoreHorizontal, Package, Eye, Truck, ShoppingBag, Clock, CheckCircle, XCircle, Printer, Edit, MapPin, Trash2, Download, Tag } from 'lucide-react';
-import { format } from 'date-fns';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { Search, MoreHorizontal, Package, Eye, Truck, ShoppingBag, Clock, CheckCircle, XCircle, Printer, Edit, MapPin, Trash2, Download, Tag, CalendarIcon } from 'lucide-react';
+import { format, startOfDay, endOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from '@/hooks/use-toast';
 import { OrderDetailsDialog } from '@/components/ecommerce/OrderDetailsDialog';
 import { CreateShipmentFromOrderDialog } from '@/components/ecommerce/CreateShipmentFromOrderDialog';
 import { EditOrderAddressDialog } from '@/components/ecommerce/EditOrderAddressDialog';
 import { parseDateString } from '@/lib/dateUtils';
+import { cn } from '@/lib/utils';
 
 interface Order {
   id: string;
@@ -82,6 +85,8 @@ export default function Orders() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [fulfillmentFilter, setFulfillmentFilter] = useState<string>('all');
+  const [dateFilter, setDateFilter] = useState<Date>(new Date());
+  const [sellerFilter, setSellerFilter] = useState<string>('all');
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [detailsOrder, setDetailsOrder] = useState<Order | null>(null);
   const [createShipmentOrder, setCreateShipmentOrder] = useState<Order | null>(null);
@@ -175,19 +180,47 @@ export default function Orders() {
     },
   });
 
-  // Fetch orders with seller info
-  const { data: orders, isLoading } = useQuery({
-    queryKey: ['ecommerce-orders', tenantId],
+  // Fetch sellers for filter
+  const { data: sellers } = useQuery({
+    queryKey: ['ecommerce-sellers-filter', tenantId],
     queryFn: async () => {
       const { data, error } = await supabase
+        .from('ecommerce_sellers')
+        .select('id, nombre')
+        .eq('tenant_id', tenantId)
+        .eq('activo', true)
+        .order('nombre');
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!tenantId,
+  });
+
+  // Fetch orders with seller info — filtered by date server-side
+  const { data: orders, isLoading } = useQuery({
+    queryKey: ['ecommerce-orders', tenantId, dateFilter?.toISOString()?.slice(0, 10), sellerFilter],
+    queryFn: async () => {
+      let query = supabase
         .from('ecommerce_orders')
         .select(`
           *,
           seller:ecommerce_sellers(id, nombre, tarifa_id, sucursal_pickup_id, tiene_cuenta_corriente)
         `)
-        .eq('tenant_id', tenantId)
-        .order('created_at', { ascending: false })
-        .limit(200);
+        .eq('tenant_id', tenantId);
+
+      // Date filter
+      if (dateFilter) {
+        const dayStart = startOfDay(dateFilter).toISOString();
+        const dayEnd = endOfDay(dateFilter).toISOString();
+        query = query.gte('created_at', dayStart).lte('created_at', dayEnd);
+      }
+
+      // Seller filter
+      if (sellerFilter !== 'all') {
+        query = query.eq('seller_id', sellerFilter);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) throw error;
       return data as Order[];
@@ -303,7 +336,7 @@ export default function Orders() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-4">
+      <div className="flex flex-col sm:flex-row gap-4 flex-wrap">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -313,6 +346,40 @@ export default function Orders() {
             className="pl-9"
           />
         </div>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              className={cn(
+                "w-[180px] justify-start text-left font-normal",
+                !dateFilter && "text-muted-foreground"
+              )}
+            >
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              {dateFilter ? format(dateFilter, 'dd/MM/yyyy', { locale: es }) : 'Fecha'}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={dateFilter}
+              onSelect={(d) => d && setDateFilter(d)}
+              locale={es}
+              initialFocus
+            />
+          </PopoverContent>
+        </Popover>
+        <Select value={sellerFilter} onValueChange={setSellerFilter}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Seller" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los sellers</SelectItem>
+            {sellers?.map(s => (
+              <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Estado pedido" />
