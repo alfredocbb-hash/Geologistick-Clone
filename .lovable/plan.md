@@ -1,81 +1,73 @@
 
-# Fix: Sellers sin remitente en envios de MercadoLibre + Sincronizacion Seller-Cliente
 
-## Problema 1: Envios sin remitente
+# Sellers manuales multi-plataforma + Mostrar costo de envio en pedidos
 
-Cuando se crean envios desde MercadoLibre (por sync, webhook o escaneo QR), nunca se asigna el campo `nombre_remitente` ni `remitente_id` en la tabla `envios`. Esto hace que en el modulo general de Shipments el remitente aparezca vacio ("-").
+## Problema 1: Sellers manuales no pueden conectar tiendas
 
-## Problema 2: Seller y Cliente desvinculados
+Cuando se crea un seller como "Manual", luego no hay forma de cambiar la plataforma ni conectar MercadoLibre u otra tienda. La columna "Conexion" muestra "N/A" sin opcion de accion.
 
-Actualmente no hay relacion entre `ecommerce_sellers` y `clientes`. Si un seller ya esta cargado como cliente, no se vinculan. Esto impide usar `remitente_id` y pierde la consistencia de datos.
+## Problema 2: Se muestra el importe del producto en vez del envio
 
-## Solucion
+La columna "Total" en la tabla de pedidos e-Commerce muestra la suma de precios de los productos del vendedor (`unit_price * quantity`). Lo que necesitas ver es el costo de envio que cobra MercadoLibre (almacenado en `shipping_cost` de la orden y `precio_flete_ml` del envio).
 
-### Parte A: Vincular Seller con Cliente
+## Cambios propuestos
 
-1. **Agregar columna `cliente_id`** a la tabla `ecommerce_sellers` (FK opcional a `clientes`).
+### 1. Permitir cambiar plataforma desde el EditSellerDialog
 
-2. **Modificar `CreateSellerDialog.tsx`**: al crear un seller, buscar automaticamente si ya existe un cliente con el mismo email o telefono en el mismo tenant. Si existe, vincularlo (`cliente_id`). Si no existe, crear uno nuevo en la tabla `clientes` con los datos del seller.
+**Archivo: `src/components/ecommerce/EditSellerDialog.tsx`**
+- Actualmente el campo `plataforma` se guarda pero no se puede editar visualmente en el formulario de edicion (no hay un Select para plataforma en el form de edicion, solo en el de creacion).
+- Agregar el Select de plataforma al formulario de edicion, permitiendo cambiar de "Manual" a "MercadoLibre", "Tiendanube", etc.
 
-3. **Modificar `EditSellerDialog.tsx`**: misma logica al editar (si no tiene `cliente_id` aun, buscarlo/crearlo).
+### 2. Mostrar boton "Conectar" para sellers manuales en la tabla
 
-### Parte B: Asignar remitente en envios de ML
+**Archivo: `src/pages/ecommerce/Sellers.tsx`**
+- Linea 456: donde dice `seller.plataforma === 'manual'` y muestra "N/A", cambiarlo por un dropdown con opciones de conexion: "Conectar MercadoLibre" y "Conectar Tiendanube".
+- Al elegir una opcion: actualizar la plataforma del seller en la DB y luego abrir el popup OAuth correspondiente.
 
-4. **Modificar `register-ml-shipment/index.ts`**: despues de encontrar el seller, setear `nombre_remitente: seller.nombre` y `remitente_id: seller.cliente_id` (si existe) en el insert del envio.
+### 3. Mostrar costo de envio en vez de total de productos
 
-5. **Modificar `mercadolibre-sync/index.ts`**: misma logica, agregar `nombre_remitente` y `remitente_id` al crear cada envio.
+**Archivo: `src/pages/ecommerce/Orders.tsx`**
+- Linea 367: Cambiar el header de columna de "Total" a "Costo Envio"
+- Linea 416-418: En la celda, mostrar `order.shipping_cost` en lugar de `order.total`. Si `shipping_cost` es null o 0, mostrar un guion "-" como fallback.
 
-6. **Modificar `mercadolibre-webhook/index.ts`**: misma logica, agregar `nombre_remitente` y `remitente_id` al crear envio desde webhook.
+**Archivo: `src/components/ecommerce/OrderDetailsDialog.tsx`**
+- En la seccion de "Totales", agregar claramente la distincion entre el total de productos (subtotal) y el costo de envio de la plataforma.
+- Resaltar visualmente el costo de envio como el valor principal.
 
-### Parte C: Fix retroactivo
+### 4. Guardar shipping_cost desde ML sync
 
-7. **Ejecutar un UPDATE** para los envios existentes de ML que no tienen remitente, vinculandolos con el seller correspondiente a traves de la tabla `ecommerce_orders`.
+**Archivo: `supabase/functions/mercadolibre-sync/index.ts`**
+- Linea 279: Ademas de `total: orderTotal`, agregar `shipping_cost: mlShippingCost` al insert de la orden e-commerce, para que el costo de envio quede disponible en la tabla de ordenes.
 
-## Seccion tecnica
+**Archivo: `supabase/functions/register-ml-shipment/index.ts`**
+- Misma logica: guardar `shipping_cost: mlShippingCost` en el insert de `ecommerce_orders`.
 
-### Migracion SQL
+**Archivo: `supabase/functions/mercadolibre-webhook/index.ts`**
+- Misma logica al crear ordenes desde webhook.
+
+### 5. Fix retroactivo
+
+- Ejecutar un UPDATE para llenar `shipping_cost` en ordenes ML existentes usando el valor de `precio_flete_ml` del envio vinculado:
 
 ```sql
--- 1. Agregar cliente_id a ecommerce_sellers
-ALTER TABLE ecommerce_sellers ADD COLUMN cliente_id uuid REFERENCES clientes(id);
-
--- 2. Fix retroactivo: poner nombre_remitente en envios ML existentes
-UPDATE envios e
-SET nombre_remitente = s.nombre
-FROM ecommerce_orders eo
-JOIN ecommerce_sellers s ON eo.seller_id = s.id
+UPDATE ecommerce_orders eo
+SET shipping_cost = e.precio_flete_ml
+FROM envios e
 WHERE eo.envio_id = e.id
-  AND e.nombre_remitente IS NULL
-  AND e.ml_shipment_id IS NOT NULL;
+  AND e.precio_flete_ml IS NOT NULL
+  AND e.precio_flete_ml > 0
+  AND (eo.shipping_cost IS NULL OR eo.shipping_cost = 0);
 ```
 
-### Archivos modificados
+## Seccion tecnica - Resumen de archivos
 
-**`src/components/ecommerce/CreateSellerDialog.tsx`**
-- Despues de insertar el seller, buscar cliente existente por email/telefono en el mismo tenant
-- Si existe: actualizar `ecommerce_sellers.cliente_id`
-- Si no existe: crear cliente nuevo con los datos del seller, luego vincular
-
-**`src/components/ecommerce/EditSellerDialog.tsx`**
-- Si el seller no tiene `cliente_id`, ejecutar la misma logica de busqueda/creacion
-
-**`supabase/functions/register-ml-shipment/index.ts`** (lineas 280-308)
-- Agregar al insert de envio:
-  - `nombre_remitente: seller.nombre`
-  - `remitente_id: seller.cliente_id || null`
-
-**`supabase/functions/mercadolibre-sync/index.ts`** (lineas 294-321)
-- Agregar al insert de envio:
-  - `nombre_remitente: seller.nombre`
-  - `remitente_id: seller.cliente_id || null`
-
-**`supabase/functions/mercadolibre-webhook/index.ts`** (lineas ~170-200)
-- Agregar al insert de envio:
-  - `nombre_remitente: seller.nombre`
-  - `remitente_id: seller.cliente_id || null`
-
-### Resultado
-
-- Los envios de ML mostraran el nombre del seller como remitente en todas las vistas
-- Al crear/editar un seller se vincula automaticamente con la tabla de clientes
-- Los envios existentes se corrigen retroactivamente
+| Archivo | Cambio |
+|---|---|
+| `src/pages/ecommerce/Sellers.tsx` | Reemplazar "N/A" en sellers manuales por dropdown de conexion con opciones ML/TN |
+| `src/components/ecommerce/EditSellerDialog.tsx` | Agregar Select de plataforma al formulario |
+| `src/pages/ecommerce/Orders.tsx` | Columna "Total" pasa a "Costo Envio", mostrar `shipping_cost` |
+| `src/components/ecommerce/OrderDetailsDialog.tsx` | Resaltar costo de envio en seccion Totales |
+| `supabase/functions/mercadolibre-sync/index.ts` | Agregar `shipping_cost` al insert de orden |
+| `supabase/functions/register-ml-shipment/index.ts` | Agregar `shipping_cost` al insert de orden |
+| `supabase/functions/mercadolibre-webhook/index.ts` | Agregar `shipping_cost` al insert de orden |
+| Migracion SQL | UPDATE retroactivo de `shipping_cost` en ordenes existentes |
