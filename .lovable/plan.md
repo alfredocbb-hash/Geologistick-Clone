@@ -1,45 +1,51 @@
 
 
-# Mostrar estados de envío de MercadoLibre en Pedidos
+# Sincronizar estados internos del envio al pedido ecommerce
 
-## Problema
+## Problema actual
 
-La columna "Estado" en pedidos solo muestra "Pagado" (valor generico `order_status = 'paid'`) porque el sistema no guarda el estado de envio real de MercadoLibre (`ready_to_ship`, `shipped`, `delivered`, etc.). Este dato SI esta disponible durante la sincronizacion pero no se persiste.
+Cuando un chofer marca un envio como "primera visita", "ausente", "entregado", "cancelado", etc., ese cambio se refleja en la tabla `envios` pero el pedido de ecommerce (`ecommerce_orders`) no se entera correctamente:
+
+1. El trigger `sync_ecommerce_order_status` solo actualiza `fulfillment_status` y `order_status`, pero NO actualiza `ml_shipping_status`
+2. La sincronizacion con MercadoLibre solo busca pedidos en estado `ready_to_ship` y `shipped`, ignorando `delivered`, `not_delivered` y `cancelled`
+3. Estados internos como "primera visita" o "ausente" no tienen mapeo visible en el pedido
 
 ## Cambios propuestos
 
-### 1. Nueva columna en la base de datos
+### 1. Actualizar el trigger de sincronizacion
 
-Agregar `ml_shipping_status` (TEXT) a la tabla `ecommerce_orders` para guardar el estado de envio nativo de ML.
+Modificar `sync_ecommerce_order_status()` para que tambien actualice `ml_shipping_status` cuando el estado del envio cambia:
 
-### 2. Guardar el estado ML durante la sincronizacion
+| Estado envio | ml_shipping_status | Significado |
+|---|---|---|
+| pendiente | ready_to_ship | Listo para enviar |
+| recogido | ready_to_ship | Recogido, en proceso |
+| en_sucursal | ready_to_ship | En sucursal |
+| en_transito | shipped | En camino entre sucursales |
+| en_reparto | shipped | Salio a reparto |
+| primera_visita | not_delivered | Primer intento fallido |
+| ausente | not_delivered | Destinatario ausente |
+| entregado | delivered | Entregado |
+| devuelto | not_delivered | Devuelto |
+| cancelado | cancelled | Cancelado |
+
+### 2. Ampliar la sincronizacion ML
+
+Agregar `delivered` y `not_delivered` a la lista de estados que se buscan durante la sincronizacion para traer pedidos finalizados.
 
 **Archivo: `supabase/functions/mercadolibre-sync/index.ts`**
 
-- Al crear ordenes nuevas: guardar `orderItem.shipping.status` en `ml_shipping_status`
-- Al actualizar ordenes existentes: actualizar `ml_shipping_status` con el valor actual
+- Cambiar `const statuses = ['ready_to_ship', 'shipped']` a `['ready_to_ship', 'shipped', 'delivered', 'not_delivered']`
 
-### 3. Mostrar el estado ML en la tabla de Pedidos
+### 3. Agregar estados internos al mapeo visual
 
 **Archivo: `src/pages/ecommerce/Orders.tsx`**
 
-- Reemplazar el badge de `order_status` ("Pagado") por el de `ml_shipping_status` cuando exista
-- Agregar mapeo de estados ML a etiquetas en espanol con colores:
+- Agregar estados adicionales al `ML_SHIPPING_CONFIG` para cubrir los sub-estados internos que ahora se van a reflejar
 
-| Estado ML | Etiqueta | Color |
-|---|---|---|
-| `ready_to_ship` | Listo para enviar | Azul |
-| `shipped` | En camino | Naranja |
-| `delivered` | Entregado | Verde |
-| `not_delivered` | No entregado | Rojo |
-| `cancelled` | Cancelado | Gris |
+### 4. Backfill de datos existentes
 
-- Actualizar el filtro de estado para incluir estos valores ML
-- Mantener el `order_status` generico como fallback para ordenes de Tiendanube u otras plataformas
-
-### 4. Actualizar ordenes existentes
-
-Ejecutar un UPDATE para poblar `ml_shipping_status` en las ordenes existentes que ya tienen datos en `raw_data`, extrayendo el valor de `raw_data->'status'` o basandose en el `fulfillment_status` actual.
+Actualizar los pedidos existentes que ya tienen envio vinculado para poblar su `ml_shipping_status` segun el estado actual del envio.
 
 ---
 
@@ -47,28 +53,37 @@ Ejecutar un UPDATE para poblar `ml_shipping_status` en las ordenes existentes qu
 
 | Archivo | Cambio |
 |---|---|
-| Migracion SQL | `ALTER TABLE ecommerce_orders ADD COLUMN ml_shipping_status TEXT` + UPDATE de datos existentes |
-| `supabase/functions/mercadolibre-sync/index.ts` | Guardar `ml_shipping_status` en INSERT y UPDATE |
-| `src/pages/ecommerce/Orders.tsx` | Nuevo mapeo `ML_SHIPPING_CONFIG`, mostrar badge ML, actualizar filtro de estado |
+| Migracion SQL | Actualizar trigger `sync_ecommerce_order_status` para incluir `ml_shipping_status` + backfill |
+| `supabase/functions/mercadolibre-sync/index.ts` | Ampliar array de statuses a buscar |
+| `src/pages/ecommerce/Orders.tsx` | Sin cambios necesarios (ya tiene `not_delivered` y `cancelled` en el mapeo) |
 
-### Mapeo en el sync
+### Trigger actualizado (logica)
 
 ```text
-orderItem.shipping.status -> ecommerce_orders.ml_shipping_status
-
-Valores posibles de ML API:
-- pending, ready_to_ship, shipped, delivered, not_delivered, cancelled
+WHEN 'primera_visita' THEN ml_shipping_status = 'not_delivered'
+WHEN 'ausente'        THEN ml_shipping_status = 'not_delivered'
+WHEN 'en_reparto'     THEN ml_shipping_status = 'shipped'
+WHEN 'entregado'      THEN ml_shipping_status = 'delivered'
+WHEN 'devuelto'       THEN ml_shipping_status = 'not_delivered'
+WHEN 'cancelado'      THEN ml_shipping_status = 'cancelled'
 ```
 
-### Backfill de datos existentes
+### Backfill
 
 ```text
-UPDATE ecommerce_orders
-SET ml_shipping_status = CASE
-  WHEN fulfillment_status = 'delivered' THEN 'delivered'
-  WHEN fulfillment_status = 'shipped' THEN 'shipped'
-  WHEN order_status = 'cancelled' THEN 'cancelled'
+UPDATE ecommerce_orders eo
+SET ml_shipping_status = CASE e.estado
+  WHEN 'entregado'       THEN 'delivered'
+  WHEN 'en_reparto'      THEN 'shipped'
+  WHEN 'en_transito'     THEN 'shipped'
+  WHEN 'primera_visita'  THEN 'not_delivered'
+  WHEN 'ausente'         THEN 'not_delivered'
+  WHEN 'devuelto'        THEN 'not_delivered'
+  WHEN 'cancelado'       THEN 'cancelled'
   ELSE 'ready_to_ship'
 END
-WHERE plataforma = 'mercadolibre' AND ml_shipping_status IS NULL;
+FROM envios e
+WHERE eo.envio_id = e.id
+  AND eo.plataforma = 'mercadolibre';
 ```
+
