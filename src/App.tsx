@@ -71,6 +71,7 @@ import PrintInvoice from "./pages/PrintInvoice";
 import PrintSettlement from "./pages/PrintSettlement";
 import TiendanubeOAuthResult from "./pages/TiendanubeOAuthResult";
 import TiendanubeDocsPublic from "./pages/TiendanubeDocsPublic";
+import MercadoLibreOAuthResult from "./pages/MercadoLibreOAuthResult";
 
 // Seller Portal Pages
 import { SellerLayout } from "./components/seller/SellerLayout";
@@ -173,6 +174,7 @@ function AppRoutes() {
       <Route path="/tracking" element={<Tracking />} />
       <Route path="/tracking-embed" element={<TrackingEmbed />} />
       <Route path="/oauth/tiendanube/result" element={<TiendanubeOAuthResult />} />
+      <Route path="/oauth/mercadolibre/result" element={<MercadoLibreOAuthResult />} />
       <Route path="/docs/tiendanube" element={<TiendanubeDocsPublic />} />
       {/* Protected Routes */}
       <Route path="/dashboard" element={<DashboardLayout><Dashboard /></DashboardLayout>} />
