@@ -1,52 +1,48 @@
 
+# Corrección: Conceptos no visibles para BlackBox Cargas
 
-# Backfill de ml_shipping_status en pedidos ecommerce
+## Problema Detectado
 
-## Problema
+BlackBox Cargas **no tiene ningún concepto de tarifa propio**. Sus tarifas ("ENVIOS GENERAL" y "TERCERIZADAS EXTERNAS") referencian 7 conceptos que pertenecen a otros tenants:
 
-Algunos pedidos en `ecommerce_orders` tienen `ml_shipping_status` vacío (NULL) porque fueron creados antes de que se implementara la sincronización automática via trigger.
+| Concepto | Pertenece a |
+|---|---|
+| Flete | Otro tenant |
+| Seguro | Otro tenant |
+| Retiro a Domicilio | Otro tenant |
+| Entrega a Domicilio | Otro tenant |
+| Servicio de Agencia | Otro tenant |
+| traslado | Otro tenant |
+| TRASLADO | Otro tenant |
 
-## Solución
+La politica de seguridad de la base de datos filtra conceptos por empresa, por lo que los usuarios de BlackBox no pueden ver ninguno de estos conceptos. Esto afecta:
+- La pantalla de **Tarifas** (no ven conceptos para configurar precios)
+- La pantalla de **Sucursales** (no ven conceptos para habilitar/deshabilitar)
+- La creacion de **Nuevo Envio** (no se calculan conceptos adicionales)
 
-Ejecutar un UPDATE que cruce `ecommerce_orders` con `envios` y aplique el mismo mapeo de estados que usa el trigger `sync_ecommerce_order_status`.
+## Solucion
 
-## Cambio
+Crear conceptos propios para BlackBox y re-apuntar las referencias existentes:
 
-Se ejecutará una única sentencia SQL (sin migración de esquema, solo datos) que actualiza todos los registros con `ml_shipping_status IS NULL` y que tengan un `envio_id` vinculado:
+1. **Crear 5 conceptos unicos** en `tarifa_conceptos` con el `tenant_id` de BlackBox (los duplicados "traslado"/"TRASLADO" se unifican en uno solo):
+   - Flete (basico)
+   - Seguro (basico)
+   - Retiro a Domicilio (basico)
+   - Entrega a Domicilio (basico)
+   - Servicio de Agencia (adicional)
+   - Traslado (adicional)
 
-```sql
-UPDATE ecommerce_orders eo
-SET ml_shipping_status = CASE e.estado
-    WHEN 'pendiente' THEN 'ready_to_ship'
-    WHEN 'recogido' THEN 'ready_to_ship'
-    WHEN 'en_sucursal' THEN 'ready_to_ship'
-    WHEN 'en_transito' THEN 'shipped'
-    WHEN 'en_reparto' THEN 'shipped'
-    WHEN 'primera_visita' THEN 'not_delivered'
-    WHEN 'ausente' THEN 'not_delivered'
-    WHEN 'entregado' THEN 'delivered'
-    WHEN 'devuelto' THEN 'not_delivered'
-    WHEN 'cancelado' THEN 'cancelled'
-    ELSE eo.ml_shipping_status
-  END,
-  fulfillment_status = CASE e.estado
-    WHEN 'pendiente' THEN 'pending'
-    WHEN 'recogido' THEN 'processing'
-    WHEN 'en_sucursal' THEN 'processing'
-    WHEN 'en_transito' THEN 'shipped'
-    WHEN 'en_reparto' THEN 'shipped'
-    WHEN 'primera_visita' THEN 'shipped'
-    WHEN 'ausente' THEN 'shipped'
-    WHEN 'entregado' THEN 'delivered'
-    WHEN 'devuelto' THEN 'pending'
-    WHEN 'cancelado' THEN 'pending'
-    ELSE eo.fulfillment_status
-  END,
-  updated_at = now()
-FROM envios e
-WHERE eo.envio_id = e.id
-  AND eo.ml_shipping_status IS NULL;
-```
+2. **Actualizar `tarifa_concepto_precios`** para apuntar a los nuevos concepto IDs de BlackBox (manteniendo los montos actuales).
 
-No se modifica ningún archivo de código ni esquema de base de datos. Es una operación de datos puntual.
+3. **Actualizar `sucursal_conceptos`** para apuntar a los nuevos concepto IDs de BlackBox (manteniendo las habilitaciones actuales).
 
+4. **Actualizar `envio_detalles`** existentes (si hay) para apuntar a los nuevos concepto IDs, para que las liquidaciones funcionen correctamente.
+
+## Detalle Tecnico
+
+Se ejecutara un script SQL que:
+- Inserta los nuevos registros en `tarifa_conceptos` con UUIDs generados
+- Actualiza las FK en `tarifa_concepto_precios` (7 registros)
+- Actualiza las FK en `sucursal_conceptos` (12 registros)
+- Actualiza las FK en `envio_detalles` si existen registros vinculados
+- No modifica esquema, solo datos
