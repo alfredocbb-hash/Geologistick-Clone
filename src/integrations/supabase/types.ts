@@ -505,6 +505,7 @@ export type Database = {
           id: string
           items: Json | null
           ml_shipment_id: number | null
+          ml_shipping_status: string | null
           ml_tracking_number: string | null
           order_status: string | null
           payment_status: string | null
@@ -538,6 +539,7 @@ export type Database = {
           id?: string
           items?: Json | null
           ml_shipment_id?: number | null
+          ml_shipping_status?: string | null
           ml_tracking_number?: string | null
           order_status?: string | null
           payment_status?: string | null
@@ -571,6 +573,7 @@ export type Database = {
           id?: string
           items?: Json | null
           ml_shipment_id?: number | null
+          ml_shipping_status?: string | null
           ml_tracking_number?: string | null
           order_status?: string | null
           payment_status?: string | null

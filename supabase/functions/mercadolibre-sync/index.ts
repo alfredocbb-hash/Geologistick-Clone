@@ -194,6 +194,7 @@ Deno.serve(async (req) => {
             .update({ 
               fulfillment_status: newFulfillment, 
               order_status: mlShippingStatus === 'delivered' ? 'delivered' : 'paid',
+              ml_shipping_status: mlShippingStatus,
               updated_at: new Date().toISOString(),
             })
             .eq('ml_shipment_id', shipmentId);
@@ -290,6 +291,7 @@ Deno.serve(async (req) => {
             shipping_cost: mlShippingCost,
             order_status: 'paid',
             fulfillment_status: fulfillmentStatus,
+            ml_shipping_status: mlShippingStatus,
             raw_data: shipment,
           })
           .select()
