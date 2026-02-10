@@ -1,48 +1,75 @@
 
-# Corrección: Conceptos no visibles para BlackBox Cargas
+# Correccion sistematica: Conceptos de tarifa cross-tenant
 
-## Problema Detectado
+## Problema
 
-BlackBox Cargas **no tiene ningún concepto de tarifa propio**. Sus tarifas ("ENVIOS GENERAL" y "TERCERIZADAS EXTERNAS") referencian 7 conceptos que pertenecen a otros tenants:
+La correccion anterior solo arreglo **BlackBox Cargas**. Hay **2 tenants mas** con el mismo problema:
 
-| Concepto | Pertenece a |
-|---|---|
-| Flete | Otro tenant |
-| Seguro | Otro tenant |
-| Retiro a Domicilio | Otro tenant |
-| Entrega a Domicilio | Otro tenant |
-| Servicio de Agencia | Otro tenant |
-| traslado | Otro tenant |
-| TRASLADO | Otro tenant |
+| Tenant | Conceptos ajenos | En precios | En sucursales | En envio_detalles |
+|---|---|---|---|---|
+| **Beraexpress** | Flete, Seguro, Retiro, Entrega, Embalaje (de Empresa Principal) | 15 registros | 2 registros | 41 registros |
+| **PlataBus Cargas** | Flete, Seguro, Entrega (de Empresa Principal) | 3 registros | 0 registros | 0 registros |
 
-La politica de seguridad de la base de datos filtra conceptos por empresa, por lo que los usuarios de BlackBox no pueden ver ninguno de estos conceptos. Esto afecta:
-- La pantalla de **Tarifas** (no ven conceptos para configurar precios)
-- La pantalla de **Sucursales** (no ven conceptos para habilitar/deshabilitar)
-- La creacion de **Nuevo Envio** (no se calculan conceptos adicionales)
+Ademas, **no hay ninguna proteccion** para evitar que esto vuelva a ocurrir en el futuro. El codigo de `Rates.tsx` guarda el `concepto_id` directamente sin validar que pertenezca al mismo tenant.
 
-## Solucion
+## Solucion en 2 partes
 
-Crear conceptos propios para BlackBox y re-apuntar las referencias existentes:
+### Parte 1: Datos - Crear conceptos nativos para Beraexpress y PlataBus
 
-1. **Crear 5 conceptos unicos** en `tarifa_conceptos` con el `tenant_id` de BlackBox (los duplicados "traslado"/"TRASLADO" se unifican en uno solo):
-   - Flete (basico)
-   - Seguro (basico)
-   - Retiro a Domicilio (basico)
-   - Entrega a Domicilio (basico)
-   - Servicio de Agencia (adicional)
-   - Traslado (adicional)
+Mismo patron que se uso para BlackBox:
 
-2. **Actualizar `tarifa_concepto_precios`** para apuntar a los nuevos concepto IDs de BlackBox (manteniendo los montos actuales).
+**Beraexpress** (ya tiene 3 propios: traslado, Servicio de Agencia, TRASLADO) - Crear 5 faltantes:
+- Flete (basico)
+- Seguro (basico)
+- Retiro a Domicilio (basico)
+- Entrega a Domicilio (basico)
+- Embalaje (adicional)
 
-3. **Actualizar `sucursal_conceptos`** para apuntar a los nuevos concepto IDs de BlackBox (manteniendo las habilitaciones actuales).
+Luego re-apuntar las FK en `tarifa_concepto_precios` (15), `sucursal_conceptos` (2), y `envio_detalles` (41).
 
-4. **Actualizar `envio_detalles`** existentes (si hay) para apuntar a los nuevos concepto IDs, para que las liquidaciones funcionen correctamente.
+**PlataBus Cargas** - Crear 3 conceptos:
+- Flete (basico)
+- Seguro (basico)
+- Entrega a Domicilio (basico)
 
-## Detalle Tecnico
+Luego re-apuntar las FK en `tarifa_concepto_precios` (3).
 
-Se ejecutara un script SQL que:
-- Inserta los nuevos registros en `tarifa_conceptos` con UUIDs generados
-- Actualiza las FK en `tarifa_concepto_precios` (7 registros)
-- Actualiza las FK en `sucursal_conceptos` (12 registros)
-- Actualiza las FK en `envio_detalles` si existen registros vinculados
-- No modifica esquema, solo datos
+### Parte 2: Prevencion - Trigger de validacion en base de datos
+
+Crear un trigger en `tarifa_concepto_precios` que al hacer INSERT o UPDATE valide que el `concepto_id` pertenezca al mismo `tenant_id` que la tarifa. Esto previene que cualquier tenant futuro referencie conceptos ajenos.
+
+```sql
+CREATE FUNCTION validate_concepto_tenant()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF (SELECT tenant_id FROM tarifa_conceptos WHERE id = NEW.concepto_id) 
+     != (SELECT tenant_id FROM tarifas WHERE id = NEW.tarifa_id) THEN
+    RAISE EXCEPTION 'El concepto no pertenece al mismo tenant que la tarifa';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+## Detalle tecnico
+
+### Migracion SQL para Beraexpress
+
+1. Insertar 5 conceptos con tenant_id `94a9ea85-43c5-49ac-9bfa-86843072c2ce`
+2. Mapear cada concepto ajeno al nuevo ID nativo en las 3 tablas de FK
+3. Unificar duplicados traslado/TRASLADO si aplica
+
+### Migracion SQL para PlataBus
+
+1. Insertar 3 conceptos con tenant_id `3df5f6f8-de9c-48d9-8384-7a5de181670f`
+2. Mapear en `tarifa_concepto_precios` (3 registros)
+
+### Trigger de prevencion
+
+Se crea en `tarifa_concepto_precios` para INSERT y UPDATE, validando que `concepto.tenant_id == tarifa.tenant_id`.
+
+### Resumen de cambios
+
+- Solo cambios en base de datos (datos + 1 trigger)
+- No hay cambios en codigo frontend (la UI ya usa `concepto_id` correctamente, el problema era solo de datos y falta de constraint)
+- Total: ~60 registros a actualizar, 8 conceptos nuevos, 1 trigger
