@@ -218,8 +218,28 @@ export default function RoutePlanner() {
       const { data, error } = await query;
       if (error) throw error;
 
+      // Get ecommerce-linked envio IDs to exclude them
+      const { data: ecommerceOrders } = await supabase
+        .from("ecommerce_orders")
+        .select("envio_id")
+        .not("envio_id", "is", null);
+
+      const ecommerceEnvioIds = new Set(
+        (ecommerceOrders || []).map(o => o.envio_id).filter(Boolean)
+      );
+
+      // IDs explicitly selected from ecommerce module via URL
+      const urlEnvioIds = new Set(
+        (searchParams.get('envios') || '').split(',').filter(Boolean)
+      );
+
+      // Exclude ecommerce shipments unless they were explicitly selected via URL
+      const filtered = (data || []).filter(envio =>
+        !ecommerceEnvioIds.has(envio.id) || urlEnvioIds.has(envio.id)
+      );
+
       // Map to include type (retiro/entrega)
-      return data.map(envio => ({
+      return filtered.map(envio => ({
         ...envio,
         tipo: envio.requiere_retiro && envio.estado === "pendiente" ? "retiro" : "entrega",
         coords: envio.requiere_retiro && envio.estado === "pendiente"
