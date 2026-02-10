@@ -487,7 +487,29 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
+              <FormField
+                control={form.control}
+                name="plataforma"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Plataforma</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="manual">Manual</SelectItem>
+                        <SelectItem value="mercadolibre">MercadoLibre</SelectItem>
+                        <SelectItem value="tiendanube">Tiendanube</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <FormField
                 control={form.control}
                 name="sucursal_pickup_id"

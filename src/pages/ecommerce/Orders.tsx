@@ -364,7 +364,7 @@ export default function Orders() {
                   <TableHead>Cliente</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead>Fulfillment</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">Costo Envío</TableHead>
                   <TableHead>Envío</TableHead>
                   <TableHead className="w-[70px]"></TableHead>
                 </TableRow>
@@ -414,7 +414,7 @@ export default function Orders() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right font-medium">
-                        ${order.total?.toLocaleString() || '0'}
+                        {order.shipping_cost ? `$${order.shipping_cost.toLocaleString()}` : '-'}
                       </TableCell>
                       <TableCell>
                         {order.envio_id ? (
