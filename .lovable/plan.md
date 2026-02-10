@@ -1,38 +1,45 @@
 
 
-# Totalizador de pedidos seleccionados + Sincronizacion masiva de tiendas
+# Mostrar estados de envío de MercadoLibre en Pedidos
 
-## 1. Totalizador en Pedidos (Orders.tsx)
+## Problema
 
-Cuando el usuario selecciona pedidos (individual o por grupo), mostrar una barra resumen fija con:
+La columna "Estado" en pedidos solo muestra "Pagado" (valor generico `order_status = 'paid'`) porque el sistema no guarda el estado de envio real de MercadoLibre (`ready_to_ship`, `shipped`, `delivered`, etc.). Este dato SI esta disponible durante la sincronizacion pero no se persiste.
 
-- Cantidad de pedidos seleccionados
-- Suma total de "Costo Envio" de los seleccionados
-- Cantidad con envio creado vs sin envio
-- Los botones existentes de "Crear Envios" y "Enviar al Planificador" se mueven a esta barra
+## Cambios propuestos
 
-La barra aparecera entre los filtros y la tabla (o como sticky en la parte inferior) cuando `selectedOrders.length > 0`.
+### 1. Nueva columna en la base de datos
+
+Agregar `ml_shipping_status` (TEXT) a la tabla `ecommerce_orders` para guardar el estado de envio nativo de ML.
+
+### 2. Guardar el estado ML durante la sincronizacion
+
+**Archivo: `supabase/functions/mercadolibre-sync/index.ts`**
+
+- Al crear ordenes nuevas: guardar `orderItem.shipping.status` en `ml_shipping_status`
+- Al actualizar ordenes existentes: actualizar `ml_shipping_status` con el valor actual
+
+### 3. Mostrar el estado ML en la tabla de Pedidos
 
 **Archivo: `src/pages/ecommerce/Orders.tsx`**
 
-- Calcular totales a partir de `filteredOrders` filtrados por `selectedOrders`:
-  - `totalShippingCost`: suma de `shipping_cost` de los seleccionados
-  - `withShipment`: cantidad con `envio_id`
-  - `withoutShipment`: cantidad sin `envio_id`
-- Renderizar una Card/barra con estos datos y los botones de accion
+- Reemplazar el badge de `order_status` ("Pagado") por el de `ml_shipping_status` cuando exista
+- Agregar mapeo de estados ML a etiquetas en espanol con colores:
 
-## 2. Boton "Sincronizar Todas" en Sellers (Sellers.tsx)
+| Estado ML | Etiqueta | Color |
+|---|---|---|
+| `ready_to_ship` | Listo para enviar | Azul |
+| `shipped` | En camino | Naranja |
+| `delivered` | Entregado | Verde |
+| `not_delivered` | No entregado | Rojo |
+| `cancelled` | Cancelado | Gris |
 
-Agregar un boton en el header de la pagina de Sellers que sincronice todas las tiendas activas con conexion (access_token + store_id) de forma secuencial.
+- Actualizar el filtro de estado para incluir estos valores ML
+- Mantener el `order_status` generico como fallback para ordenes de Tiendanube u otras plataformas
 
-**Archivo: `src/pages/ecommerce/Sellers.tsx`**
+### 4. Actualizar ordenes existentes
 
-- Agregar un boton "Sincronizar Todas" junto al boton "Agregar Seller"
-- Al hacer clic, iterar sobre los sellers activos que esten conectados
-- Para cada uno, invocar la edge function correspondiente segun plataforma (`mercadolibre-sync` o `tiendanube-sync`)
-- Mostrar progreso: "Sincronizando 2/5..."
-- Al finalizar, mostrar resumen total con toast
-- Agregar estado `isBulkSyncing` y `bulkSyncProgress` para controlar la UI
+Ejecutar un UPDATE para poblar `ml_shipping_status` en las ordenes existentes que ya tienen datos en `raw_data`, extrayendo el valor de `raw_data->'status'` o basandose en el `fulfillment_status` actual.
 
 ---
 
@@ -40,25 +47,28 @@ Agregar un boton en el header de la pagina de Sellers que sincronice todas las t
 
 | Archivo | Cambio |
 |---|---|
-| `src/pages/ecommerce/Orders.tsx` | Agregar barra totalizadora con suma de shipping_cost, conteos, y botones cuando hay seleccion |
-| `src/pages/ecommerce/Sellers.tsx` | Agregar boton "Sincronizar Todas" con logica secuencial por plataforma y progreso visual |
+| Migracion SQL | `ALTER TABLE ecommerce_orders ADD COLUMN ml_shipping_status TEXT` + UPDATE de datos existentes |
+| `supabase/functions/mercadolibre-sync/index.ts` | Guardar `ml_shipping_status` en INSERT y UPDATE |
+| `src/pages/ecommerce/Orders.tsx` | Nuevo mapeo `ML_SHIPPING_CONFIG`, mostrar badge ML, actualizar filtro de estado |
 
-### Detalle del totalizador
+### Mapeo en el sync
 
 ```text
-+---------------------------------------------------------------+
-| 12 seleccionados | Envio: $15.400 | 8 con envio | 4 sin envio |
-|                          [Crear Envios] [Planificar]           |
-+---------------------------------------------------------------+
+orderItem.shipping.status -> ecommerce_orders.ml_shipping_status
+
+Valores posibles de ML API:
+- pending, ready_to_ship, shipped, delivered, not_delivered, cancelled
 ```
 
-### Detalle de la sincronizacion masiva
+### Backfill de datos existentes
 
 ```text
-Para cada seller en sellers.filter(activo && connected):
-  si plataforma === 'mercadolibre' -> invoke mercadolibre-sync
-  si plataforma === 'tiendanube'   -> invoke tiendanube-sync
-  actualizar progreso (n/total)
-  esperar resultado antes de continuar al siguiente
-Mostrar toast resumen final
+UPDATE ecommerce_orders
+SET ml_shipping_status = CASE
+  WHEN fulfillment_status = 'delivered' THEN 'delivered'
+  WHEN fulfillment_status = 'shipped' THEN 'shipped'
+  WHEN order_status = 'cancelled' THEN 'cancelled'
+  ELSE 'ready_to_ship'
+END
+WHERE plataforma = 'mercadolibre' AND ml_shipping_status IS NULL;
 ```
