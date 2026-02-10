@@ -10,7 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, Search, MoreHorizontal, Store, Settings, Eye, Trash2, RefreshCw, ShoppingCart, Users, DollarSign, Link2, CheckCircle2, XCircle, Loader2, UserCheck, UserX, Mail, MessageSquare, Send } from 'lucide-react';
+import { Plus, Search, MoreHorizontal, Store, Settings, Eye, Trash2, RefreshCw, ShoppingCart, Users, DollarSign, Link2, CheckCircle2, XCircle, Loader2, UserCheck, UserX, Mail, MessageSquare, Send, RefreshCcw } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from '@/hooks/use-toast';
@@ -64,6 +65,8 @@ export default function Sellers() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [syncingSellerId, setSyncingSellerId] = useState<string | null>(null);
+  const [isBulkSyncing, setIsBulkSyncing] = useState(false);
+  const [bulkSyncProgress, setBulkSyncProgress] = useState({ current: 0, total: 0, currentName: '' });
 
   // Listen for OAuth success messages from popup
   useEffect(() => {
@@ -280,6 +283,47 @@ Saludos`;
     s.email.toLowerCase().includes(search.toLowerCase())
   );
 
+  // Bulk sync all active connected sellers
+  const handleBulkSync = async () => {
+    const connectedSellers = sellers?.filter(s => s.activo && s.access_token && s.store_id) || [];
+    if (connectedSellers.length === 0) {
+      toast({ title: 'Sin tiendas conectadas', description: 'No hay sellers activos con conexión para sincronizar', variant: 'destructive' });
+      return;
+    }
+
+    setIsBulkSyncing(true);
+    setBulkSyncProgress({ current: 0, total: connectedSellers.length, currentName: '' });
+    let totalCreated = 0, totalUpdated = 0, totalErrors = 0, totalExisting = 0;
+
+    for (let i = 0; i < connectedSellers.length; i++) {
+      const seller = connectedSellers[i];
+      setBulkSyncProgress({ current: i + 1, total: connectedSellers.length, currentName: seller.nombre });
+      
+      try {
+        const fnName = seller.plataforma === 'mercadolibre' ? 'mercadolibre-sync' : 'tiendanube-sync';
+        const { data, error } = await supabase.functions.invoke(fnName, {
+          body: { seller_id: seller.id },
+        });
+        if (error) throw error;
+        totalCreated += data?.created || 0;
+        totalUpdated += data?.updated || 0;
+        totalExisting += data?.existing || 0;
+        totalErrors += data?.errors || 0;
+      } catch (e: any) {
+        console.error(`Error syncing ${seller.nombre}:`, e);
+        totalErrors++;
+      }
+    }
+
+    setIsBulkSyncing(false);
+    queryClient.invalidateQueries({ queryKey: ['ecommerce-sellers'] });
+    queryClient.invalidateQueries({ queryKey: ['ecommerce-orders'] });
+    toast({
+      title: 'Sincronización masiva completada',
+      description: `${connectedSellers.length} tiendas · ${totalCreated} nuevos · ${totalUpdated + totalExisting} actualizados · ${totalErrors} errores`,
+    });
+  };
+
   // Stats
   const stats = {
     total: sellers?.length || 0,
@@ -307,11 +351,41 @@ Saludos`;
           <h1 className="text-2xl font-bold tracking-tight">Sellers e-Commerce</h1>
           <p className="text-muted-foreground">Gestiona las tiendas online conectadas</p>
         </div>
-        <Button onClick={() => setCreateDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Agregar Seller
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={handleBulkSync}
+            disabled={isBulkSyncing}
+          >
+            {isBulkSyncing ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCcw className="mr-2 h-4 w-4" />
+            )}
+            {isBulkSyncing 
+              ? `Sincronizando ${bulkSyncProgress.current}/${bulkSyncProgress.total}...`
+              : 'Sincronizar Todas'
+            }
+          </Button>
+          <Button onClick={() => setCreateDialogOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Agregar Seller
+          </Button>
+        </div>
       </div>
+
+      {/* Bulk sync progress */}
+      {isBulkSyncing && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="p-4 space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span>Sincronizando: <strong>{bulkSyncProgress.currentName}</strong></span>
+              <span className="text-muted-foreground">{bulkSyncProgress.current}/{bulkSyncProgress.total}</span>
+            </div>
+            <Progress value={(bulkSyncProgress.current / bulkSyncProgress.total) * 100} className="h-2" />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
