@@ -180,7 +180,7 @@ export function CreateSellerDialog({ open, onOpenChange, onSuccess }: CreateSell
       }
 
       // Create seller
-      const { error } = await supabase
+      const { data: newSeller, error } = await supabase
         .from('ecommerce_sellers')
         .insert({
           tenant_id: tenantId,
@@ -200,8 +200,57 @@ export function CreateSellerDialog({ open, onOpenChange, onSuccess }: CreateSell
           tiene_cuenta_corriente: values.tiene_cuenta_corriente,
           limite_credito: values.limite_credito,
           user_id: linkedUserId,
-        });
+        })
+        .select('id')
+        .single();
       if (error) throw error;
+
+      // Auto-link seller to cliente
+      if (newSeller && tenantId) {
+        try {
+          // Search for existing client by email or phone
+          let clienteId: string | null = null;
+          const { data: existingCliente } = await supabase
+            .from('clientes')
+            .select('id')
+            .eq('tenant_id', tenantId)
+            .or(`email.eq.${values.email}${values.telefono ? `,telefono.eq.${values.telefono}` : ''}`)
+            .limit(1)
+            .maybeSingle();
+
+          if (existingCliente) {
+            clienteId = existingCliente.id;
+          } else {
+            // Create new client from seller data
+            const { data: newCliente } = await supabase
+              .from('clientes')
+              .insert({
+                tenant_id: tenantId,
+                nombre: values.nombre,
+                email: values.email,
+                telefono: values.telefono || 'Sin teléfono',
+                direccion: values.direccion || 'Sin dirección',
+                ciudad: values.ciudad || null,
+                codigo_postal: values.codigo_postal || null,
+                dni_cuit: values.cuit || null,
+                razon_social: values.razon_social || null,
+              })
+              .select('id')
+              .single();
+            if (newCliente) clienteId = newCliente.id;
+          }
+
+          if (clienteId) {
+            await supabase
+              .from('ecommerce_sellers')
+              .update({ cliente_id: clienteId } as any)
+              .eq('id', newSeller.id);
+          }
+        } catch (linkError) {
+          console.error('Error linking seller to client:', linkError);
+          // Non-blocking: seller was created successfully
+        }
+      }
     },
     onSuccess: () => {
       toast({ title: 'Seller creado correctamente' });

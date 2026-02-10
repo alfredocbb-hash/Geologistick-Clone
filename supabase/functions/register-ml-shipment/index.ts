@@ -295,14 +295,16 @@ serve(async (req) => {
         whatsapp_destinatario: phone,
         entrega_lat: receiver.latitude,
         entrega_lng: receiver.longitude,
-        precio_total: precioTotal,
-        tarifa_id: seller.tarifa_id,
-        tipo_servicio: 'express',
-        tipo_servicio_detalle: 'ML Flex',
-        pago_contra_entrega: false,
-        descripcion: `Pedido MercadoLibre Flex #${mlShipment.order_id || ml_shipment_id}`,
-        sucursal_origen_id: sucursalOrigenId, // Track who did the pickup
-        precio_flete_ml: mlShippingCost, // ML shipping rate from API
+          precio_total: precioTotal,
+          tarifa_id: seller.tarifa_id,
+          tipo_servicio: 'express',
+          tipo_servicio_detalle: 'ML Flex',
+          pago_contra_entrega: false,
+          descripcion: `Pedido MercadoLibre Flex #${mlShipment.order_id || ml_shipment_id}`,
+          sucursal_origen_id: sucursalOrigenId, // Track who did the pickup
+          precio_flete_ml: mlShippingCost, // ML shipping rate from API
+          nombre_remitente: seller.nombre,
+          remitente_id: seller.cliente_id || null,
       })
       .select()
       .single();

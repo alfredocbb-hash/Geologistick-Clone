@@ -316,6 +316,8 @@ Deno.serve(async (req) => {
             sucursal_origen_id: seller.sucursal_pickup_id || null,
             created_by: userId,
             notas: `MercadoLibre Flex - Order #${orderId || shipment.id}`,
+            nombre_remitente: seller.nombre,
+            remitente_id: seller.cliente_id || null,
           })
           .select()
           .single();

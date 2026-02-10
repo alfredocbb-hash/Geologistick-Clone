@@ -613,6 +613,7 @@ export type Database = {
           access_token: string | null
           activo: boolean | null
           ciudad: string | null
+          cliente_id: string | null
           codigo_postal: string | null
           created_at: string | null
           created_by: string | null
@@ -654,6 +655,7 @@ export type Database = {
           access_token?: string | null
           activo?: boolean | null
           ciudad?: string | null
+          cliente_id?: string | null
           codigo_postal?: string | null
           created_at?: string | null
           created_by?: string | null
@@ -695,6 +697,7 @@ export type Database = {
           access_token?: string | null
           activo?: boolean | null
           ciudad?: string | null
+          cliente_id?: string | null
           codigo_postal?: string | null
           created_at?: string | null
           created_by?: string | null
@@ -733,6 +736,13 @@ export type Database = {
           webhook_secret?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "ecommerce_sellers_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "ecommerce_sellers_sucursal_pickup_id_fkey"
             columns: ["sucursal_pickup_id"]
