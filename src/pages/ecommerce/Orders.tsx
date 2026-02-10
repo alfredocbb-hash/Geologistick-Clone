@@ -33,6 +33,7 @@ interface Order {
   plataforma: string;
   order_status: string;
   fulfillment_status: string;
+  ml_shipping_status: string | null;
   buyer_name: string;
   buyer_email: string | null;
   buyer_phone: string | null;
@@ -68,6 +69,15 @@ const STATUS_CONFIG: Record<string, { label: string; icon: React.ElementType; cl
   shipped: { label: 'Enviado', icon: Truck, className: 'bg-blue-500/10 text-blue-600 border-blue-500/20' },
   delivered: { label: 'Entregado', icon: Package, className: 'bg-purple-500/10 text-purple-600 border-purple-500/20' },
   cancelled: { label: 'Cancelado', icon: XCircle, className: 'bg-red-500/10 text-red-600 border-red-500/20' },
+};
+
+const ML_SHIPPING_CONFIG: Record<string, { label: string; icon: React.ElementType; className: string }> = {
+  pending: { label: 'Pendiente ML', icon: Clock, className: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20' },
+  ready_to_ship: { label: 'Listo para enviar', icon: Package, className: 'bg-blue-500/10 text-blue-600 border-blue-500/20' },
+  shipped: { label: 'En camino', icon: Truck, className: 'bg-orange-500/10 text-orange-600 border-orange-500/20' },
+  delivered: { label: 'Entregado', icon: CheckCircle, className: 'bg-green-500/10 text-green-600 border-green-500/20' },
+  not_delivered: { label: 'No entregado', icon: XCircle, className: 'bg-red-500/10 text-red-600 border-red-500/20' },
+  cancelled: { label: 'Cancelado', icon: XCircle, className: 'bg-gray-500/10 text-gray-600 border-gray-500/20' },
 };
 
 const FULFILLMENT_CONFIG: Record<string, { label: string; className: string }> = {
@@ -234,7 +244,8 @@ export default function Orders() {
       o.external_order_number?.toLowerCase().includes(search.toLowerCase()) ||
       o.external_order_id.toLowerCase().includes(search.toLowerCase());
     
-    const matchesStatus = statusFilter === 'all' || o.order_status === statusFilter;
+    const matchesStatus = statusFilter === 'all' || 
+      (o.ml_shipping_status ? o.ml_shipping_status === statusFilter : o.order_status === statusFilter);
     const matchesFulfillment = fulfillmentFilter === 'all' || o.fulfillment_status === fulfillmentFilter;
     
     return matchesSearch && matchesStatus && matchesFulfillment;
@@ -355,8 +366,10 @@ export default function Orders() {
             <SelectItem value="all">Todos los estados</SelectItem>
             <SelectItem value="pending">Pendiente</SelectItem>
             <SelectItem value="paid">Pagado</SelectItem>
-            <SelectItem value="shipped">Enviado</SelectItem>
+            <SelectItem value="ready_to_ship">Listo para enviar</SelectItem>
+            <SelectItem value="shipped">En camino</SelectItem>
             <SelectItem value="delivered">Entregado</SelectItem>
+            <SelectItem value="not_delivered">No entregado</SelectItem>
             <SelectItem value="cancelled">Cancelado</SelectItem>
           </SelectContent>
         </Select>
@@ -506,7 +519,11 @@ export default function Orders() {
                       </TableRow>
                       {/* Individual order rows */}
                       {group.orders.map((order) => {
-                        const status = STATUS_CONFIG[order.order_status] || STATUS_CONFIG.pending;
+                        // Use ML shipping status for ML orders, fallback to generic order_status
+                        const useMLStatus = order.plataforma === 'mercadolibre' && order.ml_shipping_status;
+                        const status = useMLStatus
+                          ? (ML_SHIPPING_CONFIG[order.ml_shipping_status!] || STATUS_CONFIG[order.order_status] || STATUS_CONFIG.pending)
+                          : (STATUS_CONFIG[order.order_status] || STATUS_CONFIG.pending);
                         const fulfillment = FULFILLMENT_CONFIG[order.fulfillment_status] || FULFILLMENT_CONFIG.pending;
                         const StatusIcon = status.icon;
                         
