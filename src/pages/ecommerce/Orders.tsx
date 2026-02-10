@@ -299,62 +299,7 @@ export default function Orders() {
             )}
           </p>
         </div>
-        {selectedOrders.length > 0 && (
-          <div className="flex gap-2">
-            {/* Button to create shipments */}
-            <Button onClick={() => {
-              const ordersToShip = filteredOrders?.filter(
-                o => selectedOrders.includes(o.id) && !o.envio_id && o.order_status !== 'cancelled'
-              ) || [];
-              
-              if (ordersToShip.length === 0) {
-                toast({ 
-                  title: 'Sin pedidos válidos', 
-                  description: 'Los pedidos seleccionados ya tienen envío o están cancelados',
-                  variant: 'destructive'
-                });
-                return;
-              }
-              
-              if (ordersToShip.length === 1) {
-                setCreateShipmentOrder(ordersToShip[0]);
-              } else {
-                toast({ 
-                  title: 'Funcionalidad próximamente', 
-                  description: `Crear ${ordersToShip.length} envíos masivos` 
-                });
-              }
-            }}>
-              <Truck className="mr-2 h-4 w-4" />
-              Crear Envíos
-            </Button>
-            
-            {/* Button to send to planner */}
-            <Button 
-              variant="outline"
-              onClick={() => {
-                const ordersWithShipment = filteredOrders?.filter(
-                  o => selectedOrders.includes(o.id) && o.envio_id
-                ) || [];
-                
-                if (ordersWithShipment.length === 0) {
-                  toast({ 
-                    title: 'Sin envíos', 
-                    description: 'Las órdenes seleccionadas no tienen envío creado',
-                    variant: 'destructive'
-                  });
-                  return;
-                }
-                
-                const envioIds = ordersWithShipment.map(o => o.envio_id);
-                navigate(`/route-planner?envios=${envioIds.join(',')}`);
-              }}
-            >
-              <MapPin className="mr-2 h-4 w-4" />
-              Enviar al Planificador
-            </Button>
-          </div>
-        )}
+        {/* Action buttons moved to totalizer bar */}
       </div>
 
       {/* Filters */}
@@ -428,6 +373,61 @@ export default function Orders() {
           </SelectContent>
         </Select>
       </div>
+
+      {/* Totalizer bar */}
+      {selectedOrders.length > 0 && (() => {
+        const selectedData = filteredOrders?.filter(o => selectedOrders.includes(o.id)) || [];
+        const totalShippingCost = selectedData.reduce((sum, o) => sum + (o.shipping_cost || 0), 0);
+        const withShipment = selectedData.filter(o => o.envio_id).length;
+        const withoutShipment = selectedData.filter(o => !o.envio_id).length;
+
+        return (
+          <Card className="border-primary/30 bg-primary/5">
+            <CardContent className="p-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex flex-wrap items-center gap-4 text-sm">
+                  <span className="font-semibold">{selectedOrders.length} seleccionados</span>
+                  <span className="text-muted-foreground">|</span>
+                  <span>Envío: <strong>${totalShippingCost.toLocaleString()}</strong></span>
+                  <span className="text-muted-foreground">|</span>
+                  <span className="text-green-600">{withShipment} con envío</span>
+                  <span className="text-muted-foreground">|</span>
+                  <span className="text-orange-600">{withoutShipment} sin envío</span>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => {
+                    const ordersToShip = selectedData.filter(o => !o.envio_id && o.order_status !== 'cancelled');
+                    if (ordersToShip.length === 0) {
+                      toast({ title: 'Sin pedidos válidos', description: 'Los pedidos seleccionados ya tienen envío o están cancelados', variant: 'destructive' });
+                      return;
+                    }
+                    if (ordersToShip.length === 1) {
+                      setCreateShipmentOrder(ordersToShip[0]);
+                    } else {
+                      toast({ title: 'Funcionalidad próximamente', description: `Crear ${ordersToShip.length} envíos masivos` });
+                    }
+                  }}>
+                    <Truck className="mr-2 h-4 w-4" />
+                    Crear Envíos ({withoutShipment})
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => {
+                    const ordersWithShipment = selectedData.filter(o => o.envio_id);
+                    if (ordersWithShipment.length === 0) {
+                      toast({ title: 'Sin envíos', description: 'Las órdenes seleccionadas no tienen envío creado', variant: 'destructive' });
+                      return;
+                    }
+                    const envioIds = ordersWithShipment.map(o => o.envio_id);
+                    navigate(`/route-planner?envios=${envioIds.join(',')}`);
+                  }}>
+                    <MapPin className="mr-2 h-4 w-4" />
+                    Planificar ({withShipment})
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Table */}
       <Card>
