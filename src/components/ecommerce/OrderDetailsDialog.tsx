@@ -229,16 +229,16 @@ export function OrderDetailsDialog({ open, onOpenChange, order }: OrderDetailsDi
             <CardContent>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Subtotal</span>
+                  <span className="text-muted-foreground">Subtotal productos</span>
                   <span>${order.subtotal?.toLocaleString() || '0'}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Envío</span>
-                  <span>${order.shipping_cost?.toLocaleString() || '0'}</span>
-                </div>
                 <Separator />
-                <div className="flex justify-between font-bold">
-                  <span>Total</span>
+                <div className="flex justify-between font-bold text-primary">
+                  <span>Costo de Envío</span>
+                  <span>{order.shipping_cost ? `$${order.shipping_cost.toLocaleString()}` : '-'}</span>
+                </div>
+                <div className="flex justify-between text-muted-foreground text-xs">
+                  <span>Total pedido (productos)</span>
                   <span>${order.total?.toLocaleString() || '0'}</span>
                 </div>
               </div>

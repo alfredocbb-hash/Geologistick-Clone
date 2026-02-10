@@ -277,6 +277,7 @@ Deno.serve(async (req) => {
             shipping_lng: receiver.longitude || null,
             items: orderData?.order_items || [],
             total: orderTotal,
+            shipping_cost: mlShippingCost,
             order_status: 'paid',
             fulfillment_status: fulfillmentStatus,
             raw_data: shipment,

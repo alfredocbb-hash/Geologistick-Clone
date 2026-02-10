@@ -178,9 +178,9 @@ Deno.serve(async (req) => {
           shipping_lng: receiver.longitude || null,
           items: orderData?.order_items || [],
           total: shipment.shipping_cost?.receiver || 0,
+          shipping_cost: shipment.lead_time?.cost || shipment.shipping_option?.cost || shipment.cost || 0,
           order_status: 'paid',
           fulfillment_status: 'pending',
-          raw_data: shipment,
         })
         .select()
         .single();

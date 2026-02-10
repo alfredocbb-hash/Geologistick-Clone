@@ -454,7 +454,30 @@ Saludos`;
                           </Button>
                         )
                       ) : seller.plataforma === 'manual' ? (
-                        <span className="text-xs text-muted-foreground">N/A</span>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm">
+                              <Link2 className="mr-1 h-3 w-3" />
+                              Conectar
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent>
+                            <DropdownMenuItem onClick={async () => {
+                              await supabase.from('ecommerce_sellers').update({ plataforma: 'mercadolibre' }).eq('id', seller.id);
+                              queryClient.invalidateQueries({ queryKey: ['ecommerce-sellers'] });
+                              handleConnectMercadoLibre({ ...seller, plataforma: 'mercadolibre' });
+                            }}>
+                              Conectar MercadoLibre
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={async () => {
+                              await supabase.from('ecommerce_sellers').update({ plataforma: 'tiendanube' }).eq('id', seller.id);
+                              queryClient.invalidateQueries({ queryKey: ['ecommerce-sellers'] });
+                              handleConnectTiendanube({ ...seller, plataforma: 'tiendanube' });
+                            }}>
+                              Conectar Tiendanube
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       ) : (
                         <div className="flex items-center gap-2">
                           <XCircle className="h-4 w-4 text-muted-foreground" />

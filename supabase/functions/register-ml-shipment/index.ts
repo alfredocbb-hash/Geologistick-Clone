@@ -262,6 +262,7 @@ serve(async (req) => {
         ml_tracking_number: trackingNumber,
         synced_at: new Date().toISOString(),
         raw_data: mlShipment,
+        shipping_cost: mlShippingCost,
       })
       .select()
       .single();
