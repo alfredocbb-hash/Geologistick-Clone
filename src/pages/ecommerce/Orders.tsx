@@ -240,11 +240,33 @@ export default function Orders() {
     return matchesSearch && matchesStatus && matchesFulfillment;
   });
 
+  // Group orders by seller
+  const groupedOrders = filteredOrders?.reduce<Record<string, { sellerName: string; sellerId: string; orders: Order[] }>>((acc, order) => {
+    const key = order.seller_id;
+    if (!acc[key]) {
+      acc[key] = { sellerName: order.seller?.nombre || 'Sin seller', sellerId: key, orders: [] };
+    }
+    acc[key].orders.push(order);
+    return acc;
+  }, {});
+
+  const sellerGroups = Object.values(groupedOrders || {});
+
   const toggleSelectAll = () => {
     if (selectedOrders.length === filteredOrders?.length) {
       setSelectedOrders([]);
     } else {
       setSelectedOrders(filteredOrders?.map(o => o.id) || []);
+    }
+  };
+
+  const toggleSelectGroup = (groupOrders: Order[]) => {
+    const groupIds = groupOrders.map(o => o.id);
+    const allSelected = groupIds.every(id => selectedOrders.includes(id));
+    if (allSelected) {
+      setSelectedOrders(prev => prev.filter(id => !groupIds.includes(id)));
+    } else {
+      setSelectedOrders(prev => [...new Set([...prev, ...groupIds])]);
     }
   };
 
@@ -437,144 +459,186 @@ export default function Orders() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredOrders?.map((order) => {
-                  const status = STATUS_CONFIG[order.order_status] || STATUS_CONFIG.pending;
-                  const fulfillment = FULFILLMENT_CONFIG[order.fulfillment_status] || FULFILLMENT_CONFIG.pending;
-                  const StatusIcon = status.icon;
-                  
-                  return (
-                    <TableRow key={order.id}>
-                      <TableCell>
-                        <Checkbox
-                          checked={selectedOrders.includes(order.id)}
-                          onCheckedChange={() => toggleSelect(order.id)}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="font-medium">#{order.external_order_number || order.external_order_id}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {format(parseDateString(order.created_at), 'dd/MM/yy', { locale: es })}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-sm">{order.seller?.nombre || '-'}</span>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="font-medium text-sm">{order.buyer_name}</span>
-                          <span className="text-xs text-muted-foreground truncate max-w-[150px]">
-                            {order.shipping_city || order.shipping_address}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={status.className}>
-                          <StatusIcon className="mr-1 h-3 w-3" />
-                          {status.label}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={fulfillment.className}>
-                          {fulfillment.label}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {order.shipping_cost ? `$${order.shipping_cost.toLocaleString()}` : '-'}
-                      </TableCell>
-                      <TableCell>
-                        {order.envio_id ? (
-                          <div className="flex items-center gap-2">
-                            {order.ml_tracking_number ? (
-                              <Badge variant="default" className="font-mono text-xs">
-                                <Tag className="mr-1 h-3 w-3" />
-                                {order.ml_tracking_number}
-                              </Badge>
-                            ) : (
-                              <Badge variant="default">Creado</Badge>
-                            )}
-                            <Button 
-                              variant="ghost" 
-                              size="icon"
-                              className="h-6 w-6"
-                              onClick={() => navigate(`/print-label?id=${order.envio_id}`)}
-                              title="Imprimir etiqueta"
-                            >
-                              <Printer className="h-3 w-3" />
-                            </Button>
-                            {order.ml_shipment_id && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6"
-                                onClick={() => {
-                                  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mercadolibre-label?shipment_id=${order.ml_shipment_id}`;
-                                  window.open(url, '_blank');
-                                }}
-                                title="Descargar etiqueta ML"
-                              >
-                                <Download className="h-3 w-3" />
-                              </Button>
-                            )}
-                          </div>
-                        ) : order.order_status !== 'cancelled' ? (
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={() => setCreateShipmentOrder(order)}
-                          >
-                            <Truck className="mr-1 h-3 w-3" />
-                            Crear
-                          </Button>
-                        ) : (
-                          <Badge variant="secondary">-</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => setDetailsOrder(order)}>
-                              <Eye className="mr-2 h-4 w-4" />
-                              Ver Detalles
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setEditOrder(order)}>
-                              <Edit className="mr-2 h-4 w-4" />
-                              Editar Pedido
-                            </DropdownMenuItem>
-                            {!order.envio_id && order.order_status !== 'cancelled' && (
-                              <DropdownMenuItem onClick={() => setCreateShipmentOrder(order)}>
-                                <Truck className="mr-2 h-4 w-4" />
-                                Crear Envío
-                              </DropdownMenuItem>
-                            )}
-                            {order.envio_id && order.order_status !== 'delivered' && (
-                              <DropdownMenuItem 
-                                className="text-destructive"
-                                onClick={() => setDeleteOrder(order)}
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Eliminar Envío
-                              </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-                {filteredOrders?.length === 0 && (
+                {sellerGroups.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                       No hay pedidos que mostrar
                     </TableCell>
                   </TableRow>
                 )}
+                {sellerGroups.map((group) => {
+                  const groupIds = group.orders.map(o => o.id);
+                  const allGroupSelected = groupIds.length > 0 && groupIds.every(id => selectedOrders.includes(id));
+                  const groupWithShipment = group.orders.filter(o => o.envio_id);
+
+                  return (
+                    <>
+                      {/* Seller group header */}
+                      <TableRow key={`group-${group.sellerId}`} className="bg-muted/50 hover:bg-muted/70">
+                        <TableCell>
+                          <Checkbox
+                            checked={allGroupSelected}
+                            onCheckedChange={() => toggleSelectGroup(group.orders)}
+                          />
+                        </TableCell>
+                        <TableCell colSpan={6}>
+                          <div className="flex items-center gap-3">
+                            <ShoppingBag className="h-4 w-4 text-muted-foreground" />
+                            <span className="font-semibold">{group.sellerName}</span>
+                            <Badge variant="secondary">{group.orders.length} pedidos</Badge>
+                          </div>
+                        </TableCell>
+                        <TableCell colSpan={2} className="text-right">
+                          {groupWithShipment.length > 0 && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                const envioIds = groupWithShipment.map(o => o.envio_id);
+                                navigate(`/route-planner?envios=${envioIds.join(',')}`);
+                              }}
+                            >
+                              <MapPin className="mr-1 h-3 w-3" />
+                              Planificar ({groupWithShipment.length})
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                      {/* Individual order rows */}
+                      {group.orders.map((order) => {
+                        const status = STATUS_CONFIG[order.order_status] || STATUS_CONFIG.pending;
+                        const fulfillment = FULFILLMENT_CONFIG[order.fulfillment_status] || FULFILLMENT_CONFIG.pending;
+                        const StatusIcon = status.icon;
+                        
+                        return (
+                          <TableRow key={order.id}>
+                            <TableCell>
+                              <Checkbox
+                                checked={selectedOrders.includes(order.id)}
+                                onCheckedChange={() => toggleSelect(order.id)}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col">
+                                <span className="font-medium">#{order.external_order_number || order.external_order_id}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {format(parseDateString(order.created_at), 'dd/MM/yy', { locale: es })}
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <span className="text-sm">{order.seller?.nombre || '-'}</span>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col">
+                                <span className="font-medium text-sm">{order.buyer_name}</span>
+                                <span className="text-xs text-muted-foreground truncate max-w-[150px]">
+                                  {order.shipping_city || order.shipping_address}
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className={status.className}>
+                                <StatusIcon className="mr-1 h-3 w-3" />
+                                {status.label}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className={fulfillment.className}>
+                                {fulfillment.label}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right font-medium">
+                              {order.shipping_cost ? `$${order.shipping_cost.toLocaleString()}` : '-'}
+                            </TableCell>
+                            <TableCell>
+                              {order.envio_id ? (
+                                <div className="flex items-center gap-2">
+                                  {order.ml_tracking_number ? (
+                                    <Badge variant="default" className="font-mono text-xs">
+                                      <Tag className="mr-1 h-3 w-3" />
+                                      {order.ml_tracking_number}
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="default">Creado</Badge>
+                                  )}
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon"
+                                    className="h-6 w-6"
+                                    onClick={() => navigate(`/print-label?id=${order.envio_id}`)}
+                                    title="Imprimir etiqueta"
+                                  >
+                                    <Printer className="h-3 w-3" />
+                                  </Button>
+                                  {order.ml_shipment_id && (
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-6 w-6"
+                                      onClick={() => {
+                                        const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mercadolibre-label?shipment_id=${order.ml_shipment_id}`;
+                                        window.open(url, '_blank');
+                                      }}
+                                      title="Descargar etiqueta ML"
+                                    >
+                                      <Download className="h-3 w-3" />
+                                    </Button>
+                                  )}
+                                </div>
+                              ) : order.order_status !== 'cancelled' ? (
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => setCreateShipmentOrder(order)}
+                                >
+                                  <Truck className="mr-1 h-3 w-3" />
+                                  Crear
+                                </Button>
+                              ) : (
+                                <Badge variant="secondary">-</Badge>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => setDetailsOrder(order)}>
+                                    <Eye className="mr-2 h-4 w-4" />
+                                    Ver Detalles
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => setEditOrder(order)}>
+                                    <Edit className="mr-2 h-4 w-4" />
+                                    Editar Pedido
+                                  </DropdownMenuItem>
+                                  {!order.envio_id && order.order_status !== 'cancelled' && (
+                                    <DropdownMenuItem onClick={() => setCreateShipmentOrder(order)}>
+                                      <Truck className="mr-2 h-4 w-4" />
+                                      Crear Envío
+                                    </DropdownMenuItem>
+                                  )}
+                                  {order.envio_id && order.order_status !== 'delivered' && (
+                                    <DropdownMenuItem 
+                                      className="text-destructive"
+                                      onClick={() => setDeleteOrder(order)}
+                                    >
+                                      <Trash2 className="mr-2 h-4 w-4" />
+                                      Eliminar Envío
+                                    </DropdownMenuItem>
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </>
+                  );
+                })}
               </TableBody>
             </Table>
           )}

@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
     const allOrders: any[] = [];
     const seenIds = new Set();
     const PAGE_LIMIT = 50;
-    const MAX_OFFSET = 450; // safety: max 10 pages per status = 500 orders
+    const MAX_OFFSET = 450;
 
     for (const status of statuses) {
       let offset = 0;
@@ -130,18 +130,38 @@ Deno.serve(async (req) => {
         }
         
         console.log(`[ML Sync] Got ${results.length} results for status=${status} offset=${offset}`);
-        
-        // If fewer results than limit, we've reached the last page
         if (results.length < PAGE_LIMIT) break;
-        
         offset += PAGE_LIMIT;
-        // Delay to respect ML rate limits
         await new Promise(resolve => setTimeout(resolve, 200));
       }
     }
 
     const orders = allOrders;
     console.log('[ML Sync] Found', orders.length, 'orders (deduplicated, paginated)');
+
+    // BATCH: Collect all shipment IDs and lookup existing ones in a single query
+    const allShipmentIds = orders
+      .map(o => o.shipping?.id)
+      .filter((id): id is number => !!id);
+
+    const existingEnviosMap = new Map<number, string>();
+    if (allShipmentIds.length > 0) {
+      // Query in chunks of 100 to avoid URL length limits
+      for (let i = 0; i < allShipmentIds.length; i += 100) {
+        const chunk = allShipmentIds.slice(i, i + 100);
+        const { data: existingEnvios } = await supabase
+          .from('envios')
+          .select('id, ml_shipment_id')
+          .in('ml_shipment_id', chunk);
+        
+        if (existingEnvios) {
+          for (const e of existingEnvios) {
+            if (e.ml_shipment_id) existingEnviosMap.set(e.ml_shipment_id, e.id);
+          }
+        }
+      }
+    }
+    console.log('[ML Sync] Batch lookup found', existingEnviosMap.size, 'existing shipments');
 
     let created = 0;
     let existing = 0;
@@ -158,22 +178,18 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Check if already exists
-        const { data: existingEnvio } = await supabase
-          .from('envios')
-          .select('id')
-          .eq('ml_shipment_id', shipmentId)
-          .maybeSingle();
+        // Check if already exists using batch map
+        const existingEnvioId = existingEnviosMap.get(shipmentId);
 
-        if (existingEnvio) {
-          // Update existing: check if status or total changed
+        if (existingEnvioId) {
+          // Simplified update: only 2 queries instead of 4
           const mlShippingStatus = orderItem.shipping?.status || 'ready_to_ship';
           const newFulfillment = mlShippingStatus === 'shipped' ? 'shipped' : 
                                  mlShippingStatus === 'delivered' ? 'delivered' : 'pending';
           const newEnvioEstado = mlShippingStatus === 'shipped' ? 'en_transito' :
                                  mlShippingStatus === 'delivered' ? 'entregado' : 'pendiente';
 
-          // Update ecommerce_order status
+          // Update ecommerce_order status (single query)
           await supabase.from('ecommerce_orders')
             .update({ 
               fulfillment_status: newFulfillment, 
@@ -182,31 +198,11 @@ Deno.serve(async (req) => {
             })
             .eq('ml_shipment_id', shipmentId);
 
-          // Also fix total if it's 0 (recalculate from items)
-          const { data: existingOrder } = await supabase
-            .from('ecommerce_orders')
-            .select('total, items')
-            .eq('ml_shipment_id', shipmentId)
-            .maybeSingle();
-
-          if (existingOrder && (existingOrder.total === 0 || existingOrder.total === null)) {
-            const items = existingOrder.items as any[] || [];
-            const recalcTotal = items.reduce(
-              (sum: number, item: any) => sum + ((item.unit_price || 0) * (item.quantity || 1)), 0
-            );
-            if (recalcTotal > 0) {
-              await supabase.from('ecommerce_orders')
-                .update({ total: recalcTotal })
-                .eq('ml_shipment_id', shipmentId);
-            }
-          }
-
-          // Update envio estado
+          // Update envio estado (single query)
           await supabase.from('envios')
             .update({ estado: newEnvioEstado, updated_at: new Date().toISOString() })
-            .eq('id', existingEnvio.id);
+            .eq('id', existingEnvioId);
 
-          console.log('[ML Sync] Updated existing shipment:', shipmentId, 'status:', mlShippingStatus);
           existing++;
           continue;
         }
