@@ -1,21 +1,41 @@
 
-
-# Mostrar Store ID en el detalle del Seller
+# Fix: Chofer no puede ver sellers al escanear paquetes ML
 
 ## Problema
-Algunos sellers tienen varias cuentas de MercadoLibre. Al escanear un paquete Flex y ver "seller no registrado" con un `store_id` (ej. 352429845), el usuario necesita poder verificar en el detalle de los sellers existentes cual tiene ese ID para saber si debe crear uno nuevo o si ya existe con otro nombre.
+Cuando el chofer (kevinbernard@beraexpress.com) escanea un paquete ML Flex, el sistema busca el seller por `store_id` en la tabla `ecommerce_sellers`. Sin embargo, la politica de seguridad (RLS) solo permite leer esa tabla a roles admin, supervisor y operador. El chofer no tiene permiso, asi que la consulta retorna vacio y el dialogo muestra "Seller no registrado" aunque el seller SI existe.
 
 ## Solucion
 
-### Archivo: `src/components/ecommerce/SellerDetailsDialog.tsx`
+### Cambio en base de datos: Agregar permiso de lectura para choferes
 
-Agregar el campo `store_id` en la seccion de informacion de contacto del seller, visible cuando el seller tiene un `store_id` configurado.
+Modificar la politica RLS de SELECT en `ecommerce_sellers` para incluir el rol `chofer`. Esto es necesario porque los choferes usan el flujo de escaneo ML que necesita verificar si un seller esta registrado antes de poder registrar el envio.
 
-Se mostrara como una fila adicional con el icono de Store y el label "Store ID:", junto al valor del ID. Esto permite al administrador:
-- Verificar rapidamente que ID de plataforma tiene cada seller
-- Comparar con el ID que aparece en el dialogo de escaneo ML
-- Identificar si necesita crear un nuevo seller o vincular a uno existente
+La politica actual permite:
+- admin, supervisor, operador (del mismo tenant)
+- El propio seller (user_id = auth.uid())
+- Super admin
 
-### Ubicacion en la UI
-Dentro de la card "Informacion de Contacto", despues del store_url (si existe) o al final de la lista de contacto. Se mostrara con un `Badge` de estilo `outline` con fuente monoespaciada para facilitar la comparacion visual con el ID del escaneo.
+Se agregara:
+- chofer (del mismo tenant) -- solo lectura
 
+### SQL de migracion
+```sql
+DROP POLICY IF EXISTS "Ver sellers de su tenant" ON ecommerce_sellers;
+
+CREATE POLICY "Ver sellers de su tenant" ON ecommerce_sellers
+FOR SELECT USING (
+  (
+    (tenant_id = current_user_tenant()) 
+    AND (
+      is_admin(auth.uid()) 
+      OR has_role(auth.uid(), 'supervisor'::app_role) 
+      OR has_role(auth.uid(), 'operador'::app_role)
+      OR has_role(auth.uid(), 'chofer'::app_role)
+    )
+  ) 
+  OR (user_id = auth.uid()) 
+  OR is_super_admin(auth.uid())
+);
+```
+
+No se requieren cambios de codigo -- el `MLRegisterDialog` ya hace la consulta correctamente, solo necesita que RLS permita al chofer leer.
