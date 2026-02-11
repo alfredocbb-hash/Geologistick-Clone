@@ -244,7 +244,7 @@ export default function RoutePlanner() {
         tipo: envio.requiere_retiro && envio.estado === "pendiente" ? "retiro" : "entrega",
         coords: envio.requiere_retiro && envio.estado === "pendiente"
           ? { lat: envio.remitente_lat, lng: envio.remitente_lng }
-          : { lat: envio.destinatario_lat, lng: envio.destinatario_lng },
+          : { lat: envio.entrega_lat || envio.destinatario_lat, lng: envio.entrega_lng || envio.destinatario_lng },
       }));
     },
   });
