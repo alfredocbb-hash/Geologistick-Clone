@@ -351,10 +351,11 @@ export default function NewShipment() {
         .select('id, sucursal_id')
         .eq('sucursal_id', sucursalOrigenId)
         .eq('estado', 'abierta')
-        .maybeSingle();
+        .order('created_at', { ascending: false })
+        .limit(1);
       
       if (error) throw error;
-      return data;
+      return data && data.length > 0 ? data[0] : null;
     },
     enabled: !!sucursalOrigenId,
   });
