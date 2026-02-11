@@ -62,20 +62,12 @@ export default function RescheduleDialog({ shipment, onClose, onSuccess }: Resch
       
       queryClient.setQueryData(['my-active-route-paradas'], (old: any) => {
         if (!old) return old;
-        return old.map((p: any) => 
-          p.envio?.id === shipment.id 
-            ? { ...p, envio: { ...p.envio, estado: 'pendiente' } }
-            : p
-        );
+        return old.filter((p: any) => p.envio?.id !== shipment.id);
       });
       
       queryClient.setQueryData(['my-active-route-envios-hoja'], (old: any) => {
         if (!old) return old;
-        return old.map((e: any) => 
-          e.envio?.id === shipment.id 
-            ? { ...e, envio: { ...e.envio, estado: 'pendiente' } }
-            : e
-        );
+        return old.filter((e: any) => e.envio?.id !== shipment.id);
       });
       
       return { previousParadas, previousEnviosHoja };
