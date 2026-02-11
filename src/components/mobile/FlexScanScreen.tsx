@@ -15,11 +15,13 @@ import {
   Users,
   Navigation,
   FileText,
+  CheckCircle2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useFlexPackages } from '@/hooks/useFlexPackages';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { useAuth } from '@/lib/auth';
+import { supabase } from '@/integrations/supabase/client';
 import { usePermissions } from '@/hooks/usePermissions';
 import QRScanner from '@/components/qr/QRScanner';
 import { MLRegisterDialog } from '@/components/scan/MLRegisterDialog';
@@ -41,6 +43,7 @@ export function FlexScanScreen() {
   const [showRouteSheetDialog, setShowRouteSheetDialog] = useState(false);
   const [mlRegisterData, setMlRegisterData] = useState<{ shipmentId: string; senderId?: string } | null>(null);
   const [scanSessionCount, setScanSessionCount] = useState(0);
+  const [isCollecting, setIsCollecting] = useState(false);
   
   const {
     packages,
@@ -124,6 +127,39 @@ export function FlexScanScreen() {
     navigate(`/active-route?id=${hojaId}&type=hoja_ruta`);
   }, [navigate, clearPackages]);
 
+  // Handle collect all scanned packages
+  const handleCollectAll = useCallback(async () => {
+    if (!user?.id || packages.length === 0) return;
+    setIsCollecting(true);
+    try {
+      const envioIds = packages.map(p => p.id);
+      const now = new Date().toISOString();
+      const { error } = await supabase
+        .from('envios')
+        .update({
+          estado: 'recogido' as any,
+          estado_retiro: 'retirado',
+          fecha_recogida: now,
+          chofer_id: user.id,
+          updated_at: now,
+        })
+        .in('id', envioIds);
+      if (error) {
+        toast.error('Error al colectar', { description: error.message });
+      } else {
+        const count = packages.length;
+        clearPackages();
+        toast.success(`Colecta confirmada: ${count} paquete${count !== 1 ? 's' : ''}`, {
+          description: 'Estado actualizado a recogido',
+        });
+      }
+    } catch (e: any) {
+      toast.error('Error al colectar', { description: e.message });
+    } finally {
+      setIsCollecting(false);
+    }
+  }, [user?.id, packages, clearPackages]);
+
   // Check if user can transfer packages (operator/admin)
   const canTransfer = hasRole('operador') || hasRole('admin') || hasRole('bodega');
   
@@ -169,6 +205,16 @@ export function FlexScanScreen() {
         )}
         ESCANEAR PAQUETE
       </Button>
+
+      {/* Prominent Package Counter */}
+      {hasPackages && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 border border-primary/20 mb-3">
+          <Package className="h-5 w-5 text-primary" />
+          <span className="text-sm font-semibold text-primary">
+            {packages.length} paquete{packages.length !== 1 ? 's' : ''} listo{packages.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+      )}
 
       {/* Package List */}
       {hasPackages ? (
@@ -232,6 +278,20 @@ export function FlexScanScreen() {
               </Button>
             )}
           </div>
+
+          {/* Collect All Button */}
+          <Button
+            onClick={handleCollectAll}
+            disabled={isLoading || isCollecting}
+            className="w-full h-14 text-lg font-semibold gap-3 bg-gradient-to-r from-cyan-600 to-blue-500 hover:from-cyan-500 hover:to-blue-400 shadow-lg shadow-cyan-500/30"
+          >
+            {isCollecting ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <CheckCircle2 className="h-5 w-5" />
+            )}
+            COLECTAR TODOS ({packages.length})
+          </Button>
 
           {/* Start Delivery Button */}
           <Button
