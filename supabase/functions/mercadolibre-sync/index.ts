@@ -290,6 +290,19 @@ Deno.serve(async (req) => {
         // Use ML shipment ID as tracking number (native ML tracking)
         const trackingNumber = `ML-${shipment.id}`;
 
+        // Calculate fecha_entrega_estimada based on Argentina time
+        const nowArgSync = new Date(Date.now() - 3 * 60 * 60 * 1000);
+        const horaArgSync = nowArgSync.getUTCHours();
+        const fechaArgSyncStr = nowArgSync.toISOString().substring(0, 10);
+        let fechaEntregaEstimada: string;
+        if (horaArgSync >= 12) {
+          const tomorrow = new Date(nowArgSync);
+          tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+          fechaEntregaEstimada = tomorrow.toISOString().substring(0, 10);
+        } else {
+          fechaEntregaEstimada = fechaArgSyncStr;
+        }
+
         // Create ecommerce_order first
         const { data: order, error: orderError } = await supabase
           .from('ecommerce_orders')
@@ -317,6 +330,7 @@ Deno.serve(async (req) => {
             fulfillment_status: fulfillmentStatus,
             ml_shipping_status: mlShippingStatus,
             raw_data: shipment,
+            fecha_entrega_estimada: fechaEntregaEstimada,
           })
           .select()
           .single();

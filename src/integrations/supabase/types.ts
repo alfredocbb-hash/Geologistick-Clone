@@ -501,6 +501,7 @@ export type Database = {
           envio_id: string | null
           external_order_id: string
           external_order_number: string | null
+          fecha_entrega_estimada: string | null
           fulfillment_status: string | null
           id: string
           items: Json | null
@@ -535,6 +536,7 @@ export type Database = {
           envio_id?: string | null
           external_order_id: string
           external_order_number?: string | null
+          fecha_entrega_estimada?: string | null
           fulfillment_status?: string | null
           id?: string
           items?: Json | null
@@ -569,6 +571,7 @@ export type Database = {
           envio_id?: string | null
           external_order_id?: string
           external_order_number?: string | null
+          fecha_entrega_estimada?: string | null
           fulfillment_status?: string | null
           id?: string
           items?: Json | null

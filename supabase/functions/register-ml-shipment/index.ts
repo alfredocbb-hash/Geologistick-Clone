@@ -253,7 +253,19 @@ serve(async (req) => {
       }
     }
 
-    // 10. Create ecommerce_order
+    // 10. Calculate fecha_entrega_estimada based on Argentina time
+    const nowArgReg = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    const horaArgReg = nowArgReg.getUTCHours();
+    let fechaEntregaEstimadaReg: string;
+    if (horaArgReg >= 12) {
+      const tomorrow = new Date(nowArgReg);
+      tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+      fechaEntregaEstimadaReg = tomorrow.toISOString().substring(0, 10);
+    } else {
+      fechaEntregaEstimadaReg = nowArgReg.toISOString().substring(0, 10);
+    }
+
+    // 11. Create ecommerce_order
     const { data: ecommerceOrder, error: orderError } = await supabase
       .from('ecommerce_orders')
       .insert({
@@ -277,6 +289,7 @@ serve(async (req) => {
         synced_at: new Date().toISOString(),
         raw_data: mlShipment,
         shipping_cost: mlShippingCost,
+        fecha_entrega_estimada: fechaEntregaEstimadaReg,
       })
       .select()
       .single();

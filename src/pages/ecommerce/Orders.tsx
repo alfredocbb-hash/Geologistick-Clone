@@ -16,7 +16,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Search, MoreHorizontal, Package, Eye, Truck, ShoppingBag, Clock, CheckCircle, XCircle, Printer, Edit, MapPin, Trash2, Download, Tag, CalendarIcon } from 'lucide-react';
-import { format, startOfDay, endOfDay } from 'date-fns';
+import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from '@/hooks/use-toast';
 import { OrderDetailsDialog } from '@/components/ecommerce/OrderDetailsDialog';
@@ -95,6 +95,7 @@ export default function Orders() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [fulfillmentFilter, setFulfillmentFilter] = useState<string>('all');
+  // Use fecha_entrega_estimada for filtering (delivery date, not creation date)
   const [dateFrom, setDateFrom] = useState<Date>(new Date());
   const [dateTo, setDateTo] = useState<Date>(new Date());
   const [sellerFilter, setSellerFilter] = useState<string>('all');
@@ -219,17 +220,17 @@ export default function Orders() {
         `)
         .eq('tenant_id', tenantId);
 
-      // Date range filter
-      const dayStart = startOfDay(dateFrom).toISOString();
-      const dayEnd = endOfDay(dateTo).toISOString();
-      query = query.gte('created_at', dayStart).lte('created_at', dayEnd);
+      // Date range filter using fecha_entrega_estimada (delivery date)
+      const fromStr = format(dateFrom, 'yyyy-MM-dd');
+      const toStr = format(dateTo, 'yyyy-MM-dd');
+      query = query.gte('fecha_entrega_estimada', fromStr).lte('fecha_entrega_estimada', toStr);
 
       // Seller filter
       if (sellerFilter !== 'all') {
         query = query.eq('seller_id', sellerFilter);
       }
 
-      const { data, error } = await query.order('created_at', { ascending: false });
+      const { data, error } = await query.order('fecha_entrega_estimada', { ascending: false }).order('created_at', { ascending: false });
 
       if (error) throw error;
       return data as Order[];
@@ -549,7 +550,9 @@ navigate(`/planner?envios=${envioIds.join(',')}`);
                               <div className="flex flex-col">
                                 <span className="font-medium">#{order.external_order_number || order.external_order_id}</span>
                                 <span className="text-xs text-muted-foreground">
-                                  {format(parseDateString(order.created_at), 'dd/MM/yy', { locale: es })}
+                                  Entrega: {(order as any).fecha_entrega_estimada 
+                                    ? format(parseDateString((order as any).fecha_entrega_estimada), 'dd/MM/yy', { locale: es })
+                                    : format(parseDateString(order.created_at), 'dd/MM/yy', { locale: es })}
                                 </span>
                               </div>
                             </TableCell>
