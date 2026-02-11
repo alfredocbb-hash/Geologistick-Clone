@@ -118,7 +118,7 @@ export function MobileAppLayout() {
       
       // Common tabs - Modo Flex replaces standard scan
       case 'scan':
-        return tenant?.modo_flex ? <FlexScanScreen /> : <MobileScanTab />;
+        return tenant?.modo_flex && userRole === 'chofer' ? <FlexScanScreen /> : <MobileScanTab />;
       case 'history':
         return <MobileHistoryTab />;
       case 'profile':
