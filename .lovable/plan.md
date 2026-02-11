@@ -1,46 +1,40 @@
 
-## Limpieza masiva de envios ML y filtro de sincronizacion por dia
 
-### Problema actual
-- Hay **1,689 envios de ML** en la base de datos, pero solo **14 tienen fecha de entrega de hoy**
-- La sincronizacion trae pedidos de los ultimos 7 dias (activos) y 3 dias (resueltos), creando cientos de registros innecesarios
-- El usuario solo necesita ver los pedidos que corresponden al dia de entrega actual
+# Filtro de rango de fechas (Desde - Hasta)
 
-### Plan
+## Respuesta sobre la sincronizacion ML
+Si, correcto. La funcion `mercadolibre-sync` ahora solo trae pedidos cuya fecha estimada de entrega es el dia de hoy (zona horaria Argentina UTC-3). Los pedidos de dias anteriores o futuros se omiten.
 
-**Paso 1: Eliminar envios ML que NO son para hoy (1,675 registros)**
+## Cambios a implementar
 
-Eliminar en orden de dependencias:
-1. `ruta_paradas` vinculadas a envios ML con fecha de entrega distinta a hoy
-2. `envio_historial` de esos envios
-3. `pagos` de esos envios (si hay)
-4. `seller_cuenta_corriente` de esos envios
-5. `ecommerce_orders` vinculadas a esos envios
-6. Los `envios` ML propiamente dichos
+### 1. Pagina de Envios (`src/pages/Shipments.tsx`)
+- Reemplazar el filtro de fecha unica (`dateFilter: Date`) por un rango con dos fechas: `dateFrom` y `dateTo`, ambas inicializadas en la fecha de hoy.
+- Mostrar dos selectores de fecha lado a lado: "Desde" y "Hasta".
+- Actualizar la query de Supabase para usar `gte(created_at, startOfDay(dateFrom))` y `lte(created_at, endOfDay(dateTo))`.
+- Actualizar el `queryKey` para incluir ambas fechas.
 
-Se preservaran los 14 envios con fecha de entrega = 2026-02-11 y todos los envios no-ML.
+### 2. Pagina de Pedidos E-commerce (`src/pages/ecommerce/Orders.tsx`)
+- Mismo cambio: reemplazar `dateFilter: Date` por `dateFrom` y `dateTo`.
+- Dos selectores de fecha: "Desde" y "Hasta".
+- Actualizar la query para filtrar con el rango completo.
+- Actualizar el `queryKey`.
 
-**Paso 2: Modificar la funcion de sincronizacion (`mercadolibre-sync`)**
+### Detalles tecnicos
 
-Cambiar la logica para que despues de obtener los pedidos de la API de ML, solo procese aquellos cuya fecha de entrega estimada (`shipping_option.estimated_delivery_time.date`) corresponda al dia actual. Los pedidos con fecha de entrega de otros dias seran ignorados.
+**Estado actual en ambas paginas:**
+```typescript
+const [dateFilter, setDateFilter] = useState<Date>(new Date());
+// Query usa: startOfDay(dateFilter) ... endOfDay(dateFilter)
+```
 
-Cambios concretos en `supabase/functions/mercadolibre-sync/index.ts`:
-- Despues de obtener los detalles del shipment via API, extraer la fecha de entrega de `shipment.shipping_option.estimated_delivery_time.date`
-- Comparar con la fecha de hoy (zona horaria Argentina, UTC-3)
-- Si no coincide, hacer `continue` (saltar ese pedido)
-- Esto reduce drasticamente la cantidad de envios creados por sincronizacion
+**Estado nuevo:**
+```typescript
+const [dateFrom, setDateFrom] = useState<Date>(new Date());
+const [dateTo, setDateTo] = useState<Date>(new Date());
+// Query usa: startOfDay(dateFrom) ... endOfDay(dateTo)
+```
 
-**Paso 3: Actualizar tambien la logica de update de envios existentes**
+**UI de filtros:** Dos botones de calendario compactos con etiquetas "Desde" y "Hasta", manteniendo el estilo actual con `Popover` + `Calendar`.
 
-Para los envios ML que ya existen en la base de datos, el sync actualmente actualiza estados. Mantener esta logica solo para envios que ya estan en el sistema (independientemente de la fecha), pero no crear nuevos envios para fechas pasadas.
+No se requieren cambios en la base de datos ni en Edge Functions.
 
-### Detalle tecnico
-
-**Base de datos (eliminaciones):**
-Se eliminaran ~1,675 envios ML y sus registros asociados (~1,630 ecommerce_orders, ~96 envio_historial, ~19 ruta_paradas).
-
-**Edge Function `mercadolibre-sync/index.ts`:**
-- Agregar filtro post-API que valide `shipment.shipping_option.estimated_delivery_time.date`
-- Extraer solo la parte de fecha y comparar con `new Date()` en zona horaria Argentina
-- Log de pedidos saltados para visibilidad
-- Los envios existentes (update path) siguen actualizandose normalmente
