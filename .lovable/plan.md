@@ -1,60 +1,38 @@
 
 
-## Modo Colecta Rapida
+## Limpieza de pedidos anteriores al 09/02/2026
 
-### Que es
-Una nueva pantalla de escaneo masivo orientada a la **colecta/retiro** de paquetes (ML Flex u otras plataformas). Similar al Modo Flex en la experiencia de escaneo continuo, pero con una diferencia clave:
+### Datos a eliminar
 
-- **Modo Flex**: escanea, autoasigna, y luego inicia reparto (entrega)
-- **Modo Colecta**: escanea, agrupa, y confirma el retiro de todos juntos
+Solo existen **2 pedidos** anteriores al 09-02-2026 (del 3 y 4 de febrero). Cada uno tiene:
+- 1 registro en `ecommerce_orders`
+- 1 registro en `envios` (vinculado)
+- 1 registro en `seller_cuenta_corriente` (cargo asociado)
 
-### Flujo del usuario
+Los 1602 pedidos restantes son del 09/02 en adelante y se mantienen intactos.
 
-1. El chofer abre "Colecta Rapida" desde la pantalla de escaneo
-2. Escanea paquetes continuamente (QR de ML u otros) — se van acumulando en una lista con contador
-3. Ve la lista de paquetes escaneados con tracking, destinatario y direccion
-4. Puede quitar paquetes individuales si se equivoco
-5. Presiona **"CONFIRMAR COLECTA"** que cambia todos los envios a `recogido` / `estado_retiro: retirado` en lote
-6. Se registra el historial para cada envio
+### Orden de eliminacion
 
-### Diferencias con Modo Flex
+Para respetar las dependencias entre tablas, se eliminan en este orden:
 
-| Aspecto | Modo Flex | Modo Colecta |
-|---|---|---|
-| Proposito | Autoasignar + repartir | Solo retirar/colectar |
-| Estado resultante | `en_reparto` | `recogido` |
-| Crea ruta | Si | No |
-| Navegacion post-accion | Va a ruta activa | Vuelve a pantalla de escaneo |
-| Boton principal | "INICIAR REPARTO" | "CONFIRMAR COLECTA (N)" |
+1. **seller_cuenta_corriente** - Eliminar los cargos vinculados a esos envios
+2. **envio_historial** - Eliminar historial de esos envios
+3. **ecommerce_orders** - Eliminar los 2 pedidos
+4. **envios** - Eliminar los 2 envios asociados
 
-### Cambios tecnicos
+### Detalle tecnico
 
-**1. Nuevo componente: `src/components/mobile/CollectScanScreen.tsx`**
-- Reutiliza el patron de `FlexScanScreen` para el escaneo continuo
-- Lista de paquetes acumulados con contador
-- Boton "CONFIRMAR COLECTA" que ejecuta un update en lote
-- Al confirmar:
-  - Actualiza `envios` SET `estado = 'recogido'`, `estado_retiro = 'retirado'`, `fecha_recogida = now()`, `chofer_id = usuario actual`
-  - Inserta registros en `envio_historial` para cada paquete
-- Muestra toast de exito con cantidad confirmada y limpia la lista
+Se ejecutaran queries DELETE usando los IDs de los 2 envios vinculados:
+- Envio 1: `d8eb0684-f60c-4e26-96b3-a3474bac5390`
+- Envio 2: `3da241a8-3525-4041-afb7-f29eb3756c88`
 
-**2. Nuevo hook: `src/hooks/useCollectPackages.ts`**
-- Similar a `useFlexPackages` pero simplificado (sin geocodificacion, sin optimizacion de ruta)
-- Funciones: `addPackageByTracking`, `removePackage`, `clearPackages`, `confirmCollection`
-- `confirmCollection` hace el update masivo de estado + historial
+Y los 2 pedidos:
+- Pedido 1: `bad114c8-d4b0-49a3-8457-6014e8b2780f`
+- Pedido 2: `c1e34a9d-f20c-4ab6-8248-7ea67a4cb8ab`
 
-**3. Integracion en `MobileScanTab.tsx`**
-- El boton "Colectar" existente (linea 491) abre la nueva pantalla `CollectScanScreen` en lugar del escaner individual
-- Se agrega un estado para mostrar/ocultar la pantalla de colecta
+### Sobre la sincronizacion futura
 
-**4. Sin cambios en base de datos**
-- Usa los mismos campos existentes (`estado`, `estado_retiro`, `fecha_recogida`, `chofer_id`)
-- Usa la misma tabla `envio_historial` para el registro
+Tambien se aplicara el filtro de fecha en `mercadolibre-sync` para que solo traiga pedidos recientes (ultimos 7 dias), evitando que se vuelvan a sincronizar pedidos viejos. Este cambio ya estaba aprobado en el plan anterior.
 
-### Experiencia de usuario
+### Sin cambios en la estructura de la base de datos ni en el codigo frontend.
 
-- Pantalla oscura estilo mobile con contador grande "N paquetes escaneados"
-- Escaneo continuo con feedback haptico/sonoro (igual que Flex)
-- Lista scrolleable de paquetes con tracking y datos basicos
-- Boton verde grande "CONFIRMAR COLECTA (N)" al fondo
-- Al confirmar, muestra resumen y vuelve a la pantalla de escaneo
