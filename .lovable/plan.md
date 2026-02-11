@@ -1,52 +1,34 @@
 
-## Fix: Driver Can't Proceed After Reporting Incident
+## Limpieza de datos históricos y mejora de filtros
 
-### Problem
-When a driver reports an incident (e.g., "client absent") on a shipment, the app correctly moves the "Next Stop" indicator to the next pending delivery. However, the **stop list** and **map** still show the incident shipment as "not completed" because the `isCompleted` check doesn't include the `incidencia` status. This confuses the driver and makes it seem like they're stuck.
+### Problema
+- La página de **Envíos** carga TODOS los envíos sin límite de fecha, mostrando 407 envíos viejos (desde enero 10)
+- La página de **Pedidos e-commerce** filtra por día (hoy por defecto), así que no debería mostrar datos viejos. Si ves datos viejos ahí, es porque seleccionaste otra fecha en el calendario
+- Los 407 envíos viejos son de pruebas/datos previos (todos entregados o cancelados)
 
-### Root Cause
-In `ActiveRouteNavigation.tsx`, there are 3 places where shipment completion is checked, but only 2 of them include `incidencia`:
+### Plan
 
-- `stats` calculation (line 259): Includes `incidencia` -- correct
-- `nextStop` calculation (line 280): Skips `incidencia` -- correct  
-- `isCompleted` in the stop list (line 735): Does NOT include `incidencia` -- **BUG**
-- `isCompleted` in map markers (line 305): Does NOT include `incidencia` -- **BUG**
-- `navigateFullRoute` filter (line 398): Does NOT exclude `incidencia` -- **BUG**
+**Paso 1: Limpiar envíos viejos de la base de datos**
 
-### Fix
+Eliminar los 407 envíos anteriores al 9 de febrero y sus registros asociados (historial, detalles, etc.). Todos están en estado "entregado" o "cancelado", así que no hay impacto operativo.
 
-**File: `src/pages/ActiveRouteNavigation.tsx`**
+**Paso 2: Agregar filtro de fecha por defecto en la página de Envíos**
 
-1. **Stop list `isCompleted` check** (line 735) - Add `incidencia` status:
-```typescript
-// Before:
-const isCompleted = envio.estado === 'entregado' || envio.estado === 'devuelto' || envio.estado_retiro === 'retirado';
+Actualmente `Shipments.tsx` no tiene ningún filtro de fecha. Se agregará:
+- Un selector de rango de fechas (similar al de pedidos e-commerce)
+- Por defecto mostrará solo los envíos del día actual
+- El usuario podrá cambiar la fecha para ver otros días
 
-// After:
-const isCompleted = envio.estado === 'entregado' || envio.estado === 'devuelto' || envio.estado === 'incidencia' || envio.estado_retiro === 'retirado';
-```
+### Detalle técnico
 
-2. **Map markers `isCompleted` check** (line 305) - Same fix:
-```typescript
-// Before:
-const isCompleted = envio.estado === 'entregado' || envio.estado === 'devuelto' || envio.estado_retiro === 'retirado';
+**Base de datos:**
+1. Eliminar registros de `envio_historial` donde el envío es anterior al 9/02
+2. Eliminar registros de `envio_detalles` asociados
+3. Eliminar registros de `ruta_paradas` asociados
+4. Eliminar los 407 envíos de la tabla `envios`
 
-// After:
-const isCompleted = envio.estado === 'entregado' || envio.estado === 'devuelto' || envio.estado === 'incidencia' || envio.estado_retiro === 'retirado';
-```
-
-3. **Google Maps route filter** (line 393-398) - Exclude `incidencia` from pending stops:
-```typescript
-// Before:
-return envio.estado !== 'entregado' && envio.estado !== 'devuelto';
-
-// After:
-return envio.estado !== 'entregado' && envio.estado !== 'devuelto' && envio.estado !== 'incidencia';
-```
-
-### Result
-After these changes, when a driver reports an incident or marks "client absent":
-- The stop will immediately appear greyed out (completed) in the list
-- The "Next Stop" card will show the next pending delivery
-- The Google Maps navigation will skip incident stops
-- The driver can seamlessly continue with remaining deliveries
+**Archivo: `src/pages/Shipments.tsx`:**
+- Agregar estado `dateFilter` con fecha de hoy como valor por defecto
+- Agregar componente Calendar/Popover para seleccionar fecha
+- Modificar la query para filtrar por `startOfDay` / `endOfDay` de la fecha seleccionada
+- Aplicar el mismo patrón que ya usa `ecommerce/Orders.tsx`
