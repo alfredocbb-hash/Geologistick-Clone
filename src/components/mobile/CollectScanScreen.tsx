@@ -40,25 +40,20 @@ export function CollectScanScreen({ onClose }: CollectScanScreenProps) {
 
   const handleQRScanned = useCallback(async (result: string) => {
     const parsed = parseQRCode(result);
-    let added = false;
+    // Increment counter immediately so the badge updates instantly
+    setScanSessionCount(prev => prev + 1);
 
     if (parsed.type === 'ml_shipment') {
       const mlTracking = `ML-${parsed.value}`;
       const pkg = await addPackageByTracking(mlTracking);
-      added = !!pkg;
-      if (!added) {
+      if (!pkg) {
         toast.warning(`ML-${parsed.value}: no encontrado en el sistema`);
       }
     } else if (parsed.type === 'tracking') {
       const pkg = await addPackageByTracking(parsed.value);
-      added = !!pkg;
-      if (!added) {
+      if (!pkg) {
         toast.warning(`${parsed.value}: no encontrado`);
       }
-    }
-
-    if (added) {
-      setScanSessionCount(prev => prev + 1);
     }
   }, [addPackageByTracking]);
 

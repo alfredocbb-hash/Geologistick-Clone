@@ -53,11 +53,34 @@ export default function QRScanner({ onScan, onClose, continuousMode = false, sca
   const listenerCleanupRef = useRef<(() => void) | null>(null);
   const scanCooldownRef = useRef(false);
   const scannedCodesRef = useRef<Set<string>>(new Set());
+  const audioCtxRef = useRef<AudioContext | null>(null);
   const autoFallbackTriggeredRef = useRef(false);
   
   // Ref to always have the latest onScan callback (avoids stale closures in continuous mode)
   const onScanRef = useRef(onScan);
   useEffect(() => { onScanRef.current = onScan; }, [onScan]);
+
+  // Beep sound using AudioContext oscillator (works on all platforms)
+  const playBeepSound = useCallback(() => {
+    try {
+      if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      const ctx = audioCtxRef.current;
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      oscillator.type = 'square';
+      oscillator.frequency.setValueAtTime(1800, ctx.currentTime);
+      gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+      oscillator.start(ctx.currentTime);
+      oscillator.stop(ctx.currentTime + 0.1);
+    } catch (e) {
+      console.warn('[QRScanner] Could not play beep:', e);
+    }
+  }, []);
   
   // Use centralized native platform detection
   const { isNative, isAndroid, isIOS, platform } = useNativePlatform();
@@ -322,8 +345,7 @@ export default function QRScanner({ onScan, onClose, continuousMode = false, sca
             scanCooldownRef.current = true;
             setTimeout(() => { scanCooldownRef.current = false; }, 2000);
             try { navigator.vibrate?.(200); } catch(e) {}
-            const beep = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1f');
-            beep.play().catch(() => {});
+            playBeepSound();
             onScanRef.current(barcode.rawValue);
           } else {
             await cleanupNativeScanner();
@@ -546,8 +568,7 @@ export default function QRScanner({ onScan, onClose, continuousMode = false, sca
             scanCooldownRef.current = true;
             setTimeout(() => { scanCooldownRef.current = false; }, 2000);
             try { navigator.vibrate?.(200); } catch(e) {}
-            const beep = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1f');
-            beep.play().catch(() => {});
+            playBeepSound();
             onScanRef.current(decodedText);
           } else {
             onScanRef.current(decodedText);
