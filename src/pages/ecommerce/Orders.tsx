@@ -95,7 +95,8 @@ export default function Orders() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [fulfillmentFilter, setFulfillmentFilter] = useState<string>('all');
-  const [dateFilter, setDateFilter] = useState<Date>(new Date());
+  const [dateFrom, setDateFrom] = useState<Date>(new Date());
+  const [dateTo, setDateTo] = useState<Date>(new Date());
   const [sellerFilter, setSellerFilter] = useState<string>('all');
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [detailsOrder, setDetailsOrder] = useState<Order | null>(null);
@@ -208,7 +209,7 @@ export default function Orders() {
 
   // Fetch orders with seller info — filtered by date server-side
   const { data: orders, isLoading } = useQuery({
-    queryKey: ['ecommerce-orders', tenantId, dateFilter?.toISOString()?.slice(0, 10), sellerFilter],
+    queryKey: ['ecommerce-orders', tenantId, dateFrom.toISOString().slice(0, 10), dateTo.toISOString().slice(0, 10), sellerFilter],
     queryFn: async () => {
       let query = supabase
         .from('ecommerce_orders')
@@ -218,12 +219,10 @@ export default function Orders() {
         `)
         .eq('tenant_id', tenantId);
 
-      // Date filter
-      if (dateFilter) {
-        const dayStart = startOfDay(dateFilter).toISOString();
-        const dayEnd = endOfDay(dateFilter).toISOString();
-        query = query.gte('created_at', dayStart).lte('created_at', dayEnd);
-      }
+      // Date range filter
+      const dayStart = startOfDay(dateFrom).toISOString();
+      const dayEnd = endOfDay(dateTo).toISOString();
+      query = query.gte('created_at', dayStart).lte('created_at', dayEnd);
 
       // Seller filter
       if (sellerFilter !== 'all') {
@@ -326,24 +325,35 @@ export default function Orders() {
         </div>
         <Popover>
           <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              className={cn(
-                "w-[180px] justify-start text-left font-normal",
-                !dateFilter && "text-muted-foreground"
-              )}
-            >
+            <Button variant="outline" className="w-[160px] justify-start text-left font-normal">
               <CalendarIcon className="mr-2 h-4 w-4" />
-              {dateFilter ? format(dateFilter, 'dd/MM/yyyy', { locale: es }) : 'Fecha'}
+              {format(dateFrom, 'dd/MM/yyyy', { locale: es })}
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="start">
             <Calendar
               mode="single"
-              selected={dateFilter}
-              onSelect={(d) => d && setDateFilter(d)}
+              selected={dateFrom}
+              onSelect={(d) => d && setDateFrom(d)}
               locale={es}
-              initialFocus
+              className="pointer-events-auto"
+            />
+          </PopoverContent>
+        </Popover>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" className="w-[160px] justify-start text-left font-normal">
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              {format(dateTo, 'dd/MM/yyyy', { locale: es })}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={dateTo}
+              onSelect={(d) => d && setDateTo(d)}
+              locale={es}
+              className="pointer-events-auto"
             />
           </PopoverContent>
         </Popover>
