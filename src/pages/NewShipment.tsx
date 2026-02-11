@@ -382,8 +382,8 @@ export default function NewShipment() {
       if (cp.concepto?.activo === false) return false;
       
       const codigo = cp.concepto?.codigo?.toLowerCase();
-      if (codigo === 'retiro' && !tieneRetiro) return false;
-      if (codigo === 'entrega' && !tieneEntrega) return false;
+      if (codigo?.includes('retiro') && !tieneRetiro) return false;
+      if (codigo?.includes('entrega') && !tieneEntrega) return false;
       return true;
     });
 
