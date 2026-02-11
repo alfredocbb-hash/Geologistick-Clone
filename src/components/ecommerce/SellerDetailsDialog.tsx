@@ -179,6 +179,15 @@ export function SellerDetailsDialog({ open, onOpenChange, seller }: SellerDetail
                   </a>
                 </div>
               )}
+              {seller.store_id && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Store className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-muted-foreground">Store ID:</span>
+                  <Badge variant="outline" className="font-mono text-xs">
+                    {seller.store_id}
+                  </Badge>
+                </div>
+              )}
             </CardContent>
           </Card>
 
