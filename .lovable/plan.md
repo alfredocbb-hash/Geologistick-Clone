@@ -1,48 +1,60 @@
 
 
-## Problema Detectado
+## Modo Colecta Rapida
 
-Los pedidos de Kingdom Vintage aparecen como **pendientes** y con tracking del sistema (`94A-ENV-...`) en lugar del tracking nativo de MercadoLibre (`ML-{shipment_id}`).
+### Que es
+Una nueva pantalla de escaneo masivo orientada a la **colecta/retiro** de paquetes (ML Flex u otras plataformas). Similar al Modo Flex en la experiencia de escaneo continuo, pero con una diferencia clave:
 
-### Causa Raiz
+- **Modo Flex**: escanea, autoasigna, y luego inicia reparto (entrega)
+- **Modo Colecta**: escanea, agrupa, y confirma el retiro de todos juntos
 
-1. **Estado Pendiente**: Es correcto. ML reporta estos pedidos como `ready_to_ship`, lo cual se mapea a "Pendiente" en el sistema. Significa que estan listos para ser recogidos.
+### Flujo del usuario
 
-2. **Tracking incorrecto**: La funcion backend `mercadolibre-sync` fue actualizada en el codigo para usar `ML-{shipment_id}` como tracking, pero la version desplegada en produccion todavia usa la funcion `generate_tracking_number()` del sistema. Esto afecta a **22 envios** creados desde el 10 de febrero en adelante.
+1. El chofer abre "Colecta Rapida" desde la pantalla de escaneo
+2. Escanea paquetes continuamente (QR de ML u otros) — se van acumulando en una lista con contador
+3. Ve la lista de paquetes escaneados con tracking, destinatario y direccion
+4. Puede quitar paquetes individuales si se equivoco
+5. Presiona **"CONFIRMAR COLECTA"** que cambia todos los envios a `recogido` / `estado_retiro: retirado` en lote
+6. Se registra el historial para cada envio
 
-## Plan de Correccion
+### Diferencias con Modo Flex
 
-### Paso 1: Redesplegar la funcion de sincronizacion
-Asegurar que la funcion `mercadolibre-sync` se despliegue con el codigo actual que genera tracking `ML-{id}`.
+| Aspecto | Modo Flex | Modo Colecta |
+|---|---|---|
+| Proposito | Autoasignar + repartir | Solo retirar/colectar |
+| Estado resultante | `en_reparto` | `recogido` |
+| Crea ruta | Si | No |
+| Navegacion post-accion | Va a ruta activa | Vuelve a pantalla de escaneo |
+| Boton principal | "INICIAR REPARTO" | "CONFIRMAR COLECTA (N)" |
 
-### Paso 2: Corregir tracking existentes
-Actualizar los 22 envios que tienen tracking `94A-ENV-...` pero tienen `ml_shipment_id`, cambiandoles el tracking a `ML-{ml_shipment_id}`:
+### Cambios tecnicos
 
-```sql
-UPDATE envios 
-SET tracking_number = 'ML-' || ml_shipment_id::TEXT
-WHERE ml_shipment_id IS NOT NULL 
-AND tracking_number NOT LIKE 'ML-%';
-```
+**1. Nuevo componente: `src/components/mobile/CollectScanScreen.tsx`**
+- Reutiliza el patron de `FlexScanScreen` para el escaneo continuo
+- Lista de paquetes acumulados con contador
+- Boton "CONFIRMAR COLECTA" que ejecuta un update en lote
+- Al confirmar:
+  - Actualiza `envios` SET `estado = 'recogido'`, `estado_retiro = 'retirado'`, `fecha_recogida = now()`, `chofer_id = usuario actual`
+  - Inserta registros en `envio_historial` para cada paquete
+- Muestra toast de exito con cantidad confirmada y limpia la lista
 
-Tambien actualizar los `ecommerce_orders` correspondientes:
+**2. Nuevo hook: `src/hooks/useCollectPackages.ts`**
+- Similar a `useFlexPackages` pero simplificado (sin geocodificacion, sin optimizacion de ruta)
+- Funciones: `addPackageByTracking`, `removePackage`, `clearPackages`, `confirmCollection`
+- `confirmCollection` hace el update masivo de estado + historial
 
-```sql
-UPDATE ecommerce_orders 
-SET ml_tracking_number = 'ML-' || eo.ml_shipment_id::TEXT
-FROM (
-  SELECT id, ml_shipment_id FROM ecommerce_orders 
-  WHERE ml_tracking_number IS NULL AND ml_shipment_id IS NOT NULL
-) eo
-WHERE ecommerce_orders.id = eo.id;
-```
+**3. Integracion en `MobileScanTab.tsx`**
+- El boton "Colectar" existente (linea 491) abre la nueva pantalla `CollectScanScreen` en lugar del escaner individual
+- Se agrega un estado para mostrar/ocultar la pantalla de colecta
 
-### Paso 3: Verificacion
-Confirmar que no quedan envios ML con tracking del sistema.
+**4. Sin cambios en base de datos**
+- Usa los mismos campos existentes (`estado`, `estado_retiro`, `fecha_recogida`, `chofer_id`)
+- Usa la misma tabla `envio_historial` para el registro
 
-## Detalle Tecnico
+### Experiencia de usuario
 
-- **Archivos**: No se requieren cambios de codigo (el codigo ya esta correcto)
-- **Funcion a redesplegar**: `mercadolibre-sync`
-- **Registros afectados**: 22 envios en tabla `envios`
-- **Riesgo**: Bajo. Solo cambia el identificador visual, no afecta la logica de negocio ni la sincronizacion con ML
+- Pantalla oscura estilo mobile con contador grande "N paquetes escaneados"
+- Escaneo continuo con feedback haptico/sonoro (igual que Flex)
+- Lista scrolleable de paquetes con tracking y datos basicos
+- Boton verde grande "CONFIRMAR COLECTA (N)" al fondo
+- Al confirmar, muestra resumen y vuelve a la pantalla de escaneo
