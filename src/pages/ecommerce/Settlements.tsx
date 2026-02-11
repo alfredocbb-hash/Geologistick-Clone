@@ -116,8 +116,8 @@ export default function Settlements() {
 
   // Liquidaciones states
   const [calcSeller, setCalcSeller] = useState<string>('');
-  const [fechaInicio, setFechaInicio] = useState<Date>(startOfMonth(subMonths(new Date(), 1)));
-  const [fechaFin, setFechaFin] = useState<Date>(endOfMonth(subMonths(new Date(), 1)));
+  const [fechaInicio, setFechaInicio] = useState<Date>(startOfMonth(new Date()));
+  const [fechaFin, setFechaFin] = useState<Date>(endOfMonth(new Date()));
   const [calculatedMovements, setCalculatedMovements] = useState<CalculatedMovement[]>([]);
   const [calculatedEnvios, setCalculatedEnvios] = useState<CalculatedEnvio[]>([]);
   const [calculatedTotals, setCalculatedTotals] = useState<{
@@ -264,6 +264,17 @@ export default function Settlements() {
                 }
               }
               if (precioFinal > 0) break;
+            }
+            // Fallback: use broadest zone
+            if (precioFinal === 0) {
+              const fallback = zoneTarifas
+                .filter(t => t.zona_destino && t.zona_destino.split(',').length > 3)
+                .sort((a, b) => (b.zona_destino?.split(',').length || 0) - (a.zona_destino?.split(',').length || 0))[0];
+              if (fallback) {
+                precioFinal = fallback.precio_base || 0;
+                precioCalculado = true;
+                zonaMatch = `${fallback.nombre} (fallback)`;
+              }
             }
           }
 

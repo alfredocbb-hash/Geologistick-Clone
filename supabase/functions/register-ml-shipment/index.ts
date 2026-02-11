@@ -288,8 +288,19 @@ serve(async (req) => {
           if (precioTotal > 0) break;
         }
 
+        // Fallback: use the broadest zone (most cities listed) as catch-all
         if (precioTotal === 0) {
-          console.log('[register-ml-shipment] No zone match for city:', city);
+          const fallback = zoneTarifas
+            .filter(t => t.zona_destino && t.zona_destino.split(',').length > 3)
+            .sort((a, b) => (b.zona_destino?.split(',').length || 0) - (a.zona_destino?.split(',').length || 0))[0];
+          if (fallback) {
+            precioTotal = fallback.precio_base || 0;
+            tarifaIdMatch = fallback.id;
+            tarifaMetodo = 'zona_fallback';
+            console.log('[register-ml-shipment] Zone fallback applied:', fallback.zona_destino?.substring(0, 50), '-> precio:', precioTotal);
+          } else {
+            console.log('[register-ml-shipment] No zone match for city:', city);
+          }
         }
       }
     }
