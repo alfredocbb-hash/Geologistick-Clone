@@ -150,6 +150,20 @@ serve(async (req) => {
       || mlShipment.base_cost 
       || 0;
 
+    // Extract delivery time frame and map to horario_preferido_entrega
+    const timeFrame = mlShipment.lead_time?.estimated_delivery_time?.time_frame;
+    let horarioPreferido = 'cualquier_hora';
+    if (timeFrame && typeof timeFrame.from === 'number' && typeof timeFrame.to === 'number') {
+      if (timeFrame.to <= 13) {
+        horarioPreferido = 'manana';
+      } else if (timeFrame.from >= 17) {
+        horarioPreferido = 'noche';
+      } else if (timeFrame.from >= 12) {
+        horarioPreferido = 'tarde';
+      }
+    }
+    console.log('[register-ml-shipment] Delivery time_frame:', JSON.stringify(timeFrame), '-> horario:', horarioPreferido);
+
     console.log('[register-ml-shipment] ML Shipment data:', {
       id: mlShipment.id,
       status: mlShipment.status,
@@ -300,6 +314,7 @@ serve(async (req) => {
           tarifa_id: seller.tarifa_id,
           tipo_servicio: 'express',
           tipo_servicio_detalle: 'ML Flex',
+          horario_preferido_entrega: horarioPreferido,
           pago_contra_entrega: false,
           descripcion: `Pedido MercadoLibre Flex #${mlShipment.order_id || ml_shipment_id}`,
           sucursal_origen_id: sucursalOrigenId, // Track who did the pickup

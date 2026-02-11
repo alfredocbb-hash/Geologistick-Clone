@@ -15,6 +15,7 @@ export interface FlexPackage {
   entrega_lat: number | null;
   entrega_lng: number | null;
   estado: string | null;
+  horario_preferido_entrega: string | null;
   wasTransferred?: boolean;
   previousDriver?: string;
 }
@@ -48,7 +49,51 @@ function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: numbe
   return R * c;
 }
 
-// Nearest-neighbor algorithm for route optimization
+// Priority order for time slots
+const TIME_SLOT_PRIORITY: Record<string, number> = {
+  manana: 0,
+  tarde: 1,
+  noche: 2,
+  cualquier_hora: 3,
+};
+
+function getTimeSlotPriority(horario: string | null): number {
+  return TIME_SLOT_PRIORITY[horario || 'cualquier_hora'] ?? 3;
+}
+
+// Nearest-neighbor within a group
+function nearestNeighborWithinGroup(
+  group: FlexPackage[],
+  startLat: number,
+  startLng: number
+): { sorted: FlexPackage[]; lastLat: number; lastLng: number } {
+  const sorted: FlexPackage[] = [];
+  const remaining = [...group];
+  let currentLat = startLat;
+  let currentLng = startLng;
+
+  while (remaining.length > 0) {
+    let nearestIndex = 0;
+    let nearestDistance = Infinity;
+
+    remaining.forEach((pkg, index) => {
+      const distance = calculateDistance(currentLat, currentLng, pkg.entrega_lat!, pkg.entrega_lng!);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestIndex = index;
+      }
+    });
+
+    const nearest = remaining.splice(nearestIndex, 1)[0];
+    sorted.push(nearest);
+    currentLat = nearest.entrega_lat!;
+    currentLng = nearest.entrega_lng!;
+  }
+
+  return { sorted, lastLat: currentLat, lastLng: currentLng };
+}
+
+// Nearest-neighbor algorithm with time-slot grouping
 function nearestNeighborSort(
   packages: FlexPackage[],
   startLat: number,
@@ -56,38 +101,31 @@ function nearestNeighborSort(
 ): FlexPackage[] {
   const packagesWithCoords = packages.filter(p => p.entrega_lat && p.entrega_lng);
   const packagesWithoutCoords = packages.filter(p => !p.entrega_lat || !p.entrega_lng);
-  
+
   if (packagesWithCoords.length === 0) return packages;
-  
+
+  // Group by time slot
+  const groups = new Map<number, FlexPackage[]>();
+  packagesWithCoords.forEach(pkg => {
+    const priority = getTimeSlotPriority(pkg.horario_preferido_entrega);
+    if (!groups.has(priority)) groups.set(priority, []);
+    groups.get(priority)!.push(pkg);
+  });
+
+  // Sort groups by priority, then nearest-neighbor within each group
+  const sortedPriorities = [...groups.keys()].sort((a, b) => a - b);
   const sorted: FlexPackage[] = [];
-  const remaining = [...packagesWithCoords];
   let currentLat = startLat;
   let currentLng = startLng;
-  
-  while (remaining.length > 0) {
-    let nearestIndex = 0;
-    let nearestDistance = Infinity;
-    
-    remaining.forEach((pkg, index) => {
-      const distance = calculateDistance(
-        currentLat,
-        currentLng,
-        pkg.entrega_lat!,
-        pkg.entrega_lng!
-      );
-      if (distance < nearestDistance) {
-        nearestDistance = distance;
-        nearestIndex = index;
-      }
-    });
-    
-    const nearest = remaining.splice(nearestIndex, 1)[0];
-    sorted.push(nearest);
-    currentLat = nearest.entrega_lat!;
-    currentLng = nearest.entrega_lng!;
+
+  for (const priority of sortedPriorities) {
+    const group = groups.get(priority)!;
+    const result = nearestNeighborWithinGroup(group, currentLat, currentLng);
+    sorted.push(...result.sorted);
+    currentLat = result.lastLat;
+    currentLng = result.lastLng;
   }
-  
-  // Add packages without coordinates at the end
+
   return [...sorted, ...packagesWithoutCoords];
 }
 
@@ -235,6 +273,7 @@ export function useFlexPackages(): UseFlexPackagesReturn {
         entrega_lat: envio.entrega_lat,
         entrega_lng: envio.entrega_lng,
         estado: envio.estado,
+        horario_preferido_entrega: envio.horario_preferido_entrega,
         wasTransferred,
         previousDriver,
       };
