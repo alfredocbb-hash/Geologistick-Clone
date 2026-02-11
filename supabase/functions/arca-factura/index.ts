@@ -34,7 +34,8 @@ const INVOICE_CODES = {
 };
 
 interface FacturaRequest {
-  envio_id: string;
+  envio_id?: string;
+  liquidacion_seller_id?: string;
   tipo_comprobante: 'A' | 'B' | 'C';
   receptor: {
     cuit?: string;
@@ -123,7 +124,8 @@ async function updateInvoiceNumber(supabase: any, tenantId: string, tipo: 'A' | 
 async function createFacturaRecord(
   // deno-lint-ignore no-explicit-any
   supabase: any,
-  envioId: string,
+  envioId: string | null,
+  liquidacionSellerId: string | null,
   tenantId: string,
   tipoComprobante: 'A' | 'B' | 'C',
   puntoVenta: number,
@@ -135,24 +137,28 @@ async function createFacturaRecord(
   userId: string | null
 // deno-lint-ignore no-explicit-any
 ): Promise<any> {
+  const insertData: Record<string, unknown> = {
+    tenant_id: tenantId,
+    tipo_comprobante: tipoComprobante,
+    punto_venta: puntoVenta,
+    numero_comprobante: numeroComprobante,
+    receptor_cuit: receptor.cuit || receptor.dni,
+    receptor_nombre: receptor.nombre,
+    receptor_condicion_iva: receptor.condicion_iva,
+    receptor_domicilio: receptor.domicilio,
+    importe_neto: importeNeto,
+    importe_iva: importeIva,
+    importe_total: importeTotal,
+    estado: 'pendiente',
+    created_by: userId,
+  };
+
+  if (envioId) insertData.envio_id = envioId;
+  if (liquidacionSellerId) insertData.liquidacion_seller_id = liquidacionSellerId;
+
   const { data, error } = await supabase
     .from('facturas')
-    .insert({
-      envio_id: envioId,
-      tenant_id: tenantId,
-      tipo_comprobante: tipoComprobante,
-      punto_venta: puntoVenta,
-      numero_comprobante: numeroComprobante,
-      receptor_cuit: receptor.cuit || receptor.dni,
-      receptor_nombre: receptor.nombre,
-      receptor_condicion_iva: receptor.condicion_iva,
-      receptor_domicilio: receptor.domicilio,
-      importe_neto: importeNeto,
-      importe_iva: importeIva,
-      importe_total: importeTotal,
-      estado: 'pendiente',
-      created_by: userId,
-    })
+    .insert(insertData)
     .select()
     .single();
 
@@ -170,18 +176,10 @@ async function emitirFacturaARCA(
   importeIva: number,
   importeTotal: number
 ): Promise<{ success: boolean; cae?: string; caeVencimiento?: string; error?: string }> {
-  // TODO: Implement full ARCA/AFIP integration
-  // This requires:
-  // 1. WSAA authentication with X.509 certificate
-  // 2. WSFEv1 call to FECAESolicitar
-  // 
-  // For now, we simulate the process in sandbox mode
-  
   if (environment === 'sandbox') {
     const cae = `${Date.now()}${Math.floor(Math.random() * 10000)}`;
     const caeVencimiento = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     
-    // Log only operation status, not sensitive data
     console.log(`SANDBOX MODE: Simulating ARCA invoice emission - tipo: ${tipoComprobante}, numero: ${numeroComprobante}`);
     
     return {
@@ -191,7 +189,6 @@ async function emitirFacturaARCA(
     };
   }
   
-  // Production mode - requires actual AFIP integration
   return {
     success: false,
     error: 'Integración ARCA en producción requiere certificados configurados',
@@ -219,7 +216,6 @@ serve(async (req) => {
       userId = user?.id || null;
       
       if (userId) {
-        // Get user's tenant_id from profile
         const { data: profile } = await supabase
           .from('profiles')
           .select('tenant_id')
@@ -238,9 +234,17 @@ serve(async (req) => {
     }
 
     const body: FacturaRequest = await req.json();
-    const { envio_id, tipo_comprobante, receptor, importe_total } = body;
+    const { envio_id, liquidacion_seller_id, tipo_comprobante, receptor, importe_total } = body;
 
-    if (!envio_id || !tipo_comprobante || !receptor) {
+    // Must have either envio_id or liquidacion_seller_id
+    if (!envio_id && !liquidacion_seller_id) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Se requiere envio_id o liquidacion_seller_id' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!tipo_comprobante || !receptor) {
       return new Response(
         JSON.stringify({ success: false, error: 'Faltan campos requeridos' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -254,30 +258,43 @@ serve(async (req) => {
       );
     }
 
-    let environment: 'sandbox' | 'production' = 'production';
-    let arcaConfig = await getARCAConfig(supabase, tenantId, 'production');
-    
-    if (!arcaConfig) {
-      environment = 'sandbox';
-      arcaConfig = await getARCAConfig(supabase, tenantId, 'sandbox');
+    let total: number;
+
+    if (liquidacion_seller_id) {
+      // Invoice for a seller settlement
+      const { data: liquidacion, error: liqError } = await supabase
+        .from('liquidaciones_seller')
+        .select('*')
+        .eq('id', liquidacion_seller_id)
+        .single();
+
+      if (liqError || !liquidacion) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Liquidación no encontrada' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      total = importe_total ?? Math.abs(liquidacion.saldo_periodo || 0);
+    } else {
+      // Invoice for a shipment (original flow)
+      const { data: envio, error: envioError } = await supabase
+        .from('envios')
+        .select('*')
+        .eq('id', envio_id)
+        .eq('tenant_id', tenantId)
+        .single();
+
+      if (envioError || !envio) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Envío no encontrado o no pertenece a tu empresa' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      total = importe_total ?? envio.precio_total;
     }
 
-    // Verify the envio belongs to this tenant
-    const { data: envio, error: envioError } = await supabase
-      .from('envios')
-      .select('*')
-      .eq('id', envio_id)
-      .eq('tenant_id', tenantId)
-      .single();
-
-    if (envioError || !envio) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Envío no encontrado o no pertenece a tu empresa' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const total = importe_total ?? envio.precio_total;
     let importeNeto: number;
     let importeIva: number;
 
@@ -289,10 +306,19 @@ serve(async (req) => {
       importeIva = 0;
     }
 
+    let environment: 'sandbox' | 'production' = 'production';
+    let arcaConfig = await getARCAConfig(supabase, tenantId, 'production');
+    
+    if (!arcaConfig) {
+      environment = 'sandbox';
+      arcaConfig = await getARCAConfig(supabase, tenantId, 'sandbox');
+    }
+
     if (!arcaConfig) {
       const factura = await createFacturaRecord(
         supabase,
-        envio_id,
+        envio_id || null,
+        liquidacion_seller_id || null,
         tenantId,
         tipo_comprobante,
         0,
@@ -304,13 +330,16 @@ serve(async (req) => {
         userId
       );
 
-      await supabase
-        .from('envios')
-        .update({
-          requiere_factura: true,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', envio_id);
+      // Update envio if applicable
+      if (envio_id) {
+        await supabase
+          .from('envios')
+          .update({
+            requiere_factura: true,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', envio_id);
+      }
 
       return new Response(
         JSON.stringify({
@@ -328,7 +357,8 @@ serve(async (req) => {
 
     const factura = await createFacturaRecord(
       supabase,
-      envio_id,
+      envio_id || null,
+      liquidacion_seller_id || null,
       tenantId,
       tipo_comprobante,
       puntoVenta,
@@ -362,17 +392,31 @@ serve(async (req) => {
         })
         .eq('id', factura.id);
 
-      await supabase
-        .from('envios')
-        .update({
-          factura_cae: arcaResult.cae,
-          factura_numero: `${String(puntoVenta).padStart(4, '0')}-${String(numeroComprobante).padStart(8, '0')}`,
-          factura_tipo: tipo_comprobante,
-          factura_fecha: new Date().toISOString(),
-          requiere_factura: false,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', envio_id);
+      // Update envio if applicable
+      if (envio_id) {
+        await supabase
+          .from('envios')
+          .update({
+            factura_cae: arcaResult.cae,
+            factura_numero: `${String(puntoVenta).padStart(4, '0')}-${String(numeroComprobante).padStart(8, '0')}`,
+            factura_tipo: tipo_comprobante,
+            factura_fecha: new Date().toISOString(),
+            requiere_factura: false,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', envio_id);
+      }
+
+      // Update liquidacion if applicable
+      if (liquidacion_seller_id) {
+        await supabase
+          .from('liquidaciones_seller')
+          .update({
+            factura_id: factura.id,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', liquidacion_seller_id);
+      }
 
       await updateInvoiceNumber(supabase, tenantId, tipo_comprobante, numeroComprobante);
 

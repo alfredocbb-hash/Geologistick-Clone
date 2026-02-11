@@ -17,7 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Search, DollarSign, TrendingUp, TrendingDown, Plus, Calculator, FileText, Eye, Check, X, CalendarIcon, Download, Loader2, Printer } from 'lucide-react';
+import { Search, DollarSign, TrendingUp, TrendingDown, Plus, Calculator, FileText, Eye, Check, X, CalendarIcon, Download, Loader2, Printer, Package } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -31,6 +31,7 @@ interface Seller {
   nombre: string;
   saldo_cuenta_corriente: number;
   tiene_cuenta_corriente: boolean;
+  cliente_id: string | null;
 }
 
 interface Movement {
@@ -64,6 +65,7 @@ interface SellerLiquidacion {
   metodo_pago: string | null;
   referencia_pago: string | null;
   fecha_pago: string | null;
+  factura_id: string | null;
   seller?: { nombre: string };
 }
 
@@ -73,6 +75,16 @@ interface CalculatedMovement {
   monto: number;
   descripcion: string | null;
   referencia: string | null;
+  created_at: string;
+}
+
+interface CalculatedEnvio {
+  id: string;
+  tracking_number: string;
+  nombre_destinatario: string | null;
+  direccion_entrega: string | null;
+  precio_total: number;
+  estado: string | null;
   created_at: string;
 }
 
@@ -103,12 +115,15 @@ export default function Settlements() {
   const [fechaInicio, setFechaInicio] = useState<Date>(startOfMonth(subMonths(new Date(), 1)));
   const [fechaFin, setFechaFin] = useState<Date>(endOfMonth(subMonths(new Date(), 1)));
   const [calculatedMovements, setCalculatedMovements] = useState<CalculatedMovement[]>([]);
+  const [calculatedEnvios, setCalculatedEnvios] = useState<CalculatedEnvio[]>([]);
   const [calculatedTotals, setCalculatedTotals] = useState<{
     totalCargos: number;
     totalPagos: number;
     saldoPeriodo: number;
     saldoAnterior: number;
+    totalEnvios: number;
   } | null>(null);
+  const [previewTab, setPreviewTab] = useState('movimientos');
   const [notas, setNotas] = useState('');
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [selectedLiquidacion, setSelectedLiquidacion] = useState<SellerLiquidacion | null>(null);
@@ -125,7 +140,7 @@ export default function Settlements() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('ecommerce_sellers')
-        .select('id, nombre, saldo_cuenta_corriente, tiene_cuenta_corriente')
+        .select('id, nombre, saldo_cuenta_corriente, tiene_cuenta_corriente, cliente_id')
         .eq('tenant_id', tenantId)
         .eq('tiene_cuenta_corriente', true)
         .order('nombre');
@@ -179,15 +194,16 @@ export default function Settlements() {
     enabled: !!tenantId,
   });
 
-  // Calculate mutation
+  // Calculate mutation - now includes envíos
   const calculateMutation = useMutation({
     mutationFn: async () => {
       if (!calcSeller) throw new Error('Seleccione un seller');
 
+      const seller = sellers?.find(s => s.id === calcSeller);
       const fechaInicioStr = format(fechaInicio, 'yyyy-MM-dd');
       const fechaFinStr = format(fechaFin, 'yyyy-MM-dd') + 'T23:59:59';
 
-      // Fetch movimientos no liquidados del periodo
+      // 1. Fetch movimientos no liquidados del periodo
       const { data: movs, error } = await supabase
         .from('seller_cuenta_corriente')
         .select('*')
@@ -198,6 +214,22 @@ export default function Settlements() {
         .order('created_at', { ascending: true });
 
       if (error) throw error;
+
+      // 2. Fetch envíos del seller (via cliente_id) no liquidados en el periodo
+      let envios: CalculatedEnvio[] = [];
+      if (seller?.cliente_id) {
+        const { data: enviosData, error: enviosError } = await supabase
+          .from('envios')
+          .select('id, tracking_number, nombre_destinatario, direccion_entrega, precio_total, estado, created_at')
+          .eq('remitente_id', seller.cliente_id)
+          .gte('created_at', fechaInicioStr)
+          .lte('created_at', fechaFinStr)
+          .is('liquidacion_seller_id', null)
+          .order('created_at', { ascending: true });
+
+        if (enviosError) throw enviosError;
+        envios = (enviosData || []) as CalculatedEnvio[];
+      }
 
       const totalCargos = (movs || [])
         .filter(m => m.tipo === 'cargo')
@@ -211,24 +243,29 @@ export default function Settlements() {
         .filter(m => m.tipo === 'ajuste')
         .reduce((sum, m) => sum + (m.monto || 0), 0);
 
-      const saldoPeriodo = totalCargos - totalPagos + totalAjustes;
+      const totalEnvios = envios.reduce((sum, e) => sum + (e.precio_total || 0), 0);
+
+      const saldoPeriodo = totalCargos + totalEnvios - totalPagos + totalAjustes;
       const saldoAnterior = movs?.[0]?.saldo_anterior || 0;
 
       return {
         movements: movs || [],
+        envios,
         totals: {
           totalCargos,
           totalPagos,
           saldoPeriodo,
           saldoAnterior,
+          totalEnvios,
         },
       };
     },
     onSuccess: (data) => {
       setCalculatedMovements(data.movements);
+      setCalculatedEnvios(data.envios);
       setCalculatedTotals(data.totals);
-      if (data.movements.length === 0) {
-        toast.info('No hay movimientos sin liquidar en el período seleccionado');
+      if (data.movements.length === 0 && data.envios.length === 0) {
+        toast.info('No hay movimientos ni envíos sin liquidar en el período seleccionado');
       }
     },
     onError: (error: Error) => {
@@ -236,11 +273,11 @@ export default function Settlements() {
     },
   });
 
-  // Generate liquidacion mutation
+  // Generate liquidacion mutation - now includes envíos
   const generateMutation = useMutation({
     mutationFn: async () => {
-      if (!calcSeller || calculatedMovements.length === 0) {
-        throw new Error('No hay movimientos para liquidar');
+      if (!calcSeller || (calculatedMovements.length === 0 && calculatedEnvios.length === 0)) {
+        throw new Error('No hay movimientos ni envíos para liquidar');
       }
 
       const seller = sellers?.find(s => s.id === calcSeller);
@@ -252,12 +289,12 @@ export default function Settlements() {
           seller_id: calcSeller,
           periodo_inicio: format(fechaInicio, 'yyyy-MM-dd'),
           periodo_fin: format(fechaFin, 'yyyy-MM-dd'),
-          total_cargos: calculatedTotals?.totalCargos || 0,
+          total_cargos: (calculatedTotals?.totalCargos || 0) + (calculatedTotals?.totalEnvios || 0),
           total_pagos: calculatedTotals?.totalPagos || 0,
           saldo_periodo: calculatedTotals?.saldoPeriodo || 0,
           saldo_anterior: calculatedTotals?.saldoAnterior || 0,
           saldo_final: seller?.saldo_cuenta_corriente || 0,
-          cantidad_movimientos: calculatedMovements.length,
+          cantidad_movimientos: calculatedMovements.length + calculatedEnvios.length,
           estado: 'generada',
           notas: notas || null,
           generado_por: user?.id,
@@ -269,19 +306,33 @@ export default function Settlements() {
       if (liqError) throw liqError;
 
       // Link movements to liquidacion
-      const movIds = calculatedMovements.map(m => m.id);
-      const { error: updateError } = await supabase
-        .from('seller_cuenta_corriente')
-        .update({ liquidacion_id: liquidacion.id })
-        .in('id', movIds);
+      if (calculatedMovements.length > 0) {
+        const movIds = calculatedMovements.map(m => m.id);
+        const { error: updateError } = await supabase
+          .from('seller_cuenta_corriente')
+          .update({ liquidacion_id: liquidacion.id })
+          .in('id', movIds);
 
-      if (updateError) throw updateError;
+        if (updateError) throw updateError;
+      }
+
+      // Link envíos to liquidacion
+      if (calculatedEnvios.length > 0) {
+        const envioIds = calculatedEnvios.map(e => e.id);
+        const { error: envioUpdateError } = await (supabase
+          .from('envios') as any)
+          .update({ liquidacion_seller_id: liquidacion.id })
+          .in('id', envioIds);
+
+        if (envioUpdateError) throw envioUpdateError;
+      }
 
       return liquidacion;
     },
     onSuccess: () => {
       toast.success('Liquidación generada correctamente');
       setCalculatedMovements([]);
+      setCalculatedEnvios([]);
       setCalculatedTotals(null);
       setNotas('');
       queryClient.invalidateQueries({ queryKey: ['seller-liquidaciones'] });
@@ -346,7 +397,7 @@ export default function Settlements() {
     },
   });
 
-  // Cancel mutation
+  // Cancel mutation - now also unlinks envíos
   const cancelMutation = useMutation({
     mutationFn: async (liquidacion: SellerLiquidacion) => {
       // Unlink movements
@@ -356,6 +407,14 @@ export default function Settlements() {
         .eq('liquidacion_id', liquidacion.id);
 
       if (unlinkError) throw unlinkError;
+
+      // Unlink envíos
+      const { error: unlinkEnviosError } = await (supabase
+        .from('envios') as any)
+        .update({ liquidacion_seller_id: null })
+        .eq('liquidacion_seller_id', liquidacion.id);
+
+      if (unlinkEnviosError) throw unlinkEnviosError;
 
       // Delete liquidacion
       const { error: deleteError } = await supabase
@@ -404,6 +463,8 @@ export default function Settlements() {
         return <Badge variant="outline">{estado || 'Pendiente'}</Badge>;
     }
   };
+
+  const hasCalculatedData = calculatedMovements.length > 0 || calculatedEnvios.length > 0;
 
   if (!tenantId) {
     return (
@@ -622,7 +683,7 @@ export default function Settlements() {
                 Generar Nueva Liquidación
               </CardTitle>
               <CardDescription>
-                Seleccione un seller y período para calcular los movimientos a liquidar
+                Seleccione un seller y período para calcular movimientos y envíos a liquidar
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -703,15 +764,19 @@ export default function Settlements() {
               {/* Results */}
               {calculatedTotals && (
                 <div className="space-y-4 pt-4 border-t">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                     <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="text-sm text-muted-foreground">Movimientos</p>
+                      <p className="text-sm text-muted-foreground">Movimientos Cta.</p>
                       <p className="text-xl font-bold">{calculatedMovements.length}</p>
                     </div>
                     <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="text-sm text-muted-foreground">Total Cargos</p>
+                      <p className="text-sm text-muted-foreground">Envíos</p>
+                      <p className="text-xl font-bold">{calculatedEnvios.length}</p>
+                    </div>
+                    <div className="p-3 bg-muted/50 rounded-lg">
+                      <p className="text-sm text-muted-foreground">Total Cargos + Envíos</p>
                       <p className="text-xl font-bold text-orange-600">
-                        ${calculatedTotals.totalCargos.toLocaleString()}
+                        ${((calculatedTotals.totalCargos || 0) + (calculatedTotals.totalEnvios || 0)).toLocaleString()}
                       </p>
                     </div>
                     <div className="p-3 bg-muted/50 rounded-lg">
@@ -728,40 +793,104 @@ export default function Settlements() {
                     </div>
                   </div>
 
-                  {calculatedMovements.length > 0 && (
+                  {hasCalculatedData && (
                     <>
-                      <div className="max-h-48 overflow-y-auto border rounded-lg">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Fecha</TableHead>
-                              <TableHead>Tipo</TableHead>
-                              <TableHead>Descripción</TableHead>
-                              <TableHead className="text-right">Monto</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {calculatedMovements.map((mov) => (
-                              <TableRow key={mov.id}>
-                                <TableCell className="text-sm">
-                                  {format(new Date(mov.created_at), 'dd/MM/yy')}
-                                </TableCell>
-                                <TableCell>
-                                  <Badge variant={mov.tipo === 'cargo' ? 'default' : 'secondary'} className="text-xs">
-                                    {mov.tipo}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell className="text-sm text-muted-foreground">
-                                  {mov.descripcion || mov.referencia || '-'}
-                                </TableCell>
-                                <TableCell className={`text-right font-medium ${mov.tipo === 'cargo' ? 'text-orange-600' : 'text-green-600'}`}>
-                                  {mov.tipo === 'cargo' ? '+' : '-'}${Math.abs(mov.monto).toLocaleString()}
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
+                      <Tabs value={previewTab} onValueChange={setPreviewTab}>
+                        <TabsList>
+                          <TabsTrigger value="movimientos">
+                            Movimientos Cta. Cte. ({calculatedMovements.length})
+                          </TabsTrigger>
+                          <TabsTrigger value="envios">
+                            Envíos ({calculatedEnvios.length})
+                          </TabsTrigger>
+                        </TabsList>
+
+                        <TabsContent value="movimientos" className="mt-2">
+                          <div className="max-h-48 overflow-y-auto border rounded-lg">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Fecha</TableHead>
+                                  <TableHead>Tipo</TableHead>
+                                  <TableHead>Descripción</TableHead>
+                                  <TableHead className="text-right">Monto</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {calculatedMovements.length === 0 ? (
+                                  <TableRow>
+                                    <TableCell colSpan={4} className="text-center py-4 text-muted-foreground">
+                                      No hay movimientos de cuenta corriente en el período
+                                    </TableCell>
+                                  </TableRow>
+                                ) : (
+                                  calculatedMovements.map((mov) => (
+                                    <TableRow key={mov.id}>
+                                      <TableCell className="text-sm">
+                                        {format(new Date(mov.created_at), 'dd/MM/yy')}
+                                      </TableCell>
+                                      <TableCell>
+                                        <Badge variant={mov.tipo === 'cargo' ? 'default' : 'secondary'} className="text-xs">
+                                          {mov.tipo}
+                                        </Badge>
+                                      </TableCell>
+                                      <TableCell className="text-sm text-muted-foreground">
+                                        {mov.descripcion || mov.referencia || '-'}
+                                      </TableCell>
+                                      <TableCell className={`text-right font-medium ${mov.tipo === 'cargo' ? 'text-orange-600' : 'text-green-600'}`}>
+                                        {mov.tipo === 'cargo' ? '+' : '-'}${Math.abs(mov.monto).toLocaleString()}
+                                      </TableCell>
+                                    </TableRow>
+                                  ))
+                                )}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        </TabsContent>
+
+                        <TabsContent value="envios" className="mt-2">
+                          <div className="max-h-48 overflow-y-auto border rounded-lg">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Fecha</TableHead>
+                                  <TableHead>Tracking</TableHead>
+                                  <TableHead>Destinatario</TableHead>
+                                  <TableHead>Estado</TableHead>
+                                  <TableHead className="text-right">Precio</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {calculatedEnvios.length === 0 ? (
+                                  <TableRow>
+                                    <TableCell colSpan={5} className="text-center py-4 text-muted-foreground">
+                                      {sellers?.find(s => s.id === calcSeller)?.cliente_id
+                                        ? 'No hay envíos sin liquidar en el período'
+                                        : 'Seller no tiene cliente vinculado'}
+                                    </TableCell>
+                                  </TableRow>
+                                ) : (
+                                  calculatedEnvios.map((envio) => (
+                                    <TableRow key={envio.id}>
+                                      <TableCell className="text-sm">
+                                        {format(new Date(envio.created_at), 'dd/MM/yy')}
+                                      </TableCell>
+                                      <TableCell className="font-mono text-sm">{envio.tracking_number}</TableCell>
+                                      <TableCell className="text-sm">{envio.nombre_destinatario || '-'}</TableCell>
+                                      <TableCell>
+                                        <Badge variant="outline" className="text-xs">{envio.estado || '-'}</Badge>
+                                      </TableCell>
+                                      <TableCell className="text-right font-medium text-orange-600">
+                                        +${envio.precio_total.toLocaleString()}
+                                      </TableCell>
+                                    </TableRow>
+                                  ))
+                                )}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        </TabsContent>
+                      </Tabs>
 
                       <div className="space-y-2">
                         <Label>Notas (opcional)</Label>
@@ -988,7 +1117,7 @@ export default function Settlements() {
           <AlertDialogHeader>
             <AlertDialogTitle>Cancelar Liquidación</AlertDialogTitle>
             <AlertDialogDescription>
-              ¿Está seguro de cancelar esta liquidación? Los movimientos serán liberados y podrán incluirse en una nueva liquidación.
+              ¿Está seguro de cancelar esta liquidación? Los movimientos y envíos serán liberados y podrán incluirse en una nueva liquidación.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
