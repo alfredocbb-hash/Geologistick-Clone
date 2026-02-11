@@ -199,6 +199,11 @@ export default function RoutePlanner() {
   const { data: enviosPendientes = [], isLoading: loadingEnvios } = useQuery({
     queryKey: ["envios-planificador", profile?.sucursal_id],
     queryFn: async () => {
+      // IDs explicitly selected from ecommerce module via URL
+      const urlEnvioIdsArray = (searchParams.get('envios') || '').split(',').filter(Boolean);
+      const urlEnvioIds = new Set(urlEnvioIdsArray);
+
+      // Query 1: standard pending shipments without driver
       const query = supabase
         .from("envios")
         .select(`
@@ -218,6 +223,29 @@ export default function RoutePlanner() {
       const { data, error } = await query;
       if (error) throw error;
 
+      // Query 2: shipments from URL (bypass chofer_id filter)
+      let urlShipments: typeof data = [];
+      if (urlEnvioIdsArray.length > 0) {
+        const { data: urlData, error: urlError } = await supabase
+          .from("envios")
+          .select(`
+            *,
+            remitente:clientes!envios_remitente_id_fkey(nombre, apellido, direccion, ciudad, telefono),
+            destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, direccion, ciudad, telefono)
+          `)
+          .in("id", urlEnvioIdsArray)
+          .in("estado", ["pendiente", "recogido", "en_sucursal", "en_reparto"]);
+        if (urlError) throw urlError;
+        urlShipments = urlData || [];
+      }
+
+      // Merge results, removing duplicates (URL shipments take priority)
+      const existingIds = new Set((data || []).map(e => e.id));
+      const merged = [
+        ...(data || []),
+        ...urlShipments.filter(e => !existingIds.has(e.id)),
+      ];
+
       // Get ecommerce-linked envio IDs to exclude them
       const { data: ecommerceOrders } = await supabase
         .from("ecommerce_orders")
@@ -228,13 +256,8 @@ export default function RoutePlanner() {
         (ecommerceOrders || []).map(o => o.envio_id).filter(Boolean)
       );
 
-      // IDs explicitly selected from ecommerce module via URL
-      const urlEnvioIds = new Set(
-        (searchParams.get('envios') || '').split(',').filter(Boolean)
-      );
-
       // Exclude ecommerce shipments unless they were explicitly selected via URL
-      const filtered = (data || []).filter(envio =>
+      const filtered = merged.filter(envio =>
         !ecommerceEnvioIds.has(envio.id) || urlEnvioIds.has(envio.id)
       );
 
