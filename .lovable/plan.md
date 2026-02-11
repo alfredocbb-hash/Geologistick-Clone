@@ -1,31 +1,52 @@
 
 
-# Corregir error al planificar pedidos de e-commerce
+# Corregir: Caja abierta no se registra (múltiples sesiones abiertas)
 
-## Problema encontrado
+## Problema
 
-Cuando seleccionas pedidos de e-commerce y presionas "Planificar", los envios se pasan correctamente al Planificador de Rutas. Sin embargo, el planificador usa las coordenadas `destinatario_lat`/`destinatario_lng` para calcular posiciones, pero los envios creados desde e-commerce guardan sus coordenadas en `entrega_lat`/`entrega_lng`. Esto produce coordenadas vacias (NaN) que rompen la optimizacion de ruta y la visualizacion del mapa.
+El usuario `alfredobernard@beraexpress.com` tiene 4 sesiones de caja con estado `abierta` en la misma sucursal (nunca fueron cerradas). La consulta que busca la sesion activa usa `.maybeSingle()`, que lanza un error silencioso cuando hay mas de 1 fila. Esto hace que la UI muestre "sin sesion abierta" y permite abrir mas sesiones sin ver las anteriores.
+
+## Causa raiz
+
+En `src/pages/Cash.tsx`, linea 171:
+```
+const { data, error } = await query.maybeSingle();
+```
+
+Cuando hay multiples sesiones abiertas, `maybeSingle()` falla porque espera 0 o 1 resultado.
 
 ## Solucion
 
-### Archivo: `src/pages/RoutePlanner.tsx`
+### Archivo: `src/pages/Cash.tsx`
 
-**Cambio 1 - Mapeo de coordenadas (linea ~245)**
+**Cambio 1 - Consulta de sesion activa (linea ~160-173)**
 
-Modificar la logica de `coords` para usar como prioridad `entrega_lat`/`entrega_lng` (que es donde los envios de ecommerce guardan las coordenadas), con fallback a `destinatario_lat`/`destinatario_lng`:
+Reemplazar `.maybeSingle()` por `.order('created_at', { ascending: false }).limit(1)` y tomar el primer resultado. Esto devuelve la sesion abierta mas reciente sin fallar si hay varias.
 
+```typescript
+// Antes
+const { data, error } = await query.maybeSingle();
+if (error) throw error;
+return data as CashSession | null;
+
+// Despues
+const { data, error } = await query
+  .order('created_at', { ascending: false })
+  .limit(1);
+if (error) throw error;
+return (data && data.length > 0 ? data[0] : null) as CashSession | null;
 ```
-Antes:  { lat: envio.destinatario_lat, lng: envio.destinatario_lng }
-Ahora:  { lat: envio.entrega_lat || envio.destinatario_lat, lng: envio.entrega_lng || envio.destinatario_lng }
-```
 
-Lo mismo para el caso de retiro:
-```
-Antes:  { lat: envio.remitente_lat, lng: envio.remitente_lng }
-Ahora:  { lat: envio.retiro_lat || envio.remitente_lat, lng: envio.retiro_lng || envio.remitente_lng }
-```
+**Cambio 2 - Prevenir apertura duplicada**
 
-Esto es consistente con la logica de direccion que ya usa `direccion_entrega || destinatario?.direccion` en el resto del planificador.
+En la mutacion `openSessionMutation` (linea ~223), agregar una verificacion previa: si ya existe una sesion abierta (`currentSession` no es null), mostrar un error y no crear una nueva.
+
+```typescript
+if (currentSession) {
+  throw new Error('Ya existe una sesión de caja abierta');
+}
+```
 
 ## Sin cambios de base de datos
-El campo `entrega_lat`/`entrega_lng` ya existe en la tabla `envios`.
+No se necesitan migraciones. Los datos existentes (sesiones huerfanas) se podran ver y cerrar normalmente una vez aplicado el fix.
+
