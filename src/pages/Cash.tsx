@@ -168,9 +168,11 @@ export default function Cash() {
         query = query.or(`usuario_id.eq.${user.id},sucursal_id.eq.${profile?.sucursal_id}`);
       }
       
-      const { data, error } = await query.maybeSingle();
+      const { data, error } = await query
+        .order('created_at', { ascending: false })
+        .limit(1);
       if (error) throw error;
-      return data as CashSession | null;
+      return (data && data.length > 0 ? data[0] : null) as CashSession | null;
     },
     enabled: !!user && !!profile?.tenant_id,
   });
@@ -224,6 +226,10 @@ export default function Cash() {
     mutationFn: async (data: { monto_inicial: number; notas_apertura: string }) => {
       if (!user || !profile?.sucursal_id) {
         throw new Error('Usuario sin sucursal asignada');
+      }
+
+      if (currentSession) {
+        throw new Error('Ya existe una sesión de caja abierta. Ciérrela antes de abrir una nueva.');
       }
 
       const { error } = await supabase.from('sesiones_caja').insert({
