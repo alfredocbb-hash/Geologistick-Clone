@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { toast } from 'sonner';
@@ -17,6 +17,10 @@ export function useCollectPackages() {
   const { user, profile } = useAuth();
   const [packages, setPackages] = useState<CollectPackage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const packagesRef = useRef<CollectPackage[]>([]);
+
+  // Keep ref in sync with state
+  useEffect(() => { packagesRef.current = packages; }, [packages]);
 
   // Load from sessionStorage on mount
   useEffect(() => {
@@ -38,8 +42,8 @@ export function useCollectPackages() {
   const addPackageByTracking = useCallback(async (tracking: string): Promise<CollectPackage | null> => {
     if (!user?.id) return null;
 
-    // Check if already added
-    if (packages.some(p => p.tracking_number === tracking)) {
+    // Check if already added (use ref to avoid stale closure)
+    if (packagesRef.current.some(p => p.tracking_number === tracking)) {
       toast.info('Este paquete ya está en la lista');
       return null;
     }
@@ -75,8 +79,8 @@ export function useCollectPackages() {
 
       if (!envio) return null;
 
-      // Check duplicate by id
-      if (packages.some(p => p.id === envio.id)) {
+      // Check duplicate by id (use ref to avoid stale closure)
+      if (packagesRef.current.some(p => p.id === envio.id)) {
         toast.info('Este paquete ya está en la lista');
         return null;
       }
@@ -98,7 +102,7 @@ export function useCollectPackages() {
     } finally {
       setIsLoading(false);
     }
-  }, [user?.id, profile, packages]);
+  }, [user?.id, profile]);
 
   const removePackage = useCallback((id: string) => {
     setPackages(prev => prev.filter(p => p.id !== id));
