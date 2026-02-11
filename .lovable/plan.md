@@ -1,59 +1,31 @@
 
 
-# Extraer horarios de entrega de Mercado Libre Flex y usarlos en la ruta
+# Corregir error al planificar pedidos de e-commerce
 
-## Contexto actual
-- La tabla `envios` ya tiene un campo `horario_preferido_entrega` con valores como `manana`, `tarde`, `noche`, `cualquier_hora`
-- La API de ML devuelve en `lead_time.estimated_delivery_time.time_frame` un rango horario con `from` y `to` (ej: `from: 8, to: 14` para horario comercial)
-- La API tambien indica `shipping_method.deliver_to` que puede ser `address` (domicilio) o `agency`
-- Actualmente el edge function `register-ml-shipment` NO extrae esta informacion
+## Problema encontrado
+
+Cuando seleccionas pedidos de e-commerce y presionas "Planificar", los envios se pasan correctamente al Planificador de Rutas. Sin embargo, el planificador usa las coordenadas `destinatario_lat`/`destinatario_lng` para calcular posiciones, pero los envios creados desde e-commerce guardan sus coordenadas en `entrega_lat`/`entrega_lng`. Esto produce coordenadas vacias (NaN) que rompen la optimizacion de ruta y la visualizacion del mapa.
 
 ## Solucion
 
-### 1. Edge Function: Extraer horario de ML al registrar
+### Archivo: `src/pages/RoutePlanner.tsx`
 
-**Archivo:** `supabase/functions/register-ml-shipment/index.ts`
+**Cambio 1 - Mapeo de coordenadas (linea ~245)**
 
-Despues de obtener el shipment de la API de ML (linea 144), extraer el `time_frame` y mapearlo a los valores existentes del sistema:
+Modificar la logica de `coords` para usar como prioridad `entrega_lat`/`entrega_lng` (que es donde los envios de ecommerce guardan las coordenadas), con fallback a `destinatario_lat`/`destinatario_lng`:
 
-- `time_frame.from: 8, to: 12` --> `manana`
-- `time_frame.from: 12, to: 18` --> `tarde`  
-- `time_frame.from: 18, to: 21` --> `noche`
-- Otros rangos o sin datos --> `cualquier_hora`
+```
+Antes:  { lat: envio.destinatario_lat, lng: envio.destinatario_lng }
+Ahora:  { lat: envio.entrega_lat || envio.destinatario_lat, lng: envio.entrega_lng || envio.destinatario_lng }
+```
 
-Guardar este valor en `horario_preferido_entrega` al crear el envio (linea ~291).
+Lo mismo para el caso de retiro:
+```
+Antes:  { lat: envio.remitente_lat, lng: envio.remitente_lng }
+Ahora:  { lat: envio.retiro_lat || envio.remitente_lat, lng: envio.retiro_lng || envio.remitente_lng }
+```
 
-### 2. Mostrar horario en la lista Flex
-
-**Archivo:** `src/components/mobile/FlexScanScreen.tsx`
-
-Agregar el horario preferido junto a la direccion en cada paquete escaneado. Mostrarlo como un badge pequenio (ej: "AM", "PM", "Noche") para que el chofer vea de un vistazo las restricciones horarias.
-
-### 3. Usar horario en la optimizacion de ruta
-
-**Archivo:** `src/hooks/useFlexPackages.ts`
-
-Modificar la funcion `nearestNeighborSort` para que, ademas de la distancia, considere los horarios:
-- Paquetes con horario `manana` se priorizan primero
-- Paquetes con horario `tarde` despues
-- Paquetes con `noche` al final
-- Dentro de cada franja, se ordena por proximidad (nearest-neighbor actual)
-
-Esto es una heuristica simple pero efectiva: primero por franja horaria, luego por distancia.
-
-### 4. Agregar campo horario al FlexPackage
-
-**Archivo:** `src/hooks/useFlexPackages.ts`
-
-Agregar `horario_preferido_entrega` a la interfaz `FlexPackage` y cargarlo al escanear/agregar paquetes.
-
-## Resumen de cambios
-
-| Archivo | Cambio |
-|---------|--------|
-| `supabase/functions/register-ml-shipment/index.ts` | Extraer `time_frame` de ML y mapear a `horario_preferido_entrega` |
-| `src/hooks/useFlexPackages.ts` | Agregar campo horario a FlexPackage, ordenar por franja + distancia |
-| `src/components/mobile/FlexScanScreen.tsx` | Mostrar badge de horario en cada paquete |
+Esto es consistente con la logica de direccion que ya usa `direccion_entrega || destinatario?.direccion` en el resto del planificador.
 
 ## Sin cambios de base de datos
-El campo `horario_preferido_entrega` ya existe en la tabla `envios`. No se necesitan migraciones.
+El campo `entrega_lat`/`entrega_lng` ya existe en la tabla `envios`.
