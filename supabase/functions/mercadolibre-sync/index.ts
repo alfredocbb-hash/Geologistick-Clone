@@ -227,9 +227,27 @@ Deno.serve(async (req) => {
 
         const shipment = await shipmentResponse.json();
 
-        // Only process self_service (Flex)
+    // Only process self_service (Flex)
         if (shipment.logistic_type !== 'self_service') {
           console.log('[ML Sync] Skipping non-Flex shipment:', shipmentId, 'type:', shipment.logistic_type);
+          continue;
+        }
+
+        // Filter by today's delivery date (Argentina timezone UTC-3)
+        const estimatedDelivery = shipment.shipping_option?.estimated_delivery_time?.date;
+        if (estimatedDelivery) {
+          // Extract date part (YYYY-MM-DD) from the estimated delivery
+          const deliveryDate = estimatedDelivery.substring(0, 10);
+          // Get today's date in Argentina timezone (UTC-3)
+          const nowArg = new Date(Date.now() - 3 * 60 * 60 * 1000);
+          const todayArg = nowArg.toISOString().substring(0, 10);
+          
+          if (deliveryDate !== todayArg) {
+            console.log('[ML Sync] Skipping shipment with delivery date', deliveryDate, '(today:', todayArg, ') shipment:', shipmentId);
+            continue;
+          }
+        } else {
+          console.log('[ML Sync] Skipping shipment without estimated delivery date:', shipmentId);
           continue;
         }
 
