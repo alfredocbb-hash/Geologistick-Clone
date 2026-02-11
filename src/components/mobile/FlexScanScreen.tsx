@@ -16,6 +16,7 @@ import {
   Navigation,
   FileText,
   CheckCircle2,
+  Clock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useFlexPackages } from '@/hooks/useFlexPackages';
@@ -413,6 +414,7 @@ function PackageCard({ package: pkg, index, onRemove }: PackageCardProps) {
               Transferido
             </Badge>
           )}
+          <HorarioBadge horario={pkg.horario_preferido_entrega} />
         </div>
         <div className="flex items-center gap-1 mt-0.5">
           <MapPin className="h-3 w-3 text-slate-500" />
@@ -444,5 +446,26 @@ function PackageCard({ package: pkg, index, onRemove }: PackageCardProps) {
         <X className="h-4 w-4" />
       </Button>
     </div>
+  );
+}
+
+// Horario Badge Component
+function HorarioBadge({ horario }: { horario: string | null }) {
+  if (!horario || horario === 'cualquier_hora') return null;
+
+  const config: Record<string, { label: string; className: string }> = {
+    manana: { label: 'AM', className: 'border-yellow-600 text-yellow-400' },
+    tarde: { label: 'PM', className: 'border-orange-600 text-orange-400' },
+    noche: { label: 'Noche', className: 'border-indigo-600 text-indigo-400' },
+  };
+
+  const c = config[horario];
+  if (!c) return null;
+
+  return (
+    <Badge variant="outline" className={cn("text-[10px] gap-0.5", c.className)}>
+      <Clock className="h-2.5 w-2.5" />
+      {c.label}
+    </Badge>
   );
 }
