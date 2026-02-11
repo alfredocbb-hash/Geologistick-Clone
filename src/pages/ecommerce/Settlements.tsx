@@ -83,7 +83,11 @@ interface CalculatedEnvio {
   tracking_number: string;
   nombre_destinatario: string | null;
   direccion_entrega: string | null;
+  ciudad_entrega: string | null;
   precio_total: number;
+  precio_original: number;
+  precio_calculado: boolean;
+  zona_match: string | null;
   estado: string | null;
   created_at: string;
 }
@@ -220,7 +224,7 @@ export default function Settlements() {
       if (seller?.cliente_id) {
         const { data: enviosData, error: enviosError } = await supabase
           .from('envios')
-          .select('id, tracking_number, nombre_destinatario, direccion_entrega, precio_total, estado, created_at')
+          .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, estado, created_at')
           .eq('remitente_id', seller.cliente_id)
           .gte('created_at', fechaInicioStr)
           .lte('created_at', fechaFinStr)
@@ -228,7 +232,55 @@ export default function Settlements() {
           .order('created_at', { ascending: true });
 
         if (enviosError) throw enviosError;
-        envios = (enviosData || []) as CalculatedEnvio[];
+
+        // Fetch zone rates for recalculating $0 envíos
+        const { data: zoneTarifas } = await supabase
+          .from('tarifas')
+          .select('id, precio_base, zona_destino, nombre')
+          .eq('tenant_id', tenantId)
+          .eq('tipo_tarifa', 'zona')
+          .eq('activa', true);
+
+        const normalize = (str: string) => str.toLowerCase().trim()
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+        envios = (enviosData || []).map((e: any) => {
+          let precioFinal = e.precio_total || 0;
+          let precioCalculado = false;
+          let zonaMatch: string | null = null;
+
+          // If price is 0, try zone matching
+          if (precioFinal === 0 && e.ciudad_entrega && zoneTarifas && zoneTarifas.length > 0) {
+            const ciudadNorm = normalize(e.ciudad_entrega);
+            for (const tarifa of zoneTarifas) {
+              if (!tarifa.zona_destino) continue;
+              const zonas = tarifa.zona_destino.split(',').map((z: string) => normalize(z));
+              for (const zona of zonas) {
+                if (zona === ciudadNorm || ciudadNorm.includes(zona) || zona.includes(ciudadNorm)) {
+                  precioFinal = tarifa.precio_base || 0;
+                  precioCalculado = true;
+                  zonaMatch = tarifa.nombre || tarifa.zona_destino;
+                  break;
+                }
+              }
+              if (precioFinal > 0) break;
+            }
+          }
+
+          return {
+            id: e.id,
+            tracking_number: e.tracking_number,
+            nombre_destinatario: e.nombre_destinatario,
+            direccion_entrega: e.direccion_entrega,
+            ciudad_entrega: e.ciudad_entrega,
+            precio_total: precioFinal,
+            precio_original: e.precio_total || 0,
+            precio_calculado: precioCalculado,
+            zona_match: zonaMatch,
+            estado: e.estado,
+            created_at: e.created_at,
+          };
+        });
       }
 
       const totalCargos = (movs || [])
@@ -316,15 +368,19 @@ export default function Settlements() {
         if (updateError) throw updateError;
       }
 
-      // Link envíos to liquidacion
+      // Link envíos to liquidacion and update recalculated prices
       if (calculatedEnvios.length > 0) {
-        const envioIds = calculatedEnvios.map(e => e.id);
-        const { error: envioUpdateError } = await (supabase
-          .from('envios') as any)
-          .update({ liquidacion_seller_id: liquidacion.id })
-          .in('id', envioIds);
-
-        if (envioUpdateError) throw envioUpdateError;
+        for (const envio of calculatedEnvios) {
+          const updateData: any = { liquidacion_seller_id: liquidacion.id };
+          // If price was recalculated by zone, update the envio price
+          if (envio.precio_calculado && envio.precio_total > 0) {
+            updateData.precio_total = envio.precio_total;
+            updateData.tarifa_metodo_aplicado = 'zona_liquidacion';
+          }
+          await (supabase.from('envios') as any)
+            .update(updateData)
+            .eq('id', envio.id);
+        }
       }
 
       return liquidacion;
@@ -856,6 +912,7 @@ export default function Settlements() {
                                   <TableHead>Fecha</TableHead>
                                   <TableHead>Tracking</TableHead>
                                   <TableHead>Destinatario</TableHead>
+                                  <TableHead>Ciudad</TableHead>
                                   <TableHead>Estado</TableHead>
                                   <TableHead className="text-right">Precio</TableHead>
                                 </TableRow>
@@ -863,7 +920,7 @@ export default function Settlements() {
                               <TableBody>
                                 {calculatedEnvios.length === 0 ? (
                                   <TableRow>
-                                    <TableCell colSpan={5} className="text-center py-4 text-muted-foreground">
+                                    <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
                                       {sellers?.find(s => s.id === calcSeller)?.cliente_id
                                         ? 'No hay envíos sin liquidar en el período'
                                         : 'Seller no tiene cliente vinculado'}
@@ -871,17 +928,32 @@ export default function Settlements() {
                                   </TableRow>
                                 ) : (
                                   calculatedEnvios.map((envio) => (
-                                    <TableRow key={envio.id}>
+                                    <TableRow key={envio.id} className={envio.precio_total === 0 ? 'bg-destructive/5' : ''}>
                                       <TableCell className="text-sm">
                                         {format(new Date(envio.created_at), 'dd/MM/yy')}
                                       </TableCell>
                                       <TableCell className="font-mono text-sm">{envio.tracking_number}</TableCell>
                                       <TableCell className="text-sm">{envio.nombre_destinatario || '-'}</TableCell>
+                                      <TableCell className="text-sm">{envio.ciudad_entrega || '-'}</TableCell>
                                       <TableCell>
                                         <Badge variant="outline" className="text-xs">{envio.estado || '-'}</Badge>
                                       </TableCell>
-                                      <TableCell className="text-right font-medium text-orange-600">
-                                        +${envio.precio_total.toLocaleString()}
+                                      <TableCell className="text-right">
+                                        <div className="flex items-center justify-end gap-1">
+                                          <span className={`font-medium ${envio.precio_total > 0 ? 'text-orange-600' : 'text-destructive'}`}>
+                                            {envio.precio_total > 0 ? `+$${envio.precio_total.toLocaleString()}` : '$0'}
+                                          </span>
+                                          {envio.precio_calculado && (
+                                            <Badge variant="secondary" className="text-[10px] px-1 py-0">
+                                              Zona
+                                            </Badge>
+                                          )}
+                                          {envio.precio_total === 0 && (
+                                            <Badge variant="destructive" className="text-[10px] px-1 py-0">
+                                              Sin precio
+                                            </Badge>
+                                          )}
+                                        </div>
                                       </TableCell>
                                     </TableRow>
                                   ))

@@ -239,17 +239,58 @@ serve(async (req) => {
       console.log('[register-ml-shipment] Using seller pickup branch:', sucursalOrigenId);
     }
 
-    // 9. Get seller's rate for pricing
+    // 9. Get seller's rate for pricing - zone-based lookup
     let precioTotal = 0;
+    let tarifaIdMatch: string | null = null;
+    let tarifaMetodo: string | null = null;
+
     if (seller.tarifa_id) {
+      // Seller has a specific rate assigned
       const { data: tarifa } = await supabase
         .from('tarifas')
-        .select('precio_base')
+        .select('id, precio_base')
         .eq('id', seller.tarifa_id)
         .single();
       
       if (tarifa) {
         precioTotal = tarifa.precio_base || 0;
+        tarifaIdMatch = tarifa.id;
+        tarifaMetodo = 'tarifa_seller';
+      }
+    }
+
+    // If no seller rate or price is 0, try zone-based pricing
+    if (precioTotal === 0 && city) {
+      const { data: zoneTarifas } = await supabase
+        .from('tarifas')
+        .select('id, precio_base, zona_destino')
+        .eq('tenant_id', seller.tenant_id)
+        .eq('tipo_tarifa', 'zona')
+        .eq('activa', true);
+
+      if (zoneTarifas && zoneTarifas.length > 0) {
+        const normalize = (str: string) => str.toLowerCase().trim()
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const ciudadNorm = normalize(city);
+
+        for (const tarifa of zoneTarifas) {
+          if (!tarifa.zona_destino) continue;
+          const zonas = tarifa.zona_destino.split(',').map((z: string) => normalize(z));
+          for (const zona of zonas) {
+            if (zona === ciudadNorm || ciudadNorm.includes(zona) || zona.includes(ciudadNorm)) {
+              precioTotal = tarifa.precio_base || 0;
+              tarifaIdMatch = tarifa.id;
+              tarifaMetodo = 'zona';
+              console.log('[register-ml-shipment] Zone match:', tarifa.zona_destino, '-> precio:', precioTotal);
+              break;
+            }
+          }
+          if (precioTotal > 0) break;
+        }
+
+        if (precioTotal === 0) {
+          console.log('[register-ml-shipment] No zone match for city:', city);
+        }
       }
     }
 
@@ -324,7 +365,8 @@ serve(async (req) => {
         entrega_lat: receiver.latitude,
         entrega_lng: receiver.longitude,
           precio_total: precioTotal,
-          tarifa_id: seller.tarifa_id,
+          tarifa_id: tarifaIdMatch || seller.tarifa_id,
+          tarifa_metodo_aplicado: tarifaMetodo,
           tipo_servicio: 'express',
           tipo_servicio_detalle: 'ML Flex',
           horario_preferido_entrega: horarioPreferido,

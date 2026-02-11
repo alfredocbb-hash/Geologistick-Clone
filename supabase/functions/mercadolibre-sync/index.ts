@@ -341,7 +341,42 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Create envio with ML shipping cost
+        // Create envio with ML shipping cost and zone-based pricing
+        let precioCalculadoSync = 0;
+        let tarifaIdSync: string | null = null;
+        let tarifaMetodoSync: string | null = null;
+
+        // Try zone-based pricing using city
+        if (city) {
+          const { data: zoneTarifas } = await supabase
+            .from('tarifas')
+            .select('id, precio_base, zona_destino')
+            .eq('tenant_id', seller.tenant_id)
+            .eq('tipo_tarifa', 'zona')
+            .eq('activa', true);
+
+          if (zoneTarifas && zoneTarifas.length > 0) {
+            const normalize = (str: string) => str.toLowerCase().trim()
+              .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            const ciudadNorm = normalize(city);
+
+            for (const tarifa of zoneTarifas) {
+              if (!tarifa.zona_destino) continue;
+              const zonas = tarifa.zona_destino.split(',').map((z: string) => normalize(z));
+              for (const zona of zonas) {
+                if (zona === ciudadNorm || ciudadNorm.includes(zona) || zona.includes(ciudadNorm)) {
+                  precioCalculadoSync = tarifa.precio_base || 0;
+                  tarifaIdSync = tarifa.id;
+                  tarifaMetodoSync = 'zona';
+                  console.log('[ML Sync] Zone match:', tarifa.zona_destino, '-> precio:', precioCalculadoSync);
+                  break;
+                }
+              }
+              if (precioCalculadoSync > 0) break;
+            }
+          }
+        }
+
         const { data: envio, error: envioError } = await supabase
           .from('envios')
           .insert({
@@ -360,8 +395,10 @@ Deno.serve(async (req) => {
             destinatario_lat: receiver.latitude || null,
             destinatario_lng: receiver.longitude || null,
             whatsapp_destinatario: receiverPhone,
-            precio_total: 0,
-            precio_flete_ml: mlShippingCost, // ML shipping rate from API
+            precio_total: precioCalculadoSync,
+            tarifa_id: tarifaIdSync,
+            tarifa_metodo_aplicado: tarifaMetodoSync,
+            precio_flete_ml: mlShippingCost,
             tipo_servicio: 'express',
             tipo_servicio_detalle: 'ML Flex',
             sucursal_origen_id: seller.sucursal_pickup_id || null,
@@ -388,8 +425,9 @@ Deno.serve(async (req) => {
         console.log('[ML Sync] Created envio:', envio.id, 'tracking:', trackingNumber);
 
         // Register charge in seller's cuenta corriente if enabled
-        let precioCalculado = 0;
-        if (seller.tiene_cuenta_corriente && seller.tarifa_id) {
+        // Use zone price if calculated, otherwise fall back to seller tarifa
+        let precioFinalSync = precioCalculadoSync;
+        if (precioFinalSync === 0 && seller.tiene_cuenta_corriente && seller.tarifa_id) {
           const { data: tarifa } = await supabase
             .from('tarifas')
             .select('precio_base')
@@ -397,16 +435,25 @@ Deno.serve(async (req) => {
             .single();
 
           if (tarifa?.precio_base) {
-            precioCalculado = tarifa.precio_base;
+            precioFinalSync = tarifa.precio_base;
+            // Update envio with seller tarifa price
+            await supabase
+              .from('envios')
+              .update({ precio_total: precioFinalSync, tarifa_id: seller.tarifa_id, tarifa_metodo_aplicado: 'tarifa_seller' })
+              .eq('id', envio.id);
+          }
+        }
+
+        if (precioFinalSync > 0 && seller.tiene_cuenta_corriente) {
             const saldoAnterior = seller.saldo_cuenta_corriente || 0;
-            const saldoNuevo = saldoAnterior + precioCalculado;
+            const saldoNuevo = saldoAnterior + precioFinalSync;
 
             const { error: cargoError } = await supabase
               .from('seller_cuenta_corriente')
               .insert({
                 seller_id: seller.id,
                 tipo: 'cargo',
-                monto: precioCalculado,
+                monto: precioFinalSync,
                 saldo_anterior: saldoAnterior,
                 saldo_nuevo: saldoNuevo,
                 descripcion: `Envío ML Flex - ${trackingNumber}`,
@@ -414,7 +461,6 @@ Deno.serve(async (req) => {
               });
 
             if (!cargoError) {
-              // Update seller balance
               await supabase
                 .from('ecommerce_sellers')
                 .update({ 
@@ -423,18 +469,9 @@ Deno.serve(async (req) => {
                 })
                 .eq('id', seller.id);
 
-              // Update envio with calculated price
-              await supabase
-                .from('envios')
-                .update({ precio_total: precioCalculado })
-                .eq('id', envio.id);
-
-              console.log('[ML Sync] Registered cargo:', precioCalculado);
-              
-              // Update local seller balance for next iteration
+              console.log('[ML Sync] Registered cargo:', precioFinalSync);
               seller.saldo_cuenta_corriente = saldoNuevo;
             }
-          }
         }
 
         created++;
