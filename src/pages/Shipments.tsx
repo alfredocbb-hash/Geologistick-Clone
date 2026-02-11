@@ -21,8 +21,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Package, PackagePlus, Search, Filter, RefreshCw, Truck, Clock, CheckCircle, AlertCircle, Printer, XCircle, Eye, History, Shield } from 'lucide-react';
-import { format } from 'date-fns';
+import { Package, PackagePlus, Search, Filter, RefreshCw, Truck, Clock, CheckCircle, AlertCircle, Printer, XCircle, Eye, History, Shield, CalendarIcon } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { format, startOfDay, endOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
@@ -51,6 +53,7 @@ export default function Shipments() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [dateFilter, setDateFilter] = useState<Date>(new Date());
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [envioToCancel, setEnvioToCancel] = useState<any>(null);
   const [cancelReason, setCancelReason] = useState('');
@@ -117,8 +120,11 @@ export default function Shipments() {
   });
 
   const { data: envios, isLoading, refetch } = useQuery({
-    queryKey: ['envios', statusFilter],
+    queryKey: ['envios', statusFilter, dateFilter.toISOString()],
     queryFn: async () => {
+      const dayStart = startOfDay(dateFilter);
+      const dayEnd = endOfDay(dateFilter);
+
       let query = supabase
         .from('envios')
         .select(`
@@ -128,6 +134,8 @@ export default function Shipments() {
           remitente:clientes!envios_remitente_id_fkey(nombre, apellido),
           destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)
         `)
+        .gte('created_at', dayStart.toISOString())
+        .lte('created_at', dayEnd.toISOString())
         .order('created_at', { ascending: false });
 
       if (statusFilter && statusFilter !== 'all') {
@@ -259,6 +267,22 @@ export default function Shipments() {
               />
             </div>
             <div className="flex gap-2">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-[180px] justify-start text-left font-normal">
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {format(dateFilter, 'dd MMM yyyy', { locale: es })}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dateFilter}
+                    onSelect={(date) => date && setDateFilter(date)}
+                    locale={es}
+                  />
+                </PopoverContent>
+              </Popover>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-[180px]">
                   <Filter className="mr-2 h-4 w-4" />
