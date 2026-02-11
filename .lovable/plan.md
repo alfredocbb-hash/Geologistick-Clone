@@ -1,40 +1,32 @@
 
+# Fix: Reprogramar no avanza a la siguiente parada
 
-# Filtro de rango de fechas (Desde - Hasta)
+## Problema
+Cuando el chofer reprograma un envio, el estado se cambia a `pendiente` via optimistic update, pero la logica de `nextStop` sigue considerando envios en estado `pendiente` como pendientes de entrega. El envio reprogramado sigue apareciendo como "Proxima Entrega" hasta que el refetch del servidor lo elimine (porque el RPC limpia el `chofer_id`).
 
-## Respuesta sobre la sincronizacion ML
-Si, correcto. La funcion `mercadolibre-sync` ahora solo trae pedidos cuya fecha estimada de entrega es el dia de hoy (zona horaria Argentina UTC-3). Los pedidos de dias anteriores o futuros se omiten.
+## Solucion
 
-## Cambios a implementar
+### 1. Optimistic update: eliminar el envio de la lista (`RescheduleDialog.tsx`)
+En lugar de cambiar el estado a `pendiente` en el optimistic update, **filtrar el envio de la lista** para que desaparezca inmediatamente de la interfaz del chofer.
 
-### 1. Pagina de Envios (`src/pages/Shipments.tsx`)
-- Reemplazar el filtro de fecha unica (`dateFilter: Date`) por un rango con dos fechas: `dateFrom` y `dateTo`, ambas inicializadas en la fecha de hoy.
-- Mostrar dos selectores de fecha lado a lado: "Desde" y "Hasta".
-- Actualizar la query de Supabase para usar `gte(created_at, startOfDay(dateFrom))` y `lte(created_at, endOfDay(dateTo))`.
-- Actualizar el `queryKey` para incluir ambas fechas.
-
-### 2. Pagina de Pedidos E-commerce (`src/pages/ecommerce/Orders.tsx`)
-- Mismo cambio: reemplazar `dateFilter: Date` por `dateFrom` y `dateTo`.
-- Dos selectores de fecha: "Desde" y "Hasta".
-- Actualizar la query para filtrar con el rango completo.
-- Actualizar el `queryKey`.
-
-### Detalles tecnicos
-
-**Estado actual en ambas paginas:**
 ```typescript
-const [dateFilter, setDateFilter] = useState<Date>(new Date());
-// Query usa: startOfDay(dateFilter) ... endOfDay(dateFilter)
+// Antes (problematico):
+return old.map((p) => 
+  p.envio?.id === shipment.id 
+    ? { ...p, envio: { ...p.envio, estado: 'pendiente' } }
+    : p
+);
+
+// Despues (correcto):
+return old.filter((p) => p.envio?.id !== shipment.id);
 ```
 
-**Estado nuevo:**
-```typescript
-const [dateFrom, setDateFrom] = useState<Date>(new Date());
-const [dateTo, setDateTo] = useState<Date>(new Date());
-// Query usa: startOfDay(dateFrom) ... endOfDay(dateTo)
-```
+Aplicar el mismo cambio para ambos query caches: `my-active-route-paradas` y `my-active-route-envios-hoja`.
 
-**UI de filtros:** Dos botones de calendario compactos con etiquetas "Desde" y "Hasta", manteniendo el estilo actual con `Popover` + `Calendar`.
+### 2. Rollback: restaurar la lista completa si falla (`RescheduleDialog.tsx`)
+El rollback ya esta implementado correctamente: si la mutacion falla, se restauran los datos anteriores completos.
 
-No se requieren cambios en la base de datos ni en Edge Functions.
-
+### Detalle tecnico
+- **Archivo a modificar**: `src/components/driver/RescheduleDialog.tsx`
+- **Lineas afectadas**: ~63-79 (optimistic update en `onMutate`)
+- No se requieren cambios en la base de datos ni en la logica de `nextStop`, ya que al filtrar el envio de la lista, automaticamente se selecciona la siguiente parada.
