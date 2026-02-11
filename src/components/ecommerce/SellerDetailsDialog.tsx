@@ -30,6 +30,7 @@ interface Seller {
   limite_credito: number;
   ultimo_sync: string | null;
   created_at: string;
+  cliente_id?: string | null;
 }
 
 interface SellerDetailsDialogProps {
@@ -49,6 +50,21 @@ const PLATAFORMA_LABELS: Record<string, string> = {
 export function SellerDetailsDialog({ open, onOpenChange, seller }: SellerDetailsDialogProps) {
   const queryClient = useQueryClient();
   const [isSyncing, setIsSyncing] = useState(false);
+
+  // Fetch linked client name
+  const { data: linkedClient } = useQuery({
+    queryKey: ['seller-linked-client', seller.cliente_id],
+    queryFn: async () => {
+      if (!seller.cliente_id) return null;
+      const { data } = await supabase
+        .from('clientes')
+        .select('id, nombre, apellido')
+        .eq('id', seller.cliente_id)
+        .maybeSingle();
+      return data;
+    },
+    enabled: open && !!seller.cliente_id,
+  });
 
   // Fetch stats
   const { data: stats } = useQuery({
@@ -137,6 +153,15 @@ export function SellerDetailsDialog({ open, onOpenChange, seller }: SellerDetail
             {seller.tiene_cuenta_corriente && (
               <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
                 Cta. Cte.
+              </Badge>
+            )}
+            {seller.cliente_id ? (
+              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                Cliente: {linkedClient ? `${linkedClient.nombre}${linkedClient.apellido ? ` ${linkedClient.apellido}` : ''}` : 'Vinculado'}
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                Sin cliente vinculado
               </Badge>
             )}
           </div>

@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, Search, MoreHorizontal, Store, Settings, Eye, Trash2, RefreshCw, ShoppingCart, Users, DollarSign, Link2, CheckCircle2, XCircle, Loader2, UserCheck, UserX, Mail, MessageSquare, Send, RefreshCcw } from 'lucide-react';
+import { Plus, Search, MoreHorizontal, Store, Settings, Eye, Trash2, RefreshCw, ShoppingCart, Users, DollarSign, Link2, CheckCircle2, XCircle, Loader2, UserCheck, UserX, Mail, MessageSquare, Send, RefreshCcw, LinkIcon } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -44,6 +44,7 @@ interface Seller {
   ultimo_sync: string | null;
   created_at: string;
   user_id: string | null;
+  cliente_id: string | null;
 }
 
 const PLATAFORMA_LABELS: Record<string, { label: string; color: string }> = {
@@ -67,6 +68,9 @@ export default function Sellers() {
   const [syncingSellerId, setSyncingSellerId] = useState<string | null>(null);
   const [isBulkSyncing, setIsBulkSyncing] = useState(false);
   const [bulkSyncProgress, setBulkSyncProgress] = useState({ current: 0, total: 0, currentName: '' });
+  const [isLinkingSellerId, setIsLinkingSellerId] = useState<string | null>(null);
+  const [isBulkLinking, setIsBulkLinking] = useState(false);
+  const [bulkLinkProgress, setBulkLinkProgress] = useState({ current: 0, total: 0, currentName: '' });
 
   // Listen for OAuth success messages from popup
   useEffect(() => {
@@ -324,6 +328,109 @@ Saludos`;
     });
   };
 
+  // Link seller to client logic
+  const linkSellerToClient = async (seller: Seller): Promise<string | null> => {
+    if (seller.cliente_id) return seller.cliente_id;
+    
+    // Search by email
+    let clientId: string | null = null;
+    if (seller.email) {
+      const { data: byEmail } = await supabase
+        .from('clientes')
+        .select('id')
+        .eq('tenant_id', tenantId!)
+        .eq('email', seller.email)
+        .limit(1)
+        .maybeSingle();
+      if (byEmail) clientId = byEmail.id;
+    }
+    
+    // Search by phone
+    if (!clientId && seller.telefono) {
+      const { data: byPhone } = await supabase
+        .from('clientes')
+        .select('id')
+        .eq('tenant_id', tenantId!)
+        .eq('telefono', seller.telefono)
+        .limit(1)
+        .maybeSingle();
+      if (byPhone) clientId = byPhone.id;
+    }
+    
+    // Create new client if not found
+    if (!clientId) {
+      const { data: newClient, error } = await supabase
+        .from('clientes')
+        .insert({
+          nombre: seller.nombre,
+          email: seller.email,
+          telefono: seller.telefono || '',
+          direccion: seller.direccion || 'Sin dirección',
+          ciudad: seller.ciudad || null,
+          tenant_id: tenantId!,
+        })
+        .select('id')
+        .single();
+      if (error) throw error;
+      clientId = newClient.id;
+    }
+    
+    // Update seller
+    const { error: updateError } = await supabase
+      .from('ecommerce_sellers')
+      .update({ cliente_id: clientId })
+      .eq('id', seller.id);
+    if (updateError) throw updateError;
+    
+    return clientId;
+  };
+
+  // Individual link
+  const handleLinkSeller = async (seller: Seller) => {
+    setIsLinkingSellerId(seller.id);
+    try {
+      await linkSellerToClient(seller);
+      queryClient.invalidateQueries({ queryKey: ['ecommerce-sellers'] });
+      toast({ title: 'Seller vinculado', description: `${seller.nombre} fue vinculado a un cliente exitosamente` });
+    } catch (e: any) {
+      toast({ title: 'Error al vincular', description: e.message, variant: 'destructive' });
+    } finally {
+      setIsLinkingSellerId(null);
+    }
+  };
+
+  // Bulk link
+  const handleBulkLink = async () => {
+    const unlinked = sellers?.filter(s => !s.cliente_id) || [];
+    if (unlinked.length === 0) {
+      toast({ title: 'Todos vinculados', description: 'Todos los sellers ya tienen un cliente asignado' });
+      return;
+    }
+    
+    setIsBulkLinking(true);
+    setBulkLinkProgress({ current: 0, total: unlinked.length, currentName: '' });
+    let linked = 0, errors = 0;
+    
+    for (let i = 0; i < unlinked.length; i++) {
+      const seller = unlinked[i];
+      setBulkLinkProgress({ current: i + 1, total: unlinked.length, currentName: seller.nombre });
+      try {
+        await linkSellerToClient(seller);
+        linked++;
+      } catch (e) {
+        console.error(`Error linking ${seller.nombre}:`, e);
+        errors++;
+      }
+    }
+    
+    setIsBulkLinking(false);
+    queryClient.invalidateQueries({ queryKey: ['ecommerce-sellers'] });
+    toast({
+      title: 'Vinculación masiva completada',
+      description: `${linked} vinculados, ${errors} errores`,
+    });
+  };
+
   // Stats
   const stats = {
     total: sellers?.length || 0,
@@ -351,7 +458,22 @@ Saludos`;
           <h1 className="text-2xl font-bold tracking-tight">Sellers e-Commerce</h1>
           <p className="text-muted-foreground">Gestiona las tiendas online conectadas</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            onClick={handleBulkLink}
+            disabled={isBulkLinking}
+          >
+            {isBulkLinking ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <LinkIcon className="mr-2 h-4 w-4" />
+            )}
+            {isBulkLinking
+              ? `Vinculando ${bulkLinkProgress.current}/${bulkLinkProgress.total}...`
+              : 'Vincular Todos'
+            }
+          </Button>
           <Button
             variant="outline"
             onClick={handleBulkSync}
@@ -383,6 +505,19 @@ Saludos`;
               <span className="text-muted-foreground">{bulkSyncProgress.current}/{bulkSyncProgress.total}</span>
             </div>
             <Progress value={(bulkSyncProgress.current / bulkSyncProgress.total) * 100} className="h-2" />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Bulk link progress */}
+      {isBulkLinking && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="p-4 space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span>Vinculando: <strong>{bulkLinkProgress.currentName}</strong></span>
+              <span className="text-muted-foreground">{bulkLinkProgress.current}/{bulkLinkProgress.total}</span>
+            </div>
+            <Progress value={(bulkLinkProgress.current / bulkLinkProgress.total) * 100} className="h-2" />
           </CardContent>
         </Card>
       )}
@@ -471,6 +606,7 @@ Saludos`;
                 <TableRow>
                   <TableHead>Seller</TableHead>
                   <TableHead>Plataforma</TableHead>
+                  <TableHead>Cliente</TableHead>
                   <TableHead>Conexión</TableHead>
                   <TableHead>Acceso</TableHead>
                   <TableHead>Estado</TableHead>
@@ -492,6 +628,19 @@ Saludos`;
                       <Badge className={PLATAFORMA_LABELS[seller.plataforma]?.color || 'bg-gray-500'}>
                         {PLATAFORMA_LABELS[seller.plataforma]?.label || seller.plataforma}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {seller.cliente_id ? (
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-green-500" />
+                          <span className="text-xs text-green-600 dark:text-green-400">Vinculado</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <XCircle className="h-4 w-4 text-orange-500" />
+                          <span className="text-xs text-orange-600 dark:text-orange-400">Sin vincular</span>
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell>
                       {seller.plataforma === 'tiendanube' ? (
@@ -675,6 +824,20 @@ Saludos`;
                           
                           <DropdownMenuSeparator />
                           
+                          {!seller.cliente_id && (
+                            <DropdownMenuItem
+                              onClick={() => handleLinkSeller(seller)}
+                              disabled={isLinkingSellerId === seller.id}
+                            >
+                              {isLinkingSellerId === seller.id ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                <LinkIcon className="mr-2 h-4 w-4" />
+                              )}
+                              Vincular Cliente
+                            </DropdownMenuItem>
+                          )}
+                          
                           <DropdownMenuItem
                             onClick={() => toggleActiveMutation.mutate({ id: seller.id, activo: !seller.activo })}
                           >
@@ -699,7 +862,7 @@ Saludos`;
                 ))}
                 {filteredSellers?.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                       No hay sellers registrados
                     </TableCell>
                   </TableRow>
