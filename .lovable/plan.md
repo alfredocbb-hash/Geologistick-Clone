@@ -1,38 +1,52 @@
 
+## Fix: Driver Can't Proceed After Reporting Incident
 
-## Limpieza de pedidos anteriores al 09/02/2026
+### Problem
+When a driver reports an incident (e.g., "client absent") on a shipment, the app correctly moves the "Next Stop" indicator to the next pending delivery. However, the **stop list** and **map** still show the incident shipment as "not completed" because the `isCompleted` check doesn't include the `incidencia` status. This confuses the driver and makes it seem like they're stuck.
 
-### Datos a eliminar
+### Root Cause
+In `ActiveRouteNavigation.tsx`, there are 3 places where shipment completion is checked, but only 2 of them include `incidencia`:
 
-Solo existen **2 pedidos** anteriores al 09-02-2026 (del 3 y 4 de febrero). Cada uno tiene:
-- 1 registro en `ecommerce_orders`
-- 1 registro en `envios` (vinculado)
-- 1 registro en `seller_cuenta_corriente` (cargo asociado)
+- `stats` calculation (line 259): Includes `incidencia` -- correct
+- `nextStop` calculation (line 280): Skips `incidencia` -- correct  
+- `isCompleted` in the stop list (line 735): Does NOT include `incidencia` -- **BUG**
+- `isCompleted` in map markers (line 305): Does NOT include `incidencia` -- **BUG**
+- `navigateFullRoute` filter (line 398): Does NOT exclude `incidencia` -- **BUG**
 
-Los 1602 pedidos restantes son del 09/02 en adelante y se mantienen intactos.
+### Fix
 
-### Orden de eliminacion
+**File: `src/pages/ActiveRouteNavigation.tsx`**
 
-Para respetar las dependencias entre tablas, se eliminan en este orden:
+1. **Stop list `isCompleted` check** (line 735) - Add `incidencia` status:
+```typescript
+// Before:
+const isCompleted = envio.estado === 'entregado' || envio.estado === 'devuelto' || envio.estado_retiro === 'retirado';
 
-1. **seller_cuenta_corriente** - Eliminar los cargos vinculados a esos envios
-2. **envio_historial** - Eliminar historial de esos envios
-3. **ecommerce_orders** - Eliminar los 2 pedidos
-4. **envios** - Eliminar los 2 envios asociados
+// After:
+const isCompleted = envio.estado === 'entregado' || envio.estado === 'devuelto' || envio.estado === 'incidencia' || envio.estado_retiro === 'retirado';
+```
 
-### Detalle tecnico
+2. **Map markers `isCompleted` check** (line 305) - Same fix:
+```typescript
+// Before:
+const isCompleted = envio.estado === 'entregado' || envio.estado === 'devuelto' || envio.estado_retiro === 'retirado';
 
-Se ejecutaran queries DELETE usando los IDs de los 2 envios vinculados:
-- Envio 1: `d8eb0684-f60c-4e26-96b3-a3474bac5390`
-- Envio 2: `3da241a8-3525-4041-afb7-f29eb3756c88`
+// After:
+const isCompleted = envio.estado === 'entregado' || envio.estado === 'devuelto' || envio.estado === 'incidencia' || envio.estado_retiro === 'retirado';
+```
 
-Y los 2 pedidos:
-- Pedido 1: `bad114c8-d4b0-49a3-8457-6014e8b2780f`
-- Pedido 2: `c1e34a9d-f20c-4ab6-8248-7ea67a4cb8ab`
+3. **Google Maps route filter** (line 393-398) - Exclude `incidencia` from pending stops:
+```typescript
+// Before:
+return envio.estado !== 'entregado' && envio.estado !== 'devuelto';
 
-### Sobre la sincronizacion futura
+// After:
+return envio.estado !== 'entregado' && envio.estado !== 'devuelto' && envio.estado !== 'incidencia';
+```
 
-Tambien se aplicara el filtro de fecha en `mercadolibre-sync` para que solo traiga pedidos recientes (ultimos 7 dias), evitando que se vuelvan a sincronizar pedidos viejos. Este cambio ya estaba aprobado en el plan anterior.
-
-### Sin cambios en la estructura de la base de datos ni en el codigo frontend.
-
+### Result
+After these changes, when a driver reports an incident or marks "client absent":
+- The stop will immediately appear greyed out (completed) in the list
+- The "Next Stop" card will show the next pending delivery
+- The Google Maps navigation will skip incident stops
+- The driver can seamlessly continue with remaining deliveries
