@@ -179,16 +179,18 @@ export default function Branches() {
 
   // Fetch conceptos
   const { data: conceptos = [] } = useQuery({
-    queryKey: ['tarifa_conceptos'],
+    queryKey: ['tarifa_conceptos', tenantId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('tarifa_conceptos')
         .select('*')
         .eq('activo', true)
+        .eq('tenant_id', tenantId)
         .order('orden');
       if (error) throw error;
       return data as TarifaConcepto[];
     },
+    enabled: !!tenantId,
   });
 
   // Fetch comisiones para la sucursal seleccionada (incluye tipo_rol)
