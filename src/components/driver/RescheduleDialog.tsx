@@ -57,20 +57,22 @@ export default function RescheduleDialog({ shipment, onClose, onSuccess }: Resch
       await queryClient.cancelQueries({ queryKey: ['my-active-route-paradas'] });
       await queryClient.cancelQueries({ queryKey: ['my-active-route-envios-hoja'] });
       
-      const previousParadas = queryClient.getQueryData(['my-active-route-paradas']);
-      const previousEnviosHoja = queryClient.getQueryData(['my-active-route-envios-hoja']);
+      // Use getQueriesData for fuzzy matching (keys include routeId suffix)
+      const paradasSnapshots = queryClient.getQueriesData<any[]>({ queryKey: ['my-active-route-paradas'] });
+      const enviosHojaSnapshots = queryClient.getQueriesData<any[]>({ queryKey: ['my-active-route-envios-hoja'] });
       
-      queryClient.setQueryData(['my-active-route-paradas'], (old: any) => {
-        if (!old) return old;
-        return old.filter((p: any) => p.envio?.id !== shipment.id);
+      // Filter out the rescheduled shipment from ALL matching cache entries
+      paradasSnapshots.forEach(([key, data]) => {
+        if (!data) return;
+        queryClient.setQueryData(key, data.filter((p: any) => p.envio?.id !== shipment.id));
       });
       
-      queryClient.setQueryData(['my-active-route-envios-hoja'], (old: any) => {
-        if (!old) return old;
-        return old.filter((e: any) => e.envio?.id !== shipment.id);
+      enviosHojaSnapshots.forEach(([key, data]) => {
+        if (!data) return;
+        queryClient.setQueryData(key, data.filter((e: any) => e.envio?.id !== shipment.id));
       });
       
-      return { previousParadas, previousEnviosHoja };
+      return { paradasSnapshots, enviosHojaSnapshots };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-active-route-paradas'] });
@@ -82,12 +84,13 @@ export default function RescheduleDialog({ shipment, onClose, onSuccess }: Resch
       onClose();
     },
     onError: (error, _, context) => {
-      if (context?.previousParadas) {
-        queryClient.setQueryData(['my-active-route-paradas'], context.previousParadas);
-      }
-      if (context?.previousEnviosHoja) {
-        queryClient.setQueryData(['my-active-route-envios-hoja'], context.previousEnviosHoja);
-      }
+      // Restore all snapshots on error
+      context?.paradasSnapshots?.forEach(([key, data]: [any, any]) => {
+        queryClient.setQueryData(key, data);
+      });
+      context?.enviosHojaSnapshots?.forEach(([key, data]: [any, any]) => {
+        queryClient.setQueryData(key, data);
+      });
       toast.error('Error al reprogramar: ' + error.message);
     },
   });

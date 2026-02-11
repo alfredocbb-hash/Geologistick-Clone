@@ -168,6 +168,7 @@ export default function ActiveRouteNavigation() {
             pago_contra_entrega,
             precio_total,
             tipo_pago,
+            chofer_id,
             direccion_retiro,
             ciudad_retiro,
             direccion_entrega,
@@ -212,6 +213,7 @@ export default function ActiveRouteNavigation() {
             pago_contra_entrega,
             precio_total,
             tipo_pago,
+            chofer_id,
             direccion_retiro,
             ciudad_retiro,
             direccion_entrega,
@@ -240,7 +242,7 @@ export default function ActiveRouteNavigation() {
   // Unified data
   const routeData = isPlannedRoute ? rutaPlanificada : hojaRuta;
   const routeNumber = isPlannedRoute ? rutaPlanificada?.numero : hojaRuta?.numero;
-  const envios = isPlannedRoute 
+  const allEnvios = isPlannedRoute 
     ? paradasRuta.map(p => ({
         ...p,
         envio: {
@@ -249,6 +251,11 @@ export default function ActiveRouteNavigation() {
         }
       }))
     : enviosHoja;
+
+  // Filter out shipments that have been unassigned (e.g. rescheduled: chofer_id = NULL)
+  const envios = allEnvios.filter(item => 
+    !item.envio?.chofer_id || item.envio.chofer_id === user?.id
+  );
 
   // Calculate stats - incidencia counts as "completed" for driver (no further action needed)
   const stats = useMemo(() => {
