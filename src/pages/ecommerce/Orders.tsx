@@ -440,9 +440,9 @@ export default function Orders() {
                       return;
                     }
                     const envioIds = ordersWithShipment.map(o => o.envio_id);
-                    navigate(`/route-planner?envios=${envioIds.join(',')}`);
-                  }}>
-                    <MapPin className="mr-2 h-4 w-4" />
+navigate(`/planner?envios=${envioIds.join(',')}`);
+                   }}>
+                     <MapPin className="mr-2 h-4 w-4" />
                     Planificar ({withShipment})
                   </Button>
                 </div>
@@ -518,8 +518,8 @@ export default function Orders() {
                               variant="outline"
                               onClick={() => {
                                 const envioIds = groupWithShipment.map(o => o.envio_id);
-                                navigate(`/route-planner?envios=${envioIds.join(',')}`);
-                              }}
+navigate(`/planner?envios=${envioIds.join(',')}`);
+                               }}
                             >
                               <MapPin className="mr-1 h-3 w-3" />
                               Planificar ({groupWithShipment.length})
