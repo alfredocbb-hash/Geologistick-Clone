@@ -302,7 +302,7 @@ export default function ActiveRouteNavigation() {
         if (!envio) return null;
         
         const isItemPickup = envio.requiere_retiro;
-        const isCompleted = envio.estado === 'entregado' || envio.estado === 'devuelto' || envio.estado_retiro === 'retirado';
+        const isCompleted = envio.estado === 'entregado' || envio.estado === 'devuelto' || envio.estado === 'incidencia' || envio.estado_retiro === 'retirado';
         const isCurrent = nextStop?.id === item.id;
         
         // Get coordinates: prioritize envio fields, fallback to ruta_paradas lat/lng
@@ -395,7 +395,7 @@ export default function ActiveRouteNavigation() {
         const envio = e.envio;
         if (!envio) return false;
         if (envio.requiere_retiro) return envio.estado_retiro !== 'retirado';
-        return envio.estado !== 'entregado' && envio.estado !== 'devuelto';
+        return envio.estado !== 'entregado' && envio.estado !== 'devuelto' && envio.estado !== 'incidencia';
       })
       .map(e => {
         const envio = e.envio;
@@ -732,7 +732,7 @@ export default function ActiveRouteNavigation() {
           if (!envio) return null;
           
           const isItemPickup = envio.requiere_retiro;
-          const isCompleted = envio.estado === 'entregado' || envio.estado === 'devuelto' || envio.estado_retiro === 'retirado';
+          const isCompleted = envio.estado === 'entregado' || envio.estado === 'devuelto' || envio.estado === 'incidencia' || envio.estado_retiro === 'retirado';
           const isCurrent = nextStop?.id === item.id;
           const itemContact = isItemPickup ? envio.remitente : envio.destinatario;
           
