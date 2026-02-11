@@ -222,6 +222,7 @@ export default function Settlements() {
       // 2. Fetch envíos del seller (via cliente_id) no liquidados en el periodo
       let envios: CalculatedEnvio[] = [];
       if (seller?.cliente_id) {
+        // Query principal: envíos por remitente_id = cliente_id
         const { data: enviosData, error: enviosError } = await supabase
           .from('envios')
           .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, estado, created_at')
@@ -232,6 +233,51 @@ export default function Settlements() {
           .order('created_at', { ascending: true });
 
         if (enviosError) throw enviosError;
+
+        // Fallback: buscar envíos via ecommerce_orders para sellers con mismo cliente_id
+        // que aún tengan remitente_id NULL
+        const { data: relatedSellers } = await supabase
+          .from('ecommerce_sellers')
+          .select('id')
+          .eq('cliente_id', seller.cliente_id)
+          .eq('tenant_id', tenantId);
+
+        const relatedSellerIds = (relatedSellers || []).map(s => s.id);
+        let fallbackEnvios: any[] = [];
+
+        if (relatedSellerIds.length > 0) {
+          // Buscar ecommerce_orders de estos sellers que tengan envio_id vinculado
+          const { data: ordersWithEnvio } = await supabase
+            .from('ecommerce_orders')
+            .select('envio_id')
+            .in('seller_id', relatedSellerIds)
+            .not('envio_id', 'is', null);
+
+          const envioIdsFromOrders = (ordersWithEnvio || [])
+            .map(o => o.envio_id)
+            .filter((id): id is string => id !== null);
+
+          if (envioIdsFromOrders.length > 0) {
+            // Excluir los que ya vinieron en la query principal
+            const existingIds = new Set((enviosData || []).map(e => e.id));
+            const missingIds = envioIdsFromOrders.filter(id => !existingIds.has(id));
+
+            if (missingIds.length > 0) {
+              const { data: extraEnvios } = await supabase
+                .from('envios')
+                .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, estado, created_at')
+                .in('id', missingIds)
+                .gte('created_at', fechaInicioStr)
+                .lte('created_at', fechaFinStr)
+                .is('liquidacion_seller_id', null)
+                .order('created_at', { ascending: true });
+
+              fallbackEnvios = extraEnvios || [];
+            }
+          }
+        }
+
+        const allEnviosData = [...(enviosData || []), ...fallbackEnvios];
 
         // Fetch zone rates for recalculating $0 envíos
         const { data: zoneTarifas } = await supabase
@@ -244,7 +290,7 @@ export default function Settlements() {
         const normalize = (str: string) => str.toLowerCase().trim()
           .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-        envios = (enviosData || []).map((e: any) => {
+        envios = allEnviosData.map((e: any) => {
           let precioFinal = e.precio_total || 0;
           let precioCalculado = false;
           let zonaMatch: string | null = null;
