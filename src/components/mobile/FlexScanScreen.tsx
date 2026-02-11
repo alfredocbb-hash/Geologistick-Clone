@@ -449,7 +449,7 @@ function PackageCard({ package: pkg, index, onRemove }: PackageCardProps) {
   );
 }
 
-// Horario Badge Component
+// Horario Badge Component 
 function HorarioBadge({ horario }: { horario: string | null }) {
   if (!horario || horario === 'cualquier_hora') return null;
 
