@@ -1,48 +1,27 @@
 
-# Fix: Escaneo masivo sin contador, sin sonido, sin boton de confirmar
 
-## Diagnostico
+# Fix: Boton "Planificar" navega a ruta incorrecta
 
-Hay 3 problemas interrelacionados en el flujo de escaneo masivo (CollectScanScreen + QRScanner):
+## Problema
 
-### 1. Sin sonido
-El audio beep en QRScanner (linea 549 y 325) usa un base64 WAV truncado/invalido: `UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1f`. Este string es un header WAV incompleto que no produce sonido audible.
+En la pagina de Pedidos e-Commerce (`src/pages/ecommerce/Orders.tsx`), el boton "Planificar" que aparece al seleccionar pedidos navega a `/route-planner?envios=...`, pero la ruta real del planificador en `App.tsx` es `/planner`.
 
-**Solucion**: Reemplazar el `new Audio(base64)` con un beep generado por AudioContext (oscillador), que es el mismo metodo que ya funciona en `MobileScanTab.playBeepSound()`.
+Por eso al hacer click no se abren los envios en el planificador, sino que se muestra un 404.
 
-**Archivo**: `src/components/qr/QRScanner.tsx` (lineas 325 y 549)
-- Crear una funcion `playBeep()` con AudioContext oscillator
-- Usarla en ambos lugares (native continuous mode linea 325 y web continuous mode linea 549)
+## Solucion
 
-### 2. Contador no se actualiza
-En `CollectScanScreen.handleQRScanned`, el `scanSessionCount` solo se incrementa DESPUES de que `addPackageByTracking` (async) se resuelve. Si la llamada a la BD tarda, el badge de QRScanner no muestra el conteo.
+Un cambio de una sola linea en `src/pages/ecommerce/Orders.tsx` (linea 443):
 
-**Solucion**: Incrementar `scanSessionCount` inmediatamente al escanear, independientemente del resultado async. El conteo refleja "escaneos realizados", no "paquetes agregados exitosamente".
+Cambiar:
+```
+navigate(`/route-planner?envios=${envioIds.join(',')}`);
+```
 
-**Archivo**: `src/components/mobile/CollectScanScreen.tsx` (linea ~48-60, funcion `handleQRScanned`)
-- Mover `setScanSessionCount(prev => prev + 1)` al inicio de la funcion, antes de las llamadas async
-
-### 3. Estado stale en escaneo rapido (paquetes no aparecen hasta reentrar)
-`useCollectPackages.addPackageByTracking` usa `packages` del closure de `useCallback`. Cuando se escanean multiples paquetes rapidamente en modo continuo, cada llamada ve el mismo array `packages` (stale closure), causando que:
-- Las verificaciones de duplicados fallen
-- Los `setPackages(prev => [...prev, pkg])` se sobreescriban entre si
-
-**Solucion**: Usar un `ref` para la verificacion de duplicados en lugar de leer del state directamente.
-
-**Archivo**: `src/hooks/useCollectPackages.ts`
-- Agregar `packagesRef` que siempre tenga el valor actual
-- En `addPackageByTracking`, verificar duplicados contra `packagesRef.current` en vez de `packages`
-- Eliminar `packages` de las dependencias del `useCallback` para evitar recreaciones innecesarias
-
----
-
-## Resumen de cambios
-
-| Archivo | Cambio |
-|---------|--------|
-| `src/components/qr/QRScanner.tsx` | Reemplazar base64 WAV roto con AudioContext beep |
-| `src/components/mobile/CollectScanScreen.tsx` | Incrementar contador inmediatamente al escanear |
-| `src/hooks/useCollectPackages.ts` | Usar ref para evitar stale closures en escaneo rapido |
+Por:
+```
+navigate(`/planner?envios=${envioIds.join(',')}`);
+```
 
 ## Sin cambios de base de datos
 No se necesitan migraciones.
+
