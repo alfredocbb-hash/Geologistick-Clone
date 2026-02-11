@@ -191,6 +191,18 @@ Deno.serve(async (req) => {
     let errors = 0;
 
     // Process each order
+    // Calculate fecha_entrega_estimada based on Argentina time (once for all orders in this sync)
+    const nowArgTNSync = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    const horaArgTNSync = nowArgTNSync.getUTCHours();
+    let fechaEntregaEstimadaTNSync: string;
+    if (horaArgTNSync >= 12) {
+      const tomorrow = new Date(nowArgTNSync);
+      tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+      fechaEntregaEstimadaTNSync = tomorrow.toISOString().substring(0, 10);
+    } else {
+      fechaEntregaEstimadaTNSync = nowArgTNSync.toISOString().substring(0, 10);
+    }
+
     for (const order of allOrders) {
       try {
         const orderData = {
@@ -219,6 +231,7 @@ Deno.serve(async (req) => {
           items: order.products || [],
           raw_data: order,
           synced_at: new Date().toISOString(),
+          fecha_entrega_estimada: fechaEntregaEstimadaTNSync,
         };
 
         // Check if order exists

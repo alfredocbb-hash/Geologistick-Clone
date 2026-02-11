@@ -162,6 +162,18 @@ Deno.serve(async (req) => {
       console.log("Order fetched:", { number: order.number, status: order.status });
 
       // Map order data to ecommerce_orders
+      // Calculate fecha_entrega_estimada based on Argentina time
+      const nowArgTN = new Date(Date.now() - 3 * 60 * 60 * 1000);
+      const horaArgTN = nowArgTN.getUTCHours();
+      let fechaEntregaEstimadaTN: string;
+      if (horaArgTN >= 12) {
+        const tomorrow = new Date(nowArgTN);
+        tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+        fechaEntregaEstimadaTN = tomorrow.toISOString().substring(0, 10);
+      } else {
+        fechaEntregaEstimadaTN = nowArgTN.toISOString().substring(0, 10);
+      }
+
       const orderData = {
         seller_id: seller.id,
         tenant_id: seller.tenant_id,
@@ -188,6 +200,7 @@ Deno.serve(async (req) => {
         items: order.products || [],
         raw_data: order,
         synced_at: new Date().toISOString(),
+        fecha_entrega_estimada: fechaEntregaEstimadaTN,
       };
 
       // Upsert order

@@ -216,6 +216,7 @@ export function CreateShipmentFromOrderDialog({
           tipo_servicio_detalle: 'domicilio_domicilio',
           estado: 'pendiente',
           codigo_orden_externo: order.external_order_number || order.external_order_id,
+          fecha_entrega: (order as any).fecha_entrega_estimada || null,
         })
         .select()
         .single();
