@@ -98,9 +98,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Search for orders with shipping ready_to_ship AND shipped — with full pagination
+    // Search for orders with date filter to avoid importing old history
     const statuses = ['ready_to_ship', 'shipped', 'delivered', 'not_delivered'];
     console.log('[ML Sync] Fetching orders for statuses:', statuses.join(', '));
+
+    // Active statuses: last 7 days; resolved statuses: last 3 days
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString();
 
     const allOrders: any[] = [];
     const seenIds = new Set();
@@ -108,9 +113,10 @@ Deno.serve(async (req) => {
     const MAX_OFFSET = 450;
 
     for (const status of statuses) {
+      const dateFrom = (status === 'delivered' || status === 'not_delivered') ? threeDaysAgo : sevenDaysAgo;
       let offset = 0;
       while (offset <= MAX_OFFSET) {
-        const url = `${ML_API_BASE}/orders/search?seller=${seller.store_id}&shipping.status=${status}&sort=date_desc&limit=${PAGE_LIMIT}&offset=${offset}`;
+        const url = `${ML_API_BASE}/orders/search?seller=${seller.store_id}&shipping.status=${status}&sort=date_desc&limit=${PAGE_LIMIT}&offset=${offset}&order.date_created.from=${dateFrom}`;
         console.log(`[ML Sync] Fetching status=${status} offset=${offset}`);
         
         const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
