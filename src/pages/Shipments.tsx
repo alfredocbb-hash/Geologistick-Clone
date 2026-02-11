@@ -53,7 +53,8 @@ export default function Shipments() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [dateFilter, setDateFilter] = useState<Date>(new Date());
+  const [dateFrom, setDateFrom] = useState<Date>(new Date());
+  const [dateTo, setDateTo] = useState<Date>(new Date());
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [envioToCancel, setEnvioToCancel] = useState<any>(null);
   const [cancelReason, setCancelReason] = useState('');
@@ -120,10 +121,10 @@ export default function Shipments() {
   });
 
   const { data: envios, isLoading, refetch } = useQuery({
-    queryKey: ['envios', statusFilter, dateFilter.toISOString()],
+    queryKey: ['envios', statusFilter, dateFrom.toISOString(), dateTo.toISOString()],
     queryFn: async () => {
-      const dayStart = startOfDay(dateFilter);
-      const dayEnd = endOfDay(dateFilter);
+      const dayStart = startOfDay(dateFrom);
+      const dayEnd = endOfDay(dateTo);
 
       let query = supabase
         .from('envios')
@@ -269,17 +270,35 @@ export default function Shipments() {
             <div className="flex gap-2">
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-[180px] justify-start text-left font-normal">
+                  <Button variant="outline" className="w-[160px] justify-start text-left font-normal">
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {format(dateFilter, 'dd MMM yyyy', { locale: es })}
+                    {format(dateFrom, 'dd/MM/yyyy', { locale: es })}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
                   <Calendar
                     mode="single"
-                    selected={dateFilter}
-                    onSelect={(date) => date && setDateFilter(date)}
+                    selected={dateFrom}
+                    onSelect={(date) => date && setDateFrom(date)}
                     locale={es}
+                    className="pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-[160px] justify-start text-left font-normal">
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {format(dateTo, 'dd/MM/yyyy', { locale: es })}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dateTo}
+                    onSelect={(date) => date && setDateTo(date)}
+                    locale={es}
+                    className="pointer-events-auto"
                   />
                 </PopoverContent>
               </Popover>
