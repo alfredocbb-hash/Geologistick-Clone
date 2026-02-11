@@ -1,68 +1,91 @@
 
-# Fecha de entrega estimada en Pedidos e-Commerce
+# Liquidaciones de Sellers: Envios Comunes + Cuenta Corriente + Facturacion
 
-## Problema
+## Contexto Actual
 
-Los pedidos e-commerce se muestran con la fecha de creacion (`created_at`), que es la fecha en que el comprador hizo la compra. Pero los pedidos que entran despues de las 12:00 hs se entregan al dia siguiente, y el sistema deberia reflejar eso.
+Hoy las liquidaciones de sellers solo toman movimientos de la tabla `seller_cuenta_corriente` (cargos, pagos, ajustes). Pero los sellers tambien tienen envios comunes (tabla `envios`) vinculados a traves de `ecommerce_sellers.cliente_id` -> `envios.remitente_id`. Estos envios no se incluyen en la liquidacion.
 
-Actualmente la tabla `ecommerce_orders` no tiene un campo de fecha de entrega estimada.
+Ademas, no existe opcion de emitir factura sobre una liquidacion.
 
 ## Solucion
 
-### 1. Agregar columna `fecha_entrega_estimada` a la tabla `ecommerce_orders`
+### 1. Incluir envios comunes del seller en la liquidacion
 
-Nueva columna de tipo `date` que se calcula automaticamente:
-- Si el pedido se crea antes de las 12:00 (hora Argentina, UTC-3) -> fecha de entrega = hoy
-- Si el pedido se crea despues de las 12:00 -> fecha de entrega = dia siguiente
+Al calcular una liquidacion, ademas de los movimientos de `seller_cuenta_corriente`, tambien se buscaran los envios de la tabla `envios` donde:
+- `remitente_id` = `ecommerce_sellers.cliente_id` (el seller esta vinculado a un cliente)
+- `created_at` este dentro del rango de fechas
+- El envio no haya sido liquidado previamente
 
-### 2. Trigger para calcular automaticamente la fecha
+Para esto se necesita:
+- Agregar columna `liquidacion_seller_id` a la tabla `envios` para marcar envios ya liquidados
+- Al calcular, consultar ambas fuentes: movimientos de cuenta corriente + envios sin liquidar
+- Mostrar ambos en la vista previa y en el detalle
 
-Un trigger `BEFORE INSERT` que calcule `fecha_entrega_estimada` basandose en la hora de creacion en zona horaria Argentina (`America/Argentina/Buenos_Aires`).
+### 2. Modificar la logica de calculo en Settlements.tsx
 
-```text
-Si hora local >= 12:00
-  fecha_entrega_estimada = mañana
-Sino
-  fecha_entrega_estimada = hoy
-```
+El boton "Calcular" hara dos consultas:
+1. Movimientos de `seller_cuenta_corriente` sin liquidar en el periodo (como hoy)
+2. Envios de `envios` donde `remitente_id = seller.cliente_id`, dentro del periodo, sin `liquidacion_seller_id`
 
-### 3. Actualizar pedidos existentes
+Se mostrara un resumen unificado con tabs: "Movimientos Cta. Cte." y "Envios" para que el operador vea todo antes de generar.
 
-Una migracion que llene la columna para los pedidos que ya existen, aplicando la misma logica sobre su `created_at`.
+### 3. Al generar la liquidacion
 
-### 4. Modificar la pagina de Pedidos e-Commerce
+- Vincular movimientos de `seller_cuenta_corriente` con `liquidacion_id` (como hoy)
+- Vincular envios con `liquidacion_seller_id`
+- Sumar el total de envios al total de cargos de la liquidacion
 
-En `src/pages/ecommerce/Orders.tsx`:
-- Mostrar `fecha_entrega_estimada` en vez de `created_at` en la columna de fecha del pedido
-- Filtrar por `fecha_entrega_estimada` en vez de `created_at` para que el filtro de fechas muestre los pedidos segun su fecha de entrega
+### 4. Agregar posibilidad de facturar la liquidacion
 
-### 5. Actualizar las Edge Functions que crean pedidos
+Agregar columna `factura_id` a `liquidaciones_seller` para vincular con una factura. En el detalle de la liquidacion y en la lista, agregar boton "Facturar" que abre el dialogo `InvoiceDataDialog` existente (adaptado) para emitir factura por el monto total de la liquidacion.
 
-Agregar el calculo de `fecha_entrega_estimada` en:
-- `mercadolibre-webhook/index.ts` (cuando llega un pedido nuevo por webhook)
-- `mercadolibre-sync/index.ts` (cuando se sincronizan pedidos)
-- `tiendanube-webhook/index.ts` (pedidos de Tiendanube)
-- `tiendanube-sync/index.ts` (sync de Tiendanube)
-- `register-ml-shipment/index.ts` (registro manual de envio ML)
+Como la factura actual esta vinculada a un `envio_id`, se necesita:
+- Hacer `envio_id` nullable en `facturas` (ya lo es)
+- Agregar columna `liquidacion_seller_id` a `facturas` para vincular factura con liquidacion
 
-La logica en las edge functions sera:
-```text
-hora actual en Argentina (UTC-3)
-Si hora >= 12 -> fecha = mañana
-Si hora < 12 -> fecha = hoy
-```
+### 5. Actualizar el detalle de liquidacion
 
-Nota: El trigger de base de datos es la capa de seguridad principal; las edge functions lo establecen como optimizacion pero el trigger siempre corrige si falta.
+En `SellerLiquidacionDetailDialog`, agregar:
+- Tab "Envios" mostrando los envios incluidos en la liquidacion
+- Boton "Facturar" que abre el dialogo de facturacion
+- Si ya tiene factura, mostrar los datos de la factura emitida
 
-### 6. Actualizar CreateShipmentFromOrderDialog
-
-Cuando se crea un envio desde un pedido, copiar la `fecha_entrega_estimada` del pedido al campo `fecha_entrega` del envio.
-
-## Resumen de cambios
+## Cambios por componente
 
 | Componente | Cambio |
 |------------|--------|
-| Base de datos | Nueva columna `fecha_entrega_estimada` + trigger BEFORE INSERT |
-| `src/pages/ecommerce/Orders.tsx` | Mostrar y filtrar por `fecha_entrega_estimada` |
-| `src/components/ecommerce/CreateShipmentFromOrderDialog.tsx` | Usar `fecha_entrega_estimada` como `fecha_entrega` del envio |
-| 5 Edge Functions | Calcular y enviar `fecha_entrega_estimada` al crear pedidos |
+| **Base de datos** | Agregar `liquidacion_seller_id` a `envios`, agregar `liquidacion_seller_id` a `facturas`, agregar `factura_id` a `liquidaciones_seller` |
+| **`src/pages/ecommerce/Settlements.tsx`** | Modificar calculo para incluir envios del seller, mostrar envios en preview, vincular envios al generar |
+| **`src/components/ecommerce/SellerLiquidacionDetailDialog.tsx`** | Agregar tab "Envios", boton "Facturar", mostrar datos de factura |
+| **Edge function `arca-factura`** | Permitir recibir `liquidacion_seller_id` en vez de `envio_id` para emitir factura por liquidacion |
+
+## Detalle tecnico de la migracion SQL
+
+```text
+1. ALTER TABLE envios ADD COLUMN liquidacion_seller_id UUID REFERENCES liquidaciones_seller(id)
+2. ALTER TABLE facturas ADD COLUMN liquidacion_seller_id UUID REFERENCES liquidaciones_seller(id)
+3. ALTER TABLE liquidaciones_seller ADD COLUMN factura_id UUID REFERENCES facturas(id)
+4. CREATE INDEX en envios(liquidacion_seller_id)
+5. CREATE INDEX en facturas(liquidacion_seller_id)
+```
+
+## Flujo del usuario
+
+```text
+1. Operador selecciona seller y rango de fechas
+2. Click "Calcular"
+3. Sistema muestra:
+   - Movimientos de cuenta corriente (cargos/pagos/ajustes)
+   - Envios comunes del seller en el periodo
+   - Totales unificados
+4. Click "Generar Liquidacion"
+5. Se crea la liquidacion vinculando todo
+6. En el historial, puede:
+   - Ver detalle (con tabs Resumen / Movimientos / Envios)
+   - Facturar (abre dialogo de datos fiscales)
+   - Aprobar / Pagar / Cancelar (como hoy)
+   - Descargar PDF (actualizado con envios)
+```
+
+## Sin cambios en el portal del seller
+El portal del seller (`SellerDashboard`, `SellerShipments`, etc.) seguira funcionando igual, solo vera la liquidacion ya generada.
