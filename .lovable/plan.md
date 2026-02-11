@@ -1,46 +1,43 @@
 
 
-# Corregir: No deja crear envio por caja + conceptos duplicados
+# Corregir: Pedidos de e-commerce no aparecen en el planificador
 
-## Problema 1: "No hay caja abierta" al crear envio
+## Problema
 
-La pagina de Nuevo Envio (`NewShipment.tsx`) tiene el mismo bug que ya corregimos en la pagina de Caja: usa `.maybeSingle()` para buscar la sesion de caja abierta. Como el usuario tiene multiples sesiones abiertas (4 sesiones huerfanas), esta consulta falla silenciosamente y la UI muestra "No hay caja abierta".
+Cuando seleccionas pedidos en el modulo de e-commerce y haces click en "Planificar", la navegacion al planificador funciona correctamente (los IDs de envios se pasan por URL). Sin embargo, el planificador **no muestra esos envios** porque su consulta a la base de datos filtra con `.is("chofer_id", null)` (linea 210 de RoutePlanner.tsx).
 
-### Solucion
+Los envios de e-commerce que intentas planificar ya tienen un `chofer_id` asignado (todos apuntan al mismo chofer). Por eso, el planificador los excluye de la consulta y muestra el mensaje "Envios no disponibles".
 
-**Archivo:** `src/pages/NewShipment.tsx` (linea ~349-357)
+## Solucion
 
-Reemplazar `.maybeSingle()` por `.order('created_at', { ascending: false }).limit(1)` y tomar el primer resultado, identico al fix que ya hicimos en `Cash.tsx`:
+### Archivo: `src/pages/RoutePlanner.tsx`
 
+Modificar la consulta de envios pendientes para que los envios que vienen explicitamente desde la URL (parametro `?envios=`) **no sean excluidos** por el filtro de `chofer_id`. Esto se logra haciendo dos consultas:
+
+1. La consulta normal (con filtro `chofer_id IS NULL`) para los envios pendientes generales
+2. Una consulta adicional para los envios que vienen por URL, sin el filtro de `chofer_id`
+
+Luego se combinan ambos resultados eliminando duplicados.
+
+```text
+Antes:
+  query con .is("chofer_id", null) -> excluye envios con chofer asignado
+
+Despues:
+  query 1: envios sin chofer (lista general)
+  query 2: envios de la URL (sin filtro chofer_id)
+  resultado: union de ambos (sin duplicados)
 ```
-// Antes (linea 354)
-.maybeSingle()
 
-// Despues
-.order('created_at', { ascending: false })
-.limit(1)
-```
+### Detalle tecnico
 
-Y ajustar el return para tomar `data[0]` en lugar de `data` directamente.
+En la funcion `queryFn` del query `envios-planificador` (lineas ~198-250):
 
----
+1. Extraer los IDs de la URL antes de la consulta principal
+2. Si hay IDs en la URL, hacer una segunda consulta sin el filtro `.is("chofer_id", null)` solo para esos IDs
+3. Combinar los resultados, priorizando los de la URL
 
-## Problema 2: Conceptos "duplicados" en tarifas
-
-Revise la base de datos y **no hay duplicados reales** en las tablas `tarifa_conceptos` ni `tarifa_concepto_precios`. Sin embargo, el tenant de Bera Express tiene dos conceptos que se ven iguales:
-
-- `traslado` (codigo: `tras`, basico: si)
-- `TRASLADO` (codigo: `trasl`, basico: no)
-
-Son registros distintos creados manualmente. Si quieres eliminar uno de ellos, puedo hacerlo como un paso adicional. No es un error del sistema sino datos ingresados por duplicado.
-
----
-
-## Resumen de cambios
-
-| Archivo | Cambio |
-|---------|--------|
-| `src/pages/NewShipment.tsx` | Corregir consulta de caja abierta (`.maybeSingle()` a `.limit(1)`) |
+Esto permite que los envios ya asignados a un chofer puedan ser re-planificados desde el modulo de e-commerce, sin afectar el comportamiento normal del planificador.
 
 ## Sin cambios de base de datos
 No se necesitan migraciones.
