@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { QrCode, Package, Truck, History, CheckCircle2, Scan, ArrowRight, Building2 } from 'lucide-react';
+import { CollectScanScreen } from './CollectScanScreen';
 import { Card, CardContent } from '@/components/ui/card';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -63,6 +64,7 @@ export function MobileScanTab() {
   const [showMLRegisterDialog, setShowMLRegisterDialog] = useState(false);
   const [pendingMLData, setPendingMLData] = useState<{ mlShipmentId: string; mlSenderId?: string } | null>(null);
   const [isPulsing, setIsPulsing] = useState(true);
+  const [showCollectScreen, setShowCollectScreen] = useState(false);
   
   // Route sheet states
   const [showReceiveRouteSheetDialog, setShowReceiveRouteSheetDialog] = useState(false);
@@ -480,7 +482,7 @@ export function MobileScanTab() {
       <div className={`grid gap-3 ${(hasRole('operador') || hasRole('bodega') || hasRole('sucursal') || hasRole('admin')) ? 'grid-cols-3' : 'grid-cols-2'}`}>
         <Card 
           className="bg-slate-900/60 border-slate-800/50 cursor-pointer hover:border-blue-500/50 transition-all active:scale-[0.98]"
-          onClick={handleScanClick}
+          onClick={() => setShowCollectScreen(true)}
         >
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
@@ -489,7 +491,7 @@ export function MobileScanTab() {
               </div>
               <div>
                 <p className="font-semibold text-white">Colectar</p>
-                <p className="text-xs text-slate-400">Escanear retiro</p>
+                <p className="text-xs text-slate-400">Colecta rápida</p>
               </div>
             </div>
             <ArrowRight className="w-4 h-4 text-slate-500 absolute top-4 right-4" />
@@ -672,6 +674,12 @@ export function MobileScanTab() {
           onClose={handleDialogClose}
           onSuccess={handleDialogSuccess}
         />
+      )}
+      {/* Collect Screen */}
+      {showCollectScreen && (
+        <div className="fixed inset-0 z-40 bg-slate-950 p-4 overflow-auto">
+          <CollectScanScreen onClose={() => setShowCollectScreen(false)} />
+        </div>
       )}
     </div>
   );
