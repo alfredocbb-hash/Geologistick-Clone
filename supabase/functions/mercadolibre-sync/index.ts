@@ -374,6 +374,19 @@ Deno.serve(async (req) => {
               }
               if (precioCalculadoSync > 0) break;
             }
+
+            // Fallback: use the broadest zone as catch-all
+            if (precioCalculadoSync === 0) {
+              const fallback = zoneTarifas
+                .filter(t => t.zona_destino && t.zona_destino.split(',').length > 3)
+                .sort((a, b) => (b.zona_destino?.split(',').length || 0) - (a.zona_destino?.split(',').length || 0))[0];
+              if (fallback) {
+                precioCalculadoSync = fallback.precio_base || 0;
+                tarifaIdSync = fallback.id;
+                tarifaMetodoSync = 'zona_fallback';
+                console.log('[ML Sync] Zone fallback applied for city:', city, '-> precio:', precioCalculadoSync);
+              }
+            }
           }
         }
 
