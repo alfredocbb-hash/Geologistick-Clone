@@ -29,6 +29,7 @@ import { ReceiveRouteSheetDialog } from '@/components/scan/ReceiveRouteSheetDial
 import { MLDeliveryDialog } from '@/components/scan/MLDeliveryDialog';
 import { MLRegisterDialog } from '@/components/scan/MLRegisterDialog';
 import { parseQRCode, ParsedQR } from '@/lib/qrParser';
+import { CollectScanScreen } from '@/components/mobile/CollectScanScreen';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   pendiente: { label: 'Pendiente', color: 'bg-orange-100 text-orange-800' },
@@ -95,6 +96,7 @@ export default function ScanQR() {
   const [showMLDeliveryDialog, setShowMLDeliveryDialog] = useState(false);
   const [showMLRegisterDialog, setShowMLRegisterDialog] = useState(false);
   const [pendingMLData, setPendingMLData] = useState<{ mlShipmentId: string; mlSenderId?: string } | null>(null);
+  const [showMassCollect, setShowMassCollect] = useState(false);
 
   // Role-based permissions
   const isDriver = hasRole('chofer');
@@ -442,6 +444,18 @@ export default function ScanQR() {
                 <span className="text-xs opacity-80">Retiro en domicilio</span>
               </Button>
             )}
+
+            {isDriver && (
+              <Button
+                onClick={() => setShowMassCollect(true)}
+                size="lg"
+                className="bg-gradient-to-r from-cyan-600 to-blue-500 hover:from-cyan-700 hover:to-blue-600 h-24 flex flex-col gap-2"
+              >
+                <PackageCheck className="h-6 w-6" />
+                <span className="font-bold">Colecta Masiva</span>
+                <span className="text-xs opacity-80">Escanear y colectar varios</span>
+              </Button>
+            )}
             
             {isOperator && (
               <Button
@@ -722,6 +736,23 @@ export default function ScanQR() {
           }}
           onSuccess={handleMLRegisterSuccess}
         />
+      )}
+
+      {/* Mass Collect Overlay */}
+      {showMassCollect && (
+        <div className="fixed inset-0 z-50 bg-background">
+          <div className="flex flex-col h-full p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold">Colecta Masiva</h2>
+              <Button variant="ghost" size="sm" onClick={() => setShowMassCollect(false)}>
+                Cerrar
+              </Button>
+            </div>
+            <div className="flex-1 min-h-0">
+              <CollectScanScreen onClose={() => setShowMassCollect(false)} />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

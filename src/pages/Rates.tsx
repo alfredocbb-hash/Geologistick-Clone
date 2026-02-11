@@ -209,14 +209,21 @@ export default function Rates() {
     },
   });
 
-  // Fetch conceptos
+  // Fetch conceptos (filtered by tenant)
+  const userTenantId = (profile as any)?.tenant_id;
   const { data: conceptos = [] } = useQuery({
-    queryKey: ['tarifa_conceptos'],
+    queryKey: ['tarifa_conceptos', userTenantId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('tarifa_conceptos')
         .select('*')
         .order('orden');
+      
+      if (userTenantId) {
+        query = query.or(`tenant_id.eq.${userTenantId},tenant_id.is.null`);
+      }
+      
+      const { data, error } = await query;
       if (error) throw error;
       return data as TarifaConcepto[];
     },

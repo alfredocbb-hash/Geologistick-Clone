@@ -251,7 +251,7 @@ export function FlexScanScreen() {
       {/* Action Buttons */}
       {hasPackages && (
         <div className="mt-4 space-y-3">
-          {/* Map & Transfer Row */}
+          {/* Map, Optimize & Transfer Row */}
           <div className="flex gap-3">
             <Button
               variant="outline"
@@ -260,12 +260,22 @@ export function FlexScanScreen() {
               disabled={packagesWithCoords.length === 0}
             >
               <Map className="h-4 w-4" />
-              Ver Mapa
+              Mapa
               {packagesWithCoords.length > 0 && (
                 <Badge variant="secondary" className="ml-1">
                   {packagesWithCoords.length}
                 </Badge>
               )}
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={handleOptimize}
+              className="flex-1 gap-2 bg-slate-900 border-amber-700 text-amber-400 hover:bg-amber-950/40"
+              disabled={packagesWithCoords.length < 2 || !location}
+            >
+              <Navigation className="h-4 w-4" />
+              Optimizar
             </Button>
             
             {canTransfer && (

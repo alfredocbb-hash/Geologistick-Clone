@@ -256,9 +256,12 @@ export default function RoutePlanner() {
         (ecommerceOrders || []).map(o => o.envio_id).filter(Boolean)
       );
 
-      // Exclude ecommerce shipments unless they were explicitly selected via URL
+      // Exclude ecommerce shipments only if they are in 'pendiente' state (not yet collected)
+      // Once collected (recogido, en_sucursal, en_reparto), they should appear in the planner
       const filtered = merged.filter(envio =>
-        !ecommerceEnvioIds.has(envio.id) || urlEnvioIds.has(envio.id)
+        !ecommerceEnvioIds.has(envio.id) || 
+        urlEnvioIds.has(envio.id) || 
+        ['recogido', 'en_sucursal', 'en_reparto'].includes(envio.estado || '')
       );
 
       // Map to include type (retiro/entrega)
@@ -563,15 +566,19 @@ export default function RoutePlanner() {
       }
 
       if (response.data?.lat && response.data?.lng) {
-        const latField = envio.tipo === "retiro" ? "remitente_lat" : "destinatario_lat";
-        const lngField = envio.tipo === "retiro" ? "remitente_lng" : "destinatario_lng";
+        const isRetiro = envio.tipo === "retiro";
+        const updateFields: Record<string, number> = isRetiro
+          ? { remitente_lat: response.data.lat, remitente_lng: response.data.lng }
+          : { 
+              destinatario_lat: response.data.lat, 
+              destinatario_lng: response.data.lng,
+              entrega_lat: response.data.lat,
+              entrega_lng: response.data.lng,
+            };
         
         const { error } = await supabase
           .from("envios")
-          .update({
-            [latField]: response.data.lat,
-            [lngField]: response.data.lng,
-          })
+          .update(updateFields)
           .eq("id", envio.id);
 
         if (error) throw error;
