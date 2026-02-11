@@ -1,54 +1,99 @@
 
-# Vinculacion de Sellers con Clientes
+# Precios por Zona para Envios ML Flex
 
 ## Problema
-Algunos sellers (especialmente los sincronizados via MercadoLibre o creados antes de la logica de auto-link) no tienen `cliente_id`, lo que impide que sus envios comunes se incluyan en las liquidaciones.
+Los envios ML Flex llegan sin precio (ML no informa el costo para self_service), y los sellers no tienen una tarifa unica asignada. El pricing se basa en zonas: la ciudad de destino del envio determina el precio.
+
+Ya existen tarifas por zona en la base de datos:
+- Zona 1 - Berazategui: $4,610.99
+- Zona 2 - Quilmes y Florencio Varela: $7,370.99
+- Zona 3 - CABA y GBA: $10,245.99
+- Zona 4 - La Plata: (falta crear o es la misma que zona 3)
 
 ## Solucion
 
-### 1. Mostrar estado de vinculacion en la tabla de Sellers
+### 1. Asignar precio por zona al registrar envio ML Flex
 
-En `src/pages/ecommerce/Sellers.tsx`:
-- Agregar `cliente_id` al interface `Seller`
-- Agregar una nueva columna "Cliente" en la tabla que muestre:
-  - Si tiene `cliente_id`: icono verde con "Vinculado" 
-  - Si NO tiene `cliente_id`: icono naranja con "Sin vincular"
+En la edge function `register-ml-shipment`, cuando el seller no tiene `tarifa_id` individual:
+- Buscar todas las tarifas de tipo `zona` del tenant
+- Comparar la `ciudad_entrega` del envio contra `zona_destino` de cada tarifa
+- Si hay match, usar ese `precio_base` como `precio_total`
+- Si no hay match, dejar precio en 0 (se podra corregir en la liquidacion)
 
-### 2. Agregar accion "Vincular Cliente" en el menu de cada seller
+### 2. Recalcular precios en la liquidacion (Settlements.tsx)
 
-En el dropdown de acciones de cada seller sin `cliente_id`:
-- Nuevo item "Vincular Cliente" que busca automaticamente un cliente existente por email/telefono
-- Si encuentra uno, lo vincula directamente
-- Si no encuentra, crea un nuevo cliente con los datos del seller y lo vincula
-- Muestra toast con el resultado
+Al calcular la liquidacion, para envios con `precio_total = 0`:
+- Buscar tarifas por zona del tenant
+- Hacer el mismo match ciudad vs zona_destino
+- Mostrar el precio calculado en la preview
+- Permitir que el operador vea y confirme antes de generar
 
-### 3. Boton "Vincular Todos" para vincular en lote
+### 3. Logica de matching de zonas
 
-Agregar un boton en el header (junto a "Sincronizar Todas") que:
-- Filtra sellers sin `cliente_id`
-- Para cada uno, ejecuta la misma logica: buscar cliente por email/telefono, o crear uno nuevo
-- Muestra progreso y resultado final
+La comparacion sera flexible (case-insensitive, sin acentos) y soportara multiples ciudades en `zona_destino` separadas por coma:
 
-### 4. Mostrar estado en SellerDetailsDialog
+```text
+zona_destino: "QUILMES,FLORENCIO VARELA"
+ciudad_entrega: "Quilmes"
+-> Match! precio_base: $7,370.99
+```
 
-En `src/components/ecommerce/SellerDetailsDialog.tsx`:
-- Agregar badge indicando si esta vinculado a un cliente
-- Mostrar nombre del cliente vinculado si existe
+### 4. Tambien aplicar al sincronizar (mercadolibre-sync)
+
+La misma logica se aplicara en `mercadolibre-sync` cuando crea envios automaticamente.
 
 ## Cambios por archivo
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/pages/ecommerce/Sellers.tsx` | Agregar `cliente_id` al tipo, columna "Cliente" en tabla, accion individual "Vincular Cliente", boton bulk "Vincular Todos" |
-| `src/components/ecommerce/SellerDetailsDialog.tsx` | Mostrar estado de vinculacion con cliente |
+| `supabase/functions/register-ml-shipment/index.ts` | Agregar logica de busqueda de tarifa por zona cuando seller no tiene tarifa_id. Match ciudad_entrega contra zona_destino de tarifas tipo zona del tenant |
+| `supabase/functions/mercadolibre-sync/index.ts` | Misma logica de tarifa por zona al crear envios |
+| `src/pages/ecommerce/Settlements.tsx` | Al calcular, para envios con precio 0, buscar tarifa por zona y recalcular. Mostrar precio calculado en preview con indicador visual |
 
-## Logica de vinculacion (reutilizada de CreateSellerDialog)
+## Detalle tecnico
+
+### Funcion de matching (compartida en edge functions)
 
 ```text
-1. Buscar en tabla 'clientes' por email o telefono del seller (mismo tenant)
-2. Si encuentra -> usar ese cliente_id
-3. Si no encuentra -> crear nuevo cliente con datos del seller
-4. Actualizar ecommerce_sellers.cliente_id con el resultado
+function findZoneRate(tarifas, ciudadEntrega):
+  ciudadNorm = normalize(ciudadEntrega)  // lowercase, sin acentos
+  for tarifa in tarifas:
+    zonas = tarifa.zona_destino.split(",")
+    for zona in zonas:
+      if normalize(zona) == ciudadNorm OR ciudadNorm includes normalize(zona):
+        return tarifa.precio_base
+  return 0  // sin match
 ```
 
-No se requieren cambios en la base de datos ya que `cliente_id` ya existe en `ecommerce_sellers`.
+### En register-ml-shipment (paso 9 actual)
+
+```text
+// Actual: solo busca seller.tarifa_id
+// Nuevo: si no tiene tarifa_id, buscar tarifas por zona
+1. Si seller.tarifa_id -> usar precio_base (como hoy)
+2. Si no -> buscar tarifas WHERE tipo_tarifa='zona' AND tenant_id=seller.tenant_id
+3. Hacer match ciudad_entrega contra zona_destino
+4. Usar precio_base de la tarifa que matchee
+5. Guardar tarifa_id del match en el envio
+```
+
+### En Settlements.tsx (calculateMutation)
+
+```text
+// Despues de traer envios, para los que tengan precio_total=0:
+1. Buscar tarifas tipo zona del tenant
+2. Para cada envio sin precio, matchear ciudad_entrega
+3. Mostrar precio sugerido en la tabla con badge "Calculado"
+4. Al generar, actualizar precio_total del envio
+```
+
+## Flujo completo
+
+```text
+1. Se escanea QR de ML Flex -> register-ml-shipment
+2. Sistema busca tarifa por zona segun ciudad destino
+3. Asigna precio automaticamente ($4610, $7370, $10245, etc.)
+4. Al liquidar, operador ve envios con precios ya calculados
+5. Si algun envio quedo sin precio (ciudad desconocida), se muestra aviso
+6. Operador puede continuar o ajustar manualmente
+```
