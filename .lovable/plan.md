@@ -1,58 +1,59 @@
 
 
-# Agregar contador visible y boton "Colectar Todos" en Modo Flex
+# Extraer horarios de entrega de Mercado Libre Flex y usarlos en la ruta
 
-## Problema
-En la pantalla de Modo Flex, despues de escanear paquetes:
-1. La cantidad de paquetes escaneados no se ve claramente (el texto queda tapado por el header de la app)
-2. No hay opcion de "Colectar todos los escaneados" — solo existe "Iniciar Reparto" y "Asignar", pero a veces el chofer necesita marcar los paquetes como recogidos sin iniciar un reparto
+## Contexto actual
+- La tabla `envios` ya tiene un campo `horario_preferido_entrega` con valores como `manana`, `tarde`, `noche`, `cualquier_hora`
+- La API de ML devuelve en `lead_time.estimated_delivery_time.time_frame` un rango horario con `from` y `to` (ej: `from: 8, to: 14` para horario comercial)
+- La API tambien indica `shipping_method.deliver_to` que puede ser `address` (domicilio) o `agency`
+- Actualmente el edge function `register-ml-shipment` NO extrae esta informacion
 
 ## Solucion
 
-### Archivo: `src/components/mobile/FlexScanScreen.tsx`
+### 1. Edge Function: Extraer horario de ML al registrar
 
-**Cambio 1 — Contador prominente**
-Agregar un badge/contador grande y visible entre el boton "ESCANEAR PAQUETE" y la lista de paquetes, que muestre claramente la cantidad de paquetes escaneados. Algo como un banner compacto:
+**Archivo:** `supabase/functions/register-ml-shipment/index.ts`
 
-```
-[Package icon] 3 paquetes escaneados
-```
+Despues de obtener el shipment de la API de ML (linea 144), extraer el `time_frame` y mapearlo a los valores existentes del sistema:
 
-Esto sera un banner con fondo semitransparente que no dependa del header (que puede quedar oculto detras del AppHeader de la app movil).
+- `time_frame.from: 8, to: 12` --> `manana`
+- `time_frame.from: 12, to: 18` --> `tarde`  
+- `time_frame.from: 18, to: 21` --> `noche`
+- Otros rangos o sin datos --> `cualquier_hora`
 
-**Cambio 2 — Boton "Colectar Todos"**
-Agregar un boton de colecta en la seccion de acciones (junto a "Ver Mapa" y "Asignar"), que al presionarlo actualice todos los envios escaneados a estado `recogido` con `estado_retiro: retirado`, reutilizando la misma logica que ya existe en `useCollectPackages.confirmCollection`.
+Guardar este valor en `horario_preferido_entrega` al crear el envio (linea ~291).
 
-La logica sera directa en el componente (sin necesidad de importar otro hook):
-- Hacer un batch update de los envios a `estado: 'recogido'`, `estado_retiro: 'retirado'`, `fecha_recogida: now`, `chofer_id: user.id`
-- Mostrar toast de exito y limpiar la lista
+### 2. Mostrar horario en la lista Flex
 
-El boton se mostrara con un icono de check y texto "COLECTAR TODOS (N)" con estilo azul/cyan para diferenciarlo de "INICIAR REPARTO" (verde).
+**Archivo:** `src/components/mobile/FlexScanScreen.tsx`
 
-### Resumen visual del layout con paquetes
+Agregar el horario preferido junto a la direccion en cada paquete escaneado. Mostrarlo como un badge pequenio (ej: "AM", "PM", "Noche") para que el chofer vea de un vistazo las restricciones horarias.
 
-```text
-+----------------------------------+
-| Modo Flex          [Limpiar]     |
-| 3 paquetes escaneados            |
-+----------------------------------+
-| [====  ESCANEAR PAQUETE  ====]   |
-+----------------------------------+
-| (!) 3 paquetes listos            |  <-- NUEVO: badge contador
-+----------------------------------+
-| 1  ML-46442988089                |
-|    Calle 21 3207...              |
-| 2  ML-46444090042                |
-|    Calle 9 de Julio...           |
-| 3  ML-46446277435                |
-|    Pedro Bonifacio...            |
-+----------------------------------+
-| [Ver Mapa]  [Asignar]           |
-| [== COLECTAR TODOS (3) ==]       |  <-- NUEVO
-| [== INICIAR REPARTO ==]          |
-| [== HOJA DE RUTA ==]             |
-+----------------------------------+
-```
+### 3. Usar horario en la optimizacion de ruta
 
-### Sin cambios de base de datos
-La logica de update ya es compatible con los permisos existentes del chofer sobre la tabla `envios`.
+**Archivo:** `src/hooks/useFlexPackages.ts`
+
+Modificar la funcion `nearestNeighborSort` para que, ademas de la distancia, considere los horarios:
+- Paquetes con horario `manana` se priorizan primero
+- Paquetes con horario `tarde` despues
+- Paquetes con `noche` al final
+- Dentro de cada franja, se ordena por proximidad (nearest-neighbor actual)
+
+Esto es una heuristica simple pero efectiva: primero por franja horaria, luego por distancia.
+
+### 4. Agregar campo horario al FlexPackage
+
+**Archivo:** `src/hooks/useFlexPackages.ts`
+
+Agregar `horario_preferido_entrega` a la interfaz `FlexPackage` y cargarlo al escanear/agregar paquetes.
+
+## Resumen de cambios
+
+| Archivo | Cambio |
+|---------|--------|
+| `supabase/functions/register-ml-shipment/index.ts` | Extraer `time_frame` de ML y mapear a `horario_preferido_entrega` |
+| `src/hooks/useFlexPackages.ts` | Agregar campo horario a FlexPackage, ordenar por franja + distancia |
+| `src/components/mobile/FlexScanScreen.tsx` | Mostrar badge de horario en cada paquete |
+
+## Sin cambios de base de datos
+El campo `horario_preferido_entrega` ya existe en la tabla `envios`. No se necesitan migraciones.
