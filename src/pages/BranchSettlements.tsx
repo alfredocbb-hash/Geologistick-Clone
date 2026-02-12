@@ -614,6 +614,9 @@ export default function BranchSettlements() {
     mutationFn: async () => {
       if (!payingLiquidacion) throw new Error('No hay liquidación seleccionada');
 
+      const liquidacionData = liquidaciones.find(l => l.id === payingLiquidacion);
+      if (!liquidacionData) throw new Error('Liquidación no encontrada');
+
       const { error } = await supabase
         .from('liquidaciones_sucursal')
         .update({
@@ -626,6 +629,32 @@ export default function BranchSettlements() {
         .eq('id', payingLiquidacion);
 
       if (error) throw error;
+
+      // Registrar egreso en caja si hay sesión abierta y el pago es en efectivo
+      if (metodoPago === 'efectivo' && profile?.sucursal_id) {
+        const { data: cajaAbierta } = await supabase
+          .from('sesiones_caja')
+          .select('id')
+          .eq('sucursal_id', profile.sucursal_id)
+          .eq('estado', 'abierta')
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (cajaAbierta && cajaAbierta.length > 0) {
+          const sucursalNombre = liquidacionData.sucursal?.nombre || 'Sucursal';
+          const periodo = `${liquidacionData.periodo_inicio} a ${liquidacionData.periodo_fin}`;
+
+          await supabase.from('movimientos_caja').insert({
+            sesion_caja_id: cajaAbierta[0].id,
+            tipo: 'egreso',
+            concepto: `Pago liquidación sucursal ${sucursalNombre} - ${periodo}`,
+            monto: liquidacionData.total_comisiones || 0,
+            metodo_pago: 'efectivo' as PaymentMethod,
+            referencia: referenciaPago || null,
+            created_by: user?.id,
+          });
+        }
+      }
     },
     onSuccess: () => {
       toast.success('Pago registrado');

@@ -505,6 +505,71 @@ export default function Cash() {
             </CardContent>
           </Card>
 
+          {/* Categorized Summary */}
+          {movements.length > 0 && (
+            <Card className="glass">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Calculator className="h-5 w-5" />
+                  Resumen por Categoría
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {(() => {
+                  const categorias = {
+                    rendiciones: movements.filter(m => m.concepto.toLowerCase().startsWith('rendicion') || m.concepto.toLowerCase().startsWith('rendición')),
+                    cobrosDirectos: movements.filter(m => m.concepto.toLowerCase().startsWith('cobro envio') || m.concepto.toLowerCase().startsWith('cobro envío')),
+                    liquidaciones: movements.filter(m => m.concepto.toLowerCase().startsWith('pago liquidacion') || m.concepto.toLowerCase().startsWith('pago liquidación')),
+                    otros: movements.filter(m => {
+                      const c = m.concepto.toLowerCase();
+                      return !c.startsWith('rendicion') && !c.startsWith('rendición') &&
+                             !c.startsWith('cobro envio') && !c.startsWith('cobro envío') &&
+                             !c.startsWith('pago liquidacion') && !c.startsWith('pago liquidación');
+                    }),
+                  };
+
+                  const sumCategory = (items: CashMovement[]) => ({
+                    total: items.reduce((s, m) => s + m.monto, 0),
+                    efectivo: items.filter(m => m.metodo_pago === 'efectivo').reduce((s, m) => s + m.monto, 0),
+                    digital: items.filter(m => m.metodo_pago !== 'efectivo').reduce((s, m) => s + m.monto, 0),
+                    count: items.length,
+                  });
+
+                  const cats = [
+                    { key: 'rendiciones', label: 'Rendiciones COD', data: sumCategory(categorias.rendiciones), icon: Banknote, color: 'text-primary', bg: 'bg-primary/10', tipo: 'ingreso' },
+                    { key: 'cobros', label: 'Cobros Directos', data: sumCategory(categorias.cobrosDirectos), icon: ArrowUpCircle, color: 'text-success', bg: 'bg-success/10', tipo: 'ingreso' },
+                    { key: 'liquidaciones', label: 'Liquidaciones Pagadas', data: sumCategory(categorias.liquidaciones), icon: ArrowDownCircle, color: 'text-destructive', bg: 'bg-destructive/10', tipo: 'egreso' },
+                    { key: 'otros', label: 'Otros Movimientos', data: sumCategory(categorias.otros), icon: DollarSign, color: 'text-muted-foreground', bg: 'bg-muted/50', tipo: 'mixto' },
+                  ].filter(c => c.data.count > 0);
+
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      {cats.map(cat => {
+                        const Icon = cat.icon;
+                        return (
+                          <div key={cat.key} className={`p-4 rounded-xl ${cat.bg}`}>
+                            <div className="flex items-center gap-2 mb-2">
+                              <Icon className={`h-4 w-4 ${cat.color}`} />
+                              <span className="text-sm font-medium">{cat.label}</span>
+                            </div>
+                            <p className={`text-xl font-bold ${cat.color}`}>
+                              {cat.tipo === 'egreso' ? '-' : '+'}{formatCurrency(cat.data.total)}
+                            </p>
+                            <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                              <p>{cat.data.count} movimiento{cat.data.count !== 1 ? 's' : ''}</p>
+                              {cat.data.efectivo > 0 && <p>Efectivo: {formatCurrency(cat.data.efectivo)}</p>}
+                              {cat.data.digital > 0 && <p>Digital: {formatCurrency(cat.data.digital)}</p>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Movements Table */}
           <Card className="glass">
             <CardHeader>
