@@ -388,12 +388,16 @@ export default function ActiveRouteNavigation() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-hojas-ruta'] });
       queryClient.invalidateQueries({ queryKey: ['my-rutas-planificadas'] });
+      queryClient.invalidateQueries({ queryKey: ['mobile-rutas-planificadas'] });
+      queryClient.invalidateQueries({ queryKey: ['mobile-hojas-ruta'] });
       toast.success('¡Ruta completada!');
       navigate('/my-routes');
     },
     onError: (error) => {
       // If the route is already closed/completed, treat as success
       if (error.message?.includes('Solo se pueden cerrar')) {
+        queryClient.invalidateQueries({ queryKey: ['mobile-rutas-planificadas'] });
+        queryClient.invalidateQueries({ queryKey: ['mobile-hojas-ruta'] });
         toast.success('La ruta ya fue completada');
         navigate('/my-routes');
       } else {
