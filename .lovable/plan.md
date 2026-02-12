@@ -1,91 +1,142 @@
 
 
-# Corregir Envios Flex que no aparecen en Liquidacion
+# Sincronizar Estados de MercadoLibre hacia tu Sistema
 
-## Problema detectado
+## Problema actual
 
-Hay **dos problemas** por los cuales los envios Flex no aparecen al calcular la liquidacion de PABLO GAUNA (Beraexpress):
-
-### Problema 1: Envios sin `remitente_id`
-De los 63 envios ML Flex de febrero, **50 tienen `remitente_id = NULL`**. Esto ocurre porque cuando se sincronizaron, el seller aun no tenia `cliente_id` vinculado. La liquidacion busca `envios.remitente_id = seller.cliente_id`, asi que estos envios quedan invisibles.
-
-### Problema 2: Multiples sellers, un solo cliente
-Beraexpress tiene **6 sellers** (PABLO GAUNA, GAUNA ZARATE NICOLAS, BEATRIZ GAUNA, GAUNA MIA ABIGAIL, GAUNA BENJAMIN, CARLOS JAVIER GONZALEZ) todos vinculados al mismo `cliente_id`. Al seleccionar "PABLO GAUNA" solo se buscan los envios de ese seller individual, pero los envios de los otros 5 sellers no se incluyen.
+Cuando el chofer entrega un paquete usando la app de MercadoLibre, ML envia una notificacion (webhook) a tu sistema. Pero actualmente el webhook **solo crea envios nuevos** cuando el estado es "ready_to_ship". Para cualquier otro cambio de estado (entregado, ausente, cancelado, reprogramado), el webhook **no actualiza el estado del envio en tu sistema**.
 
 ## Solucion
 
-### 1. Corregir envios existentes con `remitente_id = NULL`
+Modificar el webhook `mercadolibre-webhook` para que al recibir una notificacion de cambio de estado:
 
-Ejecutar una migracion que actualice los envios ML sin remitente, usando la relacion `ecommerce_orders.ml_shipment_id` para encontrar el seller y su `cliente_id`:
+1. Busque el envio existente por `ml_shipment_id`
+2. Consulte la tabla `ml_status_mapping` para traducir el estado de ML al estado interno
+3. Actualice el `estado` del envio en tu sistema
+4. Registre el cambio en el historial (`envio_historial`)
 
-```text
-UPDATE envios e
-SET remitente_id = es.cliente_id
-FROM ecommerce_orders eo
-JOIN ecommerce_sellers es ON eo.seller_id = es.id
-WHERE e.ml_shipment_id = eo.ml_shipment_id
-  AND e.remitente_id IS NULL
-  AND es.cliente_id IS NOT NULL;
-```
+### Mapeo de estados (ya existente en la base de datos)
 
-### 2. Incluir envios de todos los sellers con el mismo `cliente_id`
+| Estado en MercadoLibre | Estado en tu sistema |
+|------------------------|---------------------|
+| delivered | entregado |
+| not_delivered + receiver_absent | no_entregado |
+| cancelled | cancelado |
+| returned | devuelto |
+| shipped + out_for_delivery | en_reparto |
+| shipped + picked_up | recogido |
+| shipped + in_transit | en_transito |
 
-Modificar la query de calculo en `Settlements.tsx` para que al seleccionar un seller, se busquen envios por `remitente_id = seller.cliente_id` (que ya es correcto). Como todos los sellers de Beraexpress comparten el mismo `cliente_id`, los envios de todas las cuentas ya se consolidarian automaticamente **una vez corregido el problema 1**.
+### Agregar mappings faltantes
 
-### 3. Tambien buscar envios via `ecommerce_orders` como fallback
-
-Agregar una segunda consulta que busque envios a traves de la tabla `ecommerce_orders` para capturar cualquier envio que aun tenga `remitente_id = NULL`:
-
-```text
-// Ademas de buscar por remitente_id, buscar via ecommerce_orders
-// para el seller seleccionado y todos los sellers con mismo cliente_id
-```
+Agregar a `ml_status_mapping` el substatus `returning_to_sender` para cuando el comprador reprograma o rechaza y el paquete vuelve.
 
 ## Cambios por archivo
 
 | Archivo | Cambio |
 |---------|--------|
-| Migracion SQL | UPDATE envios con remitente_id NULL usando join con ecommerce_orders y sellers |
-| `src/pages/ecommerce/Settlements.tsx` | En calculateMutation: buscar todos los seller_ids con el mismo cliente_id, luego buscar envios tambien via ecommerce_orders como fallback |
-| `supabase/functions/mercadolibre-sync/index.ts` | Ya esta correcto (asigna `remitente_id: seller.cliente_id`), no requiere cambios |
+| Migracion SQL | Agregar mappings faltantes para substatuses de ML (returning_to_sender, etc.) |
+| `supabase/functions/mercadolibre-webhook/index.ts` | En el bloque de "otros estados" (linea 321-336): consultar `ml_status_mapping`, actualizar `estado` del envio, insertar registro en `envio_historial`, actualizar `ecommerce_orders.ml_shipping_status` |
 
 ## Detalle tecnico
 
+### Cambio en mercadolibre-webhook/index.ts
+
+El bloque actual (lineas 321-336) solo hace esto:
+
+```text
+// Para otros estados, solo actualiza timestamp
+if (existingEnvio) {
+  await supabase.from('envios').update({
+    ml_sync_status: 'synced',
+    ml_last_sync_at: now,
+  }).eq('id', existingEnvio.id);
+}
+```
+
+Se reemplazara por:
+
+```text
+if (existingEnvio) {
+  // 1. Buscar mapping ML status -> estado interno
+  let query = supabase.from('ml_status_mapping')
+    .select('estado_interno, descripcion')
+    .eq('ml_status', shipment.status);
+  
+  if (shipment.substatus) {
+    query = query.eq('ml_substatus', shipment.substatus);
+  } else {
+    query = query.is('ml_substatus', null);
+  }
+  
+  const { data: mapping } = await query.maybeSingle();
+  
+  // Si no hay mapping con substatus, buscar sin substatus
+  if (!mapping && shipment.substatus) {
+    const { data: fallbackMapping } = await supabase
+      .from('ml_status_mapping')
+      .select('estado_interno, descripcion')
+      .eq('ml_status', shipment.status)
+      .is('ml_substatus', null)
+      .maybeSingle();
+    mapping = fallbackMapping;
+  }
+
+  // 2. Obtener estado actual del envio
+  const { data: envioActual } = await supabase
+    .from('envios')
+    .select('estado')
+    .eq('id', existingEnvio.id)
+    .single();
+
+  // 3. Actualizar estado si hay mapping y es diferente
+  if (mapping && envioActual && mapping.estado_interno !== envioActual.estado) {
+    await supabase.from('envios').update({
+      estado: mapping.estado_interno,
+      ml_sync_status: 'synced',
+      ml_last_sync_at: now,
+    }).eq('id', existingEnvio.id);
+
+    // 4. Registrar en historial
+    await supabase.from('envio_historial').insert({
+      envio_id: existingEnvio.id,
+      estado_anterior: envioActual.estado,
+      estado_nuevo: mapping.estado_interno,
+      notas: 'Actualizado automaticamente via webhook MercadoLibre: ' 
+             + mapping.descripcion,
+      ubicacion: 'ML Webhook',
+    });
+
+    // 5. Actualizar ecommerce_orders
+    await supabase.from('ecommerce_orders')
+      .update({
+        ml_shipping_status: shipment.status,
+        fulfillment_status: mapping.estado_interno === 'entregado' 
+          ? 'fulfilled' : 'pending',
+      })
+      .eq('ml_shipment_id', shipment.id);
+  }
+}
+```
+
 ### Migracion SQL
 
-Corrige los ~50 envios existentes sin remitente:
-
 ```text
-UPDATE envios e
-SET remitente_id = es.cliente_id
-FROM ecommerce_orders eo
-JOIN ecommerce_sellers es ON eo.seller_id = es.id
-WHERE e.ml_shipment_id IS NOT NULL
-  AND e.ml_shipment_id = eo.ml_shipment_id::bigint
-  AND e.remitente_id IS NULL
-  AND es.cliente_id IS NOT NULL;
+-- Agregar mappings adicionales de ML
+INSERT INTO ml_status_mapping (ml_status, ml_substatus, estado_interno, descripcion)
+VALUES 
+  ('not_delivered', 'returning_to_sender', 'devuelto', 
+   'No entregado - devolviendo al remitente'),
+  ('not_delivered', NULL, 'no_entregado', 
+   'No entregado - motivo generico')
+ON CONFLICT DO NOTHING;
 ```
-
-### Cambio en Settlements.tsx (calculateMutation)
-
-```text
-// Actual:
-.eq('remitente_id', seller.cliente_id)
-
-// Nuevo: ademas, buscar via ecommerce_orders para envios sin remitente_id
-// 1. Buscar seller_ids que comparten el mismo cliente_id
-// 2. Buscar envios via ecommerce_orders para esos sellers
-// 3. Combinar ambos resultados (sin duplicados)
-```
-
-La logica quedaria:
-1. Query principal: `envios WHERE remitente_id = seller.cliente_id` (como hoy)
-2. Query complementaria: `envios JOIN ecommerce_orders WHERE seller_id IN (sellers con mismo cliente_id) AND remitente_id IS NULL`
-3. Merge ambos resultados por ID unico
 
 ## Resultado esperado
 
-- Al calcular liquidacion de PABLO GAUNA, apareceran los envios de TODAS las cuentas ML de Beraexpress
-- Los envios que antes tenian remitente NULL quedaran corregidos en la base de datos
-- Futuros envios sincronizados ya se crean con remitente_id correcto (ya implementado)
+- Chofer entrega via app ML -> tu sistema marca "Entregado" automaticamente
+- Destinatario ausente en ML -> tu sistema marca "No entregado"
+- Comprador cancela en ML -> tu sistema marca "Cancelado"
+- Paquete devuelto en ML -> tu sistema marca "Devuelto"
+- Todos los cambios quedan registrados en el historial con nota "via webhook MercadoLibre"
 
