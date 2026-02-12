@@ -318,21 +318,84 @@ Deno.serve(async (req) => {
       );
     }
 
-    // For other statuses, just update sync timestamp if envio exists
+    // For other statuses, update envio estado based on ml_status_mapping
     const { data: existingEnvio } = await supabase
       .from('envios')
-      .select('id')
+      .select('id, estado')
       .eq('ml_shipment_id', shipment.id)
       .maybeSingle();
 
     if (existingEnvio) {
-      await supabase
-        .from('envios')
-        .update({
+      // 1. Look up mapping: ML status+substatus -> internal estado
+      let mappingQuery = supabase
+        .from('ml_status_mapping')
+        .select('estado_interno, descripcion')
+        .eq('ml_status', shipment.status);
+
+      if (shipment.substatus) {
+        mappingQuery = mappingQuery.eq('ml_substatus', shipment.substatus);
+      } else {
+        mappingQuery = mappingQuery.is('ml_substatus', null);
+      }
+
+      let { data: mapping } = await mappingQuery.maybeSingle();
+
+      // Fallback: if no mapping with substatus, try without substatus
+      if (!mapping && shipment.substatus) {
+        const { data: fallbackMapping } = await supabase
+          .from('ml_status_mapping')
+          .select('estado_interno, descripcion')
+          .eq('ml_status', shipment.status)
+          .is('ml_substatus', null)
+          .maybeSingle();
+        mapping = fallbackMapping;
+      }
+
+      const now = new Date().toISOString();
+
+      // 2. Update estado if mapping found and different from current
+      if (mapping && mapping.estado_interno !== existingEnvio.estado) {
+        console.log('[ML Webhook] Updating envio', existingEnvio.id, 'from', existingEnvio.estado, 'to', mapping.estado_interno);
+
+        await supabase.from('envios').update({
+          estado: mapping.estado_interno,
           ml_sync_status: 'synced',
-          ml_last_sync_at: new Date().toISOString(),
-        })
-        .eq('id', existingEnvio.id);
+          ml_last_sync_at: now,
+        }).eq('id', existingEnvio.id);
+
+        // 3. Register in history
+        await supabase.from('envio_historial').insert({
+          envio_id: existingEnvio.id,
+          estado_anterior: existingEnvio.estado,
+          estado_nuevo: mapping.estado_interno,
+          notas: 'Actualizado automaticamente via webhook MercadoLibre: ' + mapping.descripcion,
+          ubicacion: 'ML Webhook',
+        });
+
+        // 4. Update ecommerce_orders
+        await supabase.from('ecommerce_orders')
+          .update({
+            ml_shipping_status: shipment.status,
+            fulfillment_status: mapping.estado_interno === 'entregado' ? 'fulfilled' : 'pending',
+          })
+          .eq('ml_shipment_id', shipment.id);
+
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            envio_id: existingEnvio.id,
+            estado_anterior: existingEnvio.estado,
+            estado_nuevo: mapping.estado_interno,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } else {
+        // No mapping or same status, just update sync timestamp
+        await supabase.from('envios').update({
+          ml_sync_status: 'synced',
+          ml_last_sync_at: now,
+        }).eq('id', existingEnvio.id);
+      }
     }
 
     return new Response(
