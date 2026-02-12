@@ -1,46 +1,54 @@
 
 
-# Fix: "Continuar Ruta" sigue apareciendo despues de finalizar
+# Fix: Envíos reprogramados de e-commerce no se agregan a "Crear Ruta"
 
 ## Problema
 
-La ruta FLX-20260211-ZWXC tiene estado `completada` en la base de datos, pero la pantalla de inicio del chofer sigue mostrando "RUTA ACTIVA" con el boton "Continuar Ruta".
+Los envíos reprogramados tienen tracking "ML-..." (son pedidos de MercadoLibre/e-commerce). Al reprogramarse, su estado vuelve a `pendiente`. El planificador tiene un filtro que excluye envíos de e-commerce en estado `pendiente` (línea 261 de `RoutePlanner.tsx`):
 
-La causa es que cuando se finaliza una ruta en `ActiveRouteNavigation.tsx`, solo se invalidan los queries `my-hojas-ruta` y `my-rutas-planificadas`, pero **no** los queries del home tab movil (`mobile-rutas-planificadas` y `mobile-hojas-ruta`). Esto deja datos en cache obsoletos en la pantalla de inicio.
+```typescript
+const filtered = merged.filter(envio =>
+  !ecommerceEnvioIds.has(envio.id) || 
+  urlEnvioIds.has(envio.id) || 
+  ['recogido', 'en_sucursal', 'en_reparto'].includes(envio.estado || '')
+);
+```
 
-## Solucion
+Esto hace que los envíos reprogramados de e-commerce sean invisibles en la pestaña "Crear Ruta", aunque sus IDs se agreguen a `selectedEnvios`.
 
-Agregar la invalidacion de los queries del home tab al momento de completar la ruta.
+## Solución
+
+Agregar una excepción al filtro: si el envío tiene `reprogramado_count > 0`, no excluirlo aunque sea de e-commerce en estado `pendiente`. Un envío reprogramado ya pasó por el flujo de recolección y debe poder re-asignarse.
 
 ## Cambio
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/pages/ActiveRouteNavigation.tsx` | Agregar invalidacion de `mobile-rutas-planificadas` y `mobile-hojas-ruta` en el `onSuccess` de la mutacion de cierre de ruta |
+| `src/pages/RoutePlanner.tsx` | Modificar el filtro de e-commerce (linea 261) para incluir envíos con `reprogramado_count > 0` |
 
-## Detalle tecnico
+## Detalle técnico
 
-En la mutacion de cierre de ruta (alrededor de linea 389), agregar:
+Cambiar el filtro de:
 
 ```typescript
-onSuccess: () => {
-  queryClient.invalidateQueries({ queryKey: ['my-hojas-ruta'] });
-  queryClient.invalidateQueries({ queryKey: ['my-rutas-planificadas'] });
-  // NUEVO: Invalidar cache del home tab movil
-  queryClient.invalidateQueries({ queryKey: ['mobile-rutas-planificadas'] });
-  queryClient.invalidateQueries({ queryKey: ['mobile-hojas-ruta'] });
-  toast.success('Ruta completada!');
-  navigate('/my-routes');
-},
+const filtered = merged.filter(envio =>
+  !ecommerceEnvioIds.has(envio.id) || 
+  urlEnvioIds.has(envio.id) || 
+  ['recogido', 'en_sucursal', 'en_reparto'].includes(envio.estado || '')
+);
 ```
 
-Tambien agregar la misma invalidacion en el bloque `onError` donde se detecta que la ruta ya fue completada (linea 396).
+A:
+
+```typescript
+const filtered = merged.filter(envio =>
+  !ecommerceEnvioIds.has(envio.id) || 
+  urlEnvioIds.has(envio.id) || 
+  ['recogido', 'en_sucursal', 'en_reparto'].includes(envio.estado || '') ||
+  (envio.reprogramado_count && envio.reprogramado_count > 0)
+);
+```
 
 ## Resultado esperado
 
-Al finalizar una ruta, la pantalla de inicio se refresca automaticamente y muestra "No hay rutas activas" en lugar del card de "Continuar Ruta".
-
-## Recordatorio
-
-Publicar los cambios para que la app Android los tome.
-
+Al seleccionar envíos reprogramados de e-commerce y presionar "Agregar a Nueva Ruta", aparecerán correctamente en la pestaña "Crear Ruta" junto con los demás pedidos del día.
