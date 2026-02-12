@@ -77,3 +77,30 @@ export function formatDateString(date: Date): string {
 export function getTodayString(): string {
   return formatDateString(new Date());
 }
+
+/**
+ * Returns a local timezone offset string like "+03:00" or "-03:00"
+ */
+function getLocalOffsetString(): string {
+  const offset = new Date().getTimezoneOffset();
+  const sign = offset <= 0 ? '+' : '-';
+  const hours = String(Math.floor(Math.abs(offset) / 60)).padStart(2, '0');
+  const mins = String(Math.abs(offset) % 60).padStart(2, '0');
+  return `${sign}${hours}:${mins}`;
+}
+
+/**
+ * Converts a YYYY-MM-DD date string to an ISO timestamp at 00:00:00 with local timezone offset.
+ * Useful for Postgres .gte() filters on timestamp columns.
+ */
+export function toLocalISOStart(dateStr: string): string {
+  return `${dateStr}T00:00:00${getLocalOffsetString()}`;
+}
+
+/**
+ * Converts a YYYY-MM-DD date string to an ISO timestamp at 23:59:59 with local timezone offset.
+ * Useful for Postgres .lte() filters on timestamp columns.
+ */
+export function toLocalISOEnd(dateStr: string): string {
+  return `${dateStr}T23:59:59${getLocalOffsetString()}`;
+}

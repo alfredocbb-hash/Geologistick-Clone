@@ -48,6 +48,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Database } from '@/integrations/supabase/types';
 import { SettlementDetailDialog } from '@/components/settlements/SettlementDetailDialog';
+import { toLocalISOStart, toLocalISOEnd } from '@/lib/dateUtils';
 
 type PaymentMethod = Database['public']['Enums']['payment_method'];
 
@@ -214,8 +215,8 @@ export default function DriverSettlements() {
         `)
         .eq('estado', 'entregado')
         .or(`chofer_id.eq.${chofer.user_id},chofer_ultima_milla_id.eq.${chofer.user_id}`)
-        .gte('fecha_entrega', fechaInicio)
-        .lte('fecha_entrega', fechaFin + 'T23:59:59')
+        .gte('fecha_entrega', toLocalISOStart(fechaInicio))
+        .lte('fecha_entrega', toLocalISOEnd(fechaFin))
         .order('fecha_entrega', { ascending: false });
 
       if (enviosError) throw enviosError;
