@@ -1,142 +1,123 @@
 
+# Actualizar Estados ML de Envios Existentes
 
-# Sincronizar Estados de MercadoLibre hacia tu Sistema
+## Problema
 
-## Problema actual
+Hay ~26 envios de ayer que siguen mostrando "pendiente" en tu sistema aunque en MercadoLibre probablemente ya fueron entregados o tienen otro estado. El webhook solo funciona hacia adelante (para notificaciones nuevas), pero no corrige lo que ya paso.
 
-Cuando el chofer entrega un paquete usando la app de MercadoLibre, ML envia una notificacion (webhook) a tu sistema. Pero actualmente el webhook **solo crea envios nuevos** cuando el estado es "ready_to_ship". Para cualquier otro cambio de estado (entregado, ausente, cancelado, reprogramado), el webhook **no actualiza el estado del envio en tu sistema**.
+Ademas, la funcion de sincronizacion (`mercadolibre-sync`) ya actualiza envios existentes, pero usa un **mapeo hardcodeado** en lugar de la tabla `ml_status_mapping`, por lo que no reconoce todos los estados posibles (ausente, devuelto, etc.).
 
 ## Solucion
 
-Modificar el webhook `mercadolibre-webhook` para que al recibir una notificacion de cambio de estado:
+### 1. Corregir la sincronizacion existente para usar `ml_status_mapping`
 
-1. Busque el envio existente por `ml_shipment_id`
-2. Consulte la tabla `ml_status_mapping` para traducir el estado de ML al estado interno
-3. Actualice el `estado` del envio en tu sistema
-4. Registre el cambio en el historial (`envio_historial`)
+Modificar `mercadolibre-sync` (lineas 190-214) para que en vez de usar un mapeo hardcodeado:
 
-### Mapeo de estados (ya existente en la base de datos)
+```text
+// Actual (hardcodeado, solo 3 estados):
+const newEnvioEstado = mlShippingStatus === 'shipped' ? 'en_transito' :
+                       mlShippingStatus === 'delivered' ? 'entregado' : 'pendiente';
+```
 
-| Estado en MercadoLibre | Estado en tu sistema |
-|------------------------|---------------------|
-| delivered | entregado |
-| not_delivered + receiver_absent | no_entregado |
-| cancelled | cancelado |
-| returned | devuelto |
-| shipped + out_for_delivery | en_reparto |
-| shipped + picked_up | recogido |
-| shipped + in_transit | en_transito |
+Use la tabla `ml_status_mapping` con el status y substatus del shipment real de ML, registre en historial, y cubra todos los estados.
 
-### Agregar mappings faltantes
+### 2. Consultar el detalle del shipment en ML para obtener substatus
 
-Agregar a `ml_status_mapping` el substatus `returning_to_sender` para cuando el comprador reprograma o rechaza y el paquete vuelve.
+Actualmente para envios existentes solo lee `orderItem.shipping.status` (sin substatus). Se agregara una llamada a la API de ML `/shipments/{id}` para obtener el `substatus` real y poder mapear correctamente (ej: `shipped` + `out_for_delivery` = `en_reparto`).
+
+### 3. Agregar boton "Actualizar Estados" en la pantalla de Sellers
+
+Agregar un boton en `src/pages/ecommerce/Sellers.tsx` que ejecute la sincronizacion (ya existente) para que puedas actualizar estados cuando quieras.
 
 ## Cambios por archivo
 
 | Archivo | Cambio |
 |---------|--------|
-| Migracion SQL | Agregar mappings faltantes para substatuses de ML (returning_to_sender, etc.) |
-| `supabase/functions/mercadolibre-webhook/index.ts` | En el bloque de "otros estados" (linea 321-336): consultar `ml_status_mapping`, actualizar `estado` del envio, insertar registro en `envio_historial`, actualizar `ecommerce_orders.ml_shipping_status` |
+| `supabase/functions/mercadolibre-sync/index.ts` | Reemplazar mapeo hardcodeado por consulta a `ml_status_mapping` con status+substatus. Obtener substatus de la API de ML. Registrar cambios en `envio_historial`. |
+| `src/pages/ecommerce/Sellers.tsx` | Ya tiene boton "Sincronizar" que hace lo mismo, no requiere cambios adicionales |
 
 ## Detalle tecnico
 
-### Cambio en mercadolibre-webhook/index.ts
-
-El bloque actual (lineas 321-336) solo hace esto:
+### Cambio en mercadolibre-sync (lineas 190-214)
 
 ```text
-// Para otros estados, solo actualiza timestamp
-if (existingEnvio) {
-  await supabase.from('envios').update({
-    ml_sync_status: 'synced',
-    ml_last_sync_at: now,
-  }).eq('id', existingEnvio.id);
-}
-```
+if (existingEnvioId) {
+  const mlShippingStatus = orderItem.shipping?.status || 'ready_to_ship';
+  const mlSubstatus = orderItem.shipping?.substatus || null;
 
-Se reemplazara por:
-
-```text
-if (existingEnvio) {
-  // 1. Buscar mapping ML status -> estado interno
-  let query = supabase.from('ml_status_mapping')
-    .select('estado_interno, descripcion')
-    .eq('ml_status', shipment.status);
-  
-  if (shipment.substatus) {
-    query = query.eq('ml_substatus', shipment.substatus);
-  } else {
-    query = query.is('ml_substatus', null);
+  // Si no hay substatus en la orden, consultar la API de ML
+  let finalSubstatus = mlSubstatus;
+  if (!finalSubstatus && mlShippingStatus !== 'ready_to_ship') {
+    const shipResp = await fetch(ML_API_BASE + '/shipments/' + shipmentId, {
+      headers: { Authorization: 'Bearer ' + accessToken },
+    });
+    if (shipResp.ok) {
+      const shipData = await shipResp.json();
+      finalSubstatus = shipData.substatus || null;
+    }
   }
-  
-  const { data: mapping } = await query.maybeSingle();
-  
-  // Si no hay mapping con substatus, buscar sin substatus
-  if (!mapping && shipment.substatus) {
-    const { data: fallbackMapping } = await supabase
-      .from('ml_status_mapping')
+
+  // Buscar mapping en ml_status_mapping
+  let mappingQuery = supabase.from('ml_status_mapping')
+    .select('estado_interno, descripcion')
+    .eq('ml_status', mlShippingStatus);
+
+  if (finalSubstatus) {
+    mappingQuery = mappingQuery.eq('ml_substatus', finalSubstatus);
+  } else {
+    mappingQuery = mappingQuery.is('ml_substatus', null);
+  }
+
+  let { data: mapping } = await mappingQuery.maybeSingle();
+
+  // Fallback sin substatus
+  if (!mapping && finalSubstatus) {
+    const { data: fb } = await supabase.from('ml_status_mapping')
       .select('estado_interno, descripcion')
-      .eq('ml_status', shipment.status)
+      .eq('ml_status', mlShippingStatus)
       .is('ml_substatus', null)
       .maybeSingle();
-    mapping = fallbackMapping;
+    mapping = fb;
   }
 
-  // 2. Obtener estado actual del envio
-  const { data: envioActual } = await supabase
-    .from('envios')
-    .select('estado')
-    .eq('id', existingEnvio.id)
-    .single();
+  const newEnvioEstado = mapping?.estado_interno || 'pendiente';
 
-  // 3. Actualizar estado si hay mapping y es diferente
-  if (mapping && envioActual && mapping.estado_interno !== envioActual.estado) {
-    await supabase.from('envios').update({
-      estado: mapping.estado_interno,
-      ml_sync_status: 'synced',
-      ml_last_sync_at: now,
-    }).eq('id', existingEnvio.id);
+  // Obtener estado actual para comparar
+  const { data: envioActual } = await supabase.from('envios')
+    .select('estado').eq('id', existingEnvioId).single();
 
-    // 4. Registrar en historial
+  // Actualizar envio
+  await supabase.from('envios').update({
+    estado: newEnvioEstado,
+    ml_sync_status: 'synced',
+    ml_last_sync_at: new Date().toISOString(),
+  }).eq('id', existingEnvioId);
+
+  // Registrar en historial si cambio
+  if (envioActual && envioActual.estado !== newEnvioEstado) {
     await supabase.from('envio_historial').insert({
-      envio_id: existingEnvio.id,
+      envio_id: existingEnvioId,
       estado_anterior: envioActual.estado,
-      estado_nuevo: mapping.estado_interno,
-      notas: 'Actualizado automaticamente via webhook MercadoLibre: ' 
-             + mapping.descripcion,
-      ubicacion: 'ML Webhook',
+      estado_nuevo: newEnvioEstado,
+      notas: 'Sincronizacion ML: ' + (mapping?.descripcion || mlShippingStatus),
+      ubicacion: 'ML Sync',
     });
-
-    // 5. Actualizar ecommerce_orders
-    await supabase.from('ecommerce_orders')
-      .update({
-        ml_shipping_status: shipment.status,
-        fulfillment_status: mapping.estado_interno === 'entregado' 
-          ? 'fulfilled' : 'pending',
-      })
-      .eq('ml_shipment_id', shipment.id);
   }
+
+  // Actualizar ecommerce_order
+  await supabase.from('ecommerce_orders').update({
+    ml_shipping_status: mlShippingStatus,
+    fulfillment_status: newEnvioEstado === 'entregado' ? 'fulfilled' : 'pending',
+    updated_at: new Date().toISOString(),
+  }).eq('ml_shipment_id', shipmentId);
+
+  existing++;
+  continue;
 }
-```
-
-### Migracion SQL
-
-```text
--- Agregar mappings adicionales de ML
-INSERT INTO ml_status_mapping (ml_status, ml_substatus, estado_interno, descripcion)
-VALUES 
-  ('not_delivered', 'returning_to_sender', 'devuelto', 
-   'No entregado - devolviendo al remitente'),
-  ('not_delivered', NULL, 'no_entregado', 
-   'No entregado - motivo generico')
-ON CONFLICT DO NOTHING;
 ```
 
 ## Resultado esperado
 
-- Chofer entrega via app ML -> tu sistema marca "Entregado" automaticamente
-- Destinatario ausente en ML -> tu sistema marca "No entregado"
-- Comprador cancela en ML -> tu sistema marca "Cancelado"
-- Paquete devuelto en ML -> tu sistema marca "Devuelto"
-- Todos los cambios quedan registrados en el historial con nota "via webhook MercadoLibre"
-
+- Al presionar "Sincronizar" en cualquier seller de ML, se actualizaran los estados de TODOS sus envios existentes usando el mapeo correcto
+- Los envios de ayer que estan en "pendiente" pasaran a "entregado", "no_entregado", etc. segun su estado real en ML
+- Cada cambio quedara registrado en el historial
