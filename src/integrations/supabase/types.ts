@@ -981,6 +981,7 @@ export type Database = {
           entregado_por: string | null
           es_terciarizado: boolean | null
           estado: Database["public"]["Enums"]["shipment_status"] | null
+          estado_ml: string | null
           estado_retiro: string | null
           factura_cae: string | null
           factura_fecha: string | null
@@ -1077,6 +1078,7 @@ export type Database = {
           entregado_por?: string | null
           es_terciarizado?: boolean | null
           estado?: Database["public"]["Enums"]["shipment_status"] | null
+          estado_ml?: string | null
           estado_retiro?: string | null
           factura_cae?: string | null
           factura_fecha?: string | null
@@ -1173,6 +1175,7 @@ export type Database = {
           entregado_por?: string | null
           es_terciarizado?: boolean | null
           estado?: Database["public"]["Enums"]["shipment_status"] | null
+          estado_ml?: string | null
           estado_retiro?: string | null
           factura_cae?: string | null
           factura_fecha?: string | null
@@ -4165,6 +4168,7 @@ export type Database = {
         | "devuelto"
         | "cancelado"
         | "incidencia"
+        | "no_entregado"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -4338,6 +4342,7 @@ export const Constants = {
         "devuelto",
         "cancelado",
         "incidencia",
+        "no_entregado",
       ],
     },
   },

@@ -21,7 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Package, PackagePlus, Search, Filter, RefreshCw, Truck, Clock, CheckCircle, AlertCircle, Printer, XCircle, Eye, History, Shield, CalendarIcon } from 'lucide-react';
+import { Package, PackagePlus, Search, Filter, RefreshCw, Truck, Clock, CheckCircle, AlertCircle, Printer, XCircle, Eye, History, Shield, CalendarIcon, AlertTriangle } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { format, startOfDay, endOfDay } from 'date-fns';
@@ -46,6 +46,7 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; icon:
   devuelto: { label: 'Devuelto', color: 'bg-red-500', icon: AlertCircle },
   cancelado: { label: 'Cancelado', color: 'bg-gray-500', icon: AlertCircle },
   incidencia: { label: 'Incidencia', color: 'bg-amber-500', icon: AlertCircle },
+  no_entregado: { label: 'No Entregado', color: 'bg-red-600', icon: AlertCircle },
 };
 
 export default function Shipments() {
@@ -339,6 +340,7 @@ export default function Shipments() {
                   <TableHead>Origen</TableHead>
                   <TableHead>Destino</TableHead>
                   <TableHead>Estado</TableHead>
+                  <TableHead>Estado ML</TableHead>
                   <TableHead className="text-right">Precio</TableHead>
                   <TableHead>Fecha</TableHead>
                   <TableHead className="text-center">Acciones</TableHead>
@@ -381,6 +383,24 @@ export default function Shipments() {
                     </TableCell>
                     <TableCell>
                       <StatusBadge status={envio.estado as ShipmentStatus} />
+                    </TableCell>
+                    <TableCell>
+                      {envio.ml_shipment_id ? (
+                        <div className="flex items-center gap-1">
+                          {envio.estado_ml ? (
+                            <>
+                              <StatusBadge status={envio.estado_ml as ShipmentStatus} />
+                              {envio.estado_ml !== envio.estado && (
+                                <span title="Discrepancia entre estado interno y ML">
+                                  <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">Sin sync</span>
+                          )}
+                        </div>
+                      ) : null}
                     </TableCell>
                     <TableCell className="text-right font-medium">
                       ${envio.precio_total?.toLocaleString('es-AR')}

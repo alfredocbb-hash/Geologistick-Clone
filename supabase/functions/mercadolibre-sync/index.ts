@@ -254,39 +254,19 @@ Deno.serve(async (req) => {
 
           // Obtener estado actual para comparar
           const { data: envioActual } = await supabase.from('envios')
-            .select('estado').eq('id', existingEnvioId).single();
+            .select('estado, estado_ml').eq('id', existingEnvioId).single();
 
           const currentEstado = envioActual?.estado || 'pendiente';
-          const newPriority = ESTADO_PRIORITY[newEnvioEstado] ?? 0;
-          const currentPriority = ESTADO_PRIORITY[currentEstado] ?? 0;
 
-          // Only update if it's NOT a downgrade
-          if (newPriority >= currentPriority) {
-            // Actualizar envio
-            await supabase.from('envios').update({
-              estado: newEnvioEstado,
-              ml_sync_status: 'synced',
-              ml_last_sync_at: new Date().toISOString(),
-            }).eq('id', existingEnvioId);
+          // DUAL STATUS: Only update estado_ml, never touch estado directly
+          await supabase.from('envios').update({
+            estado_ml: newEnvioEstado,
+            ml_sync_status: 'synced',
+            ml_last_sync_at: new Date().toISOString(),
+          }).eq('id', existingEnvioId);
 
-            // Registrar en historial si el estado cambió
-            if (envioActual && envioActual.estado !== newEnvioEstado) {
-              await supabase.from('envio_historial').insert({
-                envio_id: existingEnvioId,
-                estado_anterior: envioActual.estado,
-                estado_nuevo: newEnvioEstado,
-                notas: 'Sincronización ML: ' + (mapping?.descripcion || `${realStatus}/${realSubstatus}`),
-                ubicacion: 'ML Sync',
-              });
-              console.log('[ML Sync] Status updated:', existingEnvioId, envioActual.estado, '->', newEnvioEstado);
-            }
-          } else {
-            // Only update sync timestamp, NOT the estado
-            await supabase.from('envios').update({
-              ml_sync_status: 'synced',
-              ml_last_sync_at: new Date().toISOString(),
-            }).eq('id', existingEnvioId);
-            console.log('[ML Sync] Skipping downgrade:', currentEstado, '->', newEnvioEstado);
+          if (envioActual && envioActual.estado_ml !== newEnvioEstado) {
+            console.log('[ML Sync] estado_ml updated:', existingEnvioId, envioActual.estado_ml, '->', newEnvioEstado, '(estado interno:', currentEstado, ')');
           }
 
           // Actualizar ecommerce_order con status REAL de ML
@@ -505,6 +485,7 @@ Deno.serve(async (req) => {
             notas: `MercadoLibre Flex - Order #${orderId || shipment.id}`,
             nombre_remitente: seller.nombre,
             remitente_id: seller.cliente_id || null,
+            estado_ml: envioEstado,
           })
           .select()
           .single();

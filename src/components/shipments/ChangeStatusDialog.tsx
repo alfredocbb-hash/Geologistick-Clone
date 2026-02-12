@@ -99,6 +99,12 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; icon:
     icon: AlertCircle, 
     description: 'El envío tiene un problema reportado pendiente de resolver' 
   },
+  no_entregado: { 
+    label: 'No Entregado', 
+    color: 'bg-red-600', 
+    icon: AlertCircle, 
+    description: 'El envío no pudo ser entregado' 
+  },
 };
 
 const statusOrder: ShipmentStatus[] = [
