@@ -1,96 +1,75 @@
 
 
-# Corregir Sincronización ML: No Retroceder Estados
+# Corregir Sincronización: Siempre Consultar Estado Real de ML
 
-## Problema
+## Problema Identificado
 
-La sincronización está **empeorando** los estados en vez de mejorarlos:
-- Un envío que ya estaba "entregado" fue cambiado a "pendiente" porque MercadoLibre lo devolvió como `ready_to_ship`
-- Esto pasa porque la función actualiza el estado sin verificar si es un "retroceso"
+La sincronización NO actualiza estados porque:
+
+1. Para envíos existentes, usa `orderItem.shipping.status` del search API de ML, que frecuentemente devuelve `ready_to_ship` aunque el envío real ya esté `delivered` o `shipped`
+2. Solo consulta `/shipments/{id}` (estado real) cuando el status NO es `ready_to_ship` -- pero la mayoría son `ready_to_ship` en el search
+3. Resultado: mapping de `ready_to_ship` = `pendiente`, que es igual al estado actual, entonces no cambia nada
+
+Los logs lo confirman: **86 envíos existentes procesados, 0 actualizaciones de estado**, y ningún log de "Status updated".
 
 ## Solución
 
-### 1. Agregar protección contra retroceso de estados
+Para envíos que YA existen en el sistema, **siempre consultar `/shipments/{id}`** para obtener el status y substatus reales de ML, sin confiar en lo que dice el search API.
 
-Definir un orden de prioridad de estados. Nunca cambiar un estado "más avanzado" por uno "menos avanzado":
-
-```text
-Prioridad (menor a mayor):
-pendiente (0) -> recogido (1) -> en_bodega (2) -> en_transito (3) -> en_reparto (4) -> entregado (5) / no_entregado (5) / devuelto (5) / cancelado (5)
-```
-
-Si el envío ya está en "entregado" y ML dice "pendiente", NO se cambia.
-
-### 2. Obtener siempre el estado real del shipment de ML
-
-En vez de confiar solo en `orderItem.shipping.status` (que viene del search de órdenes), consultar también `/shipments/{id}` para obtener el status y substatus más actualizado -- pero SOLO cuando el estado de la orden sea "menor" que el estado actual del envío.
-
-## Cambios por archivo
+## Cambios
 
 | Archivo | Cambio |
 |---------|--------|
-| `supabase/functions/mercadolibre-sync/index.ts` | Agregar mapa de prioridad de estados. Antes de actualizar, verificar que el nuevo estado no sea un retroceso. Si ML dice "ready_to_ship" pero el envío ya está "entregado", ignorar el cambio. |
+| `supabase/functions/mercadolibre-sync/index.ts` | Para envíos existentes: siempre llamar a `/shipments/{id}` para obtener el status/substatus real, en lugar de usar `orderItem.shipping.status` del search. Usar el status real para el mapping. |
 
 ## Detalle técnico
 
-### Mapa de prioridad
+### Cambio en el bloque de envíos existentes (líneas 207-341)
+
+Reemplazar la lógica actual que solo consulta el substatus condicionalmente, por una que SIEMPRE consulta el shipment real:
 
 ```text
-const ESTADO_PRIORITY: Record<string, number> = {
-  pendiente: 0,
-  recogido: 1,
-  en_bodega: 2,
-  en_transito: 3,
-  en_reparto: 4,
-  entregado: 10,
-  no_entregado: 10,
-  devuelto: 10,
-  cancelado: 10,
-};
-```
+if (existingEnvioId) {
+  // SIEMPRE consultar el shipment real de ML para envíos existentes
+  let realStatus = orderItem.shipping?.status || 'ready_to_ship';
+  let realSubstatus = orderItem.shipping?.substatus || null;
 
-### Lógica de protección (líneas 234-257)
-
-Antes de actualizar, comparar prioridades:
-
-```text
-const newEnvioEstado = mapping?.estado_interno || 'pendiente';
-const currentEstado = envioActual?.estado || 'pendiente';
-const newPriority = ESTADO_PRIORITY[newEnvioEstado] ?? 0;
-const currentPriority = ESTADO_PRIORITY[currentEstado] ?? 0;
-
-// Solo actualizar si el nuevo estado tiene igual o mayor prioridad
-if (newPriority >= currentPriority) {
-  // Actualizar envío y registrar en historial...
-} else {
-  console.log('[ML Sync] Skipping downgrade:', currentEstado, '->', newEnvioEstado);
-}
-```
-
-### Siempre consultar el shipment real de ML
-
-Para envíos existentes, cuando `orderItem.shipping.status` sea un estado "menor" que el actual, consultar `/shipments/{id}` para verificar el estado real en ML antes de decidir no actualizar.
-
-```text
-// Siempre consultar shipment real si el estado de la orden parece desactualizado
-let realStatus = mlShippingStatus;
-let realSubstatus = finalSubstatus;
-
-if (ESTADO_PRIORITY[newEnvioEstado] < currentPriority) {
-  // Consultar ML para verificar el estado real
-  const shipResp = await fetch(ML_API_BASE + '/shipments/' + shipmentId, ...);
-  if (shipResp.ok) {
-    const shipData = await shipResp.json();
-    realStatus = shipData.status;
-    realSubstatus = shipData.substatus;
-    // Re-buscar mapping con el estado real
+  try {
+    const shipResp = await fetch(ML_API_BASE + '/shipments/' + shipmentId, {
+      headers: { Authorization: 'Bearer ' + accessToken },
+    });
+    if (shipResp.ok) {
+      const shipData = await shipResp.json();
+      realStatus = shipData.status || realStatus;
+      realSubstatus = shipData.substatus || null;
+      console.log('[ML Sync] Real shipment', shipmentId, ':', realStatus, realSubstatus);
+    }
+    await new Promise(resolve => setTimeout(resolve, 150));
+  } catch (e) {
+    console.error('[ML Sync] Error fetching real status:', shipmentId, e);
   }
+
+  // Buscar mapping con status/substatus REALES
+  // ... (misma lógica de mapping pero usando realStatus y realSubstatus)
+
+  // Protección anti-downgrade
+  // ... (misma lógica de prioridades)
+
+  // Actualizar ecommerce_order con el status REAL de ML
+  await supabase.from('ecommerce_orders').update({
+    ml_shipping_status: realStatus,
+    fulfillment_status: newEnvioEstado === 'entregado' ? 'fulfilled' : 'pending',
+  }).eq('ml_shipment_id', shipmentId);
 }
 ```
+
+### Optimización de rate limiting
+
+Como ahora se consulta `/shipments/{id}` para cada envío existente, agregar un delay de 150ms entre llamadas para no exceder el rate limit de ML.
 
 ## Resultado esperado
 
-- Envíos que ya están "entregado" NO serán cambiados a "pendiente"
-- Envíos que están en "pendiente" SI serán actualizados a "entregado" si ML así lo indica
-- Los estados solo avanzan, nunca retroceden
-- Los cambios quedan registrados en el historial
+- Los 97 envíos pendientes que en ML ya están entregados/en tránsito se actualizarán correctamente
+- Los pedidos e-commerce pasarán de "Listo para enviar / Sin Preparar" al estado real
+- Cada cambio quedará registrado en el historial
+
