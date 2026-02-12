@@ -1,66 +1,44 @@
 
 
-# Fix: La app requiere limpiar caché para reflejar la reprogramación
+# Fix: "Continuar Ruta" sigue apareciendo despues de finalizar
 
 ## Problema
 
-El `RescheduleDialog` hace un optimistic update correcto en `onMutate` (filtra el envío del cache), pero en `onSuccess` llama `invalidateQueries` **sin `await`**. Esto causa que:
+La ruta FLX-20260211-ZWXC tiene estado `completada` en la base de datos, pero la pantalla de inicio del chofer sigue mostrando "RUTA ACTIVA" con el boton "Continuar Ruta".
 
-1. El optimistic update remueve el envío del cache temporalmente
-2. `onSuccess` dispara `invalidateQueries` (no esperado) y luego cierra el diálogo inmediatamente
-3. El refetch automático trae la data nueva **después** de que el componente ya procesó el cierre
-4. En Android/WebView, la race condition es más notoria: a veces la data vieja vuelve antes de que el refetch con la data nueva llegue
+La causa es que cuando se finaliza una ruta en `ActiveRouteNavigation.tsx`, solo se invalidan los queries `my-hojas-ruta` y `my-rutas-planificadas`, pero **no** los queries del home tab movil (`mobile-rutas-planificadas` y `mobile-hojas-ruta`). Esto deja datos en cache obsoletos en la pantalla de inicio.
 
-El resultado es que la vista se queda mostrando la parada reprogramada hasta que el usuario limpia caché.
+## Solucion
 
-## Solución
-
-Hacer que `onSuccess` **espere** a que los queries se refresquen antes de cerrar el diálogo. Usar `await` en los `invalidateQueries` críticos y asegurar que el refetch se complete.
+Agregar la invalidacion de los queries del home tab al momento de completar la ruta.
 
 ## Cambio
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/components/driver/RescheduleDialog.tsx` | Convertir `onSuccess` en async y esperar los `invalidateQueries` antes de cerrar el diálogo |
+| `src/pages/ActiveRouteNavigation.tsx` | Agregar invalidacion de `mobile-rutas-planificadas` y `mobile-hojas-ruta` en el `onSuccess` de la mutacion de cierre de ruta |
 
-## Detalle técnico
+## Detalle tecnico
 
-En `RescheduleDialog.tsx`, cambiar el `onSuccess` de:
+En la mutacion de cierre de ruta (alrededor de linea 389), agregar:
 
 ```typescript
 onSuccess: () => {
-  queryClient.invalidateQueries({ queryKey: ['my-active-route-paradas'] });
-  queryClient.invalidateQueries({ queryKey: ['my-active-route-envios-hoja'] });
-  queryClient.invalidateQueries({ queryKey: ['my-active-route-hoja'] });
-  queryClient.invalidateQueries({ queryKey: ['my-active-route-planificada'] });
-  toast.success('Entrega reprogramada correctamente');
-  onSuccess();
-  onClose();
+  queryClient.invalidateQueries({ queryKey: ['my-hojas-ruta'] });
+  queryClient.invalidateQueries({ queryKey: ['my-rutas-planificadas'] });
+  // NUEVO: Invalidar cache del home tab movil
+  queryClient.invalidateQueries({ queryKey: ['mobile-rutas-planificadas'] });
+  queryClient.invalidateQueries({ queryKey: ['mobile-hojas-ruta'] });
+  toast.success('Ruta completada!');
+  navigate('/my-routes');
 },
 ```
 
-A:
-
-```typescript
-onSuccess: async () => {
-  // Esperar a que los queries se refresquen ANTES de cerrar
-  await Promise.all([
-    queryClient.invalidateQueries({ queryKey: ['my-active-route-paradas'], refetchType: 'active' }),
-    queryClient.invalidateQueries({ queryKey: ['my-active-route-envios-hoja'], refetchType: 'active' }),
-    queryClient.invalidateQueries({ queryKey: ['my-active-route-hoja'], refetchType: 'active' }),
-    queryClient.invalidateQueries({ queryKey: ['my-active-route-planificada'], refetchType: 'active' }),
-  ]);
-  toast.success('Entrega reprogramada correctamente');
-  onSuccess();
-  onClose();
-},
-```
-
-La diferencia clave es el `await Promise.all(...)`. Esto garantiza que la data fresca (con la parada ya marcada como 'reprogramado') se cargue en el cache antes de que el diálogo se cierre y el componente `ActiveRouteNavigation` recalcule `nextStop`.
+Tambien agregar la misma invalidacion en el bloque `onError` donde se detecta que la ruta ya fue completada (linea 396).
 
 ## Resultado esperado
 
-Al presionar "Reprogramar", el diálogo espera a que la data actualizada se cargue, y luego se cierra. La vista avanza inmediatamente a la siguiente parada sin necesidad de limpiar caché ni reiniciar la app.
+Al finalizar una ruta, la pantalla de inicio se refresca automaticamente y muestra "No hay rutas activas" en lugar del card de "Continuar Ruta".
 
 ## Recordatorio
 
