@@ -1,58 +1,55 @@
 
+# Fix: Total Cobrado muestra $0 en Liquidacion a Sucursales
 
-# Fix: "Flete (Contado - emisión)" muestra "sin config" aunque tiene 30% configurado
+## Problemas encontrados
 
-## Problema
+### 1. Mapeo incorrecto de "cuenta_corriente"
+En la linea 272, el codigo compara `tipoPago === 'cta_cte'` pero la base de datos almacena el valor `'cuenta_corriente'`. Esto hace que todos los envios de cuenta corriente caigan en el bucket "Contado" de las comisiones y usen los porcentajes de contado en vez de los de cta. cte.
 
-Algunos envíos de Beraexpress tienen grabado un `concepto_id` de "Flete" que pertenece a **otro tenant** (ID `bb000001-...` de otro tenant), en lugar del concepto propio de Beraexpress (`be000001-...` con código `BE-FLETE`).
+### 2. Total Cobrado usa precio_total en vez de la suma real de conceptos
+El calculo de `totalCobrado` (lineas 437-446) usa `envio.precio_total`, que para los envios ML es siempre $0. Ademas, solo suma envios contado (como origen) y destino (como destino entregado), excluyendo cuenta corriente. El total deberia reflejar la suma de las ventas reales (montos de conceptos/detalles).
 
-Cuando el sistema calcula la liquidación, busca la comisión configurada haciendo un match **exacto** por `concepto_id`. Como el ID del envío (`bb000001-...`) no coincide con ninguna comisión configurada en la sucursal (que tiene `be000001-...` y `1cd05d8a-...`), el sistema reporta "sin configuración" a pesar de que el concepto "Flete" sí tiene 30% configurado.
+## Datos de la base de datos (Beraexpress, Feb 2026)
 
-```text
-Envío tiene:       concepto_id = bb000001 (Flete de otro tenant)
-Comisión config:   concepto_id = be000001 (Flete de Beraexpress) → 30%
-                   concepto_id = 1cd05d8a (Flete global)         → 30%
+| Tipo | Cantidad | precio_total | Detalles |
+|------|----------|-------------|----------|
+| ML contado | 68 | $0 c/u | Sin detalles |
+| ADMIN cuenta_corriente | 10 | $7,500-$12,600 | Algunos con detalles |
+| ADMIN destino | 3 | $1-$12,600 | Con detalles |
 
-Match exacto por ID → NO encuentra → "sin config"
-```
-
-## Solución
-
-Agregar un **fallback por nombre de concepto** cuando no se encuentra la comisión por ID exacto. Si el `concepto_id` del envío no tiene configuración, buscar entre las comisiones configuradas una que tenga el **mismo nombre** de concepto (ej. ambos se llaman "Flete").
-
-## Cambio
+## Solucion
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/pages/BranchSettlements.tsx` | En la función `calcularComisionConcepto` (línea 275), agregar fallback por nombre cuando el match por ID falla |
+| `src/pages/BranchSettlements.tsx` | 1. Corregir mapeo de tipo_pago para reconocer 'cuenta_corriente' como 'cta_cte' |
+| `src/pages/BranchSettlements.tsx` | 2. Acumular totalCobrado desde los montos reales de conceptos procesados (no de precio_total) |
 
-## Detalle técnico
+## Detalle tecnico
 
-Cambiar la búsqueda de configuración de comisión de:
-
+### Fix 1: Mapeo de tipo_pago (linea 272 y 456)
 ```typescript
-const config = (comisiones || []).find(c => c.concepto_id === conceptoId);
+// Antes
+const tipoKey = tipoPago === 'cta_cte' ? 'cta_cte' : tipoPago === 'destino' ? 'destino' : 'contado';
+
+// Despues
+const tipoKey = (tipoPago === 'cta_cte' || tipoPago === 'cuenta_corriente') ? 'cta_cte' : tipoPago === 'destino' ? 'destino' : 'contado';
 ```
 
-A:
+### Fix 2: Total Cobrado basado en ventas reales
+Reemplazar la logica actual de totalCobrado (lineas 437-446) que usa `envio.precio_total` por una acumulacion dentro de `calcularComisionConcepto` que suma los montos reales de cada concepto procesado:
 
 ```typescript
-let config = (comisiones || []).find(c => c.concepto_id === conceptoId);
-
-// Fallback: si no hay match por ID, buscar por nombre de concepto
-if (!config && conceptoNombre) {
-  config = (comisiones || []).find(c => {
-    const nombreConfig = conceptoNombres[c.concepto_id || ''] || '';
-    return nombreConfig.toLowerCase() === conceptoNombre.toLowerCase();
-  });
-}
+// Agregar acumulador dentro de calcularComisionConcepto
+totalCobrado += monto; // El parametro monto ya es el valor real del concepto
 ```
 
-Esto permite que cuando un envío tiene un `concepto_id` de otro tenant pero con el mismo nombre ("Flete"), el sistema encuentre la comisión correcta (30%) configurada para el concepto "Flete" local.
+Y eliminar la logica separada de cobrado que usaba `envio.precio_total`.
+
+La logica de remitos cancelados (destino entregado en sucursal) se mantiene pero usando la suma de montos de detalles o precio_total como fallback.
 
 ## Resultado esperado
 
-- La liquidación de la sucursal "Administración" de Beraexpress dejará de mostrar "Configuración Incompleta" para "Flete".
-- El 30% configurado se aplicará correctamente al calcular la comisión.
-- No se afectan envíos que ya tienen el `concepto_id` correcto (siguen haciendo match por ID).
-
+- Total Cobrado mostrara la suma real de todas las ventas procesadas (todos los conceptos de todos los envios)
+- Las comisiones de cuenta corriente apareceran en su propia pestana "Cta. Cte." en vez de en "Contado"
+- Los porcentajes de cta. cte. se aplicaran correctamente
+- El saldo a transferir se calculara correctamente como totalCobrado - totalComisiones
