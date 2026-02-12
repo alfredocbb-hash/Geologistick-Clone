@@ -272,7 +272,15 @@ export default function BranchSettlements() {
         const tipoKey = tipoPago === 'cta_cte' ? 'cta_cte' : tipoPago === 'destino' ? 'destino' : 'contado';
         
         // Find commission config for this concept
-        const config = (comisiones || []).find(c => c.concepto_id === conceptoId);
+        let config = (comisiones || []).find(c => c.concepto_id === conceptoId);
+        
+        // Fallback: si no hay match por ID, buscar por nombre de concepto
+        if (!config && conceptoNombre) {
+          config = (comisiones || []).find(c => {
+            const nombreConfig = conceptoNombres[c.concepto_id || ''] || '';
+            return nombreConfig.toLowerCase() === conceptoNombre.toLowerCase();
+          });
+        }
         
         let porcentaje = 0;
         let baseCalculo = monto;
