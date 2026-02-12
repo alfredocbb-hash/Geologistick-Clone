@@ -253,9 +253,18 @@ export default function ActiveRouteNavigation() {
     : enviosHoja;
 
   // Filter out shipments that have been unassigned (e.g. rescheduled: chofer_id = NULL)
-  const envios = allEnvios.filter(item => 
-    !item.envio?.chofer_id || item.envio.chofer_id === user?.id
-  );
+  const envios = allEnvios.filter(item => {
+    const envio = item.envio;
+    if (!envio) return false;
+    // Para rutas planificadas: solo mostrar envios asignados a este chofer
+    // Los reprogramados tienen chofer_id = NULL y se excluyen
+    if (isPlannedRoute) {
+      return envio.chofer_id === user?.id;
+    }
+    // Para hojas de ruta: la asociacion es via hoja_ruta_envios,
+    // excluir solo si chofer_id fue reasignado a otro usuario
+    return !envio.chofer_id || envio.chofer_id === user?.id;
+  });
 
   // Calculate stats - incidencia counts as "completed" for driver (no further action needed)
   const stats = useMemo(() => {
