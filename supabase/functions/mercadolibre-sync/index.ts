@@ -188,27 +188,80 @@ Deno.serve(async (req) => {
         const existingEnvioId = existingEnviosMap.get(shipmentId);
 
         if (existingEnvioId) {
-          // Simplified update: only 2 queries instead of 4
           const mlShippingStatus = orderItem.shipping?.status || 'ready_to_ship';
-          const newFulfillment = mlShippingStatus === 'shipped' ? 'shipped' : 
-                                 mlShippingStatus === 'delivered' ? 'delivered' : 'pending';
-          const newEnvioEstado = mlShippingStatus === 'shipped' ? 'en_transito' :
-                                 mlShippingStatus === 'delivered' ? 'entregado' : 'pendiente';
+          const mlSubstatus = orderItem.shipping?.substatus || null;
 
-          // Update ecommerce_order status (single query)
-          await supabase.from('ecommerce_orders')
-            .update({ 
-              fulfillment_status: newFulfillment, 
-              order_status: mlShippingStatus === 'delivered' ? 'delivered' : 'paid',
-              ml_shipping_status: mlShippingStatus,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('ml_shipment_id', shipmentId);
+          // Si no hay substatus en la orden, consultar la API de ML para obtenerlo
+          let finalSubstatus = mlSubstatus;
+          if (!finalSubstatus && mlShippingStatus !== 'ready_to_ship') {
+            try {
+              const shipResp = await fetch(`${ML_API_BASE}/shipments/${shipmentId}`, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+              });
+              if (shipResp.ok) {
+                const shipData = await shipResp.json();
+                finalSubstatus = shipData.substatus || null;
+              }
+              await new Promise(resolve => setTimeout(resolve, 150));
+            } catch (e) {
+              console.error('[ML Sync] Error fetching substatus for shipment:', shipmentId, e);
+            }
+          }
 
-          // Update envio estado (single query)
-          await supabase.from('envios')
-            .update({ estado: newEnvioEstado, updated_at: new Date().toISOString() })
-            .eq('id', existingEnvioId);
+          // Buscar mapping en ml_status_mapping (con substatus)
+          let mappingQuery = supabase.from('ml_status_mapping')
+            .select('estado_interno, descripcion')
+            .eq('ml_status', mlShippingStatus);
+
+          if (finalSubstatus) {
+            mappingQuery = mappingQuery.eq('ml_substatus', finalSubstatus);
+          } else {
+            mappingQuery = mappingQuery.is('ml_substatus', null);
+          }
+
+          let { data: mapping } = await mappingQuery.maybeSingle();
+
+          // Fallback: buscar sin substatus
+          if (!mapping && finalSubstatus) {
+            const { data: fb } = await supabase.from('ml_status_mapping')
+              .select('estado_interno, descripcion')
+              .eq('ml_status', mlShippingStatus)
+              .is('ml_substatus', null)
+              .maybeSingle();
+            mapping = fb;
+          }
+
+          const newEnvioEstado = mapping?.estado_interno || 'pendiente';
+
+          // Obtener estado actual para comparar
+          const { data: envioActual } = await supabase.from('envios')
+            .select('estado').eq('id', existingEnvioId).single();
+
+          // Actualizar envio
+          await supabase.from('envios').update({
+            estado: newEnvioEstado,
+            ml_sync_status: 'synced',
+            ml_last_sync_at: new Date().toISOString(),
+          }).eq('id', existingEnvioId);
+
+          // Registrar en historial si el estado cambió
+          if (envioActual && envioActual.estado !== newEnvioEstado) {
+            await supabase.from('envio_historial').insert({
+              envio_id: existingEnvioId,
+              estado_anterior: envioActual.estado,
+              estado_nuevo: newEnvioEstado,
+              notas: 'Sincronización ML: ' + (mapping?.descripcion || mlShippingStatus),
+              ubicacion: 'ML Sync',
+            });
+            console.log('[ML Sync] Status updated:', existingEnvioId, envioActual.estado, '->', newEnvioEstado);
+          }
+
+          // Actualizar ecommerce_order
+          await supabase.from('ecommerce_orders').update({
+            ml_shipping_status: mlShippingStatus,
+            fulfillment_status: newEnvioEstado === 'entregado' ? 'fulfilled' : 'pending',
+            updated_at: new Date().toISOString(),
+          }).eq('ml_shipment_id', shipmentId);
 
           existing++;
           continue;
