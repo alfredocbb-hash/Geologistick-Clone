@@ -1,37 +1,34 @@
 
 
-# Sistema Dual de Estados: Estado Interno + Estado ML
+# Sistema Dual de Estados (solo para envíos e-commerce)
 
-## Idea
+## Concepto
 
-Agregar una columna `estado_ml` a la tabla `envios` que almacene el estado real de Mercado Libre. De esta forma, el sistema mantiene dos estados independientes:
+Agregar una columna `estado_ml` a la tabla `envios` que almacene el estado que reporta Mercado Libre. Esta columna solo se usa para envíos con `ml_shipment_id`. Los envíos normales (sin módulo e-commerce) siguen funcionando exactamente igual, con un solo estado.
 
-- **Estado (interno)**: el que maneja el chofer/operador del sistema
-- **Estado ML**: el que reporta Mercado Libre directamente
-
-Cuando hay discrepancia (ej: ML dice "entregado" pero el sistema dice "pendiente"), se muestra una alerta visual para que el admin tome acción.
+Cuando hay discrepancia entre el estado interno y el de ML, se muestra un indicador visual para que el admin decida qué hacer.
 
 ## Cambios
 
 ### 1. Migración SQL
-- Agregar columna `estado_ml` (text, nullable) a la tabla `envios`
+- Agregar columna `estado_ml` (text, nullable) a `envios`
 - Agregar `no_entregado` al enum `shipment_status`
-- Agregar mapping para `shipped/rescheduled_by_meli` -> `en_transito`
+- Agregar mapping `shipped/rescheduled_by_meli` -> `en_transito` en `ml_status_mapping`
 
 ### 2. Edge Function `mercadolibre-sync/index.ts`
-- La sincronización ahora SOLO actualiza `estado_ml` (nunca toca `estado` directamente)
-- Agregar segundo paso: buscar envíos pendientes con `ml_shipment_id` en la DB y consultar `/shipments/{id}` para cada uno
-- Guardar el status real de ML en `estado_ml`
-- Actualizar `ecommerce_orders.ml_shipping_status` con el estado real
+- Cambiar la sincronización para que solo actualice `estado_ml` (nunca modifique `estado` directamente)
+- Agregar segundo paso: buscar envíos con `estado = 'pendiente'` y `ml_shipment_id IS NOT NULL` en la DB, y consultar `/shipments/{id}` para cada uno
+- Actualizar `ecommerce_orders.ml_shipping_status` con el status real
 
 ### 3. UI en `src/pages/Shipments.tsx`
-- Agregar columna "Estado ML" en la tabla, visible solo para envíos con `ml_shipment_id`
-- Cuando `estado_ml` difiere de `estado`, mostrar un icono de advertencia (triangulo amarillo) que indica discrepancia
 - Agregar `no_entregado` al `statusConfig`
+- Agregar columna "Estado ML" en la tabla, visible **solo** cuando el envío tiene `ml_shipment_id`
+- Si no tiene `ml_shipment_id`: celda vacía (envío normal, nada cambia)
+- Si hay discrepancia entre `estado` y `estado_ml`: icono de advertencia amarillo
 
 ### 4. UI en `src/components/shipments/ShipmentDetailsDialog.tsx`
-- En la sección de detalles, mostrar ambos estados lado a lado cuando el envío es de ML
-- Agregar botón "Sincronizar con ML" para que el admin pueda aplicar el estado de ML al estado interno con un click
+- Solo para envíos con `ml_shipment_id`: mostrar sección "Estado Mercado Libre" con el valor de `estado_ml`
+- Cuando hay discrepancia: botón "Aplicar estado de ML" que copia `estado_ml` a `estado` y registra en historial
 
 ## Detalle técnico
 
@@ -45,45 +42,64 @@ VALUES ('shipped', 'rescheduled_by_meli', 'en_transito', 'Reprogramado por Merca
 ON CONFLICT DO NOTHING;
 ```
 
-### Lógica de sincronización (mercadolibre-sync)
+### Edge Function: solo actualiza estado_ml
 
 ```text
-// Antes: actualizaba envios.estado directamente
-// Ahora: solo actualiza envios.estado_ml
+// Antes: actualizaba envios.estado
+// Ahora: solo envios.estado_ml
 await supabase.from('envios').update({
-  estado_ml: newEnvioEstado,  // estado mapeado desde ML
+  estado_ml: newEnvioEstado,
   ml_sync_status: 'synced',
-  updated_at: new Date().toISOString(),
+  ml_last_sync_at: new Date().toISOString(),
 }).eq('id', existingEnvioId);
+```
 
-// Segundo paso: envíos pendientes no encontrados en search
+### Edge Function: segundo paso para pendientes
+
+```text
+// Despues de procesar resultados del search API:
 const { data: pendingEnvios } = await supabase
   .from('envios')
-  .select('id, ml_shipment_id, estado, estado_ml')
+  .select('id, ml_shipment_id, estado, estado_ml, seller_id')
   .eq('estado', 'pendiente')
   .not('ml_shipment_id', 'is', null);
 
+// Filtrar los que NO fueron procesados en el paso 1
 for (const envio of pendingEnvios) {
+  if (existingEnviosMap.has(envio.ml_shipment_id)) continue;
   // Consultar /shipments/{id} en ML
   // Actualizar solo estado_ml
+  await new Promise(resolve => setTimeout(resolve, 150));
 }
 ```
 
-### UI - Columna de Estado ML en la tabla
+### UI: columna "Estado ML" (solo si tiene ml_shipment_id)
 
-En la tabla de envíos, agregar una columna que muestre:
-- Si el envío NO es de ML: celda vacía
-- Si el envío es de ML y los estados coinciden: badge del estado ML
-- Si hay discrepancia: badge del estado ML + icono de advertencia amarillo
+```text
+// En la tabla de envíos:
+<TableHead>Estado ML</TableHead>
 
-### UI - Botón "Aplicar estado ML" en el detalle
+// En cada fila:
+<TableCell>
+  {envio.ml_shipment_id ? (
+    <div className="flex items-center gap-1">
+      <StatusBadge status={envio.estado_ml} />
+      {envio.estado_ml !== envio.estado && (
+        <AlertTriangle className="h-4 w-4 text-yellow-500" />
+      )}
+    </div>
+  ) : null}
+</TableCell>
+```
 
-En el dialog de detalles, cuando hay discrepancia:
-- Mostrar ambos estados lado a lado
-- Botón "Aplicar estado de ML" que copia `estado_ml` a `estado` y registra en historial
-- Botón "Notificar al chofer" (futuro, por ahora solo el de aplicar)
+### UI: botón "Aplicar estado ML" en detalles
 
-### statusConfig actualizado
+Solo visible cuando el envío es de ML y hay discrepancia. Al hacer click:
+1. Actualiza `envios.estado` con el valor de `estado_ml`
+2. Registra el cambio en `envio_historial` con nota "Estado aplicado desde Mercado Libre"
+3. Refresca los datos
+
+### statusConfig
 
 ```text
 no_entregado: { label: 'No Entregado', color: 'bg-red-600', icon: AlertCircle }
@@ -91,7 +107,8 @@ no_entregado: { label: 'No Entregado', color: 'bg-red-600', icon: AlertCircle }
 
 ## Resultado esperado
 
-- La sincronización ya no toca el estado interno, solo guarda lo que dice ML en `estado_ml`
-- El admin ve ambos estados y decide si aplicar el de ML o no
-- Se eliminan los problemas de "retroceso" de estados porque ML ya no cambia el estado interno
-- Los envíos que están pendientes en el sistema pero entregados en ML se detectan visualmente
+- Envíos normales (sin e-commerce): todo sigue igual, una sola columna de estado
+- Envíos de ML: se ve el estado del sistema Y el estado de ML lado a lado
+- Si coinciden: todo normal
+- Si no coinciden: triangulo amarillo de advertencia para que el admin tome acción
+- El admin puede aplicar el estado de ML con un click, o dejarlo como está
