@@ -205,33 +205,35 @@ Deno.serve(async (req) => {
         const existingEnvioId = existingEnviosMap.get(shipmentId);
 
         if (existingEnvioId) {
-          const mlShippingStatus = orderItem.shipping?.status || 'ready_to_ship';
-          const mlSubstatus = orderItem.shipping?.substatus || null;
+          // ALWAYS fetch real shipment status from ML API for existing envíos
+          let realStatus = orderItem.shipping?.status || 'ready_to_ship';
+          let realSubstatus = orderItem.shipping?.substatus || null;
 
-          // Si no hay substatus en la orden, consultar la API de ML para obtenerlo
-          let finalSubstatus = mlSubstatus;
-          if (!finalSubstatus && mlShippingStatus !== 'ready_to_ship') {
-            try {
-              const shipResp = await fetch(`${ML_API_BASE}/shipments/${shipmentId}`, {
-                headers: { Authorization: `Bearer ${accessToken}` },
-              });
-              if (shipResp.ok) {
-                const shipData = await shipResp.json();
-                finalSubstatus = shipData.substatus || null;
-              }
-              await new Promise(resolve => setTimeout(resolve, 150));
-            } catch (e) {
-              console.error('[ML Sync] Error fetching substatus for shipment:', shipmentId, e);
+          try {
+            const shipResp = await fetch(`${ML_API_BASE}/shipments/${shipmentId}`, {
+              headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            if (shipResp.ok) {
+              const shipData = await shipResp.json();
+              realStatus = shipData.status || realStatus;
+              realSubstatus = shipData.substatus || null;
+              console.log('[ML Sync] Real shipment', shipmentId, ':', realStatus, realSubstatus);
+            } else {
+              console.error('[ML Sync] Failed to fetch shipment', shipmentId, ':', shipResp.status);
             }
+            // Rate limiting: 150ms between shipment API calls
+            await new Promise(resolve => setTimeout(resolve, 150));
+          } catch (e) {
+            console.error('[ML Sync] Error fetching real status:', shipmentId, e);
           }
 
-          // Buscar mapping en ml_status_mapping (con substatus)
+          // Buscar mapping con status/substatus REALES de ML
           let mappingQuery = supabase.from('ml_status_mapping')
             .select('estado_interno, descripcion')
-            .eq('ml_status', mlShippingStatus);
+            .eq('ml_status', realStatus);
 
-          if (finalSubstatus) {
-            mappingQuery = mappingQuery.eq('ml_substatus', finalSubstatus);
+          if (realSubstatus) {
+            mappingQuery = mappingQuery.eq('ml_substatus', realSubstatus);
           } else {
             mappingQuery = mappingQuery.is('ml_substatus', null);
           }
@@ -239,67 +241,24 @@ Deno.serve(async (req) => {
           let { data: mapping } = await mappingQuery.maybeSingle();
 
           // Fallback: buscar sin substatus
-          if (!mapping && finalSubstatus) {
+          if (!mapping && realSubstatus) {
             const { data: fb } = await supabase.from('ml_status_mapping')
               .select('estado_interno, descripcion')
-              .eq('ml_status', mlShippingStatus)
+              .eq('ml_status', realStatus)
               .is('ml_substatus', null)
               .maybeSingle();
             mapping = fb;
           }
 
-          let newEnvioEstado = mapping?.estado_interno || 'pendiente';
+          const newEnvioEstado = mapping?.estado_interno || 'pendiente';
 
           // Obtener estado actual para comparar
           const { data: envioActual } = await supabase.from('envios')
             .select('estado').eq('id', existingEnvioId).single();
 
           const currentEstado = envioActual?.estado || 'pendiente';
-          let newPriority = ESTADO_PRIORITY[newEnvioEstado] ?? 0;
+          const newPriority = ESTADO_PRIORITY[newEnvioEstado] ?? 0;
           const currentPriority = ESTADO_PRIORITY[currentEstado] ?? 0;
-
-          // If the order-level status would be a downgrade, verify with real shipment API
-          if (newPriority < currentPriority) {
-            console.log('[ML Sync] Potential downgrade detected:', currentEstado, '->', newEnvioEstado, '- verifying with shipment API');
-            try {
-              const shipResp = await fetch(`${ML_API_BASE}/shipments/${shipmentId}`, {
-                headers: { Authorization: `Bearer ${accessToken}` },
-              });
-              if (shipResp.ok) {
-                const shipData = await shipResp.json();
-                const realStatus = shipData.status;
-                const realSubstatus = shipData.substatus || null;
-                console.log('[ML Sync] Real shipment status:', realStatus, realSubstatus);
-
-                // Re-lookup mapping with real status
-                let realMappingQuery = supabase.from('ml_status_mapping')
-                  .select('estado_interno, descripcion')
-                  .eq('ml_status', realStatus);
-                if (realSubstatus) {
-                  realMappingQuery = realMappingQuery.eq('ml_substatus', realSubstatus);
-                } else {
-                  realMappingQuery = realMappingQuery.is('ml_substatus', null);
-                }
-                let { data: realMapping } = await realMappingQuery.maybeSingle();
-                if (!realMapping && realSubstatus) {
-                  const { data: fb2 } = await supabase.from('ml_status_mapping')
-                    .select('estado_interno, descripcion')
-                    .eq('ml_status', realStatus)
-                    .is('ml_substatus', null)
-                    .maybeSingle();
-                  realMapping = fb2;
-                }
-                if (realMapping) {
-                  newEnvioEstado = realMapping.estado_interno;
-                  mapping = realMapping;
-                  newPriority = ESTADO_PRIORITY[newEnvioEstado] ?? 0;
-                }
-              }
-              await new Promise(resolve => setTimeout(resolve, 150));
-            } catch (e) {
-              console.error('[ML Sync] Error verifying real shipment status:', shipmentId, e);
-            }
-          }
 
           // Only update if it's NOT a downgrade
           if (newPriority >= currentPriority) {
@@ -316,7 +275,7 @@ Deno.serve(async (req) => {
                 envio_id: existingEnvioId,
                 estado_anterior: envioActual.estado,
                 estado_nuevo: newEnvioEstado,
-                notas: 'Sincronización ML: ' + (mapping?.descripcion || mlShippingStatus),
+                notas: 'Sincronización ML: ' + (mapping?.descripcion || `${realStatus}/${realSubstatus}`),
                 ubicacion: 'ML Sync',
               });
               console.log('[ML Sync] Status updated:', existingEnvioId, envioActual.estado, '->', newEnvioEstado);
@@ -327,12 +286,12 @@ Deno.serve(async (req) => {
               ml_sync_status: 'synced',
               ml_last_sync_at: new Date().toISOString(),
             }).eq('id', existingEnvioId);
-            console.log('[ML Sync] Skipping downgrade:', currentEstado, '(priority', currentPriority, ') ->', newEnvioEstado, '(priority', newPriority, ')');
+            console.log('[ML Sync] Skipping downgrade:', currentEstado, '->', newEnvioEstado);
           }
 
-          // Actualizar ecommerce_order
+          // Actualizar ecommerce_order con status REAL de ML
           await supabase.from('ecommerce_orders').update({
-            ml_shipping_status: mlShippingStatus,
+            ml_shipping_status: realStatus,
             fulfillment_status: newEnvioEstado === 'entregado' ? 'fulfilled' : 'pending',
             updated_at: new Date().toISOString(),
           }).eq('ml_shipment_id', shipmentId);
