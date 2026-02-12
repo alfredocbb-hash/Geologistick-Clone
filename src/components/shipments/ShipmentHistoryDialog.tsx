@@ -44,6 +44,7 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; icon:
   devuelto: { label: 'Devuelto', color: 'bg-red-500', icon: AlertCircle },
   cancelado: { label: 'Cancelado', color: 'bg-gray-500', icon: AlertCircle },
   incidencia: { label: 'Incidencia', color: 'bg-amber-500', icon: AlertCircle },
+  no_entregado: { label: 'No Entregado', color: 'bg-red-600', icon: AlertCircle },
 };
 
 export function ShipmentHistoryDialog({ 

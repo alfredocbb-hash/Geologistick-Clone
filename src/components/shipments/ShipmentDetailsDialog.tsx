@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useGoogleMaps } from '@/components/maps/GoogleMapsProvider';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/lib/auth';
 import {
   Dialog,
   DialogContent,
@@ -43,6 +44,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Database } from '@/integrations/supabase/types';
 import { generateEPODPDF } from '@/lib/generateEPODPDF';
 import { InvoiceDataDialog } from '@/components/invoicing/InvoiceDataDialog';
@@ -66,6 +68,7 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; icon:
   devuelto: { label: 'Devuelto', color: 'bg-red-500', icon: AlertCircle },
   cancelado: { label: 'Cancelado', color: 'bg-gray-500', icon: AlertCircle },
   incidencia: { label: 'Incidencia', color: 'bg-amber-500', icon: AlertCircle },
+  no_entregado: { label: 'No Entregado', color: 'bg-red-600', icon: AlertCircle },
 };
 
 const TIPO_PAGO_LABELS: Record<string, string> = {
@@ -88,6 +91,38 @@ export function ShipmentDetailsDialog({
 }: ShipmentDetailsDialogProps) {
   const [isGeneratingEPOD, setIsGeneratingEPOD] = useState(false);
   const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  const applyMLStatusMutation = useMutation({
+    mutationFn: async ({ envioId, estadoML, estadoActual }: { envioId: string; estadoML: string; estadoActual: string }) => {
+      const { error: updateError } = await supabase
+        .from('envios')
+        .update({ estado: estadoML as any })
+        .eq('id', envioId);
+      if (updateError) throw updateError;
+
+      const { error: historyError } = await supabase
+        .from('envio_historial')
+        .insert({
+          envio_id: envioId,
+          estado_anterior: estadoActual as any,
+          estado_nuevo: estadoML as any,
+          notas: 'Estado aplicado desde Mercado Libre',
+          created_by: user?.id,
+        });
+      if (historyError) throw historyError;
+    },
+    onSuccess: () => {
+      toast.success('Estado actualizado desde ML');
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ['envios'] });
+      queryClient.invalidateQueries({ queryKey: ['envios-stats'] });
+    },
+    onError: () => {
+      toast.error('Error al aplicar el estado de ML');
+    },
+  });
   
   const { data: envio, isLoading, refetch } = useQuery({
     queryKey: ['envio-details', envioId],
@@ -356,6 +391,46 @@ export function ShipmentDetailsDialog({
                   </div>
                 )}
               </div>
+
+              {/* ML Dual Status Section - only for ML shipments */}
+              {envio.ml_shipment_id && envio.estado_ml && (
+                <div className={`p-4 rounded-lg border ${
+                  envio.estado_ml !== envio.estado 
+                    ? 'bg-yellow-500/10 border-yellow-500/30' 
+                    : 'bg-muted/50'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground mb-1">ESTADO MERCADO LIBRE</p>
+                        <Badge className={`${(statusConfig[envio.estado_ml as ShipmentStatus] || statusConfig.pendiente).color} text-white`}>
+                          {(statusConfig[envio.estado_ml as ShipmentStatus] || { label: envio.estado_ml }).label}
+                        </Badge>
+                      </div>
+                      {envio.estado_ml !== envio.estado && (
+                        <div className="flex items-center gap-1 text-yellow-600">
+                          <AlertTriangle className="h-4 w-4" />
+                          <span className="text-xs font-medium">Discrepancia</span>
+                        </div>
+                      )}
+                    </div>
+                    {envio.estado_ml !== envio.estado && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => applyMLStatusMutation.mutate({
+                          envioId: envio.id,
+                          estadoML: envio.estado_ml!,
+                          estadoActual: envio.estado || 'pendiente',
+                        })}
+                        disabled={applyMLStatusMutation.isPending}
+                      >
+                        {applyMLStatusMutation.isPending ? 'Aplicando...' : 'Aplicar estado de ML'}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <Tabs defaultValue="general" className="w-full">
                 <TabsList className="grid w-full grid-cols-4">
