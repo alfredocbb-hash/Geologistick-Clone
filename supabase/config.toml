@@ -92,3 +92,6 @@ verify_jwt = false
 
 [functions.mercadolibre-shipment-history]
 verify_jwt = false
+
+[functions.recover-ml-shipments]
+verify_jwt = false
