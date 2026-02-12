@@ -269,7 +269,7 @@ export default function BranchSettlements() {
          envioId: string,
          rol: 'emisión' | 'recepción'
       ) => {
-        const tipoKey = tipoPago === 'cta_cte' ? 'cta_cte' : tipoPago === 'destino' ? 'destino' : 'contado';
+        const tipoKey = (tipoPago === 'cta_cte' || tipoPago === 'cuenta_corriente') ? 'cta_cte' : tipoPago === 'destino' ? 'destino' : 'contado';
         
         // Find commission config for this concept
         let config = (comisiones || []).find(c => c.concepto_id === conceptoId);
@@ -302,7 +302,7 @@ export default function BranchSettlements() {
           }
           
           // Get percentage based on payment type
-          switch (tipoPago) {
+           switch (tipoKey) {
             case 'contado':
               porcentaje = config.porcentaje_contado || 0;
               break;
@@ -434,15 +434,19 @@ export default function BranchSettlements() {
           }
         }
 
-        // Cobrado logic
-        if (esOrigen && tipoPago === 'contado') {
-          totalCobrado += envio.precio_total;
+        // Cobrado logic: sumar ventas reales desde detalles o precio_total como fallback
+        const sumaDetalles = detalles.length > 0 
+          ? detalles.reduce((sum: number, d: any) => sum + (d.monto || 0), 0)
+          : envio.precio_total;
+
+        if (esOrigen && (tipoPago === 'contado' || tipoPago === 'cuenta_corriente' || tipoPago === 'cta_cte')) {
+          totalCobrado += sumaDetalles;
         }
         if (esDestino && envio.estado === 'entregado' && tipoPago === 'destino') {
-          totalCobrado += envio.precio_total;
+          totalCobrado += sumaDetalles;
            // Track as "remito cancelado"
            remitosCanceladosCantidad++;
-           remitosCanceladosTotal += envio.precio_total;
+           remitosCanceladosTotal += sumaDetalles;
         }
 
         // If no commissions configured for the applicable role, use default 10%
@@ -453,7 +457,7 @@ export default function BranchSettlements() {
           if (envioComision === 0) {
             envioComision = envio.precio_total * 0.10;
             // Track default commission as "General" concept
-            const tipoKey = tipoPago === 'cta_cte' ? 'cta_cte' : tipoPago === 'destino' ? 'destino' : 'contado';
+            const tipoKey = (tipoPago === 'cta_cte' || tipoPago === 'cuenta_corriente') ? 'cta_cte' : tipoPago === 'destino' ? 'destino' : 'contado';
             if (!conceptoAcumulado[tipoKey]['default']) {
               conceptoAcumulado[tipoKey]['default'] = {
                 venta: 0,
