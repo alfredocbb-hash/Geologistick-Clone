@@ -18,6 +18,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DollarSign, Package, Clock, CheckCircle, Calendar, Truck, Eye, Download } from 'lucide-react';
 import { format } from 'date-fns';
+import { toLocalISOStart, toLocalISOEnd } from '@/lib/dateUtils';
 import { es } from 'date-fns/locale';
 import { SettlementDetailDialog } from '@/components/settlements/SettlementDetailDialog';
 import { downloadDriverSettlementPDF } from '@/lib/generateSettlementPDF';
@@ -74,10 +75,10 @@ export default function MyCommissions() {
         .order('created_at', { ascending: false });
 
       if (fechaInicio) {
-        query = query.gte('created_at', fechaInicio);
+        query = query.gte('created_at', toLocalISOStart(fechaInicio));
       }
       if (fechaFin) {
-        query = query.lte('created_at', fechaFin + 'T23:59:59');
+        query = query.lte('created_at', toLocalISOEnd(fechaFin));
       }
 
       const { data, error } = await query.limit(100);
