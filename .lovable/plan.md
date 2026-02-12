@@ -1,120 +1,68 @@
 
 
-# Fix: Reprogramar no avanza (solución robusta)
+# Fix: La app requiere limpiar caché para reflejar la reprogramación
 
-## Diagnóstico
+## Problema
 
-Hay dos problemas:
+El `RescheduleDialog` hace un optimistic update correcto en `onMutate` (filtra el envío del cache), pero en `onSuccess` llama `invalidateQueries` **sin `await`**. Esto causa que:
 
-1. **La app Android carga desde la URL publicada** (`geologic.lovable.app`). Si el fix anterior no fue publicado, la app sigue con el código viejo. Verificar que se haya publicado.
+1. El optimistic update remueve el envío del cache temporalmente
+2. `onSuccess` dispara `invalidateQueries` (no esperado) y luego cierra el diálogo inmediatamente
+3. El refetch automático trae la data nueva **después** de que el componente ya procesó el cierre
+4. En Android/WebView, la race condition es más notoria: a veces la data vieja vuelve antes de que el refetch con la data nueva llegue
 
-2. **El RPC `reschedule_envio` no actualiza `ruta_paradas`**. Cuando se reprograma, el envío cambia (`chofer_id = NULL`, `estado = pendiente`) pero la parada en `ruta_paradas` queda con `estado = 'pendiente'`, como si aún estuviera activa. Esto puede causar confusión y bugs sutiles.
+El resultado es que la vista se queda mostrando la parada reprogramada hasta que el usuario limpia caché.
 
 ## Solución
 
-### 1. Actualizar el RPC `reschedule_envio` (migración SQL)
+Hacer que `onSuccess` **espere** a que los queries se refresquen antes de cerrar el diálogo. Usar `await` en los `invalidateQueries` críticos y asegurar que el refetch se complete.
 
-Agregar al RPC una línea que marque la `ruta_parada` asociada como completada/cancelada, para que no quede colgada:
-
-```sql
-CREATE OR REPLACE FUNCTION reschedule_envio(p_envio_id uuid, p_new_date timestamptz, p_reason text DEFAULT '')
-RETURNS void AS $$
-DECLARE
-  v_envio RECORD;
-BEGIN
-  SELECT id, estado, chofer_id, reprogramado_count, tenant_id
-  INTO v_envio FROM envios WHERE id = p_envio_id;
-
-  IF NOT FOUND THEN RAISE EXCEPTION 'Envio no encontrado'; END IF;
-
-  IF v_envio.chofer_id != auth.uid()
-     AND NOT is_admin(auth.uid())
-     AND NOT is_super_admin(auth.uid()) THEN
-    RAISE EXCEPTION 'No tiene permisos para reprogramar este envio';
-  END IF;
-
-  -- Actualizar envío
-  UPDATE envios SET
-    fecha_entrega = p_new_date,
-    estado = 'pendiente',
-    chofer_id = NULL,
-    reprogramado_count = COALESCE(v_envio.reprogramado_count, 0) + 1,
-    ultima_reprogramacion = NOW()
-  WHERE id = p_envio_id;
-
-  -- NUEVO: Marcar parada(s) en rutas planificadas como 'reprogramado'
-  UPDATE ruta_paradas SET
-    estado = 'reprogramado',
-    completada_at = NOW(),
-    notas = COALESCE(notas || ' | ', '') || 'Reprogramado: ' || COALESCE(NULLIF(p_reason, ''), 'Sin motivo')
-  WHERE envio_id = p_envio_id
-    AND estado = 'pendiente';
-
-  -- Historial
-  INSERT INTO envio_historial (envio_id, estado_anterior, estado_nuevo, notas, created_by)
-  VALUES (
-    p_envio_id, v_envio.estado, 'pendiente',
-    'Entrega reprogramada para ' || to_char(p_new_date, 'DD/MM/YYYY')
-      || '. Motivo: ' || COALESCE(NULLIF(p_reason, ''), 'No especificado')
-      || '. Intento #' || (COALESCE(v_envio.reprogramado_count, 0) + 1),
-    auth.uid()
-  );
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-```
-
-### 2. Reforzar filtro en `ActiveRouteNavigation.tsx`
-
-Agregar chequeo doble: excluir tanto por `chofer_id` como por `ruta_paradas.estado = 'reprogramado'`:
-
-```typescript
-const envios = allEnvios.filter(item => {
-  const envio = item.envio;
-  if (!envio) return false;
-
-  // Excluir paradas reprogramadas (ruta_paradas.estado)
-  if (item.estado === 'reprogramado') return false;
-
-  if (isPlannedRoute) {
-    return envio.chofer_id === user?.id;
-  }
-  return !envio.chofer_id || envio.chofer_id === user?.id;
-});
-```
-
-### 3. Actualizar `nextStop` como seguridad adicional
-
-Agregar chequeo de `estado = 'pendiente'` del envio para no incluir estados inesperados:
-
-```typescript
-const nextStop = useMemo(() => {
-  return envios.find(e => {
-    const envio = e.envio;
-    if (!envio) return false;
-    if (envio.estado === 'incidencia') return false;
-
-    // Excluir envíos sin chofer asignado (reprogramados)
-    if (!envio.chofer_id) return false;
-
-    // ... resto de la lógica igual
-  });
-}, [envios]);
-```
-
-## Cambios
+## Cambio
 
 | Archivo | Cambio |
 |---------|--------|
-| Migración SQL | Actualizar RPC `reschedule_envio` para marcar `ruta_paradas.estado = 'reprogramado'` |
-| `src/pages/ActiveRouteNavigation.tsx` | Agregar filtro por `item.estado === 'reprogramado'` y chequeo `!envio.chofer_id` en `nextStop` |
+| `src/components/driver/RescheduleDialog.tsx` | Convertir `onSuccess` en async y esperar los `invalidateQueries` antes de cerrar el diálogo |
+
+## Detalle técnico
+
+En `RescheduleDialog.tsx`, cambiar el `onSuccess` de:
+
+```typescript
+onSuccess: () => {
+  queryClient.invalidateQueries({ queryKey: ['my-active-route-paradas'] });
+  queryClient.invalidateQueries({ queryKey: ['my-active-route-envios-hoja'] });
+  queryClient.invalidateQueries({ queryKey: ['my-active-route-hoja'] });
+  queryClient.invalidateQueries({ queryKey: ['my-active-route-planificada'] });
+  toast.success('Entrega reprogramada correctamente');
+  onSuccess();
+  onClose();
+},
+```
+
+A:
+
+```typescript
+onSuccess: async () => {
+  // Esperar a que los queries se refresquen ANTES de cerrar
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['my-active-route-paradas'], refetchType: 'active' }),
+    queryClient.invalidateQueries({ queryKey: ['my-active-route-envios-hoja'], refetchType: 'active' }),
+    queryClient.invalidateQueries({ queryKey: ['my-active-route-hoja'], refetchType: 'active' }),
+    queryClient.invalidateQueries({ queryKey: ['my-active-route-planificada'], refetchType: 'active' }),
+  ]);
+  toast.success('Entrega reprogramada correctamente');
+  onSuccess();
+  onClose();
+},
+```
+
+La diferencia clave es el `await Promise.all(...)`. Esto garantiza que la data fresca (con la parada ya marcada como 'reprogramado') se cargue en el cache antes de que el diálogo se cierre y el componente `ActiveRouteNavigation` recalcule `nextStop`.
 
 ## Resultado esperado
 
-- Al presionar "Reprogramar": la parada se marca como 'reprogramado' en la DB
-- El filtro la excluye por dos vías: `ruta_paradas.estado` y `envio.chofer_id`
-- `nextStop` tiene una tercera capa de protección verificando `chofer_id`
-- La vista avanza automáticamente a la siguiente parada
+Al presionar "Reprogramar", el diálogo espera a que la data actualizada se cargue, y luego se cierra. La vista avanza inmediatamente a la siguiente parada sin necesidad de limpiar caché ni reiniciar la app.
 
-## Importante
+## Recordatorio
 
-Si estas probando en la app Android (APK), asegurate de **publicar** los cambios desde Lovable para que la app los tome (carga desde `geologic.lovable.app`).
+Publicar los cambios para que la app Android los tome.
+
