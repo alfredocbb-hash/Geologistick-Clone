@@ -1,75 +1,58 @@
 
-# Fix: Liquidacion a Choferes no trae resultados por desfase de zona horaria
+
+# Fix: "Flete (Contado - emisión)" muestra "sin config" aunque tiene 30% configurado
 
 ## Problema
 
-Las entregas realizadas a la noche (despues de las 21hs Argentina) quedan grabadas con fecha UTC del dia siguiente. Por ejemplo:
+Algunos envíos de Beraexpress tienen grabado un `concepto_id` de "Flete" que pertenece a **otro tenant** (ID `bb000001-...` de otro tenant), en lugar del concepto propio de Beraexpress (`be000001-...` con código `BE-FLETE`).
 
-| Fecha local (Argentina) | Fecha UTC (en la base) |
-|---|---|
-| 11/02 a las 22:01 | 12/02 a las 01:01 |
+Cuando el sistema calcula la liquidación, busca la comisión configurada haciendo un match **exacto** por `concepto_id`. Como el ID del envío (`bb000001-...`) no coincide con ninguna comisión configurada en la sucursal (que tiene `be000001-...` y `1cd05d8a-...`), el sistema reporta "sin configuración" a pesar de que el concepto "Flete" sí tiene 30% configurado.
 
-Cuando se buscan entregas del 11/02, el filtro compara contra UTC sin ajustar, asi que las entregas de la noche no aparecen. Si todas las entregas del chofer fueron a la noche, el resultado es 0 envios.
+```text
+Envío tiene:       concepto_id = bb000001 (Flete de otro tenant)
+Comisión config:   concepto_id = be000001 (Flete de Beraexpress) → 30%
+                   concepto_id = 1cd05d8a (Flete global)         → 30%
 
-## Solucion
+Match exacto por ID → NO encuentra → "sin config"
+```
 
-Agregar el offset de zona horaria del navegador a los filtros de fecha. En lugar de enviar `'2026-02-11'` y `'2026-02-11T23:59:59'` (que Postgres interpreta como UTC), enviar `'2026-02-11T00:00:00-03:00'` y `'2026-02-11T23:59:59-03:00'`. Postgres convierte automaticamente y compara correctamente.
+## Solución
+
+Agregar un **fallback por nombre de concepto** cuando no se encuentra la comisión por ID exacto. Si el `concepto_id` del envío no tiene configuración, buscar entre las comisiones configuradas una que tenga el **mismo nombre** de concepto (ej. ambos se llaman "Flete").
 
 ## Cambio
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/pages/DriverSettlements.tsx` | Ajustar los filtros `.gte()` y `.lte()` de `fecha_entrega` para incluir el offset de la zona horaria local |
+| `src/pages/BranchSettlements.tsx` | En la función `calcularComisionConcepto` (línea 275), agregar fallback por nombre cuando el match por ID falla |
 
-## Detalle tecnico
+## Detalle técnico
 
-Crear una funcion helper que tome una fecha tipo `YYYY-MM-DD` y le agregue el offset local del navegador:
+Cambiar la búsqueda de configuración de comisión de:
 
 ```typescript
-function toLocalISOStart(dateStr: string): string {
-  const offset = new Date().getTimezoneOffset();
-  const sign = offset <= 0 ? '+' : '-';
-  const hours = String(Math.floor(Math.abs(offset) / 60)).padStart(2, '0');
-  const mins = String(Math.abs(offset) % 60).padStart(2, '0');
-  return `${dateStr}T00:00:00${sign}${hours}:${mins}`;
-}
+const config = (comisiones || []).find(c => c.concepto_id === conceptoId);
+```
 
-function toLocalISOEnd(dateStr: string): string {
-  const offset = new Date().getTimezoneOffset();
-  const sign = offset <= 0 ? '+' : '-';
-  const hours = String(Math.floor(Math.abs(offset) / 60)).padStart(2, '0');
-  const mins = String(Math.abs(offset) % 60).padStart(2, '0');
-  return `${dateStr}T23:59:59${sign}${hours}:${mins}`;
+A:
+
+```typescript
+let config = (comisiones || []).find(c => c.concepto_id === conceptoId);
+
+// Fallback: si no hay match por ID, buscar por nombre de concepto
+if (!config && conceptoNombre) {
+  config = (comisiones || []).find(c => {
+    const nombreConfig = conceptoNombres[c.concepto_id || ''] || '';
+    return nombreConfig.toLowerCase() === conceptoNombre.toLowerCase();
+  });
 }
 ```
 
-Luego en `calculateMutation` cambiar:
-
-```typescript
-// Antes
-.gte('fecha_entrega', fechaInicio)
-.lte('fecha_entrega', fechaFin + 'T23:59:59')
-
-// Despues
-.gte('fecha_entrega', toLocalISOStart(fechaInicio))
-.lte('fecha_entrega', toLocalISOEnd(fechaFin))
-```
-
-Ejemplo con Argentina (UTC-3):
-- Antes: `>= '2026-02-11'` y `<= '2026-02-11T23:59:59'` (UTC)
-- Despues: `>= '2026-02-11T00:00:00-03:00'` y `<= '2026-02-11T23:59:59-03:00'`
-
-Postgres convierte `2026-02-11T00:00:00-03:00` a `2026-02-11T03:00:00Z`, capturando correctamente las entregas de la noche del 11.
-
-## Alcance adicional
-
-Este mismo problema afecta otros modulos que filtran timestamps por fecha. Se recomienda aplicar la misma correccion en:
-
-- `src/pages/DriverSettlements.tsx` (este fix)
-- `src/pages/MyCommissions.tsx` (filtros de comisiones del chofer)
-
-Los demas modulos de liquidaciones (sucursales, clientes, terceros) usan campos `date` o `periodo_inicio`/`periodo_fin` que no tienen este problema.
+Esto permite que cuando un envío tiene un `concepto_id` de otro tenant pero con el mismo nombre ("Flete"), el sistema encuentre la comisión correcta (30%) configurada para el concepto "Flete" local.
 
 ## Resultado esperado
 
-Al seleccionar un chofer y las fechas, se traen correctamente los envios entregados en esas fechas segun la hora local, sin importar que en UTC caigan en el dia siguiente.
+- La liquidación de la sucursal "Administración" de Beraexpress dejará de mostrar "Configuración Incompleta" para "Flete".
+- El 30% configurado se aplicará correctamente al calcular la comisión.
+- No se afectan envíos que ya tienen el `concepto_id` correcto (siguen haciendo match por ID).
+
