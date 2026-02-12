@@ -7,6 +7,23 @@ const corsHeaders = {
 
 const ML_API_BASE = 'https://api.mercadolibre.com';
 
+// Priority map: higher = more advanced state. Never downgrade.
+const ESTADO_PRIORITY: Record<string, number> = {
+  pendiente: 0,
+  recogido: 1,
+  en_sucursal: 2,
+  en_bodega: 2,
+  en_transito: 3,
+  en_reparto: 4,
+  primera_visita: 5,
+  ausente: 5,
+  incidencia: 5,
+  entregado: 10,
+  no_entregado: 10,
+  devuelto: 10,
+  cancelado: 10,
+};
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -231,29 +248,86 @@ Deno.serve(async (req) => {
             mapping = fb;
           }
 
-          const newEnvioEstado = mapping?.estado_interno || 'pendiente';
+          let newEnvioEstado = mapping?.estado_interno || 'pendiente';
 
           // Obtener estado actual para comparar
           const { data: envioActual } = await supabase.from('envios')
             .select('estado').eq('id', existingEnvioId).single();
 
-          // Actualizar envio
-          await supabase.from('envios').update({
-            estado: newEnvioEstado,
-            ml_sync_status: 'synced',
-            ml_last_sync_at: new Date().toISOString(),
-          }).eq('id', existingEnvioId);
+          const currentEstado = envioActual?.estado || 'pendiente';
+          let newPriority = ESTADO_PRIORITY[newEnvioEstado] ?? 0;
+          const currentPriority = ESTADO_PRIORITY[currentEstado] ?? 0;
 
-          // Registrar en historial si el estado cambió
-          if (envioActual && envioActual.estado !== newEnvioEstado) {
-            await supabase.from('envio_historial').insert({
-              envio_id: existingEnvioId,
-              estado_anterior: envioActual.estado,
-              estado_nuevo: newEnvioEstado,
-              notas: 'Sincronización ML: ' + (mapping?.descripcion || mlShippingStatus),
-              ubicacion: 'ML Sync',
-            });
-            console.log('[ML Sync] Status updated:', existingEnvioId, envioActual.estado, '->', newEnvioEstado);
+          // If the order-level status would be a downgrade, verify with real shipment API
+          if (newPriority < currentPriority) {
+            console.log('[ML Sync] Potential downgrade detected:', currentEstado, '->', newEnvioEstado, '- verifying with shipment API');
+            try {
+              const shipResp = await fetch(`${ML_API_BASE}/shipments/${shipmentId}`, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+              });
+              if (shipResp.ok) {
+                const shipData = await shipResp.json();
+                const realStatus = shipData.status;
+                const realSubstatus = shipData.substatus || null;
+                console.log('[ML Sync] Real shipment status:', realStatus, realSubstatus);
+
+                // Re-lookup mapping with real status
+                let realMappingQuery = supabase.from('ml_status_mapping')
+                  .select('estado_interno, descripcion')
+                  .eq('ml_status', realStatus);
+                if (realSubstatus) {
+                  realMappingQuery = realMappingQuery.eq('ml_substatus', realSubstatus);
+                } else {
+                  realMappingQuery = realMappingQuery.is('ml_substatus', null);
+                }
+                let { data: realMapping } = await realMappingQuery.maybeSingle();
+                if (!realMapping && realSubstatus) {
+                  const { data: fb2 } = await supabase.from('ml_status_mapping')
+                    .select('estado_interno, descripcion')
+                    .eq('ml_status', realStatus)
+                    .is('ml_substatus', null)
+                    .maybeSingle();
+                  realMapping = fb2;
+                }
+                if (realMapping) {
+                  newEnvioEstado = realMapping.estado_interno;
+                  mapping = realMapping;
+                  newPriority = ESTADO_PRIORITY[newEnvioEstado] ?? 0;
+                }
+              }
+              await new Promise(resolve => setTimeout(resolve, 150));
+            } catch (e) {
+              console.error('[ML Sync] Error verifying real shipment status:', shipmentId, e);
+            }
+          }
+
+          // Only update if it's NOT a downgrade
+          if (newPriority >= currentPriority) {
+            // Actualizar envio
+            await supabase.from('envios').update({
+              estado: newEnvioEstado,
+              ml_sync_status: 'synced',
+              ml_last_sync_at: new Date().toISOString(),
+            }).eq('id', existingEnvioId);
+
+            // Registrar en historial si el estado cambió
+            if (envioActual && envioActual.estado !== newEnvioEstado) {
+              await supabase.from('envio_historial').insert({
+                envio_id: existingEnvioId,
+                estado_anterior: envioActual.estado,
+                estado_nuevo: newEnvioEstado,
+                notas: 'Sincronización ML: ' + (mapping?.descripcion || mlShippingStatus),
+                ubicacion: 'ML Sync',
+              });
+              console.log('[ML Sync] Status updated:', existingEnvioId, envioActual.estado, '->', newEnvioEstado);
+            }
+          } else {
+            // Only update sync timestamp, NOT the estado
+            await supabase.from('envios').update({
+              ml_sync_status: 'synced',
+              ml_last_sync_at: new Date().toISOString(),
+            }).eq('id', existingEnvioId);
+            console.log('[ML Sync] Skipping downgrade:', currentEstado, '(priority', currentPriority, ') ->', newEnvioEstado, '(priority', newPriority, ')');
           }
 
           // Actualizar ecommerce_order
