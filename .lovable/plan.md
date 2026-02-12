@@ -1,55 +1,155 @@
 
-# Fix: Total Cobrado muestra $0 en Liquidacion a Sucursales
 
-## Problemas encontrados
+# Plan: Cerrar la logica integral de Caja
 
-### 1. Mapeo incorrecto de "cuenta_corriente"
-En la linea 272, el codigo compara `tipoPago === 'cta_cte'` pero la base de datos almacena el valor `'cuenta_corriente'`. Esto hace que todos los envios de cuenta corriente caigan en el bucket "Contado" de las comisiones y usen los porcentajes de contado en vez de los de cta. cte.
+## Estado actual del sistema
 
-### 2. Total Cobrado usa precio_total en vez de la suma real de conceptos
-El calculo de `totalCobrado` (lineas 437-446) usa `envio.precio_total`, que para los envios ML es siempre $0. Ademas, solo suma envios contado (como origen) y destino (como destino entregado), excluyendo cuenta corriente. El total deberia reflejar la suma de las ventas reales (montos de conceptos/detalles).
+El sistema ya tiene implementados estos componentes de forma **independiente**:
 
-## Datos de la base de datos (Beraexpress, Feb 2026)
+1. **Caja** (`Cash.tsx`): Apertura/cierre de sesion, movimientos manuales (ingreso/egreso), calculo de saldo esperado
+2. **Rendiciones COD** (`ReceiveRenditionDialog.tsx` + funcion `receive_rendition`): El chofer cobra en la calle, luego la sucursal recibe el dinero. Si hay caja abierta, se registra automaticamente como ingreso
+3. **Pagos** (`Payments.tsx`): Tabla de pagos con estados: pendiente, cobrado_chofer, rendido, pagado
+4. **Liquidacion Choferes** (`DriverSettlements.tsx`): Calcula comisiones del chofer sobre envios entregados
+5. **Liquidacion Sucursales** (`BranchSettlements.tsx`): Calcula comisiones de sucursal sobre envios procesados
 
-| Tipo | Cantidad | precio_total | Detalles |
-|------|----------|-------------|----------|
-| ML contado | 68 | $0 c/u | Sin detalles |
-| ADMIN cuenta_corriente | 10 | $7,500-$12,600 | Algunos con detalles |
-| ADMIN destino | 3 | $1-$12,600 | Con detalles |
+## Lo que falta conectar
 
-## Solucion
+### 1. Vincular cobros de envios automaticamente a la caja
+
+**Situacion actual**: Cuando se entrega un envio con pago contado/destino, se crea un registro en `pagos` con estado `cobrado_chofer`, pero la caja no se entera hasta que se hace la rendicion manual.
+
+**Cambio propuesto**: Cuando un envio se entrega **en sucursal** (no por chofer), registrar automaticamente un movimiento de ingreso en la caja abierta.
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/pages/BranchSettlements.tsx` | 1. Corregir mapeo de tipo_pago para reconocer 'cuenta_corriente' como 'cta_cte' |
-| `src/pages/BranchSettlements.tsx` | 2. Acumular totalCobrado desde los montos reales de conceptos procesados (no de precio_total) |
+| `src/components/scan/BranchDeliveryDialog.tsx` | Al confirmar entrega con pago, si hay caja abierta, crear movimiento_caja automaticamente |
+| `src/components/delivery/DeliveryConfirmation.tsx` | Idem para entregas confirmadas desde la app movil en sucursal |
+
+### 2. Vincular rendiciones de choferes (ya funciona)
+
+La funcion `receive_rendition` ya crea un `movimiento_caja` cuando hay sesion abierta. Este circuito esta **completo**.
+
+### 3. Cruzar con liquidaciones
+
+**Situacion actual**: Las liquidaciones se calculan y guardan pero no impactan la caja.
+
+**Cambio propuesto**: Al marcar una liquidacion como "pagada", registrar un egreso en caja (si hay caja abierta).
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/pages/DriverSettlements.tsx` | Al pagar liquidacion de chofer, crear egreso en caja |
+| `src/pages/BranchSettlements.tsx` | Al pagar liquidacion de sucursal, crear egreso en caja |
+
+### 4. Reporte de cierre consolidado
+
+**Situacion actual**: El cierre de caja muestra solo ingresos/egresos generales sin desglose por concepto.
+
+**Cambio propuesto**: Agregar un resumen categorizado al cierre de caja.
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/pages/Cash.tsx` | Agrupar movimientos por concepto (Rendiciones COD, Cobros directos, Liquidaciones pagadas, Otros) y mostrar subtotales en el panel de cierre |
 
 ## Detalle tecnico
 
-### Fix 1: Mapeo de tipo_pago (linea 272 y 456)
-```typescript
-// Antes
-const tipoKey = tipoPago === 'cta_cte' ? 'cta_cte' : tipoPago === 'destino' ? 'destino' : 'contado';
+### Fix 1: Cobros directos en sucursal impactan caja
 
-// Despues
-const tipoKey = (tipoPago === 'cta_cte' || tipoPago === 'cuenta_corriente') ? 'cta_cte' : tipoPago === 'destino' ? 'destino' : 'contado';
-```
-
-### Fix 2: Total Cobrado basado en ventas reales
-Reemplazar la logica actual de totalCobrado (lineas 437-446) que usa `envio.precio_total` por una acumulacion dentro de `calcularComisionConcepto` que suma los montos reales de cada concepto procesado:
+En `BranchDeliveryDialog.tsx`, despues de insertar el pago:
 
 ```typescript
-// Agregar acumulador dentro de calcularComisionConcepto
-totalCobrado += monto; // El parametro monto ya es el valor real del concepto
+// Si hay caja abierta en la sucursal, registrar ingreso
+const { data: cajaAbierta } = await supabase
+  .from('sesiones_caja')
+  .select('id')
+  .eq('sucursal_id', profile.sucursal_id)
+  .eq('estado', 'abierta')
+  .limit(1);
+
+if (cajaAbierta?.length) {
+  await supabase.from('movimientos_caja').insert({
+    sesion_caja_id: cajaAbierta[0].id,
+    tipo: 'ingreso',
+    concepto: `Cobro envio ${shipment.tracking_number}`,
+    monto: shipment.precio_total,
+    metodo_pago: paymentMethod,
+    envio_id: shipment.id,
+    created_by: user.id,
+  });
+}
 ```
 
-Y eliminar la logica separada de cobrado que usaba `envio.precio_total`.
+### Fix 2: Liquidaciones pagadas generan egreso en caja
 
-La logica de remitos cancelados (destino entregado en sucursal) se mantiene pero usando la suma de montos de detalles o precio_total como fallback.
+En `DriverSettlements.tsx` y `BranchSettlements.tsx`, en la mutacion de pago:
 
-## Resultado esperado
+```typescript
+// Al marcar como pagada, registrar egreso en caja si hay sesion abierta
+if (metodoPago === 'efectivo') {
+  const { data: cajaAbierta } = await supabase
+    .from('sesiones_caja')
+    .select('id')
+    .eq('sucursal_id', profile.sucursal_id)
+    .eq('estado', 'abierta')
+    .limit(1);
 
-- Total Cobrado mostrara la suma real de todas las ventas procesadas (todos los conceptos de todos los envios)
-- Las comisiones de cuenta corriente apareceran en su propia pestana "Cta. Cte." en vez de en "Contado"
-- Los porcentajes de cta. cte. se aplicaran correctamente
-- El saldo a transferir se calculara correctamente como totalCobrado - totalComisiones
+  if (cajaAbierta?.length) {
+    await supabase.from('movimientos_caja').insert({
+      sesion_caja_id: cajaAbierta[0].id,
+      tipo: 'egreso',
+      concepto: `Pago liquidacion chofer/sucursal - Periodo ...`,
+      monto: montoTotal,
+      metodo_pago: 'efectivo',
+      created_by: user.id,
+    });
+  }
+}
+```
+
+### Fix 3: Resumen categorizado en cierre de caja
+
+En `Cash.tsx`, agrupar los movimientos existentes por patrones de concepto:
+
+```typescript
+const categorias = {
+  rendiciones: movements.filter(m => m.concepto.startsWith('Rendicion COD')),
+  cobrosDirectos: movements.filter(m => m.concepto.startsWith('Cobro envio')),
+  liquidaciones: movements.filter(m => m.concepto.startsWith('Pago liquidacion')),
+  otros: movements.filter(m => /* los que no matchean arriba */),
+};
+```
+
+Mostrar estas categorias como cards resumen dentro del panel de cierre de caja, con subtotales por categoria y metodo de pago.
+
+## Flujo completo resultante
+
+```
+Envio entregado en sucursal (contado/destino)
+  -> Pago registrado (estado: pagado)
+  -> Movimiento caja: INGRESO automatico
+
+Envio entregado por chofer (contado/destino)  
+  -> Pago registrado (estado: cobrado_chofer)
+  -> Chofer rinde en sucursal
+  -> Rendicion registrada
+  -> Movimiento caja: INGRESO automatico (ya funciona)
+
+Liquidacion chofer pagada en efectivo
+  -> Movimiento caja: EGRESO automatico
+
+Liquidacion sucursal pagada en efectivo
+  -> Movimiento caja: EGRESO automatico
+
+Cierre de caja
+  -> Resumen: Rendiciones + Cobros directos - Liquidaciones pagadas = Saldo
+  -> Comparacion con efectivo real contado
+```
+
+## Archivos afectados
+
+| Archivo | Tipo de cambio |
+|---------|---------------|
+| `src/components/scan/BranchDeliveryDialog.tsx` | Agregar ingreso automatico a caja |
+| `src/pages/DriverSettlements.tsx` | Agregar egreso a caja al pagar liquidacion |
+| `src/pages/BranchSettlements.tsx` | Agregar egreso a caja al pagar liquidacion |
+| `src/pages/Cash.tsx` | Agregar resumen categorizado en cierre |
+
