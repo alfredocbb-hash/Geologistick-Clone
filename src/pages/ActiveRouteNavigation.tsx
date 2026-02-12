@@ -256,6 +256,8 @@ export default function ActiveRouteNavigation() {
   const envios = allEnvios.filter(item => {
     const envio = item.envio;
     if (!envio) return false;
+    // Excluir paradas marcadas como reprogramadas en ruta_paradas
+    if (item.estado === 'reprogramado') return false;
     // Para rutas planificadas: solo mostrar envios asignados a este chofer
     // Los reprogramados tienen chofer_id = NULL y se excluyen
     if (isPlannedRoute) {
@@ -294,6 +296,9 @@ export default function ActiveRouteNavigation() {
       
       // Skip shipments with incident - no further action needed from driver
       if (envio.estado === 'incidencia') return false;
+      
+      // Excluir envíos sin chofer asignado (reprogramados que pasaron el filtro)
+      if (!envio.chofer_id) return false;
       
       const isPickupStop = envio.requiere_retiro;
       
