@@ -1,123 +1,96 @@
 
-# Actualizar Estados ML de Envios Existentes
+
+# Corregir Sincronización ML: No Retroceder Estados
 
 ## Problema
 
-Hay ~26 envios de ayer que siguen mostrando "pendiente" en tu sistema aunque en MercadoLibre probablemente ya fueron entregados o tienen otro estado. El webhook solo funciona hacia adelante (para notificaciones nuevas), pero no corrige lo que ya paso.
+La sincronización está **empeorando** los estados en vez de mejorarlos:
+- Un envío que ya estaba "entregado" fue cambiado a "pendiente" porque MercadoLibre lo devolvió como `ready_to_ship`
+- Esto pasa porque la función actualiza el estado sin verificar si es un "retroceso"
 
-Ademas, la funcion de sincronizacion (`mercadolibre-sync`) ya actualiza envios existentes, pero usa un **mapeo hardcodeado** en lugar de la tabla `ml_status_mapping`, por lo que no reconoce todos los estados posibles (ausente, devuelto, etc.).
+## Solución
 
-## Solucion
+### 1. Agregar protección contra retroceso de estados
 
-### 1. Corregir la sincronizacion existente para usar `ml_status_mapping`
-
-Modificar `mercadolibre-sync` (lineas 190-214) para que en vez de usar un mapeo hardcodeado:
+Definir un orden de prioridad de estados. Nunca cambiar un estado "más avanzado" por uno "menos avanzado":
 
 ```text
-// Actual (hardcodeado, solo 3 estados):
-const newEnvioEstado = mlShippingStatus === 'shipped' ? 'en_transito' :
-                       mlShippingStatus === 'delivered' ? 'entregado' : 'pendiente';
+Prioridad (menor a mayor):
+pendiente (0) -> recogido (1) -> en_bodega (2) -> en_transito (3) -> en_reparto (4) -> entregado (5) / no_entregado (5) / devuelto (5) / cancelado (5)
 ```
 
-Use la tabla `ml_status_mapping` con el status y substatus del shipment real de ML, registre en historial, y cubra todos los estados.
+Si el envío ya está en "entregado" y ML dice "pendiente", NO se cambia.
 
-### 2. Consultar el detalle del shipment en ML para obtener substatus
+### 2. Obtener siempre el estado real del shipment de ML
 
-Actualmente para envios existentes solo lee `orderItem.shipping.status` (sin substatus). Se agregara una llamada a la API de ML `/shipments/{id}` para obtener el `substatus` real y poder mapear correctamente (ej: `shipped` + `out_for_delivery` = `en_reparto`).
-
-### 3. Agregar boton "Actualizar Estados" en la pantalla de Sellers
-
-Agregar un boton en `src/pages/ecommerce/Sellers.tsx` que ejecute la sincronizacion (ya existente) para que puedas actualizar estados cuando quieras.
+En vez de confiar solo en `orderItem.shipping.status` (que viene del search de órdenes), consultar también `/shipments/{id}` para obtener el status y substatus más actualizado -- pero SOLO cuando el estado de la orden sea "menor" que el estado actual del envío.
 
 ## Cambios por archivo
 
 | Archivo | Cambio |
 |---------|--------|
-| `supabase/functions/mercadolibre-sync/index.ts` | Reemplazar mapeo hardcodeado por consulta a `ml_status_mapping` con status+substatus. Obtener substatus de la API de ML. Registrar cambios en `envio_historial`. |
-| `src/pages/ecommerce/Sellers.tsx` | Ya tiene boton "Sincronizar" que hace lo mismo, no requiere cambios adicionales |
+| `supabase/functions/mercadolibre-sync/index.ts` | Agregar mapa de prioridad de estados. Antes de actualizar, verificar que el nuevo estado no sea un retroceso. Si ML dice "ready_to_ship" pero el envío ya está "entregado", ignorar el cambio. |
 
-## Detalle tecnico
+## Detalle técnico
 
-### Cambio en mercadolibre-sync (lineas 190-214)
+### Mapa de prioridad
 
 ```text
-if (existingEnvioId) {
-  const mlShippingStatus = orderItem.shipping?.status || 'ready_to_ship';
-  const mlSubstatus = orderItem.shipping?.substatus || null;
+const ESTADO_PRIORITY: Record<string, number> = {
+  pendiente: 0,
+  recogido: 1,
+  en_bodega: 2,
+  en_transito: 3,
+  en_reparto: 4,
+  entregado: 10,
+  no_entregado: 10,
+  devuelto: 10,
+  cancelado: 10,
+};
+```
 
-  // Si no hay substatus en la orden, consultar la API de ML
-  let finalSubstatus = mlSubstatus;
-  if (!finalSubstatus && mlShippingStatus !== 'ready_to_ship') {
-    const shipResp = await fetch(ML_API_BASE + '/shipments/' + shipmentId, {
-      headers: { Authorization: 'Bearer ' + accessToken },
-    });
-    if (shipResp.ok) {
-      const shipData = await shipResp.json();
-      finalSubstatus = shipData.substatus || null;
-    }
+### Lógica de protección (líneas 234-257)
+
+Antes de actualizar, comparar prioridades:
+
+```text
+const newEnvioEstado = mapping?.estado_interno || 'pendiente';
+const currentEstado = envioActual?.estado || 'pendiente';
+const newPriority = ESTADO_PRIORITY[newEnvioEstado] ?? 0;
+const currentPriority = ESTADO_PRIORITY[currentEstado] ?? 0;
+
+// Solo actualizar si el nuevo estado tiene igual o mayor prioridad
+if (newPriority >= currentPriority) {
+  // Actualizar envío y registrar en historial...
+} else {
+  console.log('[ML Sync] Skipping downgrade:', currentEstado, '->', newEnvioEstado);
+}
+```
+
+### Siempre consultar el shipment real de ML
+
+Para envíos existentes, cuando `orderItem.shipping.status` sea un estado "menor" que el actual, consultar `/shipments/{id}` para verificar el estado real en ML antes de decidir no actualizar.
+
+```text
+// Siempre consultar shipment real si el estado de la orden parece desactualizado
+let realStatus = mlShippingStatus;
+let realSubstatus = finalSubstatus;
+
+if (ESTADO_PRIORITY[newEnvioEstado] < currentPriority) {
+  // Consultar ML para verificar el estado real
+  const shipResp = await fetch(ML_API_BASE + '/shipments/' + shipmentId, ...);
+  if (shipResp.ok) {
+    const shipData = await shipResp.json();
+    realStatus = shipData.status;
+    realSubstatus = shipData.substatus;
+    // Re-buscar mapping con el estado real
   }
-
-  // Buscar mapping en ml_status_mapping
-  let mappingQuery = supabase.from('ml_status_mapping')
-    .select('estado_interno, descripcion')
-    .eq('ml_status', mlShippingStatus);
-
-  if (finalSubstatus) {
-    mappingQuery = mappingQuery.eq('ml_substatus', finalSubstatus);
-  } else {
-    mappingQuery = mappingQuery.is('ml_substatus', null);
-  }
-
-  let { data: mapping } = await mappingQuery.maybeSingle();
-
-  // Fallback sin substatus
-  if (!mapping && finalSubstatus) {
-    const { data: fb } = await supabase.from('ml_status_mapping')
-      .select('estado_interno, descripcion')
-      .eq('ml_status', mlShippingStatus)
-      .is('ml_substatus', null)
-      .maybeSingle();
-    mapping = fb;
-  }
-
-  const newEnvioEstado = mapping?.estado_interno || 'pendiente';
-
-  // Obtener estado actual para comparar
-  const { data: envioActual } = await supabase.from('envios')
-    .select('estado').eq('id', existingEnvioId).single();
-
-  // Actualizar envio
-  await supabase.from('envios').update({
-    estado: newEnvioEstado,
-    ml_sync_status: 'synced',
-    ml_last_sync_at: new Date().toISOString(),
-  }).eq('id', existingEnvioId);
-
-  // Registrar en historial si cambio
-  if (envioActual && envioActual.estado !== newEnvioEstado) {
-    await supabase.from('envio_historial').insert({
-      envio_id: existingEnvioId,
-      estado_anterior: envioActual.estado,
-      estado_nuevo: newEnvioEstado,
-      notas: 'Sincronizacion ML: ' + (mapping?.descripcion || mlShippingStatus),
-      ubicacion: 'ML Sync',
-    });
-  }
-
-  // Actualizar ecommerce_order
-  await supabase.from('ecommerce_orders').update({
-    ml_shipping_status: mlShippingStatus,
-    fulfillment_status: newEnvioEstado === 'entregado' ? 'fulfilled' : 'pending',
-    updated_at: new Date().toISOString(),
-  }).eq('ml_shipment_id', shipmentId);
-
-  existing++;
-  continue;
 }
 ```
 
 ## Resultado esperado
 
-- Al presionar "Sincronizar" en cualquier seller de ML, se actualizaran los estados de TODOS sus envios existentes usando el mapeo correcto
-- Los envios de ayer que estan en "pendiente" pasaran a "entregado", "no_entregado", etc. segun su estado real en ML
-- Cada cambio quedara registrado en el historial
+- Envíos que ya están "entregado" NO serán cambiados a "pendiente"
+- Envíos que están en "pendiente" SI serán actualizados a "entregado" si ML así lo indica
+- Los estados solo avanzan, nunca retroceden
+- Los cambios quedan registrados en el historial
