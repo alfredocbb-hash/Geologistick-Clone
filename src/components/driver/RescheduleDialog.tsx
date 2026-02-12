@@ -74,11 +74,13 @@ export default function RescheduleDialog({ shipment, onClose, onSuccess }: Resch
       
       return { paradasSnapshots, enviosHojaSnapshots };
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['my-active-route-paradas'] });
-      queryClient.invalidateQueries({ queryKey: ['my-active-route-envios-hoja'] });
-      queryClient.invalidateQueries({ queryKey: ['my-active-route-hoja'] });
-      queryClient.invalidateQueries({ queryKey: ['my-active-route-planificada'] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['my-active-route-paradas'], refetchType: 'active' }),
+        queryClient.invalidateQueries({ queryKey: ['my-active-route-envios-hoja'], refetchType: 'active' }),
+        queryClient.invalidateQueries({ queryKey: ['my-active-route-hoja'], refetchType: 'active' }),
+        queryClient.invalidateQueries({ queryKey: ['my-active-route-planificada'], refetchType: 'active' }),
+      ]);
       toast.success('Entrega reprogramada correctamente');
       onSuccess();
       onClose();
