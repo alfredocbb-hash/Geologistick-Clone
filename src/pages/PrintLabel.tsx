@@ -304,28 +304,21 @@ const generateLabelHTML = (
       print-color-adjust: exact !important;
       color-adjust: exact !important;
       background: white;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
+      margin: 0;
+      padding: 0;
     }
     
     .label {
       width: ${size.width};
       height: ${size.height};
-      max-width: 100%;
       max-height: ${size.height};
       background: white;
       box-sizing: border-box;
-      page-break-after: always;
-      page-break-inside: avoid;
       overflow: hidden;
-      margin: 0 auto;
-    }
-    
-    .label:last-child {
-      page-break-after: auto;
+      display: inline-block;
+      vertical-align: top;
+      page-break-inside: avoid;
+      margin: 0 2mm 2mm 0;
     }
     
     .label-table {
@@ -536,7 +529,7 @@ const generateLabelHTML = (
     @media print {
       html, body {
         width: 100%;
-        height: 100%;
+        height: auto;
         margin: 0;
         padding: 0;
       }
@@ -546,13 +539,10 @@ const generateLabelHTML = (
         height: ${size.height};
         max-height: ${size.height};
         overflow: hidden;
-        margin: 0 auto;
-        page-break-after: always;
+        display: inline-block;
+        vertical-align: top;
+        margin: 0 2mm 2mm 0;
         page-break-inside: avoid;
-      }
-      
-      .label:last-child {
-        page-break-after: auto;
       }
     }
   </style>
