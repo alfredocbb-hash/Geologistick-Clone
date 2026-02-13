@@ -1,25 +1,48 @@
 
 
-# Fix: Column `envios.fecha_entrega_estimada` does not exist
+# Fix: Liquidacion trae envios de otros sellers con mismo cliente
 
 ## Problema
 
-El cambio anterior uso `fecha_entrega_estimada` como filtro en la tabla `envios`, pero esa columna no existe en `envios`. La tabla `envios` tiene `fecha_entrega`, mientras que `fecha_entrega_estimada` esta en la tabla `ecommerce_orders`.
+Los sellers de la familia Gauna comparten el mismo `cliente_id`. La query actual busca envios por `remitente_id = cliente_id`, lo que trae los 12 envios de TODOS los sellers vinculados a ese cliente, en vez de solo los 7 del seller seleccionado (PABLO GAUNA, store_id 146864736).
 
 ## Solucion
 
-Reemplazar `fecha_entrega_estimada` por `fecha_entrega` en las dos queries de la tabla `envios` dentro de `calculateMutation` en `src/pages/ecommerce/Settlements.tsx`.
+Reescribir la seccion de busqueda de envios en `calculateMutation` con esta logica:
 
-**Lineas afectadas:**
-- Linea 242: `.gte('fecha_entrega_estimada', ...)` cambiar a `.gte('fecha_entrega', ...)`
-- Linea 243: `.lte('fecha_entrega_estimada', ...)` cambiar a `.lte('fecha_entrega', ...)`
-- Linea 279: `.gte('fecha_entrega_estimada', ...)` cambiar a `.gte('fecha_entrega', ...)`
-- Linea 280: `.lte('fecha_entrega_estimada', ...)` cambiar a `.lte('fecha_entrega', ...)`
-
-Ademas, para el fallback via `ecommerce_orders`, agregar filtro por `fecha_entrega_estimada` en la query de `ecommerce_orders` (linea 260-264) para que solo traiga ordenes dentro del periodo seleccionado.
+1. **Envios e-commerce del seller seleccionado**: Buscar en `ecommerce_orders` donde `seller_id` esta en los sellers seleccionados, con `fecha_entrega_estimada` en rango, obtener los `envio_id`, y cargar esos envios.
+2. **Envios comunes (sin orden e-commerce)**: Buscar envios por `remitente_id = cliente_id` con `fecha_entrega` en rango, que NO esten vinculados a ninguna orden e-commerce de otro seller. Esto captura envios manuales como ADMIN-ENV-20260211.
+3. **Combinar** ambos conjuntos sin duplicados.
 
 ## Archivo afectado
 
 | Archivo | Cambio |
 |---|---|
-| `src/pages/ecommerce/Settlements.tsx` | Corregir nombre de columna de `fecha_entrega_estimada` a `fecha_entrega` en queries de `envios`, y filtrar `ecommerce_orders` por `fecha_entrega_estimada` |
+| `src/pages/ecommerce/Settlements.tsx` | Reescribir lineas ~236-291 del `calculateMutation` para filtrar envios por seller seleccionado via `ecommerce_orders`, y solo agregar envios comunes sin orden |
+
+## Detalle tecnico
+
+### Nuevo flujo (reemplaza lineas 236-291)
+
+```text
+Paso 1: ecommerce_orders WHERE seller_id IN (calcSellers)
+        AND fecha_entrega_estimada entre fechas
+        AND envio_id NOT NULL
+        -> lista de envio_ids especificos del seller
+
+Paso 2: Cargar envios WHERE id IN (envio_ids)
+        AND liquidacion_seller_id IS NULL
+
+Paso 3: Buscar TODOS los envio_ids de ecommerce_orders
+        del mismo cliente_id (para excluirlos)
+
+Paso 4: Envios comunes WHERE remitente_id IN (cliente_ids)
+        AND fecha_entrega entre fechas
+        AND liquidacion_seller_id IS NULL
+        AND id NOT IN (todos los envio_ids de cualquier order)
+
+Paso 5: Combinar paso 2 + paso 4
+```
+
+Resultado esperado para PABLO GAUNA: 6 pedidos e-commerce + 1 envio comun = 7 items.
+
