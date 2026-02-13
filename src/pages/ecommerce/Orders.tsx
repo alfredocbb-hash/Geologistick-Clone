@@ -65,10 +65,6 @@ interface Order {
     tracking_number: string;
     estado: string | null;
     chofer_id: string | null;
-    chofer?: {
-      nombre: string;
-      apellido: string | null;
-    }[] | null;
   } | null;
 }
 
@@ -218,7 +214,7 @@ export default function Orders() {
   });
 
   // Fetch orders with seller info — filtered by date server-side
-  const { data: orders, isLoading } = useQuery({
+  const { data: ordersData, isLoading } = useQuery({
     queryKey: ['ecommerce-orders', tenantId, dateFrom.toISOString().slice(0, 10), dateTo.toISOString().slice(0, 10), sellerFilter],
     queryFn: async () => {
       let query = supabase
@@ -226,7 +222,7 @@ export default function Orders() {
         .select(`
           *,
           seller:ecommerce_sellers(id, nombre, tarifa_id, sucursal_pickup_id, tiene_cuenta_corriente),
-          envio:envios!ecommerce_orders_envio_id_fkey(tracking_number, estado, chofer_id, chofer:profiles!envios_chofer_id_fkey(nombre, apellido))
+          envio:envios!ecommerce_orders_envio_id_fkey(tracking_number, estado, chofer_id)
         `)
         .eq('tenant_id', tenantId);
 
@@ -243,10 +239,29 @@ export default function Orders() {
       const { data, error } = await query.order('fecha_entrega_estimada', { ascending: false }).order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data as Order[];
+
+      // Fetch chofer names separately (FK points to auth.users, not profiles)
+      const choferIds = [...new Set((data || []).map((o: any) => o.envio?.chofer_id).filter(Boolean))];
+      let choferMap: Record<string, string> = {};
+      if (choferIds.length > 0) {
+        const { data: choferProfiles } = await supabase
+          .from('profiles')
+          .select('user_id, nombre, apellido')
+          .in('user_id', choferIds);
+        if (choferProfiles) {
+          choferMap = Object.fromEntries(
+            choferProfiles.map(p => [p.user_id, `${p.nombre} ${p.apellido || ''}`.trim()])
+          );
+        }
+      }
+
+      return { orders: data as Order[], choferMap };
     },
     enabled: !!tenantId,
   });
+
+  const orders = ordersData?.orders;
+  const choferMap = ordersData?.choferMap || {};
 
   const filteredOrders = orders?.filter(o => {
     const matchesSearch = 
@@ -597,7 +612,7 @@ navigate(`/planner?envios=${envioIds.join(',')}`);
                              </TableCell>
                              <TableCell>
                                <span className="text-xs text-muted-foreground">
-                                 {order.envio?.chofer?.[0] ? `${order.envio.chofer[0].nombre} ${order.envio.chofer[0].apellido || ''}`.trim() : '-'}
+                                 {order.envio?.chofer_id ? (choferMap[order.envio.chofer_id] || '-') : '-'}
                                </span>
                              </TableCell>
                              <TableCell>
