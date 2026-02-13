@@ -160,6 +160,163 @@ export default function Settlements() {
     enabled: !!tenantId,
   });
 
+  // Recalculate balances using tariff logic for Saldos por Seller tab
+  const { data: sellerBalances, isLoading: loadingBalances } = useQuery({
+    queryKey: ['seller-tariff-balances', tenantId, sellers?.map(s => s.id).join(',')],
+    queryFn: async () => {
+      if (!sellers || sellers.length === 0) return {};
+
+      const normalize = (str: string) => str.toLowerCase().trim()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+      // 1. Collect unique tarifa_ids and load tarifas
+      const uniqueTarifaIds = [...new Set(sellers.map(s => s.tarifa_id).filter((id): id is string => !!id))];
+      let tarifasMap = new Map<string, any>();
+      let allZoneTarifas: any[] = [];
+
+      if (uniqueTarifaIds.length > 0) {
+        const { data: tarifasData } = await supabase
+          .from('tarifas')
+          .select('id, precio_base, zona_destino, nombre, tipo_tarifa')
+          .in('id', uniqueTarifaIds);
+        (tarifasData || []).forEach(t => tarifasMap.set(t.id, t));
+
+        const hasZone = [...tarifasMap.values()].some(t => t.tipo_tarifa === 'zona');
+        if (hasZone) {
+          const { data: zoneTarifas } = await supabase
+            .from('tarifas')
+            .select('id, precio_base, zona_destino, nombre')
+            .eq('tenant_id', tenantId)
+            .eq('tipo_tarifa', 'zona')
+            .eq('activa', true);
+          allZoneTarifas = zoneTarifas || [];
+        }
+      }
+
+      // 2. For each seller, fetch their envios and payments
+      const balances: Record<string, { totalEnvios: number; totalPagos: number; cantEnvios: number; saldoCalculado: number }> = {};
+      const sellerIds = sellers.map(s => s.id);
+
+      // Fetch all ecommerce orders for all sellers at once
+      const { data: allOrders } = await supabase
+        .from('ecommerce_orders')
+        .select('envio_id, seller_id')
+        .in('seller_id', sellerIds)
+        .not('envio_id', 'is', null);
+
+      // Group envio_ids by seller
+      const envioIdsBySeller = new Map<string, string[]>();
+      (allOrders || []).forEach(o => {
+        if (!o.envio_id) return;
+        const list = envioIdsBySeller.get(o.seller_id) || [];
+        list.push(o.envio_id);
+        envioIdsBySeller.set(o.seller_id, list);
+      });
+
+      // Fetch all envios at once
+      const allEnvioIds = [...new Set((allOrders || []).map(o => o.envio_id).filter((id): id is string => !!id))];
+      let enviosMap = new Map<string, any>();
+      if (allEnvioIds.length > 0) {
+        // Fetch in chunks of 500
+        for (let i = 0; i < allEnvioIds.length; i += 500) {
+          const chunk = allEnvioIds.slice(i, i + 500);
+          const { data: enviosData } = await supabase
+            .from('envios')
+            .select('id, ciudad_entrega, precio_total')
+            .in('id', chunk);
+          (enviosData || []).forEach(e => enviosMap.set(e.id, e));
+        }
+      }
+
+      // Also fetch common envios per cliente_id
+      const uniqueClienteIds = [...new Set(sellers.map(s => s.cliente_id).filter(Boolean))] as string[];
+      let commonEnviosBySeller = new Map<string, any[]>();
+      if (uniqueClienteIds.length > 0) {
+        const allOrderEnvioIds = new Set(allEnvioIds);
+        for (const seller of sellers) {
+          if (!seller.cliente_id) continue;
+          const { data: commonEnvios } = await supabase
+            .from('envios')
+            .select('id, ciudad_entrega, precio_total')
+            .eq('remitente_id', seller.cliente_id);
+          const filtered = (commonEnvios || []).filter(e => !allOrderEnvioIds.has(e.id));
+          filtered.forEach(e => enviosMap.set(e.id, e));
+          const existing = commonEnviosBySeller.get(seller.id) || [];
+          commonEnviosBySeller.set(seller.id, [...existing, ...filtered.map(e => e.id)]);
+        }
+      }
+
+      // Fetch all payments at once
+      const { data: allPayments } = await supabase
+        .from('seller_cuenta_corriente')
+        .select('seller_id, monto, tipo')
+        .in('seller_id', sellerIds)
+        .eq('tipo', 'pago');
+
+      const paymentsBySeller = new Map<string, number>();
+      (allPayments || []).forEach(p => {
+        const current = paymentsBySeller.get(p.seller_id) || 0;
+        paymentsBySeller.set(p.seller_id, current + Math.abs(p.monto || 0));
+      });
+
+      // 3. Calculate per seller
+      for (const seller of sellers) {
+        const ecomEnvioIds = envioIdsBySeller.get(seller.id) || [];
+        const commonIds = commonEnviosBySeller.get(seller.id) || [];
+        const allSellerEnvioIds = [...new Set([...ecomEnvioIds, ...commonIds])];
+
+        let totalEnvios = 0;
+        for (const envioId of allSellerEnvioIds) {
+          const envio = enviosMap.get(envioId);
+          if (!envio) continue;
+
+          let precio = envio.precio_total || 0;
+          if (seller.tarifa_id) {
+            const tarifa = tarifasMap.get(seller.tarifa_id);
+            if (tarifa) {
+              if (tarifa.tipo_tarifa === 'zona' && envio.ciudad_entrega && allZoneTarifas.length > 0) {
+                const ciudadNorm = normalize(envio.ciudad_entrega);
+                let matched = false;
+                for (const zt of allZoneTarifas) {
+                  if (!zt.zona_destino) continue;
+                  const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z));
+                  for (const zona of zonas) {
+                    if (zona === ciudadNorm || ciudadNorm.includes(zona) || zona.includes(ciudadNorm)) {
+                      precio = zt.precio_base || 0;
+                      matched = true;
+                      break;
+                    }
+                  }
+                  if (matched) break;
+                }
+                if (!matched) {
+                  const fallback = allZoneTarifas
+                    .filter(t => t.zona_destino && t.zona_destino.split(',').length > 3)
+                    .sort((a: any, b: any) => (b.zona_destino?.split(',').length || 0) - (a.zona_destino?.split(',').length || 0))[0];
+                  if (fallback) precio = fallback.precio_base || 0;
+                }
+              } else {
+                precio = tarifa.precio_base || 0;
+              }
+            }
+          }
+          totalEnvios += precio;
+        }
+
+        const totalPagos = paymentsBySeller.get(seller.id) || 0;
+        balances[seller.id] = {
+          totalEnvios,
+          totalPagos,
+          cantEnvios: allSellerEnvioIds.length,
+          saldoCalculado: totalEnvios - totalPagos,
+        };
+      }
+
+      return balances;
+    },
+    enabled: !!tenantId && !!sellers && sellers.length > 0,
+  });
+
   // Fetch movements
   const { data: movements, isLoading: loadingMovements } = useQuery({
     queryKey: ['seller-movements', tenantId, selectedSeller],
@@ -655,11 +812,20 @@ export default function Settlements() {
     },
   });
 
-  // Stats
+  // Stats - use recalculated balances when available
   const stats = {
-    totalSaldo: sellers?.reduce((acc, s) => acc + (s.saldo_cuenta_corriente || 0), 0) || 0,
-    sellersConDeuda: sellers?.filter(s => s.saldo_cuenta_corriente > 0).length || 0,
-    sellersAFavor: sellers?.filter(s => s.saldo_cuenta_corriente < 0).length || 0,
+    totalSaldo: sellers?.reduce((acc, s) => {
+      const bal = sellerBalances?.[s.id];
+      return acc + (bal?.saldoCalculado ?? s.saldo_cuenta_corriente ?? 0);
+    }, 0) || 0,
+    sellersConDeuda: sellers?.filter(s => {
+      const bal = sellerBalances?.[s.id];
+      return (bal?.saldoCalculado ?? s.saldo_cuenta_corriente ?? 0) > 0;
+    }).length || 0,
+    sellersAFavor: sellers?.filter(s => {
+      const bal = sellerBalances?.[s.id];
+      return (bal?.saldoCalculado ?? s.saldo_cuenta_corriente ?? 0) < 0;
+    }).length || 0,
   };
 
   const filteredMovements = movements?.filter(m =>
@@ -757,10 +923,10 @@ export default function Settlements() {
           <Card>
             <CardHeader>
               <CardTitle>Cuenta Corriente por Seller</CardTitle>
-              <CardDescription>Sellers con cuenta corriente habilitada</CardDescription>
+              <CardDescription>Saldos recalculados usando tarifa asignada a cada seller</CardDescription>
             </CardHeader>
             <CardContent>
-              {loadingSellers ? (
+              {(loadingSellers || loadingBalances) ? (
                 <div className="space-y-4">
                   {[...Array(5)].map((_, i) => (
                     <Skeleton key={i} className="h-12 w-full" />
@@ -771,37 +937,53 @@ export default function Settlements() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Seller</TableHead>
+                      <TableHead className="text-right">Envíos</TableHead>
+                      <TableHead className="text-right">Total (tarifa)</TableHead>
+                      <TableHead className="text-right">Pagos</TableHead>
                       <TableHead className="text-right">Saldo</TableHead>
                       <TableHead className="text-right">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {sellers?.map((seller) => (
-                      <TableRow key={seller.id}>
-                        <TableCell className="font-medium">{seller.nombre}</TableCell>
-                        <TableCell className="text-right">
-                          <span className={seller.saldo_cuenta_corriente > 0 ? 'text-orange-600 font-semibold' : seller.saldo_cuenta_corriente < 0 ? 'text-green-600 font-semibold' : ''}>
-                            ${seller.saldo_cuenta_corriente?.toLocaleString() || '0'}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setActiveSeller(seller);
-                              setSettlementDialogOpen(true);
-                            }}
-                          >
-                            <Plus className="mr-1 h-3 w-3" />
-                            Registrar Pago
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {sellers?.map((seller) => {
+                      const bal = sellerBalances?.[seller.id];
+                      const saldo = bal?.saldoCalculado ?? seller.saldo_cuenta_corriente ?? 0;
+                      return (
+                        <TableRow key={seller.id}>
+                          <TableCell className="font-medium">{seller.nombre}</TableCell>
+                          <TableCell className="text-right text-muted-foreground">
+                            {bal?.cantEnvios ?? '-'}
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            ${bal?.totalEnvios?.toLocaleString() ?? '-'}
+                          </TableCell>
+                          <TableCell className="text-right text-muted-foreground">
+                            ${bal?.totalPagos?.toLocaleString() ?? '0'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <span className={saldo > 0 ? 'text-orange-600 font-semibold' : saldo < 0 ? 'text-green-600 font-semibold' : ''}>
+                              ${saldo.toLocaleString()}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setActiveSeller(seller);
+                                setSettlementDialogOpen(true);
+                              }}
+                            >
+                              <Plus className="mr-1 h-3 w-3" />
+                              Registrar Pago
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                     {sellers?.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                           No hay sellers con cuenta corriente
                         </TableCell>
                       </TableRow>
