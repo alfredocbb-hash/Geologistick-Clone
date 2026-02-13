@@ -169,10 +169,9 @@ export default function Settlements() {
       const normalize = (str: string) => str.toLowerCase().trim()
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-      // 1. Collect unique tarifa_ids and load tarifas
+      // 1. Load assigned tarifas + always load zone tarifas for the tenant
       const uniqueTarifaIds = [...new Set(sellers.map(s => s.tarifa_id).filter((id): id is string => !!id))];
       let tarifasMap = new Map<string, any>();
-      let allZoneTarifas: any[] = [];
 
       if (uniqueTarifaIds.length > 0) {
         const { data: tarifasData } = await supabase
@@ -180,18 +179,16 @@ export default function Settlements() {
           .select('id, precio_base, zona_destino, nombre, tipo_tarifa')
           .in('id', uniqueTarifaIds);
         (tarifasData || []).forEach(t => tarifasMap.set(t.id, t));
-
-        const hasZone = [...tarifasMap.values()].some(t => t.tipo_tarifa === 'zona');
-        if (hasZone) {
-          const { data: zoneTarifas } = await supabase
-            .from('tarifas')
-            .select('id, precio_base, zona_destino, nombre')
-            .eq('tenant_id', tenantId)
-            .eq('tipo_tarifa', 'zona')
-            .eq('activa', true);
-          allZoneTarifas = zoneTarifas || [];
-        }
       }
+
+      // Always load zone tarifas for the tenant (needed even when sellers have no tarifa_id)
+      const { data: zoneTarifas } = await supabase
+        .from('tarifas')
+        .select('id, precio_base, zona_destino, nombre')
+        .eq('tenant_id', tenantId)
+        .eq('tipo_tarifa', 'zona')
+        .eq('activa', true);
+      const allZoneTarifas = zoneTarifas || [];
 
       // 2. For each seller, fetch their envios and payments
       const balances: Record<string, { totalEnvios: number; totalPagos: number; cantEnvios: number; saldoCalculado: number }> = {};
@@ -271,34 +268,41 @@ export default function Settlements() {
           if (!envio) continue;
 
           let precio = envio.precio_total || 0;
+
+          // Helper to match city against zone tarifas
+          const matchZone = (ciudad: string): number | null => {
+            if (!ciudad || allZoneTarifas.length === 0) return null;
+            const ciudadNorm = normalize(ciudad);
+            for (const zt of allZoneTarifas) {
+              if (!zt.zona_destino) continue;
+              const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z));
+              for (const zona of zonas) {
+                if (zona === ciudadNorm || ciudadNorm.includes(zona) || zona.includes(ciudadNorm)) {
+                  return zt.precio_base || 0;
+                }
+              }
+            }
+            // Fallback: use the most inclusive zone (catch-all)
+            const fallback = allZoneTarifas
+              .filter(t => t.zona_destino && t.zona_destino.split(',').length > 3)
+              .sort((a: any, b: any) => (b.zona_destino?.split(',').length || 0) - (a.zona_destino?.split(',').length || 0))[0];
+            return fallback ? (fallback.precio_base || 0) : null;
+          };
+
           if (seller.tarifa_id) {
             const tarifa = tarifasMap.get(seller.tarifa_id);
             if (tarifa) {
-              if (tarifa.tipo_tarifa === 'zona' && envio.ciudad_entrega && allZoneTarifas.length > 0) {
-                const ciudadNorm = normalize(envio.ciudad_entrega);
-                let matched = false;
-                for (const zt of allZoneTarifas) {
-                  if (!zt.zona_destino) continue;
-                  const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z));
-                  for (const zona of zonas) {
-                    if (zona === ciudadNorm || ciudadNorm.includes(zona) || zona.includes(ciudadNorm)) {
-                      precio = zt.precio_base || 0;
-                      matched = true;
-                      break;
-                    }
-                  }
-                  if (matched) break;
-                }
-                if (!matched) {
-                  const fallback = allZoneTarifas
-                    .filter(t => t.zona_destino && t.zona_destino.split(',').length > 3)
-                    .sort((a: any, b: any) => (b.zona_destino?.split(',').length || 0) - (a.zona_destino?.split(',').length || 0))[0];
-                  if (fallback) precio = fallback.precio_base || 0;
-                }
+              if (tarifa.tipo_tarifa === 'zona' && envio.ciudad_entrega) {
+                const zonePrice = matchZone(envio.ciudad_entrega);
+                if (zonePrice !== null) precio = zonePrice;
               } else {
                 precio = tarifa.precio_base || 0;
               }
             }
+          } else if (allZoneTarifas.length > 0 && envio.ciudad_entrega) {
+            // No tarifa_id assigned: try zone matching with tenant's zone tarifas
+            const zonePrice = matchZone(envio.ciudad_entrega);
+            if (zonePrice !== null) precio = zonePrice;
           }
           totalEnvios += precio;
         }
