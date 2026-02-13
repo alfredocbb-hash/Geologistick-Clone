@@ -1,104 +1,55 @@
 
+# Fix: Query de pedidos e-Commerce falla por join incorrecto con profiles
 
-# Plan: Agregar columnas de detalle a Pedidos e-Commerce y Gestion de Envios
+## Problema
 
-## Contexto
+La query de pedidos devuelve un error **400** con el mensaje:
 
-La imagen de referencia muestra columnas adicionales que facilitan la operativa diaria: Nombre fantasia (seller), IDML (ML shipment ID), Origen, tracking_number, Fecha venta, Fecha BeraExpress, Destino nombre, Destino CP, Zona Entrega, Zona Costo, Chofer, y Estado.
+> "Could not find a relationship between 'envios' and 'profiles' using the hint 'envios_chofer_id_fkey'"
 
-Actualmente ambas tablas muestran informacion basica. Se necesitan columnas adicionales para tener visibilidad operativa completa sin abrir cada registro.
+Esto es porque la FK `envios_chofer_id_fkey` apunta a `auth.users`, no a `profiles`. PostgREST no puede hacer un join directo de `envios.chofer_id` a `profiles` usando esa FK.
 
-## Cambios propuestos
+**Resultado**: la tabla muestra "No hay pedidos que mostrar" cuando en realidad hay 50 pedidos para hoy.
 
-### 1. Pedidos e-Commerce (`src/pages/ecommerce/Orders.tsx`)
+## Solucion
 
-Agregar las siguientes columnas a la tabla existente:
+Eliminar el join anidado `chofer:profiles!envios_chofer_id_fkey(nombre, apellido)` de ambas queries y obtener los nombres de choferes por separado con una segunda consulta liviana.
 
-| Columna nueva | Origen del dato |
-|---------------|----------------|
-| IDML | `order.ml_shipment_id` (ya disponible en el query) |
-| Tracking | `order.ml_tracking_number` (ya disponible) |
-| Fecha Venta | `order.created_at` (fecha de creacion en ML) |
-| Fecha Entrega Est. | `order.fecha_entrega_estimada` (ya se muestra parcialmente) |
-| Destino CP | `order.shipping_postal_code` (ya disponible) |
-| Chofer | Se obtiene haciendo join del `envio_id` con `envios.chofer_id` y luego con `profiles` |
-| Estado envio | Estado del envio interno vinculado |
+### Archivos afectados
 
-**Cambios en el query**: Expandir el select para incluir datos del envio vinculado:
+| Archivo | Cambio |
+|---------|--------|
+| `src/pages/ecommerce/Orders.tsx` | Quitar el join de chofer de la query principal. Agregar una segunda query para traer los nombres de choferes a partir de los `chofer_id` encontrados en los envios. |
+| `src/pages/Shipments.tsx` | Mismo cambio: quitar `chofer:profiles!envios_chofer_id_fkey(...)` y obtener nombres con query separada. |
+
+### Detalle tecnico
+
+**En Orders.tsx:**
+
+1. Cambiar la query de:
 ```
-envio:envios(tracking_number, estado, chofer_id, chofer:profiles!envios_chofer_id_fkey(nombre, apellido))
+envio:envios!ecommerce_orders_envio_id_fkey(tracking_number, estado, chofer_id, chofer:profiles!envios_chofer_id_fkey(nombre, apellido))
 ```
-
-**Columnas en la tabla**: Se reorganizan las columnas para mostrar:
-Pedido | Seller | IDML | Tracking | Fecha Venta | Fecha Entrega | Destino | CP | Chofer | Estado | Acciones
-
-### 2. Gestion de Envios (`src/pages/Shipments.tsx`)
-
-Agregar columnas faltantes a la tabla existente:
-
-| Columna nueva | Origen del dato |
-|---------------|----------------|
-| IDML | `envio.ml_shipment_id` (ya en el query) |
-| Chofer | Join con `profiles` via `chofer_id` |
-| CP Destino | `envio.codigo_postal_destino` o `envio.cp_entrega` |
-| Fecha Entrega | `envio.fecha_entrega` (fecha real de entrega) |
-
-**Cambios en el query**: Expandir el select para incluir el chofer:
+a:
 ```
-chofer:profiles!envios_chofer_id_fkey(nombre, apellido)
+envio:envios!ecommerce_orders_envio_id_fkey(tracking_number, estado, chofer_id)
 ```
 
-**Columnas en la tabla**: Se reorganizan para mostrar:
-Tracking | IDML | Remitente | Destinatario | CP Destino | Origen | Destino | Chofer | Estado | Estado ML | Precio | Fecha | Acciones
-
-## Detalle tecnico
-
-### Orders.tsx - Cambios
-
-1. **Actualizar el query** para incluir datos del envio y chofer:
+2. Despues de obtener los pedidos, recolectar los `chofer_id` unicos de los envios y hacer una query separada a `profiles` para obtener `nombre` y `apellido`:
 ```typescript
-.select(`
-  *,
-  seller:ecommerce_sellers(id, nombre, tarifa_id, sucursal_pickup_id, tiene_cuenta_corriente),
-  envio:envios(tracking_number, estado, chofer_id, 
-    chofer:profiles!envios_chofer_id_fkey(nombre, apellido))
-`)
+const choferIds = [...new Set(data.map(o => o.envio?.chofer_id).filter(Boolean))];
+const { data: choferProfiles } = await supabase
+  .from('profiles')
+  .select('user_id, nombre, apellido')
+  .in('user_id', choferIds);
 ```
 
-2. **Actualizar la interfaz Order** para incluir el campo `envio` con su tipo.
+3. Mapear los nombres al renderizar usando un `Map<string, string>` de chofer_id a nombre completo.
 
-3. **Agregar columnas al TableHeader**: IDML, Tracking, Fecha Venta, CP, Chofer.
+**En Shipments.tsx:**
 
-4. **Renderizar las celdas nuevas** en cada fila con los datos disponibles.
+1. Quitar `chofer:profiles!envios_chofer_id_fkey(nombre, apellido)` del select.
+2. Agregar query separada a `profiles` con los `chofer_id` unicos.
+3. Renderizar el nombre del chofer usando el mapa.
 
-### Shipments.tsx - Cambios
-
-1. **Actualizar el query** para incluir el chofer:
-```typescript
-.select(`
-  *,
-  sucursal_origen:sucursales!envios_sucursal_origen_id_fkey(nombre),
-  sucursal_destino:sucursales!envios_sucursal_destino_id_fkey(nombre),
-  remitente:clientes!envios_remitente_id_fkey(nombre, apellido),
-  destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido),
-  chofer:profiles!envios_chofer_id_fkey(nombre, apellido)
-`)
-```
-
-2. **Agregar columnas al TableHeader**: IDML, CP Destino, Chofer.
-
-3. **Renderizar las celdas nuevas** mostrando `ml_shipment_id`, `cp_entrega || codigo_postal_destino`, y el nombre del chofer.
-
-## Archivos afectados
-
-| Archivo | Tipo de cambio |
-|---------|---------------|
-| `src/pages/ecommerce/Orders.tsx` | Agregar columnas IDML, Tracking, Fecha Venta, CP, Chofer, expandir query |
-| `src/pages/Shipments.tsx` | Agregar columnas IDML, CP Destino, Chofer, expandir query |
-
-## Notas
-
-- No se requieren cambios en la base de datos, todos los campos ya existen.
-- Las columnas "Zona Entrega" y "Zona Costo" de la imagen de referencia corresponden a la tarifa asociada (`tarifas.zona_origen` / `tarifas.zona_destino`). Se pueden agregar si la tarifa esta vinculada al envio, pero muchos envios no tienen tarifa asignada. Se incluiran solo si el dato esta disponible.
-- La tabla puede quedar ancha; se mantiene el scroll horizontal existente del componente Table.
-
+Este enfoque evita el problema de la FK hacia `auth.users` y funciona correctamente con PostgREST.
