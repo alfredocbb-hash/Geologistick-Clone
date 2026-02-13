@@ -1,73 +1,104 @@
 
 
-# Plan: Recuperar pedidos Flex entregados faltantes de MercadoLibre
+# Plan: Agregar columnas de detalle a Pedidos e-Commerce y Gestion de Envios
 
-## Problema
-Beraexpress perdio registros de envios durante cambios recientes. Necesitan recuperar todos los pedidos Flex entregados de todos sus sellers (15 sellers activos) desde el 06/02/2026 12:01hs hasta el 12/02/2026.
+## Contexto
 
-## Datos actuales
-- **Sellers activos**: 15 (todos con tokens validos)
-- **Envios ML existentes en el rango**: 114 (64 entregados)
-- **Tenant**: Beraexpress (`94a9ea85-43c5-49ac-9bfa-86843072c2ce`)
+La imagen de referencia muestra columnas adicionales que facilitan la operativa diaria: Nombre fantasia (seller), IDML (ML shipment ID), Origen, tracking_number, Fecha venta, Fecha BeraExpress, Destino nombre, Destino CP, Zona Entrega, Zona Costo, Chofer, y Estado.
 
-## Solucion
+Actualmente ambas tablas muestran informacion basica. Se necesitan columnas adicionales para tener visibilidad operativa completa sin abrir cada registro.
 
-Crear una edge function nueva `recover-ml-shipments` que:
+## Cambios propuestos
 
-1. Recorra los 15 sellers de Beraexpress
-2. Para cada seller, consulte la API de ML buscando ordenes con `shipping.status=delivered` en el rango de fechas
-3. Verifique cuales `ml_shipment_id` ya existen en la tabla `envios`
-4. Inserte los faltantes (envio + ecommerce_order + historial + cargo en cuenta corriente)
-5. Solo procese envios de tipo `self_service` (Flex)
+### 1. Pedidos e-Commerce (`src/pages/ecommerce/Orders.tsx`)
+
+Agregar las siguientes columnas a la tabla existente:
+
+| Columna nueva | Origen del dato |
+|---------------|----------------|
+| IDML | `order.ml_shipment_id` (ya disponible en el query) |
+| Tracking | `order.ml_tracking_number` (ya disponible) |
+| Fecha Venta | `order.created_at` (fecha de creacion en ML) |
+| Fecha Entrega Est. | `order.fecha_entrega_estimada` (ya se muestra parcialmente) |
+| Destino CP | `order.shipping_postal_code` (ya disponible) |
+| Chofer | Se obtiene haciendo join del `envio_id` con `envios.chofer_id` y luego con `profiles` |
+| Estado envio | Estado del envio interno vinculado |
+
+**Cambios en el query**: Expandir el select para incluir datos del envio vinculado:
+```
+envio:envios(tracking_number, estado, chofer_id, chofer:profiles!envios_chofer_id_fkey(nombre, apellido))
+```
+
+**Columnas en la tabla**: Se reorganizan las columnas para mostrar:
+Pedido | Seller | IDML | Tracking | Fecha Venta | Fecha Entrega | Destino | CP | Chofer | Estado | Acciones
+
+### 2. Gestion de Envios (`src/pages/Shipments.tsx`)
+
+Agregar columnas faltantes a la tabla existente:
+
+| Columna nueva | Origen del dato |
+|---------------|----------------|
+| IDML | `envio.ml_shipment_id` (ya en el query) |
+| Chofer | Join con `profiles` via `chofer_id` |
+| CP Destino | `envio.codigo_postal_destino` o `envio.cp_entrega` |
+| Fecha Entrega | `envio.fecha_entrega` (fecha real de entrega) |
+
+**Cambios en el query**: Expandir el select para incluir el chofer:
+```
+chofer:profiles!envios_chofer_id_fkey(nombre, apellido)
+```
+
+**Columnas en la tabla**: Se reorganizan para mostrar:
+Tracking | IDML | Remitente | Destinatario | CP Destino | Origen | Destino | Chofer | Estado | Estado ML | Precio | Fecha | Acciones
 
 ## Detalle tecnico
 
-| Archivo | Cambio |
-|---------|--------|
-| `supabase/functions/recover-ml-shipments/index.ts` | Nueva edge function de recuperacion |
+### Orders.tsx - Cambios
 
-### Logica de la funcion
-
-```text
-Para cada seller:
-  1. Obtener access_token valido (refresh si necesario)
-  2. Buscar ordenes en ML API:
-     - GET /orders/search?seller={store_id}&shipping.status=delivered
-     - Filtrar por date_created desde 2026-02-06T15:01:00Z (12:01 ARG = 15:01 UTC)
-     - Paginar con offset (limit=50, max 10 paginas)
-  3. Para cada orden con shipment:
-     - Verificar si ml_shipment_id ya existe en envios
-     - Si existe: skip
-     - Si no existe: obtener detalle del shipment de ML API
-     - Verificar logistic_type === 'self_service' (Flex)
-     - Crear ecommerce_order
-     - Crear envio con estado 'entregado' y estado_ml 'entregado'
-     - Crear historial
-     - Registrar cargo en cuenta corriente si aplica
-  4. Rate limiting: 200ms entre calls a ML API
+1. **Actualizar el query** para incluir datos del envio y chofer:
+```typescript
+.select(`
+  *,
+  seller:ecommerce_sellers(id, nombre, tarifa_id, sucursal_pickup_id, tiene_cuenta_corriente),
+  envio:envios(tracking_number, estado, chofer_id, 
+    chofer:profiles!envios_chofer_id_fkey(nombre, apellido))
+`)
 ```
 
-### Diferencias con mercadolibre-sync existente
+2. **Actualizar la interfaz Order** para incluir el campo `envio` con su tipo.
 
-- No requiere autenticacion de usuario (usa service_role internamente)
-- Busca en un rango de fechas amplio (6 dias) en vez de solo ultimos 3 dias
-- Solo busca status `delivered` 
-- Crea envios con estado `entregado` directamente
-- NO filtra por fecha de entrega estimada = hoy
-- Procesa TODOS los sellers del tenant en una sola ejecucion
-- Reutiliza `getValidAccessToken` del sync existente
+3. **Agregar columnas al TableHeader**: IDML, Tracking, Fecha Venta, CP, Chofer.
 
-### Deduplicacion
+4. **Renderizar las celdas nuevas** en cada fila con los datos disponibles.
 
-La deduplicacion se hace con un query batch a `envios` filtrando por `ml_shipment_id IN (...)` antes de insertar, exactamente como hace el sync existente.
+### Shipments.tsx - Cambios
 
-### Ejecucion
+1. **Actualizar el query** para incluir el chofer:
+```typescript
+.select(`
+  *,
+  sucursal_origen:sucursales!envios_sucursal_origen_id_fkey(nombre),
+  sucursal_destino:sucursales!envios_sucursal_destino_id_fkey(nombre),
+  remitente:clientes!envios_remitente_id_fkey(nombre, apellido),
+  destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido),
+  chofer:profiles!envios_chofer_id_fkey(nombre, apellido)
+`)
+```
 
-La funcion se ejecutara manualmente una sola vez via curl desde la consola. No necesita UI. Despues de confirmar que funciono, se puede eliminar.
+2. **Agregar columnas al TableHeader**: IDML, CP Destino, Chofer.
 
-## Resultado esperado
+3. **Renderizar las celdas nuevas** mostrando `ml_shipment_id`, `cp_entrega || codigo_postal_destino`, y el nombre del chofer.
 
-- Todos los envios Flex entregados de ML entre 06/02 12:01 y 12/02 se insertaran en el sistema
-- Los que ya existen no se duplicaran
-- Las cuentas corrientes de los sellers se actualizaran con los cargos faltantes
-- La liquidacion podra completarse con todos los registros
+## Archivos afectados
+
+| Archivo | Tipo de cambio |
+|---------|---------------|
+| `src/pages/ecommerce/Orders.tsx` | Agregar columnas IDML, Tracking, Fecha Venta, CP, Chofer, expandir query |
+| `src/pages/Shipments.tsx` | Agregar columnas IDML, CP Destino, Chofer, expandir query |
+
+## Notas
+
+- No se requieren cambios en la base de datos, todos los campos ya existen.
+- Las columnas "Zona Entrega" y "Zona Costo" de la imagen de referencia corresponden a la tarifa asociada (`tarifas.zona_origen` / `tarifas.zona_destino`). Se pueden agregar si la tarifa esta vinculada al envio, pero muchos envios no tienen tarifa asignada. Se incluiran solo si el dato esta disponible.
+- La tabla puede quedar ancha; se mantiene el scroll horizontal existente del componente Table.
+
