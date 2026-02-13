@@ -1,50 +1,72 @@
 
-# Usar tarifa asignada del seller para calcular importes en liquidaciones
+
+# Fix: Saldos por Seller no coinciden con precios de tarifa
 
 ## Problema
 
-Los importes de los envios que vienen de MercadoLibre no siempre coinciden con lo que la empresa cobra realmente. El campo `precio_total` del envio puede tener valores incorrectos o $0. Actualmente solo se recalcula cuando es $0, pero deberia usarse siempre la tarifa asignada al seller para que los totales de la liquidacion coincidan con los de la vista de pedidos.
+La pestaña "Saldos por Seller" muestra el campo `saldo_cuenta_corriente` directo de la base de datos. Este saldo se alimenta de los cargos registrados en `seller_cuenta_corriente`, pero:
+
+1. Muchos envios de ML llegan con `precio_total = $0` y NO se les registra cargo (la edge function solo crea cargo cuando `precioTotal > 0`)
+2. Algunos envios se registraron antes de implementar la logica de tarifa por zona
+3. Resultado: PABLO GAUNA tiene 6 envios pero solo 2 cargos en su cuenta corriente
+
+Por eso el saldo mostrado ($38,108.96) no refleja lo que realmente deberia cobrar la empresa basandose en la tarifa asignada.
 
 ## Solucion
 
-Cambiar la logica de calculo para que **siempre** use la tarifa asignada al seller (`tarifa_id` en `ecommerce_sellers`) en vez de `precio_total` del envio. Si el seller no tiene tarifa asignada, se mantiene el precio del envio como fallback.
+Recalcular el saldo mostrado en la pestaña "Saldos por Seller" usando la misma logica de tarifa que usa la pestaña de Liquidaciones. En vez de mostrar solo `saldo_cuenta_corriente`, calcular:
+
+- **Total Envios**: Suma de todos los envios del seller, con precios recalculados por tarifa
+- **Total Pagos**: Suma de pagos registrados en cuenta corriente
+- **Saldo Real**: Total Envios - Total Pagos
 
 ## Cambios en `src/pages/ecommerce/Settlements.tsx`
 
-### 1. Agregar `tarifa_id` al query de sellers (linea ~151)
+### 1. Nuevo query para obtener envios por seller con precios recalculados
 
-Incluir `tarifa_id` en el select para tener acceso a la tarifa asignada de cada seller.
+Agregar un query que cargue los envios de cada seller (via `ecommerce_orders`) y aplique la logica de tarifa para calcular los totales reales.
 
-### 2. Actualizar la interface `Seller` (linea ~30)
+### 2. Nuevo query para obtener pagos por seller
 
-Agregar `tarifa_id: string | null` al tipo.
+Cargar los pagos de `seller_cuenta_corriente` de tipo 'pago' agrupados por seller.
 
-### 3. Cambiar logica de precios en `calculateMutation` (lineas ~305-361)
+### 3. Actualizar la tabla "Saldos por Seller"
 
-En vez de usar `precio_total` y solo recalcular cuando es $0:
+Agregar columnas:
+- **Total Envios (tarifa)**: Precio total recalculado usando tarifa asignada
+- **Total Pagos**: Pagos registrados
+- **Saldo Calculado**: Diferencia entre envios y pagos
+
+Esto reemplaza o complementa el `saldo_cuenta_corriente` para que coincida con lo que calcula la pestaña de Liquidaciones.
+
+### 4. Flujo de calculo
 
 ```text
-ANTES:
-- Usar precio_total del envio
-- Solo si es $0, buscar tarifa por zona
-
-DESPUES:
-- Buscar la tarifa asignada al seller (tarifa_id)
-- Cargar esa tarifa de la tabla 'tarifas'
-- Para cada envio, calcular el precio usando precio_base de la tarifa
-- Si la tarifa es de tipo 'zona', buscar match por ciudad
-- Si no hay tarifa asignada, usar precio_total del envio como fallback
+Para cada seller:
+1. Buscar envios via ecommerce_orders + envios comunes
+2. Para cada envio:
+   - Si seller tiene tarifa_id asignada:
+     - Si tipo_tarifa = 'zona': match por ciudad_entrega
+     - Si no: usar precio_base de la tarifa
+   - Si no tiene tarifa: usar precio_total del envio
+3. Sumar todos los precios recalculados = Total Envios
+4. Buscar pagos en seller_cuenta_corriente tipo 'pago'
+5. Saldo Real = Total Envios - Total Pagos
 ```
 
-### 4. Flujo detallado
+### 5. Detalle tecnico de implementacion
 
-1. Obtener los `tarifa_id` unicos de los sellers seleccionados
-2. Cargar las tarifas correspondientes de la tabla `tarifas`
-3. Si la tarifa es de tipo zona, tambien cargar las tarifas de zona del tenant
-4. Para cada envio:
-   - Si el seller tiene `tarifa_id` asignado, usar `precio_base` de esa tarifa
-   - Si la tarifa es por zona y el envio tiene ciudad, hacer match por zona
-   - Si no hay tarifa asignada, usar `precio_total` del envio (fallback)
-5. Marcar `precio_calculado = true` cuando se uso la tarifa asignada
+- Reutilizar la logica de tarifa existente (normalize, zone matching, fallback)
+- Extraerla a una funcion auxiliar para no duplicar codigo
+- Cargar tarifas y zonas una sola vez para todos los sellers
+- Mostrar tanto el saldo de cuenta corriente (DB) como el saldo calculado (tarifa) para comparacion
 
-Esto alineara los importes de la liquidacion con los que se muestran en la vista de pedidos.
+| Columna | Fuente |
+|---|---|
+| Seller | `ecommerce_sellers.nombre` |
+| Envios | Cantidad de envios vinculados |
+| Total (tarifa) | Suma recalculada por tarifa |
+| Pagos | Suma de pagos en cta cte |
+| Saldo | Total tarifa - Pagos |
+| Acciones | Registrar Pago |
+
