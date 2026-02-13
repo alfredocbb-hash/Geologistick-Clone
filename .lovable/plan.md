@@ -1,70 +1,119 @@
 
 
-# Rediseno Etiqueta - Opcion A: Profesional Clasica (con centrado para impresion)
+# Rediseno Etiqueta - Estilo OCA con QR Grande
 
-## Cambios en `src/pages/PrintLabel.tsx`
+## Resumen
 
-### 1. HTML de impresion (`generateLabelHTML`, lineas ~145-590)
+Reemplazar completamente el diseno actual de la etiqueta en `src/pages/PrintLabel.tsx` por un layout tabular estilo OCA ePak, con el logo del tenant en la esquina superior izquierda y un QR de gran tamano en la seccion de observaciones.
 
-**Estructura del body y centrado (lineas ~303-310, 573-589)**:
-- Agregar `display: flex; justify-content: center; align-items: center;` al body para centrar la etiqueta en la pagina
-- Agregar `margin: auto` a `.label` como refuerzo de centrado
-- Cambiar `@page` margin de 0 a `0mm auto` para centrar horizontalmente en la hoja
+## Archivo a modificar
 
-**Borde exterior (linea ~319)**:
-- Cambiar `border: 3px solid #000` a `border: 2px solid #000`
+`src/pages/PrintLabel.tsx`
 
-**Header (lineas ~349-356)**:
-- Cambiar `border-bottom: 2px solid #000` a `border-bottom: 1px dashed #000`
-- Eliminar icono `[S]` del header
+## Cambios en constantes (lineas 24-43)
 
-**Tracking + QR lado a lado (lineas ~176-204)**:
-- Unificar las secciones tracking y QR en un solo bloque con `display: flex; align-items: center; justify-content: center; gap: 4mm`
-- Lado izquierdo: QR (mas pequeno, ~70% del tamano actual)
-- Lado derecho: tracking number, badge de bulto, tracking code
+Aumentar `qrSize` en `LABEL_SIZES`:
+- compact: 80 a 120
+- standard: 100 a 150
+- large: 120 a 180
 
-**Badge de servicio (lineas ~202-204)**:
-- Cambiar a `border: 2px solid #000; background: white; color: #000`
-- Agregar estrellas decorativas: `★ ENTREGA A DOMICILIO ★`
+## Estructura HTML de la etiqueta (funcion `generateLabelHTML`, lineas 145-608)
 
-**Separadores (lineas ~475-479)**:
-- Cambiar `.divider` de `height: 2px; background-color: #000` a `border-bottom: 1px dashed #000; height: 0; background: none`
+Reemplazar completamente el HTML y CSS del label por un diseno tabular con las siguientes secciones:
 
-**Seccion destinatario (lineas ~209-220)**:
-- Agregar `border-left: 3px solid #000; padding-left: 2mm`
-- Reemplazar iconos `[S]`/`[D]` por `▌` y `●`
+### CSS nuevo (reemplaza lineas 287-602)
 
-**Seccion direccion de entrega (lineas ~224-247)**:
-- Reemplazar `[D]` por `●` y `[S]` por `●`
+**Layout general**:
+- Tabla con bordes solidos de 1px negro
+- Sin marca de agua (el logo va visible en el header)
 
-**Precio (lineas ~252-261)**:
-- Aumentar font-size a 14px (compact) / 16px (standard)
-- font-weight: 900
+**Celdas de encabezado (headers de seccion)**:
+- `background: #000; color: #fff; font-size: 7-8px; font-weight: bold; padding: 1mm 2mm; text-transform: uppercase`
 
-**Remitente (lineas ~274-282)**:
-- Compactar en una sola linea: `REMITENTE: Nombre | Tel: xxx`
+**Celdas de datos**:
+- `background: #fff; color: #000; font-size: 10-14px; font-weight: bold; padding: 1mm 2mm`
 
-**Print styles (lineas ~573-583)**:
-- Agregar reglas de centrado para `@media print`: el body usa flex centering y la etiqueta tiene margin auto
+**QR grande**:
+- Usar `qrSize` al 100% (sin factor 0.7)
+- Posicionado a la derecha en la seccion de observaciones
 
-### 2. Vista previa React (lineas ~813-976)
+### Estructura HTML del label (reemplaza lineas 161-278)
 
-Aplicar los mismos cambios visuales en JSX para que la preview coincida con la impresion:
-- `border-[3px]` a `border-2`
-- `Separator` solido a `div` con `border-b border-dashed border-black`
-- QR + tracking en layout horizontal (flex row)
-- Badge de servicio con estrellas y borde en vez de fondo solido
-- Destinatario con barra lateral izquierda
-- Iconos tipograficos en vez de `[S]` y `[D]`
-- Remitente en una linea
-- Precio mas grande y bold
+**Fila 1 - Header**: 
+- Izquierda: Logo del tenant (`logo_light`) con max-width 25mm. Si no hay logo, espacio vacio
+- Derecha: Tracking number grande (16-18px) + tracking code del bulto debajo
 
-### 3. Centrado en impresion
+**Fila 2 - Datos en grilla (4 columnas)**:
+- Headers negros: DOC. CLIENTE | BULTO | OPERATIVA | PESO
+- Datos blancos: `codigo_cliente_externo` o DNI remitente | `bultoNum / cantidad_bultos` | codigo sucursal destino | `peso_kg`
 
-El centrado se logra con tres mecanismos complementarios:
-- `@page { margin: 0; }` (ya existe) + el body con `display: flex; justify-content: center; align-items: center; min-height: 100vh`
-- `.label { margin: 0 auto; }` como fallback
-- En `@media print`, reforzar `margin: 0 auto` en `.label`
+**Fila 3 - Sucursal destino**:
+- Header negro "SUCURSAL DESTINO"
+- Codigo de sucursal en fuente grande (18-22px)
+- Letra de zona (primera letra de ciudad destino) en recuadro negro con texto blanco
 
-Esto garantiza que la etiqueta salga centrada tanto en impresoras termicas como en impresoras A4.
+**Fila 4 - Tipo de servicio**:
+- Texto centrado bold con estrellas: `★ ENTREGA A DOMICILIO ★`
+
+**Fila 5 - Destinatario**:
+- Header centrado negro "DESTINATARIO"
+- Nombre + DNI en una linea
+- Direccion completa con CP
+- Ciudad + provincia + telefono
+
+**Fila 6 - Observaciones + QR**:
+- Lado izquierdo: observaciones/notas, tipo de pago y precio
+- Lado derecho: QR code grande (usando qrSize al 100%)
+- El QR ocupa ~30-35% del ancho
+
+**Fila 7 - Sucursal origen**:
+- Header negro "SUCURSAL ORIGEN" + codigo y nombre
+
+**Fila 8 - Remitente**:
+- Header centrado negro "REMITENTE"
+- Datos en una linea: nombre + telefono
+
+### Centrado para impresion (se mantiene)
+
+- body: `display: flex; justify-content: center; align-items: center; min-height: 100vh`
+- .label: `margin: 0 auto`
+- @media print refuerza el centrado
+
+## Vista previa React (lineas 831-983)
+
+Reemplazar el JSX de preview para que coincida con el nuevo diseno tabular:
+
+- Estructura con divs simulando tabla (grid o flex)
+- Headers con `bg-black text-white text-[8px] font-bold uppercase px-2 py-0.5`
+- Datos con `text-sm font-bold px-2 py-1`
+- Logo del tenant en header (ya se carga en `envio.logoUrl`, cambiar de watermark a imagen visible)
+- QR grande: cambiar de `w-12 h-12` a `w-20 h-20` (80px)
+- Grilla de 4 columnas para DOC.CLIENTE / BULTO / OPERATIVA / PESO
+- Seccion observaciones con QR a la derecha usando flex
+
+## Mapeo de campos
+
+| Campo OCA | Campo del sistema | Fallback |
+|---|---|---|
+| Logo | `tenant_branding.logo_light` | Espacio vacio |
+| Tracking | `envio.tracking_number` | - |
+| DOC. CLIENTE | `codigo_cliente_externo` | DNI remitente |
+| BULTO | `bultoNum / cantidad_bultos` | 1/1 |
+| OPERATIVA | `sucursal_destino.codigo` | - |
+| PESO | `peso_kg` | 0,00 |
+| SUCURSAL DESTINO | `sucursal_destino.codigo + nombre` | - |
+| Letra zona | Primera letra de `ciudad_entrega` | - |
+| Tipo servicio | `tipoConfig.label` | SUCURSAL A SUCURSAL |
+| DESTINATARIO | nombre + direccion + ciudad + tel | - |
+| OBSERVACIONES | `descripcion` o `notas` | - |
+| Precio / Pago | `precio_total` + `tipo_pago` | - |
+| SUCURSAL ORIGEN | `sucursal_origen.codigo + nombre` | - |
+| REMITENTE | nombre + telefono | - |
+
+## Sin cambios en
+
+- Queries de datos (lineas 617-650)
+- Logica de `handlePrint` (lineas 652-719)
+- Logica de `getDeliveryAddress` (lineas 670-699, 752-781)
+- Selector de tamanos y botones del header (lineas 785-823)
 
