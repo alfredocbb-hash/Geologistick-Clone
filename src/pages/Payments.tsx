@@ -18,7 +18,8 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
-  Loader2
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -170,7 +171,7 @@ export default function Payments() {
   const [renditionDialogOpen, setRenditionDialogOpen] = useState(false);
   const [selectedEnvio, setSelectedEnvio] = useState<EnvioPendiente | null>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-
+  const [isSyncingMp, setIsSyncingMp] = useState(false);
   // Fetch all payments
   const { data: pagos, isLoading: isLoadingPagos } = useQuery({
     queryKey: ['pagos', methodFilter, statusFilter, dateFrom, dateTo, searchTerm],
@@ -386,6 +387,38 @@ export default function Payments() {
 
   const selectedClienteData = clientes?.find(c => c.id === selectedCliente);
 
+  const handleSyncMpPayments = async () => {
+    setIsSyncingMp(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error('No hay sesión activa');
+        return;
+      }
+
+      const response = await supabase.functions.invoke('mercadopago-check-status', {
+        body: {},
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message || 'Error al sincronizar');
+      }
+
+      const result = response.data;
+      if (result.updated > 0) {
+        toast.success(`${result.updated} pago(s) actualizado(s) de ${result.total} pendiente(s)`);
+        queryClient.invalidateQueries({ queryKey: ['pagos-mercado-pago'] });
+        queryClient.invalidateQueries({ queryKey: ['pagos'] });
+      } else {
+        toast.info(result.message || 'No se encontraron cambios en Mercado Pago');
+      }
+    } catch (error) {
+      console.error('Error syncing MP payments:', error);
+      toast.error('Error al sincronizar pagos de Mercado Pago');
+    } finally {
+      setIsSyncingMp(false);
+    }
+  };
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -732,11 +765,24 @@ export default function Payments() {
         {/* Tab: Estado Mercado Pago */}
         <TabsContent value="mercadopago" className="space-y-4">
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="flex items-center gap-2">
                 <Smartphone className="h-5 w-5 text-blue-500" />
                 Pagos de Mercado Pago
               </CardTitle>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleSyncMpPayments}
+                disabled={isSyncingMp}
+              >
+                {isSyncingMp ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                )}
+                {isSyncingMp ? 'Sincronizando...' : 'Sincronizar estados'}
+              </Button>
             </CardHeader>
             <CardContent className="p-0">
               {isLoadingMp ? (

@@ -95,3 +95,6 @@ verify_jwt = false
 
 [functions.recover-ml-shipments]
 verify_jwt = false
+
+[functions.mercadopago-check-status]
+verify_jwt = false
