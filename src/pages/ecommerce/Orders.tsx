@@ -61,6 +61,15 @@ interface Order {
     sucursal_pickup_id: string | null;
     tiene_cuenta_corriente: boolean;
   };
+  envio?: {
+    tracking_number: string;
+    estado: string | null;
+    chofer_id: string | null;
+    chofer?: {
+      nombre: string;
+      apellido: string | null;
+    }[] | null;
+  } | null;
 }
 
 const STATUS_CONFIG: Record<string, { label: string; icon: React.ElementType; className: string }> = {
@@ -216,7 +225,8 @@ export default function Orders() {
         .from('ecommerce_orders')
         .select(`
           *,
-          seller:ecommerce_sellers(id, nombre, tarifa_id, sucursal_pickup_id, tiene_cuenta_corriente)
+          seller:ecommerce_sellers(id, nombre, tarifa_id, sucursal_pickup_id, tiene_cuenta_corriente),
+          envio:envios!ecommerce_orders_envio_id_fkey(tracking_number, estado, chofer_id, chofer:profiles!envios_chofer_id_fkey(nombre, apellido))
         `)
         .eq('tenant_id', tenantId);
 
@@ -473,22 +483,26 @@ navigate(`/planner?envios=${envioIds.join(',')}`);
                     />
                   </TableHead>
                   <TableHead>Pedido</TableHead>
-                  <TableHead>Seller</TableHead>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead>Fulfillment</TableHead>
-                  <TableHead className="text-right">Costo Envío</TableHead>
-                  <TableHead>Envío</TableHead>
-                  <TableHead className="w-[70px]"></TableHead>
+                   <TableHead>Seller</TableHead>
+                   <TableHead>IDML</TableHead>
+                   <TableHead>Tracking</TableHead>
+                   <TableHead>F. Venta</TableHead>
+                   <TableHead>Cliente</TableHead>
+                   <TableHead>CP</TableHead>
+                   <TableHead>Chofer</TableHead>
+                   <TableHead>Estado</TableHead>
+                   <TableHead className="text-right">Costo Envío</TableHead>
+                   <TableHead>Envío</TableHead>
+                   <TableHead className="w-[70px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {sellerGroups.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                      No hay pedidos que mostrar
-                    </TableCell>
-                  </TableRow>
+                     <TableCell colSpan={13} className="text-center py-8 text-muted-foreground">
+                       No hay pedidos que mostrar
+                     </TableCell>
+                   </TableRow>
                 )}
                 {sellerGroups.map((group) => {
                   const groupIds = group.orders.map(o => o.id);
@@ -505,14 +519,14 @@ navigate(`/planner?envios=${envioIds.join(',')}`);
                             onCheckedChange={() => toggleSelectGroup(group.orders)}
                           />
                         </TableCell>
-                        <TableCell colSpan={6}>
-                          <div className="flex items-center gap-3">
-                            <ShoppingBag className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-semibold">{group.sellerName}</span>
-                            <Badge variant="secondary">{group.orders.length} pedidos</Badge>
-                          </div>
-                        </TableCell>
-                        <TableCell colSpan={2} className="text-right">
+                         <TableCell colSpan={10}>
+                           <div className="flex items-center gap-3">
+                             <ShoppingBag className="h-4 w-4 text-muted-foreground" />
+                             <span className="font-semibold">{group.sellerName}</span>
+                             <Badge variant="secondary">{group.orders.length} pedidos</Badge>
+                           </div>
+                         </TableCell>
+                         <TableCell colSpan={2} className="text-right">
                           {groupWithShipment.length > 0 && (
                             <Button
                               size="sm"
@@ -557,27 +571,41 @@ navigate(`/planner?envios=${envioIds.join(',')}`);
                               </div>
                             </TableCell>
                             <TableCell>
-                              <span className="text-sm">{order.seller?.nombre || '-'}</span>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex flex-col">
-                                <span className="font-medium text-sm">{order.buyer_name}</span>
-                                <span className="text-xs text-muted-foreground truncate max-w-[150px]">
-                                  {order.shipping_city || order.shipping_address}
-                                </span>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className={status.className}>
-                                <StatusIcon className="mr-1 h-3 w-3" />
-                                {status.label}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className={fulfillment.className}>
-                                {fulfillment.label}
-                              </Badge>
-                            </TableCell>
+                               <span className="text-sm">{order.seller?.nombre || '-'}</span>
+                             </TableCell>
+                             <TableCell>
+                               <span className="text-xs font-mono text-muted-foreground">{order.ml_shipment_id || '-'}</span>
+                             </TableCell>
+                             <TableCell>
+                               <span className="text-xs font-mono text-muted-foreground">{order.ml_tracking_number || '-'}</span>
+                             </TableCell>
+                             <TableCell>
+                               <span className="text-xs text-muted-foreground">
+                                 {format(parseDateString(order.created_at), 'dd/MM/yy HH:mm', { locale: es })}
+                               </span>
+                             </TableCell>
+                             <TableCell>
+                               <div className="flex flex-col">
+                                 <span className="font-medium text-sm">{order.buyer_name}</span>
+                                 <span className="text-xs text-muted-foreground truncate max-w-[150px]">
+                                   {order.shipping_city || order.shipping_address}
+                                 </span>
+                               </div>
+                             </TableCell>
+                             <TableCell>
+                               <span className="text-xs text-muted-foreground">{order.shipping_postal_code || '-'}</span>
+                             </TableCell>
+                             <TableCell>
+                               <span className="text-xs text-muted-foreground">
+                                 {order.envio?.chofer?.[0] ? `${order.envio.chofer[0].nombre} ${order.envio.chofer[0].apellido || ''}`.trim() : '-'}
+                               </span>
+                             </TableCell>
+                             <TableCell>
+                               <Badge variant="outline" className={status.className}>
+                                 <StatusIcon className="mr-1 h-3 w-3" />
+                                 {status.label}
+                               </Badge>
+                             </TableCell>
                             <TableCell className="text-right font-medium">
                               {order.shipping_cost ? `$${order.shipping_cost.toLocaleString()}` : '-'}
                             </TableCell>
