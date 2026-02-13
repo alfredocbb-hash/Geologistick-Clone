@@ -1,20 +1,40 @@
 
 
-# Fix: Imprimir desde iframe oculto en vez de ventana nueva
+# Fix: Imprimir usando window.print() en la pagina actual
 
 ## Problema
 
-El metodo actual abre una ventana nueva con `window.open('', '_blank')` y llama `printWindow.print()`. Muchos navegadores y drivers de impresora no envian correctamente el trabajo de impresion desde ventanas popup. Guardar como PDF funciona porque el usuario controla el proceso manualmente.
+La app corre dentro del iframe de preview del navegador. Tanto `window.open` como crear un `<iframe>` oculto resultan en llamadas a `print()` desde contextos anidados que muchos navegadores bloquean silenciosamente. Por eso el dialogo de impresion no aparece o la impresora no recibe la orden.
 
 ## Solucion
 
-Reemplazar `window.open` por un `<iframe>` oculto insertado en el DOM de la pagina actual. Los navegadores manejan `iframe.contentWindow.print()` de forma mucho mas confiable que popups.
+Usar `window.print()` directamente sobre la pagina actual. Para eso:
+
+1. Inyectar un div oculto con el HTML de las etiquetas
+2. Usar CSS `@media print` para ocultar toda la UI normal y mostrar solo ese div
+3. Llamar `window.print()` directamente
+4. Limpiar el div despues de imprimir
 
 ## Cambios en `src/pages/PrintLabel.tsx`
 
-### Reemplazar la funcion `handlePrint` (lineas 598-661)
+### 1. Agregar un contenedor de impresion en el JSX (antes del return, linea ~745)
 
-En vez de abrir una ventana nueva:
+Agregar un div con `id="print-labels-container"` que normalmente esta oculto:
+
+```tsx
+<div id="print-labels-container" className="hidden print:block" 
+     dangerouslySetInnerHTML={{ __html: printHTML }} />
+```
+
+### 2. Agregar estado para el HTML de impresion
+
+```typescript
+const [printHTML, setPrintHTML] = useState('');
+```
+
+### 3. Reemplazar la funcion `handlePrint` (lineas 598-679)
+
+En vez de crear iframe o popup:
 
 ```typescript
 const handlePrint = () => {
@@ -23,57 +43,49 @@ const handlePrint = () => {
 
   // ... misma logica de tipoConfig, getDeliveryAddress, generateLabelHTML ...
 
-  // Crear iframe oculto
-  const iframe = document.createElement('iframe');
-  iframe.style.position = 'fixed';
-  iframe.style.top = '-10000px';
-  iframe.style.left = '-10000px';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
-  iframe.style.border = 'none';
-  document.body.appendChild(iframe);
+  // Inyectar el contenido en un div oculto
+  const printContainer = document.createElement('div');
+  printContainer.id = 'print-labels-area';
+  printContainer.innerHTML = labelHTML;
+  document.body.appendChild(printContainer);
 
-  const iframeDoc = iframe.contentWindow?.document;
-  if (!iframeDoc || !iframe.contentWindow) {
-    toast.error("Error al preparar la impresion");
-    setIsPrinting(false);
-    document.body.removeChild(iframe);
-    return;
-  }
-
-  iframeDoc.open();
-  iframeDoc.write(labelHTML);
-  iframeDoc.close();
-
-  iframe.onload = () => {
-    setTimeout(() => {
-      iframe.contentWindow?.print();
-      setTimeout(() => {
-        document.body.removeChild(iframe);
-        setIsPrinting(false);
-      }, 1000);
-    }, 500);
-  };
-
-  // Fallback de seguridad
-  setTimeout(() => {
-    if (document.body.contains(iframe)) {
-      document.body.removeChild(iframe);
+  // Agregar estilos de impresion temporales
+  const printStyle = document.createElement('style');
+  printStyle.id = 'print-labels-style';
+  printStyle.textContent = `
+    @media print {
+      body > *:not(#print-labels-area) { display: none !important; }
+      #print-labels-area { display: block !important; }
     }
-    setIsPrinting(false);
-  }, 10000);
+    #print-labels-area { display: none; }
+  `;
+  document.head.appendChild(printStyle);
+
+  // Esperar renderizado y luego imprimir
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      window.print();
+      // Limpiar despues de imprimir
+      document.body.removeChild(printContainer);
+      document.head.removeChild(printStyle);
+      setIsPrinting(false);
+    }, 300);
+  });
 };
 ```
 
-### Por que funciona
+### 4. Actualizar texto de ayuda (linea 789)
 
-- Los navegadores tratan los iframes como parte del documento principal, no como popups
-- El driver de impresora recibe la senal correctamente desde un iframe
-- El iframe se elimina automaticamente despues de imprimir
+Cambiar "se abrira una ventana nueva" por "se abrira el dialogo de impresion".
 
-### Sin otros cambios
+## Por que funciona
 
-- El HTML generado (`generateLabelHTML`) no cambia
-- La vista previa no cambia
-- La logica de datos no cambia
+- `window.print()` se llama en el contexto principal del documento, no desde un iframe o popup anidado
+- El navegador siempre respeta `window.print()` en el documento actual
+- Los estilos `@media print` ocultan la UI y muestran solo las etiquetas
+- Despues de imprimir/cancelar, se limpia todo y la pagina vuelve a la normalidad
+
+## Archivo modificado
+
+Solo `src/pages/PrintLabel.tsx`
 
