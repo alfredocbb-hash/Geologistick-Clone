@@ -17,7 +17,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Search, DollarSign, TrendingUp, TrendingDown, Plus, Calculator, FileText, Eye, Check, X, CalendarIcon, Download, Loader2, Printer, Package } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Search, DollarSign, TrendingUp, TrendingDown, Plus, Calculator, FileText, Eye, Check, X, CalendarIcon, Download, Loader2, Printer, Package, ChevronsUpDown } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -76,6 +77,8 @@ interface CalculatedMovement {
   descripcion: string | null;
   referencia: string | null;
   created_at: string;
+  seller_id?: string;
+  saldo_anterior?: number;
 }
 
 interface CalculatedEnvio {
@@ -115,7 +118,8 @@ export default function Settlements() {
   const [activeSeller, setActiveSeller] = useState<Seller | null>(null);
 
   // Liquidaciones states
-  const [calcSeller, setCalcSeller] = useState<string>('');
+  const [calcSellers, setCalcSellers] = useState<string[]>([]);
+  const [sellerPopoverOpen, setSellerPopoverOpen] = useState(false);
   const [fechaInicio, setFechaInicio] = useState<Date>(startOfMonth(new Date()));
   const [fechaFin, setFechaFin] = useState<Date>(endOfMonth(new Date()));
   const [calculatedMovements, setCalculatedMovements] = useState<CalculatedMovement[]>([]);
@@ -198,55 +202,61 @@ export default function Settlements() {
     enabled: !!tenantId,
   });
 
-  // Calculate mutation - now includes envíos
+  // Calculate mutation - now includes envíos and multi-seller
   const calculateMutation = useMutation({
     mutationFn: async () => {
-      if (!calcSeller) throw new Error('Seleccione un seller');
+      if (calcSellers.length === 0) throw new Error('Seleccione al menos un seller');
 
-      const seller = sellers?.find(s => s.id === calcSeller);
       const fechaInicioStr = format(fechaInicio, 'yyyy-MM-dd');
       const fechaFinStr = format(fechaFin, 'yyyy-MM-dd') + 'T23:59:59';
 
-      // 1. Fetch movimientos no liquidados del periodo
-      const { data: movs, error } = await supabase
-        .from('seller_cuenta_corriente')
-        .select('*')
-        .eq('seller_id', calcSeller)
-        .gte('created_at', fechaInicioStr)
-        .lte('created_at', fechaFinStr)
-        .is('liquidacion_id', null)
-        .order('created_at', { ascending: true });
+      let allMovs: any[] = [];
+      let allEnvios: CalculatedEnvio[] = [];
 
-      if (error) throw error;
+      // Collect unique cliente_ids from selected sellers
+      const selectedSellerObjs = sellers?.filter(s => calcSellers.includes(s.id)) || [];
+      const uniqueClienteIds = [...new Set(selectedSellerObjs.map(s => s.cliente_id).filter(Boolean))] as string[];
 
-      // 2. Fetch envíos del seller (via cliente_id) no liquidados en el periodo
-      let envios: CalculatedEnvio[] = [];
-      if (seller?.cliente_id) {
-        // Query principal: envíos por remitente_id = cliente_id
+      // 1. Fetch movimientos for all selected sellers
+      for (const sellerId of calcSellers) {
+        const { data: movs, error } = await supabase
+          .from('seller_cuenta_corriente')
+          .select('*')
+          .eq('seller_id', sellerId)
+          .gte('created_at', fechaInicioStr)
+          .lte('created_at', fechaFinStr)
+          .is('liquidacion_id', null)
+          .order('created_at', { ascending: true });
+
+        if (error) throw error;
+        allMovs = [...allMovs, ...(movs || [])];
+      }
+
+      // 2. Fetch envíos using fecha_entrega_estimada for all related cliente_ids
+      if (uniqueClienteIds.length > 0) {
+        // Query principal: envíos por remitente_id matching any cliente_id
         const { data: enviosData, error: enviosError } = await supabase
           .from('envios')
           .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, estado, created_at')
-          .eq('remitente_id', seller.cliente_id)
-          .gte('created_at', fechaInicioStr)
-          .lte('created_at', fechaFinStr)
+          .in('remitente_id', uniqueClienteIds)
+          .gte('fecha_entrega_estimada', fechaInicioStr)
+          .lte('fecha_entrega_estimada', fechaFinStr)
           .is('liquidacion_seller_id', null)
           .order('created_at', { ascending: true });
 
         if (enviosError) throw enviosError;
 
         // Fallback: buscar envíos via ecommerce_orders para sellers con mismo cliente_id
-        // que aún tengan remitente_id NULL
         const { data: relatedSellers } = await supabase
           .from('ecommerce_sellers')
           .select('id')
-          .eq('cliente_id', seller.cliente_id)
+          .in('cliente_id', uniqueClienteIds)
           .eq('tenant_id', tenantId);
 
         const relatedSellerIds = (relatedSellers || []).map(s => s.id);
         let fallbackEnvios: any[] = [];
 
         if (relatedSellerIds.length > 0) {
-          // Buscar ecommerce_orders de estos sellers que tengan envio_id vinculado
           const { data: ordersWithEnvio } = await supabase
             .from('ecommerce_orders')
             .select('envio_id')
@@ -258,7 +268,6 @@ export default function Settlements() {
             .filter((id): id is string => id !== null);
 
           if (envioIdsFromOrders.length > 0) {
-            // Excluir los que ya vinieron en la query principal
             const existingIds = new Set((enviosData || []).map(e => e.id));
             const missingIds = envioIdsFromOrders.filter(id => !existingIds.has(id));
 
@@ -267,8 +276,8 @@ export default function Settlements() {
                 .from('envios')
                 .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, estado, created_at')
                 .in('id', missingIds)
-                .gte('created_at', fechaInicioStr)
-                .lte('created_at', fechaFinStr)
+                .gte('fecha_entrega_estimada', fechaInicioStr)
+                .lte('fecha_entrega_estimada', fechaFinStr)
                 .is('liquidacion_seller_id', null)
                 .order('created_at', { ascending: true });
 
@@ -290,12 +299,11 @@ export default function Settlements() {
         const normalize = (str: string) => str.toLowerCase().trim()
           .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-        envios = allEnviosData.map((e: any) => {
+        allEnvios = allEnviosData.map((e: any) => {
           let precioFinal = e.precio_total || 0;
           let precioCalculado = false;
           let zonaMatch: string | null = null;
 
-          // If price is 0, try zone matching
           if (precioFinal === 0 && e.ciudad_entrega && zoneTarifas && zoneTarifas.length > 0) {
             const ciudadNorm = normalize(e.ciudad_entrega);
             for (const tarifa of zoneTarifas) {
@@ -311,7 +319,6 @@ export default function Settlements() {
               }
               if (precioFinal > 0) break;
             }
-            // Fallback: use broadest zone
             if (precioFinal === 0) {
               const fallback = zoneTarifas
                 .filter(t => t.zona_destino && t.zona_destino.split(',').length > 3)
@@ -340,26 +347,26 @@ export default function Settlements() {
         });
       }
 
-      const totalCargos = (movs || [])
+      const totalCargos = allMovs
         .filter(m => m.tipo === 'cargo')
         .reduce((sum, m) => sum + (m.monto || 0), 0);
 
-      const totalPagos = (movs || [])
+      const totalPagos = allMovs
         .filter(m => m.tipo === 'pago')
         .reduce((sum, m) => sum + Math.abs(m.monto || 0), 0);
 
-      const totalAjustes = (movs || [])
+      const totalAjustes = allMovs
         .filter(m => m.tipo === 'ajuste')
         .reduce((sum, m) => sum + (m.monto || 0), 0);
 
-      const totalEnvios = envios.reduce((sum, e) => sum + (e.precio_total || 0), 0);
+      const totalEnvios = allEnvios.reduce((sum, e) => sum + (e.precio_total || 0), 0);
 
       const saldoPeriodo = totalCargos + totalEnvios - totalPagos + totalAjustes;
-      const saldoAnterior = movs?.[0]?.saldo_anterior || 0;
+      const saldoAnterior = allMovs[0]?.saldo_anterior || 0;
 
       return {
-        movements: movs || [],
-        envios,
+        movements: allMovs,
+        envios: allEnvios,
         totals: {
           totalCargos,
           totalPagos,
@@ -382,68 +389,91 @@ export default function Settlements() {
     },
   });
 
-  // Generate liquidacion mutation - now includes envíos
+  // Generate liquidacion mutation - creates one per selected seller
   const generateMutation = useMutation({
     mutationFn: async () => {
-      if (!calcSeller || (calculatedMovements.length === 0 && calculatedEnvios.length === 0)) {
+      if (calcSellers.length === 0 || (calculatedMovements.length === 0 && calculatedEnvios.length === 0)) {
         throw new Error('No hay movimientos ni envíos para liquidar');
       }
 
-      const seller = sellers?.find(s => s.id === calcSeller);
-      
-      // Create liquidacion
-      const { data: liquidacion, error: liqError } = await supabase
-        .from('liquidaciones_seller')
-        .insert({
-          seller_id: calcSeller,
-          periodo_inicio: format(fechaInicio, 'yyyy-MM-dd'),
-          periodo_fin: format(fechaFin, 'yyyy-MM-dd'),
-          total_cargos: (calculatedTotals?.totalCargos || 0) + (calculatedTotals?.totalEnvios || 0),
-          total_pagos: calculatedTotals?.totalPagos || 0,
-          saldo_periodo: calculatedTotals?.saldoPeriodo || 0,
-          saldo_anterior: calculatedTotals?.saldoAnterior || 0,
-          saldo_final: seller?.saldo_cuenta_corriente || 0,
-          cantidad_movimientos: calculatedMovements.length + calculatedEnvios.length,
-          estado: 'generada',
-          notas: notas || null,
-          generado_por: user?.id,
-          tenant_id: profile?.tenant_id,
-        })
-        .select()
-        .single();
+      const createdLiquidaciones: any[] = [];
 
-      if (liqError) throw liqError;
+      for (const sellerId of calcSellers) {
+        const seller = sellers?.find(s => s.id === sellerId);
+        
+        // Filter movements for this seller
+        const sellerMovs = calculatedMovements.filter(m => (m as any).seller_id === sellerId);
+        // For envíos we assign all to first seller (they share cliente_id)
+        const isFirstSeller = sellerId === calcSellers[0];
+        const sellerEnvios = isFirstSeller ? calculatedEnvios : [];
 
-      // Link movements to liquidacion
-      if (calculatedMovements.length > 0) {
-        const movIds = calculatedMovements.map(m => m.id);
-        const { error: updateError } = await supabase
-          .from('seller_cuenta_corriente')
-          .update({ liquidacion_id: liquidacion.id })
-          .in('id', movIds);
+        const sellerTotalCargos = sellerMovs
+          .filter(m => m.tipo === 'cargo')
+          .reduce((sum, m) => sum + (m.monto || 0), 0);
+        const sellerTotalPagos = sellerMovs
+          .filter(m => m.tipo === 'pago')
+          .reduce((sum, m) => sum + Math.abs(m.monto || 0), 0);
+        const sellerTotalEnvios = sellerEnvios.reduce((sum, e) => sum + (e.precio_total || 0), 0);
 
-        if (updateError) throw updateError;
-      }
+        // Skip if no data for this seller
+        if (sellerMovs.length === 0 && sellerEnvios.length === 0) continue;
 
-      // Link envíos to liquidacion and update recalculated prices
-      if (calculatedEnvios.length > 0) {
-        for (const envio of calculatedEnvios) {
-          const updateData: any = { liquidacion_seller_id: liquidacion.id };
-          // If price was recalculated by zone, update the envio price
-          if (envio.precio_calculado && envio.precio_total > 0) {
-            updateData.precio_total = envio.precio_total;
-            updateData.tarifa_metodo_aplicado = 'zona_liquidacion';
+        const sellerNames = calcSellers.length > 1
+          ? `Liquidación conjunta: ${sellers?.filter(s => calcSellers.includes(s.id)).map(s => s.nombre).join(', ')}`
+          : null;
+
+        const { data: liquidacion, error: liqError } = await supabase
+          .from('liquidaciones_seller')
+          .insert({
+            seller_id: sellerId,
+            periodo_inicio: format(fechaInicio, 'yyyy-MM-dd'),
+            periodo_fin: format(fechaFin, 'yyyy-MM-dd'),
+            total_cargos: sellerTotalCargos + sellerTotalEnvios,
+            total_pagos: sellerTotalPagos,
+            saldo_periodo: sellerTotalCargos + sellerTotalEnvios - sellerTotalPagos,
+            saldo_anterior: sellerMovs[0]?.saldo_anterior || 0,
+            saldo_final: seller?.saldo_cuenta_corriente || 0,
+            cantidad_movimientos: sellerMovs.length + sellerEnvios.length,
+            estado: 'generada',
+            notas: [notas, sellerNames].filter(Boolean).join(' | ') || null,
+            generado_por: user?.id,
+            tenant_id: profile?.tenant_id,
+          })
+          .select()
+          .single();
+
+        if (liqError) throw liqError;
+        createdLiquidaciones.push(liquidacion);
+
+        // Link movements
+        if (sellerMovs.length > 0) {
+          const movIds = sellerMovs.map(m => m.id);
+          const { error: updateError } = await supabase
+            .from('seller_cuenta_corriente')
+            .update({ liquidacion_id: liquidacion.id })
+            .in('id', movIds);
+          if (updateError) throw updateError;
+        }
+
+        // Link envíos
+        if (sellerEnvios.length > 0) {
+          for (const envio of sellerEnvios) {
+            const updateData: any = { liquidacion_seller_id: liquidacion.id };
+            if (envio.precio_calculado && envio.precio_total > 0) {
+              updateData.precio_total = envio.precio_total;
+              updateData.tarifa_metodo_aplicado = 'zona_liquidacion';
+            }
+            await (supabase.from('envios') as any)
+              .update(updateData)
+              .eq('id', envio.id);
           }
-          await (supabase.from('envios') as any)
-            .update(updateData)
-            .eq('id', envio.id);
         }
       }
 
-      return liquidacion;
+      return createdLiquidaciones;
     },
-    onSuccess: () => {
-      toast.success('Liquidación generada correctamente');
+    onSuccess: (data) => {
+      toast.success(`${data.length} liquidación(es) generada(s) correctamente`);
       setCalculatedMovements([]);
       setCalculatedEnvios([]);
       setCalculatedTotals(null);
@@ -802,17 +832,72 @@ export default function Settlements() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="space-y-2">
-                  <Label>Seller</Label>
-                  <Select value={calcSeller} onValueChange={setCalcSeller}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar seller" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {sellers?.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label>Sellers ({calcSellers.length} seleccionados)</Label>
+                  <Popover open={sellerPopoverOpen} onOpenChange={setSellerPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
+                        {calcSellers.length === 0
+                          ? 'Seleccionar sellers...'
+                          : calcSellers.length === 1
+                            ? sellers?.find(s => s.id === calcSellers[0])?.nombre || '1 seller'
+                            : `${calcSellers.length} sellers`
+                        }
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[300px] p-2" align="start">
+                      <div className="space-y-1 max-h-60 overflow-y-auto">
+                        {sellers?.map((s) => (
+                          <label
+                            key={s.id}
+                            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent cursor-pointer text-sm"
+                          >
+                            <Checkbox
+                              checked={calcSellers.includes(s.id)}
+                              onCheckedChange={(checked) => {
+                                setCalcSellers(prev =>
+                                  checked
+                                    ? [...prev, s.id]
+                                    : prev.filter(id => id !== s.id)
+                                );
+                              }}
+                            />
+                            <span className="truncate">{s.nombre}</span>
+                          </label>
+                        ))}
+                      </div>
+                      {calcSellers.length > 0 && (
+                        <div className="border-t mt-2 pt-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="w-full text-xs"
+                            onClick={() => setCalcSellers([])}
+                          >
+                            Limpiar selección
+                          </Button>
+                        </div>
+                      )}
+                    </PopoverContent>
+                  </Popover>
+                  {calcSellers.length > 1 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {calcSellers.map(id => {
+                        const s = sellers?.find(s => s.id === id);
+                        return (
+                          <Badge key={id} variant="secondary" className="text-xs">
+                            {s?.nombre}
+                            <button
+                              className="ml-1 hover:text-destructive"
+                              onClick={() => setCalcSellers(prev => prev.filter(sid => sid !== id))}
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -861,7 +946,7 @@ export default function Settlements() {
                   <Label>&nbsp;</Label>
                   <Button 
                     onClick={() => calculateMutation.mutate()} 
-                    disabled={!calcSeller || calculateMutation.isPending}
+                    disabled={calcSellers.length === 0 || calculateMutation.isPending}
                     className="w-full"
                   >
                     {calculateMutation.isPending ? (
@@ -978,9 +1063,9 @@ export default function Settlements() {
                                 {calculatedEnvios.length === 0 ? (
                                   <TableRow>
                                     <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
-                                      {sellers?.find(s => s.id === calcSeller)?.cliente_id
+                                      {sellers?.some(s => calcSellers.includes(s.id) && s.cliente_id)
                                         ? 'No hay envíos sin liquidar en el período'
-                                        : 'Seller no tiene cliente vinculado'}
+                                        : 'Sellers no tienen cliente vinculado'}
                                     </TableCell>
                                   </TableRow>
                                 ) : (
