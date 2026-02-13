@@ -28,6 +28,9 @@ interface Envio {
   valor_declarado: number | null;
   nombre_remitente: string | null;
   nombre_destinatario: string | null;
+  tracking_externo?: string | null;
+  empresa_terciarizada?: string | null;
+  es_terciarizado?: boolean | null;
   remitente?: {
     nombre: string;
     apellido: string | null;
@@ -238,6 +241,34 @@ export async function generateEPODPDF(
   }
 
   yPosition += 28;
+
+  // ===== THIRD-PARTY SHIPMENT INFO =====
+  if (envio.es_terciarizado && (envio.empresa_terciarizada || envio.tracking_externo)) {
+    doc.setFillColor(245, 245, 245);
+    doc.roundedRect(margin, yPosition, contentWidth, 18, 2, 2, 'F');
+    doc.setDrawColor(200, 200, 200);
+    doc.roundedRect(margin, yPosition, contentWidth, 18, 2, 2, 'S');
+
+    doc.setTextColor(194, 65, 12);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text('[Terciarizado]', margin + 4, yPosition + 6);
+
+    doc.setTextColor(0, 0, 0);
+    doc.setFont('helvetica', 'normal');
+    if (envio.empresa_terciarizada) {
+      doc.text(`Empresa: ${sanitizeText(envio.empresa_terciarizada)}`, margin + 35, yPosition + 6);
+    }
+
+    if (envio.tracking_externo) {
+      doc.setFont('courier', 'bold');
+      doc.setFontSize(9);
+      doc.text(`Tracking Externo: ${sanitizeText(envio.tracking_externo)}`, margin + 4, yPosition + 14);
+      doc.setFont('helvetica', 'normal');
+    }
+
+    yPosition += 23;
+  }
 
   // ===== GEOLOCATION WITH MAP =====
   if (envio.entrega_lat && envio.entrega_lng) {
