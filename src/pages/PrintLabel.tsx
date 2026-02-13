@@ -637,45 +637,38 @@ export default function PrintLabel() {
     const deliveryInfo = getDeliveryAddress();
     const labelHTML = generateLabelHTML(envio, labelSize, tipoConfig, deliveryInfo, envio.logoUrl);
 
-    // Crear iframe oculto para impresion mas confiable
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.top = '-10000px';
-    iframe.style.left = '-10000px';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = 'none';
-    document.body.appendChild(iframe);
+    // Inyectar el contenido en un div oculto en el DOM actual
+    const printContainer = document.createElement('div');
+    printContainer.id = 'print-labels-area';
+    printContainer.innerHTML = labelHTML;
+    document.body.appendChild(printContainer);
 
-    const iframeDoc = iframe.contentWindow?.document;
-    if (!iframeDoc || !iframe.contentWindow) {
-      toast.error("Error al preparar la impresión");
-      setIsPrinting(false);
-      document.body.removeChild(iframe);
-      return;
-    }
-
-    iframeDoc.open();
-    iframeDoc.write(labelHTML);
-    iframeDoc.close();
-
-    iframe.onload = () => {
-      setTimeout(() => {
-        iframe.contentWindow?.print();
-        setTimeout(() => {
-          document.body.removeChild(iframe);
-          setIsPrinting(false);
-        }, 1000);
-      }, 500);
-    };
-
-    // Fallback de seguridad
-    setTimeout(() => {
-      if (document.body.contains(iframe)) {
-        document.body.removeChild(iframe);
+    // Agregar estilos de impresion temporales
+    const printStyle = document.createElement('style');
+    printStyle.id = 'print-labels-style';
+    printStyle.textContent = `
+      @media print {
+        body > *:not(#print-labels-area) { display: none !important; }
+        #print-labels-area { display: block !important; }
       }
-      setIsPrinting(false);
-    }, 10000);
+      #print-labels-area { display: none; }
+    `;
+    document.head.appendChild(printStyle);
+
+    // Esperar renderizado y luego imprimir
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        window.print();
+        // Limpiar despues de imprimir
+        if (document.body.contains(printContainer)) {
+          document.body.removeChild(printContainer);
+        }
+        if (document.head.contains(printStyle)) {
+          document.head.removeChild(printStyle);
+        }
+        setIsPrinting(false);
+      }, 300);
+    });
   };
 
   if (isLoading) {
@@ -785,7 +778,7 @@ export default function PrintLabel() {
       {/* Preview */}
       <div className="p-4">
         <p className="text-sm text-muted-foreground mb-4">
-          Vista previa de las etiquetas. Al imprimir se abrirá una ventana nueva con las etiquetas optimizadas.
+          Vista previa de las etiquetas. Al imprimir se abrirá el diálogo de impresión del navegador.
         </p>
         
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
