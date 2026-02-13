@@ -1,35 +1,44 @@
 
+# Plan: Agregar tracking externo de empresa terciarizada al EPOD
 
-# Plan: Hacer todas las tablas del sistema mas compactas
+## Problema
 
-## Objetivo
-
-Reducir el padding y altura de todas las tablas del sistema modificando el componente base `table.tsx`, de modo que las tablas ocupen menos espacio horizontal y vertical, evitando la necesidad de scroll innecesario.
+Cuando se descarga el EPOD de un envio terciarizado, no aparece el tracking externo ni el nombre de la empresa terciarizada. Estos campos existen en la base de datos (`tracking_externo`, `empresa_terciarizada`, `es_terciarizado`) pero no estan incluidos en la generacion del PDF.
 
 ## Cambios
 
-### Archivo unico: `src/components/ui/table.tsx`
+### Archivo: `src/lib/generateEPODPDF.ts`
 
-Se modifican los estilos por defecto de tres sub-componentes:
+1. **Agregar campos al interface `Envio`**:
+   - `tracking_externo?: string | null`
+   - `empresa_terciarizada?: string | null`
+   - `es_terciarizado?: boolean | null`
 
-| Componente | Antes | Despues | Efecto |
-|------------|-------|---------|--------|
-| `TableHead` (encabezado) | `h-12 px-4` | `h-9 px-2 text-xs` | Encabezados mas bajos y compactos |
-| `TableCell` (celda) | `p-4` | `px-2 py-2 text-sm` | Celdas con menos padding, texto ligeramente mas chico |
-| `Table` (tabla base) | `text-sm` | `text-sm` | Sin cambio, se mantiene |
+2. **Mostrar en el PDF**: Agregar una seccion debajo del banner de estado (o junto al tracking number) que muestre:
+   - **Empresa Terciarizada**: nombre de la empresa
+   - **Tracking Externo**: el codigo de seguimiento externo
+   - Solo se muestra cuando `es_terciarizado === true` y hay datos disponibles
 
-### Resultado
+### Archivo: `src/components/shipments/ShipmentDetailsDialog.tsx`
 
-- Todas las tablas del sistema (Pedidos, Envios, Rutas, Clientes, Choferes, Sucursales, etc.) se veran mas compactas automaticamente.
-- Las columnas ocuparan menos espacio, reduciendo o eliminando el scroll horizontal.
-- No se modifica ninguna pagina individual: el cambio es global desde el componente base.
+Verificar que al pasar el `envio` a `generateEPODPDF`, los campos `tracking_externo`, `empresa_terciarizada` y `es_terciarizado` ya esten incluidos en el objeto (deberian estarlo si se hace el select completo de la tabla `envios`).
 
 ## Detalle tecnico
 
+En el PDF, se agrega un bloque informativo despues del tracking principal:
+
 ```
-TableHead: "h-12 px-4"  -->  "h-9 px-2 text-xs"
-TableCell: "p-4"         -->  "px-2 py-2"
+TRACKING: ADMIN-ENV-20260213-640DD0
+------------------------------------
+[Terciarizado] Empresa: NombreEmpresa
+Tracking Externo: EXT-123456789
 ```
 
-Cualquier pagina que ya pase clases custom via `className` seguira funcionando porque el componente usa `cn()` (merge de clases), permitiendo sobreescribir estos valores donde sea necesario.
+Se renderiza como un recuadro con fondo gris claro, solo visible cuando `es_terciarizado` es true. El tracking externo se muestra con fuente monospace para facilitar la lectura.
 
+## Archivos afectados
+
+| Archivo | Cambio |
+|---|---|
+| `src/lib/generateEPODPDF.ts` | Agregar campos al interface y seccion al PDF |
+| `src/components/shipments/ShipmentDetailsDialog.tsx` | Verificar que los campos se pasen correctamente |
