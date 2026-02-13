@@ -1,90 +1,79 @@
 
 
-# Etiquetas en esquina superior izquierda (multi-label por hoja A4)
+# Fix: Imprimir desde iframe oculto en vez de ventana nueva
 
 ## Problema
 
-Actualmente cada etiqueta se centra en la pagina y usa `page-break-after: always`, lo que fuerza 1 etiqueta por hoja. Cuando un envio tiene 4 bultos, se gastan 4 hojas A4 para etiquetas de 10x15cm que podrian caber varias en una sola hoja.
+El metodo actual abre una ventana nueva con `window.open('', '_blank')` y llama `printWindow.print()`. Muchos navegadores y drivers de impresora no envian correctamente el trabajo de impresion desde ventanas popup. Guardar como PDF funciona porque el usuario controla el proceso manualmente.
 
 ## Solucion
 
-Posicionar las etiquetas en la esquina superior izquierda y eliminar el page-break forzado para que el navegador fluya las etiquetas naturalmente en la pagina. En A4 (210x297mm) caben 2 etiquetas de 10cm de ancho por fila y 2 filas de 15cm de alto = 4 etiquetas por hoja.
+Reemplazar `window.open` por un `<iframe>` oculto insertado en el DOM de la pagina actual. Los navegadores manejan `iframe.contentWindow.print()` de forma mucho mas confiable que popups.
 
 ## Cambios en `src/pages/PrintLabel.tsx`
 
-### 1. Body: quitar centrado (lineas 301-312)
+### Reemplazar la funcion `handlePrint` (lineas 598-661)
 
-Cambiar de `display: flex; justify-content: center; align-items: center` a un flujo normal alineado arriba a la izquierda:
+En vez de abrir una ventana nueva:
 
-```css
-body {
-  font-family: ...;
-  background: white;
-  margin: 0;
-  padding: 0;
-}
-```
+```typescript
+const handlePrint = () => {
+  if (!envio) return;
+  setIsPrinting(true);
 
-### 2. Label: quitar centrado y page-break forzado (lineas 314-329)
+  // ... misma logica de tipoConfig, getDeliveryAddress, generateLabelHTML ...
 
-- Quitar `margin: 0 auto` (ya no se centra)
-- Quitar `page-break-after: always` (ya no fuerza 1 por hoja)
-- Agregar `display: inline-block` y `vertical-align: top` para que fluyan lado a lado
-- Mantener `page-break-inside: avoid` para que una etiqueta no se corte entre paginas
+  // Crear iframe oculto
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.top = '-10000px';
+  iframe.style.left = '-10000px';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = 'none';
+  document.body.appendChild(iframe);
 
-```css
-.label {
-  width: ${size.width};
-  height: ${size.height};
-  max-height: ${size.height};
-  background: white;
-  box-sizing: border-box;
-  overflow: hidden;
-  display: inline-block;
-  vertical-align: top;
-  page-break-inside: avoid;
-  margin: 0 2mm 2mm 0;
-}
-```
-
-### 3. @media print: alinear arriba izquierda (lineas 536-557)
-
-```css
-@media print {
-  html, body {
-    width: 100%;
-    height: auto;
-    margin: 0;
-    padding: 0;
+  const iframeDoc = iframe.contentWindow?.document;
+  if (!iframeDoc || !iframe.contentWindow) {
+    toast.error("Error al preparar la impresion");
+    setIsPrinting(false);
+    document.body.removeChild(iframe);
+    return;
   }
-  .label {
-    width: ${size.width};
-    height: ${size.height};
-    max-height: ${size.height};
-    overflow: hidden;
-    display: inline-block;
-    vertical-align: top;
-    margin: 0 2mm 2mm 0;
-    page-break-inside: avoid;
-  }
-}
+
+  iframeDoc.open();
+  iframeDoc.write(labelHTML);
+  iframeDoc.close();
+
+  iframe.onload = () => {
+    setTimeout(() => {
+      iframe.contentWindow?.print();
+      setTimeout(() => {
+        document.body.removeChild(iframe);
+        setIsPrinting(false);
+      }, 1000);
+    }, 500);
+  };
+
+  // Fallback de seguridad
+  setTimeout(() => {
+    if (document.body.contains(iframe)) {
+      document.body.removeChild(iframe);
+    }
+    setIsPrinting(false);
+  }, 10000);
+};
 ```
 
-## Resultado esperado
+### Por que funciona
 
-En A4 con etiquetas compactas (10x15cm):
+- Los navegadores tratan los iframes como parte del documento principal, no como popups
+- El driver de impresora recibe la senal correctamente desde un iframe
+- El iframe se elimina automaticamente despues de imprimir
 
-```text
-+---------------------------+
-| [Etiqueta 1] [Etiqueta 2] |
-|                            |
-| [Etiqueta 3] [Etiqueta 4] |
-|                            |
-+---------------------------+
-```
+### Sin otros cambios
 
-- 1 bulto: 1 etiqueta arriba a la izquierda
-- 2 bultos: 2 etiquetas en la misma fila
-- 3-4 bultos: 2 filas, todas en 1 hoja
-- 5+ bultos: se pasa a la segunda hoja automaticamente
+- El HTML generado (`generateLabelHTML`) no cambia
+- La vista previa no cambia
+- La logica de datos no cambia
 
