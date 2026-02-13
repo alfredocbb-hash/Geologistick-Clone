@@ -1,91 +1,150 @@
 
 
-# Fix: Imprimir usando window.print() en la pagina actual
+# Imprimir etiquetas generando PDF con jsPDF
 
-## Problema
+## Enfoque
 
-La app corre dentro del iframe de preview del navegador. Tanto `window.open` como crear un `<iframe>` oculto resultan en llamadas a `print()` desde contextos anidados que muchos navegadores bloquean silenciosamente. Por eso el dialogo de impresion no aparece o la impresora no recibe la orden.
+Reemplazar toda la logica de impresion HTML (`window.print()`, iframes, divs ocultos) por generacion de un PDF nativo con **jsPDF** (ya instalado en el proyecto). El PDF se abre en una pestana nueva donde el usuario puede imprimir directamente desde el visor de PDF del navegador.
 
-## Solucion
+## Tamanos de pagina PDF
 
-Usar `window.print()` directamente sobre la pagina actual. Para eso:
+Cada etiqueta sera una pagina del PDF con las dimensiones exactas del tamano seleccionado:
 
-1. Inyectar un div oculto con el HTML de las etiquetas
-2. Usar CSS `@media print` para ocultar toda la UI normal y mostrar solo ese div
-3. Llamar `window.print()` directamente
-4. Limpiar el div despues de imprimir
+- **Compacta**: 100mm x 150mm (vertical)
+- **Estandar**: 150mm x 100mm (horizontal)
+- **Grande**: 200mm x 100mm (horizontal)
+
+Esto hace que el driver de la impresora reciba exactamente el tamano correcto sin escalar.
 
 ## Cambios en `src/pages/PrintLabel.tsx`
 
-### 1. Agregar un contenedor de impresion en el JSX (antes del return, linea ~745)
+### 1. Nuevo import
 
-Agregar un div con `id="print-labels-container"` que normalmente esta oculto:
+Agregar `import { jsPDF } from 'jspdf'` al inicio del archivo.
 
-```tsx
-<div id="print-labels-container" className="hidden print:block" 
-     dangerouslySetInnerHTML={{ __html: printHTML }} />
+### 2. Funcion `generateLabelPDF` (nueva)
+
+Reemplaza a `generateLabelHTML` para la impresion. Dibuja cada bulto como una pagina del PDF usando las primitivas de jsPDF:
+
+- **Celdas con fondo negro**: `doc.setFillColor(0,0,0)` + `doc.rect()` para headers
+- **Texto blanco/negro**: `doc.setTextColor()` + `doc.text()`
+- **Bordes de tabla**: `doc.setDrawColor(0)` + `doc.rect()`
+- **QR**: Se obtiene la imagen del QR como base64 (fetch + blob + FileReader) y se inserta con `doc.addImage()`
+- **Logo del tenant**: Igual, se carga como base64 y se inserta
+
+La estructura visual replica la tabla actual:
+
+```text
++----------------------------------+
+| [Logo]  | Tracking + Fecha       |
+|---------|------------------------|
+| Doc.Cli | Bulto | Operat. | Peso |
+|---------|-------|---------|------|
+| SUC. DESTINO    | COD  | ZONA   |
+| Nombre sucursal destino          |
+|----------------------------------|
+| * TIPO DE SERVICIO *             |
+|----------------------------------|
+| DESTINATARIO                     |
+| Nombre - DNI                     |
+| Direccion - Ciudad - Tel         |
+|----------------------------------|
+| OBSERVACIONES      |    [QR]    |
+| Pago: $xxx         |            |
+|----------------------------------|
+| SUC. ORIGEN | Codigo - Nombre    |
+|----------------------------------|
+| REMITENTE                        |
+| Nombre - Tel                     |
++----------------------------------+
 ```
 
-### 2. Agregar estado para el HTML de impresion
+### 3. Reemplazar `handlePrint`
 
 ```typescript
-const [printHTML, setPrintHTML] = useState('');
-```
-
-### 3. Reemplazar la funcion `handlePrint` (lineas 598-679)
-
-En vez de crear iframe o popup:
-
-```typescript
-const handlePrint = () => {
+const handlePrint = async () => {
   if (!envio) return;
   setIsPrinting(true);
 
-  // ... misma logica de tipoConfig, getDeliveryAddress, generateLabelHTML ...
+  try {
+    // Cargar imagenes como base64
+    const qrPromises = ...;  // fetch QR para cada bulto
+    const logoBase64 = envio.logoUrl ? await loadImageAsBase64(envio.logoUrl) : null;
 
-  // Inyectar el contenido en un div oculto
-  const printContainer = document.createElement('div');
-  printContainer.id = 'print-labels-area';
-  printContainer.innerHTML = labelHTML;
-  document.body.appendChild(printContainer);
+    // Crear PDF con tamano exacto de etiqueta
+    const doc = new jsPDF({
+      orientation: size.orientation,
+      unit: 'mm',
+      format: [size.widthMm, size.heightMm],
+    });
 
-  // Agregar estilos de impresion temporales
-  const printStyle = document.createElement('style');
-  printStyle.id = 'print-labels-style';
-  printStyle.textContent = `
-    @media print {
-      body > *:not(#print-labels-area) { display: none !important; }
-      #print-labels-area { display: block !important; }
+    // Dibujar cada bulto como una pagina
+    for (let i = 0; i < bultos; i++) {
+      if (i > 0) doc.addPage();
+      drawLabel(doc, envio, i + 1, bultos, ...);
     }
-    #print-labels-area { display: none; }
-  `;
-  document.head.appendChild(printStyle);
 
-  // Esperar renderizado y luego imprimir
-  requestAnimationFrame(() => {
-    setTimeout(() => {
-      window.print();
-      // Limpiar despues de imprimir
-      document.body.removeChild(printContainer);
-      document.head.removeChild(printStyle);
-      setIsPrinting(false);
-    }, 300);
-  });
+    // Abrir en pestana nueva
+    const pdfBlob = doc.output('blob');
+    const url = URL.createObjectURL(pdfBlob);
+    window.open(url, '_blank');
+  } catch (e) {
+    toast.error("Error al generar el PDF");
+  } finally {
+    setIsPrinting(false);
+  }
 };
 ```
 
-### 4. Actualizar texto de ayuda (linea 789)
+### 4. Eliminar codigo muerto
 
-Cambiar "se abrira una ventana nueva" por "se abrira el dialogo de impresion".
+- Quitar la funcion `generateLabelHTML` completa (ya no se usa para imprimir)
+- Quitar la inyeccion de divs ocultos y estilos temporales
+- **Mantener** `generateLabelHTML` solo si se usa en la vista previa del componente
 
-## Por que funciona
+### 5. Actualizar LABEL_SIZES
 
-- `window.print()` se llama en el contexto principal del documento, no desde un iframe o popup anidado
-- El navegador siempre respeta `window.print()` en el documento actual
-- Los estilos `@media print` ocultan la UI y muestran solo las etiquetas
-- Despues de imprimir/cancelar, se limpia todo y la pagina vuelve a la normalidad
+Agregar dimensiones en mm y orientacion para jsPDF:
 
-## Archivo modificado
+```typescript
+const LABEL_SIZES = {
+  compact: { name: "Compacta (10x15 cm)", widthMm: 100, heightMm: 150, orientation: 'portrait', qrSize: 30 },
+  standard: { name: "Estandar (15x10 cm)", widthMm: 150, heightMm: 100, orientation: 'landscape', qrSize: 35 },
+  large: { name: "Grande (20x10 cm)", widthMm: 200, heightMm: 100, orientation: 'landscape', qrSize: 40 },
+};
+```
 
-Solo `src/pages/PrintLabel.tsx`
+### 6. Texto del boton y ayuda
+
+Cambiar "Imprimir" por "Generar PDF" y actualizar el texto de ayuda.
+
+## Detalle tecnico: Carga de imagenes
+
+Para insertar QR y logo en el PDF, se necesitan como base64. Se usara una funcion helper:
+
+```typescript
+async function loadImageAsBase64(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch { return null; }
+}
+```
+
+## Archivos modificados
+
+- `src/pages/PrintLabel.tsx` (unico archivo)
+
+## Resultado
+
+- Click en "Generar PDF" abre una pestana con el PDF nativo
+- El usuario imprime desde el visor de PDF del navegador (Ctrl+P o boton de impresora)
+- El tamano de pagina del PDF coincide exactamente con la etiqueta
+- Funciona con cualquier impresora sin problemas de senales perdidas
 
