@@ -134,7 +134,8 @@ export default function Shipments() {
           sucursal_origen:sucursales!envios_sucursal_origen_id_fkey(nombre),
           sucursal_destino:sucursales!envios_sucursal_destino_id_fkey(nombre),
           remitente:clientes!envios_remitente_id_fkey(nombre, apellido),
-          destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)
+          destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido),
+          chofer:profiles!envios_chofer_id_fkey(nombre, apellido)
         `)
         .gte('created_at', dayStart.toISOString())
         .lte('created_at', dayEnd.toISOString())
@@ -334,16 +335,19 @@ export default function Shipments() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Tracking</TableHead>
-                  <TableHead>Remitente</TableHead>
-                  <TableHead>Destinatario</TableHead>
-                  <TableHead>Origen</TableHead>
-                  <TableHead>Destino</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead>Estado ML</TableHead>
-                  <TableHead className="text-right">Precio</TableHead>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead className="text-center">Acciones</TableHead>
+                   <TableHead>Tracking</TableHead>
+                   <TableHead>IDML</TableHead>
+                   <TableHead>Remitente</TableHead>
+                   <TableHead>Destinatario</TableHead>
+                   <TableHead>CP Dest.</TableHead>
+                   <TableHead>Origen</TableHead>
+                   <TableHead>Destino</TableHead>
+                   <TableHead>Chofer</TableHead>
+                   <TableHead>Estado</TableHead>
+                   <TableHead>Estado ML</TableHead>
+                   <TableHead className="text-right">Precio</TableHead>
+                   <TableHead>Fecha</TableHead>
+                   <TableHead className="text-center">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -368,20 +372,31 @@ export default function Shipments() {
                           )}
                         </div>
                       )}
-                    </TableCell>
-                    <TableCell>
-                      {envio.nombre_remitente || (envio.remitente ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}` : '-')}
-                    </TableCell>
+                     </TableCell>
+                     <TableCell>
+                       <span className="text-xs font-mono text-muted-foreground">{envio.ml_shipment_id || '-'}</span>
+                     </TableCell>
+                     <TableCell>
+                       {envio.nombre_remitente || (envio.remitente ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}` : '-')}
+                     </TableCell>
                     <TableCell>
                       {envio.nombre_destinatario || (envio.destinatario ? `${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}` : '-')}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {envio.sucursal_origen?.nombre || '-'}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {envio.sucursal_destino?.nombre || '-'}
-                    </TableCell>
-                    <TableCell>
+                     <TableCell>
+                       <span className="text-xs text-muted-foreground">{envio.cp_entrega || envio.codigo_postal_destino || '-'}</span>
+                     </TableCell>
+                     <TableCell className="text-muted-foreground">
+                       {envio.sucursal_origen?.nombre || '-'}
+                     </TableCell>
+                     <TableCell className="text-muted-foreground">
+                       {envio.sucursal_destino?.nombre || '-'}
+                     </TableCell>
+                     <TableCell>
+                       <span className="text-xs text-muted-foreground">
+                         {(envio as any).chofer ? `${(envio as any).chofer.nombre} ${(envio as any).chofer.apellido || ''}`.trim() : '-'}
+                       </span>
+                     </TableCell>
+                     <TableCell>
                       <StatusBadge status={envio.estado as ShipmentStatus} />
                     </TableCell>
                     <TableCell>
