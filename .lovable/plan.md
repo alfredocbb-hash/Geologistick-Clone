@@ -1,119 +1,109 @@
 
 
-# Rediseno Etiqueta - Estilo OCA con QR Grande
+# Correcciones de impresion de etiquetas
 
-## Resumen
+## Problema
 
-Reemplazar completamente el diseno actual de la etiqueta en `src/pages/PrintLabel.tsx` por un layout tabular estilo OCA ePak, con el logo del tenant en la esquina superior izquierda y un QR de gran tamano en la seccion de observaciones.
+La etiqueta se imprime mal en A4: ocupa 3 hojas porque:
+1. El CSS `@page { size: 15cm 10cm }` no es respetado por todos los navegadores/impresoras y el contenido se desborda en hojas A4
+2. El QR de 150px es demasiado grande para el tamano de la etiqueta
+3. No hay un contenedor que limite la altura del label al tamano declarado
 
-## Archivo a modificar
+## Solucion
 
-`src/pages/PrintLabel.tsx`
+### Archivo: `src/pages/PrintLabel.tsx`
 
-## Cambios en constantes (lineas 24-43)
+### 1. Cambiar `@page` para soportar ambos escenarios (linea 296-299)
 
-Aumentar `qrSize` en `LABEL_SIZES`:
-- compact: 80 a 120
-- standard: 100 a 150
-- large: 120 a 180
+En vez de forzar un tamano de pagina custom, usar A4 con la etiqueta centrada y limitada en tamano:
 
-## Estructura HTML de la etiqueta (funcion `generateLabelHTML`, lineas 145-608)
+```css
+@page {
+  size: auto;
+  margin: 5mm;
+}
+```
 
-Reemplazar completamente el HTML y CSS del label por un diseno tabular con las siguientes secciones:
+Esto deja que el navegador use el tamano de papel configurado por el usuario (A4, carta, etc.) y la etiqueta se centra dentro.
 
-### CSS nuevo (reemplaza lineas 287-602)
+### 2. Limitar dimensiones del `.label` (lineas 314-321)
 
-**Layout general**:
-- Tabla con bordes solidos de 1px negro
-- Sin marca de agua (el logo va visible en el header)
+Agregar `max-width` y `max-height` para que cada etiqueta quepa en una sola pagina. Tambien agregar `height` fijo basado en el tamano seleccionado:
 
-**Celdas de encabezado (headers de seccion)**:
-- `background: #000; color: #fff; font-size: 7-8px; font-weight: bold; padding: 1mm 2mm; text-transform: uppercase`
+```css
+.label {
+  width: ${size.width};
+  height: ${size.height};
+  max-width: 100%;
+  overflow: hidden;
+  margin: 0 auto;
+  page-break-after: always;
+  page-break-inside: avoid;
+}
+```
 
-**Celdas de datos**:
-- `background: #fff; color: #000; font-size: 10-14px; font-weight: bold; padding: 1mm 2mm`
+### 3. Reducir tamano del QR en el HTML de impresion (linea 521)
 
-**QR grande**:
-- Usar `qrSize` al 100% (sin factor 0.7)
-- Posicionado a la derecha en la seccion de observaciones
+El QR de 150px es excesivo para una etiqueta de 10cm de alto. Reducir a un tamano proporcional al label:
+- compact: `qrSize` en CSS limitado a `80px`
+- standard: limitado a `100px`
+- large: limitado a `120px`
 
-### Estructura HTML del label (reemplaza lineas 161-278)
+Esto se logra cambiando las lineas 520-523:
+```css
+.qr-image {
+  width: ${labelSize === 'compact' ? '80px' : labelSize === 'standard' ? '100px' : '120px'};
+  height: ${labelSize === 'compact' ? '80px' : labelSize === 'standard' ? '100px' : '120px'};
+}
+```
 
-**Fila 1 - Header**: 
-- Izquierda: Logo del tenant (`logo_light`) con max-width 25mm. Si no hay logo, espacio vacio
-- Derecha: Tracking number grande (16-18px) + tracking code del bulto debajo
+Los valores de `LABEL_SIZES.qrSize` se mantienen para la URL del QR (resolucion de imagen) pero el CSS limita el tamano visual.
 
-**Fila 2 - Datos en grilla (4 columnas)**:
-- Headers negros: DOC. CLIENTE | BULTO | OPERATIVA | PESO
-- Datos blancos: `codigo_cliente_externo` o DNI remitente | `bultoNum / cantidad_bultos` | codigo sucursal destino | `peso_kg`
+### 4. Forzar que cada etiqueta quepa en una pagina (lineas 531-543)
 
-**Fila 3 - Sucursal destino**:
-- Header negro "SUCURSAL DESTINO"
-- Codigo de sucursal en fuente grande (18-22px)
-- Letra de zona (primera letra de ciudad destino) en recuadro negro con texto blanco
+Mejorar los estilos de `@media print`:
+```css
+@media print {
+  html, body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+  .label {
+    width: ${size.width};
+    height: ${size.height};
+    max-height: ${size.height};
+    overflow: hidden;
+    margin: 0 auto;
+    page-break-after: always;
+    page-break-inside: avoid;
+  }
+  .label:last-child {
+    page-break-after: auto;
+  }
+}
+```
 
-**Fila 4 - Tipo de servicio**:
-- Texto centrado bold con estrellas: `★ ENTREGA A DOMICILIO ★`
+### 5. Ajustar la tabla para que no desborde (lineas 327-336)
 
-**Fila 5 - Destinatario**:
-- Header centrado negro "DESTINATARIO"
-- Nombre + DNI en una linea
-- Direccion completa con CP
-- Ciudad + provincia + telefono
+Agregar `table-layout: fixed` para que la tabla respete los limites:
+```css
+.label-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 2px solid #000;
+  table-layout: fixed;
+}
+```
 
-**Fila 6 - Observaciones + QR**:
-- Lado izquierdo: observaciones/notas, tipo de pago y precio
-- Lado derecho: QR code grande (usando qrSize al 100%)
-- El QR ocupa ~30-35% del ancho
+### Resumen de cambios
 
-**Fila 7 - Sucursal origen**:
-- Header negro "SUCURSAL ORIGEN" + codigo y nombre
+Todos los cambios son en `src/pages/PrintLabel.tsx`:
+- `@page`: de tamano fijo a `size: auto; margin: 5mm`
+- `.label`: agregar `height`, `max-height`, `overflow: hidden`, `page-break-inside: avoid`
+- `.qr-image`: reducir tamano visual de 150px a 100px (standard)
+- `.label-table`: agregar `table-layout: fixed`
+- `@media print`: reforzar limites de tamano y page-break
 
-**Fila 8 - Remitente**:
-- Header centrado negro "REMITENTE"
-- Datos en una linea: nombre + telefono
-
-### Centrado para impresion (se mantiene)
-
-- body: `display: flex; justify-content: center; align-items: center; min-height: 100vh`
-- .label: `margin: 0 auto`
-- @media print refuerza el centrado
-
-## Vista previa React (lineas 831-983)
-
-Reemplazar el JSX de preview para que coincida con el nuevo diseno tabular:
-
-- Estructura con divs simulando tabla (grid o flex)
-- Headers con `bg-black text-white text-[8px] font-bold uppercase px-2 py-0.5`
-- Datos con `text-sm font-bold px-2 py-1`
-- Logo del tenant en header (ya se carga en `envio.logoUrl`, cambiar de watermark a imagen visible)
-- QR grande: cambiar de `w-12 h-12` a `w-20 h-20` (80px)
-- Grilla de 4 columnas para DOC.CLIENTE / BULTO / OPERATIVA / PESO
-- Seccion observaciones con QR a la derecha usando flex
-
-## Mapeo de campos
-
-| Campo OCA | Campo del sistema | Fallback |
-|---|---|---|
-| Logo | `tenant_branding.logo_light` | Espacio vacio |
-| Tracking | `envio.tracking_number` | - |
-| DOC. CLIENTE | `codigo_cliente_externo` | DNI remitente |
-| BULTO | `bultoNum / cantidad_bultos` | 1/1 |
-| OPERATIVA | `sucursal_destino.codigo` | - |
-| PESO | `peso_kg` | 0,00 |
-| SUCURSAL DESTINO | `sucursal_destino.codigo + nombre` | - |
-| Letra zona | Primera letra de `ciudad_entrega` | - |
-| Tipo servicio | `tipoConfig.label` | SUCURSAL A SUCURSAL |
-| DESTINATARIO | nombre + direccion + ciudad + tel | - |
-| OBSERVACIONES | `descripcion` o `notas` | - |
-| Precio / Pago | `precio_total` + `tipo_pago` | - |
-| SUCURSAL ORIGEN | `sucursal_origen.codigo + nombre` | - |
-| REMITENTE | nombre + telefono | - |
-
-## Sin cambios en
-
-- Queries de datos (lineas 617-650)
-- Logica de `handlePrint` (lineas 652-719)
-- Logica de `getDeliveryAddress` (lineas 670-699, 752-781)
-- Selector de tamanos y botones del header (lineas 785-823)
-
+Con estos cambios cada etiqueta quedara contenida en una sola pagina, centrada, sin importar si el usuario imprime en A4, carta o papel de etiquetas.
