@@ -1,131 +1,41 @@
 
 
-# Imprimir etiquetas generando PDF con jsPDF
+# Fix: Logo ausente + Impresion en tamano correcto
 
-## Enfoque
+## Problema 1: Logo no aparece
 
-Reemplazar toda la logica de impresion HTML (`window.print()`, iframes, divs ocultos) por generacion de un PDF nativo con **jsPDF** (ya instalado en el proyecto). El PDF se abre en una pestana nueva donde el usuario puede imprimir directamente desde el visor de PDF del navegador.
+La funcion `loadImageAsBase64` usa `fetch()` para descargar el logo desde la URL de almacenamiento. Esta URL probablemente requiere headers de autenticacion o tiene restricciones CORS que hacen que el fetch falle silenciosamente (el catch devuelve null).
 
-## Tamanos de pagina PDF
+### Solucion
 
-Cada etiqueta sera una pagina del PDF con las dimensiones exactas del tamano seleccionado:
+Usar el SDK del backend para descargar el logo en vez de `fetch()` directo. Si la URL es publica (empieza con http), intentar con fetch normal primero, pero si falla, intentar descargar usando el SDK. Ademas agregar un fallback: si no se puede cargar el logo del tenant, usar el logo local de la app (`geologistick-logo.png`) que ya existe en `src/assets/`.
 
-- **Compacta**: 100mm x 150mm (vertical)
-- **Estandar**: 150mm x 100mm (horizontal)
-- **Grande**: 200mm x 100mm (horizontal)
+### Cambios
 
-Esto hace que el driver de la impresora reciba exactamente el tamano correcto sin escalar.
+En `src/pages/PrintLabel.tsx`:
 
-## Cambios en `src/pages/PrintLabel.tsx`
-
-### 1. Nuevo import
-
-Agregar `import { jsPDF } from 'jspdf'` al inicio del archivo.
-
-### 2. Funcion `generateLabelPDF` (nueva)
-
-Reemplaza a `generateLabelHTML` para la impresion. Dibuja cada bulto como una pagina del PDF usando las primitivas de jsPDF:
-
-- **Celdas con fondo negro**: `doc.setFillColor(0,0,0)` + `doc.rect()` para headers
-- **Texto blanco/negro**: `doc.setTextColor()` + `doc.text()`
-- **Bordes de tabla**: `doc.setDrawColor(0)` + `doc.rect()`
-- **QR**: Se obtiene la imagen del QR como base64 (fetch + blob + FileReader) y se inserta con `doc.addImage()`
-- **Logo del tenant**: Igual, se carga como base64 y se inserta
-
-La estructura visual replica la tabla actual:
-
-```text
-+----------------------------------+
-| [Logo]  | Tracking + Fecha       |
-|---------|------------------------|
-| Doc.Cli | Bulto | Operat. | Peso |
-|---------|-------|---------|------|
-| SUC. DESTINO    | COD  | ZONA   |
-| Nombre sucursal destino          |
-|----------------------------------|
-| * TIPO DE SERVICIO *             |
-|----------------------------------|
-| DESTINATARIO                     |
-| Nombre - DNI                     |
-| Direccion - Ciudad - Tel         |
-|----------------------------------|
-| OBSERVACIONES      |    [QR]    |
-| Pago: $xxx         |            |
-|----------------------------------|
-| SUC. ORIGEN | Codigo - Nombre    |
-|----------------------------------|
-| REMITENTE                        |
-| Nombre - Tel                     |
-+----------------------------------+
-```
-
-### 3. Reemplazar `handlePrint`
-
+1. Importar el logo local como fallback:
 ```typescript
-const handlePrint = async () => {
-  if (!envio) return;
-  setIsPrinting(true);
-
-  try {
-    // Cargar imagenes como base64
-    const qrPromises = ...;  // fetch QR para cada bulto
-    const logoBase64 = envio.logoUrl ? await loadImageAsBase64(envio.logoUrl) : null;
-
-    // Crear PDF con tamano exacto de etiqueta
-    const doc = new jsPDF({
-      orientation: size.orientation,
-      unit: 'mm',
-      format: [size.widthMm, size.heightMm],
-    });
-
-    // Dibujar cada bulto como una pagina
-    for (let i = 0; i < bultos; i++) {
-      if (i > 0) doc.addPage();
-      drawLabel(doc, envio, i + 1, bultos, ...);
-    }
-
-    // Abrir en pestana nueva
-    const pdfBlob = doc.output('blob');
-    const url = URL.createObjectURL(pdfBlob);
-    window.open(url, '_blank');
-  } catch (e) {
-    toast.error("Error al generar el PDF");
-  } finally {
-    setIsPrinting(false);
-  }
-};
+import geologistickLogo from '@/assets/geologistick-logo.png';
 ```
 
-### 4. Eliminar codigo muerto
-
-- Quitar la funcion `generateLabelHTML` completa (ya no se usa para imprimir)
-- Quitar la inyeccion de divs ocultos y estilos temporales
-- **Mantener** `generateLabelHTML` solo si se usa en la vista previa del componente
-
-### 5. Actualizar LABEL_SIZES
-
-Agregar dimensiones en mm y orientacion para jsPDF:
-
+2. Modificar la carga del logo en `handlePrint` (linea 466):
 ```typescript
-const LABEL_SIZES = {
-  compact: { name: "Compacta (10x15 cm)", widthMm: 100, heightMm: 150, orientation: 'portrait', qrSize: 30 },
-  standard: { name: "Estandar (15x10 cm)", widthMm: 150, heightMm: 100, orientation: 'landscape', qrSize: 35 },
-  large: { name: "Grande (20x10 cm)", widthMm: 200, heightMm: 100, orientation: 'landscape', qrSize: 40 },
-};
+// Intentar cargar logo del tenant
+let logoBase64 = envio.logoUrl ? await loadImageAsBase64(envio.logoUrl) : null;
+
+// Fallback: si no se pudo cargar el logo del tenant, usar el logo de la app
+if (!logoBase64) {
+  logoBase64 = await loadImageAsBase64(geologistickLogo);
+}
 ```
 
-### 6. Texto del boton y ayuda
-
-Cambiar "Imprimir" por "Generar PDF" y actualizar el texto de ayuda.
-
-## Detalle tecnico: Carga de imagenes
-
-Para insertar QR y logo en el PDF, se necesitan como base64. Se usara una funcion helper:
-
+3. Mejorar `loadImageAsBase64` para manejar URLs relativas (imports de Vite generan rutas relativas):
 ```typescript
 async function loadImageAsBase64(url: string): Promise<string | null> {
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { mode: 'cors' });
+    if (!response.ok) return null;
     const blob = await response.blob();
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -133,18 +43,53 @@ async function loadImageAsBase64(url: string): Promise<string | null> {
       reader.onerror = () => resolve(null);
       reader.readAsDataURL(blob);
     });
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 ```
 
-## Archivos modificados
+## Problema 2: Tamano de papel A4 en vez de etiqueta
 
-- `src/pages/PrintLabel.tsx` (unico archivo)
+El visor de PDF integrado de Chrome muestra el PDF con el tamano correcto (100x150mm) pero al abrir el dialogo de impresion resetea a A4. Esto es un comportamiento conocido del visor de Chrome.
 
-## Resultado
+### Solucion
 
-- Click en "Generar PDF" abre una pestana con el PDF nativo
-- El usuario imprime desde el visor de PDF del navegador (Ctrl+P o boton de impresora)
-- El tamano de pagina del PDF coincide exactamente con la etiqueta
-- Funciona con cualquier impresora sin problemas de senales perdidas
+En vez de depender del visor de PDF de Chrome, descargar el PDF directamente como archivo. El usuario luego lo abre con su visor de PDF favorito (Adobe Acrobat, Foxit, etc.) que respeta las dimensiones del documento. Tambien ofrecer una alternativa: un link para abrir en pestana nueva.
+
+### Cambios
+
+En `handlePrint`, reemplazar `window.open(url, '_blank')` con descarga directa + apertura:
+
+```typescript
+// Generar PDF blob
+const pdfBlob = doc.output('blob');
+const url = URL.createObjectURL(pdfBlob);
+
+// Descargar el archivo PDF
+const a = document.createElement('a');
+a.href = url;
+a.download = `etiqueta-${envio.tracking_number}.pdf`;
+document.body.appendChild(a);
+a.click();
+document.body.removeChild(a);
+
+// Tambien abrir en pestana nueva para vista rapida
+window.open(url, '_blank');
+
+toast.success('PDF generado. Si la impresora no detecta el tamano, abra el PDF descargado con Adobe Acrobat.');
+```
+
+### Toast informativo
+
+Agregar un mensaje al usuario indicando que si el tamano no se detecta correctamente en Chrome, abra el PDF descargado con un visor externo como Adobe Acrobat Reader.
+
+## Resumen de cambios
+
+Solo se modifica `src/pages/PrintLabel.tsx`:
+
+1. Importar logo local como fallback
+2. Agregar fallback de logo en handlePrint
+3. Cambiar apertura del PDF: descargar + abrir en pestana
+4. Agregar toast informativo sobre el tamano de papel
 
