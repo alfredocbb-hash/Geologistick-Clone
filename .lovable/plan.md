@@ -1,55 +1,35 @@
 
-# Fix: Query de pedidos e-Commerce falla por join incorrecto con profiles
 
-## Problema
+# Plan: Hacer todas las tablas del sistema mas compactas
 
-La query de pedidos devuelve un error **400** con el mensaje:
+## Objetivo
 
-> "Could not find a relationship between 'envios' and 'profiles' using the hint 'envios_chofer_id_fkey'"
+Reducir el padding y altura de todas las tablas del sistema modificando el componente base `table.tsx`, de modo que las tablas ocupen menos espacio horizontal y vertical, evitando la necesidad de scroll innecesario.
 
-Esto es porque la FK `envios_chofer_id_fkey` apunta a `auth.users`, no a `profiles`. PostgREST no puede hacer un join directo de `envios.chofer_id` a `profiles` usando esa FK.
+## Cambios
 
-**Resultado**: la tabla muestra "No hay pedidos que mostrar" cuando en realidad hay 50 pedidos para hoy.
+### Archivo unico: `src/components/ui/table.tsx`
 
-## Solucion
+Se modifican los estilos por defecto de tres sub-componentes:
 
-Eliminar el join anidado `chofer:profiles!envios_chofer_id_fkey(nombre, apellido)` de ambas queries y obtener los nombres de choferes por separado con una segunda consulta liviana.
+| Componente | Antes | Despues | Efecto |
+|------------|-------|---------|--------|
+| `TableHead` (encabezado) | `h-12 px-4` | `h-9 px-2 text-xs` | Encabezados mas bajos y compactos |
+| `TableCell` (celda) | `p-4` | `px-2 py-2 text-sm` | Celdas con menos padding, texto ligeramente mas chico |
+| `Table` (tabla base) | `text-sm` | `text-sm` | Sin cambio, se mantiene |
 
-### Archivos afectados
+### Resultado
 
-| Archivo | Cambio |
-|---------|--------|
-| `src/pages/ecommerce/Orders.tsx` | Quitar el join de chofer de la query principal. Agregar una segunda query para traer los nombres de choferes a partir de los `chofer_id` encontrados en los envios. |
-| `src/pages/Shipments.tsx` | Mismo cambio: quitar `chofer:profiles!envios_chofer_id_fkey(...)` y obtener nombres con query separada. |
+- Todas las tablas del sistema (Pedidos, Envios, Rutas, Clientes, Choferes, Sucursales, etc.) se veran mas compactas automaticamente.
+- Las columnas ocuparan menos espacio, reduciendo o eliminando el scroll horizontal.
+- No se modifica ninguna pagina individual: el cambio es global desde el componente base.
 
-### Detalle tecnico
+## Detalle tecnico
 
-**En Orders.tsx:**
-
-1. Cambiar la query de:
 ```
-envio:envios!ecommerce_orders_envio_id_fkey(tracking_number, estado, chofer_id, chofer:profiles!envios_chofer_id_fkey(nombre, apellido))
-```
-a:
-```
-envio:envios!ecommerce_orders_envio_id_fkey(tracking_number, estado, chofer_id)
+TableHead: "h-12 px-4"  -->  "h-9 px-2 text-xs"
+TableCell: "p-4"         -->  "px-2 py-2"
 ```
 
-2. Despues de obtener los pedidos, recolectar los `chofer_id` unicos de los envios y hacer una query separada a `profiles` para obtener `nombre` y `apellido`:
-```typescript
-const choferIds = [...new Set(data.map(o => o.envio?.chofer_id).filter(Boolean))];
-const { data: choferProfiles } = await supabase
-  .from('profiles')
-  .select('user_id, nombre, apellido')
-  .in('user_id', choferIds);
-```
+Cualquier pagina que ya pase clases custom via `className` seguira funcionando porque el componente usa `cn()` (merge de clases), permitiendo sobreescribir estos valores donde sea necesario.
 
-3. Mapear los nombres al renderizar usando un `Map<string, string>` de chofer_id a nombre completo.
-
-**En Shipments.tsx:**
-
-1. Quitar `chofer:profiles!envios_chofer_id_fkey(nombre, apellido)` del select.
-2. Agregar query separada a `profiles` con los `chofer_id` unicos.
-3. Renderizar el nombre del chofer usando el mapa.
-
-Este enfoque evita el problema de la FK hacia `auth.users` y funciona correctamente con PostgREST.
