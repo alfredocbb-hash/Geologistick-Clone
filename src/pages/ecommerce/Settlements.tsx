@@ -33,6 +33,7 @@ interface Seller {
   saldo_cuenta_corriente: number;
   tiene_cuenta_corriente: boolean;
   cliente_id: string | null;
+  tarifa_id: string | null;
 }
 
 interface Movement {
@@ -148,7 +149,7 @@ export default function Settlements() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('ecommerce_sellers')
-        .select('id, nombre, saldo_cuenta_corriente, tiene_cuenta_corriente, cliente_id')
+        .select('id, nombre, saldo_cuenta_corriente, tiene_cuenta_corriente, cliente_id, tarifa_id')
         .eq('tenant_id', tenantId)
         .eq('tiene_cuenta_corriente', true)
         .order('nombre');
@@ -302,13 +303,55 @@ export default function Settlements() {
         const uniqueCommon = filteredCommonEnvios.filter(e => !ecommerceIds.has(e.id));
         const allEnviosData = [...ecommerceEnvios, ...uniqueCommon];
 
-        // Fetch zone rates for recalculating $0 envíos
-        const { data: zoneTarifas } = await supabase
-          .from('tarifas')
-          .select('id, precio_base, zona_destino, nombre')
-          .eq('tenant_id', tenantId)
-          .eq('tipo_tarifa', 'zona')
-          .eq('activa', true);
+        // Build a map of seller tarifa_id per envio
+        // For ecommerce envios, find which seller owns them via orders
+        const envioToSellerMap = new Map<string, string>();
+        if (sellerOrders) {
+          // We need seller_id per envio_id — re-fetch with seller_id
+          const { data: ordersWithSeller } = await supabase
+            .from('ecommerce_orders')
+            .select('envio_id, seller_id')
+            .in('seller_id', calcSellers)
+            .not('envio_id', 'is', null)
+            .gte('fecha_entrega_estimada', fechaInicioStr)
+            .lte('fecha_entrega_estimada', fechaFinStr);
+
+          (ordersWithSeller || []).forEach(o => {
+            if (o.envio_id) envioToSellerMap.set(o.envio_id, o.seller_id);
+          });
+        }
+
+        // Collect unique tarifa_ids from selected sellers
+        const sellerTarifaMap = new Map<string, string | null>();
+        selectedSellerObjs.forEach(s => sellerTarifaMap.set(s.id, s.tarifa_id));
+
+        const uniqueTarifaIds = [...new Set(
+          selectedSellerObjs.map(s => s.tarifa_id).filter((id): id is string => !!id)
+        )];
+
+        // Fetch assigned tarifas
+        let tarifasMap = new Map<string, any>();
+        if (uniqueTarifaIds.length > 0) {
+          const { data: tarifasData } = await supabase
+            .from('tarifas')
+            .select('id, precio_base, zona_destino, nombre, tipo_tarifa')
+            .in('id', uniqueTarifaIds);
+
+          (tarifasData || []).forEach(t => tarifasMap.set(t.id, t));
+        }
+
+        // Also fetch all zone tarifas for zone-type matching
+        let allZoneTarifas: any[] = [];
+        const hasZoneTarifa = [...tarifasMap.values()].some(t => t.tipo_tarifa === 'zona');
+        if (hasZoneTarifa) {
+          const { data: zoneTarifas } = await supabase
+            .from('tarifas')
+            .select('id, precio_base, zona_destino, nombre')
+            .eq('tenant_id', tenantId)
+            .eq('tipo_tarifa', 'zona')
+            .eq('activa', true);
+          allZoneTarifas = zoneTarifas || [];
+        }
 
         const normalize = (str: string) => str.toLowerCase().trim()
           .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -318,32 +361,51 @@ export default function Settlements() {
           let precioCalculado = false;
           let zonaMatch: string | null = null;
 
-          if (precioFinal === 0 && e.ciudad_entrega && zoneTarifas && zoneTarifas.length > 0) {
-            const ciudadNorm = normalize(e.ciudad_entrega);
-            for (const tarifa of zoneTarifas) {
-              if (!tarifa.zona_destino) continue;
-              const zonas = tarifa.zona_destino.split(',').map((z: string) => normalize(z));
-              for (const zona of zonas) {
-                if (zona === ciudadNorm || ciudadNorm.includes(zona) || zona.includes(ciudadNorm)) {
-                  precioFinal = tarifa.precio_base || 0;
-                  precioCalculado = true;
-                  zonaMatch = tarifa.nombre || tarifa.zona_destino;
-                  break;
+          // Determine which seller owns this envio
+          const ownerSellerId = envioToSellerMap.get(e.id) || calcSellers[0];
+          const sellerTarifaId = sellerTarifaMap.get(ownerSellerId);
+
+          if (sellerTarifaId) {
+            const tarifa = tarifasMap.get(sellerTarifaId);
+            if (tarifa) {
+              if (tarifa.tipo_tarifa === 'zona' && e.ciudad_entrega && allZoneTarifas.length > 0) {
+                // Zone-based: find matching zone tarifa
+                const ciudadNorm = normalize(e.ciudad_entrega);
+                let matched = false;
+                for (const zt of allZoneTarifas) {
+                  if (!zt.zona_destino) continue;
+                  const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z));
+                  for (const zona of zonas) {
+                    if (zona === ciudadNorm || ciudadNorm.includes(zona) || zona.includes(ciudadNorm)) {
+                      precioFinal = zt.precio_base || 0;
+                      precioCalculado = true;
+                      zonaMatch = zt.nombre || zt.zona_destino;
+                      matched = true;
+                      break;
+                    }
+                  }
+                  if (matched) break;
                 }
-              }
-              if (precioFinal > 0) break;
-            }
-            if (precioFinal === 0) {
-              const fallback = zoneTarifas
-                .filter(t => t.zona_destino && t.zona_destino.split(',').length > 3)
-                .sort((a, b) => (b.zona_destino?.split(',').length || 0) - (a.zona_destino?.split(',').length || 0))[0];
-              if (fallback) {
-                precioFinal = fallback.precio_base || 0;
+                // Fallback: most inclusive zone
+                if (!matched) {
+                  const fallback = allZoneTarifas
+                    .filter(t => t.zona_destino && t.zona_destino.split(',').length > 3)
+                    .sort((a: any, b: any) => (b.zona_destino?.split(',').length || 0) - (a.zona_destino?.split(',').length || 0))[0];
+                  if (fallback) {
+                    precioFinal = fallback.precio_base || 0;
+                    precioCalculado = true;
+                    zonaMatch = `${fallback.nombre} (fallback)`;
+                  }
+                }
+              } else {
+                // Fixed price: use precio_base from assigned tarifa
+                precioFinal = tarifa.precio_base || 0;
                 precioCalculado = true;
-                zonaMatch = `${fallback.nombre} (fallback)`;
+                zonaMatch = tarifa.nombre;
               }
             }
           }
+          // If no tarifa assigned, keep original precio_total as fallback
 
           return {
             id: e.id,
