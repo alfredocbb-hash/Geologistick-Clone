@@ -1,72 +1,59 @@
 
 
-# Correcciones de impresion de etiquetas
+# Etiquetas en esquina superior izquierda (multi-label por hoja A4)
 
 ## Problema
 
-La etiqueta se imprime mal en A4: ocupa 3 hojas porque:
-1. El CSS `@page { size: 15cm 10cm }` no es respetado por todos los navegadores/impresoras y el contenido se desborda en hojas A4
-2. El QR de 150px es demasiado grande para el tamano de la etiqueta
-3. No hay un contenedor que limite la altura del label al tamano declarado
+Actualmente cada etiqueta se centra en la pagina y usa `page-break-after: always`, lo que fuerza 1 etiqueta por hoja. Cuando un envio tiene 4 bultos, se gastan 4 hojas A4 para etiquetas de 10x15cm que podrian caber varias en una sola hoja.
 
 ## Solucion
 
-### Archivo: `src/pages/PrintLabel.tsx`
+Posicionar las etiquetas en la esquina superior izquierda y eliminar el page-break forzado para que el navegador fluya las etiquetas naturalmente en la pagina. En A4 (210x297mm) caben 2 etiquetas de 10cm de ancho por fila y 2 filas de 15cm de alto = 4 etiquetas por hoja.
 
-### 1. Cambiar `@page` para soportar ambos escenarios (linea 296-299)
+## Cambios en `src/pages/PrintLabel.tsx`
 
-En vez de forzar un tamano de pagina custom, usar A4 con la etiqueta centrada y limitada en tamano:
+### 1. Body: quitar centrado (lineas 301-312)
+
+Cambiar de `display: flex; justify-content: center; align-items: center` a un flujo normal alineado arriba a la izquierda:
 
 ```css
-@page {
-  size: auto;
-  margin: 5mm;
+body {
+  font-family: ...;
+  background: white;
+  margin: 0;
+  padding: 0;
 }
 ```
 
-Esto deja que el navegador use el tamano de papel configurado por el usuario (A4, carta, etc.) y la etiqueta se centra dentro.
+### 2. Label: quitar centrado y page-break forzado (lineas 314-329)
 
-### 2. Limitar dimensiones del `.label` (lineas 314-321)
-
-Agregar `max-width` y `max-height` para que cada etiqueta quepa en una sola pagina. Tambien agregar `height` fijo basado en el tamano seleccionado:
+- Quitar `margin: 0 auto` (ya no se centra)
+- Quitar `page-break-after: always` (ya no fuerza 1 por hoja)
+- Agregar `display: inline-block` y `vertical-align: top` para que fluyan lado a lado
+- Mantener `page-break-inside: avoid` para que una etiqueta no se corte entre paginas
 
 ```css
 .label {
   width: ${size.width};
   height: ${size.height};
-  max-width: 100%;
+  max-height: ${size.height};
+  background: white;
+  box-sizing: border-box;
   overflow: hidden;
-  margin: 0 auto;
-  page-break-after: always;
+  display: inline-block;
+  vertical-align: top;
   page-break-inside: avoid;
+  margin: 0 2mm 2mm 0;
 }
 ```
 
-### 3. Reducir tamano del QR en el HTML de impresion (linea 521)
+### 3. @media print: alinear arriba izquierda (lineas 536-557)
 
-El QR de 150px es excesivo para una etiqueta de 10cm de alto. Reducir a un tamano proporcional al label:
-- compact: `qrSize` en CSS limitado a `80px`
-- standard: limitado a `100px`
-- large: limitado a `120px`
-
-Esto se logra cambiando las lineas 520-523:
-```css
-.qr-image {
-  width: ${labelSize === 'compact' ? '80px' : labelSize === 'standard' ? '100px' : '120px'};
-  height: ${labelSize === 'compact' ? '80px' : labelSize === 'standard' ? '100px' : '120px'};
-}
-```
-
-Los valores de `LABEL_SIZES.qrSize` se mantienen para la URL del QR (resolucion de imagen) pero el CSS limita el tamano visual.
-
-### 4. Forzar que cada etiqueta quepa en una pagina (lineas 531-543)
-
-Mejorar los estilos de `@media print`:
 ```css
 @media print {
   html, body {
     width: 100%;
-    height: 100%;
+    height: auto;
     margin: 0;
     padding: 0;
   }
@@ -75,35 +62,29 @@ Mejorar los estilos de `@media print`:
     height: ${size.height};
     max-height: ${size.height};
     overflow: hidden;
-    margin: 0 auto;
-    page-break-after: always;
+    display: inline-block;
+    vertical-align: top;
+    margin: 0 2mm 2mm 0;
     page-break-inside: avoid;
   }
-  .label:last-child {
-    page-break-after: auto;
-  }
 }
 ```
 
-### 5. Ajustar la tabla para que no desborde (lineas 327-336)
+## Resultado esperado
 
-Agregar `table-layout: fixed` para que la tabla respete los limites:
-```css
-.label-table {
-  width: 100%;
-  border-collapse: collapse;
-  border: 2px solid #000;
-  table-layout: fixed;
-}
+En A4 con etiquetas compactas (10x15cm):
+
+```text
++---------------------------+
+| [Etiqueta 1] [Etiqueta 2] |
+|                            |
+| [Etiqueta 3] [Etiqueta 4] |
+|                            |
++---------------------------+
 ```
 
-### Resumen de cambios
+- 1 bulto: 1 etiqueta arriba a la izquierda
+- 2 bultos: 2 etiquetas en la misma fila
+- 3-4 bultos: 2 filas, todas en 1 hoja
+- 5+ bultos: se pasa a la segunda hoja automaticamente
 
-Todos los cambios son en `src/pages/PrintLabel.tsx`:
-- `@page`: de tamano fijo a `size: auto; margin: 5mm`
-- `.label`: agregar `height`, `max-height`, `overflow: hidden`, `page-break-inside: avoid`
-- `.qr-image`: reducir tamano visual de 150px a 100px (standard)
-- `.label-table`: agregar `table-layout: fixed`
-- `@media print`: reforzar limites de tamano y page-break
-
-Con estos cambios cada etiqueta quedara contenida en una sola pagina, centrada, sin importar si el usuario imprime en A4, carta o papel de etiquetas.
