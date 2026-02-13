@@ -14,6 +14,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { jsPDF } from 'jspdf';
+import geologistickLogo from '@/assets/geologistick-logo.png';
 
 type LabelSize = 'compact' | 'standard' | 'large';
 
@@ -120,7 +121,8 @@ const getQRCodeUrl = (data: string, size: number) => {
 // Load an image URL as base64 for PDF embedding
 async function loadImageAsBase64(url: string): Promise<string | null> {
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { mode: 'cors' });
+    if (!response.ok) return null;
     const blob = await response.blob();
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -462,8 +464,11 @@ export default function PrintLabel() {
       const size = LABEL_SIZES[labelSize];
       const bultos = envio.cantidad_bultos || 1;
 
-      // Load logo as base64
-      const logoBase64 = envio.logoUrl ? await loadImageAsBase64(envio.logoUrl) : null;
+      // Load logo as base64 (fallback to local logo)
+      let logoBase64 = envio.logoUrl ? await loadImageAsBase64(envio.logoUrl) : null;
+      if (!logoBase64) {
+        logoBase64 = await loadImageAsBase64(geologistickLogo);
+      }
 
       // Load QR images as base64 for each bulto
       const baseUrl = window.location.origin;
@@ -488,10 +493,21 @@ export default function PrintLabel() {
         drawLabel(doc, envio, i + 1, bultos, tipoConfig, deliveryInfo, logoBase64, qrImages[i], size.widthMm, size.heightMm, size.qrSize);
       }
 
-      // Open PDF in new tab
+      // Download PDF + open in new tab
       const pdfBlob = doc.output('blob');
       const url = URL.createObjectURL(pdfBlob);
+
+      // Force download so user can open with native PDF viewer
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `etiqueta-${envio.tracking_number}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      // Also open in new tab for quick preview
       window.open(url, '_blank');
+      toast.success('PDF descargado. Si el tamaño de papel no es correcto en Chrome, abra el archivo descargado con Adobe Acrobat.');
     } catch (e) {
       console.error('Error generating PDF:', e);
       toast.error('Error al generar el PDF de etiquetas');
