@@ -164,7 +164,6 @@ const generateLabelHTML = (
         <!-- Header -->
         <div class="header">
           <div class="origin-branch">
-            <div class="branch-icon">[S]</div>
             <div>
               <div class="branch-name">${envio.sucursal_origen?.codigo || 'XXX'} - ${envio.sucursal_origen?.nombre || 'Sin sucursal'}</div>
               ${envio.sucursal_origen?.telefono ? `<div class="branch-phone">Tel: ${envio.sucursal_origen.telefono}</div>` : ''}
@@ -173,50 +172,48 @@ const generateLabelHTML = (
           <div class="date">${format(new Date(envio.created_at), 'dd/MM/yyyy', { locale: es })}</div>
         </div>
 
-        <!-- Tracking -->
-        <div class="tracking-section">
-          <div class="tracking-number">${envio.tracking_number}</div>
-          ${envio.es_terciarizado && envio.tracking_externo ? `
-            <div class="external-tracking">
-              <span class="external-label">${
-                envio.empresa_terciarizada === 'correo_argentino' ? 'CORREO ARG.' :
-                envio.empresa_terciarizada === 'oca' ? 'OCA' :
-                envio.empresa_terciarizada === 'andreani' ? 'ANDREANI' :
-                envio.empresa_terciarizada?.toUpperCase() || 'EXTERNO'
-              }:</span>
-              <span class="external-code">${envio.tracking_externo}</span>
-            </div>
-          ` : ''}
-          <div class="bulto-badge">BULTO ${bultoNum} / ${bultos}</div>
-          <div class="tracking-code">${trackingCode}</div>
-        </div>
-
-        <!-- QR Code -->
-        <div class="qr-section">
+        <!-- Tracking + QR side by side -->
+        <div class="tracking-qr-row">
           <div class="qr-container">
             <img src="${qrUrl}" alt="QR Code" class="qr-image" />
+          </div>
+          <div class="tracking-info-col">
+            <div class="tracking-number">${envio.tracking_number}</div>
+            ${envio.es_terciarizado && envio.tracking_externo ? `
+              <div class="external-tracking">
+                <span class="external-label">${
+                  envio.empresa_terciarizada === 'correo_argentino' ? 'CORREO ARG.' :
+                  envio.empresa_terciarizada === 'oca' ? 'OCA' :
+                  envio.empresa_terciarizada === 'andreani' ? 'ANDREANI' :
+                  envio.empresa_terciarizada?.toUpperCase() || 'EXTERNO'
+                }:</span>
+                <span class="external-code">${envio.tracking_externo}</span>
+              </div>
+            ` : ''}
+            <div class="bulto-badge">BULTO ${bultoNum} / ${bultos}</div>
+            <div class="tracking-code">${trackingCode}</div>
           </div>
         </div>
 
         <!-- Service Type Badge -->
         <div class="service-badge">
-          <span class="service-label">${tipoConfig.label}</span>
+          <span class="service-label">★ ${tipoConfig.label} ★</span>
         </div>
 
         <div class="divider"></div>
 
         <!-- Recipient -->
-        <div class="section">
+        <div class="section recipient-box">
           <div class="section-title">DESTINATARIO</div>
           <div class="recipient-name">
-            ${envio.destinatario 
+            ▌ ${envio.destinatario 
               ? `${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}`
               : (envio.nombre_destinatario || 'Sin destinatario')}
           </div>
-          ${envio.dni_destinatario ? `<div class="recipient-dni">DNI: ${envio.dni_destinatario}</div>` : ''}
+          ${envio.dni_destinatario ? `<div class="recipient-dni">▌ DNI: ${envio.dni_destinatario}</div>` : ''}
           ${envio.destinatario?.telefono 
-            ? `<div class="recipient-phone">Tel: ${envio.destinatario.telefono}</div>` 
-            : (envio.whatsapp_destinatario ? `<div class="recipient-phone">Tel: ${envio.whatsapp_destinatario}</div>` : '')}
+            ? `<div class="recipient-phone">▌ Tel: ${envio.destinatario.telefono}</div>` 
+            : (envio.whatsapp_destinatario ? `<div class="recipient-phone">▌ Tel: ${envio.whatsapp_destinatario}</div>` : '')}
         </div>
 
         <div class="divider"></div>
@@ -226,7 +223,7 @@ const generateLabelHTML = (
           <div class="section-title">${deliveryInfo?.type === 'sucursal' ? 'RETIRA EN SUCURSAL' : 'ENTREGAR EN'}</div>
           ${deliveryInfo?.type === 'sucursal' ? `
             <div class="delivery-info">
-              <div class="delivery-icon">[S]</div>
+              <div class="delivery-icon">●</div>
               <div>
                 <div class="delivery-name">${deliveryInfo.nombre}</div>
                 <div class="delivery-address">${deliveryInfo.direccion || ''}</div>
@@ -235,7 +232,7 @@ const generateLabelHTML = (
             </div>
           ` : `
             <div class="delivery-info">
-              <div class="delivery-icon">[D]</div>
+              <div class="delivery-icon">●</div>
               <div>
                 <div class="delivery-address">${deliveryInfo?.direccion || 'Sin dirección'}</div>
                 ${(deliveryInfo?.ciudad || deliveryInfo?.cp) ? `
@@ -270,15 +267,13 @@ const generateLabelHTML = (
 
         <div class="divider"></div>
 
-        <!-- Sender -->
+        <!-- Sender (compact single line) -->
         <div class="section sender-section">
-          <div class="section-title">REMITENTE</div>
-          <div class="sender-name">
-            ${envio.remitente 
+          <div class="sender-compact">
+            REMITENTE: ${envio.remitente 
               ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}`.trim()
-              : (envio.nombre_remitente || 'Sin remitente')}
+              : (envio.nombre_remitente || 'Sin remitente')}${envio.remitente?.telefono ? ` | Tel: ${envio.remitente.telefono}` : ''}
           </div>
-          ${envio.remitente?.telefono ? `<div class="sender-phone">Tel: ${envio.remitente.telefono}</div>` : ''}
         </div>
       </div>
     `;
@@ -307,6 +302,11 @@ const generateLabelHTML = (
       print-color-adjust: exact !important;
       color-adjust: exact !important;
       background: white;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
     }
     
     .label {
@@ -316,11 +316,12 @@ const generateLabelHTML = (
       padding: ${labelSize === 'compact' ? '3mm' : '4mm'};
       display: flex;
       flex-direction: column;
-      border: 3px solid #000000;
+      border: 2px solid #000000;
       box-sizing: border-box;
       page-break-after: always;
       overflow: hidden;
       position: relative;
+      margin: 0 auto;
     }
     
     .watermark {
@@ -351,7 +352,7 @@ const generateLabelHTML = (
       justify-content: space-between;
       align-items: flex-start;
       padding-bottom: 2mm;
-      border-bottom: 2px solid #000000;
+      border-bottom: 1px dashed #000000;
       margin-bottom: 2mm;
     }
     
@@ -359,12 +360,6 @@ const generateLabelHTML = (
       display: flex;
       align-items: flex-start;
       gap: 2mm;
-    }
-    
-    .branch-icon, .delivery-icon {
-      font-size: ${labelSize === 'compact' ? '9px' : '10px'};
-      font-weight: bold;
-      color: #000000;
     }
     
     .branch-name {
@@ -384,9 +379,16 @@ const generateLabelHTML = (
       font-weight: 600;
     }
     
-    .tracking-section {
-      text-align: center;
+    .tracking-qr-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4mm;
       margin-bottom: 2mm;
+    }
+    
+    .tracking-info-col {
+      text-align: center;
     }
     
     .tracking-number {
@@ -438,12 +440,6 @@ const generateLabelHTML = (
       color: #000000;
     }
     
-    .qr-section {
-      display: flex;
-      justify-content: center;
-      margin-bottom: 2mm;
-    }
-    
     .qr-container {
       background: white;
       padding: 2mm;
@@ -451,8 +447,8 @@ const generateLabelHTML = (
     }
     
     .qr-image {
-      width: ${size.qrSize}px;
-      height: ${size.qrSize}px;
+      width: ${Math.round(size.qrSize * 0.7)}px;
+      height: ${Math.round(size.qrSize * 0.7)}px;
       display: block;
     }
     
@@ -460,9 +456,10 @@ const generateLabelHTML = (
       display: flex;
       justify-content: center;
       align-items: center;
-      padding: 3mm 4mm;
-      background-color: #000000;
-      color: #ffffff;
+      padding: 2mm 4mm;
+      background-color: #ffffff;
+      color: #000000;
+      border: 2px solid #000000;
       margin-bottom: 2mm;
     }
     
@@ -473,13 +470,18 @@ const generateLabelHTML = (
     }
     
     .divider {
-      height: 2px;
-      background-color: #000000;
+      border-bottom: 1px dashed #000000;
+      height: 0;
       margin: 1.5mm 0;
     }
     
     .section {
       margin-bottom: 1.5mm;
+    }
+    
+    .recipient-box {
+      border-left: 3px solid #000000;
+      padding-left: 2mm;
     }
     
     .section-title {
@@ -507,6 +509,12 @@ const generateLabelHTML = (
       display: flex;
       align-items: flex-start;
       gap: 2mm;
+    }
+    
+    .delivery-icon {
+      font-size: ${labelSize === 'compact' ? '9px' : '10px'};
+      font-weight: bold;
+      color: #000000;
     }
     
     .delivery-address {
@@ -551,8 +559,8 @@ const generateLabelHTML = (
     }
     
     .price {
-      font-size: ${labelSize === 'compact' ? '10px' : '12px'};
-      font-weight: bold;
+      font-size: ${labelSize === 'compact' ? '14px' : '16px'};
+      font-weight: 900;
       color: #000000;
     }
     
@@ -570,14 +578,24 @@ const generateLabelHTML = (
       margin-bottom: 0;
     }
     
+    .sender-compact {
+      font-size: ${labelSize === 'compact' ? '8px' : '9px'};
+      font-weight: 600;
+      color: #000000;
+    }
+    
     @media print {
       body {
         margin: 0;
         padding: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
       }
       
       .label {
-        margin: 0;
+        margin: 0 auto;
         border-width: 2px;
       }
     }
@@ -814,7 +832,7 @@ export default function PrintLabel() {
           {labels.map((bultoNum) => (
             <div 
               key={bultoNum}
-              className="bg-white border-[3px] border-black p-3 relative"
+              className="bg-white border-2 border-black p-3 relative"
             >
               {/* Watermark for preview */}
               {envio.logoUrl && (
@@ -825,77 +843,70 @@ export default function PrintLabel() {
                 />
               )}
               {/* Header: Sucursal Origen */}
-              <div className="flex items-center justify-between border-b-2 border-black pb-1 mb-2 relative z-10">
-                <div className="flex items-center gap-1">
-                  <span className="font-bold text-xs">[S]</span>
-                  <div>
-                    <p className="font-bold text-xs">
-                      {envio.sucursal_origen?.codigo || 'XXX'} - {envio.sucursal_origen?.nombre || 'Sin sucursal'}
+              <div className="flex items-center justify-between border-b border-dashed border-black pb-1 mb-2 relative z-10">
+                <div>
+                  <p className="font-bold text-xs">
+                    {envio.sucursal_origen?.codigo || 'XXX'} - {envio.sucursal_origen?.nombre || 'Sin sucursal'}
+                  </p>
+                  {envio.sucursal_origen?.telefono && (
+                    <p className="text-[10px]">
+                      Tel: {envio.sucursal_origen.telefono}
                     </p>
-                    {envio.sucursal_origen?.telefono && (
-                      <p className="text-[10px]">
-                        Tel: {envio.sucursal_origen.telefono}
-                      </p>
-                    )}
-                  </div>
+                  )}
                 </div>
                 <div className="text-right text-[10px] font-semibold">
                   {format(new Date(envio.created_at), 'dd/MM/yyyy', { locale: es })}
                 </div>
               </div>
 
-              {/* Tracking Number */}
-              <div className="text-center mb-2">
-                <p className="font-mono font-bold text-sm tracking-wider">
-                  {envio.tracking_number}
-                </p>
-                
-                <div className="inline-flex items-center gap-1 bg-black text-white px-3 py-1 my-1">
-                  <span className="font-bold text-sm">BULTO {bultoNum} / {bultos}</span>
-                </div>
-                
-                <p className="font-mono text-xs">
-                  {envio.tracking_number}-{String(bultoNum).padStart(2, '0')}
-                </p>
-              </div>
-
-              {/* QR Code Preview */}
-              <div className="flex justify-center mb-2">
+              {/* Tracking + QR side by side */}
+              <div className="flex items-center justify-center gap-3 mb-2">
                 <div className="bg-white p-1 border-2 border-black">
                   <img 
-                    src={getQRCodeUrl(`${window.location.origin}/tracking?q=${envio.tracking_number}-${String(bultoNum).padStart(2, '0')}`, 64)}
+                    src={getQRCodeUrl(`${window.location.origin}/tracking?q=${envio.tracking_number}-${String(bultoNum).padStart(2, '0')}`, 48)}
                     alt="QR Code"
-                    className="w-16 h-16"
+                    className="w-12 h-12"
                   />
+                </div>
+                <div className="text-center">
+                  <p className="font-mono font-bold text-sm tracking-wider">
+                    {envio.tracking_number}
+                  </p>
+                  <div className="inline-flex items-center gap-1 bg-black text-white px-3 py-1 my-1">
+                    <span className="font-bold text-sm">BULTO {bultoNum} / {bultos}</span>
+                  </div>
+                  <p className="font-mono text-xs">
+                    {envio.tracking_number}-{String(bultoNum).padStart(2, '0')}
+                  </p>
                 </div>
               </div>
 
               {/* Tipo de Servicio Badge */}
               <div className="flex justify-center mb-2">
-                <div className="px-3 py-1 bg-black text-white text-center text-xs">
-                  <span className="font-bold tracking-wide">{tipoConfig.label}</span>
+                <div className="px-3 py-1 border-2 border-black bg-white text-black text-center text-xs">
+                  <span className="font-bold tracking-wide">★ {tipoConfig.label} ★</span>
                 </div>
               </div>
 
-              <Separator className="my-2 bg-black h-0.5" />
+              <div className="border-b border-dashed border-black my-2" />
 
               {/* Destinatario */}
-              <div className="mb-2">
+              <div className="mb-2 border-l-[3px] border-black pl-2">
                 <p className="text-[10px] font-bold">DESTINATARIO</p>
                 <p className="font-bold text-sm uppercase">
-                  {envio.destinatario 
+                  ▌ {envio.destinatario 
                     ? `${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}`
                     : (envio.nombre_destinatario || 'Sin destinatario')}
                 </p>
                 {envio.dni_destinatario && (
-                  <p className="text-xs">DNI: {envio.dni_destinatario}</p>
+                  <p className="text-xs">▌ DNI: {envio.dni_destinatario}</p>
                 )}
                 {(envio.destinatario?.telefono || envio.whatsapp_destinatario) && (
-                  <p className="text-xs">Tel: {envio.destinatario?.telefono || envio.whatsapp_destinatario}</p>
+                  <p className="text-xs">▌ Tel: {envio.destinatario?.telefono || envio.whatsapp_destinatario}</p>
                 )}
               </div>
 
-              <Separator className="my-2 bg-black h-0.5" />
+              <div className="border-b border-dashed border-black my-2" />
 
               <div className="mb-2">
                 <p className="text-[10px] font-bold">
@@ -903,7 +914,7 @@ export default function PrintLabel() {
                 </p>
                 {deliveryInfo?.type === 'sucursal' ? (
                   <div className="flex items-start gap-1">
-                    <span className="text-xs font-bold">[S]</span>
+                    <span className="text-xs font-bold">●</span>
                     <div>
                       <p className="font-bold text-xs">{deliveryInfo.nombre}</p>
                       <p className="text-xs">{deliveryInfo.direccion}</p>
@@ -914,7 +925,7 @@ export default function PrintLabel() {
                   </div>
                 ) : (
                   <div className="flex items-start gap-1">
-                    <span className="text-xs font-bold">[D]</span>
+                    <span className="text-xs font-bold">●</span>
                     <div>
                       <p className="font-bold text-xs">{deliveryInfo?.direccion || 'Sin dirección'}</p>
                       {(deliveryInfo?.ciudad || deliveryInfo?.cp) && (
@@ -927,7 +938,7 @@ export default function PrintLabel() {
                 )}
               </div>
 
-              <Separator className="my-2 bg-black h-0.5" />
+              <div className="border-b border-dashed border-black my-2" />
 
               {/* Package info and price */}
               <div className="flex justify-between items-center mb-2 text-xs">
@@ -941,7 +952,7 @@ export default function PrintLabel() {
                   <span className="font-bold text-[10px] px-1 py-0 border-2 border-black">
                     {TIPO_PAGO_LABELS[envio.tipo_pago || 'contado']}
                   </span>
-                  <span className="font-bold text-sm">
+                  <span className="font-black text-base">
                     ${envio.precio_total.toLocaleString('es-AR')}
                   </span>
                 </div>
@@ -950,7 +961,7 @@ export default function PrintLabel() {
               {/* Notes */}
               {(envio.descripcion || envio.notas) && (
                 <>
-                  <Separator className="my-2 bg-black h-0.5" />
+                  <div className="border-b border-dashed border-black my-2" />
                   <div className="text-xs">
                     <p className="text-[10px] font-bold">OBS.</p>
                     <p className="line-clamp-2">{envio.descripcion || envio.notas}</p>
@@ -958,19 +969,14 @@ export default function PrintLabel() {
                 </>
               )}
 
-              <Separator className="my-2 bg-black h-0.5" />
+              <div className="border-b border-dashed border-black my-2" />
 
-              {/* Sender */}
-              <div className="text-xs">
-                <p className="text-[10px] font-bold">REMITENTE</p>
-                <p className="font-medium">
-                  {envio.remitente 
-                    ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}`.trim()
-                    : (envio.nombre_remitente || 'Sin remitente')}
-                </p>
-                {envio.remitente?.telefono && (
-                  <p>Tel: {envio.remitente.telefono}</p>
-                )}
+              {/* Sender - compact single line */}
+              <div className="text-xs font-semibold">
+                REMITENTE: {envio.remitente 
+                  ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}`.trim()
+                  : (envio.nombre_remitente || 'Sin remitente')}
+                {envio.remitente?.telefono && ` | Tel: ${envio.remitente.telefono}`}
               </div>
             </div>
           ))}
