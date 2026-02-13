@@ -600,14 +600,6 @@ export default function PrintLabel() {
     
     setIsPrinting(true);
     
-    const printWindow = window.open('', '_blank', 'width=800,height=600');
-    
-    if (!printWindow) {
-      toast.error("Por favor permite ventanas emergentes para imprimir");
-      setIsPrinting(false);
-      return;
-    }
-
     const tipoServicio = envio.tipo_servicio_detalle || 'sucursal_sucursal';
     const tipoConfig = TIPO_SERVICIO_CONFIG[tipoServicio as keyof typeof TIPO_SERVICIO_CONFIG] 
       || TIPO_SERVICIO_CONFIG.sucursal_sucursal;
@@ -644,20 +636,46 @@ export default function PrintLabel() {
 
     const deliveryInfo = getDeliveryAddress();
     const labelHTML = generateLabelHTML(envio, labelSize, tipoConfig, deliveryInfo, envio.logoUrl);
-    
-    printWindow.document.write(labelHTML);
-    printWindow.document.close();
-    
-    printWindow.onload = () => {
+
+    // Crear iframe oculto para impresion mas confiable
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.top = '-10000px';
+    iframe.style.left = '-10000px';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+
+    const iframeDoc = iframe.contentWindow?.document;
+    if (!iframeDoc || !iframe.contentWindow) {
+      toast.error("Error al preparar la impresión");
+      setIsPrinting(false);
+      document.body.removeChild(iframe);
+      return;
+    }
+
+    iframeDoc.open();
+    iframeDoc.write(labelHTML);
+    iframeDoc.close();
+
+    iframe.onload = () => {
       setTimeout(() => {
-        printWindow.print();
-        setIsPrinting(false);
+        iframe.contentWindow?.print();
+        setTimeout(() => {
+          document.body.removeChild(iframe);
+          setIsPrinting(false);
+        }, 1000);
       }, 500);
     };
 
+    // Fallback de seguridad
     setTimeout(() => {
+      if (document.body.contains(iframe)) {
+        document.body.removeChild(iframe);
+      }
       setIsPrinting(false);
-    }, 3000);
+    }, 10000);
   };
 
   if (isLoading) {
