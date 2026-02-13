@@ -121,7 +121,7 @@ export default function Shipments() {
     }
   });
 
-  const { data: envios, isLoading, refetch } = useQuery({
+  const { data: enviosData, isLoading, refetch } = useQuery({
     queryKey: ['envios', statusFilter, dateFrom.toISOString(), dateTo.toISOString()],
     queryFn: async () => {
       const dayStart = startOfDay(dateFrom);
@@ -135,7 +135,7 @@ export default function Shipments() {
           sucursal_destino:sucursales!envios_sucursal_destino_id_fkey(nombre),
           remitente:clientes!envios_remitente_id_fkey(nombre, apellido),
           destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido),
-          chofer:profiles!envios_chofer_id_fkey(nombre, apellido)
+          chofer_id
         `)
         .gte('created_at', dayStart.toISOString())
         .lte('created_at', dayEnd.toISOString())
@@ -147,9 +147,28 @@ export default function Shipments() {
 
       const { data, error } = await query;
       if (error) throw error;
-      return data;
+
+      // Fetch chofer names separately
+      const choferIds = [...new Set((data || []).map((e: any) => e.chofer_id).filter(Boolean))];
+      let choferMap: Record<string, string> = {};
+      if (choferIds.length > 0) {
+        const { data: choferProfiles } = await supabase
+          .from('profiles')
+          .select('user_id, nombre, apellido')
+          .in('user_id', choferIds);
+        if (choferProfiles) {
+          choferMap = Object.fromEntries(
+            choferProfiles.map(p => [p.user_id, `${p.nombre} ${p.apellido || ''}`.trim()])
+          );
+        }
+      }
+
+      return { envios: data, choferMap };
     },
   });
+
+  const envios = enviosData?.envios;
+  const choferMap = enviosData?.choferMap || {};
 
   const { data: stats } = useQuery({
     queryKey: ['envios-stats'],
@@ -393,7 +412,7 @@ export default function Shipments() {
                      </TableCell>
                      <TableCell>
                        <span className="text-xs text-muted-foreground">
-                         {(envio as any).chofer ? `${(envio as any).chofer.nombre} ${(envio as any).chofer.apellido || ''}`.trim() : '-'}
+                         {envio.chofer_id ? (choferMap[envio.chofer_id] || '-') : '-'}
                        </span>
                      </TableCell>
                      <TableCell>
