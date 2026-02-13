@@ -239,8 +239,8 @@ export default function Settlements() {
           .from('envios')
           .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, estado, created_at')
           .in('remitente_id', uniqueClienteIds)
-          .gte('fecha_entrega_estimada', fechaInicioStr)
-          .lte('fecha_entrega_estimada', fechaFinStr)
+          .gte('fecha_entrega', fechaInicioStr)
+          .lte('fecha_entrega', fechaFinStr)
           .is('liquidacion_seller_id', null)
           .order('created_at', { ascending: true });
 
@@ -261,7 +261,9 @@ export default function Settlements() {
             .from('ecommerce_orders')
             .select('envio_id')
             .in('seller_id', relatedSellerIds)
-            .not('envio_id', 'is', null);
+            .not('envio_id', 'is', null)
+            .gte('fecha_entrega_estimada', fechaInicioStr)
+            .lte('fecha_entrega_estimada', fechaFinStr);
 
           const envioIdsFromOrders = (ordersWithEnvio || [])
             .map(o => o.envio_id)
@@ -276,8 +278,8 @@ export default function Settlements() {
                 .from('envios')
                 .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, estado, created_at')
                 .in('id', missingIds)
-                .gte('fecha_entrega_estimada', fechaInicioStr)
-                .lte('fecha_entrega_estimada', fechaFinStr)
+                .gte('fecha_entrega', fechaInicioStr)
+                .lte('fecha_entrega', fechaFinStr)
                 .is('liquidacion_seller_id', null)
                 .order('created_at', { ascending: true });
 
