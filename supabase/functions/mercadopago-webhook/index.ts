@@ -185,6 +185,9 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
+    // Clone request body before consuming it (needed for signature verification later)
+    const clonedReq = req.clone();
+    
     // Basic input validation
     let body: MercadoPagoWebhook;
     try {
@@ -232,7 +235,7 @@ serve(async (req) => {
       );
 
       if (webhookSecret) {
-        const isValid = await verifyMpSignature(req, paymentId, webhookSecret);
+        const isValid = await verifyMpSignature(clonedReq, paymentId, webhookSecret);
         if (isValid === false) {
           console.error("Invalid webhook signature for tenant", existingPayment.tenant_id);
           return new Response(
@@ -307,7 +310,7 @@ serve(async (req) => {
       // Verify signature per tenant if secret is configured
       const webhookSecret = await getWebhookSecretForTenant(supabaseClient, configTenantId, environment);
       if (webhookSecret) {
-        const isValid = await verifyMpSignature(req, paymentId, webhookSecret);
+        const isValid = await verifyMpSignature(clonedReq, paymentId, webhookSecret);
         if (isValid === false) {
           // Signature is explicitly invalid, skip this tenant
           console.warn(`[Strategy 2] Invalid signature for tenant ${configTenantId}, skipping`);
