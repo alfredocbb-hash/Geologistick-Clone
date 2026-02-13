@@ -234,8 +234,56 @@ export default function Settlements() {
 
       // 2. Fetch envíos using fecha_entrega_estimada for all related cliente_ids
       if (uniqueClienteIds.length > 0) {
-        // Query principal: envíos por remitente_id matching any cliente_id
-        const { data: enviosData, error: enviosError } = await supabase
+        // Paso 1: Envíos e-commerce del seller seleccionado
+        const { data: sellerOrders, error: ordersError } = await supabase
+          .from('ecommerce_orders')
+          .select('envio_id')
+          .in('seller_id', calcSellers)
+          .not('envio_id', 'is', null)
+          .gte('fecha_entrega_estimada', fechaInicioStr)
+          .lte('fecha_entrega_estimada', fechaFinStr);
+
+        if (ordersError) throw ordersError;
+
+        const sellerEnvioIds = (sellerOrders || [])
+          .map(o => o.envio_id)
+          .filter((id): id is string => id !== null);
+
+        // Paso 2: Cargar esos envíos
+        let ecommerceEnvios: any[] = [];
+        if (sellerEnvioIds.length > 0) {
+          const { data: ecomEnvios, error: ecomError } = await supabase
+            .from('envios')
+            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, estado, created_at')
+            .in('id', sellerEnvioIds)
+            .is('liquidacion_seller_id', null)
+            .order('created_at', { ascending: true });
+
+          if (ecomError) throw ecomError;
+          ecommerceEnvios = ecomEnvios || [];
+        }
+
+        // Paso 3: Buscar TODOS los envio_ids de ecommerce_orders del mismo cliente_id (para excluirlos de comunes)
+        const { data: allClienteOrders } = await supabase
+          .from('ecommerce_orders')
+          .select('envio_id, seller_id')
+          .in('seller_id', (() => {
+            // Buscar todos los sellers que comparten los mismos cliente_ids
+            const allRelatedSellerIds = sellers
+              .filter(s => s.cliente_id && uniqueClienteIds.includes(s.cliente_id))
+              .map(s => s.id);
+            return allRelatedSellerIds.length > 0 ? allRelatedSellerIds : ['__none__'];
+          })())
+          .not('envio_id', 'is', null);
+
+        const allOrderEnvioIds = new Set(
+          (allClienteOrders || [])
+            .map(o => o.envio_id)
+            .filter((id): id is string => id !== null)
+        );
+
+        // Paso 4: Envíos comunes (sin orden e-commerce) por remitente_id
+        const { data: commonEnvios, error: commonError } = await supabase
           .from('envios')
           .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, estado, created_at')
           .in('remitente_id', uniqueClienteIds)
@@ -244,51 +292,15 @@ export default function Settlements() {
           .is('liquidacion_seller_id', null)
           .order('created_at', { ascending: true });
 
-        if (enviosError) throw enviosError;
+        if (commonError) throw commonError;
 
-        // Fallback: buscar envíos via ecommerce_orders para sellers con mismo cliente_id
-        const { data: relatedSellers } = await supabase
-          .from('ecommerce_sellers')
-          .select('id')
-          .in('cliente_id', uniqueClienteIds)
-          .eq('tenant_id', tenantId);
+        // Filtrar envíos comunes: excluir los que están vinculados a cualquier orden e-commerce
+        const filteredCommonEnvios = (commonEnvios || []).filter(e => !allOrderEnvioIds.has(e.id));
 
-        const relatedSellerIds = (relatedSellers || []).map(s => s.id);
-        let fallbackEnvios: any[] = [];
-
-        if (relatedSellerIds.length > 0) {
-          const { data: ordersWithEnvio } = await supabase
-            .from('ecommerce_orders')
-            .select('envio_id')
-            .in('seller_id', relatedSellerIds)
-            .not('envio_id', 'is', null)
-            .gte('fecha_entrega_estimada', fechaInicioStr)
-            .lte('fecha_entrega_estimada', fechaFinStr);
-
-          const envioIdsFromOrders = (ordersWithEnvio || [])
-            .map(o => o.envio_id)
-            .filter((id): id is string => id !== null);
-
-          if (envioIdsFromOrders.length > 0) {
-            const existingIds = new Set((enviosData || []).map(e => e.id));
-            const missingIds = envioIdsFromOrders.filter(id => !existingIds.has(id));
-
-            if (missingIds.length > 0) {
-              const { data: extraEnvios } = await supabase
-                .from('envios')
-                .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, estado, created_at')
-                .in('id', missingIds)
-                .gte('fecha_entrega', fechaInicioStr)
-                .lte('fecha_entrega', fechaFinStr)
-                .is('liquidacion_seller_id', null)
-                .order('created_at', { ascending: true });
-
-              fallbackEnvios = extraEnvios || [];
-            }
-          }
-        }
-
-        const allEnviosData = [...(enviosData || []), ...fallbackEnvios];
+        // Paso 5: Combinar ambos conjuntos sin duplicados
+        const ecommerceIds = new Set(ecommerceEnvios.map(e => e.id));
+        const uniqueCommon = filteredCommonEnvios.filter(e => !ecommerceIds.has(e.id));
+        const allEnviosData = [...ecommerceEnvios, ...uniqueCommon];
 
         // Fetch zone rates for recalculating $0 envíos
         const { data: zoneTarifas } = await supabase
