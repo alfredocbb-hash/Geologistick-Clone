@@ -26,19 +26,19 @@ const LABEL_SIZES = {
     name: "Compacta (10×15 cm)",
     width: "10cm",
     height: "15cm",
-    qrSize: 80,
+    qrSize: 120,
   },
   standard: {
     name: "Estándar (15×10 cm)",
     width: "15cm",
     height: "10cm",
-    qrSize: 100,
+    qrSize: 150,
   },
   large: {
     name: "Grande (20×10 cm)",
     width: "20cm",
     height: "10cm",
-    qrSize: 120,
+    qrSize: 180,
   },
 };
 
@@ -96,10 +96,8 @@ interface Envio {
   whatsapp_destinatario: string | null;
   created_at: string;
   tenant_id: string | null;
-  // Direct text fields for e-commerce shipments
   nombre_remitente: string | null;
   nombre_destinatario: string | null;
-  // Third-party shipment fields
   es_terciarizado: boolean | null;
   empresa_terciarizada: string | null;
   tracking_externo: string | null;
@@ -132,7 +130,6 @@ interface Envio {
     direccion: string;
     ciudad: string | null;
   } | null;
-  // Branding for watermark
   logoUrl?: string | null;
 }
 
@@ -152,129 +149,133 @@ const generateLabelHTML = (
   const size = LABEL_SIZES[labelSize];
   const bultos = envio.cantidad_bultos || 1;
   const baseUrl = window.location.origin;
+  const destCiudad = envio.ciudad_entrega || envio.sucursal_destino?.ciudad || '';
+  const letraZona = destCiudad ? destCiudad.charAt(0).toUpperCase() : '';
   
   const labelsHTML = Array.from({ length: bultos }, (_, i) => {
     const bultoNum = i + 1;
     const trackingCode = `${envio.tracking_number}-${String(bultoNum).padStart(2, '0')}`;
     const qrUrl = getQRCodeUrl(`${baseUrl}/tracking?q=${trackingCode}`, size.qrSize);
-    
+    const docCliente = envio.codigo_cliente_externo || envio.dni_remitente || '-';
+    const operativa = envio.sucursal_destino?.codigo || '-';
+    const pesoStr = envio.peso_kg ? envio.peso_kg.toFixed(2).replace('.', ',') : '0,00';
+    const destinatarioNombre = envio.destinatario 
+      ? `${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}`.trim()
+      : (envio.nombre_destinatario || 'Sin destinatario');
+    const destinatarioTel = envio.destinatario?.telefono || envio.whatsapp_destinatario || '';
+    const remitenteNombre = envio.remitente 
+      ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}`.trim()
+      : (envio.nombre_remitente || 'Sin remitente');
+    const remitenteTel = envio.remitente?.telefono || '';
+    const direccionEntrega = deliveryInfo?.direccion || 'Sin dirección';
+    const cpEntrega = deliveryInfo?.cp || envio.cp_entrega || '';
+    const ciudadEntrega = deliveryInfo?.ciudad || envio.ciudad_entrega || '';
+    const provinciaEntrega = envio.provincia || '';
+    const observaciones = envio.descripcion || envio.notas || '';
+    const tipoPagoLabel = TIPO_PAGO_LABELS[envio.tipo_pago || 'contado'];
+    const precioStr = `$${envio.precio_total.toLocaleString('es-AR')}`;
+
     return `
       <div class="label">
-        ${logoUrl ? `<img src="${logoUrl}" class="watermark" alt="" />` : ''}
-        <!-- Header -->
-        <div class="header">
-          <div class="origin-branch">
-            <div>
-              <div class="branch-name">${envio.sucursal_origen?.codigo || 'XXX'} - ${envio.sucursal_origen?.nombre || 'Sin sucursal'}</div>
-              ${envio.sucursal_origen?.telefono ? `<div class="branch-phone">Tel: ${envio.sucursal_origen.telefono}</div>` : ''}
-            </div>
-          </div>
-          <div class="date">${format(new Date(envio.created_at), 'dd/MM/yyyy', { locale: es })}</div>
-        </div>
-
-        <!-- Tracking + QR side by side -->
-        <div class="tracking-qr-row">
-          <div class="qr-container">
-            <img src="${qrUrl}" alt="QR Code" class="qr-image" />
-          </div>
-          <div class="tracking-info-col">
-            <div class="tracking-number">${envio.tracking_number}</div>
-            ${envio.es_terciarizado && envio.tracking_externo ? `
-              <div class="external-tracking">
-                <span class="external-label">${
-                  envio.empresa_terciarizada === 'correo_argentino' ? 'CORREO ARG.' :
-                  envio.empresa_terciarizada === 'oca' ? 'OCA' :
-                  envio.empresa_terciarizada === 'andreani' ? 'ANDREANI' :
-                  envio.empresa_terciarizada?.toUpperCase() || 'EXTERNO'
-                }:</span>
-                <span class="external-code">${envio.tracking_externo}</span>
+        <table class="label-table">
+          <!-- Fila 1: Header con logo y tracking -->
+          <tr>
+            <td class="logo-cell" rowspan="2">
+              ${logoUrl ? `<img src="${logoUrl}" class="tenant-logo" alt="" />` : '<div class="logo-placeholder"></div>'}
+            </td>
+            <td class="tracking-cell" colspan="3">
+              <div class="tracking-number">${envio.tracking_number}</div>
+              <div class="tracking-code">${trackingCode}</div>
+            </td>
+          </tr>
+          <!-- Fila 2: Fecha -->
+          <tr>
+            <td class="date-cell" colspan="3">
+              ${format(new Date(envio.created_at), 'dd/MM/yyyy', { locale: es })}
+            </td>
+          </tr>
+          <!-- Fila 3: Grilla 4 columnas -->
+          <tr>
+            <td class="header-cell">DOC. CLIENTE</td>
+            <td class="header-cell">BULTO</td>
+            <td class="header-cell">OPERATIVA</td>
+            <td class="header-cell">PESO</td>
+          </tr>
+          <tr>
+            <td class="data-cell">${docCliente}</td>
+            <td class="data-cell">${bultoNum} / ${bultos}</td>
+            <td class="data-cell">${operativa}</td>
+            <td class="data-cell">${pesoStr} kg</td>
+          </tr>
+          <!-- Fila 4: Sucursal destino -->
+          <tr>
+            <td class="header-cell" colspan="2">SUCURSAL DESTINO</td>
+            <td class="dest-code-cell" colspan="1">
+              <span class="dest-code">${envio.sucursal_destino?.codigo || '-'}</span>
+            </td>
+            <td class="zona-cell">
+              <span class="zona-letter">${letraZona}</span>
+            </td>
+          </tr>
+          <tr>
+            <td class="data-cell dest-name-cell" colspan="4">
+              ${envio.sucursal_destino?.nombre || '-'}
+            </td>
+          </tr>
+          <!-- Fila 5: Tipo de servicio -->
+          <tr>
+            <td class="service-cell" colspan="4">
+              ★ ${tipoConfig.label} ★
+            </td>
+          </tr>
+          <!-- Fila 6: Destinatario -->
+          <tr>
+            <td class="header-cell header-center" colspan="4">DESTINATARIO</td>
+          </tr>
+          <tr>
+            <td class="data-cell dest-data" colspan="4">
+              <div class="dest-line"><strong>${destinatarioNombre}</strong>${envio.dni_destinatario ? ` - DNI: ${envio.dni_destinatario}` : ''}</div>
+              <div class="dest-line">${direccionEntrega}${cpEntrega ? ` (${cpEntrega})` : ''}</div>
+              <div class="dest-line">${ciudadEntrega}${provinciaEntrega ? ` - ${provinciaEntrega}` : ''}${destinatarioTel ? ` - Tel: ${destinatarioTel}` : ''}</div>
+            </td>
+          </tr>
+          <!-- Fila 7: Observaciones + QR -->
+          <tr>
+            <td class="header-cell" colspan="4">OBSERVACIONES</td>
+          </tr>
+          <tr>
+            <td class="obs-qr-cell" colspan="4">
+              <div class="obs-qr-row">
+                <div class="obs-content">
+                  <div class="obs-text">${observaciones || '-'}</div>
+                  <div class="obs-payment">
+                    <span class="payment-badge">${tipoPagoLabel}</span>
+                    <span class="price-tag">${precioStr}</span>
+                  </div>
+                </div>
+                <div class="qr-container">
+                  <img src="${qrUrl}" alt="QR" class="qr-image" />
+                </div>
               </div>
-            ` : ''}
-            <div class="bulto-badge">BULTO ${bultoNum} / ${bultos}</div>
-            <div class="tracking-code">${trackingCode}</div>
-          </div>
-        </div>
-
-        <!-- Service Type Badge -->
-        <div class="service-badge">
-          <span class="service-label">★ ${tipoConfig.label} ★</span>
-        </div>
-
-        <div class="divider"></div>
-
-        <!-- Recipient -->
-        <div class="section recipient-box">
-          <div class="section-title">DESTINATARIO</div>
-          <div class="recipient-name">
-            ▌ ${envio.destinatario 
-              ? `${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}`
-              : (envio.nombre_destinatario || 'Sin destinatario')}
-          </div>
-          ${envio.dni_destinatario ? `<div class="recipient-dni">▌ DNI: ${envio.dni_destinatario}</div>` : ''}
-          ${envio.destinatario?.telefono 
-            ? `<div class="recipient-phone">▌ Tel: ${envio.destinatario.telefono}</div>` 
-            : (envio.whatsapp_destinatario ? `<div class="recipient-phone">▌ Tel: ${envio.whatsapp_destinatario}</div>` : '')}
-        </div>
-
-        <div class="divider"></div>
-
-        <!-- Delivery Address -->
-        <div class="section">
-          <div class="section-title">${deliveryInfo?.type === 'sucursal' ? 'RETIRA EN SUCURSAL' : 'ENTREGAR EN'}</div>
-          ${deliveryInfo?.type === 'sucursal' ? `
-            <div class="delivery-info">
-              <div class="delivery-icon">●</div>
-              <div>
-                <div class="delivery-name">${deliveryInfo.nombre}</div>
-                <div class="delivery-address">${deliveryInfo.direccion || ''}</div>
-                ${deliveryInfo.ciudad ? `<div class="delivery-city">${deliveryInfo.ciudad}</div>` : ''}
-              </div>
-            </div>
-          ` : `
-            <div class="delivery-info">
-              <div class="delivery-icon">●</div>
-              <div>
-                <div class="delivery-address">${deliveryInfo?.direccion || 'Sin dirección'}</div>
-                ${(deliveryInfo?.ciudad || deliveryInfo?.cp) ? `
-                  <div class="delivery-city">${deliveryInfo.ciudad || ''} ${deliveryInfo.cp ? `CP: ${deliveryInfo.cp}` : ''}</div>
-                ` : ''}
-              </div>
-            </div>
-          `}
-        </div>
-
-        <div class="divider"></div>
-
-        <!-- Package Info and Price -->
-        <div class="package-row">
-          <div class="package-info">
-            <span>${bultos} ${bultos === 1 ? 'bulto' : 'bultos'}</span>
-            ${envio.peso_kg ? `<span>${envio.peso_kg} kg</span>` : ''}
-          </div>
-          <div class="price-info">
-            <span class="payment-type">${TIPO_PAGO_LABELS[envio.tipo_pago || 'contado']}</span>
-            <span class="price">$${envio.precio_total.toLocaleString('es-AR')}</span>
-          </div>
-        </div>
-
-        ${(envio.descripcion || envio.notas) ? `
-          <div class="divider"></div>
-          <div class="section">
-            <div class="section-title">OBS.</div>
-            <div class="notes">${envio.descripcion || envio.notas}</div>
-          </div>
-        ` : ''}
-
-        <div class="divider"></div>
-
-        <!-- Sender (compact single line) -->
-        <div class="section sender-section">
-          <div class="sender-compact">
-            REMITENTE: ${envio.remitente 
-              ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}`.trim()
-              : (envio.nombre_remitente || 'Sin remitente')}${envio.remitente?.telefono ? ` | Tel: ${envio.remitente.telefono}` : ''}
-          </div>
-        </div>
+            </td>
+          </tr>
+          <!-- Fila 8: Sucursal origen -->
+          <tr>
+            <td class="header-cell">SUCURSAL ORIGEN</td>
+            <td class="data-cell" colspan="3">
+              <strong>${envio.sucursal_origen?.codigo || '-'}</strong> - ${envio.sucursal_origen?.nombre || 'Sin sucursal'}
+            </td>
+          </tr>
+          <!-- Fila 9: Remitente -->
+          <tr>
+            <td class="header-cell header-center" colspan="4">REMITENTE</td>
+          </tr>
+          <tr>
+            <td class="data-cell remitente-data" colspan="4">
+              ${remitenteNombre}${remitenteTel ? ` - Tel: ${remitenteTel}` : ''}
+            </td>
+          </tr>
+        </table>
       </div>
     `;
   }).join('\n');
@@ -285,7 +286,8 @@ const generateLabelHTML = (
   <meta charset="UTF-8">
   <title>Etiquetas - ${envio.tracking_number}</title>
   <style>
-    * {
+    *
+    {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
@@ -311,277 +313,219 @@ const generateLabelHTML = (
     
     .label {
       width: ${size.width};
-      height: ${size.height};
       background: white;
-      padding: ${labelSize === 'compact' ? '3mm' : '4mm'};
-      display: flex;
-      flex-direction: column;
-      border: 2px solid #000000;
       box-sizing: border-box;
       page-break-after: always;
       overflow: hidden;
-      position: relative;
       margin: 0 auto;
-    }
-    
-    .watermark {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 60%;
-      height: auto;
-      max-height: 60%;
-      object-fit: contain;
-      opacity: 0.06;
-      pointer-events: none;
-      z-index: 0;
-    }
-    
-    .label > *:not(.watermark) {
-      position: relative;
-      z-index: 1;
     }
     
     .label:last-child {
       page-break-after: auto;
     }
     
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      padding-bottom: 2mm;
-      border-bottom: 1px dashed #000000;
-      margin-bottom: 2mm;
+    .label-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 2px solid #000;
     }
     
-    .origin-branch {
-      display: flex;
-      align-items: flex-start;
-      gap: 2mm;
+    .label-table td {
+      border: 1px solid #000;
+      vertical-align: middle;
     }
     
-    .branch-name {
-      font-size: ${labelSize === 'compact' ? '9px' : '10px'};
+    .header-cell {
+      background: #000;
+      color: #fff;
+      font-size: ${labelSize === 'compact' ? '7px' : '8px'};
       font-weight: bold;
-      color: #000000;
+      padding: 1mm 2mm;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
     }
     
-    .branch-phone {
-      font-size: ${labelSize === 'compact' ? '7px' : '8px'};
-      color: #000000;
-    }
-    
-    .date {
-      font-size: ${labelSize === 'compact' ? '7px' : '8px'};
-      color: #000000;
-      font-weight: 600;
-    }
-    
-    .tracking-qr-row {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 4mm;
-      margin-bottom: 2mm;
-    }
-    
-    .tracking-info-col {
+    .header-center {
       text-align: center;
+    }
+    
+    .data-cell {
+      background: #fff;
+      color: #000;
+      font-size: ${labelSize === 'compact' ? '10px' : '12px'};
+      font-weight: bold;
+      padding: 1mm 2mm;
+    }
+    
+    .logo-cell {
+      width: 30%;
+      padding: 2mm;
+      text-align: center;
+      vertical-align: middle;
+    }
+    
+    .tenant-logo {
+      max-width: 25mm;
+      max-height: 15mm;
+      object-fit: contain;
+    }
+    
+    .logo-placeholder {
+      width: 25mm;
+      height: 10mm;
+    }
+    
+    .tracking-cell {
+      text-align: right;
+      padding: 2mm 3mm;
+      background: #fff;
     }
     
     .tracking-number {
       font-family: monospace;
-      font-size: ${labelSize === 'compact' ? '12px' : '14px'};
+      font-size: ${labelSize === 'compact' ? '14px' : '18px'};
       font-weight: bold;
       letter-spacing: 1px;
-      color: #000000;
-    }
-    
-    .bulto-badge {
-      display: inline-block;
-      background-color: #000000;
-      color: #ffffff;
-      padding: 2mm 4mm;
-      font-size: ${labelSize === 'compact' ? '9px' : '10px'};
-      font-weight: bold;
-      margin: 2mm 0;
-      letter-spacing: 0.5px;
+      color: #000;
     }
     
     .tracking-code {
       font-family: monospace;
-      font-size: ${labelSize === 'compact' ? '8px' : '9px'};
-      color: #000000;
+      font-size: ${labelSize === 'compact' ? '9px' : '10px'};
+      color: #555;
+      margin-top: 1mm;
     }
     
-    .external-tracking {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 2mm;
-      margin: 1mm 0;
-      padding: 1mm 2mm;
-      background-color: #f0f0f0;
-      border: 1px solid #000000;
-    }
-    
-    .external-label {
+    .date-cell {
+      text-align: right;
+      padding: 1mm 3mm;
       font-size: ${labelSize === 'compact' ? '7px' : '8px'};
-      font-weight: bold;
-      color: #000000;
+      font-weight: 600;
+      color: #000;
+      background: #fff;
     }
     
-    .external-code {
-      font-family: monospace;
+    .dest-code-cell {
+      text-align: center;
+      padding: 1mm 2mm;
+      background: #fff;
+    }
+    
+    .dest-code {
+      font-size: ${labelSize === 'compact' ? '16px' : '20px'};
+      font-weight: 900;
+      color: #000;
+    }
+    
+    .zona-cell {
+      text-align: center;
+      padding: 1mm;
+      width: 12mm;
+    }
+    
+    .zona-letter {
+      display: inline-block;
+      background: #000;
+      color: #fff;
+      font-size: ${labelSize === 'compact' ? '16px' : '20px'};
+      font-weight: 900;
+      padding: 1mm 2mm;
+      min-width: 8mm;
+      text-align: center;
+    }
+    
+    .dest-name-cell {
       font-size: ${labelSize === 'compact' ? '9px' : '10px'};
-      font-weight: bold;
-      color: #000000;
+      font-weight: 600;
     }
     
-    .qr-container {
-      background: white;
+    .service-cell {
+      text-align: center;
+      font-size: ${labelSize === 'compact' ? '10px' : '12px'};
+      font-weight: bold;
       padding: 2mm;
-      border: 2px solid #000000;
-    }
-    
-    .qr-image {
-      width: ${Math.round(size.qrSize * 0.7)}px;
-      height: ${Math.round(size.qrSize * 0.7)}px;
-      display: block;
-    }
-    
-    .service-badge {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      padding: 2mm 4mm;
-      background-color: #ffffff;
-      color: #000000;
-      border: 2px solid #000000;
-      margin-bottom: 2mm;
-    }
-    
-    .service-label {
-      font-size: ${labelSize === 'compact' ? '9px' : '10px'};
-      font-weight: bold;
+      background: #fff;
+      color: #000;
       letter-spacing: 1px;
     }
     
-    .divider {
-      border-bottom: 1px dashed #000000;
-      height: 0;
-      margin: 1.5mm 0;
+    .dest-data {
+      padding: 2mm 3mm;
     }
     
-    .section {
-      margin-bottom: 1.5mm;
-    }
-    
-    .recipient-box {
-      border-left: 3px solid #000000;
-      padding-left: 2mm;
-    }
-    
-    .section-title {
-      font-size: ${labelSize === 'compact' ? '7px' : '8px'};
-      font-weight: bold;
-      color: #000000;
-      text-transform: uppercase;
-      margin-bottom: 1mm;
-      letter-spacing: 0.5px;
-    }
-    
-    .recipient-name, .sender-name, .delivery-name {
-      font-size: ${labelSize === 'compact' ? '10px' : '11px'};
-      font-weight: bold;
-      color: #000000;
-      text-transform: uppercase;
-    }
-    
-    .recipient-dni, .recipient-phone, .sender-phone {
-      font-size: ${labelSize === 'compact' ? '8px' : '9px'};
-      color: #000000;
-    }
-    
-    .delivery-info {
-      display: flex;
-      align-items: flex-start;
-      gap: 2mm;
-    }
-    
-    .delivery-icon {
+    .dest-line {
       font-size: ${labelSize === 'compact' ? '9px' : '10px'};
-      font-weight: bold;
-      color: #000000;
+      line-height: 1.5;
+      color: #000;
     }
     
-    .delivery-address {
-      font-size: ${labelSize === 'compact' ? '9px' : '10px'};
-      font-weight: bold;
-      color: #000000;
+    .dest-line strong {
+      font-size: ${labelSize === 'compact' ? '11px' : '13px'};
     }
     
-    .delivery-city {
-      font-size: ${labelSize === 'compact' ? '7px' : '8px'};
-      color: #000000;
-      font-weight: 600;
+    .obs-qr-cell {
+      padding: 0;
+      background: #fff;
     }
     
-    .package-row {
+    .obs-qr-row {
       display: flex;
+      align-items: stretch;
+    }
+    
+    .obs-content {
+      flex: 1;
+      padding: 2mm 3mm;
+      display: flex;
+      flex-direction: column;
       justify-content: space-between;
-      align-items: center;
-      margin: 1.5mm 0;
     }
     
-    .package-info {
-      display: flex;
-      gap: 3mm;
+    .obs-text {
       font-size: ${labelSize === 'compact' ? '8px' : '9px'};
-      color: #000000;
-      font-weight: 600;
+      color: #000;
+      line-height: 1.4;
+      margin-bottom: 2mm;
     }
     
-    .price-info {
+    .obs-payment {
       display: flex;
       align-items: center;
-      gap: 2mm;
+      gap: 3mm;
     }
     
-    .payment-type {
+    .payment-badge {
       font-size: ${labelSize === 'compact' ? '7px' : '8px'};
       font-weight: bold;
       padding: 1mm 2mm;
-      border: 2px solid #000000;
-      color: #000000;
+      border: 1.5px solid #000;
+      color: #000;
     }
     
-    .price {
+    .price-tag {
       font-size: ${labelSize === 'compact' ? '14px' : '16px'};
       font-weight: 900;
-      color: #000000;
+      color: #000;
     }
     
-    .notes {
-      font-size: ${labelSize === 'compact' ? '7px' : '8px'};
-      color: #000000;
-      line-height: 1.3;
-      overflow: hidden;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
+    .qr-container {
+      border-left: 1px solid #000;
+      padding: 2mm;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #fff;
     }
     
-    .sender-section {
-      margin-bottom: 0;
+    .qr-image {
+      width: ${size.qrSize}px;
+      height: ${size.qrSize}px;
+      display: block;
     }
     
-    .sender-compact {
-      font-size: ${labelSize === 'compact' ? '8px' : '9px'};
-      font-weight: 600;
-      color: #000000;
+    .remitente-data {
+      font-size: ${labelSize === 'compact' ? '9px' : '10px'};
+      text-align: center;
     }
     
     @media print {
@@ -596,7 +540,6 @@ const generateLabelHTML = (
       
       .label {
         margin: 0 auto;
-        border-width: 2px;
       }
     }
   </style>
@@ -633,7 +576,7 @@ export default function PrintLabel() {
       
       if (error) throw error;
       
-      // Fetch tenant branding for watermark
+      // Fetch tenant branding for logo
       let logoUrl: string | null = null;
       if (data.tenant_id) {
         const { data: branding } = await supabase
@@ -666,9 +609,7 @@ export default function PrintLabel() {
     const tipoConfig = TIPO_SERVICIO_CONFIG[tipoServicio as keyof typeof TIPO_SERVICIO_CONFIG] 
       || TIPO_SERVICIO_CONFIG.sucursal_sucursal;
 
-    // Determine delivery address
     const getDeliveryAddress = () => {
-      // Include domicilio_domicilio for e-commerce shipments
       if (['sucursal_puerta', 'puerta_puerta', 'domicilio_domicilio'].includes(tipoServicio)) {
         if (envio.direccion_entrega) {
           return {
@@ -704,7 +645,6 @@ export default function PrintLabel() {
     printWindow.document.write(labelHTML);
     printWindow.document.close();
     
-    // Wait for images to load, then print
     printWindow.onload = () => {
       setTimeout(() => {
         printWindow.print();
@@ -712,7 +652,6 @@ export default function PrintLabel() {
       }, 500);
     };
 
-    // Handle case where onload doesn't fire
     setTimeout(() => {
       setIsPrinting(false);
     }, 3000);
@@ -748,9 +687,7 @@ export default function PrintLabel() {
   const bultos = envio.cantidad_bultos || 1;
   const labels = Array.from({ length: bultos }, (_, i) => i + 1);
 
-  // Determine delivery address for preview
   const getDeliveryAddress = () => {
-    // Include domicilio_domicilio for e-commerce shipments
     if (['sucursal_puerta', 'puerta_puerta', 'domicilio_domicilio'].includes(tipoServicio)) {
       if (envio.direccion_entrega) {
         return {
@@ -781,6 +718,8 @@ export default function PrintLabel() {
   };
 
   const deliveryInfo = getDeliveryAddress();
+  const destCiudad = envio.ciudad_entrega || envio.sucursal_destino?.ciudad || '';
+  const letraZona = destCiudad ? destCiudad.charAt(0).toUpperCase() : '';
 
   return (
     <div className="min-h-screen bg-background">
@@ -822,164 +761,133 @@ export default function PrintLabel() {
         </div>
       </div>
 
-      {/* Preview - Just for visual reference */}
+      {/* Preview */}
       <div className="p-4">
         <p className="text-sm text-muted-foreground mb-4">
           Vista previa de las etiquetas. Al imprimir se abrirá una ventana nueva con las etiquetas optimizadas.
         </p>
         
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {labels.map((bultoNum) => (
-            <div 
-              key={bultoNum}
-              className="bg-white border-2 border-black p-3 relative"
-            >
-              {/* Watermark for preview */}
-              {envio.logoUrl && (
-                <img 
-                  src={envio.logoUrl} 
-                  alt="" 
-                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[60%] h-auto max-h-[60%] object-contain opacity-[0.06] pointer-events-none z-0"
-                />
-              )}
-              {/* Header: Sucursal Origen */}
-              <div className="flex items-center justify-between border-b border-dashed border-black pb-1 mb-2 relative z-10">
-                <div>
-                  <p className="font-bold text-xs">
-                    {envio.sucursal_origen?.codigo || 'XXX'} - {envio.sucursal_origen?.nombre || 'Sin sucursal'}
-                  </p>
-                  {envio.sucursal_origen?.telefono && (
-                    <p className="text-[10px]">
-                      Tel: {envio.sucursal_origen.telefono}
+          {labels.map((bultoNum) => {
+            const trackingCode = `${envio.tracking_number}-${String(bultoNum).padStart(2, '0')}`;
+            const docCliente = envio.codigo_cliente_externo || envio.dni_remitente || '-';
+            const operativa = envio.sucursal_destino?.codigo || '-';
+            const pesoStr = envio.peso_kg ? envio.peso_kg.toFixed(2).replace('.', ',') : '0,00';
+            const destinatarioNombre = envio.destinatario 
+              ? `${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}`.trim()
+              : (envio.nombre_destinatario || 'Sin destinatario');
+            const destinatarioTel = envio.destinatario?.telefono || envio.whatsapp_destinatario || '';
+            const remitenteNombre = envio.remitente 
+              ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}`.trim()
+              : (envio.nombre_remitente || 'Sin remitente');
+            const remitenteTel = envio.remitente?.telefono || '';
+            const direccionEntrega = deliveryInfo?.direccion || 'Sin dirección';
+            const cpEntrega = deliveryInfo?.cp || envio.cp_entrega || '';
+            const ciudadEntrega = deliveryInfo?.ciudad || envio.ciudad_entrega || '';
+            const provinciaEntrega = envio.provincia || '';
+            const observaciones = envio.descripcion || envio.notas || '';
+            const tipoPagoLabel = TIPO_PAGO_LABELS[envio.tipo_pago || 'contado'];
+
+            return (
+              <div key={bultoNum} className="bg-white border-2 border-black overflow-hidden">
+                {/* Fila 1: Header - Logo + Tracking */}
+                <div className="grid grid-cols-[30%_1fr] border-b border-black">
+                  <div className="border-r border-black p-2 flex items-center justify-center">
+                    {envio.logoUrl ? (
+                      <img src={envio.logoUrl} alt="" className="max-w-[80px] max-h-[40px] object-contain" />
+                    ) : (
+                      <div className="w-[60px] h-[30px]" />
+                    )}
+                  </div>
+                  <div className="p-2 text-right">
+                    <p className="font-mono font-bold text-lg tracking-wider">{envio.tracking_number}</p>
+                    <p className="font-mono text-[10px] text-gray-500">{trackingCode}</p>
+                    <p className="text-[10px] font-semibold mt-0.5">
+                      {format(new Date(envio.created_at), 'dd/MM/yyyy', { locale: es })}
                     </p>
-                  )}
-                </div>
-                <div className="text-right text-[10px] font-semibold">
-                  {format(new Date(envio.created_at), 'dd/MM/yyyy', { locale: es })}
-                </div>
-              </div>
-
-              {/* Tracking + QR side by side */}
-              <div className="flex items-center justify-center gap-3 mb-2">
-                <div className="bg-white p-1 border-2 border-black">
-                  <img 
-                    src={getQRCodeUrl(`${window.location.origin}/tracking?q=${envio.tracking_number}-${String(bultoNum).padStart(2, '0')}`, 48)}
-                    alt="QR Code"
-                    className="w-12 h-12"
-                  />
-                </div>
-                <div className="text-center">
-                  <p className="font-mono font-bold text-sm tracking-wider">
-                    {envio.tracking_number}
-                  </p>
-                  <div className="inline-flex items-center gap-1 bg-black text-white px-3 py-1 my-1">
-                    <span className="font-bold text-sm">BULTO {bultoNum} / {bultos}</span>
                   </div>
-                  <p className="font-mono text-xs">
-                    {envio.tracking_number}-{String(bultoNum).padStart(2, '0')}
-                  </p>
                 </div>
-              </div>
 
-              {/* Tipo de Servicio Badge */}
-              <div className="flex justify-center mb-2">
-                <div className="px-3 py-1 border-2 border-black bg-white text-black text-center text-xs">
-                  <span className="font-bold tracking-wide">★ {tipoConfig.label} ★</span>
+                {/* Fila 2: Grilla 4 columnas */}
+                <div className="grid grid-cols-4">
+                  <div className="bg-black text-white text-[7px] font-bold uppercase px-2 py-0.5 border-r border-black">DOC. CLIENTE</div>
+                  <div className="bg-black text-white text-[7px] font-bold uppercase px-2 py-0.5 border-r border-black">BULTO</div>
+                  <div className="bg-black text-white text-[7px] font-bold uppercase px-2 py-0.5 border-r border-black">OPERATIVA</div>
+                  <div className="bg-black text-white text-[7px] font-bold uppercase px-2 py-0.5">PESO</div>
                 </div>
-              </div>
+                <div className="grid grid-cols-4 border-b border-black">
+                  <div className="text-xs font-bold px-2 py-1 border-r border-black">{docCliente}</div>
+                  <div className="text-xs font-bold px-2 py-1 border-r border-black">{bultoNum} / {bultos}</div>
+                  <div className="text-xs font-bold px-2 py-1 border-r border-black">{operativa}</div>
+                  <div className="text-xs font-bold px-2 py-1">{pesoStr} kg</div>
+                </div>
 
-              <div className="border-b border-dashed border-black my-2" />
+                {/* Fila 3: Sucursal destino */}
+                <div className="grid grid-cols-[auto_1fr_auto] border-b border-black">
+                  <div className="bg-black text-white text-[7px] font-bold uppercase px-2 py-1 border-r border-black flex items-center">
+                    SUCURSAL<br/>DESTINO
+                  </div>
+                  <div className="px-2 py-1 flex items-center">
+                    <span className="font-black text-xl">{envio.sucursal_destino?.codigo || '-'}</span>
+                    <span className="text-[9px] font-semibold ml-2">{envio.sucursal_destino?.nombre || ''}</span>
+                  </div>
+                  <div className="flex items-center justify-center px-2">
+                    {letraZona && (
+                      <span className="bg-black text-white font-black text-xl px-2 py-0.5 min-w-[28px] text-center">
+                        {letraZona}
+                      </span>
+                    )}
+                  </div>
+                </div>
 
-              {/* Destinatario */}
-              <div className="mb-2 border-l-[3px] border-black pl-2">
-                <p className="text-[10px] font-bold">DESTINATARIO</p>
-                <p className="font-bold text-sm uppercase">
-                  ▌ {envio.destinatario 
-                    ? `${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}`
-                    : (envio.nombre_destinatario || 'Sin destinatario')}
-                </p>
-                {envio.dni_destinatario && (
-                  <p className="text-xs">▌ DNI: {envio.dni_destinatario}</p>
-                )}
-                {(envio.destinatario?.telefono || envio.whatsapp_destinatario) && (
-                  <p className="text-xs">▌ Tel: {envio.destinatario?.telefono || envio.whatsapp_destinatario}</p>
-                )}
-              </div>
+                {/* Fila 4: Tipo servicio */}
+                <div className="text-center font-bold text-xs tracking-wide py-1.5 border-b border-black">
+                  ★ {tipoConfig.label} ★
+                </div>
 
-              <div className="border-b border-dashed border-black my-2" />
+                {/* Fila 5: Destinatario */}
+                <div className="bg-black text-white text-[8px] font-bold uppercase text-center py-0.5">DESTINATARIO</div>
+                <div className="px-2 py-1.5 border-b border-black">
+                  <p className="text-sm font-bold">{destinatarioNombre}{envio.dni_destinatario ? ` - DNI: ${envio.dni_destinatario}` : ''}</p>
+                  <p className="text-[10px]">{direccionEntrega}{cpEntrega ? ` (${cpEntrega})` : ''}</p>
+                  <p className="text-[10px]">{ciudadEntrega}{provinciaEntrega ? ` - ${provinciaEntrega}` : ''}{destinatarioTel ? ` - Tel: ${destinatarioTel}` : ''}</p>
+                </div>
 
-              <div className="mb-2">
-                <p className="text-[10px] font-bold">
-                  {deliveryInfo?.type === 'sucursal' ? 'RETIRA EN SUCURSAL' : 'ENTREGAR EN'}
-                </p>
-                {deliveryInfo?.type === 'sucursal' ? (
-                  <div className="flex items-start gap-1">
-                    <span className="text-xs font-bold">●</span>
-                    <div>
-                      <p className="font-bold text-xs">{deliveryInfo.nombre}</p>
-                      <p className="text-xs">{deliveryInfo.direccion}</p>
-                      {deliveryInfo.ciudad && (
-                        <p className="text-xs">{deliveryInfo.ciudad}</p>
-                      )}
+                {/* Fila 6: Observaciones + QR */}
+                <div className="bg-black text-white text-[7px] font-bold uppercase px-2 py-0.5">OBSERVACIONES</div>
+                <div className="flex border-b border-black">
+                  <div className="flex-1 px-2 py-1.5 flex flex-col justify-between">
+                    <p className="text-[9px] leading-tight">{observaciones || '-'}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[8px] font-bold px-1 py-0.5 border border-black">{tipoPagoLabel}</span>
+                      <span className="font-black text-base">${envio.precio_total.toLocaleString('es-AR')}</span>
                     </div>
                   </div>
-                ) : (
-                  <div className="flex items-start gap-1">
-                    <span className="text-xs font-bold">●</span>
-                    <div>
-                      <p className="font-bold text-xs">{deliveryInfo?.direccion || 'Sin dirección'}</p>
-                      {(deliveryInfo?.ciudad || deliveryInfo?.cp) && (
-                        <p className="text-xs">
-                          {deliveryInfo.ciudad} {deliveryInfo.cp && `CP: ${deliveryInfo.cp}`}
-                        </p>
-                      )}
-                    </div>
+                  <div className="border-l border-black p-1.5 flex items-center justify-center">
+                    <img 
+                      src={getQRCodeUrl(`${window.location.origin}/tracking?q=${trackingCode}`, 80)}
+                      alt="QR Code"
+                      className="w-20 h-20"
+                    />
                   </div>
-                )}
-              </div>
-
-              <div className="border-b border-dashed border-black my-2" />
-
-              {/* Package info and price */}
-              <div className="flex justify-between items-center mb-2 text-xs">
-                <div className="flex items-center gap-2 font-semibold">
-                  <span>{bultos} {bultos === 1 ? 'bulto' : 'bultos'}</span>
-                  {envio.peso_kg && (
-                    <span>{envio.peso_kg} kg</span>
-                  )}
                 </div>
-                <div className="flex items-center gap-1">
-                  <span className="font-bold text-[10px] px-1 py-0 border-2 border-black">
-                    {TIPO_PAGO_LABELS[envio.tipo_pago || 'contado']}
-                  </span>
-                  <span className="font-black text-base">
-                    ${envio.precio_total.toLocaleString('es-AR')}
-                  </span>
+
+                {/* Fila 7: Sucursal origen */}
+                <div className="grid grid-cols-[auto_1fr] border-b border-black">
+                  <div className="bg-black text-white text-[7px] font-bold uppercase px-2 py-1 border-r border-black">SUCURSAL ORIGEN</div>
+                  <div className="px-2 py-1 text-xs font-bold">
+                    <strong>{envio.sucursal_origen?.codigo || '-'}</strong> - {envio.sucursal_origen?.nombre || 'Sin sucursal'}
+                  </div>
+                </div>
+
+                {/* Fila 8: Remitente */}
+                <div className="bg-black text-white text-[8px] font-bold uppercase text-center py-0.5">REMITENTE</div>
+                <div className="text-center text-[10px] font-semibold px-2 py-1">
+                  {remitenteNombre}{remitenteTel ? ` - Tel: ${remitenteTel}` : ''}
                 </div>
               </div>
-
-              {/* Notes */}
-              {(envio.descripcion || envio.notas) && (
-                <>
-                  <div className="border-b border-dashed border-black my-2" />
-                  <div className="text-xs">
-                    <p className="text-[10px] font-bold">OBS.</p>
-                    <p className="line-clamp-2">{envio.descripcion || envio.notas}</p>
-                  </div>
-                </>
-              )}
-
-              <div className="border-b border-dashed border-black my-2" />
-
-              {/* Sender - compact single line */}
-              <div className="text-xs font-semibold">
-                REMITENTE: {envio.remitente 
-                  ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}`.trim()
-                  : (envio.nombre_remitente || 'Sin remitente')}
-                {envio.remitente?.telefono && ` | Tel: ${envio.remitente.telefono}`}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
