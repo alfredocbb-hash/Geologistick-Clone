@@ -3,70 +3,49 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   ArrowLeft, 
-  Printer, 
-  Building2, 
-  Home, 
+  FileText, 
   Package,
-  Phone,
   Loader2,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { jsPDF } from 'jspdf';
 
 type LabelSize = 'compact' | 'standard' | 'large';
 
 const LABEL_SIZES = {
   compact: {
     name: "Compacta (10×15 cm)",
-    width: "10cm",
-    height: "15cm",
-    qrSize: 120,
+    widthMm: 100,
+    heightMm: 150,
+    orientation: 'portrait' as const,
+    qrSize: 30,
   },
   standard: {
     name: "Estándar (15×10 cm)",
-    width: "15cm",
-    height: "10cm",
-    qrSize: 150,
+    widthMm: 150,
+    heightMm: 100,
+    orientation: 'landscape' as const,
+    qrSize: 35,
   },
   large: {
     name: "Grande (20×10 cm)",
-    width: "20cm",
-    height: "10cm",
-    qrSize: 180,
+    widthMm: 200,
+    heightMm: 100,
+    orientation: 'landscape' as const,
+    qrSize: 40,
   },
 };
 
 const TIPO_SERVICIO_CONFIG = {
-  sucursal_sucursal: { 
-    label: 'SUCURSAL A SUCURSAL', 
-    icon: '[S→S]',
-    bgColor: '#000000',
-    textColor: '#ffffff',
-  },
-  sucursal_puerta: { 
-    label: 'ENTREGA A DOMICILIO', 
-    icon: '[S→D]',
-    bgColor: '#000000',
-    textColor: '#ffffff',
-  },
-  puerta_sucursal: { 
-    label: 'RETIRO + SUCURSAL', 
-    icon: '[D→S]',
-    bgColor: '#000000',
-    textColor: '#ffffff',
-  },
-  puerta_puerta: { 
-    label: 'PUERTA A PUERTA', 
-    icon: '[D→D]',
-    bgColor: '#000000',
-    textColor: '#ffffff',
-  },
+  sucursal_sucursal: { label: 'SUCURSAL A SUCURSAL' },
+  sucursal_puerta: { label: 'ENTREGA A DOMICILIO' },
+  puerta_sucursal: { label: 'RETIRO + SUCURSAL' },
+  puerta_puerta: { label: 'PUERTA A PUERTA' },
 };
 
 const TIPO_PAGO_LABELS: Record<string, string> = {
@@ -133,425 +112,285 @@ interface Envio {
   logoUrl?: string | null;
 }
 
-// Helper function to get QR code URL from external API
+// Helper to get QR code URL
 const getQRCodeUrl = (data: string, size: number) => {
-  return `https://api.qrserver.com/v1/create-qr-code/?size=${size * 2}x${size * 2}&data=${encodeURIComponent(data)}&format=png&margin=3&ecc=M`;
+  return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(data)}&format=png&margin=2&ecc=M`;
 };
 
-// Generate complete HTML document for printing
-const generateLabelHTML = (
+// Load an image URL as base64 for PDF embedding
+async function loadImageAsBase64(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+// Draw a single label page on the PDF
+function drawLabel(
+  doc: jsPDF,
   envio: Envio,
-  labelSize: LabelSize,
-  tipoConfig: typeof TIPO_SERVICIO_CONFIG[keyof typeof TIPO_SERVICIO_CONFIG],
+  bultoNum: number,
+  totalBultos: number,
+  tipoConfig: { label: string },
   deliveryInfo: { type: string; direccion?: string; ciudad?: string | null; cp?: string | null; nombre?: string } | null,
-  logoUrl?: string | null
-): string => {
-  const size = LABEL_SIZES[labelSize];
-  const bultos = envio.cantidad_bultos || 1;
-  const baseUrl = window.location.origin;
+  logoBase64: string | null,
+  qrBase64: string | null,
+  widthMm: number,
+  heightMm: number,
+  qrSizeMm: number,
+) {
+  const W = widthMm;
+  const H = heightMm;
+  const m = 2; // margin mm
+  const cw = W - m * 2; // content width
+  let y = m;
+  const lx = m; // left x
+
+  const isCompact = heightMm > widthMm; // portrait = compact
+  const fontBase = isCompact ? 7 : 8;
+
+  // Border around entire label
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.5);
+  doc.rect(m, m, cw, H - m * 2);
+
+  // ── Row 1: Logo + Tracking ──
+  const row1H = isCompact ? 18 : 14;
+  const logoW = cw * 0.3;
+  
+  // Logo area
+  doc.setLineWidth(0.3);
+  doc.rect(lx, y, logoW, row1H);
+  if (logoBase64) {
+    try {
+      const logoMaxW = logoW - 4;
+      const logoMaxH = row1H - 4;
+      doc.addImage(logoBase64, 'PNG', lx + 2, y + 2, logoMaxW, logoMaxH);
+    } catch {}
+  }
+
+  // Tracking area
+  doc.rect(lx + logoW, y, cw - logoW, row1H);
+  const trackingCode = `${envio.tracking_number}-${String(bultoNum).padStart(2, '0')}`;
+  doc.setFontSize(isCompact ? 12 : 14);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(0, 0, 0);
+  doc.text(envio.tracking_number, lx + cw - 2, y + (isCompact ? 7 : 6), { align: 'right' });
+  doc.setFontSize(fontBase - 1);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(80, 80, 80);
+  doc.text(trackingCode, lx + cw - 2, y + (isCompact ? 12 : 10), { align: 'right' });
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(fontBase - 1);
+  const dateStr = format(new Date(envio.created_at), 'dd/MM/yyyy', { locale: es });
+  doc.text(dateStr, lx + cw - 2, y + (isCompact ? 16 : 13), { align: 'right' });
+  y += row1H;
+
+  // ── Row 2: 4-column header ──
+  const row2H = isCompact ? 8 : 6;
+  const col4W = cw / 4;
+  const headers = ['DOC. CLIENTE', 'BULTO', 'OPERATIVA', 'PESO'];
+  
+  // Header row (black bg)
+  doc.setFillColor(0, 0, 0);
+  doc.rect(lx, y, cw, row2H / 2, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(fontBase - 2);
+  doc.setFont('helvetica', 'bold');
+  headers.forEach((h, i) => {
+    doc.text(h, lx + i * col4W + 1.5, y + row2H / 2 - 0.8);
+  });
+
+  // Data row
+  y += row2H / 2;
+  const docCliente = envio.codigo_cliente_externo || envio.dni_remitente || '-';
+  const operativa = envio.sucursal_destino?.codigo || '-';
+  const pesoStr = envio.peso_kg ? envio.peso_kg.toFixed(2).replace('.', ',') + ' kg' : '0,00 kg';
+  const dataVals = [docCliente, `${bultoNum} / ${totalBultos}`, operativa, pesoStr];
+  
+  doc.setFillColor(255, 255, 255);
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(fontBase);
+  doc.setFont('helvetica', 'bold');
+  dataVals.forEach((v, i) => {
+    doc.rect(lx + i * col4W, y, col4W, row2H / 2);
+    doc.text(v, lx + i * col4W + 1.5, y + row2H / 2 - 1);
+  });
+  y += row2H / 2;
+
+  // ── Row 3: Sucursal destino ──
+  const row3H = isCompact ? 12 : 10;
   const destCiudad = envio.ciudad_entrega || envio.sucursal_destino?.ciudad || '';
   const letraZona = destCiudad ? destCiudad.charAt(0).toUpperCase() : '';
   
-  const labelsHTML = Array.from({ length: bultos }, (_, i) => {
-    const bultoNum = i + 1;
-    const trackingCode = `${envio.tracking_number}-${String(bultoNum).padStart(2, '0')}`;
-    const qrUrl = getQRCodeUrl(`${baseUrl}/tracking?q=${trackingCode}`, size.qrSize);
-    const docCliente = envio.codigo_cliente_externo || envio.dni_remitente || '-';
-    const operativa = envio.sucursal_destino?.codigo || '-';
-    const pesoStr = envio.peso_kg ? envio.peso_kg.toFixed(2).replace('.', ',') : '0,00';
-    const destinatarioNombre = envio.destinatario 
-      ? `${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}`.trim()
-      : (envio.nombre_destinatario || 'Sin destinatario');
-    const destinatarioTel = envio.destinatario?.telefono || envio.whatsapp_destinatario || '';
-    const remitenteNombre = envio.remitente 
-      ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}`.trim()
-      : (envio.nombre_remitente || 'Sin remitente');
-    const remitenteTel = envio.remitente?.telefono || '';
-    const direccionEntrega = deliveryInfo?.direccion || 'Sin dirección';
-    const cpEntrega = deliveryInfo?.cp || envio.cp_entrega || '';
-    const ciudadEntrega = deliveryInfo?.ciudad || envio.ciudad_entrega || '';
-    const provinciaEntrega = envio.provincia || '';
-    const observaciones = envio.descripcion || envio.notas || '';
-    const tipoPagoLabel = TIPO_PAGO_LABELS[envio.tipo_pago || 'contado'];
-    const precioStr = `$${envio.precio_total.toLocaleString('es-AR')}`;
+  // Header part
+  const sucDestHdrW = cw * 0.3;
+  doc.setFillColor(0, 0, 0);
+  doc.rect(lx, y, sucDestHdrW, row3H, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(fontBase - 2);
+  doc.setFont('helvetica', 'bold');
+  doc.text('SUCURSAL', lx + 1.5, y + row3H / 2 - 1);
+  doc.text('DESTINO', lx + 1.5, y + row3H / 2 + 2);
+  
+  // Code
+  doc.rect(lx + sucDestHdrW, y, cw - sucDestHdrW - 12, row3H);
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(isCompact ? 14 : 16);
+  doc.setFont('helvetica', 'bold');
+  doc.text(envio.sucursal_destino?.codigo || '-', lx + sucDestHdrW + 2, y + row3H / 2 + 2);
+  doc.setFontSize(fontBase - 1);
+  doc.setFont('helvetica', 'normal');
+  const sucDestNombre = envio.sucursal_destino?.nombre || '';
+  doc.text(sucDestNombre, lx + sucDestHdrW + 18, y + row3H / 2 + 1, { maxWidth: cw - sucDestHdrW - 32 });
+  
+  // Zona letter
+  const zonaX = lx + cw - 12;
+  doc.rect(zonaX, y, 12, row3H);
+  if (letraZona) {
+    doc.setFillColor(0, 0, 0);
+    doc.rect(zonaX + 1, y + 1, 10, row3H - 2, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(isCompact ? 14 : 16);
+    doc.setFont('helvetica', 'bold');
+    doc.text(letraZona, zonaX + 6, y + row3H / 2 + 2, { align: 'center' });
+  }
+  y += row3H;
 
-    return `
-      <div class="label">
-        <table class="label-table">
-          <!-- Fila 1: Header con logo y tracking -->
-          <tr>
-            <td class="logo-cell" rowspan="2">
-              ${logoUrl ? `<img src="${logoUrl}" class="tenant-logo" alt="" />` : '<div class="logo-placeholder"></div>'}
-            </td>
-            <td class="tracking-cell" colspan="3">
-              <div class="tracking-number">${envio.tracking_number}</div>
-              <div class="tracking-code">${trackingCode}</div>
-            </td>
-          </tr>
-          <!-- Fila 2: Fecha -->
-          <tr>
-            <td class="date-cell" colspan="3">
-              ${format(new Date(envio.created_at), 'dd/MM/yyyy', { locale: es })}
-            </td>
-          </tr>
-          <!-- Fila 3: Grilla 4 columnas -->
-          <tr>
-            <td class="header-cell">DOC. CLIENTE</td>
-            <td class="header-cell">BULTO</td>
-            <td class="header-cell">OPERATIVA</td>
-            <td class="header-cell">PESO</td>
-          </tr>
-          <tr>
-            <td class="data-cell">${docCliente}</td>
-            <td class="data-cell">${bultoNum} / ${bultos}</td>
-            <td class="data-cell">${operativa}</td>
-            <td class="data-cell">${pesoStr} kg</td>
-          </tr>
-          <!-- Fila 4: Sucursal destino -->
-          <tr>
-            <td class="header-cell" colspan="2">SUCURSAL DESTINO</td>
-            <td class="dest-code-cell" colspan="1">
-              <span class="dest-code">${envio.sucursal_destino?.codigo || '-'}</span>
-            </td>
-            <td class="zona-cell">
-              <span class="zona-letter">${letraZona}</span>
-            </td>
-          </tr>
-          <tr>
-            <td class="data-cell dest-name-cell" colspan="4">
-              ${envio.sucursal_destino?.nombre || '-'}
-            </td>
-          </tr>
-          <!-- Fila 5: Tipo de servicio -->
-          <tr>
-            <td class="service-cell" colspan="4">
-              ★ ${tipoConfig.label} ★
-            </td>
-          </tr>
-          <!-- Fila 6: Destinatario -->
-          <tr>
-            <td class="header-cell header-center" colspan="4">DESTINATARIO</td>
-          </tr>
-          <tr>
-            <td class="data-cell dest-data" colspan="4">
-              <div class="dest-line"><strong>${destinatarioNombre}</strong>${envio.dni_destinatario ? ` - DNI: ${envio.dni_destinatario}` : ''}</div>
-              <div class="dest-line">${direccionEntrega}${cpEntrega ? ` (${cpEntrega})` : ''}</div>
-              <div class="dest-line">${ciudadEntrega}${provinciaEntrega ? ` - ${provinciaEntrega}` : ''}${destinatarioTel ? ` - Tel: ${destinatarioTel}` : ''}</div>
-            </td>
-          </tr>
-          <!-- Fila 7: Observaciones + QR -->
-          <tr>
-            <td class="header-cell" colspan="4">OBSERVACIONES</td>
-          </tr>
-          <tr>
-            <td class="obs-qr-cell" colspan="4">
-              <div class="obs-qr-row">
-                <div class="obs-content">
-                  <div class="obs-text">${observaciones || '-'}</div>
-                  <div class="obs-payment">
-                    <span class="payment-badge">${tipoPagoLabel}</span>
-                    <span class="price-tag">${precioStr}</span>
-                  </div>
-                </div>
-                <div class="qr-container">
-                  <img src="${qrUrl}" alt="QR" class="qr-image" />
-                </div>
-              </div>
-            </td>
-          </tr>
-          <!-- Fila 8: Sucursal origen -->
-          <tr>
-            <td class="header-cell">SUCURSAL ORIGEN</td>
-            <td class="data-cell" colspan="3">
-              <strong>${envio.sucursal_origen?.codigo || '-'}</strong> - ${envio.sucursal_origen?.nombre || 'Sin sucursal'}
-            </td>
-          </tr>
-          <!-- Fila 9: Remitente -->
-          <tr>
-            <td class="header-cell header-center" colspan="4">REMITENTE</td>
-          </tr>
-          <tr>
-            <td class="data-cell remitente-data" colspan="4">
-              ${remitenteNombre}${remitenteTel ? ` - Tel: ${remitenteTel}` : ''}
-            </td>
-          </tr>
-        </table>
-      </div>
-    `;
-  }).join('\n');
+  // ── Row 4: Tipo de servicio ──
+  const row4H = isCompact ? 7 : 6;
+  doc.rect(lx, y, cw, row4H);
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(fontBase);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`★ ${tipoConfig.label} ★`, lx + cw / 2, y + row4H / 2 + 1, { align: 'center' });
+  y += row4H;
 
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Etiquetas - ${envio.tracking_number}</title>
-  <style>
-    *
-    {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    
-    @page {
-      size: auto;
-      margin: 5mm;
-    }
-    
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
-      color-adjust: exact !important;
-      background: white;
-      margin: 0;
-      padding: 0;
-    }
-    
-    .label {
-      width: ${size.width};
-      height: ${size.height};
-      max-height: ${size.height};
-      background: white;
-      box-sizing: border-box;
-      overflow: hidden;
-      display: inline-block;
-      vertical-align: top;
-      page-break-inside: avoid;
-      margin: 0 2mm 2mm 0;
-    }
-    
-    .label-table {
-      width: 100%;
-      border-collapse: collapse;
-      border: 2px solid #000;
-      table-layout: fixed;
-    }
-    
-    .label-table td {
-      border: 1px solid #000;
-      vertical-align: middle;
-    }
-    
-    .header-cell {
-      background: #000;
-      color: #fff;
-      font-size: ${labelSize === 'compact' ? '7px' : '8px'};
-      font-weight: bold;
-      padding: 1mm 2mm;
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
-    }
-    
-    .header-center {
-      text-align: center;
-    }
-    
-    .data-cell {
-      background: #fff;
-      color: #000;
-      font-size: ${labelSize === 'compact' ? '10px' : '12px'};
-      font-weight: bold;
-      padding: 1mm 2mm;
-    }
-    
-    .logo-cell {
-      width: 30%;
-      padding: 2mm;
-      text-align: center;
-      vertical-align: middle;
-    }
-    
-    .tenant-logo {
-      max-width: 25mm;
-      max-height: 15mm;
-      object-fit: contain;
-    }
-    
-    .logo-placeholder {
-      width: 25mm;
-      height: 10mm;
-    }
-    
-    .tracking-cell {
-      text-align: right;
-      padding: 2mm 3mm;
-      background: #fff;
-    }
-    
-    .tracking-number {
-      font-family: monospace;
-      font-size: ${labelSize === 'compact' ? '14px' : '18px'};
-      font-weight: bold;
-      letter-spacing: 1px;
-      color: #000;
-    }
-    
-    .tracking-code {
-      font-family: monospace;
-      font-size: ${labelSize === 'compact' ? '9px' : '10px'};
-      color: #555;
-      margin-top: 1mm;
-    }
-    
-    .date-cell {
-      text-align: right;
-      padding: 1mm 3mm;
-      font-size: ${labelSize === 'compact' ? '7px' : '8px'};
-      font-weight: 600;
-      color: #000;
-      background: #fff;
-    }
-    
-    .dest-code-cell {
-      text-align: center;
-      padding: 1mm 2mm;
-      background: #fff;
-    }
-    
-    .dest-code {
-      font-size: ${labelSize === 'compact' ? '16px' : '20px'};
-      font-weight: 900;
-      color: #000;
-    }
-    
-    .zona-cell {
-      text-align: center;
-      padding: 1mm;
-      width: 12mm;
-    }
-    
-    .zona-letter {
-      display: inline-block;
-      background: #000;
-      color: #fff;
-      font-size: ${labelSize === 'compact' ? '16px' : '20px'};
-      font-weight: 900;
-      padding: 1mm 2mm;
-      min-width: 8mm;
-      text-align: center;
-    }
-    
-    .dest-name-cell {
-      font-size: ${labelSize === 'compact' ? '9px' : '10px'};
-      font-weight: 600;
-    }
-    
-    .service-cell {
-      text-align: center;
-      font-size: ${labelSize === 'compact' ? '10px' : '12px'};
-      font-weight: bold;
-      padding: 2mm;
-      background: #fff;
-      color: #000;
-      letter-spacing: 1px;
-    }
-    
-    .dest-data {
-      padding: 2mm 3mm;
-    }
-    
-    .dest-line {
-      font-size: ${labelSize === 'compact' ? '9px' : '10px'};
-      line-height: 1.5;
-      color: #000;
-    }
-    
-    .dest-line strong {
-      font-size: ${labelSize === 'compact' ? '11px' : '13px'};
-    }
-    
-    .obs-qr-cell {
-      padding: 0;
-      background: #fff;
-    }
-    
-    .obs-qr-row {
-      display: flex;
-      align-items: stretch;
-    }
-    
-    .obs-content {
-      flex: 1;
-      padding: 2mm 3mm;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-    }
-    
-    .obs-text {
-      font-size: ${labelSize === 'compact' ? '8px' : '9px'};
-      color: #000;
-      line-height: 1.4;
-      margin-bottom: 2mm;
-    }
-    
-    .obs-payment {
-      display: flex;
-      align-items: center;
-      gap: 3mm;
-    }
-    
-    .payment-badge {
-      font-size: ${labelSize === 'compact' ? '7px' : '8px'};
-      font-weight: bold;
-      padding: 1mm 2mm;
-      border: 1.5px solid #000;
-      color: #000;
-    }
-    
-    .price-tag {
-      font-size: ${labelSize === 'compact' ? '14px' : '16px'};
-      font-weight: 900;
-      color: #000;
-    }
-    
-    .qr-container {
-      border-left: 1px solid #000;
-      padding: 2mm;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #fff;
-    }
-    
-    .qr-image {
-      width: ${labelSize === 'compact' ? '80px' : labelSize === 'standard' ? '100px' : '120px'};
-      height: ${labelSize === 'compact' ? '80px' : labelSize === 'standard' ? '100px' : '120px'};
-      display: block;
-    }
-    
-    .remitente-data {
-      font-size: ${labelSize === 'compact' ? '9px' : '10px'};
-      text-align: center;
-    }
-    
-    @media print {
-      html, body {
-        width: 100%;
-        height: auto;
-        margin: 0;
-        padding: 0;
-      }
-      
-      .label {
-        width: ${size.width};
-        height: ${size.height};
-        max-height: ${size.height};
-        overflow: hidden;
-        display: inline-block;
-        vertical-align: top;
-        margin: 0 2mm 2mm 0;
-        page-break-inside: avoid;
-      }
-    }
-  </style>
-</head>
-<body>
-  ${labelsHTML}
-</body>
-</html>`;
-};
+  // ── Row 5: Destinatario ──
+  const destHdrH = isCompact ? 5 : 4;
+  doc.setFillColor(0, 0, 0);
+  doc.rect(lx, y, cw, destHdrH, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(fontBase - 1);
+  doc.setFont('helvetica', 'bold');
+  doc.text('DESTINATARIO', lx + cw / 2, y + destHdrH / 2 + 1, { align: 'center' });
+  y += destHdrH;
+
+  const destDataH = isCompact ? 16 : 12;
+  doc.rect(lx, y, cw, destDataH);
+  const destinatarioNombre = envio.destinatario 
+    ? `${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}`.trim()
+    : (envio.nombre_destinatario || 'Sin destinatario');
+  const destinatarioTel = envio.destinatario?.telefono || envio.whatsapp_destinatario || '';
+  const direccionEntrega = deliveryInfo?.direccion || 'Sin dirección';
+  const cpEntrega = deliveryInfo?.cp || envio.cp_entrega || '';
+  const ciudadEntrega = deliveryInfo?.ciudad || envio.ciudad_entrega || '';
+  const provinciaEntrega = envio.provincia || '';
+
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(fontBase + 1);
+  doc.setFont('helvetica', 'bold');
+  let nameStr = destinatarioNombre;
+  if (envio.dni_destinatario) nameStr += ` - DNI: ${envio.dni_destinatario}`;
+  doc.text(nameStr, lx + 2, y + 4, { maxWidth: cw - 4 });
+  
+  doc.setFontSize(fontBase - 1);
+  doc.setFont('helvetica', 'normal');
+  const addr2 = `${direccionEntrega}${cpEntrega ? ` (${cpEntrega})` : ''}`;
+  doc.text(addr2, lx + 2, y + (isCompact ? 9 : 8), { maxWidth: cw - 4 });
+  const addr3 = `${ciudadEntrega}${provinciaEntrega ? ` - ${provinciaEntrega}` : ''}${destinatarioTel ? ` - Tel: ${destinatarioTel}` : ''}`;
+  doc.text(addr3, lx + 2, y + (isCompact ? 13 : 11), { maxWidth: cw - 4 });
+  y += destDataH;
+
+  // ── Row 6: Observaciones + QR ──
+  const obsHdrH = isCompact ? 5 : 4;
+  doc.setFillColor(0, 0, 0);
+  doc.rect(lx, y, cw, obsHdrH, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(fontBase - 2);
+  doc.setFont('helvetica', 'bold');
+  doc.text('OBSERVACIONES', lx + 1.5, y + obsHdrH / 2 + 1);
+  y += obsHdrH;
+
+  const obsDataH = qrSizeMm + 4;
+  doc.rect(lx, y, cw, obsDataH);
+  
+  // QR on the right
+  const qrAreaW = qrSizeMm + 4;
+  doc.setLineWidth(0.3);
+  doc.line(lx + cw - qrAreaW, y, lx + cw - qrAreaW, y + obsDataH);
+  if (qrBase64) {
+    try {
+      doc.addImage(qrBase64, 'PNG', lx + cw - qrAreaW + 2, y + 2, qrSizeMm, qrSizeMm);
+    } catch {}
+  }
+
+  // Obs text on the left
+  const observaciones = envio.descripcion || envio.notas || '-';
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(fontBase - 1);
+  doc.setFont('helvetica', 'normal');
+  doc.text(observaciones, lx + 2, y + 4, { maxWidth: cw - qrAreaW - 4 });
+
+  // Payment info
+  const tipoPagoLabel = TIPO_PAGO_LABELS[envio.tipo_pago || 'contado'];
+  const precioStr = `$${envio.precio_total.toLocaleString('es-AR')}`;
+  doc.setFontSize(fontBase - 2);
+  doc.setFont('helvetica', 'bold');
+  doc.rect(lx + 2, y + obsDataH - 7, 18, 4);
+  doc.text(tipoPagoLabel, lx + 3, y + obsDataH - 4);
+  doc.setFontSize(isCompact ? 12 : 13);
+  doc.text(precioStr, lx + 22, y + obsDataH - 3.5);
+  y += obsDataH;
+
+  // ── Row 7: Sucursal origen ──
+  const row7H = isCompact ? 7 : 6;
+  const sucOrigHdrW = cw * 0.3;
+  doc.setFillColor(0, 0, 0);
+  doc.rect(lx, y, sucOrigHdrW, row7H, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(fontBase - 2);
+  doc.setFont('helvetica', 'bold');
+  doc.text('SUCURSAL ORIGEN', lx + 1.5, y + row7H / 2 + 1);
+  
+  doc.rect(lx + sucOrigHdrW, y, cw - sucOrigHdrW, row7H);
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(fontBase);
+  doc.setFont('helvetica', 'bold');
+  const origenStr = `${envio.sucursal_origen?.codigo || '-'} - ${envio.sucursal_origen?.nombre || 'Sin sucursal'}`;
+  doc.text(origenStr, lx + sucOrigHdrW + 2, y + row7H / 2 + 1, { maxWidth: cw - sucOrigHdrW - 4 });
+  y += row7H;
+
+  // ── Row 8: Remitente ──
+  const row8HdrH = isCompact ? 5 : 4;
+  doc.setFillColor(0, 0, 0);
+  doc.rect(lx, y, cw, row8HdrH, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(fontBase - 1);
+  doc.setFont('helvetica', 'bold');
+  doc.text('REMITENTE', lx + cw / 2, y + row8HdrH / 2 + 1, { align: 'center' });
+  y += row8HdrH;
+
+  const row8DataH = isCompact ? 7 : 6;
+  doc.rect(lx, y, cw, row8DataH);
+  const remitenteNombre = envio.remitente 
+    ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}`.trim()
+    : (envio.nombre_remitente || 'Sin remitente');
+  const remitenteTel = envio.remitente?.telefono || '';
+  const remStr = `${remitenteNombre}${remitenteTel ? ` - Tel: ${remitenteTel}` : ''}`;
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(fontBase - 1);
+  doc.setFont('helvetica', 'normal');
+  doc.text(remStr, lx + cw / 2, y + row8DataH / 2 + 1, { align: 'center', maxWidth: cw - 4 });
+}
 
 export default function PrintLabel() {
   const [searchParams] = useSearchParams();
@@ -579,7 +418,6 @@ export default function PrintLabel() {
       
       if (error) throw error;
       
-      // Fetch tenant branding for logo
       let logoUrl: string | null = null;
       if (data.tenant_id) {
         const { data: branding } = await supabase
@@ -595,80 +433,71 @@ export default function PrintLabel() {
     enabled: !!envioId,
   });
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     if (!envio) return;
     
     setIsPrinting(true);
     
-    const tipoServicio = envio.tipo_servicio_detalle || 'sucursal_sucursal';
-    const tipoConfig = TIPO_SERVICIO_CONFIG[tipoServicio as keyof typeof TIPO_SERVICIO_CONFIG] 
-      || TIPO_SERVICIO_CONFIG.sucursal_sucursal;
+    try {
+      const tipoServicio = envio.tipo_servicio_detalle || 'sucursal_sucursal';
+      const tipoConfig = TIPO_SERVICIO_CONFIG[tipoServicio as keyof typeof TIPO_SERVICIO_CONFIG] 
+        || TIPO_SERVICIO_CONFIG.sucursal_sucursal;
 
-    const getDeliveryAddress = () => {
-      if (['sucursal_puerta', 'puerta_puerta', 'domicilio_domicilio'].includes(tipoServicio)) {
-        if (envio.direccion_entrega) {
-          return {
-            type: 'domicilio',
-            direccion: envio.direccion_entrega,
-            ciudad: envio.ciudad_entrega,
-            cp: envio.cp_entrega,
-          };
+      const getDeliveryAddress = () => {
+        if (['sucursal_puerta', 'puerta_puerta', 'domicilio_domicilio'].includes(tipoServicio)) {
+          if (envio.direccion_entrega) {
+            return { type: 'domicilio', direccion: envio.direccion_entrega, ciudad: envio.ciudad_entrega, cp: envio.cp_entrega };
+          }
+          if (envio.destinatario) {
+            return { type: 'domicilio', direccion: envio.destinatario.direccion, ciudad: null, cp: null };
+          }
         }
-        if (envio.destinatario) {
-          return {
-            type: 'domicilio',
-            direccion: envio.destinatario.direccion,
-            ciudad: null,
-            cp: null,
-          };
+        if (envio.sucursal_destino) {
+          return { type: 'sucursal', nombre: envio.sucursal_destino.nombre, direccion: envio.sucursal_destino.direccion, ciudad: envio.sucursal_destino.ciudad };
         }
+        return null;
+      };
+
+      const deliveryInfo = getDeliveryAddress();
+      const size = LABEL_SIZES[labelSize];
+      const bultos = envio.cantidad_bultos || 1;
+
+      // Load logo as base64
+      const logoBase64 = envio.logoUrl ? await loadImageAsBase64(envio.logoUrl) : null;
+
+      // Load QR images as base64 for each bulto
+      const baseUrl = window.location.origin;
+      const qrImages: (string | null)[] = [];
+      for (let i = 0; i < bultos; i++) {
+        const trackingCode = `${envio.tracking_number}-${String(i + 1).padStart(2, '0')}`;
+        const qrUrl = getQRCodeUrl(`${baseUrl}/tracking?q=${trackingCode}`, 200);
+        const qrB64 = await loadImageAsBase64(qrUrl);
+        qrImages.push(qrB64);
       }
-      if (envio.sucursal_destino) {
-        return {
-          type: 'sucursal',
-          nombre: envio.sucursal_destino.nombre,
-          direccion: envio.sucursal_destino.direccion,
-          ciudad: envio.sucursal_destino.ciudad,
-        };
+
+      // Create PDF with exact label dimensions
+      const doc = new jsPDF({
+        orientation: size.orientation,
+        unit: 'mm',
+        format: [size.widthMm, size.heightMm],
+      });
+
+      // Draw each bulto as a page
+      for (let i = 0; i < bultos; i++) {
+        if (i > 0) doc.addPage([size.widthMm, size.heightMm], size.orientation);
+        drawLabel(doc, envio, i + 1, bultos, tipoConfig, deliveryInfo, logoBase64, qrImages[i], size.widthMm, size.heightMm, size.qrSize);
       }
-      return null;
-    };
 
-    const deliveryInfo = getDeliveryAddress();
-    const labelHTML = generateLabelHTML(envio, labelSize, tipoConfig, deliveryInfo, envio.logoUrl);
-
-    // Inyectar el contenido en un div oculto en el DOM actual
-    const printContainer = document.createElement('div');
-    printContainer.id = 'print-labels-area';
-    printContainer.innerHTML = labelHTML;
-    document.body.appendChild(printContainer);
-
-    // Agregar estilos de impresion temporales
-    const printStyle = document.createElement('style');
-    printStyle.id = 'print-labels-style';
-    printStyle.textContent = `
-      @media print {
-        body > *:not(#print-labels-area) { display: none !important; }
-        #print-labels-area { display: block !important; }
-      }
-      #print-labels-area { display: none; }
-    `;
-    document.head.appendChild(printStyle);
-
-    // Esperar renderizado y luego imprimir
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        window.print();
-        // Limpiar despues de imprimir
-        if (document.body.contains(printContainer)) {
-          document.body.removeChild(printContainer);
-        }
-        if (document.head.contains(printStyle)) {
-          document.head.removeChild(printStyle);
-        }
-        setIsPrinting(false);
-      }, 300);
-    });
+      // Open PDF in new tab
+      const pdfBlob = doc.output('blob');
+      const url = URL.createObjectURL(pdfBlob);
+      window.open(url, '_blank');
+    } catch (e) {
+      console.error('Error generating PDF:', e);
+      toast.error('Error al generar el PDF de etiquetas');
+    } finally {
+      setIsPrinting(false);
+    }
   };
 
   if (isLoading) {
@@ -704,29 +533,14 @@ export default function PrintLabel() {
   const getDeliveryAddress = () => {
     if (['sucursal_puerta', 'puerta_puerta', 'domicilio_domicilio'].includes(tipoServicio)) {
       if (envio.direccion_entrega) {
-        return {
-          type: 'domicilio',
-          direccion: envio.direccion_entrega,
-          ciudad: envio.ciudad_entrega,
-          cp: envio.cp_entrega,
-        };
+        return { type: 'domicilio', direccion: envio.direccion_entrega, ciudad: envio.ciudad_entrega, cp: envio.cp_entrega };
       }
       if (envio.destinatario) {
-        return {
-          type: 'domicilio',
-          direccion: envio.destinatario.direccion,
-          ciudad: null,
-          cp: null,
-        };
+        return { type: 'domicilio', direccion: envio.destinatario.direccion, ciudad: null, cp: null };
       }
     }
     if (envio.sucursal_destino) {
-      return {
-        type: 'sucursal',
-        nombre: envio.sucursal_destino.nombre,
-        direccion: envio.sucursal_destino.direccion,
-        ciudad: envio.sucursal_destino.ciudad,
-      };
+      return { type: 'sucursal', nombre: envio.sucursal_destino.nombre, direccion: envio.sucursal_destino.direccion, ciudad: envio.sucursal_destino.ciudad };
     }
     return null;
   };
@@ -768,9 +582,9 @@ export default function PrintLabel() {
             {isPrinting ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (
-              <Printer className="h-4 w-4 mr-2" />
+              <FileText className="h-4 w-4 mr-2" />
             )}
-            Imprimir
+            Generar PDF
           </Button>
         </div>
       </div>
@@ -778,7 +592,7 @@ export default function PrintLabel() {
       {/* Preview */}
       <div className="p-4">
         <p className="text-sm text-muted-foreground mb-4">
-          Vista previa de las etiquetas. Al imprimir se abrirá el diálogo de impresión del navegador.
+          Vista previa de las etiquetas. Al generar el PDF se abrirá en una pestaña nueva donde podrá imprimir.
         </p>
         
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
