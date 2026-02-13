@@ -118,7 +118,7 @@ const getQRCodeUrl = (data: string, size: number) => {
   return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(data)}&format=png&margin=2&ecc=M`;
 };
 
-// Load an image URL as base64 for PDF embedding
+// Load an image URL as base64 for PDF embedding (fetch-based, for raster images like QR)
 async function loadImageAsBase64(url: string): Promise<string | null> {
   try {
     const response = await fetch(url, { mode: 'cors' });
@@ -133,6 +133,29 @@ async function loadImageAsBase64(url: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+// Load any image (including SVG) as PNG base64 via canvas - required for jsPDF compatibility
+async function loadImageAsPngBase64(url: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || 300;
+        canvas.height = img.naturalHeight || 150;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { resolve(null); return; }
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      } catch {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
 }
 
 // Draw a single label page on the PDF
@@ -464,10 +487,10 @@ export default function PrintLabel() {
       const size = LABEL_SIZES[labelSize];
       const bultos = envio.cantidad_bultos || 1;
 
-      // Load logo as base64 (fallback to local logo)
-      let logoBase64 = envio.logoUrl ? await loadImageAsBase64(envio.logoUrl) : null;
+      // Load logo as PNG base64 via canvas (handles SVG + raster formats)
+      let logoBase64 = envio.logoUrl ? await loadImageAsPngBase64(envio.logoUrl) : null;
       if (!logoBase64) {
-        logoBase64 = await loadImageAsBase64(geologistickLogo);
+        logoBase64 = await loadImageAsPngBase64(geologistickLogo);
       }
 
       // Load QR images as base64 for each bulto
@@ -493,21 +516,9 @@ export default function PrintLabel() {
         drawLabel(doc, envio, i + 1, bultos, tipoConfig, deliveryInfo, logoBase64, qrImages[i], size.widthMm, size.heightMm, size.qrSize);
       }
 
-      // Download PDF + open in new tab
-      const pdfBlob = doc.output('blob');
-      const url = URL.createObjectURL(pdfBlob);
-
-      // Force download so user can open with native PDF viewer
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `etiqueta-${envio.tracking_number}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-
-      // Also open in new tab for quick preview
-      window.open(url, '_blank');
-      toast.success('PDF descargado. Si el tamaño de papel no es correcto en Chrome, abra el archivo descargado con Adobe Acrobat.');
+      // Download PDF directly using jsPDF's save (more reliable in iframes)
+      doc.save(`etiqueta-${envio.tracking_number}.pdf`);
+      toast.success('PDF descargado. Abra el archivo para imprimir.');
     } catch (e) {
       console.error('Error generating PDF:', e);
       toast.error('Error al generar el PDF de etiquetas');
@@ -637,11 +648,12 @@ export default function PrintLabel() {
                 {/* Fila 1: Header - Logo + Tracking */}
                 <div className="grid grid-cols-[30%_1fr] border-b border-black">
                   <div className="border-r border-black p-2 flex items-center justify-center">
-                    {envio.logoUrl ? (
-                      <img src={envio.logoUrl} alt="" className="max-w-[80px] max-h-[40px] object-contain" />
-                    ) : (
-                      <div className="w-[60px] h-[30px]" />
-                    )}
+                    <img 
+                      src={envio.logoUrl || geologistickLogo} 
+                      alt="" 
+                      className="max-w-[80px] max-h-[40px] object-contain"
+                      onError={(e) => { (e.target as HTMLImageElement).src = geologistickLogo; }}
+                    />
                   </div>
                   <div className="p-2 text-right">
                     <p className="font-mono font-bold text-lg tracking-wider">{envio.tracking_number}</p>
