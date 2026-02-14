@@ -177,11 +177,11 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
       return null;
     }
 
-    const { data: urlData } = supabase.storage
+    const { data: urlData } = await supabase.storage
       .from('delivery-photos')
-      .getPublicUrl(data.path);
+      .createSignedUrl(data.path, 60 * 60 * 24 * 365); // 1 year
 
-    return urlData.publicUrl;
+    return urlData?.signedUrl || null;
   };
 
   // Convert data URL to Blob

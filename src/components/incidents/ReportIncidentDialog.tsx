@@ -82,11 +82,11 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
       return null;
     }
 
-    const { data: urlData } = supabase.storage
+    const { data: urlData } = await supabase.storage
       .from('delivery-photos')
-      .getPublicUrl(data.path);
+      .createSignedUrl(data.path, 60 * 60 * 24 * 365); // 1 year
 
-    return urlData.publicUrl;
+    return urlData?.signedUrl || null;
   };
 
   const reportMutation = useMutation({
