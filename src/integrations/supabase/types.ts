@@ -4018,6 +4018,7 @@ export type Database = {
         Args: { _sucursal_id: string; _user_id: string }
         Returns: boolean
       }
+      check_trial_request_rate_limit: { Args: never; Returns: boolean }
       close_hoja_ruta: { Args: { p_hoja_id: string }; Returns: Json }
       close_ruta_planificada: { Args: { p_ruta_id: string }; Returns: Json }
       create_hoja_ruta_flex: {
