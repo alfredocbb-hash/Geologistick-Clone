@@ -1,62 +1,45 @@
 
 
-# Fix: Logo SVG + Impresion desde iframe
+# Fix: Precios en $0 y atribucion incorrecta de envios en liquidaciones de sellers
 
-## Problema 1: Logo no aparece
+## Problemas encontrados
 
-El logo del tenant es un archivo **SVG** (`logo-light.svg`). La libreria jsPDF solo soporta formatos raster (PNG, JPEG, GIF). Al llamar `doc.addImage(svgBase64, 'PNG', ...)` falla silenciosamente porque el contenido no es PNG. El fallback local (`geologistick-logo.png`) tampoco aparece, probablemente porque el `catch` en `loadImageAsBase64` captura el error pero `addImage` tambien falla si el base64 no tiene el formato esperado.
+### Problema 1: Envios en $0
 
-### Solucion
+**Causa raiz**: En la funcion de calculo de liquidaciones (linea 504-515), las tarifas de zona solo se cargan si alguno de los sellers seleccionados tiene una `tarifa_id` asignada cuyo `tipo_tarifa` sea `'zona'`. Pero los sellers afectados (Gonzalez, Gauna, etc.) no tienen `tarifa_id` asignada (es `null`). Por lo tanto:
 
-Convertir cualquier imagen (incluido SVG) a PNG usando un `<canvas>` antes de insertarla en el PDF:
+- `tarifasMap` queda vacio
+- `hasZoneTarifa` es `false`
+- Las tarifas de zona del tenant nunca se cargan
+- El precio queda en el `precio_total` original del envio (que puede ser $0 o incorrecto)
 
-1. Crear un elemento `Image()` con la URL
-2. Dibujarlo en un `<canvas>` oculto
-3. Extraer el canvas como `toDataURL('image/png')`
-4. Usar ese PNG base64 en `doc.addImage()`
+La pestaña "Saldos por Seller" (linea 184-191) **siempre** carga las tarifas de zona del tenant, por eso ahi los montos se ven bien. Pero el calculo de liquidaciones no replica esa misma logica.
 
-Nueva funcion `loadImageAsPngBase64`:
+### Problema 2: Envio de otro seller
 
-```typescript
-async function loadImageAsPngBase64(url: string): Promise<string | null> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth || 300;
-      canvas.height = img.naturalHeight || 150;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) { resolve(null); return; }
-      ctx.drawImage(img, 0, 0);
-      resolve(canvas.toDataURL('image/png'));
-    };
-    img.onerror = () => resolve(null);
-    img.src = url;
-  });
-}
-```
+**Causa raiz**: Los 6 sellers (Gonzalez, Pablo Gauna, Gauna Zarate Nicolas, Benjamin, Beatriz, Mia Abigail) comparten el **mismo `cliente_id`** (`0f0b9595-...`). El envio `ADMIN-ENV-20260211-20952C` fue creado manualmente (no tiene orden e-commerce) y su `remitente_id` apunta a ese `cliente_id` compartido.
 
-Reemplazar `loadImageAsBase64` por `loadImageAsPngBase64` para la carga del logo (tanto el del tenant como el fallback). Mantener `loadImageAsBase64` con fetch para el QR que ya viene en formato PNG.
+Al calcular la liquidacion, el sistema busca envios "comunes" (sin orden e-commerce) filtrando por `remitente_id IN [cliente_ids]`. Como todos comparten el mismo `cliente_id`, este envio aparece en la liquidacion de **cualquier** seller que se calcule, incluyendo Gonzalez Carlos cuando en realidad pertenece a Pablo Gauna.
 
-## Problema 2: No imprime (window.open bloqueado)
+No hay forma automatica de determinar a que seller pertenece un envio manual cuando varios sellers comparten el mismo `cliente_id`.
 
-La app corre dentro del iframe de preview de Lovable. Los navegadores bloquean `window.open()` desde iframes por seguridad. Tambien el `a.click()` para descarga puede no funcionar correctamente.
+## Solucion propuesta
 
-### Solucion
+### Fix 1: Siempre cargar tarifas de zona
 
-Usar `doc.save('nombre.pdf')` de jsPDF en vez de crear un enlace manualmente. `doc.save()` usa internamente `FileSaver` / `Blob` + `URL.createObjectURL` de una manera mas compatible con iframes. Eliminar `window.open()` ya que es redundante y se bloquea.
+Eliminar la condicion `hasZoneTarifa` y siempre cargar las tarifas de zona del tenant (igual que hace la pestaña "Saldos por Seller"). Ademas, agregar el fallback de zona cuando el seller no tiene `tarifa_id` asignada (linea 529-568 actualmente solo entra si `sellerTarifaId` existe).
 
-```typescript
-// Reemplazar todo el bloque de descarga + window.open por:
-doc.save(`etiqueta-${envio.tracking_number}.pdf`);
-toast.success('PDF descargado. Abra el archivo para imprimir.');
-```
+### Fix 2: Excluir envios comunes ambiguos
 
-## Resumen de cambios en `src/pages/PrintLabel.tsx`
+Cuando multiples sellers comparten el mismo `cliente_id`, no incluir envios comunes (manuales) porque es imposible determinar a cual seller pertenecen. Solo incluir envios comunes cuando un unico seller tiene ese `cliente_id`.
 
-1. **Nueva funcion** `loadImageAsPngBase64` que convierte cualquier imagen (SVG, PNG, JPEG) a PNG base64 via canvas
-2. **handlePrint**: Usar `loadImageAsPngBase64` para cargar el logo (lineas 468-471)
-3. **handlePrint**: Reemplazar el bloque de descarga manual + `window.open` (lineas 500-510) por `doc.save()`
-4. **Vista previa HTML** (linea 640-644): Agregar fallback al logo local tambien en la preview
+Esto evita la atribucion incorrecta. Los envios de e-commerce (vinculados via `ecommerce_orders.seller_id`) seguiran funcionando correctamente porque tienen una relacion directa con el seller.
+
+## Cambios tecnicos
+
+Solo se modifica `src/pages/ecommerce/Settlements.tsx`:
+
+1. **Lineas 504-515**: Eliminar la condicion `hasZoneTarifa` y siempre cargar tarifas de zona del tenant
+2. **Lineas 529-568**: Agregar rama `else` cuando `sellerTarifaId` es null, para intentar match por zona con las tarifas del tenant (misma logica que "Saldos por Seller")
+3. **Lineas 447-464**: Filtrar envios comunes por `cliente_id` solo cuando ese `cliente_id` es unico a un solo seller. Si multiples sellers comparten el mismo `cliente_id`, excluir los envios comunes de la liquidacion
 
