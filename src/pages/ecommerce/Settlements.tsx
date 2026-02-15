@@ -445,19 +445,46 @@ export default function Settlements() {
         );
 
         // Paso 4: Envíos comunes (sin orden e-commerce) por remitente_id
-        const { data: commonEnvios, error: commonError } = await supabase
-          .from('envios')
-          .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, estado, created_at')
-          .in('remitente_id', uniqueClienteIds)
-          .gte('fecha_entrega', fechaInicioStr)
-          .lte('fecha_entrega', fechaFinStr)
-          .is('liquidacion_seller_id', null)
-          .order('created_at', { ascending: true });
+        // Only include common envios when the cliente_id is unique to one seller
+        // If multiple sellers share the same cliente_id, we can't determine ownership
+        const clienteIdSellerCount = new Map<string, number>();
+        selectedSellerObjs.forEach(s => {
+          if (s.cliente_id) {
+            clienteIdSellerCount.set(s.cliente_id, (clienteIdSellerCount.get(s.cliente_id) || 0) + 1);
+          }
+        });
+        // Also check ALL sellers (not just selected) for shared cliente_ids
+        (sellers || []).forEach(s => {
+          if (s.cliente_id && uniqueClienteIds.includes(s.cliente_id)) {
+            clienteIdSellerCount.set(s.cliente_id, (clienteIdSellerCount.get(s.cliente_id) || 0));
+          }
+        });
+        // Count how many sellers in the FULL list share each cliente_id
+        const clienteIdFullCount = new Map<string, number>();
+        (sellers || []).forEach(s => {
+          if (s.cliente_id) {
+            clienteIdFullCount.set(s.cliente_id, (clienteIdFullCount.get(s.cliente_id) || 0) + 1);
+          }
+        });
+        // Only use cliente_ids that belong to exactly one seller
+        const uniqueOnlyClienteIds = uniqueClienteIds.filter(cid => (clienteIdFullCount.get(cid) || 0) <= 1);
 
-        if (commonError) throw commonError;
+        let filteredCommonEnvios: any[] = [];
+        if (uniqueOnlyClienteIds.length > 0) {
+          const { data: commonEnvios, error: commonError } = await supabase
+            .from('envios')
+            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, estado, created_at')
+            .in('remitente_id', uniqueOnlyClienteIds)
+            .gte('fecha_entrega', fechaInicioStr)
+            .lte('fecha_entrega', fechaFinStr)
+            .is('liquidacion_seller_id', null)
+            .order('created_at', { ascending: true });
 
-        // Filtrar envíos comunes: excluir los que están vinculados a cualquier orden e-commerce
-        const filteredCommonEnvios = (commonEnvios || []).filter(e => !allOrderEnvioIds.has(e.id));
+          if (commonError) throw commonError;
+
+          // Filtrar envíos comunes: excluir los que están vinculados a cualquier orden e-commerce
+          filteredCommonEnvios = (commonEnvios || []).filter(e => !allOrderEnvioIds.has(e.id));
+        }
 
         // Paso 5: Combinar ambos conjuntos sin duplicados
         const ecommerceIds = new Set(ecommerceEnvios.map(e => e.id));
@@ -501,18 +528,14 @@ export default function Settlements() {
           (tarifasData || []).forEach(t => tarifasMap.set(t.id, t));
         }
 
-        // Also fetch all zone tarifas for zone-type matching
-        let allZoneTarifas: any[] = [];
-        const hasZoneTarifa = [...tarifasMap.values()].some(t => t.tipo_tarifa === 'zona');
-        if (hasZoneTarifa) {
-          const { data: zoneTarifas } = await supabase
-            .from('tarifas')
-            .select('id, precio_base, zona_destino, nombre')
-            .eq('tenant_id', tenantId)
-            .eq('tipo_tarifa', 'zona')
-            .eq('activa', true);
-          allZoneTarifas = zoneTarifas || [];
-        }
+        // Always fetch all zone tarifas for the tenant (needed even when sellers have no tarifa_id)
+        const { data: zoneTarifasData } = await supabase
+          .from('tarifas')
+          .select('id, precio_base, zona_destino, nombre')
+          .eq('tenant_id', tenantId)
+          .eq('tipo_tarifa', 'zona')
+          .eq('activa', true);
+        const allZoneTarifas = zoneTarifasData || [];
 
         const normalize = (str: string) => str.toLowerCase().trim()
           .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -565,8 +588,36 @@ export default function Settlements() {
                 zonaMatch = tarifa.nombre;
               }
             }
+          } else if (allZoneTarifas.length > 0 && e.ciudad_entrega) {
+            // No tarifa_id assigned: try zone matching with tenant's zone tarifas
+            const ciudadNorm = normalize(e.ciudad_entrega);
+            let matched = false;
+            for (const zt of allZoneTarifas) {
+              if (!zt.zona_destino) continue;
+              const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z));
+              for (const zona of zonas) {
+                if (zona === ciudadNorm || ciudadNorm.includes(zona) || zona.includes(ciudadNorm)) {
+                  precioFinal = zt.precio_base || 0;
+                  precioCalculado = true;
+                  zonaMatch = zt.nombre || zt.zona_destino;
+                  matched = true;
+                  break;
+                }
+              }
+              if (matched) break;
+            }
+            if (!matched) {
+              const fallback = allZoneTarifas
+                .filter(t => t.zona_destino && t.zona_destino.split(',').length > 3)
+                .sort((a: any, b: any) => (b.zona_destino?.split(',').length || 0) - (a.zona_destino?.split(',').length || 0))[0];
+              if (fallback) {
+                precioFinal = fallback.precio_base || 0;
+                precioCalculado = true;
+                zonaMatch = `${fallback.nombre} (fallback)`;
+              }
+            }
           }
-          // If no tarifa assigned, keep original precio_total as fallback
+          // If no tarifa and no zone match, keep original precio_total as fallback
 
           return {
             id: e.id,
