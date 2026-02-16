@@ -98,7 +98,7 @@ export function SettlementDetailDialog({
         .from('liquidacion_sucursal_detalles')
         .select(`
           *,
-          envio:envios(tracking_number, estado, created_at, destinatario_id, clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
+          envio:envios(tracking_number, estado, created_at, nombre_destinatario, destinatario_id, clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
         `)
         .eq('liquidacion_id', settlementId)
         .order('created_at', { ascending: false });
@@ -117,7 +117,7 @@ export function SettlementDetailDialog({
         .from('comisiones')
         .select(`
           *,
-          envio:envios(tracking_number, estado, created_at, precio_total, destinatario_id, clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
+          envio:envios(tracking_number, estado, created_at, precio_total, nombre_destinatario, destinatario_id, clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
         `)
         .eq('liquidacion_id', settlementId)
         .order('created_at', { ascending: false });
@@ -245,7 +245,7 @@ export function SettlementDetailDialog({
       const destinatario = envio?.clientes;
       const tracking = envio?.tracking_number || '-';
       const fecha = envio?.created_at ? format(new Date(envio.created_at), 'dd/MM/yy') : '-';
-      const nombre = destinatario ? `${destinatario.nombre || ''} ${destinatario.apellido || ''}`.trim() : '-';
+      const nombre = destinatario ? `${destinatario.nombre || ''} ${destinatario.apellido || ''}`.trim() : envio?.nombre_destinatario || '-';
       const monto = isBranch 
         ? `$${(item.monto_envio || 0).toFixed(2)}`
         : `$${(item.monto || 0).toFixed(2)}`;
@@ -523,7 +523,7 @@ export function SettlementDetailDialog({
                             {envio?.created_at ? format(new Date(envio.created_at), 'dd/MM/yy', { locale: es }) : '-'}
                           </TableCell>
                           <TableCell>
-                            {destinatario ? `${destinatario.nombre || ''} ${destinatario.apellido || ''}`.trim() : '-'}
+                            {destinatario ? `${destinatario.nombre || ''} ${destinatario.apellido || ''}`.trim() : envio?.nombre_destinatario || '-'}
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" className="text-xs">
