@@ -205,14 +205,16 @@ export default function DriverSettlements() {
       const chofer = choferes.find(c => c.id === selectedChofer);
       if (!chofer) throw new Error('Chofer no encontrado');
 
-      // 1. Fetch envíos entregados por este chofer (como principal o última milla)
-      const { data: envios, error: enviosError } = await supabase
-        .from('envios')
-        .select(`
+      const selectFields = `
           id, tracking_number, precio_total, fecha_entrega, tarifa_id,
           chofer_id, chofer_ultima_milla_id, pago_contra_entrega,
           tarifas:tarifas(comision_chofer_porcentaje, comision_chofer_fija)
-        `)
+        `;
+
+      // 1a. Query por fecha_entrega
+      const { data: enviosByFecha, error: enviosError } = await supabase
+        .from('envios')
+        .select(selectFields)
         .eq('estado', 'entregado')
         .or(`chofer_id.eq.${chofer.user_id},chofer_ultima_milla_id.eq.${chofer.user_id}`)
         .gte('fecha_entrega', toLocalISOStart(fechaInicio))
@@ -220,7 +222,45 @@ export default function DriverSettlements() {
         .order('fecha_entrega', { ascending: false });
 
       if (enviosError) throw enviosError;
-      if (!envios || envios.length === 0) {
+
+      // 1b. Query por fecha de ruta (cubre envíos con fecha_entrega inconsistente)
+      const { data: rutasDelPeriodo } = await supabase
+        .from('rutas_planificadas')
+        .select('id')
+        .eq('chofer_id', chofer.user_id)
+        .gte('fecha', fechaInicio)
+        .lte('fecha', fechaFin);
+
+      let enviosByRuta: typeof enviosByFecha = [];
+      if (rutasDelPeriodo?.length) {
+        const rutaIds = rutasDelPeriodo.map(r => r.id);
+        const { data: paradas } = await supabase
+          .from('ruta_paradas')
+          .select('envio_id')
+          .in('ruta_id', rutaIds);
+
+        if (paradas?.length) {
+          const envioIds = [...new Set(paradas.map(p => p.envio_id))];
+          const { data } = await supabase
+            .from('envios')
+            .select(selectFields)
+            .eq('estado', 'entregado')
+            .in('id', envioIds);
+          enviosByRuta = data || [];
+        }
+      }
+
+      // Combinar sin duplicados
+      const seenIds = new Set<string>();
+      const envios: NonNullable<typeof enviosByFecha> = [];
+      for (const e of [...(enviosByFecha || []), ...(enviosByRuta || [])]) {
+        if (!seenIds.has(e.id)) {
+          seenIds.add(e.id);
+          envios.push(e);
+        }
+      }
+
+      if (envios.length === 0) {
         return [];
       }
 
