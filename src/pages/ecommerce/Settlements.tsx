@@ -18,7 +18,7 @@ import { Label } from '@/components/ui/label';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Search, DollarSign, TrendingUp, TrendingDown, Plus, Calculator, FileText, Eye, Check, X, CalendarIcon, Download, Loader2, Printer, Package, ChevronsUpDown } from 'lucide-react';
+import { DollarSign, TrendingUp, TrendingDown, Plus, Calculator, FileText, Eye, Check, X, CalendarIcon, Download, Loader2, Printer, Package, ChevronsUpDown } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { parseDateString } from '@/lib/dateUtils';
 import { es } from 'date-fns/locale';
@@ -37,20 +37,6 @@ interface Seller {
   tarifa_id: string | null;
 }
 
-interface Movement {
-  id: string;
-  tipo: string;
-  monto: number;
-  saldo_anterior: number;
-  saldo_nuevo: number;
-  descripcion: string | null;
-  referencia: string | null;
-  created_at: string;
-  liquidacion_id: string | null;
-  seller: {
-    nombre: string;
-  };
-}
 
 interface SellerLiquidacion {
   id: string;
@@ -114,8 +100,6 @@ export default function Settlements() {
   const [activeTab, setActiveTab] = useState('sellers');
 
   // Existing states
-  const [search, setSearch] = useState('');
-  const [selectedSeller, setSelectedSeller] = useState<string>('all');
   const [settlementDialogOpen, setSettlementDialogOpen] = useState(false);
   const [activeSeller, setActiveSeller] = useState<Seller | null>(null);
 
@@ -133,7 +117,7 @@ export default function Settlements() {
     saldoAnterior: number;
     totalEnvios: number;
   } | null>(null);
-  const [previewTab, setPreviewTab] = useState('movimientos');
+  
   const [notas, setNotas] = useState('');
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [selectedLiquidacion, setSelectedLiquidacion] = useState<SellerLiquidacion | null>(null);
@@ -322,29 +306,6 @@ export default function Settlements() {
     enabled: !!tenantId && !!sellers && sellers.length > 0,
   });
 
-  // Fetch movements
-  const { data: movements, isLoading: loadingMovements } = useQuery({
-    queryKey: ['seller-movements', tenantId, selectedSeller],
-    queryFn: async () => {
-      let query = supabase
-        .from('seller_cuenta_corriente')
-        .select(`
-          *,
-          seller:ecommerce_sellers(nombre)
-        `)
-        .order('created_at', { ascending: false })
-        .limit(100);
-
-      if (selectedSeller !== 'all') {
-        query = query.eq('seller_id', selectedSeller);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data as Movement[];
-    },
-    enabled: !!tenantId,
-  });
 
   // Fetch liquidaciones
   const { data: liquidaciones, isLoading: loadingLiquidaciones } = useQuery({
@@ -669,8 +630,8 @@ export default function Settlements() {
       setCalculatedMovements(data.movements);
       setCalculatedEnvios(data.envios);
       setCalculatedTotals(data.totals);
-      if (data.movements.length === 0 && data.envios.length === 0) {
-        toast.info('No hay movimientos ni envíos sin liquidar en el período seleccionado');
+      if (data.envios.length === 0) {
+        toast.info('No hay envíos sin liquidar en el período seleccionado');
       }
     },
     onError: (error: Error) => {
@@ -681,8 +642,8 @@ export default function Settlements() {
   // Generate liquidacion mutation - creates one per selected seller
   const generateMutation = useMutation({
     mutationFn: async () => {
-      if (calcSellers.length === 0 || (calculatedMovements.length === 0 && calculatedEnvios.length === 0)) {
-        throw new Error('No hay movimientos ni envíos para liquidar');
+      if (calcSellers.length === 0 || calculatedEnvios.length === 0) {
+        throw new Error('No hay envíos para liquidar');
       }
 
       const createdLiquidaciones: any[] = [];
@@ -884,11 +845,6 @@ export default function Settlements() {
     }).length || 0,
   };
 
-  const filteredMovements = movements?.filter(m =>
-    m.descripcion?.toLowerCase().includes(search.toLowerCase()) ||
-    m.referencia?.toLowerCase().includes(search.toLowerCase()) ||
-    m.seller?.nombre.toLowerCase().includes(search.toLowerCase())
-  );
 
   const getEstadoBadge = (estado: string | null) => {
     switch (estado) {
@@ -971,7 +927,6 @@ export default function Settlements() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="sellers">Saldos por Seller</TabsTrigger>
-          <TabsTrigger value="movements">Movimientos</TabsTrigger>
           <TabsTrigger value="liquidaciones">Liquidaciones</TabsTrigger>
         </TabsList>
 
@@ -1051,85 +1006,6 @@ export default function Settlements() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="movements" className="mt-4 space-y-4">
-          {/* Filters */}
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar movimiento..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <Select value={selectedSeller} onValueChange={setSelectedSeller}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Filtrar por seller" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los sellers</SelectItem>
-                {sellers?.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <Card>
-            <CardContent className="p-0">
-              {loadingMovements ? (
-                <div className="p-6 space-y-4">
-                  {[...Array(5)].map((_, i) => (
-                    <Skeleton key={i} className="h-12 w-full" />
-                  ))}
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Fecha</TableHead>
-                      <TableHead>Seller</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Descripción</TableHead>
-                      <TableHead className="text-right">Monto</TableHead>
-                      <TableHead className="text-right">Saldo</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredMovements?.map((mov) => (
-                      <TableRow key={mov.id}>
-                        <TableCell className="text-sm">
-                          {format(new Date(mov.created_at), 'dd/MM/yy HH:mm', { locale: es })}
-                        </TableCell>
-                        <TableCell className="font-medium">{mov.seller?.nombre}</TableCell>
-                        <TableCell>
-                          <Badge variant={mov.tipo === 'cargo' ? 'default' : mov.tipo === 'pago' ? 'secondary' : 'outline'}>
-                            {mov.tipo === 'cargo' ? 'Cargo' : mov.tipo === 'pago' ? 'Pago' : 'Ajuste'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
-                          {mov.descripcion || mov.referencia || '-'}
-                        </TableCell>
-                        <TableCell className={`text-right font-medium ${mov.tipo === 'cargo' ? 'text-orange-600' : 'text-green-600'}`}>
-                          {mov.tipo === 'cargo' ? '+' : '-'}${Math.abs(mov.monto).toLocaleString()}
-                        </TableCell>
-                        <TableCell className="text-right">${mov.saldo_nuevo?.toLocaleString()}</TableCell>
-                      </TableRow>
-                    ))}
-                    {filteredMovements?.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                          No hay movimientos
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
 
         <TabsContent value="liquidaciones" className="mt-4 space-y-6">
           {/* Calculator Card */}
@@ -1140,7 +1016,7 @@ export default function Settlements() {
                 Generar Nueva Liquidación
               </CardTitle>
               <CardDescription>
-                Seleccione un seller y período para calcular movimientos y envíos a liquidar
+                Seleccione un seller y período para calcular envíos a liquidar
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -1276,11 +1152,7 @@ export default function Settlements() {
               {/* Results */}
               {calculatedTotals && (
                 <div className="space-y-4 pt-4 border-t">
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                    <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="text-sm text-muted-foreground">Movimientos Cta.</p>
-                      <p className="text-xl font-bold">{calculatedMovements.length}</p>
-                    </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="p-3 bg-muted/50 rounded-lg">
                       <p className="text-sm text-muted-foreground">Envíos</p>
                       <p className="text-xl font-bold">{calculatedEnvios.length}</p>
@@ -1307,118 +1179,62 @@ export default function Settlements() {
 
                   {hasCalculatedData && (
                     <>
-                      <Tabs value={previewTab} onValueChange={setPreviewTab}>
-                        <TabsList>
-                          <TabsTrigger value="movimientos">
-                            Movimientos Cta. Cte. ({calculatedMovements.length})
-                          </TabsTrigger>
-                          <TabsTrigger value="envios">
-                            Envíos ({calculatedEnvios.length})
-                          </TabsTrigger>
-                        </TabsList>
-
-                        <TabsContent value="movimientos" className="mt-2">
-                          <div className="max-h-48 overflow-y-auto border rounded-lg">
-                            <Table>
-                              <TableHeader>
-                                <TableRow>
-                                  <TableHead>Fecha</TableHead>
-                                  <TableHead>Tipo</TableHead>
-                                  <TableHead>Descripción</TableHead>
-                                  <TableHead className="text-right">Monto</TableHead>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {calculatedMovements.length === 0 ? (
-                                  <TableRow>
-                                    <TableCell colSpan={4} className="text-center py-4 text-muted-foreground">
-                                      No hay movimientos de cuenta corriente en el período
-                                    </TableCell>
-                                  </TableRow>
-                                ) : (
-                                  calculatedMovements.map((mov) => (
-                                    <TableRow key={mov.id}>
-                                      <TableCell className="text-sm">
-                                        {format(new Date(mov.created_at), 'dd/MM/yy')}
-                                      </TableCell>
-                                      <TableCell>
-                                        <Badge variant={mov.tipo === 'cargo' ? 'default' : 'secondary'} className="text-xs">
-                                          {mov.tipo}
+                      <div className="max-h-48 overflow-y-auto border rounded-lg">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Fecha</TableHead>
+                              <TableHead>Tracking</TableHead>
+                              <TableHead>Destinatario</TableHead>
+                              <TableHead>Ciudad</TableHead>
+                              <TableHead>Estado</TableHead>
+                              <TableHead className="text-right">Precio</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {calculatedEnvios.length === 0 ? (
+                              <TableRow>
+                                <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
+                                  {sellers?.some(s => calcSellers.includes(s.id) && s.cliente_id)
+                                    ? 'No hay envíos sin liquidar en el período'
+                                    : 'Sellers no tienen cliente vinculado'}
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              calculatedEnvios.map((envio) => (
+                                <TableRow key={envio.id} className={envio.precio_total === 0 ? 'bg-destructive/5' : ''}>
+                                  <TableCell className="text-sm">
+                                    {format(new Date(envio.created_at), 'dd/MM/yy')}
+                                  </TableCell>
+                                  <TableCell className="font-mono text-sm">{envio.tracking_number}</TableCell>
+                                  <TableCell className="text-sm">{envio.nombre_destinatario || '-'}</TableCell>
+                                  <TableCell className="text-sm">{envio.ciudad_entrega || '-'}</TableCell>
+                                  <TableCell>
+                                    <Badge variant="outline" className="text-xs">{envio.estado || '-'}</Badge>
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    <div className="flex items-center justify-end gap-1">
+                                      <span className={`font-medium ${envio.precio_total > 0 ? 'text-orange-600' : 'text-destructive'}`}>
+                                        {envio.precio_total > 0 ? `+$${envio.precio_total.toLocaleString()}` : '$0'}
+                                      </span>
+                                      {envio.precio_calculado && (
+                                        <Badge variant="secondary" className="text-[10px] px-1 py-0">
+                                          Zona
                                         </Badge>
-                                      </TableCell>
-                                      <TableCell className="text-sm text-muted-foreground">
-                                        {mov.descripcion || mov.referencia || '-'}
-                                      </TableCell>
-                                      <TableCell className={`text-right font-medium ${mov.tipo === 'cargo' ? 'text-orange-600' : 'text-green-600'}`}>
-                                        {mov.tipo === 'cargo' ? '+' : '-'}${Math.abs(mov.monto).toLocaleString()}
-                                      </TableCell>
-                                    </TableRow>
-                                  ))
-                                )}
-                              </TableBody>
-                            </Table>
-                          </div>
-                        </TabsContent>
-
-                        <TabsContent value="envios" className="mt-2">
-                          <div className="max-h-48 overflow-y-auto border rounded-lg">
-                            <Table>
-                              <TableHeader>
-                                <TableRow>
-                                  <TableHead>Fecha</TableHead>
-                                  <TableHead>Tracking</TableHead>
-                                  <TableHead>Destinatario</TableHead>
-                                  <TableHead>Ciudad</TableHead>
-                                  <TableHead>Estado</TableHead>
-                                  <TableHead className="text-right">Precio</TableHead>
+                                      )}
+                                      {envio.precio_total === 0 && (
+                                        <Badge variant="destructive" className="text-[10px] px-1 py-0">
+                                          Sin precio
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </TableCell>
                                 </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {calculatedEnvios.length === 0 ? (
-                                  <TableRow>
-                                    <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
-                                      {sellers?.some(s => calcSellers.includes(s.id) && s.cliente_id)
-                                        ? 'No hay envíos sin liquidar en el período'
-                                        : 'Sellers no tienen cliente vinculado'}
-                                    </TableCell>
-                                  </TableRow>
-                                ) : (
-                                  calculatedEnvios.map((envio) => (
-                                    <TableRow key={envio.id} className={envio.precio_total === 0 ? 'bg-destructive/5' : ''}>
-                                      <TableCell className="text-sm">
-                                        {format(new Date(envio.created_at), 'dd/MM/yy')}
-                                      </TableCell>
-                                      <TableCell className="font-mono text-sm">{envio.tracking_number}</TableCell>
-                                      <TableCell className="text-sm">{envio.nombre_destinatario || '-'}</TableCell>
-                                      <TableCell className="text-sm">{envio.ciudad_entrega || '-'}</TableCell>
-                                      <TableCell>
-                                        <Badge variant="outline" className="text-xs">{envio.estado || '-'}</Badge>
-                                      </TableCell>
-                                      <TableCell className="text-right">
-                                        <div className="flex items-center justify-end gap-1">
-                                          <span className={`font-medium ${envio.precio_total > 0 ? 'text-orange-600' : 'text-destructive'}`}>
-                                            {envio.precio_total > 0 ? `+$${envio.precio_total.toLocaleString()}` : '$0'}
-                                          </span>
-                                          {envio.precio_calculado && (
-                                            <Badge variant="secondary" className="text-[10px] px-1 py-0">
-                                              Zona
-                                            </Badge>
-                                          )}
-                                          {envio.precio_total === 0 && (
-                                            <Badge variant="destructive" className="text-[10px] px-1 py-0">
-                                              Sin precio
-                                            </Badge>
-                                          )}
-                                        </div>
-                                      </TableCell>
-                                    </TableRow>
-                                  ))
-                                )}
-                              </TableBody>
-                            </Table>
-                          </div>
-                        </TabsContent>
-                      </Tabs>
+                              ))
+                            )}
+                          </TableBody>
+                        </Table>
+                      </div>
 
                       <div className="space-y-2">
                         <Label>Notas (opcional)</Label>
@@ -1645,7 +1461,7 @@ export default function Settlements() {
           <AlertDialogHeader>
             <AlertDialogTitle>Cancelar Liquidación</AlertDialogTitle>
             <AlertDialogDescription>
-              ¿Está seguro de cancelar esta liquidación? Los movimientos y envíos serán liberados y podrán incluirse en una nueva liquidación.
+              ¿Está seguro de cancelar esta liquidación? Los envíos serán liberados y podrán incluirse en una nueva liquidación.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
