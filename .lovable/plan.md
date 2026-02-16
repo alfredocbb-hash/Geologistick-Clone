@@ -1,48 +1,41 @@
 
-# Fix: Períodos de liquidaciones se muestran con fecha incorrecta
+# Fix: PDF de liquidacion de seller debe incluir envios ademas de movimientos
 
 ## Problema
 
-Las fechas de período (`periodo_inicio`, `periodo_fin`) se almacenan como tipo `date` en la base de datos (ej: `"2026-02-09"`). Al hacer `new Date("2026-02-09")`, JavaScript interpreta esto como medianoche UTC. En Argentina (UTC-3), esto se convierte en **8 de febrero a las 21:00**, mostrando el dia anterior.
-
-Los datos en la base estan correctos (`periodo_inicio: 2026-02-09`, `periodo_fin: 2026-02-13`), pero la visualizacion muestra un dia menos.
+Cuando se genera el PDF de una liquidacion de seller, solo se incluyen los **movimientos** de cuenta corriente (`seller_cuenta_corriente`), pero no los **envios** vinculados a la liquidacion (`envios` con `liquidacion_seller_id`). En la UI se ven ambos en tabs separados ("Movimientos" y "Envios"), pero el PDF solo muestra movimientos.
 
 ## Solucion
 
-El proyecto ya tiene la funcion `parseDateString()` en `src/lib/dateUtils.ts` que resuelve exactamente este problema: extrae los componentes de la fecha sin conversion de zona horaria.
+Modificar la funcion `downloadSellerSettlementPDF` y la funcion `generateSettlementPDF` para que el PDF de seller incluya una seccion de envios ademas de los movimientos.
 
-Se debe reemplazar `new Date(liq.periodo_inicio)` por `parseDateString(liq.periodo_inicio)` en todos los archivos afectados.
+## Archivos a modificar
 
-## Archivos a modificar (9 archivos)
+### 1. `src/lib/generateSettlementPDF.ts`
 
-### 1. `src/pages/ecommerce/Settlements.tsx`
-- Linea 1482: reemplazar `new Date(liq.periodo_inicio)` y `new Date(liq.periodo_fin)` por `parseDateString()`
+**En `downloadSellerSettlementPDF` (linea ~325-360):**
+- Agregar una consulta adicional para obtener los envios vinculados via `liquidacion_seller_id`
+- Pasar los envios como un campo adicional en los datos del PDF
 
-### 2. `src/pages/BranchSettlements.tsx`
-- Linea 969-970: tabla de liquidaciones
-- Linea 1157: dialogo de cancelacion
+**En la interfaz `SettlementPDFData`:**
+- Agregar campo opcional `shipments` para los envios del seller
 
-### 3. `src/pages/DriverSettlements.tsx`
-- Linea 835-836: tabla de liquidaciones
-- Linea 985: dialogo de cancelacion
+**En `generateSettlementPDF` (la funcion principal):**
+- Despues de renderizar la tabla de movimientos, si hay `shipments`, agregar una segunda seccion "DETALLE DE ENVIOS" con columnas: Fecha, Tracking, Destinatario, Estado, Precio
+- Incluir un subtotal de envios al final de esa seccion
 
-### 4. `src/pages/PrintSettlement.tsx`
-- Linea 268: vista de impresion del periodo
+### Detalle tecnico
 
-### 5. `src/pages/MyCommissions.tsx`
-- Linea 371-372: tabla de liquidaciones del chofer
+La consulta de envios sera:
+```sql
+SELECT id, tracking_number, nombre_destinatario, precio_total, estado, created_at
+FROM envios
+WHERE liquidacion_seller_id = <liquidacion_id>
+ORDER BY created_at ASC
+```
 
-### 6. `src/components/ecommerce/SellerLiquidacionDetailDialog.tsx`
-- Linea 183: detalle de liquidacion del seller
+El PDF resultante tendra dos secciones:
+1. **DETALLE DE MOVIMIENTOS** - como hasta ahora (cargos/pagos de cuenta corriente)
+2. **DETALLE DE ENVIOS** - nueva seccion con tracking, destinatario, estado y precio
 
-### 7. `src/components/settlements/SettlementDetailDialog.tsx`
-- Linea 174: generacion de PDF del detalle
-
-### 8. `src/lib/generateSettlementPDF.ts`
-- Linea 71: periodo en PDF
-- Lineas 180, 182, 184: nombre del archivo PDF
-
-### 9. `src/components/mobile/MobileEarningsTab.tsx`
-- Linea 182: vista mobile de ganancias
-
-Cada archivo recibira el import de `parseDateString` desde `@/lib/dateUtils` y se reemplazaran todas las instancias de `new Date()` aplicadas a campos `periodo_inicio` y `periodo_fin`.
+Tambien se actualizara el resumen de totales para incluir la cantidad de envios y el total de envios.
