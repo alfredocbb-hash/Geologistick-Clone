@@ -130,57 +130,43 @@ export function generateSettlementPDF(data: SettlementPDFData): void {
   }
   y += 15;
 
-  // Detalle
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'bold');
-  doc.text(isSeller ? 'DETALLE DE MOVIMIENTOS' : 'DETALLE DE ENVÍOS', 20, y);
-  y += 8;
+  // Detalle - for seller, skip movimientos and go straight to shipments
+  if (!isSeller) {
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('DETALLE DE ENVÍOS', 20, y);
+    y += 8;
 
-  // Headers de tabla
-  doc.setFontSize(9);
-  doc.setFillColor(230, 230, 230);
-  doc.rect(20, y - 4, pageWidth - 40, 8, 'F');
-  
-  if (isSeller) {
-    doc.text('Fecha', 22, y);
-    doc.text('Tipo', 55, y);
-    doc.text('Descripción', 85, y);
-    doc.text('Monto', 160, y);
-  } else {
+    // Headers de tabla
+    doc.setFontSize(9);
+    doc.setFillColor(230, 230, 230);
+    doc.rect(20, y - 4, pageWidth - 40, 8, 'F');
     doc.text('Tracking', 22, y);
     doc.text('Fecha', 70, y);
     doc.text('Destinatario', 100, y);
     doc.text('Monto', 160, y);
-  }
-  y += 8;
+    y += 8;
 
-  doc.setFont('helvetica', 'normal');
+    doc.setFont('helvetica', 'normal');
 
-  items.forEach((item, index) => {
-    if (y > 270) {
-      doc.addPage();
-      y = 20;
-    }
+    items.forEach((item, index) => {
+      if (y > 270) {
+        doc.addPage();
+        y = 20;
+      }
 
-    if (index % 2 === 0) {
-      doc.setFillColor(250, 250, 250);
-      doc.rect(20, y - 4, pageWidth - 40, 7, 'F');
-    }
+      if (index % 2 === 0) {
+        doc.setFillColor(250, 250, 250);
+        doc.rect(20, y - 4, pageWidth - 40, 7, 'F');
+      }
 
-    if (isSeller) {
-      doc.text(item.fecha, 22, y);
-      doc.text((item.tipo || '-').substring(0, 12), 55, y);
-      doc.text((item.descripcion || '-').substring(0, 35), 85, y);
-      const montoText = item.tipo === 'cargo' ? `+$${item.monto.toFixed(2)}` : `-$${Math.abs(item.monto).toFixed(2)}`;
-      doc.text(montoText, 160, y);
-    } else {
       doc.text((item.tracking || '-').substring(0, 20), 22, y);
       doc.text(item.fecha, 70, y);
       doc.text((item.destinatario || '-').substring(0, 25), 100, y);
       doc.text(`$${item.monto.toFixed(2)}`, 160, y);
-    }
-    y += 7;
-  });
+      y += 7;
+    });
+  }
 
   // Shipments section for seller
   if (isSeller && shipments && shipments.length > 0) {
@@ -384,26 +370,12 @@ export async function downloadSellerSettlementPDF(liquidacion: {
   referencia_pago: string | null;
   seller?: { nombre: string };
 }): Promise<void> {
-  // Fetch movimientos vinculados
-  const [{ data: movimientos }, { data: envios }] = await Promise.all([
-    supabase
-      .from('seller_cuenta_corriente')
-      .select('*')
-      .eq('liquidacion_id', liquidacion.id)
-      .order('created_at', { ascending: true }),
-    supabase
-      .from('envios')
-      .select('id, tracking_number, nombre_destinatario, precio_total, estado, created_at')
-      .eq('liquidacion_seller_id', liquidacion.id)
-      .order('created_at', { ascending: true }),
-  ]);
-
-  const items = (movimientos || []).map((m: any) => ({
-    fecha: m.created_at ? format(new Date(m.created_at), 'dd/MM/yy') : '-',
-    tipo: m.tipo || '-',
-    descripcion: m.descripcion || m.referencia || '-',
-    monto: m.monto || 0,
-  }));
+  // Fetch envíos vinculados
+  const { data: envios } = await supabase
+    .from('envios')
+    .select('id, tracking_number, nombre_destinatario, precio_total, estado, created_at')
+    .eq('liquidacion_seller_id', liquidacion.id)
+    .order('created_at', { ascending: true });
 
   const shipmentItems = (envios || []).map((e: any) => ({
     tracking: e.tracking_number || '-',
@@ -430,9 +402,9 @@ export async function downloadSellerSettlementPDF(liquidacion: {
       totalCargos: liquidacion.total_cargos || 0,
       totalPagos: liquidacion.total_pagos || 0,
       saldo: liquidacion.saldo_periodo || 0,
-      cantidadMovimientos: liquidacion.cantidad_movimientos || items.length,
+      cantidadMovimientos: liquidacion.cantidad_movimientos || 0,
     },
-    items,
+    items: [],
     shipments: shipmentItems,
   });
 }

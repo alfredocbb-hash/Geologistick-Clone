@@ -55,22 +55,6 @@ export function SellerLiquidacionDetailDialog({
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
   const queryClient = useQueryClient();
 
-  // Fetch movimientos vinculados a esta liquidación
-  const { data: movimientos, isLoading } = useQuery({
-    queryKey: ['seller-liquidacion-movimientos', liquidacion?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('seller_cuenta_corriente')
-        .select('*')
-        .eq('liquidacion_id', liquidacion?.id)
-        .order('created_at', { ascending: true });
-
-      if (error) throw error;
-      return data;
-    },
-    enabled: open && !!liquidacion?.id,
-  });
-
   // Fetch envíos vinculados a esta liquidación
   const { data: envios, isLoading: isLoadingEnvios } = useQuery({
     queryKey: ['seller-liquidacion-envios', liquidacion?.id],
@@ -201,7 +185,6 @@ export function SellerLiquidacionDetailDialog({
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList>
                 <TabsTrigger value="resumen">Resumen</TabsTrigger>
-                <TabsTrigger value="detalle">Movimientos ({movimientos?.length || 0})</TabsTrigger>
                 <TabsTrigger value="envios">
                   <Package className="mr-1 h-3 w-3" />
                   Envíos ({envios?.length || 0})
@@ -369,58 +352,6 @@ export function SellerLiquidacionDetailDialog({
                     </CardContent>
                   </Card>
                 )}
-              </TabsContent>
-
-              <TabsContent value="detalle" className="mt-4">
-                <Card>
-                  <CardContent className="p-0">
-                    {isLoading ? (
-                      <div className="p-6 space-y-4">
-                        {[...Array(5)].map((_, i) => (
-                          <Skeleton key={i} className="h-10 w-full" />
-                        ))}
-                      </div>
-                    ) : (
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Fecha</TableHead>
-                            <TableHead>Tipo</TableHead>
-                            <TableHead>Descripción</TableHead>
-                            <TableHead className="text-right">Monto</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {movimientos?.map((mov) => (
-                            <TableRow key={mov.id}>
-                              <TableCell className="text-sm">
-                                {format(new Date(mov.created_at), 'dd/MM/yy HH:mm')}
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant={mov.tipo === 'cargo' ? 'default' : mov.tipo === 'pago' ? 'secondary' : 'outline'}>
-                                  {mov.tipo === 'cargo' ? 'Cargo' : mov.tipo === 'pago' ? 'Pago' : 'Ajuste'}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="text-muted-foreground text-sm">
-                                {mov.descripcion || mov.referencia || '-'}
-                              </TableCell>
-                              <TableCell className={`text-right font-medium ${mov.tipo === 'cargo' ? 'text-orange-600' : 'text-green-600'}`}>
-                                {mov.tipo === 'cargo' ? '+' : '-'}${Math.abs(mov.monto).toLocaleString()}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                          {movimientos?.length === 0 && (
-                            <TableRow>
-                              <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                                No hay movimientos de cuenta corriente en esta liquidación
-                              </TableCell>
-                            </TableRow>
-                          )}
-                        </TableBody>
-                      </Table>
-                    )}
-                  </CardContent>
-                </Card>
               </TabsContent>
 
               <TabsContent value="envios" className="mt-4">
