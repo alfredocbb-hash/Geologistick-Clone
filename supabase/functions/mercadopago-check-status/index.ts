@@ -58,9 +58,9 @@ serve(async (req) => {
 
     // Get user's tenant_id
     const { data: profile } = await supabaseClient
-      .from("usuarios")
+      .from("profiles")
       .select("tenant_id")
-      .eq("id", user.id)
+      .eq("user_id", user.id)
       .maybeSingle();
 
     if (!profile?.tenant_id) {
