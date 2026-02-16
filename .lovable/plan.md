@@ -1,38 +1,28 @@
 
 
-# Mostrar solo Total Envíos (sin cargos de cuenta corriente) en liquidaciones de sellers
+# Corregir Saldo Final en Liquidaciones de Sellers
 
-## Resumen
+## Problema
 
-Actualmente el campo "Total Cargos + Envíos" suma los movimientos tipo "cargo" de la cuenta corriente con el total de envíos. Como ya no se muestran movimientos al usuario, este valor genera confusión. Se va a simplificar para que solo refleje el total de envíos del período, mostrando los cargos en $0.
+El "Saldo Final" muestra $30,737.97 (el saldo actual de la cuenta corriente del seller en la base de datos) en lugar de calcularse a partir de los valores del periodo. Deberia ser: `Saldo Anterior + Envios del Periodo - Pagos del Periodo`.
 
-## Cambios
+## Cambio
 
-### 1. `src/pages/ecommerce/Settlements.tsx`
+### `src/pages/ecommerce/Settlements.tsx` (linea 685)
 
-**Calculo de liquidacion (linea 681):**
-- Cambiar `total_cargos: sellerTotalCargos + sellerTotalEnvios` a `total_cargos: sellerTotalEnvios` (solo envíos, sin sumar cargos de cuenta corriente)
-- Cambiar `saldo_periodo: sellerTotalCargos + sellerTotalEnvios - sellerTotalPagos` a `saldo_periodo: sellerTotalEnvios - sellerTotalPagos`
+Cambiar:
+```
+saldo_final: seller?.saldo_cuenta_corriente || 0,
+```
 
-**Preview de totales (lineas 1160-1164):**
-- Cambiar label "Total Cargos + Envíos" a "Total Envíos"
-- Cambiar valor de `(calculatedTotals.totalCargos || 0) + (calculatedTotals.totalEnvios || 0)` a solo `calculatedTotals.totalEnvios || 0`
+Por:
+```
+saldo_final: (sellerMovs[0]?.saldo_anterior || 0) + sellerTotalEnvios - sellerTotalPagos,
+```
 
-### 2. `src/components/ecommerce/SellerLiquidacionDetailDialog.tsx`
-
-**Card de totales (linea 205):**
-- Cambiar label "Total Cargos + Envíos" a "Total Envíos"
-
-**Detalle de saldos (linea ~225):**
-- Cambiar "Cargos + Envíos del Período" a "Envíos del Período"
-
-### 3. `src/pages/PrintSettlement.tsx`
-
-**Card de resumen (linea 331):**
-- Cambiar label "Total Cargos" a "Total Envíos" cuando es liquidacion de seller
-
-### 4. `src/lib/generateSettlementPDF.ts`
-
-**PDF de seller:**
-- Cambiar texto "Total Cargos" a "Total Envíos" en la seccion de totales del PDF para sellers
+Esto hara que el Saldo Final sea consistente con el calculo visible:
+- Saldo Anterior: $0
+- Envios del Periodo: +$40,983.96
+- Pagos del Periodo: -$0
+- **Saldo Final: $40,983.96**
 
