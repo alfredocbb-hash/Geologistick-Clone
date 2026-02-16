@@ -60,6 +60,7 @@ interface Order {
     tarifa_id: string | null;
     sucursal_pickup_id: string | null;
     tiene_cuenta_corriente: boolean;
+    store_id: string | null;
   };
   envio?: {
     tracking_number: string;
@@ -221,7 +222,7 @@ export default function Orders() {
         .from('ecommerce_orders')
         .select(`
           *,
-          seller:ecommerce_sellers(id, nombre, tarifa_id, sucursal_pickup_id, tiene_cuenta_corriente),
+          seller:ecommerce_sellers(id, nombre, tarifa_id, sucursal_pickup_id, tiene_cuenta_corriente, store_id),
           envio:envios!ecommerce_orders_envio_id_fkey(tracking_number, estado, chofer_id)
         `)
         .eq('tenant_id', tenantId);
