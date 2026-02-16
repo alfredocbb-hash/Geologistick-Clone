@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { parseDateString } from '@/lib/dateUtils';
 import { MobileCODSection } from './MobileCODSection';
 
 export function MobileEarningsTab() {
@@ -179,7 +180,7 @@ export function MobileEarningsTab() {
                       {getSettlementStatusBadge(liq.estado)}
                     </div>
                     <p className="text-sm text-slate-400">
-                      {format(new Date(liq.periodo_inicio), 'dd/MM')} - {format(new Date(liq.periodo_fin), 'dd/MM/yyyy')}
+                      {format(parseDateString(liq.periodo_inicio), 'dd/MM')} - {format(parseDateString(liq.periodo_fin), 'dd/MM/yyyy')}
                     </p>
                   </div>
                   <ChevronRight className="h-5 w-5 text-slate-500" />

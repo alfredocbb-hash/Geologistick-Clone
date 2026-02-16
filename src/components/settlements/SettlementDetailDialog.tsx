@@ -25,6 +25,7 @@ import { Download, FileText, Printer, Building2, Calendar, DollarSign, CreditCar
  import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { parseDateString } from '@/lib/dateUtils';
 import jsPDF from 'jspdf';
 import { ConceptBreakdownTable, type ResumenPorTipoPago } from './ConceptBreakdownTable';
 
@@ -171,7 +172,7 @@ export function SettlementDetailDialog({
     }
     y += 7;
 
-    doc.text(`Período: ${format(new Date(settlement.periodo_inicio), 'dd/MM/yyyy')} - ${format(new Date(settlement.periodo_fin), 'dd/MM/yyyy')}`, 20, y);
+    doc.text(`Período: ${format(parseDateString(settlement.periodo_inicio), 'dd/MM/yyyy')} - ${format(parseDateString(settlement.periodo_fin), 'dd/MM/yyyy')}`, 20, y);
     y += 7;
 
     doc.text(`Estado: ${settlement.estado || 'Pendiente'}`, 20, y);

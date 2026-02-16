@@ -20,6 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Checkbox } from '@/components/ui/checkbox';
 import { Search, DollarSign, TrendingUp, TrendingDown, Plus, Calculator, FileText, Eye, Check, X, CalendarIcon, Download, Loader2, Printer, Package, ChevronsUpDown } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { parseDateString } from '@/lib/dateUtils';
 import { es } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -1479,7 +1480,7 @@ export default function Settlements() {
                     {liquidaciones?.map((liq) => (
                       <TableRow key={liq.id}>
                         <TableCell className="text-sm">
-                          {format(new Date(liq.periodo_inicio), 'dd/MM')} - {format(new Date(liq.periodo_fin), 'dd/MM/yy')}
+                          {format(parseDateString(liq.periodo_inicio), 'dd/MM')} - {format(parseDateString(liq.periodo_fin), 'dd/MM/yy')}
                         </TableCell>
                         <TableCell className="font-medium">{liq.seller?.nombre}</TableCell>
                         <TableCell className="text-right text-orange-600">

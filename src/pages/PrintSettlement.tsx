@@ -16,6 +16,7 @@ import {
 import { ArrowLeft, Loader2, FileText, Printer, Download, Building2, Truck, User, Calendar, DollarSign, CreditCard } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { parseDateString } from '@/lib/dateUtils';
 import { downloadDriverSettlementPDF, downloadBranchSettlementPDF, downloadSellerSettlementPDF } from '@/lib/generateSettlementPDF';
 import { toast } from 'sonner';
 
@@ -265,7 +266,7 @@ export default function PrintSettlement() {
                   <Calendar className="h-3 w-3" /> Período
                 </p>
                 <p className="font-medium">
-                  {format(new Date(settlement.periodo_inicio), 'dd/MM/yy')} - {format(new Date(settlement.periodo_fin), 'dd/MM/yy')}
+                  {format(parseDateString(settlement.periodo_inicio), 'dd/MM/yy')} - {format(parseDateString(settlement.periodo_fin), 'dd/MM/yy')}
                 </p>
               </div>
               <div className="space-y-1">

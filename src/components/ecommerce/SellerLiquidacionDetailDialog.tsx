@@ -16,6 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Printer, Download, Calendar, DollarSign, FileText, Package, Receipt } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { parseDateString } from '@/lib/dateUtils';
 import { downloadSellerSettlementPDF } from '@/lib/generateSettlementPDF';
 import { InvoiceDataDialog } from '@/components/invoicing/InvoiceDataDialog';
 
@@ -180,7 +181,7 @@ export function SellerLiquidacionDetailDialog({
                 <p className="text-sm text-muted-foreground">Período</p>
                 <p className="font-medium flex items-center gap-1">
                   <Calendar className="h-3 w-3" />
-                  {format(new Date(liquidacion.periodo_inicio), 'dd/MM/yyyy')} - {format(new Date(liquidacion.periodo_fin), 'dd/MM/yyyy')}
+                  {format(parseDateString(liquidacion.periodo_inicio), 'dd/MM/yyyy')} - {format(parseDateString(liquidacion.periodo_fin), 'dd/MM/yyyy')}
                 </p>
               </div>
               <div>
