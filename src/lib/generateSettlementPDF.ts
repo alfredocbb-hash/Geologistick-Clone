@@ -36,10 +36,17 @@ interface SettlementPDFData {
     monto: number;
     comision?: number;
   }>;
+  shipments?: Array<{
+    tracking: string;
+    fecha: string;
+    destinatario: string;
+    estado: string;
+    precio: number;
+  }>;
 }
 
 export function generateSettlementPDF(data: SettlementPDFData): void {
-  const { type, settlement, entityName, totals, items } = data;
+  const { type, settlement, entityName, totals, items, shipments } = data;
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   let y = 20;
@@ -174,6 +181,61 @@ export function generateSettlementPDF(data: SettlementPDFData): void {
     }
     y += 7;
   });
+
+  // Shipments section for seller
+  if (isSeller && shipments && shipments.length > 0) {
+    y += 10;
+    if (y > 240) {
+      doc.addPage();
+      y = 20;
+    }
+
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('DETALLE DE ENVÍOS', 20, y);
+    y += 8;
+
+    // Shipments table header
+    doc.setFontSize(9);
+    doc.setFillColor(230, 230, 230);
+    doc.rect(20, y - 4, pageWidth - 40, 8, 'F');
+    doc.text('Fecha', 22, y);
+    doc.text('Tracking', 50, y);
+    doc.text('Destinatario', 95, y);
+    doc.text('Estado', 140, y);
+    doc.text('Precio', 170, y);
+    y += 8;
+
+    doc.setFont('helvetica', 'normal');
+    let totalEnvios = 0;
+
+    shipments.forEach((shipment, index) => {
+      if (y > 270) {
+        doc.addPage();
+        y = 20;
+      }
+
+      if (index % 2 === 0) {
+        doc.setFillColor(250, 250, 250);
+        doc.rect(20, y - 4, pageWidth - 40, 7, 'F');
+      }
+
+      doc.text(shipment.fecha, 22, y);
+      doc.text(shipment.tracking.substring(0, 18), 50, y);
+      doc.text(shipment.destinatario.substring(0, 20), 95, y);
+      doc.text(shipment.estado.substring(0, 12), 140, y);
+      doc.text(`$${shipment.precio.toFixed(2)}`, 170, y);
+      totalEnvios += shipment.precio;
+      y += 7;
+    });
+
+    // Subtotal de envíos
+    y += 3;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text(`Total Envíos (${shipments.length}): $${totalEnvios.toFixed(2)}`, 120, y);
+    y += 7;
+  }
 
   // Guardar
   let fileName: string;
@@ -323,17 +385,32 @@ export async function downloadSellerSettlementPDF(liquidacion: {
   seller?: { nombre: string };
 }): Promise<void> {
   // Fetch movimientos vinculados
-  const { data: movimientos } = await supabase
-    .from('seller_cuenta_corriente')
-    .select('*')
-    .eq('liquidacion_id', liquidacion.id)
-    .order('created_at', { ascending: true });
+  const [{ data: movimientos }, { data: envios }] = await Promise.all([
+    supabase
+      .from('seller_cuenta_corriente')
+      .select('*')
+      .eq('liquidacion_id', liquidacion.id)
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('envios')
+      .select('id, tracking_number, nombre_destinatario, precio_total, estado, created_at')
+      .eq('liquidacion_seller_id', liquidacion.id)
+      .order('created_at', { ascending: true }),
+  ]);
 
   const items = (movimientos || []).map((m: any) => ({
     fecha: m.created_at ? format(new Date(m.created_at), 'dd/MM/yy') : '-',
     tipo: m.tipo || '-',
     descripcion: m.descripcion || m.referencia || '-',
     monto: m.monto || 0,
+  }));
+
+  const shipmentItems = (envios || []).map((e: any) => ({
+    tracking: e.tracking_number || '-',
+    fecha: e.created_at ? format(new Date(e.created_at), 'dd/MM/yy') : '-',
+    destinatario: e.nombre_destinatario || '-',
+    estado: e.estado || '-',
+    precio: e.precio_total || 0,
   }));
 
   generateSettlementPDF({
@@ -356,5 +433,6 @@ export async function downloadSellerSettlementPDF(liquidacion: {
       cantidadMovimientos: liquidacion.cantidad_movimientos || items.length,
     },
     items,
+    shipments: shipmentItems,
   });
 }
