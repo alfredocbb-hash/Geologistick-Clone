@@ -43,6 +43,7 @@ interface Order {
   created_at: string;
   seller?: {
     nombre: string;
+    store_id?: string | null;
   };
   raw_data?: any;
 }
@@ -74,7 +75,7 @@ export function OrderDetailsDialog({ open, onOpenChange, order }: OrderDetailsDi
   const items = order.items as OrderItem[] || [];
   const isML = order.plataforma === 'mercadolibre';
   const mlShipmentId = order.ml_shipment_id || (order.raw_data?.id ? Number(order.raw_data.id) : null);
-  const mlSenderId = order.raw_data?.sender_id || order.raw_data?.sender?.id;
+  const mlSenderId = order.raw_data?.sender_id || order.raw_data?.sender?.id || order.seller?.store_id;
 
   const handleDownloadLabel = () => {
     if (!mlShipmentId) return;
