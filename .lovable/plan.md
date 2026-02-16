@@ -1,47 +1,43 @@
 
 
-# Corregir nombre de destinatario en Detalle de Envios
+# Corregir nombre de destinatario en PDFs de liquidacion
 
 ## Problema
 
-Los envios de Mercado Libre no tienen `destinatario_id` (referencia a la tabla `clientes`), sino que guardan el nombre directamente en el campo `nombre_destinatario` de la tabla `envios`. La consulta actual solo busca el nombre via la relacion con `clientes`, por lo que los envios ML aparecen con "-" en la columna Destinatario.
+El mismo problema del nombre "-" para envios de Mercado Libre existe en los PDFs descargados desde `src/lib/generateSettlementPDF.ts`. Las funciones `downloadDriverSettlementPDF` y `downloadBranchSettlementPDF` solo buscan el nombre via la relacion con `clientes`, sin usar el fallback a `nombre_destinatario`.
 
-## Solucion
+## Cambios en `src/lib/generateSettlementPDF.ts`
 
-Modificar `src/components/settlements/SettlementDetailDialog.tsx` en 4 puntos:
-
-### 1. Agregar `nombre_destinatario` al SELECT de ambas queries (lineas ~101 y ~120)
-
-Incluir el campo `nombre_destinatario` en la seleccion de envios:
+### 1. Query de chofer (linea ~258): agregar `nombre_destinatario` al SELECT
 
 ```
-envio:envios(tracking_number, estado, created_at, nombre_destinatario, destinatario_id, clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
+envio:envios(tracking_number, estado, created_at, precio_total, nombre_destinatario, destinatario_id, 
+  clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
 ```
 
-### 2. Actualizar la logica de nombre en la generacion del PDF (linea ~248)
+### 2. Mapping de chofer (linea ~267): agregar fallback
 
-Cambiar:
 ```typescript
-const nombre = destinatario ? `${destinatario.nombre || ''} ${destinatario.apellido || ''}`.trim() : '-';
-```
-Por:
-```typescript
-const nombre = destinatario 
-  ? `${destinatario.nombre || ''} ${destinatario.apellido || ''}`.trim() 
-  : envio?.nombre_destinatario || '-';
+destinatario: c.envio?.clientes 
+  ? `${c.envio.clientes.nombre || ''} ${c.envio.clientes.apellido || ''}`.trim() 
+  : c.envio?.nombre_destinatario || '-',
 ```
 
-### 3. Actualizar la logica de nombre en la tabla UI (linea ~526)
+### 3. Query de sucursal (linea ~315): agregar `nombre_destinatario` al SELECT
 
-Cambiar:
-```typescript
-{destinatario ? `${destinatario.nombre || ''} ${destinatario.apellido || ''}`.trim() : '-'}
 ```
-Por:
+envio:envios(tracking_number, estado, created_at, nombre_destinatario, destinatario_id, 
+  clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
+```
+
+### 4. Mapping de sucursal (linea ~324): agregar fallback
+
 ```typescript
-{destinatario ? `${destinatario.nombre || ''} ${destinatario.apellido || ''}`.trim() : envio?.nombre_destinatario || '-'}
+destinatario: d.envio?.clientes 
+  ? `${d.envio.clientes.nombre || ''} ${d.envio.clientes.apellido || ''}`.trim() 
+  : d.envio?.nombre_destinatario || '-',
 ```
 
 ## Resultado
 
-Los envios manuales seguiran mostrando el nombre desde la tabla `clientes`, y los envios ML mostraran el `nombre_destinatario` almacenado directamente en el envio.
+Los PDFs descargados mostraran el nombre del destinatario correctamente para envios manuales (desde tabla clientes) y para envios ML (desde campo nombre_destinatario).
