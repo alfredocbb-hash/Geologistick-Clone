@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { parseDateString } from '@/lib/dateUtils';
 import { supabase } from '@/integrations/supabase/client';
 
 interface SettlementPDFData {
@@ -68,7 +69,7 @@ export function generateSettlementPDF(data: SettlementPDFData): void {
   doc.text(`${entityLabel}: ${entityName}`, 20, y);
   y += 7;
 
-  doc.text(`Período: ${format(new Date(settlement.periodo_inicio), 'dd/MM/yyyy')} - ${format(new Date(settlement.periodo_fin), 'dd/MM/yyyy')}`, 20, y);
+  doc.text(`Período: ${format(parseDateString(settlement.periodo_inicio), 'dd/MM/yyyy')} - ${format(parseDateString(settlement.periodo_fin), 'dd/MM/yyyy')}`, 20, y);
   y += 7;
 
   doc.text(`Estado: ${settlement.estado || 'Pendiente'}`, 20, y);
@@ -177,11 +178,11 @@ export function generateSettlementPDF(data: SettlementPDFData): void {
   // Guardar
   let fileName: string;
   if (isSeller) {
-    fileName = `liquidacion-seller-${entityName.replace(/\s+/g, '-')}-${format(new Date(settlement.periodo_fin), 'yyyy-MM-dd')}.pdf`;
+    fileName = `liquidacion-seller-${entityName.replace(/\s+/g, '-')}-${format(parseDateString(settlement.periodo_fin), 'yyyy-MM-dd')}.pdf`;
   } else if (isBranch) {
-    fileName = `liquidacion-sucursal-${entityName.replace(/\s+/g, '-')}-${format(new Date(settlement.periodo_fin), 'yyyy-MM-dd')}.pdf`;
+    fileName = `liquidacion-sucursal-${entityName.replace(/\s+/g, '-')}-${format(parseDateString(settlement.periodo_fin), 'yyyy-MM-dd')}.pdf`;
   } else {
-    fileName = `liquidacion-chofer-${entityName.replace(/\s+/g, '-')}-${format(new Date(settlement.periodo_fin), 'yyyy-MM-dd')}.pdf`;
+    fileName = `liquidacion-chofer-${entityName.replace(/\s+/g, '-')}-${format(parseDateString(settlement.periodo_fin), 'yyyy-MM-dd')}.pdf`;
   }
   doc.save(fileName);
 }

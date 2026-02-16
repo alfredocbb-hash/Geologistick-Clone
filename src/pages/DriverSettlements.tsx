@@ -48,7 +48,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Database } from '@/integrations/supabase/types';
 import { SettlementDetailDialog } from '@/components/settlements/SettlementDetailDialog';
-import { toLocalISOStart, toLocalISOEnd } from '@/lib/dateUtils';
+import { toLocalISOStart, toLocalISOEnd, parseDateString } from '@/lib/dateUtils';
 
 type PaymentMethod = Database['public']['Enums']['payment_method'];
 
@@ -832,8 +832,8 @@ export default function DriverSettlements() {
                     <TableCell>
                       <div className="flex items-center gap-1 text-sm">
                         <Calendar className="h-3 w-3" />
-                        {format(new Date(liq.periodo_inicio), 'dd/MM/yy', { locale: es })} -
-                        {format(new Date(liq.periodo_fin), 'dd/MM/yy', { locale: es })}
+                        {format(parseDateString(liq.periodo_inicio), 'dd/MM/yy', { locale: es })} -
+                        {format(parseDateString(liq.periodo_fin), 'dd/MM/yy', { locale: es })}
                       </div>
                     </TableCell>
                     <TableCell>{liq.cantidad_envios}</TableCell>
@@ -982,7 +982,7 @@ export default function DriverSettlements() {
                   <p><strong>Chofer:</strong> {liquidacionToCancel.chofer?.nombre} {liquidacionToCancel.chofer?.apellido}</p>
                   <p><strong>Monto:</strong> ${liquidacionToCancel.monto_total.toFixed(2)}</p>
                   <p><strong>Envíos:</strong> {liquidacionToCancel.cantidad_envios}</p>
-                  <p><strong>Período:</strong> {format(new Date(liquidacionToCancel.periodo_inicio), 'dd/MM/yy', { locale: es })} - {format(new Date(liquidacionToCancel.periodo_fin), 'dd/MM/yy', { locale: es })}</p>
+                  <p><strong>Período:</strong> {format(parseDateString(liquidacionToCancel.periodo_inicio), 'dd/MM/yy', { locale: es })} - {format(parseDateString(liquidacionToCancel.periodo_fin), 'dd/MM/yy', { locale: es })}</p>
                 </div>
               )}
             </AlertDialogDescription>

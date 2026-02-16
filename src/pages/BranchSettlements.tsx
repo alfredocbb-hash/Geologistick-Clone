@@ -47,6 +47,7 @@ import {
 import { downloadBranchSettlementPDF } from '@/lib/generateSettlementPDF';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { parseDateString } from '@/lib/dateUtils';
 import { SettlementDetailDialog } from '@/components/settlements/SettlementDetailDialog';
 import { ConceptBreakdownTable, type ConceptoResumen, type ResumenPorTipoPago } from '@/components/settlements/ConceptBreakdownTable';
 import type { Database } from '@/integrations/supabase/types';
@@ -966,8 +967,8 @@ export default function BranchSettlements() {
                     <TableCell>
                       <div className="flex items-center gap-1 text-sm">
                         <Calendar className="h-3 w-3" />
-                        {format(new Date(liq.periodo_inicio), 'dd/MM/yy', { locale: es })} -
-                        {format(new Date(liq.periodo_fin), 'dd/MM/yy', { locale: es })}
+                        {format(parseDateString(liq.periodo_inicio), 'dd/MM/yy', { locale: es })} -
+                        {format(parseDateString(liq.periodo_fin), 'dd/MM/yy', { locale: es })}
                       </div>
                     </TableCell>
                     <TableCell className="text-success">${(liq.total_cobrado || 0).toFixed(2)}</TableCell>
@@ -1154,7 +1155,7 @@ export default function BranchSettlements() {
                   <p><strong>Sucursal:</strong> {liquidacionToCancel.sucursal?.nombre}</p>
                   <p><strong>Saldo:</strong> ${(liquidacionToCancel.saldo || 0).toFixed(2)}</p>
                   <p><strong>Total Cobrado:</strong> ${(liquidacionToCancel.total_cobrado || 0).toFixed(2)}</p>
-                  <p><strong>Período:</strong> {format(new Date(liquidacionToCancel.periodo_inicio), 'dd/MM/yy', { locale: es })} - {format(new Date(liquidacionToCancel.periodo_fin), 'dd/MM/yy', { locale: es })}</p>
+                  <p><strong>Período:</strong> {format(parseDateString(liquidacionToCancel.periodo_inicio), 'dd/MM/yy', { locale: es })} - {format(parseDateString(liquidacionToCancel.periodo_fin), 'dd/MM/yy', { locale: es })}</p>
                 </div>
               )}
             </AlertDialogDescription>

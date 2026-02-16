@@ -18,7 +18,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DollarSign, Package, Clock, CheckCircle, Calendar, Truck, Eye, Download } from 'lucide-react';
 import { format } from 'date-fns';
-import { toLocalISOStart, toLocalISOEnd } from '@/lib/dateUtils';
+import { toLocalISOStart, toLocalISOEnd, parseDateString } from '@/lib/dateUtils';
 import { es } from 'date-fns/locale';
 import { SettlementDetailDialog } from '@/components/settlements/SettlementDetailDialog';
 import { downloadDriverSettlementPDF } from '@/lib/generateSettlementPDF';
@@ -368,8 +368,8 @@ export default function MyCommissions() {
                         <TableCell>
                           <div className="flex items-center gap-1 text-sm">
                             <Calendar className="h-3 w-3" />
-                            {format(new Date(liq.periodo_inicio), 'dd/MM/yy', { locale: es })} -
-                            {format(new Date(liq.periodo_fin), 'dd/MM/yy', { locale: es })}
+                            {format(parseDateString(liq.periodo_inicio), 'dd/MM/yy', { locale: es })} -
+                            {format(parseDateString(liq.periodo_fin), 'dd/MM/yy', { locale: es })}
                           </div>
                         </TableCell>
                         <TableCell>
