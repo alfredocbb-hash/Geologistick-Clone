@@ -1,43 +1,38 @@
 
 
-# Ocultar Movimientos en Liquidaciones de Sellers (Ecommerce)
+# Mostrar solo Total Envíos (sin cargos de cuenta corriente) en liquidaciones de sellers
 
 ## Resumen
 
-Se eliminara la seccion/tab de "Movimientos" de la pagina de Liquidaciones de Sellers (`src/pages/ecommerce/Settlements.tsx`). Los movimientos de cuenta corriente seguiran existiendo en la base de datos pero no se mostraran al usuario en esta pantalla.
+Actualmente el campo "Total Cargos + Envíos" suma los movimientos tipo "cargo" de la cuenta corriente con el total de envíos. Como ya no se muestran movimientos al usuario, este valor genera confusión. Se va a simplificar para que solo refleje el total de envíos del período, mostrando los cargos en $0.
 
 ## Cambios
 
 ### 1. `src/pages/ecommerce/Settlements.tsx`
 
-**Tab principal "Movimientos" (linea 974):**
-- Eliminar el `TabsTrigger value="movements"` del TabsList principal (dejar solo "Saldos por Seller" y "Liquidaciones")
-- Eliminar todo el `TabsContent value="movements"` (lineas ~1054-1132) que contiene la tabla de movimientos con filtros
+**Calculo de liquidacion (linea 681):**
+- Cambiar `total_cargos: sellerTotalCargos + sellerTotalEnvios` a `total_cargos: sellerTotalEnvios` (solo envíos, sin sumar cargos de cuenta corriente)
+- Cambiar `saldo_periodo: sellerTotalCargos + sellerTotalEnvios - sellerTotalPagos` a `saldo_periodo: sellerTotalEnvios - sellerTotalPagos`
 
-**Preview de calculo de liquidacion (lineas ~1310-1361):**
-- Eliminar el tab "Movimientos Cta. Cte." del preview de pre-liquidacion
-- Mostrar directamente la tabla de envios sin tabs (ya que solo queda una seccion)
-- Eliminar la card "Movimientos Cta." del resumen de totales (linea 1280-1283)
+**Preview de totales (lineas 1160-1164):**
+- Cambiar label "Total Cargos + Envíos" a "Total Envíos"
+- Cambiar valor de `(calculatedTotals.totalCargos || 0) + (calculatedTotals.totalEnvios || 0)` a solo `calculatedTotals.totalEnvios || 0`
 
-**Query de movimientos (linea ~160-190 aprox):**
-- Eliminar la query `useQuery` que carga los movimientos de `seller_cuenta_corriente` para el tab principal
-- Eliminar el estado `filteredMovements` y variables relacionadas con el filtro de movimientos
+### 2. `src/components/ecommerce/SellerLiquidacionDetailDialog.tsx`
 
-**Calculo de liquidacion:**
-- Mantener la logica de calculo de movimientos internamente (se siguen vinculando a la liquidacion) pero no mostrarlos en la UI
-- Ajustar los mensajes toast para no mencionar "movimientos"
+**Card de totales (linea 205):**
+- Cambiar label "Total Cargos + Envíos" a "Total Envíos"
 
-**Generacion de liquidacion:**
-- Mantener el vinculo de movimientos en la generacion (lineas 738-746) ya que es logica de negocio necesaria
-- Ajustar la validacion para que permita generar si hay envios aunque no haya movimientos
+**Detalle de saldos (linea ~225):**
+- Cambiar "Cargos + Envíos del Período" a "Envíos del Período"
 
-**Estados y variables a limpiar:**
-- `search` y `selectedSeller` (usados solo para filtrar movimientos) - evaluar si se usan en otro lado
-- `previewTab` state - ya no necesario si solo hay envios
-- Interface `Movement` y query de movements del tab principal
+### 3. `src/pages/PrintSettlement.tsx`
 
-### 2. Mensajes y textos
-- Cambiar "No hay movimientos ni envios sin liquidar" por "No hay envios sin liquidar en el periodo seleccionado"
-- Cambiar "No hay movimientos ni envios para liquidar" por "No hay envios para liquidar"
-- Cambiar texto del dialogo de cancelacion que menciona "movimientos y envios"
+**Card de resumen (linea 331):**
+- Cambiar label "Total Cargos" a "Total Envíos" cuando es liquidacion de seller
+
+### 4. `src/lib/generateSettlementPDF.ts`
+
+**PDF de seller:**
+- Cambiar texto "Total Cargos" a "Total Envíos" en la seccion de totales del PDF para sellers
 
