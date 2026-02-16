@@ -255,7 +255,7 @@ export async function downloadDriverSettlementPDF(liquidacion: {
     .from('comisiones')
     .select(`
       *,
-      envio:envios(tracking_number, estado, created_at, precio_total, destinatario_id, 
+      envio:envios(tracking_number, estado, created_at, precio_total, nombre_destinatario, destinatario_id, 
         clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
     `)
     .eq('liquidacion_id', liquidacion.id)
@@ -266,7 +266,7 @@ export async function downloadDriverSettlementPDF(liquidacion: {
     fecha: c.envio?.created_at ? format(new Date(c.envio.created_at), 'dd/MM/yy') : '-',
     destinatario: c.envio?.clientes 
       ? `${c.envio.clientes.nombre || ''} ${c.envio.clientes.apellido || ''}`.trim() 
-      : '-',
+      : c.envio?.nombre_destinatario || '-',
     monto: c.monto || 0,
   }));
 
@@ -312,7 +312,7 @@ export async function downloadBranchSettlementPDF(liquidacion: {
     .from('liquidacion_sucursal_detalles')
     .select(`
       *,
-      envio:envios(tracking_number, estado, created_at, destinatario_id, 
+      envio:envios(tracking_number, estado, created_at, nombre_destinatario, destinatario_id, 
         clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
     `)
     .eq('liquidacion_id', liquidacion.id)
@@ -323,7 +323,7 @@ export async function downloadBranchSettlementPDF(liquidacion: {
     fecha: d.envio?.created_at ? format(new Date(d.envio.created_at), 'dd/MM/yy') : '-',
     destinatario: d.envio?.clientes 
       ? `${d.envio.clientes.nombre || ''} ${d.envio.clientes.apellido || ''}`.trim() 
-      : '-',
+      : d.envio?.nombre_destinatario || '-',
     monto: d.monto_envio || 0,
     comision: d.comision_aplicada || 0,
   }));
