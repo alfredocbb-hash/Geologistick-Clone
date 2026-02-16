@@ -109,7 +109,7 @@ export function generateSettlementPDF(data: SettlementPDFData): void {
   if (isSeller && totals.totalCargos !== undefined) {
     doc.text(`Cantidad de Movimientos: ${totals.cantidadMovimientos || 0}`, 25, y);
     y += 7;
-    doc.text(`Total Cargos: $${(totals.totalCargos || 0).toFixed(2)}`, 25, y);
+    doc.text(`Total Envíos: $${(totals.totalCargos || 0).toFixed(2)}`, 25, y);
     y += 7;
     doc.text(`Total Pagos: $${(totals.totalPagos || 0).toFixed(2)}`, 25, y);
     y += 7;

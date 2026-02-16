@@ -678,9 +678,9 @@ export default function Settlements() {
             seller_id: sellerId,
             periodo_inicio: format(fechaInicio, 'yyyy-MM-dd'),
             periodo_fin: format(fechaFin, 'yyyy-MM-dd'),
-            total_cargos: sellerTotalCargos + sellerTotalEnvios,
+            total_cargos: sellerTotalEnvios,
             total_pagos: sellerTotalPagos,
-            saldo_periodo: sellerTotalCargos + sellerTotalEnvios - sellerTotalPagos,
+            saldo_periodo: sellerTotalEnvios - sellerTotalPagos,
             saldo_anterior: sellerMovs[0]?.saldo_anterior || 0,
             saldo_final: seller?.saldo_cuenta_corriente || 0,
             cantidad_movimientos: sellerMovs.length + sellerEnvios.length,
@@ -1158,9 +1158,9 @@ export default function Settlements() {
                       <p className="text-xl font-bold">{calculatedEnvios.length}</p>
                     </div>
                     <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="text-sm text-muted-foreground">Total Cargos + Envíos</p>
+                      <p className="text-sm text-muted-foreground">Total Envíos</p>
                       <p className="text-xl font-bold text-orange-600">
-                        ${((calculatedTotals.totalCargos || 0) + (calculatedTotals.totalEnvios || 0)).toLocaleString()}
+                        ${(calculatedTotals.totalEnvios || 0).toLocaleString()}
                       </p>
                     </div>
                     <div className="p-3 bg-muted/50 rounded-lg">

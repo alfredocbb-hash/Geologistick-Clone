@@ -202,7 +202,7 @@ export function SellerLiquidacionDetailDialog({
                   </Card>
                   <Card>
                     <CardContent className="p-4">
-                      <p className="text-sm text-muted-foreground">Total Cargos + Envíos</p>
+                      <p className="text-sm text-muted-foreground">Total Envíos</p>
                       <p className="text-2xl font-bold text-orange-600">
                         ${(liquidacion.total_cargos || 0).toLocaleString()}
                       </p>
@@ -238,7 +238,7 @@ export function SellerLiquidacionDetailDialog({
                         <span className="font-medium">${(liquidacion.saldo_anterior || 0).toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between py-2 border-b">
-                        <span className="text-muted-foreground">Cargos + Envíos del Período</span>
+                        <span className="text-muted-foreground">Envíos del Período</span>
                         <span className="font-medium text-orange-600">+${(liquidacion.total_cargos || 0).toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between py-2 border-b">

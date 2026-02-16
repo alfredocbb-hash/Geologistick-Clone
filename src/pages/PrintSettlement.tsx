@@ -328,7 +328,7 @@ export default function PrintSettlement() {
                   <p className="text-2xl font-bold">{(settlement as any).cantidad_movimientos || items.length}</p>
                 </div>
                 <div className="border rounded-lg p-4 bg-orange-500/5 border-orange-500/20">
-                  <p className="text-xs text-muted-foreground mb-1">Total Cargos</p>
+                  <p className="text-xs text-muted-foreground mb-1">Total Envíos</p>
                   <p className="text-2xl font-bold text-orange-600">{formatCurrency((settlement as any).total_cargos || 0)}</p>
                 </div>
                 <div className="border rounded-lg p-4 bg-success/5 border-success/20">
