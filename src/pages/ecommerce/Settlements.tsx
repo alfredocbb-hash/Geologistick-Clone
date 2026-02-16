@@ -682,7 +682,7 @@ export default function Settlements() {
             total_pagos: sellerTotalPagos,
             saldo_periodo: sellerTotalEnvios - sellerTotalPagos,
             saldo_anterior: sellerMovs[0]?.saldo_anterior || 0,
-            saldo_final: seller?.saldo_cuenta_corriente || 0,
+            saldo_final: (sellerMovs[0]?.saldo_anterior || 0) + sellerTotalEnvios - sellerTotalPagos,
             cantidad_movimientos: sellerMovs.length + sellerEnvios.length,
             estado: 'generada',
             notas: [notas, sellerNames].filter(Boolean).join(' | ') || null,
