@@ -1,97 +1,105 @@
 
-# Corrección: Respetar entorno seleccionado (Sandbox vs Producción)
+# Corrección: Decodificación HTML entities en respuesta WSAA (Sandbox)
 
-## Problema identificado
+## Estado actual confirmado por los logs
 
-En las líneas 791-797 del edge function, la lógica actual es:
+### Sandbox - Casi funcionando
+AFIP Homologación aceptó la autenticación y devolvió HTTP 200 con token y sign válidos. El token está presente en la respuesta. El problema es que el contenido dentro de `<loginCmsReturn>` usa HTML entities:
+
+```
+&lt;token&gt;PD94bWwg...&lt;/token&gt;
+&lt;sign&gt;D/0rxOO9...&lt;/sign&gt;
+```
+
+El código busca `<token>` con regex, pero en la respuesta real aparece como `&lt;token&gt;`. Por eso falla con "No se pudo extraer token/sign" aunque el token sí llegó.
+
+**Fix**: Agregar una función `decodeHtmlEntities()` y aplicarla al `responseText` antes de ejecutar los regex de extracción. Solo 2 líneas de cambio real en `autenticarWSAA()`.
+
+### Producción - Bloqueado por IP (no es error de código)
+```
+faultcode: ns1:coe.notAuthorized
+faultstring: Computador no autorizado a acceder al servicio
+```
+AFIP detectó que la solicitud proviene de una IP de un datacenter cloud internacional y la bloqueó. Esto es una restricción de AFIP para el entorno de producción. **No tiene solución de código** — requiere acción administrativa ante AFIP (registrar la IP del servidor o usar un proxy en Argentina).
+
+---
+
+## Cambio a realizar
+
+### Archivo: `supabase/functions/arca-factura/index.ts`
+
+**Agregar función de decodificación** (antes de `autenticarWSAA`):
 
 ```typescript
-let environment: 'sandbox' | 'production' = 'production';
-let arcaConfig = await getARCAConfig(supabase, tenantId, 'production');
-
-if (!arcaConfig) {
-  environment = 'sandbox';
-  arcaConfig  = await getARCAConfig(supabase, tenantId, 'sandbox');
+function decodeHtmlEntities(str: string): string {
+  return str
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_: string, dec: string) => String.fromCharCode(parseInt(dec)));
 }
 ```
 
-Esto tiene dos problemas críticos:
+**Cambio en `autenticarWSAA()` (líneas 369-381)**:
 
-**Problema 1 - Fallback silencioso**: El sistema siempre intenta producción primero. Si producción está configurado pero falla (ej: certificado homologación), no hay forma de usar sandbox. No hay forma de elegir qué entorno usar desde la UI.
-
-**Problema 2 - Sandbox no llama a AFIP**: Cuando el entorno es `sandbox`, el código en `emitirFacturaARCA` devuelve un CAE **inventado** sin llamar al servidor de homologación real de AFIP (`wsaahomo.afip.gov.ar`). Esto significa que Beraexpress no puede probar su integración real con el servidor de test de AFIP aunque tenga certificados de sandbox configurados.
-
+Antes:
 ```typescript
-// Sandbox actual: FAKE - no llama a AFIP
-if (environment === 'sandbox') {
-  const cae = `${Date.now()}${Math.floor(Math.random() * 10000)}`;  // Inventado
-  return { success: true, cae, caeVencimiento };
+// Parse token and sign from XML response
+const tokenMatch = responseText.match(/<token>([\s\S]*?)<\/token>/);
+const signMatch  = responseText.match(/<sign>([\s\S]*?)<\/sign>/);
+
+// Check for SOAP fault
+const faultMatch = responseText.match(/<faultstring>([\s\S]*?)<\/faultstring>/);
+if (faultMatch) {
+  throw new Error(`WSAA SOAP Fault: ${faultMatch[1]}`);
+}
+
+if (!tokenMatch || !signMatch) {
+  throw new Error(`WSAA: No se pudo extraer token/sign. Respuesta: ${responseText.substring(0, 500)}`);
 }
 ```
 
-## Solución propuesta
-
-### Cambio 1: Agregar campo `environment` al request
-
-El frontend (`InvoiceDataDialog.tsx`) debe enviar el entorno deseado. Si no se envía, se usa producción como default.
-
-### Cambio 2: Eliminar el fallback automático
-
-El edge function debe usar **exactamente** el entorno que se pidió. Si no hay configuración para ese entorno, devolver error claro en lugar de silenciosamente cambiar de entorno.
-
-### Cambio 3: Sandbox llama al servidor real de AFIP homologación
-
-En `emitirFacturaARCA`, cuando `environment === 'sandbox'`, hacer el flujo SOAP completo pero contra `wsaahomo.afip.gov.ar` y `wswhomo.afip.gov.ar`, en lugar de devolver un CAE inventado. Esto permite que Beraexpress pruebe con sus certificados de sandbox reales.
-
+Después:
 ```typescript
-async function emitirFacturaARCA(..., environment: 'sandbox' | 'production', ...) {
-  // Ambos entornos usan el mismo flujo SOAP real
-  // Solo cambia el endpoint (sandbox vs producción)
-  const endpoints = ARCA_ENDPOINTS[environment];  // Ya están definidos arriba
-  
-  try {
-    const { token, sign } = await autenticarWSAA(config.cert_pem, config.private_key, endpoints.wsaa);
-    const { cae, caeVencimiento } = await solicitarCAE(token, sign, ..., endpoints.wsfe);
-    return { success: true, cae, caeVencimiento };
-  } catch (err) { ... }
+// Decodificar HTML entities (AFIP sandbox devuelve &lt;token&gt; dentro de loginCmsReturn)
+const decodedResponse = decodeHtmlEntities(responseText);
+
+// Check for SOAP fault first (también puede estar codificado)
+const faultMatch = decodedResponse.match(/<faultstring>([\s\S]*?)<\/faultstring>/);
+if (faultMatch) {
+  throw new Error(`WSAA SOAP Fault: ${faultMatch[1]}`);
+}
+
+// Parse token and sign from decoded XML response
+const tokenMatch = decodedResponse.match(/<token>([\s\S]*?)<\/token>/);
+const signMatch  = decodedResponse.match(/<sign>([\s\S]*?)<\/sign>/);
+
+if (!tokenMatch || !signMatch) {
+  throw new Error(`WSAA: No se pudo extraer token/sign. Respuesta: ${responseText.substring(0, 500)}`);
 }
 ```
 
-### Cambio 4: UI muestra el entorno activo en el dialog
+---
 
-En `InvoiceDataDialog.tsx`, mostrar qué entorno se usará (sandbox o producción) basándose en `useARCAIntegration`, y enviar ese valor en el body de la llamada al edge function.
+## Situación de producción para Beraexpress
 
-## Archivos a modificar
+El error `coe.notAuthorized` significa que AFIP bloqueó la IP de nuestro servidor edge porque es una IP de datacenter cloud. Para que producción funcione, Beraexpress necesita:
 
-### `supabase/functions/arca-factura/index.ts`
+**Opción A (recomendada)**: Contactar a AFIP Soporte Técnico para registrar/habilitar las IPs del servidor edge en su CUIT de producción. Los servidores de AFIP producción requieren whitelist de IPs para ciertos tipos de acceso.
 
-1. Aceptar campo `environment?: 'sandbox' | 'production'` en el body del request
-2. Buscar config solo para el entorno pedido (sin fallback silencioso):
-   ```typescript
-   const requestedEnv = body.environment || 'production';
-   const arcaConfig = await getARCAConfig(supabase, tenantId, requestedEnv);
-   
-   if (!arcaConfig) {
-     // Si hay config del otro entorno, sugerir usarlo. Si no hay ninguno, guardar pendiente.
-     const otherEnv = requestedEnv === 'production' ? 'sandbox' : 'production';
-     const otherConfig = await getARCAConfig(supabase, tenantId, otherEnv);
-     return error con mensaje: `No hay configuración ARCA para ${requestedEnv}. ${otherConfig ? `Hay configuración para ${otherEnv}.` : ''}`
-   }
-   
-   environment = requestedEnv;
-   ```
-3. En `emitirFacturaARCA`: eliminar el bloque especial de sandbox, usar siempre el flujo SOAP real con el endpoint del entorno correspondiente.
+**Opción B**: Usar un proxy en Argentina con IP fija registrada ante AFIP.
 
-### `src/components/invoicing/InvoiceDataDialog.tsx`
+Mientras tanto, **sandbox sí funcionará completamente** con este fix, permitiendo probar el flujo completo de emisión de comprobantes.
 
-1. Usar `useARCAIntegration` para detectar qué entornos están configurados
-2. Si hay dos configurados, mostrar un toggle Sandbox/Producción para elegir
-3. Enviar `environment` en el body de `supabase.functions.invoke('arca-factura', { body: { ..., environment } })`
-4. Mostrar claramente en el alert de estado qué entorno se usará
+---
 
-## Resultado esperado
+## Resultado esperado con el fix
 
-- Beraexpress puede elegir si facturar contra sandbox (con sus certificados de homologación y AFIP test) o producción (cuando tenga el certificado real)
-- Sandbox llama al servidor real de AFIP homologación, permitiendo validar que los certificados y la configuración funcionan correctamente antes de ir a producción
-- No hay más cambios silenciosos de entorno que confundan al usuario
-- Mensajes de error claros cuando el entorno pedido no está configurado
+El flujo sandbox debería completarse:
+1. WSAA homologación acepta el TRA ✓ (ya funciona)
+2. Token y sign se extraen correctamente ← (este es el fix)
+3. WSFEv1 homologación recibe la solicitud de CAE
+4. AFIP devuelve un CAE de prueba real
+5. La factura se guarda en la base de datos con estado "emitida"
