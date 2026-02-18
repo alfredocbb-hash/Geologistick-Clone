@@ -59,6 +59,531 @@ interface ARCAConfig {
   punto_venta: string;
 }
 
+// ─────────────────────────────────────────────
+// ASN.1 / DER helpers for CMS signature
+// ─────────────────────────────────────────────
+
+function derLength(len: number): Uint8Array {
+  if (len < 128) return new Uint8Array([len]);
+  if (len < 256) return new Uint8Array([0x81, len]);
+  return new Uint8Array([0x82, (len >> 8) & 0xff, len & 0xff]);
+}
+
+function derTLV(tag: number, value: Uint8Array): Uint8Array {
+  const lenBytes = derLength(value.length);
+  const result = new Uint8Array(1 + lenBytes.length + value.length);
+  result[0] = tag;
+  result.set(lenBytes, 1);
+  result.set(value, 1 + lenBytes.length);
+  return result;
+}
+
+function concat(...arrays: Uint8Array[]): Uint8Array {
+  const total = arrays.reduce((s, a) => s + a.length, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const a of arrays) { out.set(a, offset); offset += a.length; }
+  return out;
+}
+
+function derSequence(...items: Uint8Array[]): Uint8Array {
+  return derTLV(0x30, concat(...items));
+}
+
+function derSet(...items: Uint8Array[]): Uint8Array {
+  return derTLV(0x31, concat(...items));
+}
+
+function derOID(oid: number[]): Uint8Array {
+  const encoded: number[] = [];
+  // First two components combined
+  encoded.push(40 * oid[0] + oid[1]);
+  for (let i = 2; i < oid.length; i++) {
+    let val = oid[i];
+    const parts: number[] = [];
+    parts.push(val & 0x7f);
+    val >>= 7;
+    while (val > 0) {
+      parts.unshift((val & 0x7f) | 0x80);
+      val >>= 7;
+    }
+    encoded.push(...parts);
+  }
+  return derTLV(0x06, new Uint8Array(encoded));
+}
+
+function derInteger(bytes: Uint8Array, treatAsPositive = true): Uint8Array {
+  let value = bytes;
+  if (treatAsPositive && bytes[0] & 0x80) {
+    value = concat(new Uint8Array([0x00]), bytes);
+  }
+  return derTLV(0x02, value);
+}
+
+function derOctetString(bytes: Uint8Array): Uint8Array {
+  return derTLV(0x04, bytes);
+}
+
+function derUTF8String(text: string): Uint8Array {
+  return derTLV(0x0c, new TextEncoder().encode(text));
+}
+
+function derContextImplicit(tag: number, content: Uint8Array): Uint8Array {
+  return derTLV(0xa0 + tag, content);
+}
+
+// Parse PEM certificate to DER bytes
+function pemToDer(pem: string): Uint8Array {
+  const base64 = pem
+    .replace(/-----BEGIN CERTIFICATE-----/g, '')
+    .replace(/-----END CERTIFICATE-----/g, '')
+    .replace(/-----BEGIN PRIVATE KEY-----/g, '')
+    .replace(/-----END PRIVATE KEY-----/g, '')
+    .replace(/-----BEGIN RSA PRIVATE KEY-----/g, '')
+    .replace(/-----END RSA PRIVATE KEY-----/g, '')
+    .replace(/\s+/g, '');
+  const binary = atob(base64);
+  return new Uint8Array(binary.length).map((_, i) => binary.charCodeAt(i));
+}
+
+// Extract serial number from DER certificate
+function extractSerialFromCert(certDer: Uint8Array): Uint8Array {
+  // TBSCertificate is inside Certificate SEQUENCE → first child
+  // Skip outer SEQUENCE tag+len, then TBS SEQUENCE tag+len
+  // Certificate ::= SEQUENCE { tbsCertificate TBSCertificate, ... }
+  // TBSCertificate ::= SEQUENCE { version [0], serialNumber INTEGER, ... }
+  let offset = 0;
+  // outer SEQUENCE
+  if (certDer[offset++] !== 0x30) throw new Error('Invalid cert DER');
+  offset += certDer[offset] < 128 ? 1 : (certDer[offset] & 0x7f) + 1;
+  // TBS SEQUENCE
+  if (certDer[offset++] !== 0x30) throw new Error('Invalid TBS SEQUENCE');
+  offset += certDer[offset] < 128 ? 1 : (certDer[offset] & 0x7f) + 1;
+  // optional version [0]
+  if (certDer[offset] === 0xa0) {
+    offset++;
+    const vLen = certDer[offset++];
+    offset += vLen;
+  }
+  // serialNumber INTEGER
+  if (certDer[offset++] !== 0x02) throw new Error('Expected INTEGER for serial');
+  const sLen = certDer[offset++];
+  return certDer.slice(offset, offset + sLen);
+}
+
+// Extract issuer from DER certificate (raw DER bytes of the Name)
+function extractIssuerFromCert(certDer: Uint8Array): Uint8Array {
+  let offset = 0;
+  // outer SEQUENCE
+  if (certDer[offset++] !== 0x30) throw new Error('Invalid cert DER');
+  offset += certDer[offset] < 128 ? 1 : (certDer[offset] & 0x7f) + 1;
+  // TBS SEQUENCE  
+  if (certDer[offset++] !== 0x30) throw new Error('Invalid TBS SEQUENCE');
+  const tbsStart = offset;
+  offset += certDer[offset] < 128 ? 1 : (certDer[offset] & 0x7f) + 1;
+  // optional version [0]
+  if (certDer[offset] === 0xa0) {
+    offset++;
+    const vLen = certDer[offset++];
+    offset += vLen;
+  }
+  // serialNumber INTEGER
+  if (certDer[offset++] !== 0x02) throw new Error('Expected INTEGER for serial');
+  const sLen = certDer[offset < 128 ? offset++ : offset++];
+  offset += sLen;
+  // signature AlgorithmIdentifier SEQUENCE
+  if (certDer[offset++] !== 0x30) throw new Error('Expected AlgorithmIdentifier');
+  const algLen = certDer[offset] < 128 ? certDer[offset++] : (() => { const n = certDer[offset] & 0x7f; offset++; let v = 0; for(let i=0;i<n;i++) v = (v<<8)|certDer[offset++]; return v; })();
+  offset += algLen;
+  // issuer Name SEQUENCE – capture raw bytes including tag+len
+  const issuerStart = offset;
+  if (certDer[offset++] !== 0x30) throw new Error('Expected issuer SEQUENCE');
+  const issuerContentLen = certDer[offset] < 128 ? certDer[offset++] : (() => { const n = certDer[offset] & 0x7f; offset++; let v = 0; for(let i=0;i<n;i++) v = (v<<8)|certDer[offset++]; return v; })();
+  offset += issuerContentLen;
+  return certDer.slice(issuerStart, offset);
+}
+
+// Import RSA private key from PEM
+async function importPrivateKey(pemKey: string): Promise<CryptoKey> {
+  const derBytes = pemToDer(pemKey);
+  // Try PKCS8 first
+  try {
+    return await crypto.subtle.importKey(
+      'pkcs8',
+      derBytes,
+      { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+  } catch {
+    throw new Error('Failed to import private key. Ensure it is in PKCS8 (PEM) format.');
+  }
+}
+
+// ─────────────────────────────────────────────
+// CMS SignedData builder (minimal, for AFIP WSAA)
+// ─────────────────────────────────────────────
+
+async function buildCMSSignedData(
+  content: Uint8Array,
+  certPem: string,
+  privateKeyPem: string
+): Promise<Uint8Array> {
+  const certDer = pemToDer(certPem);
+  const cryptoKey = await importPrivateKey(privateKeyPem);
+  
+  // Sign the content (SHA-256 digest)
+  const signature = new Uint8Array(
+    await crypto.subtle.sign({ name: 'RSASSA-PKCS1-v1_5' }, cryptoKey, content)
+  );
+
+  // OIDs
+  const oidData          = derOID([1,2,840,113549,1,7,1]); // data
+  const oidSignedData    = derOID([1,2,840,113549,1,7,2]); // signedData
+  const oidSha256        = derSequence(derOID([2,16,840,1,101,3,4,2,1]), derTLV(0x05, new Uint8Array(0)));
+  const oidRsaEncryption = derSequence(derOID([1,2,840,113549,1,1,1]), derTLV(0x05, new Uint8Array(0)));
+
+  // Extract cert fields
+  const serialBytes = extractSerialFromCert(certDer);
+  const issuerBytes  = extractIssuerFromCert(certDer);
+
+  // IssuerAndSerialNumber
+  const issuerAndSerial = derSequence(issuerBytes, derInteger(serialBytes, false));
+
+  // DigestAlgorithmIdentifiers SET
+  const digestAlgSet = derSet(oidSha256);
+
+  // EncapsulatedContentInfo: data content
+  const encapContent = derSequence(
+    oidData,
+    derContextImplicit(0, derOctetString(content))
+  );
+
+  // Certificates [0] IMPLICIT
+  const certsField = derContextImplicit(0, certDer);
+
+  // SignerInfo
+  const signerInfo = derSequence(
+    derInteger(new Uint8Array([1])),   // version
+    issuerAndSerial,
+    oidSha256,                          // digestAlgorithm
+    oidRsaEncryption,                   // signatureAlgorithm
+    derOctetString(signature)           // signature
+  );
+  
+  const signerInfoSet = derSet(signerInfo);
+
+  // SignedData
+  const signedData = derSequence(
+    derInteger(new Uint8Array([1])),    // version
+    digestAlgSet,
+    encapContent,
+    certsField,
+    signerInfoSet
+  );
+
+  // ContentInfo
+  const contentInfo = derSequence(
+    oidSignedData,
+    derContextImplicit(0, signedData)
+  );
+
+  return contentInfo;
+}
+
+// ─────────────────────────────────────────────
+// TRA generation
+// ─────────────────────────────────────────────
+
+function generarTRA(): string {
+  const now = new Date();
+  // Argentina UTC-3
+  const genTime = new Date(now.getTime() - 60000);
+  const expTime = new Date(now.getTime() + 600000);
+
+  const fmt = (d: Date) => {
+    const iso = d.toISOString();
+    return iso.replace('Z', '-03:00');
+  };
+
+  return `<?xml version="1.0" encoding="UTF-8"?>\n` +
+    `<loginTicketRequest version="1.0">\n` +
+    `  <header>\n` +
+    `    <uniqueId>${Math.floor(Date.now() / 1000)}</uniqueId>\n` +
+    `    <generationTime>${fmt(genTime)}</generationTime>\n` +
+    `    <expirationTime>${fmt(expTime)}</expirationTime>\n` +
+    `  </header>\n` +
+    `  <service>wsfe</service>\n` +
+    `</loginTicketRequest>`;
+}
+
+// ─────────────────────────────────────────────
+// WSAA Authentication
+// ─────────────────────────────────────────────
+
+async function autenticarWSAA(
+  certPem: string,
+  privateKeyPem: string,
+  wsaaUrl: string
+): Promise<{ token: string; sign: string }> {
+  const tra = generarTRA();
+  console.log('[ARCA] TRA generado:', tra);
+
+  const traBytes = new TextEncoder().encode(tra);
+  const cms = await buildCMSSignedData(traBytes, certPem, privateKeyPem);
+  const cmsBase64 = btoa(String.fromCharCode(...cms));
+
+  const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:wsaa="http://wsaa.view.sua.dvadac.desein.afip.gov">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <wsaa:loginCms>
+      <wsaa:in0>${cmsBase64}</wsaa:in0>
+    </wsaa:loginCms>
+  </soapenv:Body>
+</soapenv:Envelope>`;
+
+  console.log('[ARCA] Llamando WSAA:', wsaaUrl);
+
+  const response = await fetch(wsaaUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'text/xml; charset=utf-8',
+      'SOAPAction': '',
+    },
+    body: soapEnvelope,
+  });
+
+  const responseText = await response.text();
+  console.log('[ARCA] WSAA Response status:', response.status);
+  console.log('[ARCA] WSAA Response body:', responseText.substring(0, 2000));
+
+  if (!response.ok) {
+    throw new Error(`WSAA HTTP error ${response.status}: ${responseText.substring(0, 500)}`);
+  }
+
+  // Parse token and sign from XML response
+  const tokenMatch = responseText.match(/<token>([\s\S]*?)<\/token>/);
+  const signMatch  = responseText.match(/<sign>([\s\S]*?)<\/sign>/);
+
+  // Check for SOAP fault
+  const faultMatch = responseText.match(/<faultstring>([\s\S]*?)<\/faultstring>/);
+  if (faultMatch) {
+    throw new Error(`WSAA SOAP Fault: ${faultMatch[1]}`);
+  }
+
+  if (!tokenMatch || !signMatch) {
+    throw new Error(`WSAA: No se pudo extraer token/sign. Respuesta: ${responseText.substring(0, 500)}`);
+  }
+
+  return {
+    token: tokenMatch[1].trim(),
+    sign:  signMatch[1].trim(),
+  };
+}
+
+// ─────────────────────────────────────────────
+// WSFEv1 – FECAESolicitar
+// ─────────────────────────────────────────────
+
+async function solicitarCAE(
+  token: string,
+  sign: string,
+  cuit: string,
+  puntoVenta: number,
+  tipoComprobante: 'A' | 'B' | 'C',
+  numeroComprobante: number,
+  receptor: FacturaRequest['receptor'],
+  importeNeto: number,
+  importeIva: number,
+  importeTotal: number,
+  wsfeUrl: string
+): Promise<{ cae: string; caeVencimiento: string }> {
+  const tipoComprobanteCode = INVOICE_CODES[tipoComprobante].factura;
+  const ivaCondition = IVA_CONDITIONS[receptor.condicion_iva] || IVA_CONDITIONS.consumidor_final;
+  
+  const docTipo = ivaCondition.docTipo;
+  const docNro  = receptor.cuit
+    ? receptor.cuit.replace(/[-]/g, '')
+    : (receptor.dni || '0');
+
+  const today = new Date();
+  const fechaComprobante = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+
+  // IVA detail for Factura A (21%)
+  const ivaAlicuota = tipoComprobante === 'A' ? `
+              <AlicIva>
+                <Id>5</Id>
+                <BaseImp>${importeNeto.toFixed(2)}</BaseImp>
+                <Importe>${importeIva.toFixed(2)}</Importe>
+              </AlicIva>` : '';
+
+  const soapBody = `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:ar="http://ar.gov.afip.dif.FEV1/">
+  <soap:Header/>
+  <soap:Body>
+    <ar:FECAESolicitar>
+      <ar:Auth>
+        <ar:Token>${token}</ar:Token>
+        <ar:Sign>${sign}</ar:Sign>
+        <ar:Cuit>${cuit.replace(/[-]/g, '')}</ar:Cuit>
+      </ar:Auth>
+      <ar:FeCAEReq>
+        <ar:FeCabReq>
+          <ar:CantReg>1</ar:CantReg>
+          <ar:PtoVta>${puntoVenta}</ar:PtoVta>
+          <ar:CbteTipo>${tipoComprobanteCode}</ar:CbteTipo>
+        </ar:FeCabReq>
+        <ar:FeDetReq>
+          <ar:FECAEDetRequest>
+            <ar:Concepto>1</ar:Concepto>
+            <ar:DocTipo>${docTipo}</ar:DocTipo>
+            <ar:DocNro>${docNro}</ar:DocNro>
+            <ar:CbteDesde>${numeroComprobante}</ar:CbteDesde>
+            <ar:CbteHasta>${numeroComprobante}</ar:CbteHasta>
+            <ar:CbteFch>${fechaComprobante}</ar:CbteFch>
+            <ar:ImpTotal>${importeTotal.toFixed(2)}</ar:ImpTotal>
+            <ar:ImpTotConc>0.00</ar:ImpTotConc>
+            <ar:ImpNeto>${importeNeto.toFixed(2)}</ar:ImpNeto>
+            <ar:ImpOpEx>0.00</ar:ImpOpEx>
+            <ar:ImpIVA>${importeIva.toFixed(2)}</ar:ImpIVA>
+            <ar:ImpTrib>0.00</ar:ImpTrib>
+            <ar:MonId>PES</ar:MonId>
+            <ar:MonCotiz>1</ar:MonCotiz>${tipoComprobante === 'A' ? `
+            <ar:Iva>${ivaAlicuota}
+            </ar:Iva>` : ''}
+          </ar:FECAEDetRequest>
+        </ar:FeDetReq>
+      </ar:FeCAEReq>
+    </ar:FECAESolicitar>
+  </soap:Body>
+</soap:Envelope>`;
+
+  console.log('[ARCA] Llamando WSFEv1 FECAESolicitar:', wsfeUrl);
+
+  const response = await fetch(wsfeUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'text/xml; charset=utf-8',
+      'SOAPAction': 'http://ar.gov.afip.dif.FEV1/FECAESolicitar',
+    },
+    body: soapBody,
+  });
+
+  const responseText = await response.text();
+  console.log('[ARCA] WSFEv1 Response status:', response.status);
+  console.log('[ARCA] WSFEv1 Response body:', responseText.substring(0, 3000));
+
+  if (!response.ok) {
+    throw new Error(`WSFEv1 HTTP error ${response.status}: ${responseText.substring(0, 500)}`);
+  }
+
+  // Check for SOAP fault
+  const faultMatch = responseText.match(/<faultstring>([\s\S]*?)<\/faultstring>/i);
+  if (faultMatch) {
+    throw new Error(`WSFEv1 SOAP Fault: ${faultMatch[1]}`);
+  }
+
+  // Check for AFIP errors
+  const errorsMatch = responseText.match(/<Errors>([\s\S]*?)<\/Errors>/i);
+  if (errorsMatch) {
+    const codeMatch = errorsMatch[1].match(/<Code>([\s\S]*?)<\/Code>/i);
+    const msgMatch  = errorsMatch[1].match(/<Msg>([\s\S]*?)<\/Msg>/i);
+    if (codeMatch || msgMatch) {
+      throw new Error(`AFIP Error ${codeMatch?.[1] || ''}: ${msgMatch?.[1] || errorsMatch[1]}`);
+    }
+  }
+
+  // Check Resultado
+  const resultadoMatch = responseText.match(/<Resultado>([\s\S]*?)<\/Resultado>/i);
+  if (resultadoMatch && resultadoMatch[1].trim() === 'R') {
+    // Rejected - get observations
+    const obsMatch = responseText.match(/<Obs>([\s\S]*?)<\/Obs>/i);
+    const obsMsgMatch = obsMatch ? obsMatch[1].match(/<Msg>([\s\S]*?)<\/Msg>/i) : null;
+    throw new Error(`AFIP rechazó el comprobante: ${obsMsgMatch?.[1] || obsMatch?.[1] || 'Sin detalle'}`);
+  }
+
+  // Extract CAE and expiration
+  const caeMatch    = responseText.match(/<CAE>([\s\S]*?)<\/CAE>/i);
+  const caeFchMatch = responseText.match(/<CAEFchVto>([\s\S]*?)<\/CAEFchVto>/i);
+
+  if (!caeMatch) {
+    throw new Error(`WSFEv1: No se pudo extraer CAE. Respuesta: ${responseText.substring(0, 500)}`);
+  }
+
+  const cae = caeMatch[1].trim();
+  const caeFchRaw = caeFchMatch?.[1].trim() || '';
+  
+  // Convert AFIP date format YYYYMMDD to YYYY-MM-DD
+  const caeVencimiento = caeFchRaw.length === 8
+    ? `${caeFchRaw.slice(0,4)}-${caeFchRaw.slice(4,6)}-${caeFchRaw.slice(6,8)}`
+    : caeFchRaw;
+
+  return { cae, caeVencimiento };
+}
+
+// ─────────────────────────────────────────────
+// Main emitirFacturaARCA – sandbox + production
+// ─────────────────────────────────────────────
+
+async function emitirFacturaARCA(
+  config: ARCAConfig,
+  environment: 'sandbox' | 'production',
+  tipoComprobante: 'A' | 'B' | 'C',
+  numeroComprobante: number,
+  receptor: FacturaRequest['receptor'],
+  importeNeto: number,
+  importeIva: number,
+  importeTotal: number
+): Promise<{ success: boolean; cae?: string; caeVencimiento?: string; error?: string }> {
+  if (environment === 'sandbox') {
+    const cae = `${Date.now()}${Math.floor(Math.random() * 10000)}`;
+    const caeVencimiento = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    console.log(`[ARCA] SANDBOX MODE: Simulating invoice - tipo: ${tipoComprobante}, numero: ${numeroComprobante}`);
+    return { success: true, cae, caeVencimiento };
+  }
+
+  // Production: real SOAP integration
+  try {
+    const endpoints = ARCA_ENDPOINTS.production;
+    
+    console.log('[ARCA] Iniciando autenticación WSAA producción...');
+    const { token, sign } = await autenticarWSAA(
+      config.cert_pem,
+      config.private_key,
+      endpoints.wsaa
+    );
+    console.log('[ARCA] WSAA OK – token obtenido, solicitando CAE...');
+
+    const { cae, caeVencimiento } = await solicitarCAE(
+      token,
+      sign,
+      config.cuit,
+      parseInt(config.punto_venta),
+      tipoComprobante,
+      numeroComprobante,
+      receptor,
+      importeNeto,
+      importeIva,
+      importeTotal,
+      endpoints.wsfe
+    );
+
+    console.log(`[ARCA] CAE obtenido: ${cae}, vence: ${caeVencimiento}`);
+    return { success: true, cae, caeVencimiento };
+
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[ARCA] Error en producción:', msg);
+    return { success: false, error: msg };
+  }
+}
+
+// ─────────────────────────────────────────────
+// Database helpers
+// ─────────────────────────────────────────────
+
 // deno-lint-ignore no-explicit-any
 async function getARCAConfig(supabase: any, tenantId: string, environment: 'sandbox' | 'production'): Promise<ARCAConfig | null> {
   const { data, error } = await supabase
@@ -69,15 +594,11 @@ async function getARCAConfig(supabase: any, tenantId: string, environment: 'sand
     .eq('is_active', true)
     .eq('tenant_id', tenantId);
 
-  if (error || !data || data.length === 0) {
-    return null;
-  }
+  if (error || !data || data.length === 0) return null;
 
   const configMap: Record<string, string> = {};
   // deno-lint-ignore no-explicit-any
-  data.forEach((item: any) => {
-    configMap[item.config_key] = item.config_value;
-  });
+  data.forEach((item: any) => { configMap[item.config_key] = item.config_value; });
 
   if (!configMap.cuit || !configMap.cert_pem || !configMap.private_key || !configMap.punto_venta) {
     return null;
@@ -94,25 +615,19 @@ async function getARCAConfig(supabase: any, tenantId: string, environment: 'sand
 // deno-lint-ignore no-explicit-any
 async function getNextInvoiceNumber(supabase: any, tenantId: string, tipo: 'A' | 'B' | 'C', _puntoVenta: number): Promise<number> {
   const field = `ultimo_numero_${tipo.toLowerCase()}`;
-  
   const { data, error } = await supabase
     .from('arca_config')
     .select(field)
     .eq('is_active', true)
     .eq('tenant_id', tenantId)
     .single();
-
-  if (error || !data) {
-    return 1;
-  }
-
+  if (error || !data) return 1;
   return (data[field] || 0) + 1;
 }
 
 // deno-lint-ignore no-explicit-any
 async function updateInvoiceNumber(supabase: any, tenantId: string, tipo: 'A' | 'B' | 'C', numero: number): Promise<void> {
   const field = `ultimo_numero_${tipo.toLowerCase()}`;
-  
   await supabase
     .from('arca_config')
     .update({ [field]: numero, updated_at: new Date().toISOString() })
@@ -156,44 +671,14 @@ async function createFacturaRecord(
   if (envioId) insertData.envio_id = envioId;
   if (liquidacionSellerId) insertData.liquidacion_seller_id = liquidacionSellerId;
 
-  const { data, error } = await supabase
-    .from('facturas')
-    .insert(insertData)
-    .select()
-    .single();
-
+  const { data, error } = await supabase.from('facturas').insert(insertData).select().single();
   if (error) throw error;
   return data;
 }
 
-async function emitirFacturaARCA(
-  config: ARCAConfig,
-  environment: 'sandbox' | 'production',
-  tipoComprobante: 'A' | 'B' | 'C',
-  numeroComprobante: number,
-  receptor: FacturaRequest['receptor'],
-  importeNeto: number,
-  importeIva: number,
-  importeTotal: number
-): Promise<{ success: boolean; cae?: string; caeVencimiento?: string; error?: string }> {
-  if (environment === 'sandbox') {
-    const cae = `${Date.now()}${Math.floor(Math.random() * 10000)}`;
-    const caeVencimiento = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    
-    console.log(`SANDBOX MODE: Simulating ARCA invoice emission - tipo: ${tipoComprobante}, numero: ${numeroComprobante}`);
-    
-    return {
-      success: true,
-      cae,
-      caeVencimiento,
-    };
-  }
-  
-  return {
-    success: false,
-    error: 'Integración ARCA en producción requiere certificados configurados',
-  };
-}
+// ─────────────────────────────────────────────
+// Main handler
+// ─────────────────────────────────────────────
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -209,19 +694,18 @@ serve(async (req) => {
     const authHeader = req.headers.get('Authorization');
     let userId: string | null = null;
     let tenantId: string | null = null;
-    
+
     if (authHeader) {
       const token = authHeader.replace('Bearer ', '');
       const { data: { user } } = await supabase.auth.getUser(token);
       userId = user?.id || null;
-      
+
       if (userId) {
         const { data: profile } = await supabase
           .from('profiles')
           .select('tenant_id')
           .eq('user_id', userId)
           .single();
-        
         tenantId = profile?.tenant_id || null;
       }
     }
@@ -236,7 +720,6 @@ serve(async (req) => {
     const body: FacturaRequest = await req.json();
     const { envio_id, liquidacion_seller_id, tipo_comprobante, receptor, importe_total } = body;
 
-    // Must have either envio_id or liquidacion_seller_id
     if (!envio_id && !liquidacion_seller_id) {
       return new Response(
         JSON.stringify({ success: false, error: 'Se requiere envio_id o liquidacion_seller_id' }),
@@ -261,7 +744,6 @@ serve(async (req) => {
     let total: number;
 
     if (liquidacion_seller_id) {
-      // Invoice for a seller settlement
       const { data: liquidacion, error: liqError } = await supabase
         .from('liquidaciones_seller')
         .select('*')
@@ -274,10 +756,8 @@ serve(async (req) => {
           { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-
       total = importe_total ?? Math.abs(liquidacion.saldo_periodo || 0);
     } else {
-      // Invoice for a shipment (original flow)
       const { data: envio, error: envioError } = await supabase
         .from('envios')
         .select('*')
@@ -291,7 +771,6 @@ serve(async (req) => {
           { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-
       total = importe_total ?? envio.precio_total;
     }
 
@@ -300,44 +779,30 @@ serve(async (req) => {
 
     if (tipo_comprobante === 'A') {
       importeNeto = total / 1.21;
-      importeIva = total - importeNeto;
+      importeIva  = total - importeNeto;
     } else {
       importeNeto = total;
-      importeIva = 0;
+      importeIva  = 0;
     }
 
     let environment: 'sandbox' | 'production' = 'production';
     let arcaConfig = await getARCAConfig(supabase, tenantId, 'production');
-    
+
     if (!arcaConfig) {
       environment = 'sandbox';
-      arcaConfig = await getARCAConfig(supabase, tenantId, 'sandbox');
+      arcaConfig  = await getARCAConfig(supabase, tenantId, 'sandbox');
     }
 
+    // No config at all → save as pending
     if (!arcaConfig) {
       const factura = await createFacturaRecord(
-        supabase,
-        envio_id || null,
-        liquidacion_seller_id || null,
-        tenantId,
-        tipo_comprobante,
-        0,
-        0,
-        receptor,
-        importeNeto,
-        importeIva,
-        total,
-        userId
+        supabase, envio_id || null, liquidacion_seller_id || null, tenantId,
+        tipo_comprobante, 0, 0, receptor, importeNeto, importeIva, total, userId
       );
 
-      // Update envio if applicable
       if (envio_id) {
-        await supabase
-          .from('envios')
-          .update({
-            requiere_factura: true,
-            updated_at: new Date().toISOString(),
-          })
+        await supabase.from('envios')
+          .update({ requiere_factura: true, updated_at: new Date().toISOString() })
           .eq('id', envio_id);
       }
 
@@ -352,70 +817,44 @@ serve(async (req) => {
       );
     }
 
-    const puntoVenta = parseInt(arcaConfig.punto_venta);
+    const puntoVenta        = parseInt(arcaConfig.punto_venta);
     const numeroComprobante = await getNextInvoiceNumber(supabase, tenantId, tipo_comprobante, puntoVenta);
 
     const factura = await createFacturaRecord(
-      supabase,
-      envio_id || null,
-      liquidacion_seller_id || null,
-      tenantId,
-      tipo_comprobante,
-      puntoVenta,
-      numeroComprobante,
-      receptor,
-      importeNeto,
-      importeIva,
-      total,
-      userId
+      supabase, envio_id || null, liquidacion_seller_id || null, tenantId,
+      tipo_comprobante, puntoVenta, numeroComprobante, receptor,
+      importeNeto, importeIva, total, userId
     );
 
     const arcaResult = await emitirFacturaARCA(
-      arcaConfig,
-      environment,
-      tipo_comprobante,
-      numeroComprobante,
-      receptor,
-      importeNeto,
-      importeIva,
-      total
+      arcaConfig, environment, tipo_comprobante, numeroComprobante,
+      receptor, importeNeto, importeIva, total
     );
 
     if (arcaResult.success && arcaResult.cae) {
-      await supabase
-        .from('facturas')
-        .update({
-          cae: arcaResult.cae,
-          cae_vencimiento: arcaResult.caeVencimiento,
-          estado: 'emitida',
-          arca_response: arcaResult,
-        })
-        .eq('id', factura.id);
+      await supabase.from('facturas').update({
+        cae: arcaResult.cae,
+        cae_vencimiento: arcaResult.caeVencimiento,
+        estado: 'emitida',
+        arca_response: arcaResult,
+      }).eq('id', factura.id);
 
-      // Update envio if applicable
       if (envio_id) {
-        await supabase
-          .from('envios')
-          .update({
-            factura_cae: arcaResult.cae,
-            factura_numero: `${String(puntoVenta).padStart(4, '0')}-${String(numeroComprobante).padStart(8, '0')}`,
-            factura_tipo: tipo_comprobante,
-            factura_fecha: new Date().toISOString(),
-            requiere_factura: false,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', envio_id);
+        await supabase.from('envios').update({
+          factura_cae: arcaResult.cae,
+          factura_numero: `${String(puntoVenta).padStart(4, '0')}-${String(numeroComprobante).padStart(8, '0')}`,
+          factura_tipo: tipo_comprobante,
+          factura_fecha: new Date().toISOString(),
+          requiere_factura: false,
+          updated_at: new Date().toISOString(),
+        }).eq('id', envio_id);
       }
 
-      // Update liquidacion if applicable
       if (liquidacion_seller_id) {
-        await supabase
-          .from('liquidaciones_seller')
-          .update({
-            factura_id: factura.id,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', liquidacion_seller_id);
+        await supabase.from('liquidaciones_seller').update({
+          factura_id: factura.id,
+          updated_at: new Date().toISOString(),
+        }).eq('id', liquidacion_seller_id);
       }
 
       await updateInvoiceNumber(supabase, tenantId, tipo_comprobante, numeroComprobante);
@@ -433,14 +872,11 @@ serve(async (req) => {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     } else {
-      await supabase
-        .from('facturas')
-        .update({
-          estado: 'rechazada',
-          error_mensaje: arcaResult.error,
-          arca_response: arcaResult,
-        })
-        .eq('id', factura.id);
+      await supabase.from('facturas').update({
+        estado: 'rechazada',
+        error_mensaje: arcaResult.error,
+        arca_response: arcaResult,
+      }).eq('id', factura.id);
 
       return new Response(
         JSON.stringify({
@@ -452,8 +888,9 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
   } catch (error) {
-    console.error('Error in arca-factura:', error);
+    console.error('[ARCA] Error general:', error);
     const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
     return new Response(
       JSON.stringify({ success: false, error: errorMessage }),
