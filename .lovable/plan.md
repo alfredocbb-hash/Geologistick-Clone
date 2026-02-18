@@ -1,134 +1,82 @@
 
-# Corrección QR AFIP obligatorio + inconsistencia tipo_comprobante
+# Corrección: Error `generationTime` inválido en WSAA de AFIP
 
-## Situación del error de certificado (Beraexpress)
+## Causa raíz identificada (confirmada en logs)
 
-El error de AFIP es definitivo y no tiene solución de código:
+El log del edge function muestra exactamente el error:
+
 ```
-faultcode: ns1:cms.cert.untrusted
-faultstring: Certificado no emitido por AC de confianza
-```
-Beraexpress tiene cargado el mismo certificado de homologación (`testafipberaexpress`) tanto en sandbox como en producción. El servidor `wsaa.afip.gov.ar` (producción) solo acepta certificados firmados por la CA de producción de AFIP. Deben:
-1. Generar un CSR (Certificate Signing Request) ante AFIP con su CUIT de producción
-2. Obtener el certificado firmado por AFIP producción
-3. Cargarlo en Configuración → Integraciones → ARCA → Producción
-
-Esto es un proceso administrativo ante AFIP, no un error de código.
-
----
-
-## Correcciones de código a realizar
-
-### Problema 1: QR AFIP con formato incorrecto
-
-La RG AFIP 4291/2018 exige que el QR sea una URL específica con un JSON base64-encoded. El código actual pone el JSON directamente como valor del QR, lo cual es incorrecto.
-
-**Formato actual (incorrecto):**
-```json
-{"ver":1,"fecha":"...","cuit":"...","ptoVta":1,"tipoCmp":"factura_a",...}
+faultcode: ns1:xml.generationTime.invalid
+faultstring: generationTime posee formato o dato inválido (ej: en el futuro o más de 24 horas de antigüedad)
 ```
 
-**Formato correcto AFIP:**
+Y el TRA generado fue:
+```xml
+<generationTime>2026-02-18T06:15:48.252-03:00</generationTime>
 ```
-https://www.afip.gob.ar/fe/qr/?p=BASE64_ENCODED_JSON
+
+El edge function corre en UTC. La hora real era las `06:15 UTC`. El código hace `.toISOString()` (que da UTC) y luego reemplaza la `Z` por `-03:00`:
+
 ```
-Donde el JSON tiene esta estructura exacta:
-```json
-{
-  "ver": 1,
-  "fecha": "2024-01-15",
-  "cuit": 20391714853,
-  "ptoVta": 3,
-  "tipoCmp": 6,
-  "nroCmp": 1234,
-  "importe": 12100.00,
-  "moneda": "PES",
-  "ctz": 1,
-  "tipoDocRec": 96,
-  "nroDocRec": 0,
-  "tipoCodAut": "E",
-  "codAut": 70417054367476
+"2026-02-18T06:15:48.252Z"  →  "2026-02-18T06:15:48.252-03:00"
+```
+
+AFIP interpreta `06:15-03:00` como las **9:15 UTC** (es decir, 6:15 de la mañana en Argentina = 9:15 UTC). Pero el momento real era las **6:15 UTC** → AFIP ve una fecha **3 horas en el futuro** y la rechaza con el error de `generationTime inválido`.
+
+## Solución
+
+Para representar correctamente la hora de Argentina con offset `-03:00`, hay que restar 3 horas al tiempo UTC **antes** de aplicar el sufijo. Así `06:15 UTC - 3h = 03:15` y el string `03:15-03:00` equivale correctamente a `06:15 UTC`.
+
+### Cambio en `generarTRA()` (líneas 298-317 de `supabase/functions/arca-factura/index.ts`):
+
+**Antes (incorrecto):**
+```typescript
+function generarTRA(): string {
+  const now = new Date();
+  const genTime = new Date(now.getTime() - 60000);
+  const expTime = new Date(now.getTime() + 600000);
+
+  const fmt = (d: Date) => {
+    const iso = d.toISOString();
+    return iso.replace('Z', '-03:00');  // ← BUG: UTC time con sufijo -03:00
+  };
+  ...
 }
 ```
 
-Códigos de tipo de comprobante para el QR:
-- `1` = Factura A
-- `6` = Factura B
-- `11` = Factura C
-
-Tipos de documento receptor:
-- `80` = CUIT
-- `96` = DNI
-- `99` = Consumidor Final (nroDocRec = 0)
-
-### Problema 2: inconsistencia tipo_comprobante
-
-La función `arca-factura` guarda en la tabla `facturas` el campo `tipo_comprobante` con valores `'A'`, `'B'`, `'C'`. Pero `PrintInvoice.tsx` espera `'factura_a'`, `'factura_b'`, `'factura_c'` en sus mapas de etiquetas e íconos.
-
-Esto causa que:
-- El título muestre `undefined` en vez de "FACTURA A"
-- `isFacturaA` sea siempre `false` (usa `.includes('_a')`)
-- Los códigos AFIP en el QR sean incorrectos
-
-**Solución**: En `PrintInvoice.tsx` normalizar el campo `tipo_comprobante` para soportar ambos formatos:
+**Después (correcto):**
 ```typescript
-const tipoNormalizado = factura.tipo_comprobante?.length === 1
-  ? `factura_${factura.tipo_comprobante.toLowerCase()}`
-  : factura.tipo_comprobante;
+function generarTRA(): string {
+  const now = new Date();
+  // Ajustar la hora a Argentina (UTC-3) restando 3 horas
+  // antes de aplicar el sufijo -03:00
+  const AR_OFFSET_MS = 3 * 60 * 60 * 1000; // 3 horas en ms
+  const genTime = new Date(now.getTime() - 60000);   // 1 min antes
+  const expTime = new Date(now.getTime() + 600000);  // 10 min después
+
+  const fmt = (d: Date) => {
+    // Restar 3 horas (UTC → Argentina) y aplicar el sufijo
+    const argTime = new Date(d.getTime() - AR_OFFSET_MS);
+    return argTime.toISOString().replace('Z', '-03:00');
+  };
+  ...
+}
 ```
 
-### Problema 3: QR no incluido en el PDF descargado
+Con esto, si el momento real es `09:15 UTC`:
+- `argTime` = `09:15 - 3h = 06:15`
+- String generado = `"2026-02-18T06:15:00-03:00"`
+- AFIP lo interpreta como `06:15 + 3h = 09:15 UTC` ✓
 
-El PDF generado por `handleDownloadPDF` no incluye el QR AFIP, que es obligatorio en todo comprobante electrónico.
+## Archivo a modificar
 
----
-
-## Archivos a modificar
-
-### `src/pages/PrintInvoice.tsx`
-
-1. **Función `buildAfipQRUrl()`**: Nueva función que genera la URL correcta del QR:
-   ```typescript
-   function buildAfipQRUrl(factura, arcaConfig): string {
-     const tipoCmpMap = { 'A': 1, 'B': 6, 'C': 11, 'factura_a': 1, 'factura_b': 6, 'factura_c': 11 };
-     const tipoCmp = tipoCmpMap[factura.tipo_comprobante] || 6;
-     
-     const isCuit = factura.receptor_condicion_iva !== 'consumidor_final';
-     const tipoDocRec = isCuit ? 80 : 99;
-     const nroDocRec = factura.receptor_cuit 
-       ? parseInt(factura.receptor_cuit.replace(/-/g, ''))
-       : 0;
-     
-     const qrJson = {
-       ver: 1,
-       fecha: format(new Date(factura.fecha_emision || new Date()), 'yyyy-MM-dd'),
-       cuit: parseInt((arcaConfig?.cuit || '').replace(/-/g, '')),
-       ptoVta: factura.punto_venta || 1,
-       tipoCmp,
-       nroCmp: factura.numero_comprobante || 1,
-       importe: factura.importe_total,
-       moneda: 'PES',
-       ctz: 1,
-       tipoDocRec,
-       nroDocRec,
-       tipoCodAut: 'E',
-       codAut: parseInt(factura.cae || '0'),
-     };
-     
-     const base64 = btoa(JSON.stringify(qrJson));
-     return `https://www.afip.gob.ar/fe/qr/?p=${base64}`;
-   }
-   ```
-
-2. **Normalización tipo_comprobante**: Usar `tipoNormalizado` en todo el componente en lugar de `factura.tipo_comprobante` directamente para los labels y `isFacturaA`.
-
-3. **Incluir QR en PDF**: Agregar el QR como imagen en el PDF descargado usando `QRCode.toDataURL` o `html2canvas` del elemento QR del DOM.
-
----
+- **`supabase/functions/arca-factura/index.ts`**: Solo la función `generarTRA()` (líneas 298-317), reemplazando el helper `fmt` para que reste 3 horas antes de agregar el offset.
 
 ## Resultado esperado
 
-- El QR en la factura impresa apuntará a `https://www.afip.gob.ar/fe/qr/?p=...` que al escanearlo abre AFIP con los datos del comprobante para verificación
-- El título mostrará correctamente "FACTURA A", "FACTURA B" o "FACTURA C"
-- El PDF descargado también incluirá el QR AFIP
-- Se mostrará un mensaje claro cuando el certificado de producción sea inválido, indicando a Beraexpress qué deben hacer
+Con este fix, el WSAA debería:
+1. Aceptar el TRA como válido (generationTime correcto)
+2. Devolver el Token y Sign
+3. Permitir que WSFEv1 emita el CAE
+
+**Nota:** Si el certificado de Beraexpress es de homologación (CN: `testafipberaexpress`) seguirá fallando con el error `cms.cert.untrusted` en producción. Pero este fix es necesario independientemente ya que el error de generationTime bloquea incluso antes de verificar el certificado. Una vez corregida la fecha, si sigue el error de certificado, Beraexpress deberá obtener su certificado de producción de AFIP.
