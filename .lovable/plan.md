@@ -1,105 +1,161 @@
 
-# Corrección: Decodificación HTML entities en respuesta WSAA (Sandbox)
+# Agregar Botón "Test de Conexión ARCA" en Integraciones
 
-## Estado actual confirmado por los logs
+## Objetivo
+Agregar un botón en la pestaña ARCA de la página Configuración → Integraciones que llame al servidor de AFIP (WSAA) con los certificados configurados para el entorno seleccionado (Sandbox o Producción) y muestre el resultado: token obtenido o error exacto.
 
-### Sandbox - Casi funcionando
-AFIP Homologación aceptó la autenticación y devolvió HTTP 200 con token y sign válidos. El token está presente en la respuesta. El problema es que el contenido dentro de `<loginCmsReturn>` usa HTML entities:
+## Arquitectura de la solución
+
+Se necesitan dos cambios:
+
+1. **Nuevo endpoint en el edge function `arca-factura`**: Agregar una acción `test_connection` que solo autentique contra WSAA sin crear ninguna factura ni tocar la base de datos.
+2. **UI en `IntegrationSettings.tsx`**: Agregar el botón "Test de Conexión" exclusivamente en la pestaña ARCA, con selector de entorno y panel de resultado.
+
+## Cambio 1: Edge Function `supabase/functions/arca-factura/index.ts`
+
+El handler principal (`serve`) actualmente solo procesa solicitudes de emisión de facturas. Se agregará lógica para detectar una acción `test_connection`:
 
 ```
-&lt;token&gt;PD94bWwg...&lt;/token&gt;
-&lt;sign&gt;D/0rxOO9...&lt;/sign&gt;
+body.action === 'test_connection'
 ```
 
-El código busca `<token>` con regex, pero en la respuesta real aparece como `&lt;token&gt;`. Por eso falla con "No se pudo extraer token/sign" aunque el token sí llegó.
+Cuando se detecta esta acción:
+1. Lee el entorno solicitado (`body.environment`: `sandbox` o `production`)
+2. Busca la config ARCA para ese entorno (`getARCAConfig`)
+3. Si no hay config, retorna error descriptivo
+4. Llama a `autenticarWSAA(...)` con los endpoints del entorno seleccionado
+5. Retorna el resultado:
+   - **Éxito**: `{ success: true, token_preview, sign_preview, environment, wsaa_url }`
+   - **Error**: `{ success: false, error: "mensaje exacto de AFIP" }`
 
-**Fix**: Agregar una función `decodeHtmlEntities()` y aplicarla al `responseText` antes de ejecutar los regex de extracción. Solo 2 líneas de cambio real en `autenticarWSAA()`.
+No se modifica ni crea ningún registro en la base de datos. Es una llamada de solo lectura/verificación.
 
-### Producción - Bloqueado por IP (no es error de código)
-```
-faultcode: ns1:coe.notAuthorized
-faultstring: Computador no autorizado a acceder al servicio
-```
-AFIP detectó que la solicitud proviene de una IP de un datacenter cloud internacional y la bloqueó. Esto es una restricción de AFIP para el entorno de producción. **No tiene solución de código** — requiere acción administrativa ante AFIP (registrar la IP del servidor o usar un proxy en Argentina).
-
----
-
-## Cambio a realizar
-
-### Archivo: `supabase/functions/arca-factura/index.ts`
-
-**Agregar función de decodificación** (antes de `autenticarWSAA`):
+### Snippet del nuevo bloque en el handler:
 
 ```typescript
-function decodeHtmlEntities(str: string): string {
-  return str
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_: string, dec: string) => String.fromCharCode(parseInt(dec)));
+// Detect test_connection action
+const body = await req.json();
+
+if (body.action === 'test_connection') {
+  const env: 'sandbox' | 'production' = body.environment || 'production';
+  const arcaConfig = await getARCAConfig(supabase, tenantId, env);
+
+  if (!arcaConfig) {
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: `No hay configuración ARCA activa para el entorno ${env === 'production' ? 'Producción' : 'Sandbox'}.` 
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const endpoints = ARCA_ENDPOINTS[env];
+  try {
+    const { token, sign } = await autenticarWSAA(arcaConfig.cert_pem, arcaConfig.private_key, endpoints.wsaa);
+    return new Response(
+      JSON.stringify({
+        success: true,
+        environment: env,
+        wsaa_url: endpoints.wsaa,
+        token_preview: token.substring(0, 40) + '...',
+        sign_preview: sign.substring(0, 40) + '...',
+        message: 'Autenticación WSAA exitosa. Los certificados son válidos.',
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (err) {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        environment: env,
+        wsaa_url: endpoints.wsaa,
+        error: err instanceof Error ? err.message : String(err),
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
 }
 ```
 
-**Cambio en `autenticarWSAA()` (líneas 369-381)**:
+## Cambio 2: UI `src/pages/IntegrationSettings.tsx`
 
-Antes:
+Se agrega un bloque condicional `{key === 'arca' && (...)}` dentro del `CardContent` de cada tab, ubicado **después del webhook/docs block y antes del botón Guardar**.
+
+### Nuevo estado necesario:
 ```typescript
-// Parse token and sign from XML response
-const tokenMatch = responseText.match(/<token>([\s\S]*?)<\/token>/);
-const signMatch  = responseText.match(/<sign>([\s\S]*?)<\/sign>/);
-
-// Check for SOAP fault
-const faultMatch = responseText.match(/<faultstring>([\s\S]*?)<\/faultstring>/);
-if (faultMatch) {
-  throw new Error(`WSAA SOAP Fault: ${faultMatch[1]}`);
-}
-
-if (!tokenMatch || !signMatch) {
-  throw new Error(`WSAA: No se pudo extraer token/sign. Respuesta: ${responseText.substring(0, 500)}`);
-}
+const [arcaTestEnv, setArcaTestEnv] = useState<IntegrationEnvironment>('sandbox');
+const [arcaTestResult, setArcaTestResult] = useState<{
+  success: boolean;
+  message?: string;
+  error?: string;
+  token_preview?: string;
+  sign_preview?: string;
+  environment?: string;
+  wsaa_url?: string;
+} | null>(null);
+const [arcaTesting, setArcaTesting] = useState(false);
 ```
 
-Después:
+### Lógica del botón:
 ```typescript
-// Decodificar HTML entities (AFIP sandbox devuelve &lt;token&gt; dentro de loginCmsReturn)
-const decodedResponse = decodeHtmlEntities(responseText);
-
-// Check for SOAP fault first (también puede estar codificado)
-const faultMatch = decodedResponse.match(/<faultstring>([\s\S]*?)<\/faultstring>/);
-if (faultMatch) {
-  throw new Error(`WSAA SOAP Fault: ${faultMatch[1]}`);
-}
-
-// Parse token and sign from decoded XML response
-const tokenMatch = decodedResponse.match(/<token>([\s\S]*?)<\/token>/);
-const signMatch  = decodedResponse.match(/<sign>([\s\S]*?)<\/sign>/);
-
-if (!tokenMatch || !signMatch) {
-  throw new Error(`WSAA: No se pudo extraer token/sign. Respuesta: ${responseText.substring(0, 500)}`);
-}
+const testArcaConnection = async (env: IntegrationEnvironment) => {
+  setArcaTesting(true);
+  setArcaTestResult(null);
+  try {
+    const { data, error } = await supabase.functions.invoke('arca-factura', {
+      body: { action: 'test_connection', environment: env },
+    });
+    if (error) throw error;
+    setArcaTestResult(data);
+  } catch (err) {
+    setArcaTestResult({ success: false, error: err instanceof Error ? err.message : 'Error desconocido' });
+  } finally {
+    setArcaTesting(false);
+  }
+};
 ```
 
----
+### UI del panel de test (solo visible en tab ARCA):
 
-## Situación de producción para Beraexpress
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Test de Conexión WSAA                                       │
+│ Verifica que los certificados se aceptan en AFIP            │
+│                                                             │
+│  Entorno: [ Sandbox ]  [ Producción ]                       │
+│                                                             │
+│  [ ⚡ Test de Conexión ]                                     │
+│                                                             │
+│  ┌─ Resultado ──────────────────────────────────────────┐   │
+│  │ ✅ Autenticación WSAA exitosa                        │   │
+│  │ Entorno: Sandbox  │  URL: wsaahomo.afip.gov.ar       │   │
+│  │ Token: PD94bWwg...                                   │   │
+│  │ Sign: D/0rxOO9...                                    │   │
+│  └──────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
 
-El error `coe.notAuthorized` significa que AFIP bloqueó la IP de nuestro servidor edge porque es una IP de datacenter cloud. Para que producción funcione, Beraexpress necesita:
+El selector de entorno del test es independiente del selector global de la página (que controla qué configuración se carga en el formulario). Esto permite, por ejemplo, estar viendo la config de Sandbox y testear Producción al mismo tiempo.
 
-**Opción A (recomendada)**: Contactar a AFIP Soporte Técnico para registrar/habilitar las IPs del servidor edge en su CUIT de producción. Los servidores de AFIP producción requieren whitelist de IPs para ciertos tipos de acceso.
+El panel de resultado muestra:
+- En éxito (verde): mensaje de confirmación, entorno, URL WSAA usada, preview del token y del sign
+- En error (rojo): el error exacto retornado por AFIP (ej: `WSAA SOAP Fault: cms.cert.untrusted`, `WSAA SOAP Fault: coe.notAuthorized`, etc.)
 
-**Opción B**: Usar un proxy en Argentina con IP fija registrada ante AFIP.
+## Archivos a modificar
 
-Mientras tanto, **sandbox sí funcionará completamente** con este fix, permitiendo probar el flujo completo de emisión de comprobantes.
+| Archivo | Cambio |
+|---|---|
+| `supabase/functions/arca-factura/index.ts` | Detectar `body.action === 'test_connection'` antes de parsear el resto del body, ejecutar solo la autenticación WSAA y retornar el resultado |
+| `src/pages/IntegrationSettings.tsx` | Agregar estado, función `testArcaConnection`, y panel UI exclusivo para la pestaña ARCA |
 
----
+## Resultado esperado
 
-## Resultado esperado con el fix
+Beraexpress podrá:
+1. Ir a Configuración → Integraciones → ARCA
+2. Seleccionar Sandbox o Producción en el panel de test
+3. Hacer clic en "Test de Conexión"
+4. Ver inmediatamente si los certificados configurados son aceptados por AFIP
+5. En caso de error, ver el mensaje exacto de AFIP (p.ej. `cms.cert.untrusted`, `coe.notAuthorized`, `generationTime inválido`) sin tener que emitir ninguna factura
 
-El flujo sandbox debería completarse:
-1. WSAA homologación acepta el TRA ✓ (ya funciona)
-2. Token y sign se extraen correctamente ← (este es el fix)
-3. WSFEv1 homologación recibe la solicitud de CAE
-4. AFIP devuelve un CAE de prueba real
-5. La factura se guarda en la base de datos con estado "emitida"
+No se crean facturas, no se modifica la base de datos, no se incrementa ningún contador.
