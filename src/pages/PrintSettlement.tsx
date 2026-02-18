@@ -145,7 +145,7 @@ export default function PrintSettlement() {
       if (!tenantId) return null;
       const { data } = await supabase
         .from('tenant_branding')
-        .select('logo_light, nombre_app')
+        .select('logo_light, nombre_app, color_primario')
         .eq('tenant_id', tenantId)
         .single();
       return data;
@@ -158,12 +158,15 @@ export default function PrintSettlement() {
   const handleDownloadPDF = async () => {
     if (!settlement) return;
     try {
+      const brandingData = branding
+        ? { logo_light: branding.logo_light, nombre_app: branding.nombre_app, color_primario: (branding as any).color_primario }
+        : undefined;
       if (type === 'driver') {
-        await downloadDriverSettlementPDF(settlement as any);
+        await downloadDriverSettlementPDF(settlement as any, brandingData);
       } else if (type === 'branch') {
-        await downloadBranchSettlementPDF(settlement as any);
+        await downloadBranchSettlementPDF(settlement as any, brandingData);
       } else if (type === 'seller') {
-        await downloadSellerSettlementPDF(settlement as any);
+        await downloadSellerSettlementPDF(settlement as any, brandingData);
       }
       toast.success('PDF descargado');
     } catch (e) {
