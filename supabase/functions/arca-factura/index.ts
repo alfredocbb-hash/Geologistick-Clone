@@ -325,6 +325,16 @@ function generarTRA(): string {
 // WSAA Authentication
 // ─────────────────────────────────────────────
 
+function decodeHtmlEntities(str: string): string {
+  return str
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_: string, dec: string) => String.fromCharCode(parseInt(dec)));
+}
+
 async function autenticarWSAA(
   certPem: string,
   privateKeyPem: string,
@@ -366,15 +376,18 @@ async function autenticarWSAA(
     throw new Error(`WSAA HTTP error ${response.status}: ${responseText.substring(0, 500)}`);
   }
 
-  // Parse token and sign from XML response
-  const tokenMatch = responseText.match(/<token>([\s\S]*?)<\/token>/);
-  const signMatch  = responseText.match(/<sign>([\s\S]*?)<\/sign>/);
+  // Decodificar HTML entities (AFIP sandbox devuelve &lt;token&gt; dentro de loginCmsReturn)
+  const decodedResponse = decodeHtmlEntities(responseText);
 
-  // Check for SOAP fault
-  const faultMatch = responseText.match(/<faultstring>([\s\S]*?)<\/faultstring>/);
+  // Check for SOAP fault first (también puede estar codificado)
+  const faultMatch = decodedResponse.match(/<faultstring>([\s\S]*?)<\/faultstring>/);
   if (faultMatch) {
     throw new Error(`WSAA SOAP Fault: ${faultMatch[1]}`);
   }
+
+  // Parse token and sign from decoded XML response
+  const tokenMatch = decodedResponse.match(/<token>([\s\S]*?)<\/token>/);
+  const signMatch  = decodedResponse.match(/<sign>([\s\S]*?)<\/sign>/);
 
   if (!tokenMatch || !signMatch) {
     throw new Error(`WSAA: No se pudo extraer token/sign. Respuesta: ${responseText.substring(0, 500)}`);
