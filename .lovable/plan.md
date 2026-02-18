@@ -1,39 +1,79 @@
 
-# Actualizar zona_destino de la tarifa "ENVIOS GENERAL" - BlackBox Cargas
+# Corrección: Auto-selección de Tarifa con zona_destino en tarifas de tipo "peso"
 
-## Situación actual
+## Diagnóstico del problema
 
-- Tarifa: **ENVIOS GENERAL** (`8811dfc7-6047-438b-805d-9c16d3b8fde7`)
-- Tipo: `zona`
-- `zona_destino`: vacío (null)
-- Tenant: BlackBox Cargas (`81be07a7-73a0-4986-994e-5365478343eb`)
+La tarifa "ENVIOS GENERAL" de BlackBox Cargas está configurada como `tipo_tarifa = 'peso'` (no `'zona'`), pero tiene el campo `zona_destino` poblado con todas las localidades. Esto genera dos problemas concatenados:
 
-## Qué se va a hacer
+**Problema 1 - Detección:** La función `encontrarTarifaPorDestino` en `src/pages/NewShipment.tsx` filtra exclusivamente tarifas con `t.tipo_tarifa === 'zona'`. Como la tarifa es de tipo `'peso'`, el sistema no la encuentra y muestra el mensaje "localidad no activada".
 
-Se ejecuta un único UPDATE en la tabla `tarifas` para completar el campo `zona_destino` con todas las localidades de la imagen, separadas por coma. Esto activa inmediatamente la auto-selección de tarifa en el formulario de nuevo envío para BlackBox.
+**Problema 2 - Cálculo (si se llegara a seleccionar manualmente):** El bloque de cálculo de volumen en la línea 623 solo aplica cuando `tipo_tarifa === 'peso'` con dimensiones, lo cual sí está correcto. El cálculo por rangos de kg también está correcto para tipo `'peso'`. Así que una vez que se corrija la detección, el precio se calculará bien automáticamente.
 
-## SQL a ejecutar
+## Causa raíz
 
-```sql
-UPDATE tarifas
-SET zona_destino = 'Vicente López,Florida,Olivos,Nuñez,Saavedra,Coghlan,Belgrano,Villa Urquiza,Palermo,Colegiales,Villa Ortuzar,Parque Chas,Chacarita,Recoleta,Retiro,Villa Pueyrredón,Agronomía,Villa Devoto,Villa del Parque,La Paternal,Villa Crespo,Villa Real,Monte Castro,Villa Santa Rita,Villa General Mitre,Caballito,Almagro,Balvanera,San Nicolás,Puerto Madero,Monserrat,La Boca,San Telmo,Constitución,Barracas,Parque Patricios,San Cristóbal,Boedo,Parque Chacabuco,Nueva Pompeya,Flores,Floresta,Velez Sarfield,Villa Luro,Versalles,Liniers,Mataderos,Paternal,Parque Avellaneda,Villa Soldati,Villa Lugano,Villa Riachuelo,CABA,Capital Federal,Martinez,La Lucila,Munro,Carapachay,Villa Martelli,Villa Adelina,Boulogne,Acassuso,San Isidro,Beccar,Victoria,Virreyes,San Fernando,Tigre,Troncos del Talar,General Pacheco,Ricardo Rojas,El Talar,Don Torcuato,Rincón de Milberg,Benavidez,Villa Maipú,San Martin,Villa Lynch,San Andrés,Villa Ballester,Billinghurst,José León Suárez,Loma Hermosa,Grand Bourg,Pablo Nogues,Los Polvorines,Villa de Mayo,Ingeniero Adolfo Sourdeaux,Del Viso,Belén de Escobar,Garin,Ingeniero Maschwitz,Matheu,Maquinista F. Savio,Pilar,Presidente Derqui,Villa Rosa,Remedios de Escalada,Dock Sud,Avellaneda,Piñeyro,Gerli,Sarandí,Villa Dominico,Wilde,Valentín Alsina,Lanús Oeste,Lanús,Monte Chingolo,La Noria,Banfield,Lomas de Zamora,Temperley,Turdera,Lavallol,Don Bosco,Bernal Oeste,Bernal,Quilmes,Quilmes Oeste,Ezpeleta,Ezpeleta Oeste,San Francisco Solano,San José,José Mármol,Rafael Calzada,Claypole,Adrogué,Burzaco,Malvinas Argentinas,Don Orione,Longchamps,Glew,Ministro Rivadavia,Luis Guillon,Monte Grande,El Jagüel,José María Ezeiza,La Unión,Tristán Suárez,Canning,Carlos Spegazzini,Berazategui,Berazategui Oeste,Villa España,Sourigues,Ranelagh,Platanos,Guillermo Hudson,Juan María Gutierrez,El Pato,Pereyra,Florencio Varela,Gobernador Costa,Zeballos,Villa Vatteone,Bosques,Villa San Luis,Villa Brown,Ingeniero Allan,La Capilla,Brandsen,Domnselaar,Cañuelas,La Plata,Guernica,Alejandro Korn,San Vicente,Tortuguitas,Aldo Bonzi,Bella Vista,Caseros,Castelar,Churruca,Ciudad Jardín Lomas del Palomar,Ciudadela,El Libertador,El Palomar,González Catán,Gregorio de Laferrere,Haedo,Hurlingham,Morón,Isidro Casanova,Ituzaingo,José C. Paz,José Ingenieros,La Tablada,Lomas del Mirador,Martin Coronado,Merlo,Moreno,Muñiz,Once de Septiembre,Pablo Podestá,Rafael Castillo,Ramos Mejía,Saenz Peña,San Justo,San Miguel,Santos Lugares,Tapiales,Villa Bosch,Villa Luzuriaga,Villa Madero,Villa Raffo,Villa Sarmiento,Villa Tesei,Buenos Aires,GBA,Gran Buenos Aires'
-WHERE id = '8811dfc7-6047-438b-805d-9c16d3b8fde7'
-  AND tenant_id = '81be07a7-73a0-4986-994e-5365478343eb';
+```
+// CÓDIGO ACTUAL - solo busca tipo 'zona':
+const coincidentesZona = tarifas.filter(t => {
+  if (t.tipo_tarifa !== 'zona' || !t.zona_destino) return false;  // ← BUG: excluye tipo 'peso'
+  ...
+});
+
+// Tarifa en DB:
+tipo_tarifa = 'peso'   ← nunca pasa el filtro
+zona_destino = 'Vicente López, Quilmes, ...'  ← tiene destinos configurados
+rangos_kg = [{desde:0, hasta:5, precio:10000}, ...]  ← tiene rangos correctos
 ```
 
-## Detalle de localidades incluidas (extraídas de la imagen)
+## Solución
 
-- **CABA** (54 barrios): Vicente López, Florida, Olivos, Nuñez, Saavedra, Coghlan, Belgrano, Villa Urquiza, Palermo, Colegiales, Villa Ortuzar, Parque Chas, Chacarita, Recoleta, Retiro, Villa Pueyrredón, Agronomía, Villa Devoto, Villa del Parque, La Paternal, Villa Crespo, Villa Real, Monte Castro, Villa Santa Rita, Villa General Mitre, Caballito, Almagro, Balvanera, San Nicolás, Puerto Madero, Monserrat, La Boca, San Telmo, Constitución, Barracas, Parque Patricios, San Cristóbal, Boedo, Parque Chacabuco, Nueva Pompeya, Flores, Floresta, Velez Sarfield, Villa Luro, Versalles, Liniers, Mataderos, Paternal, Parque Avellaneda, Villa Soldati, Villa Lugano, Villa Riachuelo
-- **Zona Norte** (42 localidades): Martinez, La Lucila, Munro, Carapachay, Villa Martelli, Villa Adelina, Boulogne, Acassuso, San Isidro, Beccar, Victoria, Virreyes, San Fernando, Tigre, Troncos del Talar, General Pacheco, Ricardo Rojas, El Talar, Don Torcuato, Rincón de Milberg, Benavidez, Villa Maipú, San Martin, Villa Lynch, San Andrés, Villa Ballester, Billinghurst, José León Suárez, Loma Hermosa, Grand Bourg, Pablo Nogues, Los Polvorines, Villa de Mayo, Ingeniero Adolfo Sourdeaux, Del Viso, Belén de Escobar, Garin, Ingeniero Maschwitz, Matheu, Maquinista F. Savio, Pilar, Presidente Derqui, Villa Rosa
-- **Zona Sur** (55 localidades): Remedios de Escalada, Dock Sud, Avellaneda, Piñeyro, Gerli, Sarandí, Villa Dominico, Wilde, Valentín Alsina, Lanús Oeste, Lanús, Monte Chingolo, La Noria, Banfield, Lomas de Zamora, Temperley, Turdera, Lavallol, Don Bosco, Bernal Oeste, Bernal, Quilmes, Quilmes Oeste, Ezpeleta, Ezpeleta Oeste, San Francisco Solano, San José, José Mármol, Rafael Calzada, Claypole, Adrogué, Burzaco, Malvinas Argentinas, Don Orione, Longchamps, Glew, Ministro Rivadavia, Luis Guillon, Monte Grande, El Jagüel, José María Ezeiza, La Unión, Tristán Suárez, Canning, Carlos Spegazzini, Berazategui, Berazategui Oeste, Villa España, Sourigues, Ranelagh, Platanos, Guillermo Hudson, Juan María Gutierrez, El Pato, Pereyra, Florencio Varela, Gobernador Costa, Zeballos, Villa Vatteone, Bosques, Villa San Luis, Villa Brown, Ingeniero Allan, La Capilla, Brandsen, Domnselaar, Cañuelas, La Plata, Guernica, Alejandro Korn, San Vicente
-- **Zona Oeste** (42 localidades): Tortuguitas, Aldo Bonzi, Bella Vista, Caseros, Castelar, Churruca, Ciudad Jardín Lomas del Palomar, Ciudadela, El Libertador, El Palomar, González Catán, Gregorio de Laferrere, Haedo, Hurlingham, Morón, Isidro Casanova, Ituzaingo, José C. Paz, José Ingenieros, La Tablada, Lomas del Mirador, Martin Coronado, Merlo, Moreno, Muñiz, Once de Septiembre, Pablo Podestá, Rafael Castillo, Ramos Mejía, Saenz Peña, San Justo, San Miguel, Santos Lugares, Tapiales, Villa Bosch, Villa Luzuriaga, Villa Madero, Villa Raffo, Villa Sarmiento, Villa Tesei
+Modificar `encontrarTarifaPorDestino` en `src/pages/NewShipment.tsx` para buscar en **todas las tarifas que tengan `zona_destino` configurado**, independientemente del `tipo_tarifa`. El tipo de tarifa solo afecta cómo se calcula el precio (ya manejado por `fleteCalculado`), no cómo se detecta el destino.
 
-Se incluyen también los alias genéricos `CABA`, `Capital Federal`, `Buenos Aires`, `GBA` y `Gran Buenos Aires` para mayor cobertura de búsqueda.
+### Cambio en la función `encontrarTarifaPorDestino` (líneas 148-191):
 
-## Efecto inmediato
+**Antes:**
+```typescript
+// 1. Tarifas tipo 'zona'
+const coincidentesZona = tarifas.filter(t => {
+  if (t.tipo_tarifa !== 'zona' || !t.zona_destino) return false;
+  ...
+});
 
-Una vez ejecutado el SQL, cuando un operador de BlackBox ingrese cualquiera de esas localidades en el campo "Ciudad del destinatario", el sistema detectará automáticamente la tarifa "ENVIOS GENERAL" y calculará el flete por peso o m3 según corresponda.
+// 2. Tarifas tipo 'codigo_postal'
+const coincidentesCP = tarifas.filter(t => {
+  if (t.tipo_tarifa !== 'codigo_postal' || !t.zona_destino) return false;
+  ...
+});
+```
 
-## Archivo a modificar
+**Después:**
+```typescript
+// 1. Cualquier tarifa con zona_destino configurado (independiente del tipo_tarifa)
+const coincidentesZona = tarifas.filter(t => {
+  if (!t.zona_destino) return false;  // ← solo requiere que tenga zona_destino
+  const destinos = t.zona_destino.split(',').map((d: string) => normalizarTexto(d.trim()));
+  if (ciudadNorm && destinos.some((d: string) => d.includes(ciudadNorm) || ciudadNorm.includes(d))) return true;
+  if (cpTrim && destinos.some((d: string) => d === cpTrim)) return true;
+  return false;
+});
 
-Solo base de datos - no hay cambios de código necesarios.
+// 2. Fallback: buscar por código postal exacto (para cualquier tipo con zona_destino)
+// (Ya cubierto en el paso anterior, no es necesario un bloque separado)
+```
+
+El desempate por peso cuando hay múltiples coincidencias se mantiene igual.
+
+## Archivos a modificar
+
+- **`src/pages/NewShipment.tsx`**: Modificar únicamente la función `encontrarTarifaPorDestino` (líneas 158-165 y 181-188) para eliminar el filtro por `tipo_tarifa` y buscar en cualquier tarifa que tenga `zona_destino` configurado.
+
+## Resultado esperado
+
+Cuando un operador de BlackBox ingrese "Quilmes" en el campo de ciudad del destinatario:
+1. El sistema encuentra la tarifa "ENVIOS GENERAL" (tipo `'peso'` con `zona_destino` que incluye "Quilmes")
+2. Se auto-selecciona la tarifa y aparece el panel informativo
+3. Al ingresar el peso (ej: 5 kg), se aplica el rango correspondiente: $10,000
+4. Si las dimensiones superan 100cm, cambia a cálculo por m³ ($60,000/m³)
+
+## Aclaración sobre el diseño de tarifas
+
+La tarifa tiene `tipo_tarifa = 'peso'` porque define **cómo se calcula el precio** (por rangos de kg). El campo `zona_destino` define **dónde aplica** esa tarifa. Son dos dimensiones independientes que el código anterior confundía. La corrección separa correctamente ambos conceptos.
