@@ -258,13 +258,20 @@ export default function Settlements() {
           const matchZone = (ciudad: string): number | null => {
             if (!ciudad || allZoneTarifas.length === 0) return null;
             const ciudadNorm = normalize(ciudad);
+            // Pass 1: exact match (highest priority)
             for (const zt of allZoneTarifas) {
               if (!zt.zona_destino) continue;
-              const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z));
-              for (const zona of zonas) {
-                if (zona === ciudadNorm || ciudadNorm.includes(zona) || zona.includes(ciudadNorm)) {
-                  return zt.precio_base || 0;
-                }
+              const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+              if (zonas.some((z: string) => z === ciudadNorm)) {
+                return zt.precio_base || 0;
+              }
+            }
+            // Pass 2: substring match (lower priority)
+            for (const zt of allZoneTarifas) {
+              if (!zt.zona_destino) continue;
+              const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+              if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) {
+                return zt.precio_base || 0;
               }
             }
             // Fallback: use the most inclusive zone (catch-all)
