@@ -372,17 +372,27 @@ async function autenticarWSAA(
   console.log('[ARCA] WSAA Response status:', response.status);
   console.log('[ARCA] WSAA Response body:', responseText.substring(0, 2000));
 
-  if (!response.ok) {
-    throw new Error(`WSAA HTTP error ${response.status}: ${responseText.substring(0, 500)}`);
-  }
-
   // Decodificar HTML entities (AFIP sandbox devuelve &lt;token&gt; dentro de loginCmsReturn)
   const decodedResponse = decodeHtmlEntities(responseText);
 
-  // Check for SOAP fault first (también puede estar codificado)
-  const faultMatch = decodedResponse.match(/<faultstring>([\s\S]*?)<\/faultstring>/);
-  if (faultMatch) {
-    throw new Error(`WSAA SOAP Fault: ${faultMatch[1]}`);
+  // Detectar fault code ANTES que el status HTTP (AFIP devuelve 500 con body útil)
+  const faultCodeMatch = decodedResponse.match(/<faultcode[^>]*>([\s\S]*?)<\/faultcode>/);
+  const faultStringMatch = decodedResponse.match(/<faultstring>([\s\S]*?)<\/faultstring>/);
+
+  // coe.alreadyAuthenticated → AFIP ya tiene un TA válido para este certificado.
+  // Lanzamos un sentinel especial para que el caller pueda usar el token cacheado.
+  if (faultCodeMatch && faultCodeMatch[1].includes('coe.alreadyAuthenticated')) {
+    console.log('[ARCA] WSAA: TA ya vigente (coe.alreadyAuthenticated) - se intentará usar token cacheado');
+    throw new Error('WSAA_ALREADY_AUTHENTICATED');
+  }
+
+  // Otros SOAP faults → error real
+  if (faultStringMatch) {
+    throw new Error(`WSAA SOAP Fault: ${faultStringMatch[1]}`);
+  }
+
+  if (!response.ok) {
+    throw new Error(`WSAA HTTP error ${response.status}: ${responseText.substring(0, 500)}`);
   }
 
   // Parse token and sign from decoded XML response
@@ -397,6 +407,100 @@ async function autenticarWSAA(
     token: tokenMatch[1].trim(),
     sign:  signMatch[1].trim(),
   };
+}
+
+// ─────────────────────────────────────────────
+// WSAA Token Cache (usa system_integrations)
+// ─────────────────────────────────────────────
+
+// deno-lint-ignore no-explicit-any
+async function getCachedToken(supabase: any, tenantId: string, environment: string): Promise<{ token: string; sign: string } | null> {
+  try {
+    const { data } = await supabase
+      .from('system_integrations')
+      .select('config_key, config_value')
+      .eq('integration_type', 'arca_token_cache')
+      .eq('environment', environment)
+      .eq('tenant_id', tenantId)
+      .in('config_key', ['wsaa_token', 'wsaa_sign', 'wsaa_expires_at']);
+
+    if (!data || data.length === 0) return null;
+
+    const map: Record<string, string> = {};
+    // deno-lint-ignore no-explicit-any
+    data.forEach((r: any) => { map[r.config_key] = r.config_value; });
+
+    if (!map.wsaa_token || !map.wsaa_sign || !map.wsaa_expires_at) return null;
+
+    // Verificar que el token siga válido (con 5 min de margen)
+    const expiresAt = new Date(map.wsaa_expires_at);
+    const bufferMs = 5 * 60 * 1000;
+    if (expiresAt.getTime() - bufferMs <= Date.now()) {
+      console.log('[ARCA] Token cacheado expirado:', map.wsaa_expires_at);
+      return null;
+    }
+
+    console.log('[ARCA] Usando token cacheado válido, expira:', map.wsaa_expires_at);
+    return { token: map.wsaa_token, sign: map.wsaa_sign };
+  } catch (e) {
+    console.warn('[ARCA] Error leyendo cache de token:', e);
+    return null;
+  }
+}
+
+// deno-lint-ignore no-explicit-any
+async function setCachedToken(supabase: any, tenantId: string, environment: string, token: string, sign: string): Promise<void> {
+  try {
+    // Los tokens AFIP duran 12 horas; guardamos con ese vencimiento
+    const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
+    const entries = [
+      { config_key: 'wsaa_token', config_value: token },
+      { config_key: 'wsaa_sign',  config_value: sign },
+      { config_key: 'wsaa_expires_at', config_value: expiresAt },
+    ];
+    for (const entry of entries) {
+      await supabase.from('system_integrations').upsert({
+        integration_type: 'arca_token_cache',
+        environment,
+        tenant_id: tenantId,
+        config_key: entry.config_key,
+        config_value: entry.config_value,
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'integration_type,environment,tenant_id,config_key' });
+    }
+    console.log('[ARCA] Token guardado en caché hasta:', expiresAt);
+  } catch (e) {
+    console.warn('[ARCA] Error guardando token en caché:', e);
+  }
+}
+
+// Obtener token WSAA con caché: primero busca uno vigente, si no existe autentica contra AFIP.
+// deno-lint-ignore no-explicit-any
+async function getWSAAToken(supabase: any, tenantId: string, environment: string, arcaConfig: ARCAConfig): Promise<{ token: string; sign: string }> {
+  // 1. Intentar con el token cacheado
+  const cached = await getCachedToken(supabase, tenantId, environment);
+  if (cached) return cached;
+
+  // 2. Autenticar fresh
+  const endpoints = ARCA_ENDPOINTS[environment as 'sandbox' | 'production'];
+  try {
+    const result = await autenticarWSAA(arcaConfig.cert_pem, arcaConfig.private_key, endpoints.wsaa);
+    await setCachedToken(supabase, tenantId, environment, result.token, result.sign);
+    return result;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg === 'WSAA_ALREADY_AUTHENTICATED') {
+      // AFIP dice que hay TA activo pero no tenemos caché.
+      // Esto ocurre si el servidor se reinició. No podemos recuperar el token anterior.
+      throw new Error(
+        'AFIP rechazó la autenticación porque ya existe una sesión activa (coe.alreadyAuthenticated). ' +
+        'El token se cacheará en la próxima sesión exitosa. ' +
+        'Espere a que la sesión AFIP expire (hasta 12 horas) o recargue los certificados.'
+      );
+    }
+    throw err;
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -545,6 +649,9 @@ async function solicitarCAE(
 // ─────────────────────────────────────────────
 
 async function emitirFacturaARCA(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  tenantId: string,
   config: ARCAConfig,
   environment: 'sandbox' | 'production',
   tipoComprobante: 'A' | 'B' | 'C',
@@ -554,17 +661,12 @@ async function emitirFacturaARCA(
   importeIva: number,
   importeTotal: number
 ): Promise<{ success: boolean; cae?: string; caeVencimiento?: string; error?: string }> {
-  // Both environments use the real SOAP flow – only the endpoints differ
   const endpoints = ARCA_ENDPOINTS[environment];
 
   try {
-    console.log(`[ARCA] Iniciando autenticación WSAA ${environment}...`);
-    const { token, sign } = await autenticarWSAA(
-      config.cert_pem,
-      config.private_key,
-      endpoints.wsaa
-    );
-    console.log('[ARCA] WSAA OK – token obtenido, solicitando CAE...');
+    console.log(`[ARCA] Obteniendo token WSAA ${environment} (con caché)...`);
+    const { token, sign } = await getWSAAToken(supabase, tenantId, environment, config);
+    console.log('[ARCA] WSAA OK – token listo, solicitando CAE...');
 
     const { cae, caeVencimiento } = await solicitarCAE(
       token,
@@ -747,7 +849,8 @@ serve(async (req) => {
 
       const testEndpoints = ARCA_ENDPOINTS[testEnv];
       try {
-        const { token, sign } = await autenticarWSAA(arcaTestConfig.cert_pem, arcaTestConfig.private_key, testEndpoints.wsaa);
+        // Usar caché: si hay token vigente, retornarlo sin re-autenticar
+        const { token, sign } = await getWSAAToken(supabase, tenantId, testEnv, arcaTestConfig);
         return new Response(
           JSON.stringify({
             success: true,
@@ -895,7 +998,7 @@ serve(async (req) => {
     );
 
     const arcaResult = await emitirFacturaARCA(
-      arcaConfig, environment, tipo_comprobante, numeroComprobante,
+      supabase, tenantId, arcaConfig, environment, tipo_comprobante, numeroComprobante,
       receptor, importeNeto, importeIva, total
     );
 
