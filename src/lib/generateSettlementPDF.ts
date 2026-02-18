@@ -114,16 +114,32 @@ export async function generateSettlementPDF(
 
   const periodoStr = `${format(parseDateString(settlement.periodo_inicio), 'dd/MM/yyyy')} - ${format(parseDateString(settlement.periodo_fin), 'dd/MM/yyyy')}`;
 
+  const headerH = 32;
+  const bodyStart = 40;
+
   const drawHeader = () => {
-    const headerH = 28;
     // Colored header bar
     doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
     doc.rect(0, 0, pageWidth, headerH, 'F');
 
-    // Logo
+    let logoEndX = 12;
+
+    // Logo with correct aspect ratio
     if (logoBase64) {
       try {
-        doc.addImage(logoBase64, 'PNG', 10, 3, 22, 22);
+        const imgProps = doc.getImageProperties(logoBase64);
+        const maxLogoH = 22;
+        const maxLogoW = 44;
+        const ratio = imgProps.width / imgProps.height;
+        let logoW = maxLogoH * ratio;
+        let logoH = maxLogoH;
+        if (logoW > maxLogoW) {
+          logoW = maxLogoW;
+          logoH = maxLogoW / ratio;
+        }
+        const logoY = (headerH - logoH) / 2;
+        doc.addImage(logoBase64, 'PNG', 10, logoY, logoW, logoH);
+        logoEndX = 10 + logoW + 5;
       } catch { /* continue without logo */ }
     }
 
@@ -131,8 +147,7 @@ export async function generateSettlementPDF(
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(13);
     doc.setFont('helvetica', 'bold');
-    const logoOffset = logoBase64 ? 36 : 10;
-    doc.text(appName, logoOffset, 12);
+    doc.text(appName, logoEndX, headerH / 2 - 2);
 
     // Settlement type title
     const titleText = isSeller
@@ -140,13 +155,13 @@ export async function generateSettlementPDF(
       : isBranch
         ? 'LIQUIDACIÓN DE SUCURSAL'
         : 'LIQUIDACIÓN DE CHOFER';
-    doc.setFontSize(9);
+    doc.setFontSize(8.5);
     doc.setFont('helvetica', 'normal');
-    doc.text(titleText, logoOffset, 20);
+    doc.text(titleText, logoEndX, headerH / 2 + 6);
 
     // Period on the right
     doc.setFontSize(8);
-    doc.text(`Período: ${periodoStr}`, pageWidth - 10, 20, { align: 'right' });
+    doc.text(`Período: ${periodoStr}`, pageWidth - 10, headerH / 2 + 6, { align: 'right' });
   };
 
   const drawFooter = (pageNum: number, totalPages: number) => {
@@ -163,7 +178,7 @@ export async function generateSettlementPDF(
 
   // --- Page 1 ---
   drawHeader();
-  let y = 35;
+  let y = bodyStart;
 
   // Info block
   doc.setFontSize(9);
@@ -206,14 +221,15 @@ export async function generateSettlementPDF(
 
   y += 4;
 
+  // Ensure we don't overlap with header
+  if (y < bodyStart) y = bodyStart;
+
   // Financial summary box
   const boxH = isSeller ? 36 : isBranch ? 32 : 28;
-  doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2], 0.08);
-  doc.setFillColor(
-    Math.min(255, primaryRgb[0] + Math.round((255 - primaryRgb[0]) * 0.88)),
-    Math.min(255, primaryRgb[1] + Math.round((255 - primaryRgb[1]) * 0.88)),
-    Math.min(255, primaryRgb[2] + Math.round((255 - primaryRgb[2]) * 0.88))
-  );
+  const lightR = Math.min(255, primaryRgb[0] + Math.round((255 - primaryRgb[0]) * 0.88));
+  const lightG = Math.min(255, primaryRgb[1] + Math.round((255 - primaryRgb[1]) * 0.88));
+  const lightB = Math.min(255, primaryRgb[2] + Math.round((255 - primaryRgb[2]) * 0.88));
+  doc.setFillColor(lightR, lightG, lightB);
   doc.rect(10, y, pageWidth - 20, boxH, 'F');
   doc.setDrawColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
   doc.setLineWidth(0.5);
@@ -268,47 +284,42 @@ export async function generateSettlementPDF(
   doc.text('DETALLE DE ENVÍOS', 10, y);
   y += 6;
 
-  // Table header
-  const colTracking = 10;
-  const colFecha = isSeller ? 60 : 65;
-  const colDest = isSeller ? 92 : 92;
-  const colEstado = isSeller ? 145 : null;
-  const colMonto = isSeller ? 172 : 162;
+  // Column positions — redesigned to fit within 10–200mm (190mm usable)
+  // Seller: Tracking | Fecha | Destinatario | Estado | Monto
+  // Driver/Branch: Tracking | Fecha | Destinatario | Monto
+  const colTracking = 12;
+  const colFecha = isSeller ? 62 : 68;
+  const colDest = isSeller ? 84 : 88;
+  const colEstado = isSeller ? 138 : null;
+  const colMonto = pageWidth - 12; // right-aligned
 
-  doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-  doc.rect(10, y - 4, pageWidth - 20, 9, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.text('Tracking', colTracking + 2, y);
-  doc.text('Fecha', colFecha, y);
-  doc.text('Destinatario', colDest, y);
-  if (colEstado) doc.text('Estado', colEstado, y);
-  doc.text('Monto', colMonto, y);
+  const drawTableHeader = () => {
+    doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+    doc.rect(10, y - 4, pageWidth - 20, 9, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.text('Tracking', colTracking, y);
+    doc.text('Fecha', colFecha, y);
+    doc.text('Destinatario', colDest, y);
+    if (colEstado) doc.text('Estado', colEstado, y);
+    doc.text('Monto', colMonto, y, { align: 'right' });
+  };
+
+  drawTableHeader();
   y += 8;
 
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(50, 50, 50);
 
   let rowTotal = 0;
-  const totalPages = 1; // will be updated after rendering
 
   allRows.forEach((row: any, index: number) => {
     if (y > pageHeight - 25) {
       doc.addPage();
       drawHeader();
-      y = 35;
-      // Redraw table header on new page
-      doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-      doc.rect(10, y - 4, pageWidth - 20, 9, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.text('Tracking', colTracking + 2, y);
-      doc.text('Fecha', colFecha, y);
-      doc.text('Destinatario', colDest, y);
-      if (colEstado) doc.text('Estado', colEstado, y);
-      doc.text('Monto', colMonto, y);
+      y = bodyStart;
+      drawTableHeader();
       y += 8;
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(50, 50, 50);
@@ -319,24 +330,20 @@ export async function generateSettlementPDF(
       doc.rect(10, y - 4, pageWidth - 20, 7, 'F');
     }
 
-    doc.setFontSize(8);
+    doc.setFontSize(7.5);
 
-    const tracking = isSeller
-      ? (row.tracking || '-').substring(0, 22)
-      : (row.tracking || '-').substring(0, 22);
-    const fecha = isSeller ? row.fecha : row.fecha;
-    const dest = isSeller
-      ? (row.destinatario || '-').substring(0, 22)
-      : (row.destinatario || '-').substring(0, 22);
+    const tracking = (row.tracking || '-').substring(0, isSeller ? 18 : 22);
+    const fecha = row.fecha || '-';
+    const dest = (row.destinatario || '-').substring(0, isSeller ? 20 : 28);
     const monto = isSeller ? (row.precio || 0) : (row.monto || 0);
 
-    doc.text(tracking, colTracking + 2, y);
-    doc.text(fecha || '-', colFecha, y);
+    doc.text(tracking, colTracking, y);
+    doc.text(fecha, colFecha, y);
     doc.text(dest, colDest, y);
     if (colEstado && isSeller) {
-      doc.text((row.estado || '-').substring(0, 12), colEstado, y);
+      doc.text((row.estado || '-').substring(0, 14), colEstado, y);
     }
-    doc.text(formatCurrency(monto), colMonto, y);
+    doc.text(formatCurrency(monto), colMonto, y, { align: 'right' });
     rowTotal += monto;
     y += 7;
   });
@@ -351,7 +358,7 @@ export async function generateSettlementPDF(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-    doc.text(`Total (${allRows.length} envíos): ${formatCurrency(rowTotal)}`, colMonto, y, { align: 'left' });
+    doc.text(`Total (${allRows.length} envíos): ${formatCurrency(rowTotal)}`, colMonto, y, { align: 'right' });
   }
 
   // Add footers to all pages
