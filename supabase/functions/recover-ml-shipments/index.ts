@@ -206,18 +206,29 @@ Deno.serve(async (req) => {
               const normalize = (str: string) => str.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
               const ciudadNorm = normalize(city);
 
+              // Pass 1: exact match (highest priority)
               for (const tarifa of zoneTarifas) {
                 if (!tarifa.zona_destino) continue;
-                const zonas = tarifa.zona_destino.split(',').map((z: string) => normalize(z));
-                for (const zona of zonas) {
-                  if (zona === ciudadNorm || ciudadNorm.includes(zona) || zona.includes(ciudadNorm)) {
+                const zonas = tarifa.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+                if (zonas.some((z: string) => z === ciudadNorm)) {
+                  precioTotal = tarifa.precio_base || 0;
+                  tarifaId = tarifa.id;
+                  tarifaMetodo = 'zona';
+                  break;
+                }
+              }
+              // Pass 2: substring match (lower priority)
+              if (precioTotal === 0) {
+                for (const tarifa of zoneTarifas) {
+                  if (!tarifa.zona_destino) continue;
+                  const zonas = tarifa.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+                  if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) {
                     precioTotal = tarifa.precio_base || 0;
                     tarifaId = tarifa.id;
                     tarifaMetodo = 'zona';
                     break;
                   }
                 }
-                if (precioTotal > 0) break;
               }
 
               if (precioTotal === 0) {

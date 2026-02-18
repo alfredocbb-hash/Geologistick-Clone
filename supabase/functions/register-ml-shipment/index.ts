@@ -273,19 +273,31 @@ serve(async (req) => {
           .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         const ciudadNorm = normalize(city);
 
+        // Pass 1: exact match (highest priority)
         for (const tarifa of zoneTarifas) {
           if (!tarifa.zona_destino) continue;
-          const zonas = tarifa.zona_destino.split(',').map((z: string) => normalize(z));
-          for (const zona of zonas) {
-            if (zona === ciudadNorm || ciudadNorm.includes(zona) || zona.includes(ciudadNorm)) {
+          const zonas = tarifa.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+          if (zonas.some((z: string) => z === ciudadNorm)) {
+            precioTotal = tarifa.precio_base || 0;
+            tarifaIdMatch = tarifa.id;
+            tarifaMetodo = 'zona';
+            console.log('[register-ml-shipment] Zone exact match:', tarifa.zona_destino, '-> precio:', precioTotal);
+            break;
+          }
+        }
+        // Pass 2: substring match (lower priority)
+        if (precioTotal === 0) {
+          for (const tarifa of zoneTarifas) {
+            if (!tarifa.zona_destino) continue;
+            const zonas = tarifa.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+            if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) {
               precioTotal = tarifa.precio_base || 0;
               tarifaIdMatch = tarifa.id;
               tarifaMetodo = 'zona';
-              console.log('[register-ml-shipment] Zone match:', tarifa.zona_destino, '-> precio:', precioTotal);
+              console.log('[register-ml-shipment] Zone substring match:', tarifa.zona_destino, '-> precio:', precioTotal);
               break;
             }
           }
-          if (precioTotal > 0) break;
         }
 
         // Fallback: use the broadest zone (most cities listed) as catch-all
