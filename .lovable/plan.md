@@ -1,161 +1,69 @@
 
-# Agregar Botón "Test de Conexión ARCA" en Integraciones
+# Corrección: Tarifa incorrecta para Hudson (y otras localidades del Partido de Berazategui)
 
-## Objetivo
-Agregar un botón en la pestaña ARCA de la página Configuración → Integraciones que llame al servidor de AFIP (WSAA) con los certificados configurados para el entorno seleccionado (Sandbox o Producción) y muestre el resultado: token obtenido o error exacto.
+## Diagnóstico
 
-## Arquitectura de la solución
+### Causa raíz en los datos
+La `zona_destino` de **ZONA 1 - Berazategui** solo contiene `"Berazategui"`. Hudson, Sourigues, El Pato, Pereyra, Plátanos, Ranelagh, Ezpeleta y otras localidades del Partido de Berazategui **no están listadas**, por lo que el algoritmo no las reconoce y aplica el fallback (Zona 3 - CABA Y GBA, que tiene más entradas en la lista).
 
-Se necesitan dos cambios:
+### Bug secundario en el algoritmo de matching
+El algoritmo usa `zona.includes(ciudadNorm) || ciudadNorm.includes(zona)` en un loop sin prioridad. Esto puede generar falsos positivos cuando hay nombres de ciudades que son substrings de otras (ej: si una zona tiene "Quilmes" y la ciudad es "Quilmes de Berazategui", podría matchear "quilmes" de Zona 2, pero también podría matchear incorrectamente en otros casos). Además, si se agrega "Hudson" a Zona 1, el matching de substring podría causar problemas con otros nombres similares.
 
-1. **Nuevo endpoint en el edge function `arca-factura`**: Agregar una acción `test_connection` que solo autentique contra WSAA sin crear ninguna factura ni tocar la base de datos.
-2. **UI en `IntegrationSettings.tsx`**: Agregar el botón "Test de Conexión" exclusivamente en la pestaña ARCA, con selector de entorno y panel de resultado.
+## Solución en dos partes
 
-## Cambio 1: Edge Function `supabase/functions/arca-factura/index.ts`
+### Parte 1: Mejorar el algoritmo de matching (priorizar coincidencia exacta)
+En todos los lugares donde existe el loop de matching de zonas (`Settlements.tsx` y los edge functions `mercadolibre-sync`, `register-ml-shipment`, `recover-ml-shipments`), se ajusta el orden de prioridad:
 
-El handler principal (`serve`) actualmente solo procesa solicitudes de emisión de facturas. Se agregará lógica para detectar una acción `test_connection`:
+1. **Match exacto** (`zona === ciudadNorm`) → prioridad máxima
+2. **Match por substring** (`ciudadNorm.includes(zona) || zona.includes(ciudadNorm)`) → solo si no hay match exacto
 
-```
-body.action === 'test_connection'
-```
-
-Cuando se detecta esta acción:
-1. Lee el entorno solicitado (`body.environment`: `sandbox` o `production`)
-2. Busca la config ARCA para ese entorno (`getARCAConfig`)
-3. Si no hay config, retorna error descriptivo
-4. Llama a `autenticarWSAA(...)` con los endpoints del entorno seleccionado
-5. Retorna el resultado:
-   - **Éxito**: `{ success: true, token_preview, sign_preview, environment, wsaa_url }`
-   - **Error**: `{ success: false, error: "mensaje exacto de AFIP" }`
-
-No se modifica ni crea ningún registro en la base de datos. Es una llamada de solo lectura/verificación.
-
-### Snippet del nuevo bloque en el handler:
-
+El algoritmo mejorado:
 ```typescript
-// Detect test_connection action
-const body = await req.json();
-
-if (body.action === 'test_connection') {
-  const env: 'sandbox' | 'production' = body.environment || 'production';
-  const arcaConfig = await getARCAConfig(supabase, tenantId, env);
-
-  if (!arcaConfig) {
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: `No hay configuración ARCA activa para el entorno ${env === 'production' ? 'Producción' : 'Sandbox'}.` 
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  const endpoints = ARCA_ENDPOINTS[env];
-  try {
-    const { token, sign } = await autenticarWSAA(arcaConfig.cert_pem, arcaConfig.private_key, endpoints.wsaa);
-    return new Response(
-      JSON.stringify({
-        success: true,
-        environment: env,
-        wsaa_url: endpoints.wsaa,
-        token_preview: token.substring(0, 40) + '...',
-        sign_preview: sign.substring(0, 40) + '...',
-        message: 'Autenticación WSAA exitosa. Los certificados son válidos.',
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  } catch (err) {
-    return new Response(
-      JSON.stringify({
-        success: false,
-        environment: env,
-        wsaa_url: endpoints.wsaa,
-        error: err instanceof Error ? err.message : String(err),
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+// Primero buscar match exacto (mayor prioridad)
+for (const zt of allZoneTarifas) {
+  if (!zt.zona_destino) continue;
+  const zonas = zt.zona_destino.split(',').map((z) => normalize(z.trim()));
+  if (zonas.some(z => z === ciudadNorm)) {
+    return zt.precio_base || 0; // match exacto → retornar inmediatamente
   }
 }
-```
-
-## Cambio 2: UI `src/pages/IntegrationSettings.tsx`
-
-Se agrega un bloque condicional `{key === 'arca' && (...)}` dentro del `CardContent` de cada tab, ubicado **después del webhook/docs block y antes del botón Guardar**.
-
-### Nuevo estado necesario:
-```typescript
-const [arcaTestEnv, setArcaTestEnv] = useState<IntegrationEnvironment>('sandbox');
-const [arcaTestResult, setArcaTestResult] = useState<{
-  success: boolean;
-  message?: string;
-  error?: string;
-  token_preview?: string;
-  sign_preview?: string;
-  environment?: string;
-  wsaa_url?: string;
-} | null>(null);
-const [arcaTesting, setArcaTesting] = useState(false);
-```
-
-### Lógica del botón:
-```typescript
-const testArcaConnection = async (env: IntegrationEnvironment) => {
-  setArcaTesting(true);
-  setArcaTestResult(null);
-  try {
-    const { data, error } = await supabase.functions.invoke('arca-factura', {
-      body: { action: 'test_connection', environment: env },
-    });
-    if (error) throw error;
-    setArcaTestResult(data);
-  } catch (err) {
-    setArcaTestResult({ success: false, error: err instanceof Error ? err.message : 'Error desconocido' });
-  } finally {
-    setArcaTesting(false);
+// Luego buscar match por substring (menor prioridad)
+for (const zt of allZoneTarifas) {
+  if (!zt.zona_destino) continue;
+  const zonas = zt.zona_destino.split(',').map((z) => normalize(z.trim()));
+  if (zonas.some(z => ciudadNorm.includes(z) || z.includes(ciudadNorm))) {
+    return zt.precio_base || 0;
   }
-};
+}
+// Fallback catch-all
 ```
 
-### UI del panel de test (solo visible en tab ARCA):
+### Parte 2: Agregar localidades del Partido de Berazategui a ZONA 1
+Se actualiza el campo `zona_destino` de la tarifa ZONA 1 (id: `08a441a3-ec8a-4678-b4e4-dc83c32b094e`) en la base de datos para incluir todas las localidades del partido:
 
+```sql
+UPDATE tarifas 
+SET zona_destino = 'Berazategui,Hudson,Ranelagh,Ezpeleta,Plátanos,El Pato,Pereyra,Sourigues,Juan Maria Gutierrez,Arditi,Guillermo Hudson'
+WHERE id = '08a441a3-ec8a-4678-b4e4-dc83c32b094e';
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ Test de Conexión WSAA                                       │
-│ Verifica que los certificados se aceptan en AFIP            │
-│                                                             │
-│  Entorno: [ Sandbox ]  [ Producción ]                       │
-│                                                             │
-│  [ ⚡ Test de Conexión ]                                     │
-│                                                             │
-│  ┌─ Resultado ──────────────────────────────────────────┐   │
-│  │ ✅ Autenticación WSAA exitosa                        │   │
-│  │ Entorno: Sandbox  │  URL: wsaahomo.afip.gov.ar       │   │
-│  │ Token: PD94bWwg...                                   │   │
-│  │ Sign: D/0rxOO9...                                    │   │
-│  └──────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
-```
-
-El selector de entorno del test es independiente del selector global de la página (que controla qué configuración se carga en el formulario). Esto permite, por ejemplo, estar viendo la config de Sandbox y testear Producción al mismo tiempo.
-
-El panel de resultado muestra:
-- En éxito (verde): mensaje de confirmación, entorno, URL WSAA usada, preview del token y del sign
-- En error (rojo): el error exacto retornado por AFIP (ej: `WSAA SOAP Fault: cms.cert.untrusted`, `WSAA SOAP Fault: coe.notAuthorized`, etc.)
 
 ## Archivos a modificar
 
 | Archivo | Cambio |
 |---|---|
-| `supabase/functions/arca-factura/index.ts` | Detectar `body.action === 'test_connection'` antes de parsear el resto del body, ejecutar solo la autenticación WSAA y retornar el resultado |
-| `src/pages/IntegrationSettings.tsx` | Agregar estado, función `testArcaConnection`, y panel UI exclusivo para la pestaña ARCA |
+| `src/pages/ecommerce/Settlements.tsx` | Función `matchZone`: separar en dos pasadas (exacta + substring) |
+| `src/pages/ecommerce/Settlements.tsx` | Segundo bloque de matching (líneas ~520-540): misma mejora |
+| `supabase/functions/mercadolibre-sync/index.ts` | Misma mejora en el loop de matching |
+| `supabase/functions/register-ml-shipment/index.ts` | Misma mejora en el loop de matching |
+| `supabase/functions/recover-ml-shipments/index.ts` | Misma mejora en el loop de matching |
+| Base de datos | `UPDATE tarifas SET zona_destino = '...' WHERE id = '08a441a3...'` para agregar Hudson y demás localidades |
 
 ## Resultado esperado
 
-Beraexpress podrá:
-1. Ir a Configuración → Integraciones → ARCA
-2. Seleccionar Sandbox o Producción en el panel de test
-3. Hacer clic en "Test de Conexión"
-4. Ver inmediatamente si los certificados configurados son aceptados por AFIP
-5. En caso de error, ver el mensaje exacto de AFIP (p.ej. `cms.cert.untrusted`, `coe.notAuthorized`, `generationTime inválido`) sin tener que emitir ninguna factura
+- Hudson → ZONA 1 - Berazategui ($4.610,99) ✓
+- Ranelagh, Ezpeleta → ZONA 1 - Berazategui ($4.610,99) ✓
+- El matching exacto siempre gana al matching por substring, evitando futuros falsos positivos
+- Los edge functions de ML Sync, Register y Recover aplican la misma lógica mejorada
 
-No se crean facturas, no se modifica la base de datos, no se incrementa ningún contador.
+## Nota importante
+Si el usuario necesita agregar más localidades de otros partidos en el futuro, la solución correcta es editar el campo `zona_destino` de la tarifa correspondiente directamente desde la interfaz de Tarifas (no se requiere código).
