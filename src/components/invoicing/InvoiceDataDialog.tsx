@@ -64,8 +64,9 @@ export function InvoiceDataDialog({
   const [condicionIva, setCondicionIva] = useState<CondicionIVA>('consumidor_final');
   const [domicilio, setDomicilio] = useState('');
   const [cuitError, setCuitError] = useState('');
+  const [selectedEnvironment, setSelectedEnvironment] = useState<'sandbox' | 'production'>('production');
 
-  const { isConfigured, config, environment, isLoading: arcaLoading } = useARCAIntegration();
+  const { isConfigured, config, hasBothEnvironments, isLoading: arcaLoading } = useARCAIntegration(selectedEnvironment);
 
   // Determine invoice type when IVA condition changes
   useEffect(() => {
@@ -109,6 +110,7 @@ export function InvoiceDataDialog({
         body: {
           envio_id: envioId,
           tipo_comprobante: tipoComprobante,
+          environment: selectedEnvironment,
           receptor: {
             cuit: cuit ? formatCUIT(cuit) : undefined,
             nombre: nombre.trim(),
@@ -183,13 +185,41 @@ export function InvoiceDataDialog({
               <Loader2 className="h-4 w-4 animate-spin" />
             </div>
           ) : isConfigured ? (
-            <Alert className="border-green-200 bg-green-50">
-              <CheckCircle className="h-4 w-4 text-green-600" />
-              <AlertDescription className="text-green-800">
-                ARCA configurado ({environment === 'sandbox' ? 'Sandbox' : 'Producción'})
-                {config && ` - ${config.razon_social}`}
-              </AlertDescription>
-            </Alert>
+            <div className="space-y-2">
+              {/* Environment toggle – only show when both environments are configured */}
+              {hasBothEnvironments && (
+                <div className="flex items-center gap-2 p-2 border rounded-lg bg-muted/40">
+                  <span className="text-xs text-muted-foreground font-medium">Entorno:</span>
+                  <div className="flex gap-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={selectedEnvironment === 'sandbox' ? 'default' : 'ghost'}
+                      className="h-7 px-3 text-xs"
+                      onClick={() => setSelectedEnvironment('sandbox')}
+                    >
+                      Sandbox
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={selectedEnvironment === 'production' ? 'default' : 'ghost'}
+                      className="h-7 px-3 text-xs"
+                      onClick={() => setSelectedEnvironment('production')}
+                    >
+                      Producción
+                    </Button>
+                  </div>
+                </div>
+              )}
+              <Alert className="border-green-200 bg-green-50">
+                <CheckCircle className="h-4 w-4 text-green-600" />
+                <AlertDescription className="text-green-800">
+                  ARCA configurado ({selectedEnvironment === 'sandbox' ? 'Sandbox – AFIP Homologación' : 'Producción'})
+                  {config && ` – ${config.razon_social}`}
+                </AlertDescription>
+              </Alert>
+            </div>
           ) : (
             <Alert className="border-yellow-200 bg-yellow-50">
               <AlertCircle className="h-4 w-4 text-yellow-600" />
