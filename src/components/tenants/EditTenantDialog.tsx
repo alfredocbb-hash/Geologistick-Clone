@@ -49,6 +49,9 @@ export function EditTenantDialog({ open, onOpenChange, tenant, onSuccess }: Edit
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [ecommerceEnabled, setEcommerceEnabled] = useState(tenant.ecommerce_enabled ?? false);
   const [modoFlexEnabled, setModoFlexEnabled] = useState((tenant as any).modo_flex ?? false);
+  const [autoSeleccionTarifaEnabled, setAutoSeleccionTarifaEnabled] = useState(
+    !!((tenant as any).configuracion?.auto_seleccion_tarifa_por_zona)
+  );
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -77,6 +80,7 @@ export function EditTenantDialog({ open, onOpenChange, tenant, onSuccess }: Edit
     });
     setEcommerceEnabled(tenant.ecommerce_enabled ?? false);
     setModoFlexEnabled((tenant as any).modo_flex ?? false);
+    setAutoSeleccionTarifaEnabled(!!((tenant as any).configuracion?.auto_seleccion_tarifa_por_zona));
   }, [tenant, form]);
 
   const extendTrial = (days: number) => {
@@ -102,7 +106,11 @@ export function EditTenantDialog({ open, onOpenChange, tenant, onSuccess }: Edit
             ? new Date(values.trial_ends_at).toISOString()
             : null,
           ecommerce_enabled: ecommerceEnabled,
-          modo_flex: modoFlexEnabled
+          modo_flex: modoFlexEnabled,
+          configuracion: {
+            ...((tenant as any).configuracion || {}),
+            auto_seleccion_tarifa_por_zona: autoSeleccionTarifaEnabled
+          }
         })
         .eq('id', tenant.id);
 
@@ -314,6 +322,20 @@ export function EditTenantDialog({ open, onOpenChange, tenant, onSuccess }: Edit
               <Switch 
                 checked={modoFlexEnabled} 
                 onCheckedChange={setModoFlexEnabled} 
+              />
+            </div>
+
+            {/* Auto-selección de Tarifa Toggle */}
+            <div className="flex items-center justify-between rounded-lg border p-4">
+              <div>
+                <Label className="text-base font-medium">Auto-selección de Tarifa</Label>
+                <p className="text-sm text-muted-foreground">
+                  Selecciona la tarifa automáticamente según el destino, peso y volumen del envío
+                </p>
+              </div>
+              <Switch
+                checked={autoSeleccionTarifaEnabled}
+                onCheckedChange={setAutoSeleccionTarifaEnabled}
               />
             </div>
 
