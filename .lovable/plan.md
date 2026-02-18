@@ -1,79 +1,113 @@
 
-# Corrección: Auto-selección de Tarifa con zona_destino en tarifas de tipo "peso"
+# Diagnóstico y corrección del error de facturación ARCA en producción
 
-## Diagnóstico del problema
+## Causa raíz identificada
 
-La tarifa "ENVIOS GENERAL" de BlackBox Cargas está configurada como `tipo_tarifa = 'peso'` (no `'zona'`), pero tiene el campo `zona_destino` poblado con todas las localidades. Esto genera dos problemas concatenados:
+La función `arca-factura` tiene la integración SOAP con AFIP **sin implementar** para el ambiente de producción. La función `emitirFacturaARCA` está así:
 
-**Problema 1 - Detección:** La función `encontrarTarifaPorDestino` en `src/pages/NewShipment.tsx` filtra exclusivamente tarifas con `t.tipo_tarifa === 'zona'`. Como la tarifa es de tipo `'peso'`, el sistema no la encuentra y muestra el mensaje "localidad no activada".
-
-**Problema 2 - Cálculo (si se llegara a seleccionar manualmente):** El bloque de cálculo de volumen en la línea 623 solo aplica cuando `tipo_tarifa === 'peso'` con dimensiones, lo cual sí está correcto. El cálculo por rangos de kg también está correcto para tipo `'peso'`. Así que una vez que se corrija la detección, el precio se calculará bien automáticamente.
-
-## Causa raíz
-
-```
-// CÓDIGO ACTUAL - solo busca tipo 'zona':
-const coincidentesZona = tarifas.filter(t => {
-  if (t.tipo_tarifa !== 'zona' || !t.zona_destino) return false;  // ← BUG: excluye tipo 'peso'
-  ...
-});
-
-// Tarifa en DB:
-tipo_tarifa = 'peso'   ← nunca pasa el filtro
-zona_destino = 'Vicente López, Quilmes, ...'  ← tiene destinos configurados
-rangos_kg = [{desde:0, hasta:5, precio:10000}, ...]  ← tiene rangos correctos
-```
-
-## Solución
-
-Modificar `encontrarTarifaPorDestino` en `src/pages/NewShipment.tsx` para buscar en **todas las tarifas que tengan `zona_destino` configurado**, independientemente del `tipo_tarifa`. El tipo de tarifa solo afecta cómo se calcula el precio (ya manejado por `fleteCalculado`), no cómo se detecta el destino.
-
-### Cambio en la función `encontrarTarifaPorDestino` (líneas 148-191):
-
-**Antes:**
 ```typescript
-// 1. Tarifas tipo 'zona'
-const coincidentesZona = tarifas.filter(t => {
-  if (t.tipo_tarifa !== 'zona' || !t.zona_destino) return false;
-  ...
-});
+// Sandbox: simula CAE correctamente
+if (environment === 'sandbox') { ... return { success: true, cae: ... } }
 
-// 2. Tarifas tipo 'codigo_postal'
-const coincidentesCP = tarifas.filter(t => {
-  if (t.tipo_tarifa !== 'codigo_postal' || !t.zona_destino) return false;
-  ...
-});
+// Producción: SIEMPRE devuelve error, sin importar la configuración
+return {
+  success: false,
+  error: 'Integración ARCA en producción requiere certificados configurados',
+};
 ```
 
-**Después:**
+Esto significa que aunque Beraexpress configure certificados reales de producción, la factura siempre será rechazada.
+
+## Problema secundario detectado
+
+Los certificados cargados en `production` son exactamente los mismos que en `sandbox`. El CN del certificado dice `testafipberaexpress`, lo que indica que son certificados de homologación (testing), no de producción real de AFIP. Esto es algo que Beraexpress debe resolver por su cuenta ante AFIP: solicitar el certificado de producción.
+
+Sin embargo, el código debe estar preparado para cuando tengan el certificado correcto.
+
+## Solución propuesta
+
+Implementar la comunicación SOAP real con los servicios de AFIP/ARCA en la función `emitirFacturaARCA`. El flujo AFIP requiere dos pasos:
+
+### Paso 1 - Autenticación con WSAA (Web Service de Autenticación y Autorización)
+- Generar un "Ticket de Requerimiento de Acceso" (TRA) firmado con la clave privada + certificado del tenant
+- Llamar al endpoint WSAA para obtener el Token de Acceso (TA)
+
+### Paso 2 - Emisión con WSFEv1 (Web Service de Facturación Electrónica)
+- Usar el Token + Sign del paso anterior
+- Llamar a `FECAESolicitar` con los datos del comprobante
+- Recuperar el CAE y su fecha de vencimiento
+
+### Arquitectura del cambio
+
+```
+emitirFacturaARCA(config, 'production', ...)
+    │
+    ├─ generarTRA()           → XML firmado con cert+key del tenant
+    ├─ autenticarWSAA()       → POST SOAP → devuelve { token, sign }
+    └─ solicitarCAE()         → POST SOAP → devuelve { CAE, CAEFchVto }
+```
+
+### Implementación en `supabase/functions/arca-factura/index.ts`
+
+Se reemplazará el bloque de producción que hoy devuelve error por la implementación real:
+
 ```typescript
-// 1. Cualquier tarifa con zona_destino configurado (independiente del tipo_tarifa)
-const coincidentesZona = tarifas.filter(t => {
-  if (!t.zona_destino) return false;  // ← solo requiere que tenga zona_destino
-  const destinos = t.zona_destino.split(',').map((d: string) => normalizarTexto(d.trim()));
-  if (ciudadNorm && destinos.some((d: string) => d.includes(ciudadNorm) || ciudadNorm.includes(d))) return true;
-  if (cpTrim && destinos.some((d: string) => d === cpTrim)) return true;
-  return false;
-});
+// 1. Generar TRA (Ticket de Requerimiento de Acceso)
+async function generarTRA(): string {
+  const now = new Date();
+  const generationTime = new Date(now.getTime() - 10000).toISOString().replace('.000Z', '-03:00');
+  const expirationTime = new Date(now.getTime() + 600000).toISOString().replace('.000Z', '-03:00');
+  
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<loginTicketRequest version="1.0">
+  <header>
+    <uniqueId>${Math.floor(Date.now() / 1000)}</uniqueId>
+    <generationTime>${generationTime}</generationTime>
+    <expirationTime>${expirationTime}</expirationTime>
+  </header>
+  <service>wsfe</service>
+</loginTicketRequest>`;
+}
 
-// 2. Fallback: buscar por código postal exacto (para cualquier tipo con zona_destino)
-// (Ya cubierto en el paso anterior, no es necesario un bloque separado)
+// 2. Firmar con key privada + certificado usando Deno crypto
+async function firmarTRA(tra: string, privateKey: string, cert: string): Promise<string> {
+  // Usar SubtleCrypto de Deno para firma PKCS7/CMS
+  // Devuelve base64 del CMS firmado
+}
+
+// 3. Llamar WSAA
+async function autenticarWSAA(cmsFirmado: string, wsaaUrl: string): Promise<{token: string, sign: string}> {
+  const soapBody = `<soapenv:Envelope ...>
+    <loginCms in0="${cmsFirmado}" />
+  </soapenv:Envelope>`;
+  // POST a wsaaUrl, parsear XML respuesta
+}
+
+// 4. Llamar WSFEv1
+async function solicitarCAE(token, sign, cuit, puntoVenta, tipo, numero, receptor, montos, wsfeUrl) {
+  const soapBody = `<FECAESolicitar>
+    <Auth><Token>...</Token><Sign>...</Sign><Cuit>...</Cuit></Auth>
+    <FeCAEReq>...</FeCAEReq>
+  </FECAESolicitar>`;
+  // POST, parsear CAE y fecha vencimiento
+}
 ```
 
-El desempate por peso cuando hay múltiples coincidencias se mantiene igual.
+### Manejo de errores mejorado
+
+La nueva implementación debe:
+- Capturar errores SOAP de AFIP con sus códigos (Ej: `Err.Code 10016 - Fecha fuera de rango`)
+- Loguear el XML de request/response para diagnóstico
+- Si falla la auth WSAA, informar claramente (certificado inválido, expirado, etc.)
+- Si falla WSFEv1, mostrar el mensaje de AFIP textualmente
+
+### Comunicación al cliente
+
+Mientras se implementa la integración real, se debe informar a Beraexpress que:
+1. El certificado cargado en producción es el de **homologación** (testing), no el de producción real
+2. Deben solicitar ante AFIP el certificado de producción para el CUIT 30-71726581-1
+3. Una vez que tengan el certificado de producción, recargarlo en Configuración → Integraciones → ARCA → Producción
 
 ## Archivos a modificar
 
-- **`src/pages/NewShipment.tsx`**: Modificar únicamente la función `encontrarTarifaPorDestino` (líneas 158-165 y 181-188) para eliminar el filtro por `tipo_tarifa` y buscar en cualquier tarifa que tenga `zona_destino` configurado.
-
-## Resultado esperado
-
-Cuando un operador de BlackBox ingrese "Quilmes" en el campo de ciudad del destinatario:
-1. El sistema encuentra la tarifa "ENVIOS GENERAL" (tipo `'peso'` con `zona_destino` que incluye "Quilmes")
-2. Se auto-selecciona la tarifa y aparece el panel informativo
-3. Al ingresar el peso (ej: 5 kg), se aplica el rango correspondiente: $10,000
-4. Si las dimensiones superan 100cm, cambia a cálculo por m³ ($60,000/m³)
-
-## Aclaración sobre el diseño de tarifas
-
-La tarifa tiene `tipo_tarifa = 'peso'` porque define **cómo se calcula el precio** (por rangos de kg). El campo `zona_destino` define **dónde aplica** esa tarifa. Son dos dimensiones independientes que el código anterior confundía. La corrección separa correctamente ambos conceptos.
+- **`supabase/functions/arca-factura/index.ts`**: Implementar `generarTRA()`, `firmarTRA()`, `autenticarWSAA()`, `solicitarCAE()` y reemplazar el bloque de producción con la llamada real a AFIP.
