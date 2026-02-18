@@ -297,13 +297,16 @@ async function buildCMSSignedData(
 
 function generarTRA(): string {
   const now = new Date();
-  // Argentina UTC-3
-  const genTime = new Date(now.getTime() - 60000);
-  const expTime = new Date(now.getTime() + 600000);
+  // Ajustar a Argentina (UTC-3): restar 3 horas ANTES de aplicar el sufijo -03:00
+  // Sin esto, AFIP interpreta la hora UTC con offset -03:00 → 3 horas en el futuro
+  const AR_OFFSET_MS = 3 * 60 * 60 * 1000; // 3 horas en ms
+  const genTime = new Date(now.getTime() - 60000);   // 1 min antes
+  const expTime = new Date(now.getTime() + 600000);  // 10 min después
 
   const fmt = (d: Date) => {
-    const iso = d.toISOString();
-    return iso.replace('Z', '-03:00');
+    // Restar 3h (UTC → hora Argentina) y aplicar sufijo -03:00
+    const argTime = new Date(d.getTime() - AR_OFFSET_MS);
+    return argTime.toISOString().replace('Z', '-03:00');
   };
 
   return `<?xml version="1.0" encoding="UTF-8"?>\n` +
