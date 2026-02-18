@@ -162,6 +162,19 @@ export default function IntegrationSettings() {
   const [generatingPDF, setGeneratingPDF] = useState(false);
   const [generatingDiagrama, setGeneratingDiagrama] = useState(false);
   const [generatingFAQs, setGeneratingFAQs] = useState(false);
+
+  // ARCA Connection Test state
+  const [arcaTestEnv, setArcaTestEnv] = useState<IntegrationEnvironment>('sandbox');
+  const [arcaTestResult, setArcaTestResult] = useState<{
+    success: boolean;
+    message?: string;
+    error?: string;
+    token_preview?: string;
+    sign_preview?: string;
+    environment?: string;
+    wsaa_url?: string;
+  } | null>(null);
+  const [arcaTesting, setArcaTesting] = useState(false);
   const queryClient = useQueryClient();
   const { tenantId, isLoading: tenantLoading } = useTenant();
 
@@ -292,6 +305,22 @@ export default function IntegrationSettings() {
     const integrationConfig = INTEGRATIONS_CONFIG[type];
     const requiredFields = integrationConfig.fields.filter(f => f.required);
     return requiredFields.every(f => configs[f.key]?.config_value);
+  };
+
+  const testArcaConnection = async (env: IntegrationEnvironment) => {
+    setArcaTesting(true);
+    setArcaTestResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('arca-factura', {
+        body: { action: 'test_connection', environment: env },
+      });
+      if (error) throw error;
+      setArcaTestResult(data);
+    } catch (err) {
+      setArcaTestResult({ success: false, error: err instanceof Error ? err.message : 'Error desconocido' });
+    } finally {
+      setArcaTesting(false);
+    }
   };
 
   if (tenantLoading) {
@@ -564,6 +593,95 @@ export default function IntegrationSettings() {
                       >
                         Ver documentación de {config.name}
                       </a>
+                    </div>
+                  )}
+
+                  {/* ARCA Connection Test Panel */}
+                  {key === 'arca' && (
+                    <div className="p-4 bg-muted/50 rounded-lg space-y-4 border border-border">
+                      <div>
+                        <Label className="font-medium text-foreground">Test de Conexión WSAA</Label>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Verifica que los certificados sean aceptados por AFIP sin emitir ninguna factura
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <Label className="text-sm text-muted-foreground">Entorno a testear:</Label>
+                        <div className="flex gap-2">
+                          <Button
+                            variant={arcaTestEnv === 'sandbox' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => { setArcaTestEnv('sandbox'); setArcaTestResult(null); }}
+                          >
+                            🧪 Sandbox
+                          </Button>
+                          <Button
+                            variant={arcaTestEnv === 'production' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => { setArcaTestEnv('production'); setArcaTestResult(null); }}
+                          >
+                            🚀 Producción
+                          </Button>
+                        </div>
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        onClick={() => testArcaConnection(arcaTestEnv)}
+                        disabled={arcaTesting}
+                        className="w-full sm:w-auto"
+                      >
+                        {arcaTesting ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <span className="mr-2">⚡</span>
+                        )}
+                        {arcaTesting ? 'Conectando con AFIP...' : 'Test de Conexión'}
+                      </Button>
+
+                      {arcaTestResult && (
+                        <div className={`rounded-lg border p-4 space-y-2 ${arcaTestResult.success ? 'bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800' : 'bg-destructive/5 border-destructive/20'}`}>
+                          <div className="flex items-center gap-2">
+                            {arcaTestResult.success ? (
+                              <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
+                            ) : (
+                              <XCircle className="h-4 w-4 text-destructive shrink-0" />
+                            )}
+                            <span className={`font-medium text-sm ${arcaTestResult.success ? 'text-green-700 dark:text-green-300' : 'text-destructive'}`}>
+                              {arcaTestResult.success ? arcaTestResult.message : 'Error de autenticación'}
+                            </span>
+                          </div>
+
+                          {arcaTestResult.wsaa_url && (
+                            <div className="text-xs text-muted-foreground">
+                              <span className="font-medium">URL WSAA:</span>{' '}
+                              <code className="font-mono">{arcaTestResult.wsaa_url}</code>
+                            </div>
+                          )}
+
+                          {arcaTestResult.success && arcaTestResult.token_preview && (
+                            <div className="space-y-1 text-xs">
+                              <div className="text-muted-foreground">
+                                <span className="font-medium">Token:</span>{' '}
+                                <code className="font-mono bg-background/60 px-1 rounded">{arcaTestResult.token_preview}</code>
+                              </div>
+                              {arcaTestResult.sign_preview && (
+                                <div className="text-muted-foreground">
+                                  <span className="font-medium">Sign:</span>{' '}
+                                  <code className="font-mono bg-background/60 px-1 rounded">{arcaTestResult.sign_preview}</code>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {!arcaTestResult.success && arcaTestResult.error && (
+                            <div className="text-xs text-destructive font-mono bg-destructive/10 rounded px-2 py-1 break-all">
+                              {arcaTestResult.error}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
 

@@ -727,7 +727,53 @@ serve(async (req) => {
       );
     }
 
-    const body: FacturaRequest = await req.json();
+    const rawBody = await req.json();
+
+    // ── TEST DE CONEXIÓN WSAA ──────────────────────────────────────────────────
+    if (rawBody.action === 'test_connection') {
+      const testEnv: 'sandbox' | 'production' = rawBody.environment || 'production';
+      const arcaTestConfig = await getARCAConfig(supabase, tenantId, testEnv);
+
+      if (!arcaTestConfig) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            environment: testEnv,
+            error: `No hay configuración ARCA activa para el entorno ${testEnv === 'production' ? 'Producción' : 'Sandbox'}.`,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const testEndpoints = ARCA_ENDPOINTS[testEnv];
+      try {
+        const { token, sign } = await autenticarWSAA(arcaTestConfig.cert_pem, arcaTestConfig.private_key, testEndpoints.wsaa);
+        return new Response(
+          JSON.stringify({
+            success: true,
+            environment: testEnv,
+            wsaa_url: testEndpoints.wsaa,
+            token_preview: token.substring(0, 40) + '...',
+            sign_preview: sign.substring(0, 40) + '...',
+            message: 'Autenticación WSAA exitosa. Los certificados son válidos.',
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } catch (err) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            environment: testEnv,
+            wsaa_url: testEndpoints.wsaa,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+    // ── FIN TEST DE CONEXIÓN ──────────────────────────────────────────────────
+
+    const body: FacturaRequest = rawBody;
     const { envio_id, liquidacion_seller_id, tipo_comprobante, receptor, importe_total } = body;
     const requestedEnv: 'sandbox' | 'production' = body.environment || 'production';
 
