@@ -1,113 +1,134 @@
 
-# Diagnóstico y corrección del error de facturación ARCA en producción
+# Corrección QR AFIP obligatorio + inconsistencia tipo_comprobante
 
-## Causa raíz identificada
+## Situación del error de certificado (Beraexpress)
 
-La función `arca-factura` tiene la integración SOAP con AFIP **sin implementar** para el ambiente de producción. La función `emitirFacturaARCA` está así:
+El error de AFIP es definitivo y no tiene solución de código:
+```
+faultcode: ns1:cms.cert.untrusted
+faultstring: Certificado no emitido por AC de confianza
+```
+Beraexpress tiene cargado el mismo certificado de homologación (`testafipberaexpress`) tanto en sandbox como en producción. El servidor `wsaa.afip.gov.ar` (producción) solo acepta certificados firmados por la CA de producción de AFIP. Deben:
+1. Generar un CSR (Certificate Signing Request) ante AFIP con su CUIT de producción
+2. Obtener el certificado firmado por AFIP producción
+3. Cargarlo en Configuración → Integraciones → ARCA → Producción
 
+Esto es un proceso administrativo ante AFIP, no un error de código.
+
+---
+
+## Correcciones de código a realizar
+
+### Problema 1: QR AFIP con formato incorrecto
+
+La RG AFIP 4291/2018 exige que el QR sea una URL específica con un JSON base64-encoded. El código actual pone el JSON directamente como valor del QR, lo cual es incorrecto.
+
+**Formato actual (incorrecto):**
+```json
+{"ver":1,"fecha":"...","cuit":"...","ptoVta":1,"tipoCmp":"factura_a",...}
+```
+
+**Formato correcto AFIP:**
+```
+https://www.afip.gob.ar/fe/qr/?p=BASE64_ENCODED_JSON
+```
+Donde el JSON tiene esta estructura exacta:
+```json
+{
+  "ver": 1,
+  "fecha": "2024-01-15",
+  "cuit": 20391714853,
+  "ptoVta": 3,
+  "tipoCmp": 6,
+  "nroCmp": 1234,
+  "importe": 12100.00,
+  "moneda": "PES",
+  "ctz": 1,
+  "tipoDocRec": 96,
+  "nroDocRec": 0,
+  "tipoCodAut": "E",
+  "codAut": 70417054367476
+}
+```
+
+Códigos de tipo de comprobante para el QR:
+- `1` = Factura A
+- `6` = Factura B
+- `11` = Factura C
+
+Tipos de documento receptor:
+- `80` = CUIT
+- `96` = DNI
+- `99` = Consumidor Final (nroDocRec = 0)
+
+### Problema 2: inconsistencia tipo_comprobante
+
+La función `arca-factura` guarda en la tabla `facturas` el campo `tipo_comprobante` con valores `'A'`, `'B'`, `'C'`. Pero `PrintInvoice.tsx` espera `'factura_a'`, `'factura_b'`, `'factura_c'` en sus mapas de etiquetas e íconos.
+
+Esto causa que:
+- El título muestre `undefined` en vez de "FACTURA A"
+- `isFacturaA` sea siempre `false` (usa `.includes('_a')`)
+- Los códigos AFIP en el QR sean incorrectos
+
+**Solución**: En `PrintInvoice.tsx` normalizar el campo `tipo_comprobante` para soportar ambos formatos:
 ```typescript
-// Sandbox: simula CAE correctamente
-if (environment === 'sandbox') { ... return { success: true, cae: ... } }
-
-// Producción: SIEMPRE devuelve error, sin importar la configuración
-return {
-  success: false,
-  error: 'Integración ARCA en producción requiere certificados configurados',
-};
+const tipoNormalizado = factura.tipo_comprobante?.length === 1
+  ? `factura_${factura.tipo_comprobante.toLowerCase()}`
+  : factura.tipo_comprobante;
 ```
 
-Esto significa que aunque Beraexpress configure certificados reales de producción, la factura siempre será rechazada.
+### Problema 3: QR no incluido en el PDF descargado
 
-## Problema secundario detectado
+El PDF generado por `handleDownloadPDF` no incluye el QR AFIP, que es obligatorio en todo comprobante electrónico.
 
-Los certificados cargados en `production` son exactamente los mismos que en `sandbox`. El CN del certificado dice `testafipberaexpress`, lo que indica que son certificados de homologación (testing), no de producción real de AFIP. Esto es algo que Beraexpress debe resolver por su cuenta ante AFIP: solicitar el certificado de producción.
-
-Sin embargo, el código debe estar preparado para cuando tengan el certificado correcto.
-
-## Solución propuesta
-
-Implementar la comunicación SOAP real con los servicios de AFIP/ARCA en la función `emitirFacturaARCA`. El flujo AFIP requiere dos pasos:
-
-### Paso 1 - Autenticación con WSAA (Web Service de Autenticación y Autorización)
-- Generar un "Ticket de Requerimiento de Acceso" (TRA) firmado con la clave privada + certificado del tenant
-- Llamar al endpoint WSAA para obtener el Token de Acceso (TA)
-
-### Paso 2 - Emisión con WSFEv1 (Web Service de Facturación Electrónica)
-- Usar el Token + Sign del paso anterior
-- Llamar a `FECAESolicitar` con los datos del comprobante
-- Recuperar el CAE y su fecha de vencimiento
-
-### Arquitectura del cambio
-
-```
-emitirFacturaARCA(config, 'production', ...)
-    │
-    ├─ generarTRA()           → XML firmado con cert+key del tenant
-    ├─ autenticarWSAA()       → POST SOAP → devuelve { token, sign }
-    └─ solicitarCAE()         → POST SOAP → devuelve { CAE, CAEFchVto }
-```
-
-### Implementación en `supabase/functions/arca-factura/index.ts`
-
-Se reemplazará el bloque de producción que hoy devuelve error por la implementación real:
-
-```typescript
-// 1. Generar TRA (Ticket de Requerimiento de Acceso)
-async function generarTRA(): string {
-  const now = new Date();
-  const generationTime = new Date(now.getTime() - 10000).toISOString().replace('.000Z', '-03:00');
-  const expirationTime = new Date(now.getTime() + 600000).toISOString().replace('.000Z', '-03:00');
-  
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<loginTicketRequest version="1.0">
-  <header>
-    <uniqueId>${Math.floor(Date.now() / 1000)}</uniqueId>
-    <generationTime>${generationTime}</generationTime>
-    <expirationTime>${expirationTime}</expirationTime>
-  </header>
-  <service>wsfe</service>
-</loginTicketRequest>`;
-}
-
-// 2. Firmar con key privada + certificado usando Deno crypto
-async function firmarTRA(tra: string, privateKey: string, cert: string): Promise<string> {
-  // Usar SubtleCrypto de Deno para firma PKCS7/CMS
-  // Devuelve base64 del CMS firmado
-}
-
-// 3. Llamar WSAA
-async function autenticarWSAA(cmsFirmado: string, wsaaUrl: string): Promise<{token: string, sign: string}> {
-  const soapBody = `<soapenv:Envelope ...>
-    <loginCms in0="${cmsFirmado}" />
-  </soapenv:Envelope>`;
-  // POST a wsaaUrl, parsear XML respuesta
-}
-
-// 4. Llamar WSFEv1
-async function solicitarCAE(token, sign, cuit, puntoVenta, tipo, numero, receptor, montos, wsfeUrl) {
-  const soapBody = `<FECAESolicitar>
-    <Auth><Token>...</Token><Sign>...</Sign><Cuit>...</Cuit></Auth>
-    <FeCAEReq>...</FeCAEReq>
-  </FECAESolicitar>`;
-  // POST, parsear CAE y fecha vencimiento
-}
-```
-
-### Manejo de errores mejorado
-
-La nueva implementación debe:
-- Capturar errores SOAP de AFIP con sus códigos (Ej: `Err.Code 10016 - Fecha fuera de rango`)
-- Loguear el XML de request/response para diagnóstico
-- Si falla la auth WSAA, informar claramente (certificado inválido, expirado, etc.)
-- Si falla WSFEv1, mostrar el mensaje de AFIP textualmente
-
-### Comunicación al cliente
-
-Mientras se implementa la integración real, se debe informar a Beraexpress que:
-1. El certificado cargado en producción es el de **homologación** (testing), no el de producción real
-2. Deben solicitar ante AFIP el certificado de producción para el CUIT 30-71726581-1
-3. Una vez que tengan el certificado de producción, recargarlo en Configuración → Integraciones → ARCA → Producción
+---
 
 ## Archivos a modificar
 
-- **`supabase/functions/arca-factura/index.ts`**: Implementar `generarTRA()`, `firmarTRA()`, `autenticarWSAA()`, `solicitarCAE()` y reemplazar el bloque de producción con la llamada real a AFIP.
+### `src/pages/PrintInvoice.tsx`
+
+1. **Función `buildAfipQRUrl()`**: Nueva función que genera la URL correcta del QR:
+   ```typescript
+   function buildAfipQRUrl(factura, arcaConfig): string {
+     const tipoCmpMap = { 'A': 1, 'B': 6, 'C': 11, 'factura_a': 1, 'factura_b': 6, 'factura_c': 11 };
+     const tipoCmp = tipoCmpMap[factura.tipo_comprobante] || 6;
+     
+     const isCuit = factura.receptor_condicion_iva !== 'consumidor_final';
+     const tipoDocRec = isCuit ? 80 : 99;
+     const nroDocRec = factura.receptor_cuit 
+       ? parseInt(factura.receptor_cuit.replace(/-/g, ''))
+       : 0;
+     
+     const qrJson = {
+       ver: 1,
+       fecha: format(new Date(factura.fecha_emision || new Date()), 'yyyy-MM-dd'),
+       cuit: parseInt((arcaConfig?.cuit || '').replace(/-/g, '')),
+       ptoVta: factura.punto_venta || 1,
+       tipoCmp,
+       nroCmp: factura.numero_comprobante || 1,
+       importe: factura.importe_total,
+       moneda: 'PES',
+       ctz: 1,
+       tipoDocRec,
+       nroDocRec,
+       tipoCodAut: 'E',
+       codAut: parseInt(factura.cae || '0'),
+     };
+     
+     const base64 = btoa(JSON.stringify(qrJson));
+     return `https://www.afip.gob.ar/fe/qr/?p=${base64}`;
+   }
+   ```
+
+2. **Normalización tipo_comprobante**: Usar `tipoNormalizado` en todo el componente en lugar de `factura.tipo_comprobante` directamente para los labels y `isFacturaA`.
+
+3. **Incluir QR en PDF**: Agregar el QR como imagen en el PDF descargado usando `QRCode.toDataURL` o `html2canvas` del elemento QR del DOM.
+
+---
+
+## Resultado esperado
+
+- El QR en la factura impresa apuntará a `https://www.afip.gob.ar/fe/qr/?p=...` que al escanearlo abre AFIP con los datos del comprobante para verificación
+- El título mostrará correctamente "FACTURA A", "FACTURA B" o "FACTURA C"
+- El PDF descargado también incluirá el QR AFIP
+- Se mostrará un mensaje claro cuando el certificado de producción sea inválido, indicando a Beraexpress qué deben hacer
