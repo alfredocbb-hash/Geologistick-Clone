@@ -1,82 +1,97 @@
 
-# Corrección: Error `generationTime` inválido en WSAA de AFIP
+# Corrección: Respetar entorno seleccionado (Sandbox vs Producción)
 
-## Causa raíz identificada (confirmada en logs)
+## Problema identificado
 
-El log del edge function muestra exactamente el error:
+En las líneas 791-797 del edge function, la lógica actual es:
 
-```
-faultcode: ns1:xml.generationTime.invalid
-faultstring: generationTime posee formato o dato inválido (ej: en el futuro o más de 24 horas de antigüedad)
-```
-
-Y el TRA generado fue:
-```xml
-<generationTime>2026-02-18T06:15:48.252-03:00</generationTime>
-```
-
-El edge function corre en UTC. La hora real era las `06:15 UTC`. El código hace `.toISOString()` (que da UTC) y luego reemplaza la `Z` por `-03:00`:
-
-```
-"2026-02-18T06:15:48.252Z"  →  "2026-02-18T06:15:48.252-03:00"
-```
-
-AFIP interpreta `06:15-03:00` como las **9:15 UTC** (es decir, 6:15 de la mañana en Argentina = 9:15 UTC). Pero el momento real era las **6:15 UTC** → AFIP ve una fecha **3 horas en el futuro** y la rechaza con el error de `generationTime inválido`.
-
-## Solución
-
-Para representar correctamente la hora de Argentina con offset `-03:00`, hay que restar 3 horas al tiempo UTC **antes** de aplicar el sufijo. Así `06:15 UTC - 3h = 03:15` y el string `03:15-03:00` equivale correctamente a `06:15 UTC`.
-
-### Cambio en `generarTRA()` (líneas 298-317 de `supabase/functions/arca-factura/index.ts`):
-
-**Antes (incorrecto):**
 ```typescript
-function generarTRA(): string {
-  const now = new Date();
-  const genTime = new Date(now.getTime() - 60000);
-  const expTime = new Date(now.getTime() + 600000);
+let environment: 'sandbox' | 'production' = 'production';
+let arcaConfig = await getARCAConfig(supabase, tenantId, 'production');
 
-  const fmt = (d: Date) => {
-    const iso = d.toISOString();
-    return iso.replace('Z', '-03:00');  // ← BUG: UTC time con sufijo -03:00
-  };
-  ...
+if (!arcaConfig) {
+  environment = 'sandbox';
+  arcaConfig  = await getARCAConfig(supabase, tenantId, 'sandbox');
 }
 ```
 
-**Después (correcto):**
-```typescript
-function generarTRA(): string {
-  const now = new Date();
-  // Ajustar la hora a Argentina (UTC-3) restando 3 horas
-  // antes de aplicar el sufijo -03:00
-  const AR_OFFSET_MS = 3 * 60 * 60 * 1000; // 3 horas en ms
-  const genTime = new Date(now.getTime() - 60000);   // 1 min antes
-  const expTime = new Date(now.getTime() + 600000);  // 10 min después
+Esto tiene dos problemas críticos:
 
-  const fmt = (d: Date) => {
-    // Restar 3 horas (UTC → Argentina) y aplicar el sufijo
-    const argTime = new Date(d.getTime() - AR_OFFSET_MS);
-    return argTime.toISOString().replace('Z', '-03:00');
-  };
-  ...
+**Problema 1 - Fallback silencioso**: El sistema siempre intenta producción primero. Si producción está configurado pero falla (ej: certificado homologación), no hay forma de usar sandbox. No hay forma de elegir qué entorno usar desde la UI.
+
+**Problema 2 - Sandbox no llama a AFIP**: Cuando el entorno es `sandbox`, el código en `emitirFacturaARCA` devuelve un CAE **inventado** sin llamar al servidor de homologación real de AFIP (`wsaahomo.afip.gov.ar`). Esto significa que Beraexpress no puede probar su integración real con el servidor de test de AFIP aunque tenga certificados de sandbox configurados.
+
+```typescript
+// Sandbox actual: FAKE - no llama a AFIP
+if (environment === 'sandbox') {
+  const cae = `${Date.now()}${Math.floor(Math.random() * 10000)}`;  // Inventado
+  return { success: true, cae, caeVencimiento };
 }
 ```
 
-Con esto, si el momento real es `09:15 UTC`:
-- `argTime` = `09:15 - 3h = 06:15`
-- String generado = `"2026-02-18T06:15:00-03:00"`
-- AFIP lo interpreta como `06:15 + 3h = 09:15 UTC` ✓
+## Solución propuesta
 
-## Archivo a modificar
+### Cambio 1: Agregar campo `environment` al request
 
-- **`supabase/functions/arca-factura/index.ts`**: Solo la función `generarTRA()` (líneas 298-317), reemplazando el helper `fmt` para que reste 3 horas antes de agregar el offset.
+El frontend (`InvoiceDataDialog.tsx`) debe enviar el entorno deseado. Si no se envía, se usa producción como default.
+
+### Cambio 2: Eliminar el fallback automático
+
+El edge function debe usar **exactamente** el entorno que se pidió. Si no hay configuración para ese entorno, devolver error claro en lugar de silenciosamente cambiar de entorno.
+
+### Cambio 3: Sandbox llama al servidor real de AFIP homologación
+
+En `emitirFacturaARCA`, cuando `environment === 'sandbox'`, hacer el flujo SOAP completo pero contra `wsaahomo.afip.gov.ar` y `wswhomo.afip.gov.ar`, en lugar de devolver un CAE inventado. Esto permite que Beraexpress pruebe con sus certificados de sandbox reales.
+
+```typescript
+async function emitirFacturaARCA(..., environment: 'sandbox' | 'production', ...) {
+  // Ambos entornos usan el mismo flujo SOAP real
+  // Solo cambia el endpoint (sandbox vs producción)
+  const endpoints = ARCA_ENDPOINTS[environment];  // Ya están definidos arriba
+  
+  try {
+    const { token, sign } = await autenticarWSAA(config.cert_pem, config.private_key, endpoints.wsaa);
+    const { cae, caeVencimiento } = await solicitarCAE(token, sign, ..., endpoints.wsfe);
+    return { success: true, cae, caeVencimiento };
+  } catch (err) { ... }
+}
+```
+
+### Cambio 4: UI muestra el entorno activo en el dialog
+
+En `InvoiceDataDialog.tsx`, mostrar qué entorno se usará (sandbox o producción) basándose en `useARCAIntegration`, y enviar ese valor en el body de la llamada al edge function.
+
+## Archivos a modificar
+
+### `supabase/functions/arca-factura/index.ts`
+
+1. Aceptar campo `environment?: 'sandbox' | 'production'` en el body del request
+2. Buscar config solo para el entorno pedido (sin fallback silencioso):
+   ```typescript
+   const requestedEnv = body.environment || 'production';
+   const arcaConfig = await getARCAConfig(supabase, tenantId, requestedEnv);
+   
+   if (!arcaConfig) {
+     // Si hay config del otro entorno, sugerir usarlo. Si no hay ninguno, guardar pendiente.
+     const otherEnv = requestedEnv === 'production' ? 'sandbox' : 'production';
+     const otherConfig = await getARCAConfig(supabase, tenantId, otherEnv);
+     return error con mensaje: `No hay configuración ARCA para ${requestedEnv}. ${otherConfig ? `Hay configuración para ${otherEnv}.` : ''}`
+   }
+   
+   environment = requestedEnv;
+   ```
+3. En `emitirFacturaARCA`: eliminar el bloque especial de sandbox, usar siempre el flujo SOAP real con el endpoint del entorno correspondiente.
+
+### `src/components/invoicing/InvoiceDataDialog.tsx`
+
+1. Usar `useARCAIntegration` para detectar qué entornos están configurados
+2. Si hay dos configurados, mostrar un toggle Sandbox/Producción para elegir
+3. Enviar `environment` en el body de `supabase.functions.invoke('arca-factura', { body: { ..., environment } })`
+4. Mostrar claramente en el alert de estado qué entorno se usará
 
 ## Resultado esperado
 
-Con este fix, el WSAA debería:
-1. Aceptar el TRA como válido (generationTime correcto)
-2. Devolver el Token y Sign
-3. Permitir que WSFEv1 emita el CAE
-
-**Nota:** Si el certificado de Beraexpress es de homologación (CN: `testafipberaexpress`) seguirá fallando con el error `cms.cert.untrusted` en producción. Pero este fix es necesario independientemente ya que el error de generationTime bloquea incluso antes de verificar el certificado. Una vez corregida la fecha, si sigue el error de certificado, Beraexpress deberá obtener su certificado de producción de AFIP.
+- Beraexpress puede elegir si facturar contra sandbox (con sus certificados de homologación y AFIP test) o producción (cuando tenga el certificado real)
+- Sandbox llama al servidor real de AFIP homologación, permitiendo validar que los certificados y la configuración funcionan correctamente antes de ir a producción
+- No hay más cambios silenciosos de entorno que confundan al usuario
+- Mensajes de error claros cuando el entorno pedido no está configurado
