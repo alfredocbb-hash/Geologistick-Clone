@@ -1,69 +1,140 @@
 
-# Corrección: Tarifa incorrecta para Hudson (y otras localidades del Partido de Berazategui)
+# Dos correcciones: PDF profesional con logo + envíos comunes en liquidaciones de sellers
 
-## Diagnóstico
+## Problema 1: PDF de liquidaciones sin logo ni diseño profesional
 
-### Causa raíz en los datos
-La `zona_destino` de **ZONA 1 - Berazategui** solo contiene `"Berazategui"`. Hudson, Sourigues, El Pato, Pereyra, Plátanos, Ranelagh, Ezpeleta y otras localidades del Partido de Berazategui **no están listadas**, por lo que el algoritmo no las reconoce y aplica el fallback (Zona 3 - CABA Y GBA, que tiene más entradas en la lista).
+El archivo `src/lib/generateSettlementPDF.ts` genera PDFs básicos. La función `generateSettlementPDF` no acepta datos de branding. Las tres funciones de descarga (`downloadDriverSettlementPDF`, `downloadBranchSettlementPDF`, `downloadSellerSettlementPDF`) no buscan branding. `PrintSettlement.tsx` sí busca branding pero no lo pasa a las funciones.
 
-### Bug secundario en el algoritmo de matching
-El algoritmo usa `zona.includes(ciudadNorm) || ciudadNorm.includes(zona)` en un loop sin prioridad. Esto puede generar falsos positivos cuando hay nombres de ciudades que son substrings de otras (ej: si una zona tiene "Quilmes" y la ciudad es "Quilmes de Berazategui", podría matchear "quilmes" de Zona 2, pero también podría matchear incorrectamente en otros casos). Además, si se agrega "Hudson" a Zona 1, el matching de substring podría causar problemas con otros nombres similares.
+El patrón de referencia ya existe en `src/lib/generateShipmentReceiptPDF.ts` con `loadImageAsBase64`, `hexToRgb`, y el uso del logo por canvas.
 
-## Solución en dos partes
+## Problema 2: Envíos comunes no incluidos en liquidaciones de sellers
 
-### Parte 1: Mejorar el algoritmo de matching (priorizar coincidencia exacta)
-En todos los lugares donde existe el loop de matching de zonas (`Settlements.tsx` y los edge functions `mercadolibre-sync`, `register-ml-shipment`, `recover-ml-shipments`), se ajusta el orden de prioridad:
+En `src/pages/ecommerce/Settlements.tsx`, la función `calculateMutation` tiene este problema crítico:
 
-1. **Match exacto** (`zona === ciudadNorm`) → prioridad máxima
-2. **Match por substring** (`ciudadNorm.includes(zona) || zona.includes(ciudadNorm)`) → solo si no hay match exacto
-
-El algoritmo mejorado:
 ```typescript
-// Primero buscar match exacto (mayor prioridad)
-for (const zt of allZoneTarifas) {
-  if (!zt.zona_destino) continue;
-  const zonas = zt.zona_destino.split(',').map((z) => normalize(z.trim()));
-  if (zonas.some(z => z === ciudadNorm)) {
-    return zt.precio_base || 0; // match exacto → retornar inmediatamente
-  }
+// Línea 367
+if (uniqueClienteIds.length > 0) {
+  // Este bloque solo se ejecuta si el seller tiene cliente_id asignado
+  // Si no tiene cliente_id, se salta TODA la lógica de envíos
 }
-// Luego buscar match por substring (menor prioridad)
-for (const zt of allZoneTarifas) {
-  if (!zt.zona_destino) continue;
-  const zonas = zt.zona_destino.split(',').map((z) => normalize(z.trim()));
-  if (zonas.some(z => ciudadNorm.includes(z) || z.includes(ciudadNorm))) {
-    return zt.precio_base || 0;
-  }
-}
-// Fallback catch-all
 ```
 
-### Parte 2: Agregar localidades del Partido de Berazategui a ZONA 1
-Se actualiza el campo `zona_destino` de la tarifa ZONA 1 (id: `08a441a3-ec8a-4678-b4e4-dc83c32b094e`) en la base de datos para incluir todas las localidades del partido:
+**Causas del bug:**
+1. Si el seller no tiene `cliente_id`, la variable `uniqueClienteIds` está vacía y el bloque completo es saltado → ningún envío es incluido en el cálculo.
+2. Los envíos de MercadoLibre Flex llegan vía `ecommerce_orders` con `seller_id` directo, y sí se cuentan.
+3. Los envíos comunes/manuales (ingresados por operadores) usan `remitente_id = cliente_id` del seller, pero si ese `cliente_id` es `null`, quedan fuera.
+4. También existe el caso de envíos con `remitente_id = seller.id` (el UUID del seller en `ecommerce_sellers`), que tampoco se buscan.
 
-```sql
-UPDATE tarifas 
-SET zona_destino = 'Berazategui,Hudson,Ranelagh,Ezpeleta,Plátanos,El Pato,Pereyra,Sourigues,Juan Maria Gutierrez,Arditi,Guillermo Hudson'
-WHERE id = '08a441a3-ec8a-4678-b4e4-dc83c32b094e';
+**Solución para el bug de envíos:**
+
+Refactorizar la lógica de cálculo para que los envíos vía `ecommerce_orders` sean siempre consultados (independientemente de `cliente_id`), y los envíos comunes sean buscados solo cuando el seller tiene `cliente_id`:
+
 ```
+LÓGICA CORRECTA:
+1. Siempre buscar envíos de ecommerce_orders por seller_id → envíos ML Flex y Tiendanube
+2. Si el seller tiene cliente_id → adicionalmente buscar envíos manuales por remitente_id
+3. Combinar ambos sin duplicados
+```
+
+El mismo problema existe en el cálculo de saldos de la pestaña "Saldos por Seller" (`sellerBalances` query, líneas 183-228), que tampoco incluye envíos manuales de sellers sin `cliente_id`.
+
+## Plan de implementación
+
+### Cambio 1: `src/lib/generateSettlementPDF.ts` — Rediseño completo
+
+**Nueva firma de `generateSettlementPDF`:**
+```typescript
+export async function generateSettlementPDF(
+  data: SettlementPDFData,
+  branding?: { logo_light?: string | null; nombre_app?: string | null; color_primario?: string | null }
+): Promise<void>
+```
+
+**Diseño del nuevo PDF:**
+
+```text
+┌──────────────────────────────────────────────────────────────────────┐
+│  [COLOR PRIMARIO - 28mm alto]                                        │
+│  [LOGO 22x22]  NOMBRE EMPRESA         LIQUIDACIÓN DE CHOFER         │
+│                                        Período: 01/01 - 31/01/2025  │
+├──────────────────────────────────────────────────────────────────────┤
+│  Chofer: Juan Pérez          Estado: PAGADA          Fecha: 01/02   │
+│  Método de Pago: Transferencia    Referencia: TRF-12345             │
+├──────────────────────────────────────────────────────────────────────┤
+│  ┌─── RESUMEN FINANCIERO (fondo color primario 10% opacidad) ────┐  │
+│  │  Cantidad de Envíos: 45     Total: $207,494.55 (GRANDE/BOLD)  │  │
+│  └────────────────────────────────────────────────────────────────┘  │
+│                                                                      │
+│  DETALLE DE ENVÍOS                                                   │
+│  [CABECERA CON FONDO COLOR PRIMARIO - TEXTO BLANCO]                 │
+│  Tracking    │  Fecha   │  Destinatario         │  Monto            │
+│  [filas alternadas blanco/gris claro]                                │
+│  [total al pie de la tabla]                                         │
+│                                                                      │
+│  ─────────────────────────────────────────────────────────────────  │
+│  NOMBRE APP  •  Período 01/01/2025 - 31/01/2025  •  Pág. N de M   │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+**Helpers a agregar dentro del archivo:**
+- `loadImageAsBase64(url)`: misma implementación que en `generateShipmentReceiptPDF.ts` (canvas + crossOrigin)
+- `hexToRgb(hex)`: convierte color primario a RGB para jsPDF
+
+**Las tres funciones de descarga** (`downloadDriverSettlementPDF`, `downloadBranchSettlementPDF`, `downloadSellerSettlementPDF`) se actualizan para:
+1. Obtener el `tenant_id` del usuario autenticado
+2. Buscar `tenant_branding` (solo `logo_light`, `nombre_app`, `color_primario`)
+3. Cargar el logo con `loadImageAsBase64`
+4. Pasar `branding` a `generateSettlementPDF`
+
+**`PrintSettlement.tsx`**: actualizar `handleDownloadPDF` para pasar el branding ya cargado a las funciones de descarga, evitando una doble consulta.
+
+### Cambio 2: `src/pages/ecommerce/Settlements.tsx` — Corrección del cálculo de envíos
+
+**En `calculateMutation` (función principal de cálculo):**
+
+Refactorizar el flujo para que los envíos de `ecommerce_orders` se busquen siempre, y los envíos comunes solo cuando hay `cliente_id`:
+
+```typescript
+// ANTES (incorrecto): Todo dentro de if (uniqueClienteIds.length > 0)
+if (uniqueClienteIds.length > 0) {
+  // busca ecommerce_orders Y envíos comunes
+}
+
+// DESPUÉS (correcto): Separar en dos bloques independientes
+
+// Bloque 1: Siempre buscar envíos de ecommerce_orders por seller_id
+const { data: sellerOrders } = await supabase
+  .from('ecommerce_orders')
+  .select('envio_id, seller_id')
+  .in('seller_id', calcSellers)
+  .not('envio_id', 'is', null)
+  .gte('fecha_entrega_estimada', fechaInicioStr)
+  .lte('fecha_entrega_estimada', fechaFinStr);
+
+// Bloque 2: Solo si hay sellers con cliente_id → buscar envíos comunes
+if (uniqueClienteIds.length > 0) {
+  // ... lógica existente de envíos comunes por remitente_id
+}
+
+// Combinar sin duplicados
+```
+
+**En `sellerBalances` query (cálculo para pestaña "Saldos por Seller"):**
+
+La misma corrección: actualmente los `envioIdsBySeller` se llenan solo con envíos de `ecommerce_orders`, pero los `commonEnviosBySeller` solo se llenan si el seller tiene `cliente_id`. Esto ya está implementado parcialmente pero si hay sellers sin `cliente_id`, los `commonIds` de línea 247 quedan vacíos — en realidad esto es correcto para esa parte, el bug principal es en `calculateMutation`.
+
+**También aplicar la corrección de prioridad exacta/substring** al bloque interno del `calculateMutation` (líneas 528-541) que aún usa el loop simple sin dos pasadas, haciéndolo consistente con el resto del código.
 
 ## Archivos a modificar
 
-| Archivo | Cambio |
+| Archivo | Cambios |
 |---|---|
-| `src/pages/ecommerce/Settlements.tsx` | Función `matchZone`: separar en dos pasadas (exacta + substring) |
-| `src/pages/ecommerce/Settlements.tsx` | Segundo bloque de matching (líneas ~520-540): misma mejora |
-| `supabase/functions/mercadolibre-sync/index.ts` | Misma mejora en el loop de matching |
-| `supabase/functions/register-ml-shipment/index.ts` | Misma mejora en el loop de matching |
-| `supabase/functions/recover-ml-shipments/index.ts` | Misma mejora en el loop de matching |
-| Base de datos | `UPDATE tarifas SET zona_destino = '...' WHERE id = '08a441a3...'` para agregar Hudson y demás localidades |
+| `src/lib/generateSettlementPDF.ts` | Rediseño completo: helpers de imagen/color, branding en `generateSettlementPDF`, fetching de branding en las 3 funciones de descarga |
+| `src/pages/PrintSettlement.tsx` | Pasar `branding` ya cargado a las funciones de descarga + actualizar firma |
+| `src/pages/ecommerce/Settlements.tsx` | Refactorizar `calculateMutation` para incluir envíos aunque `uniqueClienteIds` esté vacío; corregir algoritmo de matching en ese bloque |
 
 ## Resultado esperado
 
-- Hudson → ZONA 1 - Berazategui ($4.610,99) ✓
-- Ranelagh, Ezpeleta → ZONA 1 - Berazategui ($4.610,99) ✓
-- El matching exacto siempre gana al matching por substring, evitando futuros falsos positivos
-- Los edge functions de ML Sync, Register y Recover aplican la misma lógica mejorada
-
-## Nota importante
-Si el usuario necesita agregar más localidades de otros partidos en el futuro, la solución correcta es editar el campo `zona_destino` de la tarifa correspondiente directamente desde la interfaz de Tarifas (no se requiere código).
+- PDF con barra de color primario, logo del tenant (o nombre si no hay logo), tabla con cabecera coloreada y filas alternadas, footer con nombre de la app y numeración de páginas
+- Envíos manuales (no ML Flex) de sellers son incluidos en la liquidación aunque el seller no tenga `cliente_id`
+- El cálculo de totales en la liquidación refleja correctamente todos los envíos del período: tanto ML Flex como envíos comunes
