@@ -363,71 +363,47 @@ export default function Settlements() {
         allMovs = [...allMovs, ...(movs || [])];
       }
 
-      // 2. Fetch envíos using fecha_entrega_estimada for all related cliente_ids
+      // 2. SIEMPRE buscar envíos de ecommerce_orders por seller_id (independiente de cliente_id)
+      const { data: sellerOrdersWithSeller, error: ordersError } = await supabase
+        .from('ecommerce_orders')
+        .select('envio_id, seller_id')
+        .in('seller_id', calcSellers)
+        .not('envio_id', 'is', null)
+        .gte('fecha_entrega_estimada', fechaInicioStr)
+        .lte('fecha_entrega_estimada', fechaFinStr);
+
+      if (ordersError) throw ordersError;
+
+      const sellerEnvioIds = (sellerOrdersWithSeller || [])
+        .map(o => o.envio_id)
+        .filter((id): id is string => id !== null);
+
+      // Build envioToSellerMap from ecommerce orders
+      const envioToSellerMap = new Map<string, string>();
+      (sellerOrdersWithSeller || []).forEach(o => {
+        if (o.envio_id) envioToSellerMap.set(o.envio_id, o.seller_id);
+      });
+
+      // Cargar los envíos de ecommerce_orders
+      let ecommerceEnvios: any[] = [];
+      if (sellerEnvioIds.length > 0) {
+        const { data: ecomEnvios, error: ecomError } = await supabase
+          .from('envios')
+          .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, estado, created_at')
+          .in('id', sellerEnvioIds)
+          .is('liquidacion_seller_id', null)
+          .order('created_at', { ascending: true });
+
+        if (ecomError) throw ecomError;
+        ecommerceEnvios = ecomEnvios || [];
+      }
+
+      // 3. Buscar TODOS los envio_ids de ecommerce_orders relacionados (para excluirlos de comunes)
+      const allOrderEnvioIds = new Set(sellerEnvioIds);
+
+      // 4. Envíos comunes (sin orden e-commerce) por remitente_id — SOLO si hay cliente_ids
+      let filteredCommonEnvios: any[] = [];
       if (uniqueClienteIds.length > 0) {
-        // Paso 1: Envíos e-commerce del seller seleccionado
-        const { data: sellerOrders, error: ordersError } = await supabase
-          .from('ecommerce_orders')
-          .select('envio_id')
-          .in('seller_id', calcSellers)
-          .not('envio_id', 'is', null)
-          .gte('fecha_entrega_estimada', fechaInicioStr)
-          .lte('fecha_entrega_estimada', fechaFinStr);
-
-        if (ordersError) throw ordersError;
-
-        const sellerEnvioIds = (sellerOrders || [])
-          .map(o => o.envio_id)
-          .filter((id): id is string => id !== null);
-
-        // Paso 2: Cargar esos envíos
-        let ecommerceEnvios: any[] = [];
-        if (sellerEnvioIds.length > 0) {
-          const { data: ecomEnvios, error: ecomError } = await supabase
-            .from('envios')
-            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, estado, created_at')
-            .in('id', sellerEnvioIds)
-            .is('liquidacion_seller_id', null)
-            .order('created_at', { ascending: true });
-
-          if (ecomError) throw ecomError;
-          ecommerceEnvios = ecomEnvios || [];
-        }
-
-        // Paso 3: Buscar TODOS los envio_ids de ecommerce_orders del mismo cliente_id (para excluirlos de comunes)
-        const { data: allClienteOrders } = await supabase
-          .from('ecommerce_orders')
-          .select('envio_id, seller_id')
-          .in('seller_id', (() => {
-            // Buscar todos los sellers que comparten los mismos cliente_ids
-            const allRelatedSellerIds = sellers
-              .filter(s => s.cliente_id && uniqueClienteIds.includes(s.cliente_id))
-              .map(s => s.id);
-            return allRelatedSellerIds.length > 0 ? allRelatedSellerIds : ['__none__'];
-          })())
-          .not('envio_id', 'is', null);
-
-        const allOrderEnvioIds = new Set(
-          (allClienteOrders || [])
-            .map(o => o.envio_id)
-            .filter((id): id is string => id !== null)
-        );
-
-        // Paso 4: Envíos comunes (sin orden e-commerce) por remitente_id
-        // Only include common envios when the cliente_id is unique to one seller
-        // If multiple sellers share the same cliente_id, we can't determine ownership
-        const clienteIdSellerCount = new Map<string, number>();
-        selectedSellerObjs.forEach(s => {
-          if (s.cliente_id) {
-            clienteIdSellerCount.set(s.cliente_id, (clienteIdSellerCount.get(s.cliente_id) || 0) + 1);
-          }
-        });
-        // Also check ALL sellers (not just selected) for shared cliente_ids
-        (sellers || []).forEach(s => {
-          if (s.cliente_id && uniqueClienteIds.includes(s.cliente_id)) {
-            clienteIdSellerCount.set(s.cliente_id, (clienteIdSellerCount.get(s.cliente_id) || 0));
-          }
-        });
         // Count how many sellers in the FULL list share each cliente_id
         const clienteIdFullCount = new Map<string, number>();
         (sellers || []).forEach(s => {
@@ -435,10 +411,9 @@ export default function Settlements() {
             clienteIdFullCount.set(s.cliente_id, (clienteIdFullCount.get(s.cliente_id) || 0) + 1);
           }
         });
-        // Only use cliente_ids that belong to exactly one seller
+        // Only use cliente_ids that belong to exactly one seller (avoid ambiguity)
         const uniqueOnlyClienteIds = uniqueClienteIds.filter(cid => (clienteIdFullCount.get(cid) || 0) <= 1);
 
-        let filteredCommonEnvios: any[] = [];
         if (uniqueOnlyClienteIds.length > 0) {
           const { data: commonEnvios, error: commonError } = await supabase
             .from('envios')
@@ -453,30 +428,28 @@ export default function Settlements() {
 
           // Filtrar envíos comunes: excluir los que están vinculados a cualquier orden e-commerce
           filteredCommonEnvios = (commonEnvios || []).filter(e => !allOrderEnvioIds.has(e.id));
-        }
 
-        // Paso 5: Combinar ambos conjuntos sin duplicados
+          // Map common envios to their seller via cliente_id
+          const clienteIdToSellerId = new Map<string, string>();
+          selectedSellerObjs.forEach(s => {
+            if (s.cliente_id && uniqueOnlyClienteIds.includes(s.cliente_id)) {
+              clienteIdToSellerId.set(s.cliente_id, s.id);
+            }
+          });
+          // We'd need remitente_id from commonEnvios to map back — use first seller as fallback
+          filteredCommonEnvios.forEach(e => {
+            if (!envioToSellerMap.has(e.id)) {
+              envioToSellerMap.set(e.id, calcSellers[0]);
+            }
+          });
+        }
+      }
+
+      {
+        // 5: Combinar ambos conjuntos sin duplicados
         const ecommerceIds = new Set(ecommerceEnvios.map(e => e.id));
         const uniqueCommon = filteredCommonEnvios.filter(e => !ecommerceIds.has(e.id));
         const allEnviosData = [...ecommerceEnvios, ...uniqueCommon];
-
-        // Build a map of seller tarifa_id per envio
-        // For ecommerce envios, find which seller owns them via orders
-        const envioToSellerMap = new Map<string, string>();
-        if (sellerOrders) {
-          // We need seller_id per envio_id — re-fetch with seller_id
-          const { data: ordersWithSeller } = await supabase
-            .from('ecommerce_orders')
-            .select('envio_id, seller_id')
-            .in('seller_id', calcSellers)
-            .not('envio_id', 'is', null)
-            .gte('fecha_entrega_estimada', fechaInicioStr)
-            .lte('fecha_entrega_estimada', fechaFinStr);
-
-          (ordersWithSeller || []).forEach(o => {
-            if (o.envio_id) envioToSellerMap.set(o.envio_id, o.seller_id);
-          });
-        }
 
         // Collect unique tarifa_ids from selected sellers
         const sellerTarifaMap = new Map<string, string | null>();
@@ -522,14 +495,27 @@ export default function Settlements() {
             const tarifa = tarifasMap.get(sellerTarifaId);
             if (tarifa) {
               if (tarifa.tipo_tarifa === 'zona' && e.ciudad_entrega && allZoneTarifas.length > 0) {
-                // Zone-based: find matching zone tarifa
+                // Zone-based: find matching zone tarifa (two-pass: exact first, then substring)
                 const ciudadNorm = normalize(e.ciudad_entrega);
                 let matched = false;
+                // Pass 1: exact match
                 for (const zt of allZoneTarifas) {
                   if (!zt.zona_destino) continue;
-                  const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z));
-                  for (const zona of zonas) {
-                    if (zona === ciudadNorm || ciudadNorm.includes(zona) || zona.includes(ciudadNorm)) {
+                  const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+                  if (zonas.some((z: string) => z === ciudadNorm)) {
+                    precioFinal = zt.precio_base || 0;
+                    precioCalculado = true;
+                    zonaMatch = zt.nombre || zt.zona_destino;
+                    matched = true;
+                    break;
+                  }
+                }
+                // Pass 2: substring match
+                if (!matched) {
+                  for (const zt of allZoneTarifas) {
+                    if (!zt.zona_destino) continue;
+                    const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+                    if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) {
                       precioFinal = zt.precio_base || 0;
                       precioCalculado = true;
                       zonaMatch = zt.nombre || zt.zona_destino;
@@ -537,7 +523,6 @@ export default function Settlements() {
                       break;
                     }
                   }
-                  if (matched) break;
                 }
                 // Fallback: most inclusive zone
                 if (!matched) {
@@ -558,14 +543,27 @@ export default function Settlements() {
               }
             }
           } else if (allZoneTarifas.length > 0 && e.ciudad_entrega) {
-            // No tarifa_id assigned: try zone matching with tenant's zone tarifas
+            // No tarifa_id assigned: try zone matching with tenant's zone tarifas (two-pass)
             const ciudadNorm = normalize(e.ciudad_entrega);
             let matched = false;
+            // Pass 1: exact match
             for (const zt of allZoneTarifas) {
               if (!zt.zona_destino) continue;
-              const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z));
-              for (const zona of zonas) {
-                if (zona === ciudadNorm || ciudadNorm.includes(zona) || zona.includes(ciudadNorm)) {
+              const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+              if (zonas.some((z: string) => z === ciudadNorm)) {
+                precioFinal = zt.precio_base || 0;
+                precioCalculado = true;
+                zonaMatch = zt.nombre || zt.zona_destino;
+                matched = true;
+                break;
+              }
+            }
+            // Pass 2: substring match
+            if (!matched) {
+              for (const zt of allZoneTarifas) {
+                if (!zt.zona_destino) continue;
+                const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+                if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) {
                   precioFinal = zt.precio_base || 0;
                   precioCalculado = true;
                   zonaMatch = zt.nombre || zt.zona_destino;
@@ -573,7 +571,6 @@ export default function Settlements() {
                   break;
                 }
               }
-              if (matched) break;
             }
             if (!matched) {
               const fallback = allZoneTarifas

@@ -1,6 +1,5 @@
 import jsPDF from 'jspdf';
 import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 import { parseDateString } from '@/lib/dateUtils';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -45,185 +44,324 @@ interface SettlementPDFData {
   }>;
 }
 
-export function generateSettlementPDF(data: SettlementPDFData): void {
+interface BrandingData {
+  logo_light?: string | null;
+  nombre_app?: string | null;
+  color_primario?: string | null;
+}
+
+// Load image as base64 via canvas (supports SVG and CORS)
+async function loadImageAsBase64(url: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { resolve(null); return; }
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      } catch {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+
+// Convert hex color to RGB tuple
+function hexToRgb(hex: string): [number, number, number] {
+  const clean = hex.replace('#', '');
+  const r = parseInt(clean.substring(0, 2), 16);
+  const g = parseInt(clean.substring(2, 4), 16);
+  const b = parseInt(clean.substring(4, 6), 16);
+  if (isNaN(r) || isNaN(g) || isNaN(b)) return [59, 130, 246];
+  return [r, g, b];
+}
+
+function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    minimumFractionDigits: 2,
+  }).format(amount);
+}
+
+export async function generateSettlementPDF(
+  data: SettlementPDFData,
+  branding?: BrandingData
+): Promise<void> {
   const { type, settlement, entityName, totals, items, shipments } = data;
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
-  let y = 20;
+  const pageHeight = doc.internal.pageSize.getHeight();
   const isBranch = type === 'branch';
   const isSeller = type === 'seller';
 
-  // Header
-  doc.setFontSize(18);
-  doc.setFont('helvetica', 'bold');
-  const title = isSeller 
-    ? 'LIQUIDACIÓN DE SELLER' 
-    : isBranch 
-      ? 'LIQUIDACIÓN DE SUCURSAL' 
-      : 'LIQUIDACIÓN DE CHOFER';
-  doc.text(title, pageWidth / 2, y, { align: 'center' });
-  y += 12;
+  const primaryHex = branding?.color_primario || '#3B82F6';
+  const primaryRgb = hexToRgb(primaryHex);
+  const appName = branding?.nombre_app || 'Geologistick';
 
-  // Línea separadora
-  doc.setDrawColor(200, 200, 200);
-  doc.line(20, y, pageWidth - 20, y);
-  y += 10;
+  // Load logo if available
+  let logoBase64: string | null = null;
+  if (branding?.logo_light) {
+    logoBase64 = await loadImageAsBase64(branding.logo_light);
+  }
 
-  // Info general
-  doc.setFontSize(11);
+  const periodoStr = `${format(parseDateString(settlement.periodo_inicio), 'dd/MM/yyyy')} - ${format(parseDateString(settlement.periodo_fin), 'dd/MM/yyyy')}`;
+
+  const drawHeader = () => {
+    const headerH = 28;
+    // Colored header bar
+    doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+    doc.rect(0, 0, pageWidth, headerH, 'F');
+
+    // Logo
+    if (logoBase64) {
+      try {
+        doc.addImage(logoBase64, 'PNG', 10, 3, 22, 22);
+      } catch { /* continue without logo */ }
+    }
+
+    // Company name
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(13);
+    doc.setFont('helvetica', 'bold');
+    const logoOffset = logoBase64 ? 36 : 10;
+    doc.text(appName, logoOffset, 12);
+
+    // Settlement type title
+    const titleText = isSeller
+      ? 'LIQUIDACIÓN DE SELLER'
+      : isBranch
+        ? 'LIQUIDACIÓN DE SUCURSAL'
+        : 'LIQUIDACIÓN DE CHOFER';
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text(titleText, logoOffset, 20);
+
+    // Period on the right
+    doc.setFontSize(8);
+    doc.text(`Período: ${periodoStr}`, pageWidth - 10, 20, { align: 'right' });
+  };
+
+  const drawFooter = (pageNum: number, totalPages: number) => {
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.3);
+    doc.line(10, pageHeight - 15, pageWidth - 10, pageHeight - 15);
+    doc.setFontSize(7);
+    doc.setTextColor(130, 130, 130);
+    doc.setFont('helvetica', 'normal');
+    doc.text(appName, 10, pageHeight - 9);
+    doc.text(`Período: ${periodoStr}`, pageWidth / 2, pageHeight - 9, { align: 'center' });
+    doc.text(`Pág. ${pageNum} de ${totalPages}`, pageWidth - 10, pageHeight - 9, { align: 'right' });
+  };
+
+  // --- Page 1 ---
+  drawHeader();
+  let y = 35;
+
+  // Info block
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
+  doc.setTextColor(50, 50, 50);
+
   const entityLabel = isSeller ? 'Seller' : isBranch ? 'Sucursal' : 'Chofer';
-  doc.text(`${entityLabel}: ${entityName}`, 20, y);
-  y += 7;
+  doc.setFont('helvetica', 'bold');
+  doc.text(`${entityLabel}:`, 10, y);
+  doc.setFont('helvetica', 'normal');
+  doc.text(entityName, 38, y);
 
-  doc.text(`Período: ${format(parseDateString(settlement.periodo_inicio), 'dd/MM/yyyy')} - ${format(parseDateString(settlement.periodo_fin), 'dd/MM/yyyy')}`, 20, y);
-  y += 7;
-
-  doc.text(`Estado: ${settlement.estado || 'Pendiente'}`, 20, y);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Estado:', pageWidth / 2, y);
+  doc.setFont('helvetica', 'normal');
+  doc.text((settlement.estado || 'Pendiente').toUpperCase(), pageWidth / 2 + 18, y);
   y += 7;
 
   if (settlement.fecha_pago) {
-    doc.text(`Fecha de Pago: ${format(new Date(settlement.fecha_pago), 'dd/MM/yyyy HH:mm')}`, 20, y);
-    y += 7;
+    doc.setFont('helvetica', 'bold');
+    doc.text('Fecha de Pago:', 10, y);
+    doc.setFont('helvetica', 'normal');
+    doc.text(format(new Date(settlement.fecha_pago), 'dd/MM/yyyy'), 48, y);
+    y += 6;
   }
 
   if (settlement.metodo_pago) {
-    doc.text(`Método de Pago: ${settlement.metodo_pago}`, 20, y);
-    y += 7;
+    doc.setFont('helvetica', 'bold');
+    doc.text('Método de Pago:', 10, y);
+    doc.setFont('helvetica', 'normal');
+    doc.text(settlement.metodo_pago, 50, y);
+    if (settlement.referencia_pago) {
+      doc.setFont('helvetica', 'bold');
+      doc.text('Referencia:', pageWidth / 2, y);
+      doc.setFont('helvetica', 'normal');
+      doc.text(settlement.referencia_pago, pageWidth / 2 + 28, y);
+    }
+    y += 6;
   }
 
-  if (settlement.referencia_pago) {
-    doc.text(`Referencia: ${settlement.referencia_pago}`, 20, y);
+  y += 4;
+
+  // Financial summary box
+  const boxH = isSeller ? 36 : isBranch ? 32 : 28;
+  doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2], 0.08);
+  doc.setFillColor(
+    Math.min(255, primaryRgb[0] + Math.round((255 - primaryRgb[0]) * 0.88)),
+    Math.min(255, primaryRgb[1] + Math.round((255 - primaryRgb[1]) * 0.88)),
+    Math.min(255, primaryRgb[2] + Math.round((255 - primaryRgb[2]) * 0.88))
+  );
+  doc.rect(10, y, pageWidth - 20, boxH, 'F');
+  doc.setDrawColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+  doc.setLineWidth(0.5);
+  doc.rect(10, y, pageWidth - 20, boxH, 'S');
+
+  y += 9;
+  doc.setTextColor(50, 50, 50);
+
+  if (isSeller && totals.totalCargos !== undefined) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.text(`Movimientos: ${totals.cantidadMovimientos || 0}`, 15, y);
+    doc.text(`Total Envíos: ${formatCurrency(totals.totalCargos || 0)}`, pageWidth / 2, y);
     y += 7;
+    doc.text(`Total Pagos: ${formatCurrency(totals.totalPagos || 0)}`, 15, y);
+    y += 7;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+    doc.text(`SALDO DEL PERÍODO: ${formatCurrency(totals.saldo || 0)}`, 15, y);
+  } else if (isBranch && totals.totalCobrado !== undefined) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.text(`Total Cobrado: ${formatCurrency(totals.totalCobrado)}`, 15, y);
+    doc.text(`Comisiones: ${formatCurrency(totals.totalComisiones || 0)}`, pageWidth / 2, y);
+    y += 10;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+    doc.text(`SALDO A TRANSFERIR: ${formatCurrency(totals.saldo || 0)}`, 15, y);
+  } else {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.text(`Cantidad de Envíos: ${totals.cantidadEnvios || 0}`, 15, y);
+    y += 10;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+    doc.text(`MONTO TOTAL: ${formatCurrency(totals.montoTotal || 0)}`, 15, y);
   }
 
-  y += 5;
+  y += 14;
 
-  // Totales
-  doc.setFillColor(245, 245, 245);
-  const totalsHeight = isSeller ? 32 : 25;
-  doc.rect(20, y, pageWidth - 40, totalsHeight, 'F');
+  // --- Detail table ---
+  const tableData = !isSeller ? items : [];
+  const shipmentData = isSeller && shipments ? shipments : [];
+  const allRows = isSeller ? shipmentData : tableData;
+
+  doc.setTextColor(50, 50, 50);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text('DETALLE DE ENVÍOS', 10, y);
+  y += 6;
+
+  // Table header
+  const colTracking = 10;
+  const colFecha = isSeller ? 60 : 65;
+  const colDest = isSeller ? 92 : 92;
+  const colEstado = isSeller ? 145 : null;
+  const colMonto = isSeller ? 172 : 162;
+
+  doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+  doc.rect(10, y - 4, pageWidth - 20, 9, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.text('Tracking', colTracking + 2, y);
+  doc.text('Fecha', colFecha, y);
+  doc.text('Destinatario', colDest, y);
+  if (colEstado) doc.text('Estado', colEstado, y);
+  doc.text('Monto', colMonto, y);
   y += 8;
 
-  doc.setFont('helvetica', 'bold');
-  if (isSeller && totals.totalCargos !== undefined) {
-    doc.text(`Cantidad de Movimientos: ${totals.cantidadMovimientos || 0}`, 25, y);
-    y += 7;
-    doc.text(`Total Envíos: $${(totals.totalCargos || 0).toFixed(2)}`, 25, y);
-    y += 7;
-    doc.text(`Total Pagos: $${(totals.totalPagos || 0).toFixed(2)}`, 25, y);
-    y += 7;
-    doc.setFontSize(13);
-    doc.text(`SALDO DEL PERÍODO: $${(totals.saldo || 0).toFixed(2)}`, 25, y);
-  } else if (isBranch && totals.totalCobrado !== undefined) {
-    doc.text(`Total Cobrado: $${totals.totalCobrado.toFixed(2)}`, 25, y);
-    y += 7;
-    doc.text(`Total Comisiones: $${(totals.totalComisiones || 0).toFixed(2)}`, 25, y);
-    y += 7;
-    doc.setFontSize(13);
-    doc.text(`SALDO A TRANSFERIR: $${(totals.saldo || 0).toFixed(2)}`, 25, y);
-  } else {
-    doc.text(`Cantidad de Envíos: ${totals.cantidadEnvios || 0}`, 25, y);
-    y += 7;
-    doc.setFontSize(13);
-    doc.text(`MONTO TOTAL: $${(totals.montoTotal || 0).toFixed(2)}`, 25, y);
-  }
-  y += 15;
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(50, 50, 50);
 
-  // Detalle - for seller, skip movimientos and go straight to shipments
-  if (!isSeller) {
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.text('DETALLE DE ENVÍOS', 20, y);
-    y += 8;
+  let rowTotal = 0;
+  const totalPages = 1; // will be updated after rendering
 
-    // Headers de tabla
-    doc.setFontSize(9);
-    doc.setFillColor(230, 230, 230);
-    doc.rect(20, y - 4, pageWidth - 40, 8, 'F');
-    doc.text('Tracking', 22, y);
-    doc.text('Fecha', 70, y);
-    doc.text('Destinatario', 100, y);
-    doc.text('Monto', 160, y);
-    y += 8;
-
-    doc.setFont('helvetica', 'normal');
-
-    items.forEach((item, index) => {
-      if (y > 270) {
-        doc.addPage();
-        y = 20;
-      }
-
-      if (index % 2 === 0) {
-        doc.setFillColor(250, 250, 250);
-        doc.rect(20, y - 4, pageWidth - 40, 7, 'F');
-      }
-
-      doc.text((item.tracking || '-').substring(0, 20), 22, y);
-      doc.text(item.fecha, 70, y);
-      doc.text((item.destinatario || '-').substring(0, 25), 100, y);
-      doc.text(`$${item.monto.toFixed(2)}`, 160, y);
-      y += 7;
-    });
-  }
-
-  // Shipments section for seller
-  if (isSeller && shipments && shipments.length > 0) {
-    y += 10;
-    if (y > 240) {
+  allRows.forEach((row: any, index: number) => {
+    if (y > pageHeight - 25) {
       doc.addPage();
-      y = 20;
+      drawHeader();
+      y = 35;
+      // Redraw table header on new page
+      doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+      doc.rect(10, y - 4, pageWidth - 20, 9, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.text('Tracking', colTracking + 2, y);
+      doc.text('Fecha', colFecha, y);
+      doc.text('Destinatario', colDest, y);
+      if (colEstado) doc.text('Estado', colEstado, y);
+      doc.text('Monto', colMonto, y);
+      y += 8;
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(50, 50, 50);
     }
 
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.text('DETALLE DE ENVÍOS', 20, y);
-    y += 8;
+    if (index % 2 === 0) {
+      doc.setFillColor(247, 247, 250);
+      doc.rect(10, y - 4, pageWidth - 20, 7, 'F');
+    }
 
-    // Shipments table header
-    doc.setFontSize(9);
-    doc.setFillColor(230, 230, 230);
-    doc.rect(20, y - 4, pageWidth - 40, 8, 'F');
-    doc.text('Fecha', 22, y);
-    doc.text('Tracking', 50, y);
-    doc.text('Destinatario', 95, y);
-    doc.text('Estado', 140, y);
-    doc.text('Precio', 170, y);
-    y += 8;
+    doc.setFontSize(8);
 
-    doc.setFont('helvetica', 'normal');
-    let totalEnvios = 0;
+    const tracking = isSeller
+      ? (row.tracking || '-').substring(0, 22)
+      : (row.tracking || '-').substring(0, 22);
+    const fecha = isSeller ? row.fecha : row.fecha;
+    const dest = isSeller
+      ? (row.destinatario || '-').substring(0, 22)
+      : (row.destinatario || '-').substring(0, 22);
+    const monto = isSeller ? (row.precio || 0) : (row.monto || 0);
 
-    shipments.forEach((shipment, index) => {
-      if (y > 270) {
-        doc.addPage();
-        y = 20;
-      }
-
-      if (index % 2 === 0) {
-        doc.setFillColor(250, 250, 250);
-        doc.rect(20, y - 4, pageWidth - 40, 7, 'F');
-      }
-
-      doc.text(shipment.fecha, 22, y);
-      doc.text(shipment.tracking.substring(0, 18), 50, y);
-      doc.text(shipment.destinatario.substring(0, 20), 95, y);
-      doc.text(shipment.estado.substring(0, 12), 140, y);
-      doc.text(`$${shipment.precio.toFixed(2)}`, 170, y);
-      totalEnvios += shipment.precio;
-      y += 7;
-    });
-
-    // Subtotal de envíos
-    y += 3;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.text(`Total Envíos (${shipments.length}): $${totalEnvios.toFixed(2)}`, 120, y);
+    doc.text(tracking, colTracking + 2, y);
+    doc.text(fecha || '-', colFecha, y);
+    doc.text(dest, colDest, y);
+    if (colEstado && isSeller) {
+      doc.text((row.estado || '-').substring(0, 12), colEstado, y);
+    }
+    doc.text(formatCurrency(monto), colMonto, y);
+    rowTotal += monto;
     y += 7;
+  });
+
+  // Total row at bottom of table
+  if (allRows.length > 0) {
+    y += 2;
+    doc.setDrawColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+    doc.setLineWidth(0.4);
+    doc.line(10, y, pageWidth - 10, y);
+    y += 5;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+    doc.text(`Total (${allRows.length} envíos): ${formatCurrency(rowTotal)}`, colMonto, y, { align: 'left' });
   }
 
-  // Guardar
+  // Add footers to all pages
+  const numPages = doc.getNumberOfPages();
+  for (let p = 1; p <= numPages; p++) {
+    doc.setPage(p);
+    drawFooter(p, numPages);
+  }
+
+  // Save
   let fileName: string;
   if (isSeller) {
     fileName = `liquidacion-seller-${entityName.replace(/\s+/g, '-')}-${format(parseDateString(settlement.periodo_fin), 'yyyy-MM-dd')}.pdf`;
@@ -233,6 +371,24 @@ export function generateSettlementPDF(data: SettlementPDFData): void {
     fileName = `liquidacion-chofer-${entityName.replace(/\s+/g, '-')}-${format(parseDateString(settlement.periodo_fin), 'yyyy-MM-dd')}.pdf`;
   }
   doc.save(fileName);
+}
+
+// Helper: fetch branding for the current user's tenant
+async function fetchTenantBranding(): Promise<BrandingData | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('tenant_id')
+    .eq('user_id', user.id)
+    .single();
+  if (!profile?.tenant_id) return null;
+  const { data: brandingData } = await supabase
+    .from('tenant_branding')
+    .select('logo_light, nombre_app, color_primario')
+    .eq('tenant_id', profile.tenant_id)
+    .single();
+  return brandingData || null;
 }
 
 // Quick download function for driver settlements
@@ -249,7 +405,15 @@ export async function downloadDriverSettlementPDF(liquidacion: {
   metodo_pago: string | null;
   referencia_pago: string | null;
   chofer?: { nombre: string; apellido: string | null };
-}): Promise<void> {
+}, branding?: BrandingData): Promise<void> {
+  const resolvedBranding = branding || await fetchTenantBranding();
+
+  // Load logo
+  let logoBase64: string | null = null;
+  if (resolvedBranding?.logo_light) {
+    logoBase64 = await loadImageAsBase64(resolvedBranding.logo_light);
+  }
+
   // Fetch comisiones
   const { data: comisiones } = await supabase
     .from('comisiones')
@@ -264,13 +428,13 @@ export async function downloadDriverSettlementPDF(liquidacion: {
   const items = (comisiones || []).map((c: any) => ({
     tracking: c.envio?.tracking_number || '-',
     fecha: c.envio?.created_at ? format(new Date(c.envio.created_at), 'dd/MM/yy') : '-',
-    destinatario: c.envio?.clientes 
-      ? `${c.envio.clientes.nombre || ''} ${c.envio.clientes.apellido || ''}`.trim() 
+    destinatario: c.envio?.clientes
+      ? `${c.envio.clientes.nombre || ''} ${c.envio.clientes.apellido || ''}`.trim()
       : c.envio?.nombre_destinatario || '-',
     monto: c.monto || 0,
   }));
 
-  generateSettlementPDF({
+  await generateSettlementPDF({
     type: 'driver',
     settlement: {
       id: liquidacion.id,
@@ -288,7 +452,7 @@ export async function downloadDriverSettlementPDF(liquidacion: {
       cantidadEnvios: liquidacion.cantidad_envios || items.length,
     },
     items,
-  });
+  }, resolvedBranding ? { ...resolvedBranding, logo_light: logoBase64 || resolvedBranding.logo_light } : undefined);
 }
 
 // Quick download function for branch settlements
@@ -306,8 +470,14 @@ export async function downloadBranchSettlementPDF(liquidacion: {
   metodo_pago: string | null;
   referencia_pago: string | null;
   sucursal?: { nombre: string };
-}): Promise<void> {
-  // Fetch detalles
+}, branding?: BrandingData): Promise<void> {
+  const resolvedBranding = branding || await fetchTenantBranding();
+
+  let logoBase64: string | null = null;
+  if (resolvedBranding?.logo_light) {
+    logoBase64 = await loadImageAsBase64(resolvedBranding.logo_light);
+  }
+
   const { data: detalles } = await supabase
     .from('liquidacion_sucursal_detalles')
     .select(`
@@ -321,14 +491,14 @@ export async function downloadBranchSettlementPDF(liquidacion: {
   const items = (detalles || []).map((d: any) => ({
     tracking: d.envio?.tracking_number || '-',
     fecha: d.envio?.created_at ? format(new Date(d.envio.created_at), 'dd/MM/yy') : '-',
-    destinatario: d.envio?.clientes 
-      ? `${d.envio.clientes.nombre || ''} ${d.envio.clientes.apellido || ''}`.trim() 
+    destinatario: d.envio?.clientes
+      ? `${d.envio.clientes.nombre || ''} ${d.envio.clientes.apellido || ''}`.trim()
       : d.envio?.nombre_destinatario || '-',
     monto: d.monto_envio || 0,
     comision: d.comision_aplicada || 0,
   }));
 
-  generateSettlementPDF({
+  await generateSettlementPDF({
     type: 'branch',
     settlement: {
       id: liquidacion.id,
@@ -348,7 +518,7 @@ export async function downloadBranchSettlementPDF(liquidacion: {
       cantidadEnvios: items.length,
     },
     items,
-  });
+  }, resolvedBranding ? { ...resolvedBranding, logo_light: logoBase64 || resolvedBranding.logo_light } : undefined);
 }
 
 // Quick download function for seller settlements
@@ -369,7 +539,14 @@ export async function downloadSellerSettlementPDF(liquidacion: {
   metodo_pago: string | null;
   referencia_pago: string | null;
   seller?: { nombre: string };
-}): Promise<void> {
+}, branding?: BrandingData): Promise<void> {
+  const resolvedBranding = branding || await fetchTenantBranding();
+
+  let logoBase64: string | null = null;
+  if (resolvedBranding?.logo_light) {
+    logoBase64 = await loadImageAsBase64(resolvedBranding.logo_light);
+  }
+
   // Fetch envíos vinculados
   const { data: envios } = await supabase
     .from('envios')
@@ -385,7 +562,7 @@ export async function downloadSellerSettlementPDF(liquidacion: {
     precio: e.precio_total || 0,
   }));
 
-  generateSettlementPDF({
+  await generateSettlementPDF({
     type: 'seller',
     settlement: {
       id: liquidacion.id,
@@ -406,5 +583,5 @@ export async function downloadSellerSettlementPDF(liquidacion: {
     },
     items: [],
     shipments: shipmentItems,
-  });
+  }, resolvedBranding ? { ...resolvedBranding, logo_light: logoBase64 || resolvedBranding.logo_light } : undefined);
 }
