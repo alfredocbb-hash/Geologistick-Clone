@@ -5,6 +5,7 @@ interface ARCAConfigStatus {
   isConfigured: boolean;
   isActive: boolean;
   environment: 'sandbox' | 'production';
+  hasBothEnvironments: boolean;
   config: ARCAContributorConfig | null;
   isLoading: boolean;
   error: Error | null;
@@ -23,59 +24,42 @@ interface ARCAContributorConfig {
 }
 
 /**
- * Hook to check if ARCA integration is configured
- * Checks system_integrations for ARCA credentials
+ * Hook to check if ARCA integration is configured.
+ * Returns status for each environment independently.
  */
 export function useARCAIntegration(preferredEnvironment: 'sandbox' | 'production' = 'production'): ARCAConfigStatus {
   const { data, isLoading, error } = useQuery({
-    queryKey: ['arca-integration-status', preferredEnvironment],
+    queryKey: ['arca-integration-status'],
     queryFn: async () => {
-      // Check environments in order of preference
-      const environments: ('sandbox' | 'production')[] = 
-        preferredEnvironment === 'production' 
-          ? ['production', 'sandbox'] 
-          : ['sandbox', 'production'];
-
-      for (const env of environments) {
-        const { data: configs, error } = await supabase
+      // Check both environments
+      const [prodResult, sandboxResult] = await Promise.all([
+        supabase
           .from('system_integrations')
           .select('config_key, config_value')
           .eq('integration_type', 'arca')
-          .eq('environment', env)
-          .eq('is_active', true);
+          .eq('environment', 'production')
+          .eq('is_active', true),
+        supabase
+          .from('system_integrations')
+          .select('config_key, config_value')
+          .eq('integration_type', 'arca')
+          .eq('environment', 'sandbox')
+          .eq('is_active', true),
+      ]);
 
-        if (error) throw error;
-
-        if (configs && configs.length > 0) {
-          // Check if required fields are configured
-          const configMap: Record<string, string> = {};
-          configs.forEach((c) => {
-            configMap[c.config_key] = c.config_value;
-          });
-
-          const hasRequiredFields = 
-            configMap.cuit && 
-            configMap.cert_pem && 
-            configMap.private_key && 
-            configMap.punto_venta;
-
-          if (hasRequiredFields) {
-            return {
-              isConfigured: true,
-              isActive: true,
-              environment: env,
-            };
-          }
-        }
-      }
-
-      return {
-        isConfigured: false,
-        isActive: false,
-        environment: preferredEnvironment,
+      const isEnvConfigured = (configs: typeof prodResult['data']) => {
+        if (!configs || configs.length === 0) return false;
+        const configMap: Record<string, string> = {};
+        configs.forEach((c) => { configMap[c.config_key] = c.config_value; });
+        return !!(configMap.cuit && configMap.cert_pem && configMap.private_key && configMap.punto_venta);
       };
+
+      const hasProd = isEnvConfigured(prodResult.data);
+      const hasSandbox = isEnvConfigured(sandboxResult.data);
+
+      return { hasProd, hasSandbox };
     },
-    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+    staleTime: 1000 * 60 * 5,
   });
 
   // Also get the contributor config if it exists
@@ -94,10 +78,25 @@ export function useARCAIntegration(preferredEnvironment: 'sandbox' | 'production
     staleTime: 1000 * 60 * 5,
   });
 
+  const hasProd = data?.hasProd ?? false;
+  const hasSandbox = data?.hasSandbox ?? false;
+  const hasBothEnvironments = hasProd && hasSandbox;
+
+  // Determine active environment: if preferred is configured, use it; otherwise use the other
+  let environment: 'sandbox' | 'production' = preferredEnvironment;
+  if (preferredEnvironment === 'production' && !hasProd && hasSandbox) {
+    environment = 'sandbox';
+  } else if (preferredEnvironment === 'sandbox' && !hasSandbox && hasProd) {
+    environment = 'production';
+  }
+
+  const isConfigured = hasProd || hasSandbox;
+
   return {
-    isConfigured: data?.isConfigured ?? false,
-    isActive: data?.isActive ?? false,
-    environment: data?.environment ?? preferredEnvironment,
+    isConfigured,
+    isActive: isConfigured,
+    environment,
+    hasBothEnvironments,
     config: contributorConfig ?? null,
     isLoading,
     error: error as Error | null,

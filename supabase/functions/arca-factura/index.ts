@@ -37,6 +37,7 @@ interface FacturaRequest {
   envio_id?: string;
   liquidacion_seller_id?: string;
   tipo_comprobante: 'A' | 'B' | 'C';
+  environment?: 'sandbox' | 'production';
   receptor: {
     cuit?: string;
     dni?: string;
@@ -540,18 +541,11 @@ async function emitirFacturaARCA(
   importeIva: number,
   importeTotal: number
 ): Promise<{ success: boolean; cae?: string; caeVencimiento?: string; error?: string }> {
-  if (environment === 'sandbox') {
-    const cae = `${Date.now()}${Math.floor(Math.random() * 10000)}`;
-    const caeVencimiento = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    console.log(`[ARCA] SANDBOX MODE: Simulating invoice - tipo: ${tipoComprobante}, numero: ${numeroComprobante}`);
-    return { success: true, cae, caeVencimiento };
-  }
+  // Both environments use the real SOAP flow – only the endpoints differ
+  const endpoints = ARCA_ENDPOINTS[environment];
 
-  // Production: real SOAP integration
   try {
-    const endpoints = ARCA_ENDPOINTS.production;
-    
-    console.log('[ARCA] Iniciando autenticación WSAA producción...');
+    console.log(`[ARCA] Iniciando autenticación WSAA ${environment}...`);
     const { token, sign } = await autenticarWSAA(
       config.cert_pem,
       config.private_key,
@@ -578,7 +572,7 @@ async function emitirFacturaARCA(
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('[ARCA] Error en producción:', msg);
+    console.error(`[ARCA] Error en ${environment}:`, msg);
     return { success: false, error: msg };
   }
 }
@@ -722,6 +716,7 @@ serve(async (req) => {
 
     const body: FacturaRequest = await req.json();
     const { envio_id, liquidacion_seller_id, tipo_comprobante, receptor, importe_total } = body;
+    const requestedEnv: 'sandbox' | 'production' = body.environment || 'production';
 
     if (!envio_id && !liquidacion_seller_id) {
       return new Response(
@@ -788,16 +783,27 @@ serve(async (req) => {
       importeIva  = 0;
     }
 
-    let environment: 'sandbox' | 'production' = 'production';
-    let arcaConfig = await getARCAConfig(supabase, tenantId, 'production');
+    // Use exactly the requested environment – no silent fallback
+    const environment = requestedEnv;
+    const arcaConfig = await getARCAConfig(supabase, tenantId, environment);
 
+    // No config for requested environment
     if (!arcaConfig) {
-      environment = 'sandbox';
-      arcaConfig  = await getARCAConfig(supabase, tenantId, 'sandbox');
-    }
+      // Check if the other environment is configured so we can give a helpful message
+      const otherEnv = environment === 'production' ? 'sandbox' : 'production';
+      const otherConfig = await getARCAConfig(supabase, tenantId, otherEnv);
 
-    // No config at all → save as pending
-    if (!arcaConfig) {
+      if (otherConfig) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: `No hay configuración ARCA para el entorno ${environment === 'production' ? 'producción' : 'sandbox'}. Hay configuración disponible para ${otherEnv === 'production' ? 'producción' : 'sandbox'}.`,
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // No config in either environment → save as pending
       const factura = await createFacturaRecord(
         supabase, envio_id || null, liquidacion_seller_id || null, tenantId,
         tipo_comprobante, 0, 0, receptor, importeNeto, importeIva, total, userId
