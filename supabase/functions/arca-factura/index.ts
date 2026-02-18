@@ -493,12 +493,13 @@ async function getWSAAToken(supabase: any, tenantId: string, environment: string
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg === 'WSAA_ALREADY_AUTHENTICATED') {
-      // AFIP dice que hay TA activo pero no tenemos caché.
-      // Esto ocurre si el servidor se reinició. No podemos recuperar el token anterior.
+      // AFIP tiene un TA vigente pero no tenemos el token en caché.
+      // No podemos obtener un nuevo token hasta que expire el actual (hasta 12 horas).
+      // Usamos un prefijo especial para que el caller lo distinga de un rechazo real.
       throw new Error(
-        'AFIP rechazó la autenticación porque ya existe una sesión activa (coe.alreadyAuthenticated). ' +
-        'El token se cacheará en la próxima sesión exitosa. ' +
-        'Espere a que la sesión AFIP expire (hasta 12 horas) o recargue los certificados.'
+        'ARCA_SESSION_CONFLICT: AFIP ya tiene una sesión activa para este certificado. ' +
+        'El token se cacheará automáticamente en la próxima sesión exitosa. ' +
+        'Espere hasta 12 horas o consulte con soporte.'
       );
     }
     throw err;
@@ -662,7 +663,7 @@ async function emitirFacturaARCA(
   importeNeto: number,
   importeIva: number,
   importeTotal: number
-): Promise<{ success: boolean; cae?: string; caeVencimiento?: string; error?: string }> {
+): Promise<{ success: boolean; cae?: string; caeVencimiento?: string; error?: string; sessionConflict?: boolean }> {
   const endpoints = ARCA_ENDPOINTS[environment];
 
   try {
@@ -690,6 +691,10 @@ async function emitirFacturaARCA(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[ARCA] Error en ${environment}:`, msg);
+    // Detectar conflicto de sesión (coe.alreadyAuthenticated sin token cacheado)
+    if (msg.startsWith('ARCA_SESSION_CONFLICT:')) {
+      return { success: false, sessionConflict: true, error: msg.replace('ARCA_SESSION_CONFLICT: ', '') };
+    }
     return { success: false, error: msg };
   }
 }
@@ -1041,6 +1046,22 @@ serve(async (req) => {
           cae_vencimiento: arcaResult.caeVencimiento,
           numero_comprobante: `${String(puntoVenta).padStart(4, '0')}-${String(numeroComprobante).padStart(8, '0')}`,
           environment,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    } else if (arcaResult.sessionConflict) {
+      // Conflicto de sesión AFIP – NO es un rechazo real. Guardar como pendiente para reintento.
+      await supabase.from('facturas').update({
+        estado: 'pendiente',
+        error_mensaje: arcaResult.error,
+      }).eq('id', factura.id);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          factura_id: factura.id,
+          estado: 'pendiente',
+          message: 'Sesión AFIP activa sin token local. La factura quedó pendiente para reintento automático. Reintente en unos minutos o espere hasta 12 horas.',
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
