@@ -1,15 +1,15 @@
-import { useState } from 'react';
+import { useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { ArrowLeft, Loader2, Package, Printer, Download, FileText } from 'lucide-react';
+import { ArrowLeft, Loader2, Package, Printer, Download, FileText, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { QRCodeSVG } from 'qrcode.react';
+import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
 import jsPDF from 'jspdf';
 import { toast } from 'sonner';
 
@@ -42,9 +42,72 @@ function formatNumeroComprobante(puntoVenta: number, numero: number): string {
   return `${String(puntoVenta).padStart(4, '0')}-${String(numero).padStart(8, '0')}`;
 }
 
+/**
+ * Normaliza el tipo_comprobante para soportar tanto el formato corto ('A','B','C')
+ * como el formato largo ('factura_a','factura_b','factura_c').
+ */
+function normalizarTipoComprobante(tipo: string | null | undefined): string {
+  if (!tipo) return '';
+  if (tipo.length === 1) return `factura_${tipo.toLowerCase()}`;
+  return tipo;
+}
+
+/**
+ * Genera la URL del QR AFIP conforme a la RG 4291/2018.
+ * Formato: https://www.afip.gob.ar/fe/qr/?p=BASE64_JSON
+ */
+function buildAfipQRUrl(
+  factura: {
+    fecha_emision?: string | null;
+    punto_venta: number;
+    tipo_comprobante: string;
+    numero_comprobante: number;
+    importe_total: number;
+    cae?: string | null;
+    receptor_condicion_iva?: string | null;
+    receptor_cuit?: string | null;
+  },
+  arcaConfig?: { cuit?: string } | null
+): string {
+  const tipoCmpMap: Record<string, number> = {
+    'A': 1, 'B': 6, 'C': 11,
+    'factura_a': 1, 'factura_b': 6, 'factura_c': 11,
+    'nota_credito_a': 3, 'nota_credito_b': 8, 'nota_credito_c': 13,
+  };
+  const tipoCmp = tipoCmpMap[factura.tipo_comprobante] ?? 6;
+
+  const esConsumidorFinal = factura.receptor_condicion_iva === 'consumidor_final';
+  const tipoDocRec = esConsumidorFinal ? 99 : 80;
+  const nroDocRec = esConsumidorFinal
+    ? 0
+    : parseInt((factura.receptor_cuit || '').replace(/[-]/g, '')) || 0;
+
+  const cuitEmisor = parseInt((arcaConfig?.cuit || '').replace(/[-]/g, '')) || 0;
+
+  const qrJson = {
+    ver: 1,
+    fecha: format(new Date(factura.fecha_emision || new Date()), 'yyyy-MM-dd'),
+    cuit: cuitEmisor,
+    ptoVta: factura.punto_venta || 1,
+    tipoCmp,
+    nroCmp: factura.numero_comprobante || 1,
+    importe: factura.importe_total,
+    moneda: 'PES',
+    ctz: 1,
+    tipoDocRec,
+    nroDocRec,
+    tipoCodAut: 'E',
+    codAut: parseInt(factura.cae || '0') || 0,
+  };
+
+  const base64 = btoa(JSON.stringify(qrJson));
+  return `https://www.afip.gob.ar/fe/qr/?p=${base64}`;
+}
+
 export default function PrintInvoice() {
   const [searchParams] = useSearchParams();
   const envioId = searchParams.get('id');
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // Fetch factura
   const { data: factura, isLoading: loadingFactura } = useQuery({
@@ -132,20 +195,13 @@ export default function PrintInvoice() {
     enabled: !!envio?.tenant_id,
   });
 
-  const isFacturaA = factura?.tipo_comprobante?.includes('_a');
+  // Normalizar tipo_comprobante (soporta 'A','B','C' y 'factura_a','factura_b','factura_c')
+  const tipoNormalizado = factura ? normalizarTipoComprobante(factura.tipo_comprobante) : '';
+  const isFacturaA = tipoNormalizado.includes('_a');
   const isSandbox = arcaConfig?.environment === 'sandbox';
 
-  // QR data for AFIP (simplified version)
-  const qrData = factura ? JSON.stringify({
-    ver: 1,
-    fecha: factura.fecha_emision,
-    cuit: arcaConfig?.cuit || '',
-    ptoVta: factura.punto_venta,
-    tipoCmp: factura.tipo_comprobante,
-    nroCmp: factura.numero_comprobante,
-    importe: factura.importe_total,
-    cae: factura.cae,
-  }) : '';
+  // URL QR AFIP conforme RG 4291/2018
+  const afipQRUrl = factura ? buildAfipQRUrl(factura, arcaConfig) : '';
 
   // Build conceptos
   const fleteEnDetalles = (detalles || []).find(d => d.nombre_concepto?.toLowerCase() === 'flete');
@@ -157,16 +213,17 @@ export default function PrintInvoice() {
 
   const handlePrint = () => window.print();
 
-  const handleDownloadPDF = () => {
+  const handleDownloadPDF = async () => {
     if (!factura) return;
     const doc = new jsPDF();
     const pw = doc.internal.pageSize.getWidth();
     let y = 20;
 
+    const tipoLabel = TIPO_COMPROBANTE_LABELS[tipoNormalizado] || tipoNormalizado.toUpperCase();
+
     // Title
     doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
-    const tipoLabel = TIPO_COMPROBANTE_LABELS[factura.tipo_comprobante] || factura.tipo_comprobante;
     doc.text(tipoLabel, pw / 2, y, { align: 'center' });
     y += 8;
     doc.setFontSize(12);
@@ -234,7 +291,25 @@ export default function PrintInvoice() {
     // CAE
     doc.setFontSize(9); doc.setFont('helvetica', 'normal');
     doc.text(`CAE: ${factura.cae || '-'}`, 20, y); y += 5;
-    doc.text(`Vto. CAE: ${factura.cae_vencimiento ? format(new Date(factura.cae_vencimiento), 'dd/MM/yyyy') : '-'}`, 20, y);
+    doc.text(`Vto. CAE: ${factura.cae_vencimiento ? format(new Date(factura.cae_vencimiento), 'dd/MM/yyyy') : '-'}`, 20, y); y += 10;
+
+    // QR AFIP en el PDF (obligatorio)
+    if (factura.cae && qrCanvasRef.current) {
+      try {
+        const qrDataUrl = qrCanvasRef.current.toDataURL('image/png');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.text('QR AFIP (Verificación)', 20, y); y += 4;
+        doc.addImage(qrDataUrl, 'PNG', 20, y, 30, 30);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.text('Escanee para verificar en AFIP', 52, y + 10);
+        doc.text(`https://www.afip.gob.ar/fe/qr/`, 52, y + 16);
+        y += 35;
+      } catch {
+        // Si no se puede incluir el QR, continuar sin él
+      }
+    }
 
     // Footer
     const fy = doc.internal.pageSize.getHeight() - 15;
@@ -269,11 +344,26 @@ export default function PrintInvoice() {
     );
   }
 
-  const tipoLabel = TIPO_COMPROBANTE_LABELS[factura.tipo_comprobante] || factura.tipo_comprobante;
-  const letraComprobante = factura.tipo_comprobante?.split('_').pop()?.toUpperCase() || '';
+  const tipoLabel = TIPO_COMPROBANTE_LABELS[tipoNormalizado] || tipoNormalizado.toUpperCase();
+  const letraComprobante = tipoNormalizado?.split('_').pop()?.toUpperCase() || '';
+
+  // Código numérico para el PDF según tipo
+  const tipoCodigo = tipoNormalizado.includes('factura_a') ? '01'
+    : tipoNormalizado.includes('factura_b') ? '06'
+    : tipoNormalizado.includes('factura_c') ? '11'
+    : '06';
 
   return (
     <div className="min-h-screen bg-slate-100 py-8 px-4 print:bg-white print:py-0">
+      {/* Canvas oculto para el QR — usado al generar el PDF */}
+      <div className="hidden">
+        <QRCodeCanvas
+          ref={qrCanvasRef}
+          value={afipQRUrl || 'N/A'}
+          size={200}
+        />
+      </div>
+
       <div className="max-w-3xl mx-auto">
         {/* Header - hidden on print */}
         <div className="flex items-center justify-between mb-6 print:hidden">
@@ -301,6 +391,24 @@ export default function PrintInvoice() {
           {isSandbox && (
             <div className="bg-red-500/10 border-b border-red-500/20 text-center py-2 print:py-1">
               <p className="text-sm font-bold text-red-600">DOCUMENTO NO FISCAL - SANDBOX</p>
+            </div>
+          )}
+
+          {/* Certificado de homologación en producción */}
+          {!isSandbox && arcaConfig?.environment === 'production' && factura.estado === 'error' && (
+            <div className="bg-amber-50 border-b border-amber-200 px-4 py-3 print:hidden">
+              <div className="flex gap-2 items-start">
+                <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-amber-800">
+                  <p className="font-semibold">Error de certificado AFIP</p>
+                  <p className="mt-1">El certificado configurado en producción es de homologación (testing). Para emitir facturas reales debe:</p>
+                  <ol className="list-decimal ml-4 mt-1 space-y-0.5">
+                    <li>Generar un CSR ante AFIP con su CUIT de producción</li>
+                    <li>Obtener el certificado firmado por AFIP producción</li>
+                    <li>Cargarlo en Configuración → Integraciones → ARCA → Producción</li>
+                  </ol>
+                </div>
+              </div>
             </div>
           )}
 
@@ -333,7 +441,7 @@ export default function PrintInvoice() {
                 <div className="w-16 h-16 border-2 border-foreground rounded-lg flex items-center justify-center">
                   <span className="text-3xl font-bold">{letraComprobante}</span>
                 </div>
-                <p className="text-xs mt-1 text-muted-foreground">Cod. {factura.tipo_comprobante === 'factura_a' ? '01' : factura.tipo_comprobante === 'factura_b' ? '06' : '11'}</p>
+                <p className="text-xs mt-1 text-muted-foreground">Cod. {tipoCodigo}</p>
               </div>
 
               {/* Right: Número + Fecha */}
@@ -426,16 +534,20 @@ export default function PrintInvoice() {
               )}
             </div>
 
-            {/* CAE + QR */}
-            <div className="border rounded-lg p-4 flex items-center justify-between">
+            {/* CAE + QR AFIP */}
+            <div className="border rounded-lg p-4 flex items-center justify-between gap-4">
               <div className="flex items-center gap-4">
-                <div className="p-2 bg-white rounded-lg border">
-                  <QRCodeSVG value={qrData || 'N/A'} size={80} />
+                <div className="p-2 bg-white rounded-lg border flex-shrink-0">
+                  {/* QR con la URL AFIP correcta: https://www.afip.gob.ar/fe/qr/?p=BASE64 */}
+                  <QRCodeSVG value={afipQRUrl || 'N/A'} size={90} />
                 </div>
                 <div className="text-sm">
                   <p className="font-semibold">CAE: {factura.cae || '-'}</p>
                   <p className="text-muted-foreground">
                     Vto. CAE: {factura.cae_vencimiento ? format(new Date(factura.cae_vencimiento), 'dd/MM/yyyy') : '-'}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Escanee para verificar en AFIP
                   </p>
                 </div>
               </div>
