@@ -419,10 +419,10 @@ async function getCachedToken(supabase: any, tenantId: string, environment: stri
     const { data } = await supabase
       .from('system_integrations')
       .select('config_key, config_value')
-      .eq('integration_type', 'arca_token_cache')
+      .eq('integration_type', 'arca')
       .eq('environment', environment)
       .eq('tenant_id', tenantId)
-      .in('config_key', ['wsaa_token', 'wsaa_sign', 'wsaa_expires_at']);
+      .in('config_key', ['cache_wsaa_token', 'cache_wsaa_sign', 'cache_wsaa_expires_at']);
 
     if (!data || data.length === 0) return null;
 
@@ -430,18 +430,18 @@ async function getCachedToken(supabase: any, tenantId: string, environment: stri
     // deno-lint-ignore no-explicit-any
     data.forEach((r: any) => { map[r.config_key] = r.config_value; });
 
-    if (!map.wsaa_token || !map.wsaa_sign || !map.wsaa_expires_at) return null;
+    if (!map.cache_wsaa_token || !map.cache_wsaa_sign || !map.cache_wsaa_expires_at) return null;
 
     // Verificar que el token siga válido (con 5 min de margen)
-    const expiresAt = new Date(map.wsaa_expires_at);
+    const expiresAt = new Date(map.cache_wsaa_expires_at);
     const bufferMs = 5 * 60 * 1000;
     if (expiresAt.getTime() - bufferMs <= Date.now()) {
-      console.log('[ARCA] Token cacheado expirado:', map.wsaa_expires_at);
+      console.log('[ARCA] Token cacheado expirado:', map.cache_wsaa_expires_at);
       return null;
     }
 
-    console.log('[ARCA] Usando token cacheado válido, expira:', map.wsaa_expires_at);
-    return { token: map.wsaa_token, sign: map.wsaa_sign };
+    console.log('[ARCA] Usando token cacheado válido, expira:', map.cache_wsaa_expires_at);
+    return { token: map.cache_wsaa_token, sign: map.cache_wsaa_sign };
   } catch (e) {
     console.warn('[ARCA] Error leyendo cache de token:', e);
     return null;
@@ -453,21 +453,23 @@ async function setCachedToken(supabase: any, tenantId: string, environment: stri
   try {
     // Los tokens AFIP duran 12 horas; guardamos con ese vencimiento
     const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
+    // Usamos integration_type 'arca' (valor válido del enum) con config_keys prefijados 'cache_wsaa_*'
     const entries = [
-      { config_key: 'wsaa_token', config_value: token },
-      { config_key: 'wsaa_sign',  config_value: sign },
-      { config_key: 'wsaa_expires_at', config_value: expiresAt },
+      { config_key: 'cache_wsaa_token',      config_value: token },
+      { config_key: 'cache_wsaa_sign',        config_value: sign },
+      { config_key: 'cache_wsaa_expires_at',  config_value: expiresAt },
     ];
     for (const entry of entries) {
-      await supabase.from('system_integrations').upsert({
-        integration_type: 'arca_token_cache',
+      const { error: upsertError } = await supabase.from('system_integrations').upsert({
+        integration_type: 'arca',
         environment,
         tenant_id: tenantId,
         config_key: entry.config_key,
         config_value: entry.config_value,
         is_active: true,
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'integration_type,environment,tenant_id,config_key' });
+      }, { onConflict: 'tenant_id,integration_type,config_key,environment' });
+      if (upsertError) console.warn('[ARCA] Error guardando entrada de caché:', entry.config_key, upsertError.message);
     }
     console.log('[ARCA] Token guardado en caché hasta:', expiresAt);
   } catch (e) {
