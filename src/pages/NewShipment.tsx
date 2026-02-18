@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import { useFormDraft } from '@/hooks/useFormDraft';
+import { useTenant } from '@/hooks/useTenant';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -136,11 +137,70 @@ const HORARIOS_ENTREGA = [
   { value: 'noche', label: 'Noche (18:00 - 21:00)' },
 ];
 
+// ─── Funciones auxiliares para auto-selección de tarifa por destino ───
+function normalizarTexto(str: string): string {
+  return str.toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+function encontrarTarifaPorDestino(
+  ciudad: string | null,
+  cp: string | null,
+  peso: number,
+  tarifas: any[]
+): any | null {
+  if (!ciudad && !cp) return null;
+  const ciudadNorm = ciudad ? normalizarTexto(ciudad) : '';
+  const cpTrim = cp?.trim() || '';
+
+  // 1. Tarifas tipo 'zona'
+  const coincidentesZona = tarifas.filter(t => {
+    if (t.tipo_tarifa !== 'zona' || !t.zona_destino) return false;
+    const destinos = t.zona_destino.split(',').map((d: string) => normalizarTexto(d.trim()));
+    if (ciudadNorm && destinos.some((d: string) => d.includes(ciudadNorm) || ciudadNorm.includes(d))) return true;
+    if (cpTrim && destinos.some((d: string) => d === cpTrim)) return true;
+    return false;
+  });
+
+  if (coincidentesZona.length === 1) return coincidentesZona[0];
+
+  // Desempate por peso si hay múltiples zonas coincidentes
+  if (coincidentesZona.length > 1 && peso > 0) {
+    const porPeso = coincidentesZona.find(t => {
+      const rangos = Array.isArray(t.rangos_kg) ? t.rangos_kg : [];
+      return rangos.some((r: any) => peso >= r.desde && peso <= r.hasta);
+    });
+    if (porPeso) return porPeso;
+    return coincidentesZona[0];
+  }
+
+  if (coincidentesZona.length > 0) return coincidentesZona[0];
+
+  // 2. Tarifas tipo 'codigo_postal'
+  const coincidentesCP = tarifas.filter(t => {
+    if (t.tipo_tarifa !== 'codigo_postal' || !t.zona_destino) return false;
+    const destinos = t.zona_destino.split(',').map((d: string) => d.trim());
+    return cpTrim && destinos.includes(cpTrim);
+  });
+
+  if (coincidentesCP.length > 0) return coincidentesCP[0];
+
+  return null;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function NewShipment() {
   const navigate = useNavigate();
   const { user, profile } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Feature flag: auto-selección de tarifa por zona (solo para tenants con la flag activa, ej: BlackBox)
+  const { tenant } = useTenant();
+  const autoSeleccionPorZona = !!(tenant?.configuracion as any)?.auto_seleccion_tarifa_por_zona;
+  const [tarifaFueAutoDetectada, setTarifaFueAutoDetectada] = useState(false);
 
   // Tipo de servicio detallado (4 opciones)
   const [tipoServicioDetalle, setTipoServicioDetalle] = useState<TipoServicioDetalle>('sucursal_sucursal');
@@ -461,12 +521,39 @@ export default function NewShipment() {
     return tarifas.filter(t => tarifaIdsHabilitados.has(t.id));
   }, [tarifas, sucursalTarifas]);
 
-  // Auto-seleccionar tarifa si solo hay una disponible
+  // Auto-seleccionar tarifa si solo hay una disponible (solo cuando NO hay auto-selección por zona activa)
   useEffect(() => {
+    if (autoSeleccionPorZona) return; // La auto-selección por zona maneja este caso
     if (tarifasDisponibles.length === 1 && !formData.tarifa_id) {
       setFormData(prev => ({ ...prev, tarifa_id: tarifasDisponibles[0].id }));
     }
-  }, [tarifasDisponibles, formData.tarifa_id]);
+  }, [tarifasDisponibles, formData.tarifa_id, autoSeleccionPorZona]);
+
+  // Auto-selección de tarifa por destino + peso (solo cuando la feature flag está activa)
+  useEffect(() => {
+    if (!autoSeleccionPorZona || !tarifasDisponibles.length) return;
+
+    const peso = parseFloat(formData.peso_kg) || 0;
+    const match = encontrarTarifaPorDestino(
+      formData.destinatario_ciudad,
+      formData.destinatario_codigo_postal,
+      peso,
+      tarifasDisponibles
+    );
+
+    if (match) {
+      setFormData(prev => ({ ...prev, tarifa_id: match.id }));
+      setTarifaFueAutoDetectada(true);
+    } else {
+      setTarifaFueAutoDetectada(false);
+    }
+  }, [
+    formData.destinatario_ciudad,
+    formData.destinatario_codigo_postal,
+    formData.peso_kg,
+    tarifasDisponibles,
+    autoSeleccionPorZona,
+  ]);
 
   const selectedTarifa = tarifasDisponibles?.find(t => t.id === formData.tarifa_id);
 
@@ -2067,67 +2154,96 @@ export default function NewShipment() {
                 placeholder="Ej: Documentos, ropa, electrónicos..."
               />
             </div>
-            {/* Selector de Tarifa - solo mostrar si hay más de 1 tarifa disponible */}
-            {tarifasDisponibles.length > 1 ? (
-              <div className="space-y-2">
-                <Label htmlFor="tarifa_id">Tarifa</Label>
-                <Select
-                  value={formData.tarifa_id}
-                  onValueChange={(v) => handleChange('tarifa_id', v)}
-                  disabled={loadingTarifas}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={loadingTarifas ? "Cargando tarifas..." : "Seleccionar tarifa"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {loadingTarifas ? (
-                      <div className="flex items-center justify-center py-4">
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        <span>Cargando...</span>
-                      </div>
-                    ) : (
-                      tarifasDisponibles.map((t) => (
-                        <SelectItem key={t.id} value={t.id}>
-                          {t.nombre} - ${Number(t.precio_base).toLocaleString('es-AR')}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : tarifasDisponibles.length === 1 ? (
-              <div className="p-3 bg-muted/50 rounded-lg">
-                <p className="text-sm text-muted-foreground mb-1">Tarifa</p>
-                <p className="font-medium">
-                  {tarifasDisponibles[0].nombre} - ${Number(tarifasDisponibles[0].precio_base).toLocaleString('es-AR')}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <Label htmlFor="tarifa_id">Tarifa</Label>
-                <div className="text-sm text-muted-foreground p-3 border rounded-lg">
-                  {loadingTarifas ? (
-                    <div className="flex items-center">
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      <span>Cargando tarifas...</span>
-                    </div>
-                  ) : (
-                    <>
-                      No hay tarifas disponibles para esta sucursal
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => refetchTarifas()}
-                        className="mt-2"
-                        type="button"
-                      >
-                        <Loader2 className="h-4 w-4 mr-2" />
-                        Reintentar
-                      </Button>
-                    </>
+            {/* Selector / Panel de Tarifa */}
+            {autoSeleccionPorZona ? (
+              /* Modo auto-selección: panel de solo lectura, sin opción de cambio manual */
+              tarifaFueAutoDetectada && selectedTarifa ? (
+                <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg space-y-1">
+                  <p className="text-xs font-medium text-primary uppercase tracking-wide flex items-center gap-1">
+                    <span>✓</span> Tarifa detectada automáticamente
+                  </p>
+                  <p className="font-semibold">{selectedTarifa.nombre}</p>
+                  {fleteCalculado > 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      Flete calculado{fleteDescripcion ? ` (${fleteDescripcion})` : ''}: <span className="font-medium text-foreground">${fleteCalculado.toLocaleString('es-AR', { minimumFractionDigits: 0 })}</span>
+                    </p>
+                  )}
+                  {!formData.peso_kg && (
+                    <p className="text-xs text-muted-foreground">Ingresá el peso para calcular el precio del flete</p>
                   )}
                 </div>
-              </div>
+              ) : (
+                <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-destructive">Ingresá la ciudad del destinatario</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">El precio se calculará automáticamente según la zona de destino</p>
+                  </div>
+                </div>
+              )
+            ) : (
+              /* Modo normal: selector manual de tarifa */
+              tarifasDisponibles.length > 1 ? (
+                <div className="space-y-2">
+                  <Label htmlFor="tarifa_id">Tarifa</Label>
+                  <Select
+                    value={formData.tarifa_id}
+                    onValueChange={(v) => handleChange('tarifa_id', v)}
+                    disabled={loadingTarifas}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={loadingTarifas ? "Cargando tarifas..." : "Seleccionar tarifa"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {loadingTarifas ? (
+                        <div className="flex items-center justify-center py-4">
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          <span>Cargando...</span>
+                        </div>
+                      ) : (
+                        tarifasDisponibles.map((t) => (
+                          <SelectItem key={t.id} value={t.id}>
+                            {t.nombre} - ${Number(t.precio_base).toLocaleString('es-AR')}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : tarifasDisponibles.length === 1 ? (
+                <div className="p-3 bg-muted/50 rounded-lg">
+                  <p className="text-sm text-muted-foreground mb-1">Tarifa</p>
+                  <p className="font-medium">
+                    {tarifasDisponibles[0].nombre} - ${Number(tarifasDisponibles[0].precio_base).toLocaleString('es-AR')}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label htmlFor="tarifa_id">Tarifa</Label>
+                  <div className="text-sm text-muted-foreground p-3 border rounded-lg">
+                    {loadingTarifas ? (
+                      <div className="flex items-center">
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        <span>Cargando tarifas...</span>
+                      </div>
+                    ) : (
+                      <>
+                        No hay tarifas disponibles para esta sucursal
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => refetchTarifas()}
+                          className="mt-2"
+                          type="button"
+                        >
+                          <Loader2 className="h-4 w-4 mr-2" />
+                          Reintentar
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )
             )}
             {/* Note: pago_contra_entrega is now automatically set based on tipo_pago */}
             
