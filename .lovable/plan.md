@@ -1,140 +1,128 @@
 
-# Dos correcciones: PDF profesional con logo + envíos comunes en liquidaciones de sellers
+# Corrección: Logo distorsionado y líneas solapadas en PDF de liquidaciones
 
-## Problema 1: PDF de liquidaciones sin logo ni diseño profesional
+## Diagnóstico de los problemas
 
-El archivo `src/lib/generateSettlementPDF.ts` genera PDFs básicos. La función `generateSettlementPDF` no acepta datos de branding. Las tres funciones de descarga (`downloadDriverSettlementPDF`, `downloadBranchSettlementPDF`, `downloadSellerSettlementPDF`) no buscan branding. `PrintSettlement.tsx` sí busca branding pero no lo pasa a las funciones.
+### Problema 1: Logo distorsionado
+En `drawHeader()` (línea 126), el logo se inserta con dimensiones fijas `22 x 22`:
+```typescript
+doc.addImage(logoBase64, 'PNG', 10, 3, 22, 22);
+```
+Si el logo del tenant es rectangular (por ejemplo 200x80 píxeles), se fuerza a un cuadrado de 22x22 aplastándolo. Se necesita calcular las dimensiones proporcionalmente para que siempre quepan dentro de un bounding box de `22mm` de alto manteniendo el aspect ratio.
 
-El patrón de referencia ya existe en `src/lib/generateShipmentReceiptPDF.ts` con `loadImageAsBase64`, `hexToRgb`, y el uso del logo por canvas.
+### Problema 2: Texto solapado con el header
+El header bar tiene `28mm` de alto. Dentro del header:
+- Nombre empresa: `y = 12`
+- Tipo de liquidación: `y = 20`
+- Período: `y = 20`
 
-## Problema 2: Envíos comunes no incluidos en liquidaciones de sellers
+El contenido del cuerpo arranca en `y = 35` (solo 7mm después del header). Con font size 9, el texto del cuerpo puede quedar casi pegado al borde inferior del header, y en páginas adicionales el problema se repite porque se llama `drawHeader()` pero luego `y = 35` para el contenido.
 
-En `src/pages/ecommerce/Settlements.tsx`, la función `calculateMutation` tiene este problema crítico:
+Adicionalmente, los `doc.rect()` del fondo alternado de filas y del cuadro financiero a veces se solapan con el borde del header en la primera página.
+
+### Problema 3: Columnas desbordadas en seller
+Para tipo `seller`, `colMonto = 172` y el pageWidth es `210mm`. Con `pageWidth - 10 = 200`, el texto de montos como `$ 51.229,95` a partir de `x = 172` con `align: 'left'` puede salirse de la página o solaparse con el borde.
+
+## Solución
+
+### Fix 1: Logo con aspect ratio correcto
+
+Calcular el ancho del logo proporcionalmente a su alto (máximo 22mm de alto, máximo 40mm de ancho):
 
 ```typescript
-// Línea 367
-if (uniqueClienteIds.length > 0) {
-  // Este bloque solo se ejecuta si el seller tiene cliente_id asignado
-  // Si no tiene cliente_id, se salta TODA la lógica de envíos
-}
+const drawHeader = () => {
+  // ...
+  if (logoBase64) {
+    try {
+      // Crear imagen temporal para obtener dimensiones
+      const imgProps = doc.getImageProperties(logoBase64);
+      const maxH = 22;
+      const maxW = 40;
+      const ratio = imgProps.width / imgProps.height;
+      let logoW = maxH * ratio;
+      let logoH = maxH;
+      if (logoW > maxW) {
+        logoW = maxW;
+        logoH = maxW / ratio;
+      }
+      // Centrar verticalmente en el header
+      const logoY = (headerH - logoH) / 2;
+      doc.addImage(logoBase64, 'PNG', 10, logoY, logoW, logoH);
+      logoEndX = 10 + logoW + 4; // margen después del logo
+    } catch { /* sin logo */ }
+  }
+};
 ```
 
-**Causas del bug:**
-1. Si el seller no tiene `cliente_id`, la variable `uniqueClienteIds` está vacía y el bloque completo es saltado → ningún envío es incluido en el cálculo.
-2. Los envíos de MercadoLibre Flex llegan vía `ecommerce_orders` con `seller_id` directo, y sí se cuentan.
-3. Los envíos comunes/manuales (ingresados por operadores) usan `remitente_id = cliente_id` del seller, pero si ese `cliente_id` es `null`, quedan fuera.
-4. También existe el caso de envíos con `remitente_id = seller.id` (el UUID del seller en `ecommerce_sellers`), que tampoco se buscan.
+### Fix 2: Espaciado correcto del header y el cuerpo
 
-**Solución para el bug de envíos:**
+Ajustar el header a `32mm` de alto para que haya más espacio, y arrancar el contenido del cuerpo en `y = 38` (6mm después del header). Alinear verticalmente el texto del header:
+- Nombre empresa: `headerH / 2 - 4` (tercio superior)
+- Subtítulo y período: `headerH / 2 + 4` (tercio inferior)
 
-Refactorizar la lógica de cálculo para que los envíos vía `ecommerce_orders` sean siempre consultados (independientemente de `cliente_id`), y los envíos comunes sean buscados solo cuando el seller tiene `cliente_id`:
+### Fix 3: Columnas de la tabla rediseñadas
 
+Rediseñar las posiciones de columna para que todo quepan bien en `210mm` con márgenes de `10mm`:
+- Área útil: `10mm` a `200mm` = `190mm`
+
+Para seller (5 columnas: Tracking, Fecha, Destinatario, Estado, Monto):
 ```
-LÓGICA CORRECTA:
-1. Siempre buscar envíos de ecommerce_orders por seller_id → envíos ML Flex y Tiendanube
-2. Si el seller tiene cliente_id → adicionalmente buscar envíos manuales por remitente_id
-3. Combinar ambos sin duplicados
-```
-
-El mismo problema existe en el cálculo de saldos de la pestaña "Saldos por Seller" (`sellerBalances` query, líneas 183-228), que tampoco incluye envíos manuales de sellers sin `cliente_id`.
-
-## Plan de implementación
-
-### Cambio 1: `src/lib/generateSettlementPDF.ts` — Rediseño completo
-
-**Nueva firma de `generateSettlementPDF`:**
-```typescript
-export async function generateSettlementPDF(
-  data: SettlementPDFData,
-  branding?: { logo_light?: string | null; nombre_app?: string | null; color_primario?: string | null }
-): Promise<void>
+Tracking:     x=12,  ancho≈45mm  (substring 18 chars)
+Fecha:        x=60,  ancho≈20mm
+Destinatario: x=83,  ancho≈50mm  (substring 20 chars)
+Estado:       x=136, ancho≈30mm  (substring 12 chars)
+Monto:        x=170, align=right a x=200
 ```
 
-**Diseño del nuevo PDF:**
-
-```text
-┌──────────────────────────────────────────────────────────────────────┐
-│  [COLOR PRIMARIO - 28mm alto]                                        │
-│  [LOGO 22x22]  NOMBRE EMPRESA         LIQUIDACIÓN DE CHOFER         │
-│                                        Período: 01/01 - 31/01/2025  │
-├──────────────────────────────────────────────────────────────────────┤
-│  Chofer: Juan Pérez          Estado: PAGADA          Fecha: 01/02   │
-│  Método de Pago: Transferencia    Referencia: TRF-12345             │
-├──────────────────────────────────────────────────────────────────────┤
-│  ┌─── RESUMEN FINANCIERO (fondo color primario 10% opacidad) ────┐  │
-│  │  Cantidad de Envíos: 45     Total: $207,494.55 (GRANDE/BOLD)  │  │
-│  └────────────────────────────────────────────────────────────────┘  │
-│                                                                      │
-│  DETALLE DE ENVÍOS                                                   │
-│  [CABECERA CON FONDO COLOR PRIMARIO - TEXTO BLANCO]                 │
-│  Tracking    │  Fecha   │  Destinatario         │  Monto            │
-│  [filas alternadas blanco/gris claro]                                │
-│  [total al pie de la tabla]                                         │
-│                                                                      │
-│  ─────────────────────────────────────────────────────────────────  │
-│  NOMBRE APP  •  Período 01/01/2025 - 31/01/2025  •  Pág. N de M   │
-└──────────────────────────────────────────────────────────────────────┘
+Para chofer/sucursal (4 columnas: Tracking, Fecha, Destinatario, Monto):
+```
+Tracking:     x=12,  ancho≈55mm  (substring 22 chars)
+Fecha:        x=70,  ancho≈20mm
+Destinatario: x=93,  ancho≈80mm  (substring 28 chars)
+Monto:        x=200, align=right
 ```
 
-**Helpers a agregar dentro del archivo:**
-- `loadImageAsBase64(url)`: misma implementación que en `generateShipmentReceiptPDF.ts` (canvas + crossOrigin)
-- `hexToRgb(hex)`: convierte color primario a RGB para jsPDF
+Usar `align: 'right'` para los montos posicionados en `pageWidth - 12` para que nunca desborden.
 
-**Las tres funciones de descarga** (`downloadDriverSettlementPDF`, `downloadBranchSettlementPDF`, `downloadSellerSettlementPDF`) se actualizan para:
-1. Obtener el `tenant_id` del usuario autenticado
-2. Buscar `tenant_branding` (solo `logo_light`, `nombre_app`, `color_primario`)
-3. Cargar el logo con `loadImageAsBase64`
-4. Pasar `branding` a `generateSettlementPDF`
+### Fix 4: Cuadro financiero sin solapar el borde del header
 
-**`PrintSettlement.tsx`**: actualizar `handleDownloadPDF` para pasar el branding ya cargado a las funciones de descarga, evitando una doble consulta.
-
-### Cambio 2: `src/pages/ecommerce/Settlements.tsx` — Corrección del cálculo de envíos
-
-**En `calculateMutation` (función principal de cálculo):**
-
-Refactorizar el flujo para que los envíos de `ecommerce_orders` se busquen siempre, y los envíos comunes solo cuando hay `cliente_id`:
+El cuadro de resumen financiero no debe pintarse hasta que `y` esté bien posicionado después de la sección de información. Agregar una validación:
 
 ```typescript
-// ANTES (incorrecto): Todo dentro de if (uniqueClienteIds.length > 0)
-if (uniqueClienteIds.length > 0) {
-  // busca ecommerce_orders Y envíos comunes
-}
-
-// DESPUÉS (correcto): Separar en dos bloques independientes
-
-// Bloque 1: Siempre buscar envíos de ecommerce_orders por seller_id
-const { data: sellerOrders } = await supabase
-  .from('ecommerce_orders')
-  .select('envio_id, seller_id')
-  .in('seller_id', calcSellers)
-  .not('envio_id', 'is', null)
-  .gte('fecha_entrega_estimada', fechaInicioStr)
-  .lte('fecha_entrega_estimada', fechaFinStr);
-
-// Bloque 2: Solo si hay sellers con cliente_id → buscar envíos comunes
-if (uniqueClienteIds.length > 0) {
-  // ... lógica existente de envíos comunes por remitente_id
-}
-
-// Combinar sin duplicados
+// Asegurar que el cuadro no toque el header
+if (y < 40) y = 40;
+doc.rect(10, y, pageWidth - 20, boxH, 'F');
 ```
 
-**En `sellerBalances` query (cálculo para pestaña "Saldos por Seller"):**
-
-La misma corrección: actualmente los `envioIdsBySeller` se llenan solo con envíos de `ecommerce_orders`, pero los `commonEnviosBySeller` solo se llenan si el seller tiene `cliente_id`. Esto ya está implementado parcialmente pero si hay sellers sin `cliente_id`, los `commonIds` de línea 247 quedan vacíos — en realidad esto es correcto para esa parte, el bug principal es en `calculateMutation`.
-
-**También aplicar la corrección de prioridad exacta/substring** al bloque interno del `calculateMutation` (líneas 528-541) que aún usa el loop simple sin dos pasadas, haciéndolo consistente con el resto del código.
-
-## Archivos a modificar
+## Archivo a modificar
 
 | Archivo | Cambios |
 |---|---|
-| `src/lib/generateSettlementPDF.ts` | Rediseño completo: helpers de imagen/color, branding en `generateSettlementPDF`, fetching de branding en las 3 funciones de descarga |
-| `src/pages/PrintSettlement.tsx` | Pasar `branding` ya cargado a las funciones de descarga + actualizar firma |
-| `src/pages/ecommerce/Settlements.tsx` | Refactorizar `calculateMutation` para incluir envíos aunque `uniqueClienteIds` esté vacío; corregir algoritmo de matching en ese bloque |
+| `src/lib/generateSettlementPDF.ts` | Fix aspect ratio del logo, ajuste de coordenadas del header, rediseño de columnas de tabla, corrección de márgenes |
+
+## Detalle técnico del fix del logo
+
+`jsPDF` expone `doc.getImageProperties(base64)` que retorna `{ width, height }` en píxeles. Con eso se puede calcular el ratio exacto sin necesidad de un elemento `<img>` adicional:
+
+```typescript
+const imgProps = doc.getImageProperties(logoBase64);
+const ratio = imgProps.width / imgProps.height;
+const maxLogoH = 20; // mm, dentro del header de 32mm
+const maxLogoW = 42; // mm máximo
+let logoW = maxLogoH * ratio;
+let logoH = maxLogoH;
+if (logoW > maxLogoW) {
+  logoW = maxLogoW;
+  logoH = maxLogoW / ratio;
+}
+const logoX = 10;
+const logoY = (headerH - logoH) / 2; // centrado vertical
+doc.addImage(logoBase64, 'PNG', logoX, logoY, logoW, logoH);
+```
 
 ## Resultado esperado
 
-- PDF con barra de color primario, logo del tenant (o nombre si no hay logo), tabla con cabecera coloreada y filas alternadas, footer con nombre de la app y numeración de páginas
-- Envíos manuales (no ML Flex) de sellers son incluidos en la liquidación aunque el seller no tenga `cliente_id`
-- El cálculo de totales en la liquidación refleja correctamente todos los envíos del período: tanto ML Flex como envíos comunes
+- Logo renderizado con su aspect ratio original (rectangular, cuadrado, o cualquier proporción) correctamente centrado en el header
+- Sin solapamiento entre el header de color y el texto del cuerpo
+- Columnas de la tabla bien alineadas, montos con `align: 'right'` que nunca desborden
+- Diseño limpio y profesional como se ve en la imagen de referencia, sin artefactos visuales
