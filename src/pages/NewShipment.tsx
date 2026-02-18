@@ -155,9 +155,10 @@ function encontrarTarifaPorDestino(
   const ciudadNorm = ciudad ? normalizarTexto(ciudad) : '';
   const cpTrim = cp?.trim() || '';
 
-  // 1. Tarifas tipo 'zona'
+  // 1. Cualquier tarifa con zona_destino configurado (independiente del tipo_tarifa)
+  // El tipo_tarifa define CÓMO se calcula el precio, no DÓNDE aplica la tarifa
   const coincidentesZona = tarifas.filter(t => {
-    if (t.tipo_tarifa !== 'zona' || !t.zona_destino) return false;
+    if (!t.zona_destino) return false;
     const destinos = t.zona_destino.split(',').map((d: string) => normalizarTexto(d.trim()));
     if (ciudadNorm && destinos.some((d: string) => d.includes(ciudadNorm) || ciudadNorm.includes(d))) return true;
     if (cpTrim && destinos.some((d: string) => d === cpTrim)) return true;
@@ -177,15 +178,6 @@ function encontrarTarifaPorDestino(
   }
 
   if (coincidentesZona.length > 0) return coincidentesZona[0];
-
-  // 2. Tarifas tipo 'codigo_postal'
-  const coincidentesCP = tarifas.filter(t => {
-    if (t.tipo_tarifa !== 'codigo_postal' || !t.zona_destino) return false;
-    const destinos = t.zona_destino.split(',').map((d: string) => d.trim());
-    return cpTrim && destinos.includes(cpTrim);
-  });
-
-  if (coincidentesCP.length > 0) return coincidentesCP[0];
 
   return null;
 }
