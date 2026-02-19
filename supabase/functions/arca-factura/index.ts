@@ -537,16 +537,25 @@ async function solicitarCAE(
   const fechaComprobante = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
 
   // AFIP requiere el objeto IVA cuando ImpNeto > 0, independientemente del tipo de comprobante (A, B o C)
-  // Para tipo A: alícuota 21% (Id=5) con ImpNeto como base
-  // Para tipo B y C a Consumidor Final: también se incluye con alícuota 21% (Id=5)
-  // Referencia: Error AFIP 10070 "Si ImpNeto es mayor a 0 el objeto IVA es obligatorio"
-  // CORRECCIÓN Bug 2: Solo incluir AlicIva si importeIva > 0 (no importeNeto)
-  const ivaAlicuota = importeIva > 0.005 ? `
-              <AlicIva>
-                <Id>5</Id>
-                <BaseImp>${importeNeto.toFixed(2)}</BaseImp>
-                <Importe>${importeIva.toFixed(2)}</Importe>
-              </AlicIva>` : '';
+  // Solo incluir el bloque <ar:Iva> si importeIva > 0 (RG AFIP error 10070)
+  // RG 5616: CondicionIvaReceptor es obligatorio desde 15/04/2025 (rechazado desde 01/04/2026 en sandbox)
+  // Mapeo de condición IVA a código numérico AFIP (FEParamGetCondicionIvaReceptor)
+  const condicionIvaReceptorCode: Record<string, number> = {
+    responsable_inscripto: 1,
+    exento: 4,
+    consumidor_final: 5,
+    monotributo: 6,
+    no_responsable: 7,
+  };
+  const condicionIvaReceptorNumero = condicionIvaReceptorCode[receptor.condicion_iva] ?? 5;
+
+  // Construir bloque IVA limpio (sin whitespace extra al inicio que confunde al parser AFIP)
+  const ivaBlock = importeIva > 0.005
+    ? `<ar:Iva><AlicIva><Id>5</Id><BaseImp>${importeNeto.toFixed(2)}</BaseImp><Importe>${importeIva.toFixed(2)}</Importe></AlicIva></ar:Iva>`
+    : '';
+
+  console.log(`[ARCA] CondicionIvaReceptor: ${receptor.condicion_iva} → código ${condicionIvaReceptorNumero}`);
+  console.log(`[ARCA] IVA block incluido: ${importeIva > 0.005}`);
 
   const soapBody = `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
@@ -580,9 +589,9 @@ async function solicitarCAE(
             <ar:ImpIVA>${importeIva.toFixed(2)}</ar:ImpIVA>
             <ar:ImpTrib>0.00</ar:ImpTrib>
             <ar:MonId>PES</ar:MonId>
-            <ar:MonCotiz>1</ar:MonCotiz>${importeIva > 0.005 ? `
-            <ar:Iva>${ivaAlicuota}
-            </ar:Iva>` : ''}
+            <ar:MonCotiz>1</ar:MonCotiz>
+            <ar:CondicionIvaReceptorId>${condicionIvaReceptorNumero}</ar:CondicionIvaReceptorId>
+            ${ivaBlock}
           </ar:FECAEDetRequest>
         </ar:FeDetReq>
       </ar:FeCAEReq>
