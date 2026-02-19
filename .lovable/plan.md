@@ -1,137 +1,118 @@
 
-# Integración de pagos de liquidaciones sellers con cuenta corriente y caja
+# Corrección retroactiva: liquidaciones "pagada" sin movimiento en cuenta corriente
 
-## Diagnóstico del problema
+## Diagnóstico confirmado
 
-El `payMutation` en `src/pages/ecommerce/Settlements.tsx` actualmente **solo actualiza el estado** de la liquidación:
+Al consultar la base de datos directamente se confirma que las 4 liquidaciones con estado `pagada` tienen `movimientos_pago_count: 0` — es decir, ninguna generó el movimiento correspondiente en `seller_cuenta_corriente` porque el código anterior no lo hacía.
 
-```typescript
-// Lo que hace hoy (incompleto):
-await supabase
-  .from('liquidaciones_seller')
-  .update({ estado: 'pagada', metodo_pago: ..., referencia_pago: ..., fecha_pago: ... })
-  .eq('id', payingLiquidacion.id);
-// ← Nada más. El saldo del seller no cambia. La caja no se afecta.
-```
+Los saldos actuales en `ecommerce_sellers` tampoco fueron reducidos en el momento del pago, por lo que están inflados.
 
-### Comparación con el circuito de choferes y sucursales
+| Seller | Saldo actual (incorrecto) | Pago no registrado |
+|---|---|---|
+| SANABRIA SEBASTIAN | $10.245,99 | $51.229,95 |
+| SANABRIA LAUTARO | $7.370,99 | $68.846,93 |
+| SANABRIA EMANUEL | $30.737,97 | $123.663,86 |
+| RADIKAL | $129.298,86 | $281.964,70 |
 
-Las liquidaciones de choferes (`src/pages/DriverSettlements.tsx`) y sucursales (`src/pages/BranchSettlements.tsx`) ya tienen este circuito completo al marcar como pagado:
-1. Actualizar estado de la liquidación
-2. Si método = efectivo → insertar egreso en `movimientos_caja` de la sesión activa
+Nota: los saldos "actuales" que se ven hoy en la base son los que quedaron SIN descontar el pago. El saldo correcto post-pago debería ser `saldo_actual - saldo_periodo`.
 
-Para sellers falta además el paso de cuenta corriente.
+## Solución: migración SQL retroactiva
 
-## Solución
+Se ejecuta una migración SQL que en una sola transacción:
 
-### Cambio en `payMutation` (src/pages/ecommerce/Settlements.tsx)
+**Paso 1 — Insertar movimientos de pago faltantes en `seller_cuenta_corriente`**
 
-Al confirmar el pago de una liquidación de seller, se ejecutan **tres acciones en secuencia**:
+Para cada liquidación `pagada` sin movimiento de tipo `pago` vinculado, se inserta el registro correspondiente con:
+- `tipo = 'pago'`
+- `monto = -saldo_periodo` (negativo, reduce la deuda)
+- `saldo_anterior` = saldo actual de `ecommerce_sellers` (valor actual en la tabla, que es el pre-corrección)
+- `saldo_nuevo` = `saldo_anterior - saldo_periodo`
+- `descripcion` = texto descriptivo con el período
+- `liquidacion_id` = id de la liquidación
+- `metodo_pago` = el método registrado en la liquidación
 
-**Acción 1: Actualizar estado de la liquidación** (ya existe)
-```typescript
-await supabase.from('liquidaciones_seller')
-  .update({ estado: 'pagada', metodo_pago, referencia_pago, fecha_pago })
-  .eq('id', payingLiquidacion.id);
-```
+**Paso 2 — Actualizar `saldo_cuenta_corriente` en `ecommerce_sellers`**
 
-**Acción 2: Registrar movimiento de pago en cuenta corriente del seller**
+Para cada seller afectado, restar el monto del pago al saldo actual.
 
-Se inserta un registro en `seller_cuenta_corriente` de tipo `pago`:
-```typescript
-// Obtener saldo actual del seller
-const { data: sellerData } = await supabase
-  .from('ecommerce_sellers')
-  .select('saldo_cuenta_corriente')
-  .eq('id', payingLiquidacion.seller_id)
-  .single();
+**SQL de la migración:**
 
-const saldoAnterior = sellerData.saldo_cuenta_corriente || 0;
-const montoPago = Math.abs(payingLiquidacion.saldo_periodo || 0);
-const saldoNuevo = saldoAnterior - montoPago;
-
-await supabase.from('seller_cuenta_corriente').insert({
-  seller_id: payingLiquidacion.seller_id,
-  tipo: 'pago',
-  monto: -montoPago,          // negativo = reduce la deuda
-  saldo_anterior: saldoAnterior,
-  saldo_nuevo: saldoNuevo,
-  descripcion: `Pago liquidación período ${periodoFormateado}`,
-  referencia: payReferencia || null,
-  metodo_pago: payMetodo,
-  liquidacion_id: payingLiquidacion.id,
-  created_by: user.id,
-});
-
-// Actualizar saldo en ecommerce_sellers
-await supabase.from('ecommerce_sellers')
-  .update({ saldo_cuenta_corriente: saldoNuevo })
-  .eq('id', payingLiquidacion.seller_id);
-```
-
-**Acción 3: Si método = efectivo → registrar egreso en caja activa**
-
-Igual al circuito de choferes/sucursales:
-```typescript
-if (payMetodo === 'efectivo') {
-  // Buscar sesión de caja activa del usuario
-  const { data: sesion } = await supabase
-    .from('sesiones_caja')
-    .select('id')
-    .eq('estado', 'abierta')
-    .maybeSingle();
-
-  if (sesion) {
-    await supabase.from('movimientos_caja').insert({
-      sesion_caja_id: sesion.id,
-      tipo: 'egreso',
-      concepto: 'liquidacion_seller',
-      monto: montoPago,
-      descripcion: `Pago liquidación seller: ${payingLiquidacion.seller?.nombre}`,
-      referencia: payReferencia || payingLiquidacion.id,
-      created_by: user.id,
-    });
-  }
-}
-```
-
-### Invalidaciones de caché al completar el pago
-
-Tras el pago exitoso, se invalidan adicionalmente:
-- `['seller-liquidaciones']` — ya existía
-- `['ecommerce-sellers-cta-cte']` — para refrescar saldos en la pestaña "Saldos por Seller"
-- `['seller-movements', payingLiquidacion.seller_id]` — para refrescar el historial de la cuenta corriente
-- `['ecommerce-sellers']` — para refrescar el saldo_cuenta_corriente en la lista
-
-## Estructura de datos a verificar
-
-Se necesita confirmar que la tabla `seller_cuenta_corriente` tiene el campo `liquidacion_id` para vincular el pago a su liquidación. Esto se verifica en el código existente del `generateMutation` que ya usa ese campo, confirmando que existe.
-
-También se verifica si `movimientos_caja` tiene un campo `concepto` con valor `liquidacion_seller`. Si no existe como enum/valor permitido, se usa `egreso_operativo` como concepto genérico con la descripción detallando el tipo.
-
-## Archivo a modificar
-
-| Archivo | Cambio |
-|---|---|
-| `src/pages/ecommerce/Settlements.tsx` | `payMutation`: agregar inserción en `seller_cuenta_corriente` + egreso en caja si método es efectivo |
-
-## Flujo completo resultante
-
-```
-ANTES DEL CAMBIO:
-[Pagar] → estado: 'pagada' ← fin
-
-DESPUÉS DEL CAMBIO:
-[Pagar] → estado: 'pagada'
-        → seller_cuenta_corriente: tipo='pago', monto=-X, saldo actualizado
-        → ecommerce_sellers: saldo_cuenta_corriente actualizado
-        → (si efectivo) movimientos_caja: tipo='egreso', concepto='liquidacion_seller'
+```sql
+DO $$
+DECLARE
+  liq RECORD;
+  seller_saldo NUMERIC;
+  saldo_nuevo NUMERIC;
+  monto_pago NUMERIC;
+BEGIN
+  -- Procesar cada liquidación pagada sin movimiento de pago registrado
+  FOR liq IN
+    SELECT 
+      ls.id,
+      ls.seller_id,
+      ls.saldo_periodo,
+      ls.periodo_inicio,
+      ls.periodo_fin,
+      ls.metodo_pago,
+      ls.referencia_pago,
+      ls.fecha_pago
+    FROM liquidaciones_seller ls
+    WHERE ls.estado = 'pagada'
+      AND NOT EXISTS (
+        SELECT 1 FROM seller_cuenta_corriente scc
+        WHERE scc.liquidacion_id = ls.id AND scc.tipo = 'pago'
+      )
+  LOOP
+    monto_pago := ABS(liq.saldo_periodo);
+    IF monto_pago > 0 THEN
+      -- Obtener saldo actual del seller
+      SELECT saldo_cuenta_corriente INTO seller_saldo
+      FROM ecommerce_sellers WHERE id = liq.seller_id;
+      
+      saldo_nuevo := seller_saldo - monto_pago;
+      
+      -- Insertar movimiento de pago
+      INSERT INTO seller_cuenta_corriente (
+        seller_id, tipo, monto, saldo_anterior, saldo_nuevo,
+        descripcion, referencia, metodo_pago, liquidacion_id
+      ) VALUES (
+        liq.seller_id,
+        'pago',
+        -monto_pago,
+        seller_saldo,
+        saldo_nuevo,
+        'Pago liquidación período ' || TO_CHAR(liq.periodo_inicio::date, 'MM/YYYY') || ' [retroactivo]',
+        liq.referencia_pago,
+        liq.metodo_pago,
+        liq.id
+      );
+      
+      -- Actualizar saldo del seller
+      UPDATE ecommerce_sellers
+      SET saldo_cuenta_corriente = saldo_nuevo,
+          updated_at = NOW()
+      WHERE id = liq.seller_id;
+    END IF;
+  END LOOP;
+END;
+$$;
 ```
 
 ## Resultado esperado
 
-- Al pagar una liquidación de seller, el saldo de la cuenta corriente del seller se actualiza automáticamente (la deuda se reduce)
-- Si el método de pago es efectivo, aparece como egreso en el cierre de la sesión de caja activa
-- La pestaña "Saldos por Seller" muestra el saldo actualizado inmediatamente
-- El historial de movimientos del seller en `SellerAccount` muestra el pago registrado
-- El comportamiento es consistente con las liquidaciones de choferes y sucursales
+Después de la migración:
+- Cada liquidación `pagada` tendrá exactamente 1 movimiento de tipo `pago` en `seller_cuenta_corriente` vinculado por `liquidacion_id`
+- Los saldos en `ecommerce_sellers` reflejarán correctamente el descuento de los pagos ya realizados
+- Las futuras liquidaciones que se paguen usarán el código nuevo que ya hace todo esto automáticamente
+- No se crean movimientos duplicados (el `NOT EXISTS` en el WHERE protege contra eso)
+
+## Tabla de correcciones esperadas
+
+| Seller | Saldo antes (actual) | Pago retroactivo | Saldo después |
+|---|---|---|---|
+| SANABRIA SEBASTIAN | $10.245,99 | -$51.229,95 | -$40.983,96 |
+| SANABRIA LAUTARO | $7.370,99 | -$68.846,93 | -$61.475,94 |
+| SANABRIA EMANUEL | $30.737,97 | -$123.663,86 | -$92.925,89 |
+| RADIKAL | $129.298,86 | -$281.964,70 | -$152.665,84 |
+
+Nota: los saldos negativos resultantes indican que los sellers tienen deuda pendiente acumulada más allá del pago de esta liquidación. Esto es esperado dado que la cuenta corriente puede acumular cargos de envíos anteriores no liquidados aún.
