@@ -805,8 +805,8 @@ async function getUltimoComprobanteAFIP(
     return 0;
   } catch (err) {
     console.warn('[ARCA] Error consultando FECompUltimoAutorizado:', err);
-    // En caso de error, retornar 0 para no bloquear la emisión (se usará el local)
-    return 0;
+    // Retornar -1 para indicar fallo y que el caller use el contador local como fallback
+    return -1;
   }
 }
 
@@ -831,10 +831,23 @@ async function getNextInvoiceNumber(
 
   const localNumber = (!error && data) ? (data[field] || 0) : 0;
 
-  // Consultar a AFIP el último número real para sincronizar
+  // Consultar a AFIP el último número real – AFIP es la fuente de verdad.
+  // Si la consulta falla (retorna -1), se usa el local como fallback.
   const afipLastNumber = await getUltimoComprobanteAFIP(token, sign, cuit, puntoVenta, tipo, wsfeUrl);
 
-  const nextNumber = Math.max(localNumber, afipLastNumber) + 1;
+  let nextNumber: number;
+  if (afipLastNumber >= 0) {
+    // AFIP respondió correctamente: el próximo es afipNumber + 1 (ignoramos el local desincronizado)
+    nextNumber = afipLastNumber + 1;
+    if (localNumber !== afipLastNumber) {
+      console.log(`[ARCA] Sincronizando numeración tipo ${tipo}: local=${localNumber} → AFIP=${afipLastNumber}, próximo=${nextNumber}`);
+    }
+  } else {
+    // La consulta a AFIP falló: usamos el local como fallback
+    nextNumber = localNumber + 1;
+    console.warn(`[ARCA] FECompUltimoAutorizado falló, usando contador local. tipo=${tipo}, local=${localNumber}, próximo=${nextNumber}`);
+  }
+
   console.log(`[ARCA] Numeración tipo ${tipo}: local=${localNumber}, AFIP=${afipLastNumber}, próximo=${nextNumber}`);
 
   return nextNumber;
