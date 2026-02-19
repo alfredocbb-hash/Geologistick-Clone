@@ -935,10 +935,14 @@ export default function NewShipment() {
       }
 
       // 2. Find or create destinatario
-      // Para retiro_almacenaje, el remitente es también el destinatario (cliente con cta cte)
-      let destinatarioId = formData.cliente_cta_cte_id || null;
+      // cliente_cta_cte_id es quien PAGA, NO el destinatario físico.
+      // Solo se usa como destinatario en retiro_almacenaje.
+      let destinatarioId: string | null = null;
       
-      if (!destinatarioId && !esRetiroAlmacenaje) {
+      if (esRetiroAlmacenaje) {
+        // Para retiro almacenaje, el cliente con cta cte es el destinatario (almacena en sucursal)
+        destinatarioId = formData.cliente_cta_cte_id || remitenteId;
+      } else {
         destinatarioId = await findOrCreateClient({
           nombre: formData.destinatario_nombre,
           apellido: formData.destinatario_apellido,
@@ -950,9 +954,6 @@ export default function NewShipment() {
           dni_cuit: formData.destinatario_dni,
           sucursal_id: sucursalDestinoId,
         });
-      } else if (esRetiroAlmacenaje && !destinatarioId) {
-        // Para retiro almacenaje, usar el remitente como destinatario
-        destinatarioId = remitenteId;
       }
 
       // 3. Generate tracking number with sucursal code
@@ -1089,82 +1090,95 @@ export default function NewShipment() {
       }
 
       // 6. If cuenta corriente, create movement
+      // IMPORTANTE: Este paso es NO BLOQUEANTE. Si falla, el envío ya fue creado
+      // correctamente y se muestra una advertencia sin interrumpir el flujo.
+      let ctaCteWarning: string | null = null;
+      
       if (formData.tipo_pago === 'cuenta_corriente' && formData.cliente_cta_cte_id) {
-        // Detectar si el cliente es un seller → cargar en seller_cuenta_corriente
-        const sellerVinculado = getSellerForCliente(formData.cliente_cta_cte_id);
+        try {
+          // Detectar si el cliente es un seller → cargar en seller_cuenta_corriente
+          const sellerVinculado = getSellerForCliente(formData.cliente_cta_cte_id);
 
-        if (sellerVinculado) {
-          // Es un seller: cargar en seller_cuenta_corriente y actualizar ecommerce_sellers
-          const { data: sellerActual } = await supabase
-            .from('ecommerce_sellers')
-            .select('saldo_cuenta_corriente')
-            .eq('id', sellerVinculado.id)
-            .single();
+          if (sellerVinculado) {
+            // Es un seller: cargar en seller_cuenta_corriente y actualizar ecommerce_sellers
+            const { data: sellerActual } = await supabase
+              .from('ecommerce_sellers')
+              .select('saldo_cuenta_corriente')
+              .eq('id', sellerVinculado.id)
+              .single();
 
-          const saldoAnterior = Number(sellerActual?.saldo_cuenta_corriente) || 0;
-          const saldoNuevo = saldoAnterior + precioTotal;
+            const saldoAnterior = Number(sellerActual?.saldo_cuenta_corriente) || 0;
+            const saldoNuevo = saldoAnterior + precioTotal;
 
-          const { error: movError } = await supabase
-            .from('seller_cuenta_corriente')
-            .insert({
-              seller_id: sellerVinculado.id,
-              envio_id: envio.id,
-              tipo: 'cargo',
-              monto: precioTotal,
-              saldo_anterior: saldoAnterior,
-              saldo_nuevo: saldoNuevo,
-              descripcion: `Envío ${trackingData} (manual)`,
-              created_by: user?.id,
-            });
+            const { error: movError } = await supabase
+              .from('seller_cuenta_corriente')
+              .insert({
+                seller_id: sellerVinculado.id,
+                envio_id: envio.id,
+                tipo: 'cargo',
+                monto: precioTotal,
+                saldo_anterior: saldoAnterior,
+                saldo_nuevo: saldoNuevo,
+                descripcion: `Envío ${trackingData} (manual)`,
+                created_by: user?.id,
+              });
 
-          if (movError) throw movError;
+            if (movError) throw movError;
 
-          const { error: updateSellerError } = await supabase
-            .from('ecommerce_sellers')
-            .update({ saldo_cuenta_corriente: saldoNuevo })
-            .eq('id', sellerVinculado.id);
+            const { error: updateSellerError } = await supabase
+              .from('ecommerce_sellers')
+              .update({ saldo_cuenta_corriente: saldoNuevo })
+              .eq('id', sellerVinculado.id);
 
-          if (updateSellerError) throw updateSellerError;
+            if (updateSellerError) throw updateSellerError;
 
-          // También sincronizar el saldo en clientes para consistencia visual
-          const { error: syncClienteError } = await supabase
-            .from('clientes')
-            .update({ saldo_cuenta_corriente: saldoNuevo })
-            .eq('id', formData.cliente_cta_cte_id);
+            // También sincronizar el saldo en clientes para consistencia visual
+            const { error: syncClienteError } = await supabase
+              .from('clientes')
+              .update({ saldo_cuenta_corriente: saldoNuevo })
+              .eq('id', formData.cliente_cta_cte_id);
 
-          if (syncClienteError) throw syncClienteError;
-        } else {
-          // Es un cliente común: cargar en cliente_cuenta_corriente
-          const { data: cliente } = await supabase
-            .from('clientes')
-            .select('saldo_cuenta_corriente')
-            .eq('id', formData.cliente_cta_cte_id)
-            .single();
+            if (syncClienteError) throw syncClienteError;
+          } else {
+            // Es un cliente común: cargar en cliente_cuenta_corriente
+            const { data: cliente } = await supabase
+              .from('clientes')
+              .select('saldo_cuenta_corriente')
+              .eq('id', formData.cliente_cta_cte_id)
+              .single();
 
-          const saldoAnterior = Number(cliente?.saldo_cuenta_corriente) || 0;
-          const saldoNuevo = saldoAnterior + precioTotal;
+            const saldoAnterior = Number(cliente?.saldo_cuenta_corriente) || 0;
+            const saldoNuevo = saldoAnterior + precioTotal;
 
-          const { error: movError } = await supabase
-            .from('cliente_cuenta_corriente')
-            .insert({
-              cliente_id: formData.cliente_cta_cte_id,
-              envio_id: envio.id,
-              tipo: 'cargo',
-              monto: precioTotal,
-              saldo_anterior: saldoAnterior,
-              saldo_nuevo: saldoNuevo,
-              descripcion: `Envío ${trackingData}`,
-              created_by: user?.id,
-            });
+            const { error: movError } = await supabase
+              .from('cliente_cuenta_corriente')
+              .insert({
+                cliente_id: formData.cliente_cta_cte_id,
+                envio_id: envio.id,
+                tipo: 'cargo',
+                monto: precioTotal,
+                saldo_anterior: saldoAnterior,
+                saldo_nuevo: saldoNuevo,
+                descripcion: `Envío ${trackingData}`,
+                created_by: user?.id,
+              });
 
-          if (movError) throw movError;
+            if (movError) throw movError;
 
-          const { error: updateError } = await supabase
-            .from('clientes')
-            .update({ saldo_cuenta_corriente: saldoNuevo })
-            .eq('id', formData.cliente_cta_cte_id);
+            const { error: updateError } = await supabase
+              .from('clientes')
+              .update({ saldo_cuenta_corriente: saldoNuevo })
+              .eq('id', formData.cliente_cta_cte_id);
 
-          if (updateError) throw updateError;
+            if (updateError) throw updateError;
+          }
+        } catch (ctaCteError: any) {
+          // El envío fue creado exitosamente. El movimiento de cta cte falló.
+          // NO interrumpir el flujo — guardar advertencia para mostrar en onSuccess.
+          console.error('[CTA CTE] Error registrando movimiento de cuenta corriente:', ctaCteError);
+          ctaCteWarning = ctaCteError?.message || 'Error desconocido';
+          // Adjuntar la advertencia al objeto envio para que onSuccess pueda leerla
+          (envio as any).__ctaCteWarning = ctaCteWarning;
         }
       }
 
@@ -1189,10 +1203,20 @@ export default function NewShipment() {
         setShowPaymentModal(true);
       } else {
         // Para cuenta corriente o destinatario, redirigir directamente
-        toast({
-          title: '¡Envío creado!',
-          description: `Tracking: ${data.tracking_number}. Redirigiendo a etiqueta...`,
-        });
+        // Verificar si hubo advertencia en el movimiento de cta cte
+        const ctaCteWarning = (data as any).__ctaCteWarning;
+        if (ctaCteWarning) {
+          toast({
+            title: '⚠️ Envío creado con advertencia',
+            description: `Tracking: ${data.tracking_number}. El envío fue creado correctamente pero no se pudo registrar el movimiento de cuenta corriente. Por favor, regístrelo manualmente.`,
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: '¡Envío creado!',
+            description: `Tracking: ${data.tracking_number}. Redirigiendo a etiqueta...`,
+          });
+        }
         navigate(`/print-label?id=${data.id}`);
       }
     },
