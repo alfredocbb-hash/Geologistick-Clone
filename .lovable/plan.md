@@ -1,107 +1,92 @@
 
-# Sincronización de Sellers como Clientes con Cuenta Corriente
+# Corrección de emisión de facturas ARCA: número de comprobante + DocNro Consumidor Final
 
-## Diagnóstico del problema
+## Diagnóstico de los dos bugs
 
-Actualmente existen **dos registros de saldo separados e independientes** para el mismo concepto financiero:
+### Bug 1: Número de comprobante desincronizado (error principal)
+El sistema tiene en la tabla `arca_config` el campo `ultimo_numero_b = 4`, por lo que intenta emitir el comprobante número `5`. Sin embargo, AFIP en el punto de venta 7 tiene registrado un número diferente (probablemente ya existe un comprobante emitido directamente desde otro software o portal ARCA que no pasó por este sistema).
 
-| Donde | Tabla | Movimientos en |
-|---|---|---|
-| Módulo ecommerce | `ecommerce_sellers.saldo_cuenta_corriente` | `seller_cuenta_corriente` |
-| Envíos manuales | `clientes.saldo_cuenta_corriente` | `cliente_cuenta_corriente` |
+**Error de AFIP:** `El numero de comprobante no se corresponde con el proximo a autorizar. Consultar metodo FECompUltimoAutorizado`
 
-Esto genera que:
-- Al crear un envío manual para un seller, el cargo va a `clientes` (si tiene cta cte habilitada allí)
-- Al registrar una liquidación, el pago va a `seller_cuenta_corriente`
-- Los dos saldos **nunca se cruzan**, quedando el seller con saldo inflado en `ecommerce_sellers` y el cliente sin reflejo de los pagos recibidos
+**Solución:** Antes de emitir el comprobante, llamar al método `FECompUltimoAutorizado` del WSFEv1 para obtener el último número que tiene AFIP, y usar ese valor +1 como número del próximo comprobante. Si AFIP devuelve un número mayor al que tiene el sistema, también se actualiza `arca_config` para mantener sincronía.
 
-### Sellers afectados con cliente vinculado pero sin cta cte habilitada en clientes:
-- FULLIMPORT, RADIKAL, SANABRIA GABRIEL, SANABRIA LAUTARO, SANABRIA SEBASTIAN, SANABRIA EMANUEL (límite=0)
-
-### El flujo correcto que se busca:
-Cuando se crea un envío manual para un seller → el cargo debe ir SOLO a `seller_cuenta_corriente` (no a `cliente_cuenta_corriente`). Cuando se paga una liquidación → reduce `seller_cuenta_corriente`. Todo en un solo lugar.
-
-## Solución en tres capas
-
-### Capa 1: Sincronización retroactiva en base de datos (SQL)
-
-**Paso A — Habilitar cuenta corriente en `clientes` para todos los sellers que la tienen activa:**
-```sql
-UPDATE clientes c
-SET 
-  tiene_cuenta_corriente = true,
-  limite_credito = GREATEST(c.limite_credito, es.limite_credito),
-  updated_at = NOW()
-FROM ecommerce_sellers es
-WHERE es.cliente_id = c.id
-  AND es.tiene_cuenta_corriente = true
-  AND (c.tiene_cuenta_corriente = false OR c.limite_credito < es.limite_credito);
+### Bug 2: DocNro incorrecto para Consumidor Final
+El código actual en `solicitarCAE()`:
+```typescript
+const docNro = receptor.cuit
+  ? receptor.cuit.replace(/[-]/g, '')
+  : (receptor.dni || '0');
 ```
+Esto envía el DNI `35498740` → que AFIP transforma a `20354987407` (prefijado) → pero para Factura B menor a $10M con DocTipo=99 (Consumidor Final), AFIP exige que DocNro sea `0`.
 
-**Paso B — Sincronizar saldo de `clientes` con el saldo real de `ecommerce_sellers`:**
-Para los sellers que ya tienen movimientos en `seller_cuenta_corriente`, el saldo correcto está en `ecommerce_sellers`. El saldo en `clientes` debe reflejar lo mismo para que los envíos manuales sean consistentes.
+**Error de AFIP:** `Para facturas B (CbteDesde igual a CbteHasta) menor a $10000000, si DocTipo = 99 DocNro debe ser igual a 0`
 
-Sin embargo, dado que los envíos manuales registran sus movimientos en `cliente_cuenta_corriente` y los de ecommerce en `seller_cuenta_corriente`, la solución más limpia es **mantener los dos sistemas separados** pero **hacer que el nuevo envío cargue en `seller_cuenta_corriente` cuando el remitente es un seller**.
+**Solución:** Cuando `docTipo === 99` (Consumidor Final), siempre enviar `DocNro = 0` sin importar qué DNI haya ingresado el usuario. El DNI se guarda igualmente en la tabla `facturas` para referencia interna.
 
-### Capa 2: Cambio en el formulario de Nuevo Envío
+## Cambios en `supabase/functions/arca-factura/index.ts`
 
-En `src/pages/NewShipment.tsx`, cuando se selecciona un remitente que es seller (tiene `cliente_id` vinculado a un `ecommerce_seller`), el cargo de cuenta corriente debe:
-- Registrar en `seller_cuenta_corriente` (en lugar de `cliente_cuenta_corriente`)
-- Actualizar `ecommerce_sellers.saldo_cuenta_corriente` (en lugar de `clientes.saldo_cuenta_corriente`)
-
-Para esto se necesita:
-1. Al cargar los clientes con cta cte, también identificar si ese cliente es un seller (join con `ecommerce_sellers` por `cliente_id`)
-2. Si es seller, usar el saldo de `ecommerce_sellers` para mostrarlo en el selector
-3. Al crear el envío con tipo `cuenta_corriente` y el remitente es seller → insertar en `seller_cuenta_corriente` y actualizar `ecommerce_sellers.saldo_cuenta_corriente`
-
-### Capa 3: Corrección retroactiva de datos
-
-Se necesita una migración SQL que sincronice los saldos actuales correctamente:
-
-1. Para los sellers con `cliente_id` vinculado y movimientos mezclados:
-   - El saldo definitivo debe ser el de `ecommerce_sellers` (que es el que refleja liquidaciones)
-   - Actualizar `clientes.saldo_cuenta_corriente` para que coincida
-
-2. Habilitar `tiene_cuenta_corriente = true` en `clientes` para todos los sellers que lo tienen activo
-
-## Archivos a modificar
-
-| Archivo | Cambio |
-|---|---|
-| Migración SQL | Habilitar cta cte en clientes vinculados a sellers + sincronizar límites de crédito |
-| `src/pages/NewShipment.tsx` | Al detectar que el remitente-cliente es un seller, cargar en `seller_cuenta_corriente` |
-| `src/pages/ClientSettlements.tsx` | Mostrar sellers (detectados vía `ecommerce_sellers`) en el historial de movimientos, unificando `seller_cuenta_corriente` + `cliente_cuenta_corriente` |
-
-## Detalle técnico del cambio en NewShipment
-
-En la query de clientes con cuenta corriente (usada para el selector y el autodetect del remitente), agregar un join con `ecommerce_sellers`:
+### Cambio 1: Agregar función `FECompUltimoAutorizado`
+Nueva función que consulta a AFIP el último número emitido por tipo de comprobante y punto de venta:
 
 ```typescript
-const { data: clientes } = await supabase
-  .from('clientes')
-  .select(`
-    *,
-    ecommerce_seller:ecommerce_sellers!ecommerce_sellers_cliente_id_fkey(
-      id, saldo_cuenta_corriente, limite_credito, tiene_cuenta_corriente
-    )
-  `)
-  .eq('tiene_cuenta_corriente', true)
-  .eq('tenant_id', tenantId);
+async function getUltimoComprobanteAFIP(
+  token: string, sign: string, cuit: string,
+  puntoVenta: number, tipoComprobante: 'A' | 'B' | 'C',
+  wsfeUrl: string
+): Promise<number> {
+  const tipoCode = INVOICE_CODES[tipoComprobante].factura;
+  // SOAP call to FECompUltimoAutorizado
+  // Returns CbteNro – the last authorized invoice number
+  // Returns 0 if no invoices have been issued yet
+}
 ```
 
-Cuando el remitente seleccionado tiene un `ecommerce_seller` vinculado:
-- Mostrar el saldo de `ecommerce_sellers.saldo_cuenta_corriente` (no `clientes.saldo_cuenta_corriente`)
-- Al crear el envío, insertar en `seller_cuenta_corriente` y actualizar `ecommerce_sellers`
+### Cambio 2: Usar `FECompUltimoAutorizado` en el flujo principal
+En la función `getNextInvoiceNumber`, en lugar de solo leer `arca_config`, se llama primero a AFIP y se toma el mayor entre el valor local y el de AFIP:
+
+```typescript
+async function getNextInvoiceNumber(...): Promise<number> {
+  const localNumber = (data[field] || 0);
+  const afipNumber = await getUltimoComprobanteAFIP(token, sign, cuit, puntoVenta, tipo, wsfeUrl);
+  return Math.max(localNumber, afipNumber) + 1;
+}
+```
+
+Esto requiere pasar token/sign/cuit/wsfeUrl al helper, por lo que se refactoriza la firma de `getNextInvoiceNumber` para recibirlos, o se hace la consulta directamente en el flujo principal antes de llamar a `solicitarCAE`.
+
+### Cambio 3: DocNro = 0 para Consumidor Final (DocTipo=99)
+```typescript
+const docTipo = ivaCondition.docTipo;
+// RG AFIP: cuando DocTipo = 99 (Consumidor Final), DocNro DEBE ser 0
+// para comprobantes B < $10M
+const docNro = docTipo === 99
+  ? '0'
+  : (receptor.cuit?.replace(/[-]/g, '') || receptor.dni || '0');
+```
+
+### Cambio 4: También guardar el DNI en `receptor_cuit` en la tabla `facturas`
+El campo `receptor_cuit` ya almacena el DNI para referencia interna aunque AFIP reciba `0`. Esto ya funciona bien actualmente dado que `receptor_cuit` se setea desde `receptor.cuit || receptor.dni` antes de la llamada a AFIP.
+
+## Flujo del `serve()` después del cambio
+
+```
+1. getWSAAToken() → token, sign
+2. getUltimoComprobanteAFIP(token, sign, cuit, puntoVenta, tipo, wsfeUrl)
+   → afipLastNumber (ej: 6)
+3. localNumber = arca_config.ultimo_numero_b (ej: 4)
+4. numeroComprobante = max(localNumber, afipLastNumber) + 1 = 7
+5. updateInvoiceNumber(7) en arca_config
+6. solicitarCAE(..., numeroComprobante=7, ...) con DocNro=0 si DocTipo=99
+```
+
+## Archivo a modificar
+
+| Archivo | Cambios |
+|---|---|
+| `supabase/functions/arca-factura/index.ts` | 1) Nueva función `getUltimoComprobanteAFIP` SOAP call; 2) Consultar AFIP antes de emitir para obtener número correcto; 3) Corregir DocNro=0 para Consumidor Final |
 
 ## Resultado esperado
 
-- Un seller que llega a la ventanilla a despachar un envío manual → el operador lo busca, aparece con su saldo correcto de cuenta corriente (el unificado del módulo ecommerce)
-- El cargo queda registrado en `seller_cuenta_corriente`, visible en el módulo de liquidaciones
-- Al generar la próxima liquidación, ese envío manual ya queda incluido (porque el motor de liquidaciones ya une ambos sistemas por `seller_id` y `remitente_id`)
-- Los saldos en la pantalla de "Saldos por Seller" son consistentes con lo que ve el operador en el mostrador
-
-## Plan de ejecución
-
-1. Migración SQL: habilitar cta cte en clientes vinculados a sellers
-2. Modificar `NewShipment.tsx`: detectar si el cliente-remitente es seller y cargar en `seller_cuenta_corriente`
-3. Modificar `ClientSettlements.tsx`: incluir sellers en el listado y unificar vista de movimientos
+- La factura se emite correctamente usando el número que AFIP espera
+- Consumidor Final ya no genera error por DocNro
+- El sistema siempre se sincroniza con AFIP antes de cada emisión, incluso si se emitieron comprobantes por fuera del sistema
