@@ -536,8 +536,11 @@ async function solicitarCAE(
   const today = new Date();
   const fechaComprobante = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
 
-  // IVA detail for Factura A (21%)
-  const ivaAlicuota = tipoComprobante === 'A' ? `
+  // AFIP requiere el objeto IVA cuando ImpNeto > 0, independientemente del tipo de comprobante (A, B o C)
+  // Para tipo A: alícuota 21% (Id=5) con ImpNeto como base
+  // Para tipo B y C a Consumidor Final: también se incluye con alícuota 21% (Id=5)
+  // Referencia: Error AFIP 10070 "Si ImpNeto es mayor a 0 el objeto IVA es obligatorio"
+  const ivaAlicuota = importeNeto > 0 ? `
               <AlicIva>
                 <Id>5</Id>
                 <BaseImp>${importeNeto.toFixed(2)}</BaseImp>
@@ -576,7 +579,7 @@ async function solicitarCAE(
             <ar:ImpIVA>${importeIva.toFixed(2)}</ar:ImpIVA>
             <ar:ImpTrib>0.00</ar:ImpTrib>
             <ar:MonId>PES</ar:MonId>
-            <ar:MonCotiz>1</ar:MonCotiz>${tipoComprobante === 'A' ? `
+            <ar:MonCotiz>1</ar:MonCotiz>${importeNeto > 0 ? `
             <ar:Iva>${ivaAlicuota}
             </ar:Iva>` : ''}
           </ar:FECAEDetRequest>
