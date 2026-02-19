@@ -540,7 +540,8 @@ async function solicitarCAE(
   // Para tipo A: alícuota 21% (Id=5) con ImpNeto como base
   // Para tipo B y C a Consumidor Final: también se incluye con alícuota 21% (Id=5)
   // Referencia: Error AFIP 10070 "Si ImpNeto es mayor a 0 el objeto IVA es obligatorio"
-  const ivaAlicuota = importeNeto > 0 ? `
+  // CORRECCIÓN Bug 2: Solo incluir AlicIva si importeIva > 0 (no importeNeto)
+  const ivaAlicuota = importeIva > 0.005 ? `
               <AlicIva>
                 <Id>5</Id>
                 <BaseImp>${importeNeto.toFixed(2)}</BaseImp>
@@ -579,7 +580,7 @@ async function solicitarCAE(
             <ar:ImpIVA>${importeIva.toFixed(2)}</ar:ImpIVA>
             <ar:ImpTrib>0.00</ar:ImpTrib>
             <ar:MonId>PES</ar:MonId>
-            <ar:MonCotiz>1</ar:MonCotiz>${importeNeto > 0 ? `
+            <ar:MonCotiz>1</ar:MonCotiz>${importeIva > 0.005 ? `
             <ar:Iva>${ivaAlicuota}
             </ar:Iva>` : ''}
           </ar:FECAEDetRequest>
@@ -895,6 +896,8 @@ async function createFacturaRecord(
     importe_neto: importeNeto,
     importe_iva: importeIva,
     importe_total: importeTotal,
+    // CORRECCIÓN Bug 4: Guardar fecha_emision para que AFIP pueda validar el comprobante
+    fecha_emision: new Date().toISOString().split('T')[0],
     estado: 'pendiente',
     created_by: userId,
   };
@@ -1053,17 +1056,21 @@ serve(async (req) => {
       total = importe_total ?? envio.precio_total;
     }
 
-    let importeNeto: number;
-    let importeIva: number;
+    // ── Desglose fiscal ──────────────────────────────────────────────
+    // CORRECCIÓN Bug 1: Calcular importeNeto e importeIva con precisión garantizada.
+    // total = precio con IVA incluido (21%).
+    // Para Factura A: receptor es RI, se factura con IVA discriminado.
+    // Para Factura B/C: consumidores finales o monotributistas, IVA incluido.
+    // AFIP exige siempre el desglose aunque el receptor sea CF.
+    const importeTotal = Math.round(total * 100) / 100;
+    const importeNeto  = Math.round((importeTotal / 1.21) * 100) / 100;
+    const importeIva   = Math.round((importeTotal - importeNeto) * 100) / 100;
 
-    // Para todos los tipos (A, B, C) AFIP requiere el desglose ImpNeto + ImpIVA.
-    // El precio_total siempre incluye IVA (21%).
-    // - ImpNeto = base imponible sin IVA (total / 1.21)
-    // - ImpIVA  = monto de IVA (total - ImpNeto)
-    // - ImpTotal = total (precio final con IVA)
-    // Nota: para Factura B/C el precio YA incluye el IVA, por lo que se desglosa igual.
-    importeNeto = Math.round((total / 1.21) * 100) / 100;
-    importeIva  = Math.round((total - importeNeto) * 100) / 100;
+    console.log(`[ARCA] Desglose fiscal: total=${importeTotal}, neto=${importeNeto}, iva=${importeIva}`);
+    // Validar coherencia (AFIP rechaza si no cuadra)
+    if (Math.abs(importeNeto + importeIva - importeTotal) > 0.02) {
+      console.error('[ARCA] WARN: Discrepancia en desglose IVA', { importeTotal, importeNeto, importeIva });
+    }
 
     // Use exactly the requested environment – no silent fallback
     const environment = requestedEnv;
@@ -1088,7 +1095,7 @@ serve(async (req) => {
       // No config in either environment → save as pending
       const factura = await createFacturaRecord(
         supabase, envio_id || null, liquidacion_seller_id || null, tenantId,
-        tipo_comprobante, 0, 0, receptor, importeNeto, importeIva, total, userId
+        tipo_comprobante, 0, 0, receptor, importeNeto, importeIva, importeTotal, userId
       );
 
       if (envio_id) {
@@ -1123,12 +1130,12 @@ serve(async (req) => {
     const factura = await createFacturaRecord(
       supabase, envio_id || null, liquidacion_seller_id || null, tenantId,
       tipo_comprobante, puntoVenta, numeroComprobante, receptor,
-      importeNeto, importeIva, total, userId
+      importeNeto, importeIva, importeTotal, userId
     );
 
     const arcaResult = await emitirFacturaARCA(
       supabase, tenantId, arcaConfig, environment, tipo_comprobante, numeroComprobante,
-      receptor, importeNeto, importeIva, total,
+      receptor, importeNeto, importeIva, importeTotal,
       wsaaToken, wsaaSign  // reusar el token ya obtenido, evita doble auth
     );
 
