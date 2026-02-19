@@ -1,128 +1,137 @@
 
-# Corrección: Logo distorsionado y líneas solapadas en PDF de liquidaciones
+# Integración de pagos de liquidaciones sellers con cuenta corriente y caja
 
-## Diagnóstico de los problemas
+## Diagnóstico del problema
 
-### Problema 1: Logo distorsionado
-En `drawHeader()` (línea 126), el logo se inserta con dimensiones fijas `22 x 22`:
+El `payMutation` en `src/pages/ecommerce/Settlements.tsx` actualmente **solo actualiza el estado** de la liquidación:
+
 ```typescript
-doc.addImage(logoBase64, 'PNG', 10, 3, 22, 22);
+// Lo que hace hoy (incompleto):
+await supabase
+  .from('liquidaciones_seller')
+  .update({ estado: 'pagada', metodo_pago: ..., referencia_pago: ..., fecha_pago: ... })
+  .eq('id', payingLiquidacion.id);
+// ← Nada más. El saldo del seller no cambia. La caja no se afecta.
 ```
-Si el logo del tenant es rectangular (por ejemplo 200x80 píxeles), se fuerza a un cuadrado de 22x22 aplastándolo. Se necesita calcular las dimensiones proporcionalmente para que siempre quepan dentro de un bounding box de `22mm` de alto manteniendo el aspect ratio.
 
-### Problema 2: Texto solapado con el header
-El header bar tiene `28mm` de alto. Dentro del header:
-- Nombre empresa: `y = 12`
-- Tipo de liquidación: `y = 20`
-- Período: `y = 20`
+### Comparación con el circuito de choferes y sucursales
 
-El contenido del cuerpo arranca en `y = 35` (solo 7mm después del header). Con font size 9, el texto del cuerpo puede quedar casi pegado al borde inferior del header, y en páginas adicionales el problema se repite porque se llama `drawHeader()` pero luego `y = 35` para el contenido.
+Las liquidaciones de choferes (`src/pages/DriverSettlements.tsx`) y sucursales (`src/pages/BranchSettlements.tsx`) ya tienen este circuito completo al marcar como pagado:
+1. Actualizar estado de la liquidación
+2. Si método = efectivo → insertar egreso en `movimientos_caja` de la sesión activa
 
-Adicionalmente, los `doc.rect()` del fondo alternado de filas y del cuadro financiero a veces se solapan con el borde del header en la primera página.
-
-### Problema 3: Columnas desbordadas en seller
-Para tipo `seller`, `colMonto = 172` y el pageWidth es `210mm`. Con `pageWidth - 10 = 200`, el texto de montos como `$ 51.229,95` a partir de `x = 172` con `align: 'left'` puede salirse de la página o solaparse con el borde.
+Para sellers falta además el paso de cuenta corriente.
 
 ## Solución
 
-### Fix 1: Logo con aspect ratio correcto
+### Cambio en `payMutation` (src/pages/ecommerce/Settlements.tsx)
 
-Calcular el ancho del logo proporcionalmente a su alto (máximo 22mm de alto, máximo 40mm de ancho):
+Al confirmar el pago de una liquidación de seller, se ejecutan **tres acciones en secuencia**:
 
+**Acción 1: Actualizar estado de la liquidación** (ya existe)
 ```typescript
-const drawHeader = () => {
-  // ...
-  if (logoBase64) {
-    try {
-      // Crear imagen temporal para obtener dimensiones
-      const imgProps = doc.getImageProperties(logoBase64);
-      const maxH = 22;
-      const maxW = 40;
-      const ratio = imgProps.width / imgProps.height;
-      let logoW = maxH * ratio;
-      let logoH = maxH;
-      if (logoW > maxW) {
-        logoW = maxW;
-        logoH = maxW / ratio;
-      }
-      // Centrar verticalmente en el header
-      const logoY = (headerH - logoH) / 2;
-      doc.addImage(logoBase64, 'PNG', 10, logoY, logoW, logoH);
-      logoEndX = 10 + logoW + 4; // margen después del logo
-    } catch { /* sin logo */ }
+await supabase.from('liquidaciones_seller')
+  .update({ estado: 'pagada', metodo_pago, referencia_pago, fecha_pago })
+  .eq('id', payingLiquidacion.id);
+```
+
+**Acción 2: Registrar movimiento de pago en cuenta corriente del seller**
+
+Se inserta un registro en `seller_cuenta_corriente` de tipo `pago`:
+```typescript
+// Obtener saldo actual del seller
+const { data: sellerData } = await supabase
+  .from('ecommerce_sellers')
+  .select('saldo_cuenta_corriente')
+  .eq('id', payingLiquidacion.seller_id)
+  .single();
+
+const saldoAnterior = sellerData.saldo_cuenta_corriente || 0;
+const montoPago = Math.abs(payingLiquidacion.saldo_periodo || 0);
+const saldoNuevo = saldoAnterior - montoPago;
+
+await supabase.from('seller_cuenta_corriente').insert({
+  seller_id: payingLiquidacion.seller_id,
+  tipo: 'pago',
+  monto: -montoPago,          // negativo = reduce la deuda
+  saldo_anterior: saldoAnterior,
+  saldo_nuevo: saldoNuevo,
+  descripcion: `Pago liquidación período ${periodoFormateado}`,
+  referencia: payReferencia || null,
+  metodo_pago: payMetodo,
+  liquidacion_id: payingLiquidacion.id,
+  created_by: user.id,
+});
+
+// Actualizar saldo en ecommerce_sellers
+await supabase.from('ecommerce_sellers')
+  .update({ saldo_cuenta_corriente: saldoNuevo })
+  .eq('id', payingLiquidacion.seller_id);
+```
+
+**Acción 3: Si método = efectivo → registrar egreso en caja activa**
+
+Igual al circuito de choferes/sucursales:
+```typescript
+if (payMetodo === 'efectivo') {
+  // Buscar sesión de caja activa del usuario
+  const { data: sesion } = await supabase
+    .from('sesiones_caja')
+    .select('id')
+    .eq('estado', 'abierta')
+    .maybeSingle();
+
+  if (sesion) {
+    await supabase.from('movimientos_caja').insert({
+      sesion_caja_id: sesion.id,
+      tipo: 'egreso',
+      concepto: 'liquidacion_seller',
+      monto: montoPago,
+      descripcion: `Pago liquidación seller: ${payingLiquidacion.seller?.nombre}`,
+      referencia: payReferencia || payingLiquidacion.id,
+      created_by: user.id,
+    });
   }
-};
+}
 ```
 
-### Fix 2: Espaciado correcto del header y el cuerpo
+### Invalidaciones de caché al completar el pago
 
-Ajustar el header a `32mm` de alto para que haya más espacio, y arrancar el contenido del cuerpo en `y = 38` (6mm después del header). Alinear verticalmente el texto del header:
-- Nombre empresa: `headerH / 2 - 4` (tercio superior)
-- Subtítulo y período: `headerH / 2 + 4` (tercio inferior)
+Tras el pago exitoso, se invalidan adicionalmente:
+- `['seller-liquidaciones']` — ya existía
+- `['ecommerce-sellers-cta-cte']` — para refrescar saldos en la pestaña "Saldos por Seller"
+- `['seller-movements', payingLiquidacion.seller_id]` — para refrescar el historial de la cuenta corriente
+- `['ecommerce-sellers']` — para refrescar el saldo_cuenta_corriente en la lista
 
-### Fix 3: Columnas de la tabla rediseñadas
+## Estructura de datos a verificar
 
-Rediseñar las posiciones de columna para que todo quepan bien en `210mm` con márgenes de `10mm`:
-- Área útil: `10mm` a `200mm` = `190mm`
+Se necesita confirmar que la tabla `seller_cuenta_corriente` tiene el campo `liquidacion_id` para vincular el pago a su liquidación. Esto se verifica en el código existente del `generateMutation` que ya usa ese campo, confirmando que existe.
 
-Para seller (5 columnas: Tracking, Fecha, Destinatario, Estado, Monto):
-```
-Tracking:     x=12,  ancho≈45mm  (substring 18 chars)
-Fecha:        x=60,  ancho≈20mm
-Destinatario: x=83,  ancho≈50mm  (substring 20 chars)
-Estado:       x=136, ancho≈30mm  (substring 12 chars)
-Monto:        x=170, align=right a x=200
-```
-
-Para chofer/sucursal (4 columnas: Tracking, Fecha, Destinatario, Monto):
-```
-Tracking:     x=12,  ancho≈55mm  (substring 22 chars)
-Fecha:        x=70,  ancho≈20mm
-Destinatario: x=93,  ancho≈80mm  (substring 28 chars)
-Monto:        x=200, align=right
-```
-
-Usar `align: 'right'` para los montos posicionados en `pageWidth - 12` para que nunca desborden.
-
-### Fix 4: Cuadro financiero sin solapar el borde del header
-
-El cuadro de resumen financiero no debe pintarse hasta que `y` esté bien posicionado después de la sección de información. Agregar una validación:
-
-```typescript
-// Asegurar que el cuadro no toque el header
-if (y < 40) y = 40;
-doc.rect(10, y, pageWidth - 20, boxH, 'F');
-```
+También se verifica si `movimientos_caja` tiene un campo `concepto` con valor `liquidacion_seller`. Si no existe como enum/valor permitido, se usa `egreso_operativo` como concepto genérico con la descripción detallando el tipo.
 
 ## Archivo a modificar
 
-| Archivo | Cambios |
+| Archivo | Cambio |
 |---|---|
-| `src/lib/generateSettlementPDF.ts` | Fix aspect ratio del logo, ajuste de coordenadas del header, rediseño de columnas de tabla, corrección de márgenes |
+| `src/pages/ecommerce/Settlements.tsx` | `payMutation`: agregar inserción en `seller_cuenta_corriente` + egreso en caja si método es efectivo |
 
-## Detalle técnico del fix del logo
+## Flujo completo resultante
 
-`jsPDF` expone `doc.getImageProperties(base64)` que retorna `{ width, height }` en píxeles. Con eso se puede calcular el ratio exacto sin necesidad de un elemento `<img>` adicional:
+```
+ANTES DEL CAMBIO:
+[Pagar] → estado: 'pagada' ← fin
 
-```typescript
-const imgProps = doc.getImageProperties(logoBase64);
-const ratio = imgProps.width / imgProps.height;
-const maxLogoH = 20; // mm, dentro del header de 32mm
-const maxLogoW = 42; // mm máximo
-let logoW = maxLogoH * ratio;
-let logoH = maxLogoH;
-if (logoW > maxLogoW) {
-  logoW = maxLogoW;
-  logoH = maxLogoW / ratio;
-}
-const logoX = 10;
-const logoY = (headerH - logoH) / 2; // centrado vertical
-doc.addImage(logoBase64, 'PNG', logoX, logoY, logoW, logoH);
+DESPUÉS DEL CAMBIO:
+[Pagar] → estado: 'pagada'
+        → seller_cuenta_corriente: tipo='pago', monto=-X, saldo actualizado
+        → ecommerce_sellers: saldo_cuenta_corriente actualizado
+        → (si efectivo) movimientos_caja: tipo='egreso', concepto='liquidacion_seller'
 ```
 
 ## Resultado esperado
 
-- Logo renderizado con su aspect ratio original (rectangular, cuadrado, o cualquier proporción) correctamente centrado en el header
-- Sin solapamiento entre el header de color y el texto del cuerpo
-- Columnas de la tabla bien alineadas, montos con `align: 'right'` que nunca desborden
-- Diseño limpio y profesional como se ve en la imagen de referencia, sin artefactos visuales
+- Al pagar una liquidación de seller, el saldo de la cuenta corriente del seller se actualiza automáticamente (la deuda se reduce)
+- Si el método de pago es efectivo, aparece como egreso en el cierre de la sesión de caja activa
+- La pestaña "Saldos por Seller" muestra el saldo actualizado inmediatamente
+- El historial de movimientos del seller en `SellerAccount` muestra el pago registrado
+- El comportamiento es consistente con las liquidaciones de choferes y sucursales
