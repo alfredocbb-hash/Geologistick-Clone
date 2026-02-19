@@ -549,9 +549,10 @@ async function solicitarCAE(
   };
   const condicionIvaReceptorNumero = condicionIvaReceptorCode[receptor.condicion_iva] ?? 5;
 
-  // Construir bloque IVA limpio (sin whitespace extra al inicio que confunde al parser AFIP)
+  // Construir bloque IVA con prefijo ar: en TODOS los elementos internos (AFIP parser estricto)
+  // Sin ar: en AlicIva/Id/BaseImp/Importe AFIP los descarta → error "AlicIva es obligatorio"
   const ivaBlock = importeIva > 0.005
-    ? `<ar:Iva><AlicIva><Id>5</Id><BaseImp>${importeNeto.toFixed(2)}</BaseImp><Importe>${importeIva.toFixed(2)}</Importe></AlicIva></ar:Iva>`
+    ? `<ar:Iva><ar:AlicIva><ar:Id>5</ar:Id><ar:BaseImp>${importeNeto.toFixed(2)}</ar:BaseImp><ar:Importe>${importeIva.toFixed(2)}</ar:Importe></ar:AlicIva></ar:Iva>`
     : '';
 
   console.log(`[ARCA] CondicionIvaReceptor: ${receptor.condicion_iva} → código ${condicionIvaReceptorNumero}`);
@@ -589,9 +590,7 @@ async function solicitarCAE(
             <ar:ImpIVA>${importeIva.toFixed(2)}</ar:ImpIVA>
             <ar:ImpTrib>0.00</ar:ImpTrib>
             <ar:MonId>PES</ar:MonId>
-            <ar:MonCotiz>1</ar:MonCotiz>
-            <ar:CondicionIvaReceptorId>${condicionIvaReceptorNumero}</ar:CondicionIvaReceptorId>
-            ${ivaBlock}
+            <ar:MonCotiz>1</ar:MonCotiz><ar:CondicionIvaReceptorId>${condicionIvaReceptorNumero}</ar:CondicionIvaReceptorId>${ivaBlock}
           </ar:FECAEDetRequest>
         </ar:FeDetReq>
       </ar:FeCAEReq>
