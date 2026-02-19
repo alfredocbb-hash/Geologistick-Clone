@@ -229,10 +229,18 @@ export function InvoiceDataDialog({
             </Alert>
           )}
 
-          {/* Amount */}
-          <div className="p-3 bg-muted rounded-lg">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-muted-foreground">Importe Total:</span>
+          {/* Amount breakdown */}
+          <div className="p-3 bg-muted rounded-lg space-y-1">
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-muted-foreground">Neto (sin IVA 21%):</span>
+              <span>{formatCurrency(Math.round((importeTotal / 1.21) * 100) / 100)}</span>
+            </div>
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-muted-foreground">IVA 21%:</span>
+              <span>{formatCurrency(Math.round((importeTotal - Math.round((importeTotal / 1.21) * 100) / 100) * 100) / 100)}</span>
+            </div>
+            <div className="flex justify-between items-center border-t pt-1 mt-1">
+              <span className="text-sm font-medium">Total:</span>
               <span className="text-lg font-bold">{formatCurrency(importeTotal)}</span>
             </div>
           </div>
