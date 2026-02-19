@@ -1,108 +1,125 @@
 
-# Corrección de tres bugs en "Nuevo Envío" con cuenta corriente
+# Diagnóstico y corrección definitiva de la facturación ARCA
 
-## Diagnóstico
+## Situación actual (evidencia de la base de datos)
 
-### Bug 1 — Destinatario = Remitente (KINGDOM VINTAGE)
-**Causa en el código (línea 939):**
-```typescript
-let destinatarioId = formData.cliente_cta_cte_id || null;
+Todos los intentos de facturación muestran exactamente el mismo patrón de datos erróneo:
+
 ```
-Esta línea asigna el cliente de cuenta corriente como `destinatario_id` del envío para **todos los tipos de servicio**, no solo `retiro_almacenaje`. El resultado es que en la tabla `envios`, el `destinatario_id` queda con el ID del remitente (quien paga con cta cte), causando que la columna "Destinatario" muestre el mismo nombre que "Remitente".
-
-**Corrección:** Solo usar `cliente_cta_cte_id` como `destinatarioId` cuando `esRetiroAlmacenaje === true`.
-
----
-
-### Bug 2 — RLS violation en `cliente_cuenta_corriente`
-**Causa:** La política de INSERT en esa tabla requiere uno de estos roles:
-- `admin`
-- `supervisor`  
-- `atencion_cliente`
-- `operador`
-
-El usuario de la sucursal Berazategui probablemente tiene asignado un rol diferente (o el rol de `chofer`). La inserción falla con "new row violates row-level security policy".
-
-**Corrección:** Agregar una migración SQL para ampliar la política de INSERT para incluir también el rol `chofer` en `cliente_cuenta_corriente`, o bien — más correcto — verificar qué roles deberían poder crear movimientos de cuenta corriente y ampliar la política. La opción más segura es agregar el rol que tiene el operador de ventanilla de Berazategui. Revisando la lógica del sistema: cualquier usuario de sucursal que pueda crear envíos también debería poder registrar el cargo en cuenta corriente. Se ampliará la política para incluir también `has_role(auth.uid(), 'chofer')` y `has_role(auth.uid(), 'administrador')`.
-
----
-
-### Bug 3 — El envío se creó 4 veces (sin rollback)
-**Causa:** El flujo `createShipmentMutation` inserta el envío en el paso 4, y luego falla en el paso 6 (cuenta corriente RLS). El error del paso 6 hace que `onError` muestre el toast, **pero el envío ya quedó insertado**. El usuario vio el error y presionó 4 veces el botón creyendo que había fallado.
-
-**Corrección:** Dos cambios complementarios:
-1. **Deshabilitar el botón de submit mientras `isPending`** — ya debería estarlo, pero verificar que el toast de error no habilite el botón nuevamente.
-2. **No relanzar el error de cuenta corriente como `throw`** — en cambio, mostrar un toast de advertencia diferenciado y redirigir igual al PDF de etiqueta (el envío fue creado correctamente). Alternativamente, hacer que el error en el paso de cta cte no bloquee el flujo pero sí lo avise.
-
-La solución más correcta es que **si el envío se crea exitosamente pero falla el movimiento de cuenta corriente, se complete la acción (redirigir a etiqueta) y se muestre una advertencia separada** para que el operador pueda registrar el movimiento manualmente. Esto es mejor que dejar el envío huérfano sin cuenta corriente Y que el usuario cree 4 duplicados.
-
----
-
-## Cambios a realizar
-
-### 1. Migración SQL — ampliar política INSERT de `cliente_cuenta_corriente`
-
-Verificar los roles actuales del usuario de Berazategui y agregar los roles faltantes. La política actual solo permite `admin`, `supervisor`, `atencion_cliente`, `operador`. Se ampliará para también incluir `chofer` (choferes que operan ventanilla) y se usará la función `current_user_is_admin()` de forma más abarcativa.
-
-La solución correcta es que cualquier usuario autenticado del mismo tenant pueda insertar movimientos de cuenta corriente para clientes de su tenant, ya que la restricción real debe basarse en el `tenant_id` del cliente, no en el rol:
-
-```sql
--- Reemplazar política INSERT restrictiva por una basada en tenant
-DROP POLICY IF EXISTS "Crear movimiento cuenta corriente" ON public.cliente_cuenta_corriente;
-
-CREATE POLICY "Crear movimiento cuenta corriente" ON public.cliente_cuenta_corriente
-FOR INSERT WITH CHECK (
-  -- El cliente debe pertenecer al mismo tenant que el usuario autenticado
-  EXISTS (
-    SELECT 1 FROM public.clientes c
-    WHERE c.id = cliente_cuenta_corriente.cliente_id
-      AND c.tenant_id = public.current_user_tenant()
-  )
-);
+importe_total = 7221.98
+importe_neto  = 7221.98   ← Igual al total (INCORRECTO)
+importe_iva   = 0.00      ← IVA cero (INCORRECTO)
 ```
 
-### 2. `src/pages/NewShipment.tsx` — Fix destinatarioId
+Esto provoca dos errores consecutivos de AFIP:
+1. `"Si ImpNeto es mayor a 0 el objeto IVA es obligatorio"` — porque se envía neto > 0 sin bloque IVA
+2. `"Si ImpNeto es mayor a 0, el objeto AlicIva es obligatorio y no debe ser nulo"` — porque el bloque IVA se incluye pero con importe = 0
 
-**Cambio en línea 939:**
+## Causa raíz: tres bugs encadenados
+
+### Bug 1 — El cálculo de importeNeto/importeIva produce IVA = 0
+
+El código dice:
 ```typescript
-// ANTES (incorrecto):
-let destinatarioId = formData.cliente_cta_cte_id || null;
-
-// DESPUÉS (correcto):
-// cliente_cta_cte_id es quien PAGA, no el destinatario físico
-// Solo se usa como destinatario en retiro_almacenaje
-let destinatarioId: string | null = null;
+importeNeto = Math.round((total / 1.21) * 100) / 100;  // 7221.98 / 1.21 = 5969.40
+importeIva  = Math.round((total - importeNeto) * 100) / 100;  // 7221.98 - 5969.40 = 1252.58
 ```
 
-La lógica de `esRetiroAlmacenaje` ya está contemplada más abajo (línea 953), por lo que solo se necesita quitar la inicialización incorrecta.
+Debería producir neto=5969.40 e iva=1252.58, pero la DB muestra iva=0.00 y neto=7221.98. Esto indica que **el edge function desplegado ejecuta una versión anterior** donde `importeNeto = total` e `importeIva = 0`, que era el comportamiento antes de las últimas correcciones. El deploy más reciente no se aplicó correctamente o hay un error de caché.
 
-### 3. `src/pages/NewShipment.tsx` — Fix manejo de error en cuenta corriente
+### Bug 2 — Condición del bloque `<ar:Iva>` en el SOAP XML
 
-Separar el manejo del error de cuenta corriente para que no bloquee el flujo completo:
+El XML usa:
+```typescript
+${importeNeto > 0 ? `<ar:Iva>${ivaAlicuota}</ar:Iva>` : ''}
+```
+
+Pero la condición correcta debería ser `importeIva > 0` (no `importeNeto > 0`). Si `importeIva = 0`, se incluye un bloque `<ar:Iva>` con `<Importe>0.00</Importe>`, lo que AFIP rechaza con el segundo error.
+
+### Bug 3 — ImpNeto e ImpIVA matemáticamente inconsistentes para Sandbox
+
+En entorno Sandbox, AFIP valida matemáticamente que `ImpNeto + ImpIVA = ImpTotal`. Si se envía neto=7221.98, iva=0, total=7221.98, la suma cuadra pero AFIP exige que si hay IVA declarado el bloque AlicIva sea correcto.
+
+Para Factura B (emisor responsable inscripto + consumidor final), AFIP acepta el bloque IVA con la alícuota correspondiente. La solución es:
+- `ImpTotal = total` (precio con IVA incluido)  
+- `ImpNeto = total / 1.21` (base imponible)
+- `ImpIVA = ImpTotal - ImpNeto` (IVA)
+- Enviar `<AlicIva><Id>5</Id><BaseImp>ImpNeto</BaseImp><Importe>ImpIVA</Importe></AlicIva>`
+- Solo omitir el bloque `<ar:Iva>` si `ImpIVA <= 0`
+
+## Correcciones a implementar en `supabase/functions/arca-factura/index.ts`
+
+### Corrección 1 — Recalcular importeNeto e importeIva con precisión garantizada
+
+Reemplazar el cálculo actual con una versión que garantice coherencia matemática entre los tres valores que AFIP recibe:
 
 ```typescript
-// En lugar de throw movError:
-if (movError) {
-  // El envío ya fue creado exitosamente
-  // Mostrar advertencia pero no fallar el flujo completo
-  console.error('Error registrando movimiento cta cte:', movError);
-  // Se completa igualmente pero con advertencia
+// Total con IVA incluido (precio final)
+const importeTotal = total;
+
+// Base imponible (sin IVA): total / 1.21
+// Usar enteros para evitar errores de punto flotante
+const importeNetoRaw = total / 1.21;
+const importeNeto = Math.round(importeNetoRaw * 100) / 100;
+
+// IVA = diferencia exacta para que ImpNeto + ImpIVA = ImpTotal exactamente
+const importeIva = Math.round((total - importeNeto) * 100) / 100;
+
+// Ajustar ImpTotal para compensar redondeo: ImpNeto + ImpIVA debe ser = ImpTotal
+// AFIP valida: ImpNeto + ImpOpEx + ImpIVA + ImpTrib + ImpTotConc = ImpTotal
+const importeTotalAjustado = Math.round((importeNeto + importeIva) * 100) / 100;
+```
+
+### Corrección 2 — Guardar `fecha_emision` en la tabla `facturas`
+
+La tabla `facturas` tiene un campo `fecha_emision` pero `createFacturaRecord` no lo está seteando. AFIP usa la fecha actual para validar el comprobante. Agregar `fecha_emision: new Date().toISOString().split('T')[0]` al insertData.
+
+### Corrección 3 — Corregir condición del bloque `<ar:Iva>` en el SOAP
+
+Cambiar la condición de `importeNeto > 0` a `importeIva > 0.005` para que el bloque de IVA solo se incluya cuando realmente hay IVA positivo a declarar:
+
+```typescript
+// ANTES (incorrecto — incluye bloque IVA aunque importe sea 0):
+${importeNeto > 0 ? `<ar:Iva>${ivaAlicuota}</ar:Iva>` : ''}
+
+// DESPUÉS (correcto — solo incluye bloque IVA si hay IVA real):
+${importeIva > 0.005 ? `<ar:Iva>${ivaAlicuota}\n            </ar:Iva>` : ''}
+```
+
+### Corrección 4 — Forzar refactoring completo del cálculo IVA en el handler principal
+
+Consolidar todos los cálculos en un único bloque documentado antes de pasarlos a las funciones, eliminando cualquier posibilidad de valores inconsistentes:
+
+```typescript
+// ── Desglose fiscal ──────────────────────────────────────────────
+// total = precio con IVA incluido (21%)
+// Para Factura A: receptor es RI, se factura con IVA discriminado
+// Para Factura B/C: consumidores finales o monotributistas, IVA incluido
+// AFIP exige siempre el desglose aunque el receptor sea CF
+const importeTotal = Math.round(total * 100) / 100;
+const importeNeto  = Math.round((importeTotal / 1.21) * 100) / 100;
+const importeIva   = Math.round((importeTotal - importeNeto) * 100) / 100;
+
+console.log(`[ARCA] Desglose fiscal: total=${importeTotal}, neto=${importeNeto}, iva=${importeIva}`);
+// Validar coherencia (AFIP rechaza si no cuadra)
+if (Math.abs(importeNeto + importeIva - importeTotal) > 0.02) {
+  console.error('[ARCA] WARN: Discrepancia en desglose IVA', { importeTotal, importeNeto, importeIva });
 }
 ```
-
-Esto se hace convirtiendo el paso 6 en un bloque try/catch que captura y loguea el error, y al final del `mutationFn` se retorna el `envio` igual. En `onSuccess` se verificará si hubo un error de cta cte y se mostrará una advertencia adicional.
 
 ## Archivos a modificar
 
 | Archivo | Cambio |
 |---|---|
-| Migración SQL | Ampliar política INSERT de `cliente_cuenta_corriente` basada en tenant |
-| `src/pages/NewShipment.tsx` línea 939 | No asignar `cliente_cta_cte_id` como `destinatarioId` incondicionalmente |
-| `src/pages/NewShipment.tsx` paso 6 | Convertir errores de cuenta corriente en advertencias no bloqueantes |
+| `supabase/functions/arca-factura/index.ts` | Corregir cálculo IVA (bug 1), condición del bloque XML (bug 2), agregar fecha_emision al insert (bug 3), y forzar redeploy |
 
 ## Resultado esperado
 
-- El destinatario del envío muestra el dato correcto del formulario (no el remitente)
-- Si el movimiento de cuenta corriente falla, el envío se crea igual y se muestra una advertencia (no un error que lleve al usuario a presionar 4 veces)
-- La política de RLS permite que cualquier operador del tenant registre movimientos de cuenta corriente para sus clientes
-- Los duplicados dejan de generarse
+- `importe_neto = 5969.40` (total / 1.21)
+- `importe_iva = 1252.58` (total - neto)  
+- SOAP XML incluye `<AlicIva><Id>5</Id><BaseImp>5969.40</BaseImp><Importe>1252.58</Importe></AlicIva>` correctamente
+- AFIP acepta el comprobante y devuelve CAE
+
+## Nota sobre entorno Sandbox vs. Producción
+
+El entorno Sandbox de AFIP está configurado y la autenticación WSAA funciona correctamente (el test de conexión es exitoso). Los errores son exclusivamente de validación del comprobante, no de conectividad. Una vez corregido el desglose IVA, el flujo completo debería funcionar.
