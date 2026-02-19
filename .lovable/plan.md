@@ -1,125 +1,83 @@
 
-# Diagnóstico y corrección definitiva de la facturación ARCA
+## Diagnóstico definitivo del error ARCA
 
-## Situación actual (evidencia de la base de datos)
+### Evidencia de los logs en tiempo real
 
-Todos los intentos de facturación muestran exactamente el mismo patrón de datos erróneo:
+Los logs de la función revelan que el XML calculado **sí es correcto** en cuanto a montos:
+- `total=7221.98, neto=5968.58, iva=1253.40` ✓ (cálculo correcto)
 
+Sin embargo AFIP rechaza por **dos razones distintas** según el ambiente:
+
+**Producción** (WSFEv1 v6.1): código 10070
 ```
-importe_total = 7221.98
-importe_neto  = 7221.98   ← Igual al total (INCORRECTO)
-importe_iva   = 0.00      ← IVA cero (INCORRECTO)
+"Si ImpNeto es mayor a 0, el objeto AlicIva es obligatorio y no debe ser nulo."
 ```
+→ El bloque `<ar:Iva>` llega pero los elementos internos `<AlicIva>`, `<Id>`, `<BaseImp>`, `<Importe>` **no tienen el prefijo de namespace `ar:`**, entonces el parser SOAP de AFIP los descarta y el bloque queda vacío.
 
-Esto provoca dos errores consecutivos de AFIP:
-1. `"Si ImpNeto es mayor a 0 el objeto IVA es obligatorio"` — porque se envía neto > 0 sin bloque IVA
-2. `"Si ImpNeto es mayor a 0, el objeto AlicIva es obligatorio y no debe ser nulo"` — porque el bloque IVA se incluye pero con importe = 0
-
-## Causa raíz: tres bugs encadenados
-
-### Bug 1 — El cálculo de importeNeto/importeIva produce IVA = 0
-
-El código dice:
-```typescript
-importeNeto = Math.round((total / 1.21) * 100) / 100;  // 7221.98 / 1.21 = 5969.40
-importeIva  = Math.round((total - importeNeto) * 100) / 100;  // 7221.98 - 5969.40 = 1252.58
+**Sandbox** (WSFEv1 v7.0): código 10246
 ```
+"Campo Condicion Frente al IVA del receptor es obligatorio conforme a RG 5616."
+```
+→ El tag `<ar:CondicionIvaReceptorId>` está en el XML pero la interpolación con espacios de indentación hace que se genere mal en algunos parsers. Además, en sandbox v7 este campo es **obligatorio** y si no se parsea correctamente se rechaza.
 
-Debería producir neto=5969.40 e iva=1252.58, pero la DB muestra iva=0.00 y neto=7221.98. Esto indica que **el edge function desplegado ejecuta una versión anterior** donde `importeNeto = total` e `importeIva = 0`, que era el comportamiento antes de las últimas correcciones. El deploy más reciente no se aplicó correctamente o hay un error de caché.
+### Causa raíz técnica
 
-### Bug 2 — Condición del bloque `<ar:Iva>` en el SOAP XML
-
-El XML usa:
-```typescript
-${importeNeto > 0 ? `<ar:Iva>${ivaAlicuota}</ar:Iva>` : ''}
+El bloque IVA actualmente generado es:
+```xml
+<ar:Iva><AlicIva><Id>5</Id><BaseImp>5968.58</BaseImp><Importe>1253.40</Importe></AlicIva></ar:Iva>
 ```
 
-Pero la condición correcta debería ser `importeIva > 0` (no `importeNeto > 0`). Si `importeIva = 0`, se incluye un bloque `<ar:Iva>` con `<Importe>0.00</Importe>`, lo que AFIP rechaza con el segundo error.
+Los elementos internos `<AlicIva>`, `<Id>`, `<BaseImp>`, `<Importe>` **NO tienen el prefijo `ar:`**. El namespace `xmlns:ar="http://ar.gov.afip.dif.FEV1/"` está declarado en el Envelope, pero el parser estricto de AFIP exige que **todos** los elementos dentro de `FECAEDetRequest` usen el prefijo `ar:`. Sin ese prefijo, AFIP trata los elementos como no pertenecientes al namespace y los ignora → `AlicIva` queda nulo.
 
-### Bug 3 — ImpNeto e ImpIVA matemáticamente inconsistentes para Sandbox
+También el `${ivaBlock}` interpolado con sangría de 12 espacios antes puede generar un nodo de texto vacío en algunos parsers SOAP.
 
-En entorno Sandbox, AFIP valida matemáticamente que `ImpNeto + ImpIVA = ImpTotal`. Si se envía neto=7221.98, iva=0, total=7221.98, la suma cuadra pero AFIP exige que si hay IVA declarado el bloque AlicIva sea correcto.
+### Corrección a aplicar en `supabase/functions/arca-factura/index.ts`
 
-Para Factura B (emisor responsable inscripto + consumidor final), AFIP acepta el bloque IVA con la alícuota correspondiente. La solución es:
-- `ImpTotal = total` (precio con IVA incluido)  
-- `ImpNeto = total / 1.21` (base imponible)
-- `ImpIVA = ImpTotal - ImpNeto` (IVA)
-- Enviar `<AlicIva><Id>5</Id><BaseImp>ImpNeto</BaseImp><Importe>ImpIVA</Importe></AlicIva>`
-- Solo omitir el bloque `<ar:Iva>` si `ImpIVA <= 0`
-
-## Correcciones a implementar en `supabase/functions/arca-factura/index.ts`
-
-### Corrección 1 — Recalcular importeNeto e importeIva con precisión garantizada
-
-Reemplazar el cálculo actual con una versión que garantice coherencia matemática entre los tres valores que AFIP recibe:
+**Cambio 1**: Todos los elementos del bloque IVA deben llevar el prefijo `ar:`:
 
 ```typescript
-// Total con IVA incluido (precio final)
-const importeTotal = total;
+// ANTES (incorrecto — sin namespace en elementos internos):
+const ivaBlock = importeIva > 0.005
+  ? `<ar:Iva><AlicIva><Id>5</Id><BaseImp>...</BaseImp><Importe>...</Importe></AlicIva></ar:Iva>`
+  : '';
 
-// Base imponible (sin IVA): total / 1.21
-// Usar enteros para evitar errores de punto flotante
-const importeNetoRaw = total / 1.21;
-const importeNeto = Math.round(importeNetoRaw * 100) / 100;
-
-// IVA = diferencia exacta para que ImpNeto + ImpIVA = ImpTotal exactamente
-const importeIva = Math.round((total - importeNeto) * 100) / 100;
-
-// Ajustar ImpTotal para compensar redondeo: ImpNeto + ImpIVA debe ser = ImpTotal
-// AFIP valida: ImpNeto + ImpOpEx + ImpIVA + ImpTrib + ImpTotConc = ImpTotal
-const importeTotalAjustado = Math.round((importeNeto + importeIva) * 100) / 100;
+// DESPUÉS (correcto — todos los elementos con prefijo ar:):
+const ivaBlock = importeIva > 0.005
+  ? `<ar:Iva><ar:AlicIva><ar:Id>5</ar:Id><ar:BaseImp>${importeNeto.toFixed(2)}</ar:BaseImp><ar:Importe>${importeIva.toFixed(2)}</ar:Importe></ar:AlicIva></ar:Iva>`
+  : '';
 ```
 
-### Corrección 2 — Guardar `fecha_emision` en la tabla `facturas`
+**Cambio 2**: Mover `<ar:CondicionIvaReceptorId>` y `${ivaBlock}` dentro del XML sin sangría variable que pueda generar nodos de texto:
 
-La tabla `facturas` tiene un campo `fecha_emision` pero `createFacturaRecord` no lo está seteando. AFIP usa la fecha actual para validar el comprobante. Agregar `fecha_emision: new Date().toISOString().split('T')[0]` al insertData.
+El XML del request debe verse así:
+```xml
+<ar:MonCotiz>1</ar:MonCotiz><ar:CondicionIvaReceptorId>5</ar:CondicionIvaReceptorId><ar:Iva><ar:AlicIva><ar:Id>5</ar:Id><ar:BaseImp>5968.58</ar:BaseImp><ar:Importe>1253.40</ar:Importe></ar:AlicIva></ar:Iva>
+```
 
-### Corrección 3 — Corregir condición del bloque `<ar:Iva>` en el SOAP
-
-Cambiar la condición de `importeNeto > 0` a `importeIva > 0.005` para que el bloque de IVA solo se incluya cuando realmente hay IVA positivo a declarar:
-
+**Cambio 3**: Agregar log del XML generado para facilitar futuros diagnósticos:
 ```typescript
-// ANTES (incorrecto — incluye bloque IVA aunque importe sea 0):
-${importeNeto > 0 ? `<ar:Iva>${ivaAlicuota}</ar:Iva>` : ''}
-
-// DESPUÉS (correcto — solo incluye bloque IVA si hay IVA real):
-${importeIva > 0.005 ? `<ar:Iva>${ivaAlicuota}\n            </ar:Iva>` : ''}
+console.log('[ARCA] SOAP body IVA section:', `CondicionIva=${condicionIvaReceptorNumero}, ivaBlock=${ivaBlock}`);
 ```
 
-### Corrección 4 — Forzar refactoring completo del cálculo IVA en el handler principal
+### Archivos a modificar
 
-Consolidar todos los cálculos en un único bloque documentado antes de pasarlos a las funciones, eliminando cualquier posibilidad de valores inconsistentes:
+| Archivo | Líneas | Cambio |
+|---|---|---|
+| `supabase/functions/arca-factura/index.ts` | 553-554 | Agregar prefijo `ar:` a todos los elementos internos del bloque IVA |
+| `supabase/functions/arca-factura/index.ts` | 589-594 | Colocar `CondicionIvaReceptorId` e `ivaBlock` en línea continua sin indentación variable |
 
-```typescript
-// ── Desglose fiscal ──────────────────────────────────────────────
-// total = precio con IVA incluido (21%)
-// Para Factura A: receptor es RI, se factura con IVA discriminado
-// Para Factura B/C: consumidores finales o monotributistas, IVA incluido
-// AFIP exige siempre el desglose aunque el receptor sea CF
-const importeTotal = Math.round(total * 100) / 100;
-const importeNeto  = Math.round((importeTotal / 1.21) * 100) / 100;
-const importeIva   = Math.round((importeTotal - importeNeto) * 100) / 100;
+### Resultado esperado
 
-console.log(`[ARCA] Desglose fiscal: total=${importeTotal}, neto=${importeNeto}, iva=${importeIva}`);
-// Validar coherencia (AFIP rechaza si no cuadra)
-if (Math.abs(importeNeto + importeIva - importeTotal) > 0.02) {
-  console.error('[ARCA] WARN: Discrepancia en desglose IVA', { importeTotal, importeNeto, importeIva });
-}
-```
+AFIP producción y sandbox aceptarán el XML porque:
+- `<ar:Iva><ar:AlicIva><ar:Id>5</ar:Id>...` → namespace correcto en todos los nodos
+- `<ar:CondicionIvaReceptorId>5</ar:CondicionIvaReceptorId>` → sin nodos de texto previos
+- IVA 21%: neto=5968.58 + iva=1253.40 = total=7221.98 ✓
 
-## Archivos a modificar
+### También: Desglose de IVA en el diálogo de emisión
 
-| Archivo | Cambio |
-|---|---|
-| `supabase/functions/arca-factura/index.ts` | Corregir cálculo IVA (bug 1), condición del bloque XML (bug 2), agregar fecha_emision al insert (bug 3), y forzar redeploy |
+El usuario menciona que "debería mostrar el desglose de IVA con 21%". Actualmente el `InvoiceDataDialog` solo muestra el importe total. Se agregará un cuadro de desglose que muestre:
+- Neto (sin IVA 21%): `total / 1.21`
+- IVA 21%: `total - neto`
+- Total: `total`
 
-## Resultado esperado
-
-- `importe_neto = 5969.40` (total / 1.21)
-- `importe_iva = 1252.58` (total - neto)  
-- SOAP XML incluye `<AlicIva><Id>5</Id><BaseImp>5969.40</BaseImp><Importe>1252.58</Importe></AlicIva>` correctamente
-- AFIP acepta el comprobante y devuelve CAE
-
-## Nota sobre entorno Sandbox vs. Producción
-
-El entorno Sandbox de AFIP está configurado y la autenticación WSAA funciona correctamente (el test de conexión es exitoso). Los errores son exclusivamente de validación del comprobante, no de conectividad. Una vez corregido el desglose IVA, el flujo completo debería funcionar.
+Esto se agrega al bloque de "Importe" en el dialog para que el operador sepa exactamente qué montos se enviarán a AFIP.
