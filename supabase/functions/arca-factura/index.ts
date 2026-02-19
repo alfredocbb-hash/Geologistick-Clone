@@ -1056,13 +1056,14 @@ serve(async (req) => {
     let importeNeto: number;
     let importeIva: number;
 
-    if (tipo_comprobante === 'A') {
-      importeNeto = total / 1.21;
-      importeIva  = total - importeNeto;
-    } else {
-      importeNeto = total;
-      importeIva  = 0;
-    }
+    // Para todos los tipos (A, B, C) AFIP requiere el desglose ImpNeto + ImpIVA.
+    // El precio_total siempre incluye IVA (21%).
+    // - ImpNeto = base imponible sin IVA (total / 1.21)
+    // - ImpIVA  = monto de IVA (total - ImpNeto)
+    // - ImpTotal = total (precio final con IVA)
+    // Nota: para Factura B/C el precio YA incluye el IVA, por lo que se desglosa igual.
+    importeNeto = Math.round((total / 1.21) * 100) / 100;
+    importeIva  = Math.round((total - importeNeto) * 100) / 100;
 
     // Use exactly the requested environment – no silent fallback
     const environment = requestedEnv;
