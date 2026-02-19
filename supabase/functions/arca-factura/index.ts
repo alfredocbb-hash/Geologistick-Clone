@@ -527,9 +527,11 @@ async function solicitarCAE(
   const ivaCondition = IVA_CONDITIONS[receptor.condicion_iva] || IVA_CONDITIONS.consumidor_final;
   
   const docTipo = ivaCondition.docTipo;
-  const docNro  = receptor.cuit
-    ? receptor.cuit.replace(/[-]/g, '')
-    : (receptor.dni || '0');
+  // RG AFIP: cuando DocTipo = 99 (Consumidor Final), DocNro DEBE ser 0
+  // para comprobantes B < $10M. El DNI se guarda igual en la tabla facturas.
+  const docNro = docTipo === 99
+    ? '0'
+    : (receptor.cuit?.replace(/[-]/g, '') || receptor.dni || '0');
 
   const today = new Date();
   const fechaComprobante = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
@@ -662,14 +664,29 @@ async function emitirFacturaARCA(
   receptor: FacturaRequest['receptor'],
   importeNeto: number,
   importeIva: number,
-  importeTotal: number
+  importeTotal: number,
+  // Token ya obtenido previamente para evitar doble autenticación
+  preloadedToken?: string,
+  preloadedSign?: string,
 ): Promise<{ success: boolean; cae?: string; caeVencimiento?: string; error?: string; sessionConflict?: boolean }> {
   const endpoints = ARCA_ENDPOINTS[environment];
 
   try {
-    console.log(`[ARCA] Obteniendo token WSAA ${environment} (con caché)...`);
-    const { token, sign } = await getWSAAToken(supabase, tenantId, environment, config);
-    console.log('[ARCA] WSAA OK – token listo, solicitando CAE...');
+    let token: string;
+    let sign: string;
+
+    if (preloadedToken && preloadedSign) {
+      // Reusar el token ya obtenido para la consulta de FECompUltimoAutorizado
+      token = preloadedToken;
+      sign = preloadedSign;
+      console.log('[ARCA] Reutilizando token WSAA ya obtenido para FECAESolicitar');
+    } else {
+      console.log(`[ARCA] Obteniendo token WSAA ${environment} (con caché)...`);
+      const result = await getWSAAToken(supabase, tenantId, environment, config);
+      token = result.token;
+      sign = result.sign;
+      console.log('[ARCA] WSAA OK – token listo, solicitando CAE...');
+    }
 
     const { cae, caeVencimiento } = await solicitarCAE(
       token,
@@ -731,8 +748,79 @@ async function getARCAConfig(supabase: any, tenantId: string, environment: 'sand
   };
 }
 
+// ─────────────────────────────────────────────
+// WSFEv1 – FECompUltimoAutorizado
+// Consulta a AFIP el último número de comprobante emitido para sincronizar el contador local.
+// ─────────────────────────────────────────────
+
+async function getUltimoComprobanteAFIP(
+  token: string,
+  sign: string,
+  cuit: string,
+  puntoVenta: number,
+  tipoComprobante: 'A' | 'B' | 'C',
+  wsfeUrl: string
+): Promise<number> {
+  const tipoCode = INVOICE_CODES[tipoComprobante].factura;
+
+  const soapBody = `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:ar="http://ar.gov.afip.dif.FEV1/">
+  <soap:Header/>
+  <soap:Body>
+    <ar:FECompUltimoAutorizado>
+      <ar:Auth>
+        <ar:Token>${token}</ar:Token>
+        <ar:Sign>${sign}</ar:Sign>
+        <ar:Cuit>${cuit.replace(/[-]/g, '')}</ar:Cuit>
+      </ar:Auth>
+      <ar:PtoVta>${puntoVenta}</ar:PtoVta>
+      <ar:CbteTipo>${tipoCode}</ar:CbteTipo>
+    </ar:FECompUltimoAutorizado>
+  </soap:Body>
+</soap:Envelope>`;
+
+  try {
+    const response = await fetch(wsfeUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/xml; charset=utf-8',
+        'SOAPAction': 'http://ar.gov.afip.dif.FEV1/FECompUltimoAutorizado',
+      },
+      body: soapBody,
+    });
+
+    const responseText = await response.text();
+    console.log('[ARCA] FECompUltimoAutorizado response:', responseText.substring(0, 1000));
+
+    // Extraer CbteNro de la respuesta
+    const cbteNroMatch = responseText.match(/<CbteNro>([\s\S]*?)<\/CbteNro>/i);
+    if (cbteNroMatch) {
+      const afipLastNumber = parseInt(cbteNroMatch[1].trim(), 10);
+      console.log(`[ARCA] AFIP último comprobante autorizado tipo ${tipoComprobante}: ${afipLastNumber}`);
+      return isNaN(afipLastNumber) ? 0 : afipLastNumber;
+    }
+
+    // Si no hay comprobantes emitidos, AFIP devuelve 0
+    return 0;
+  } catch (err) {
+    console.warn('[ARCA] Error consultando FECompUltimoAutorizado:', err);
+    // En caso de error, retornar 0 para no bloquear la emisión (se usará el local)
+    return 0;
+  }
+}
+
 // deno-lint-ignore no-explicit-any
-async function getNextInvoiceNumber(supabase: any, tenantId: string, tipo: 'A' | 'B' | 'C', _puntoVenta: number): Promise<number> {
+async function getNextInvoiceNumber(
+  supabase: any,
+  tenantId: string,
+  tipo: 'A' | 'B' | 'C',
+  puntoVenta: number,
+  token: string,
+  sign: string,
+  cuit: string,
+  wsfeUrl: string
+): Promise<number> {
   const field = `ultimo_numero_${tipo.toLowerCase()}`;
   const { data, error } = await supabase
     .from('arca_config')
@@ -740,8 +828,16 @@ async function getNextInvoiceNumber(supabase: any, tenantId: string, tipo: 'A' |
     .eq('is_active', true)
     .eq('tenant_id', tenantId)
     .single();
-  if (error || !data) return 1;
-  return (data[field] || 0) + 1;
+
+  const localNumber = (!error && data) ? (data[field] || 0) : 0;
+
+  // Consultar a AFIP el último número real para sincronizar
+  const afipLastNumber = await getUltimoComprobanteAFIP(token, sign, cuit, puntoVenta, tipo, wsfeUrl);
+
+  const nextNumber = Math.max(localNumber, afipLastNumber) + 1;
+  console.log(`[ARCA] Numeración tipo ${tipo}: local=${localNumber}, AFIP=${afipLastNumber}, próximo=${nextNumber}`);
+
+  return nextNumber;
 }
 
 // deno-lint-ignore no-explicit-any
@@ -995,8 +1091,17 @@ serve(async (req) => {
       );
     }
 
-    const puntoVenta        = parseInt(arcaConfig.punto_venta);
-    const numeroComprobante = await getNextInvoiceNumber(supabase, tenantId, tipo_comprobante, puntoVenta);
+    const puntoVenta = parseInt(arcaConfig.punto_venta);
+
+    // Obtener token WSAA primero para poder consultar FECompUltimoAutorizado
+    const endpoints = ARCA_ENDPOINTS[environment];
+    const { token: wsaaToken, sign: wsaaSign } = await getWSAAToken(supabase, tenantId, environment, arcaConfig);
+
+    // Obtener el próximo número sincronizado con AFIP
+    const numeroComprobante = await getNextInvoiceNumber(
+      supabase, tenantId, tipo_comprobante, puntoVenta,
+      wsaaToken, wsaaSign, arcaConfig.cuit, endpoints.wsfe
+    );
 
     const factura = await createFacturaRecord(
       supabase, envio_id || null, liquidacion_seller_id || null, tenantId,
@@ -1006,7 +1111,8 @@ serve(async (req) => {
 
     const arcaResult = await emitirFacturaARCA(
       supabase, tenantId, arcaConfig, environment, tipo_comprobante, numeroComprobante,
-      receptor, importeNeto, importeIva, total
+      receptor, importeNeto, importeIva, total,
+      wsaaToken, wsaaSign  // reusar el token ya obtenido, evita doble auth
     );
 
     if (arcaResult.success && arcaResult.cae) {
