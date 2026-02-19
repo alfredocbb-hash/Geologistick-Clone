@@ -768,6 +768,7 @@ export default function Settlements() {
     mutationFn: async () => {
       if (!payingLiquidacion) throw new Error('No hay liquidación seleccionada');
 
+      // Acción 1: Actualizar estado de la liquidación
       const { error } = await supabase
         .from('liquidaciones_seller')
         .update({
@@ -780,6 +781,68 @@ export default function Settlements() {
         .eq('id', payingLiquidacion.id);
 
       if (error) throw error;
+
+      // Acción 2: Registrar movimiento en cuenta corriente del seller
+      const montoPago = Math.abs(payingLiquidacion.saldo_periodo || 0);
+      if (montoPago > 0) {
+        // Obtener saldo actual del seller
+        const { data: sellerData, error: sellerError } = await supabase
+          .from('ecommerce_sellers')
+          .select('saldo_cuenta_corriente')
+          .eq('id', payingLiquidacion.seller_id)
+          .single();
+
+        if (!sellerError && sellerData) {
+          const saldoAnterior = sellerData.saldo_cuenta_corriente || 0;
+          const saldoNuevo = saldoAnterior - montoPago;
+
+          const periodoFormateado = payingLiquidacion.periodo_inicio
+            ? `${format(parseDateString(payingLiquidacion.periodo_inicio), 'MM/yyyy', { locale: es })}`
+            : '';
+
+          await supabase.from('seller_cuenta_corriente').insert({
+            seller_id: payingLiquidacion.seller_id,
+            tipo: 'pago',
+            monto: -montoPago,
+            saldo_anterior: saldoAnterior,
+            saldo_nuevo: saldoNuevo,
+            descripcion: `Pago liquidación período ${periodoFormateado}`,
+            referencia: payReferencia || null,
+            metodo_pago: payMetodo,
+            liquidacion_id: payingLiquidacion.id,
+            created_by: user?.id,
+          });
+
+          // Actualizar saldo en ecommerce_sellers
+          await supabase
+            .from('ecommerce_sellers')
+            .update({ saldo_cuenta_corriente: saldoNuevo })
+            .eq('id', payingLiquidacion.seller_id);
+
+          // Acción 3: Si método = efectivo → registrar egreso en caja activa
+          if (payMetodo === 'efectivo') {
+            const { data: sesion } = await supabase
+              .from('sesiones_caja')
+              .select('id')
+              .eq('estado', 'abierta')
+              .order('fecha_apertura', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            if (sesion) {
+              await supabase.from('movimientos_caja').insert({
+                sesion_caja_id: sesion.id,
+                tipo: 'egreso',
+                concepto: `Pago liquidación seller: ${payingLiquidacion.seller?.nombre || ''}`,
+                monto: montoPago,
+                metodo_pago: 'efectivo' as any,
+                referencia: payReferencia || payingLiquidacion.id,
+                created_by: user?.id,
+              });
+            }
+          }
+        }
+      }
     },
     onSuccess: () => {
       toast.success('Pago registrado correctamente');
@@ -788,6 +851,9 @@ export default function Settlements() {
       setPayMetodo('transferencia');
       setPayReferencia('');
       queryClient.invalidateQueries({ queryKey: ['seller-liquidaciones'] });
+      queryClient.invalidateQueries({ queryKey: ['ecommerce-sellers-cta-cte'] });
+      queryClient.invalidateQueries({ queryKey: ['ecommerce-sellers'] });
+      queryClient.invalidateQueries({ queryKey: ['seller-movements', payingLiquidacion?.seller_id] });
     },
     onError: (error: Error) => {
       toast.error(`Error: ${error.message}`);
