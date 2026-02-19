@@ -32,12 +32,19 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Users, DollarSign, CreditCard, Plus, Minus, FileText, TrendingUp, TrendingDown } from 'lucide-react';
+import { Users, DollarSign, CreditCard, Plus, FileText, TrendingUp, TrendingDown, ShoppingBag } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Database } from '@/integrations/supabase/types';
 
 type PaymentMethod = Database['public']['Enums']['payment_method'];
+
+interface EcommerceSeller {
+  id: string;
+  saldo_cuenta_corriente: number | null;
+  limite_credito: number | null;
+  tiene_cuenta_corriente: boolean | null;
+}
 
 interface Cliente {
   id: string;
@@ -45,11 +52,11 @@ interface Cliente {
   apellido: string | null;
   saldo_cuenta_corriente: number | null;
   limite_credito: number | null;
+  ecommerce_seller?: EcommerceSeller[] | null;
 }
 
 interface Movimiento {
   id: string;
-  cliente_id: string;
   tipo: string;
   monto: number;
   saldo_anterior: number;
@@ -57,10 +64,11 @@ interface Movimiento {
   descripcion: string | null;
   created_at: string;
   envio_id: string | null;
+  source?: 'cliente' | 'seller';
 }
 
 export default function ClientSettlements() {
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [selectedCliente, setSelectedCliente] = useState<string>('');
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
@@ -69,13 +77,18 @@ export default function ClientSettlements() {
   const [referenciaPago, setReferenciaPago] = useState('');
   const [descripcion, setDescripcion] = useState('');
 
-  // Fetch clientes con cuenta corriente
+  // Fetch clientes con cuenta corriente (incluye sellers vinculados)
   const { data: clientes = [] } = useQuery({
     queryKey: ['clientes-cuenta-corriente'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('clientes')
-        .select('id, nombre, apellido, saldo_cuenta_corriente, limite_credito')
+        .select(`
+          id, nombre, apellido, saldo_cuenta_corriente, limite_credito,
+          ecommerce_seller:ecommerce_sellers!ecommerce_sellers_cliente_id_fkey(
+            id, saldo_cuenta_corriente, limite_credito, tiene_cuenta_corriente
+          )
+        `)
         .eq('tiene_cuenta_corriente', true)
         .order('nombre');
       if (error) throw error;
@@ -83,66 +96,136 @@ export default function ClientSettlements() {
     },
   });
 
-  // Fetch movimientos del cliente seleccionado
+  const selectedClienteData = clientes.find(c => c.id === selectedCliente);
+
+  // Detectar si el cliente seleccionado es un seller
+  const sellerVinculado: EcommerceSeller | null =
+    selectedClienteData?.ecommerce_seller?.[0] ?? null;
+
+  // Saldo y límite efectivos (seller tiene prioridad como fuente de verdad)
+  const saldoEfectivo = sellerVinculado
+    ? (sellerVinculado.saldo_cuenta_corriente ?? 0)
+    : (selectedClienteData?.saldo_cuenta_corriente ?? 0);
+
+  const limiteEfectivo = sellerVinculado
+    ? (sellerVinculado.limite_credito ?? 0)
+    : (selectedClienteData?.limite_credito ?? 0);
+
+  // Fetch movimientos del cliente seleccionado (unificado: seller + cliente)
   const { data: movimientos = [], isLoading: loadingMovimientos } = useQuery({
-    queryKey: ['movimientos-cuenta', selectedCliente],
+    queryKey: ['movimientos-cuenta', selectedCliente, sellerVinculado?.id],
     queryFn: async () => {
       if (!selectedCliente) return [];
-      
-      const { data, error } = await supabase
+
+      const allMovs: Movimiento[] = [];
+
+      // Si es seller, traer movimientos de seller_cuenta_corriente
+      if (sellerVinculado?.id) {
+        const { data: sellerMovs, error: sellerError } = await supabase
+          .from('seller_cuenta_corriente')
+          .select('id, tipo, monto, saldo_anterior, saldo_nuevo, descripcion, created_at, envio_id')
+          .eq('seller_id', sellerVinculado.id)
+          .order('created_at', { ascending: false })
+          .limit(50);
+        if (sellerError) throw sellerError;
+        if (sellerMovs) {
+          allMovs.push(...sellerMovs.map(m => ({ ...m, source: 'seller' as const })));
+        }
+      }
+
+      // También traer movimientos de cliente_cuenta_corriente (por si hay histórico anterior)
+      const { data: clienteMovs, error: clienteError } = await supabase
         .from('cliente_cuenta_corriente')
-        .select('*')
+        .select('id, tipo, monto, saldo_anterior, saldo_nuevo, descripcion, created_at, envio_id')
         .eq('cliente_id', selectedCliente)
         .order('created_at', { ascending: false })
         .limit(50);
-      if (error) throw error;
-      return data as Movimiento[];
+      if (clienteError) throw clienteError;
+      if (clienteMovs) {
+        allMovs.push(...clienteMovs.map(m => ({ ...m, source: 'cliente' as const })));
+      }
+
+      // Ordenar por fecha descendente
+      allMovs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      return allMovs.slice(0, 50);
     },
     enabled: !!selectedCliente,
   });
 
-  const selectedClienteData = clientes.find(c => c.id === selectedCliente);
-
   // Registrar pago
   const paymentMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedCliente || !montoPago) {
-        throw new Error('Complete todos los campos');
-      }
+      if (!selectedCliente || !montoPago) throw new Error('Complete todos los campos');
 
       const monto = parseFloat(montoPago);
-      if (isNaN(monto) || monto <= 0) {
-        throw new Error('Monto inválido');
+      if (isNaN(monto) || monto <= 0) throw new Error('Monto inválido');
+
+      if (sellerVinculado) {
+        // Pago para seller: registrar en seller_cuenta_corriente
+        const { data: sellerActual } = await supabase
+          .from('ecommerce_sellers')
+          .select('saldo_cuenta_corriente')
+          .eq('id', sellerVinculado.id)
+          .single();
+
+        const saldoAnterior = Number(sellerActual?.saldo_cuenta_corriente) || 0;
+        const saldoNuevo = saldoAnterior - monto;
+
+        const { error: movError } = await supabase
+          .from('seller_cuenta_corriente')
+          .insert({
+            seller_id: sellerVinculado.id,
+            tipo: 'pago',
+            monto: -monto,
+            saldo_anterior: saldoAnterior,
+            saldo_nuevo: saldoNuevo,
+            descripcion: descripcion || `Pago recibido - ${metodoPago}${referenciaPago ? ` - Ref: ${referenciaPago}` : ''}`,
+            referencia: referenciaPago || null,
+            metodo_pago: metodoPago,
+            created_by: user?.id,
+          });
+        if (movError) throw movError;
+
+        const { error: updateSellerError } = await supabase
+          .from('ecommerce_sellers')
+          .update({ saldo_cuenta_corriente: saldoNuevo })
+          .eq('id', sellerVinculado.id);
+        if (updateSellerError) throw updateSellerError;
+
+        // Sincronizar saldo en clientes también
+        const { error: syncError } = await supabase
+          .from('clientes')
+          .update({ saldo_cuenta_corriente: saldoNuevo })
+          .eq('id', selectedCliente);
+        if (syncError) throw syncError;
+      } else {
+        // Pago para cliente común
+        const cliente = clientes.find(c => c.id === selectedCliente);
+        if (!cliente) throw new Error('Cliente no encontrado');
+
+        const saldoAnterior = cliente.saldo_cuenta_corriente || 0;
+        const saldoNuevo = saldoAnterior - monto;
+
+        const { error: movError } = await supabase
+          .from('cliente_cuenta_corriente')
+          .insert({
+            cliente_id: selectedCliente,
+            tipo: 'pago',
+            monto: monto,
+            saldo_anterior: saldoAnterior,
+            saldo_nuevo: saldoNuevo,
+            descripcion: descripcion || `Pago recibido - ${metodoPago}${referenciaPago ? ` - Ref: ${referenciaPago}` : ''}`,
+            created_by: user?.id,
+          });
+        if (movError) throw movError;
+
+        const { error: clienteError } = await supabase
+          .from('clientes')
+          .update({ saldo_cuenta_corriente: saldoNuevo })
+          .eq('id', selectedCliente);
+        if (clienteError) throw clienteError;
       }
-
-      const cliente = clientes.find(c => c.id === selectedCliente);
-      if (!cliente) throw new Error('Cliente no encontrado');
-
-      const saldoAnterior = cliente.saldo_cuenta_corriente || 0;
-      const saldoNuevo = saldoAnterior - monto;
-
-      // Insert movimiento
-      const { error: movError } = await supabase
-        .from('cliente_cuenta_corriente')
-        .insert({
-          cliente_id: selectedCliente,
-          tipo: 'pago',
-          monto: monto,
-          saldo_anterior: saldoAnterior,
-          saldo_nuevo: saldoNuevo,
-          descripcion: descripcion || `Pago recibido - ${metodoPago}${referenciaPago ? ` - Ref: ${referenciaPago}` : ''}`,
-          created_by: user?.id,
-        });
-
-      if (movError) throw movError;
-
-      // Update cliente saldo
-      const { error: clienteError } = await supabase
-        .from('clientes')
-        .update({ saldo_cuenta_corriente: saldoNuevo })
-        .eq('id', selectedCliente);
-
-      if (clienteError) throw clienteError;
     },
     onSuccess: () => {
       toast.success('Pago registrado correctamente');
@@ -199,17 +282,32 @@ export default function ClientSettlements() {
                   <SelectValue placeholder="Seleccionar cliente" />
                 </SelectTrigger>
                 <SelectContent>
-                  {clientes.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.nombre} {c.apellido} - Saldo: ${(c.saldo_cuenta_corriente || 0).toFixed(2)}
-                    </SelectItem>
-                  ))}
+                  {clientes.map((c) => {
+                    const esSeller = !!c.ecommerce_seller?.length;
+                    const saldo = esSeller
+                      ? (c.ecommerce_seller![0].saldo_cuenta_corriente ?? 0)
+                      : (c.saldo_cuenta_corriente ?? 0);
+                    return (
+                      <SelectItem key={c.id} value={c.id}>
+                        <span className="flex items-center gap-2">
+                          {esSeller && <ShoppingBag className="h-3 w-3 text-primary" />}
+                          {c.nombre} {c.apellido} - Saldo: ${saldo.toFixed(2)}
+                        </span>
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
 
             {selectedClienteData && (
               <div className="flex items-center gap-4">
+                {sellerVinculado && (
+                  <Badge variant="secondary" className="flex items-center gap-1">
+                    <ShoppingBag className="h-3 w-3" />
+                    Seller ecommerce
+                  </Badge>
+                )}
                 <Button onClick={() => setShowPaymentDialog(true)} className="bg-success hover:bg-success/90">
                   <Plus className="h-4 w-4 mr-2" />
                   Registrar Pago
@@ -223,17 +321,17 @@ export default function ClientSettlements() {
       {/* Resumen del Cliente */}
       {selectedClienteData && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className={`border-2 ${(selectedClienteData.saldo_cuenta_corriente || 0) > 0 ? 'border-destructive/20 bg-destructive/5' : 'border-success/20 bg-success/5'}`}>
+          <Card className={`border-2 ${saldoEfectivo > 0 ? 'border-destructive/20 bg-destructive/5' : 'border-success/20 bg-success/5'}`}>
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-2">
                 <DollarSign className="h-4 w-4" />
                 <span className="text-sm text-muted-foreground">Saldo Actual</span>
               </div>
-              <p className={`text-3xl font-bold ${(selectedClienteData.saldo_cuenta_corriente || 0) > 0 ? 'text-destructive' : 'text-success'}`}>
-                ${(selectedClienteData.saldo_cuenta_corriente || 0).toFixed(2)}
+              <p className={`text-3xl font-bold ${saldoEfectivo > 0 ? 'text-destructive' : 'text-success'}`}>
+                ${saldoEfectivo.toFixed(2)}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                {(selectedClienteData.saldo_cuenta_corriente || 0) > 0 ? 'Debe al sistema' : 'A favor / Sin deuda'}
+                {saldoEfectivo > 0 ? 'Debe al sistema' : 'A favor / Sin deuda'}
               </p>
             </CardContent>
           </Card>
@@ -244,7 +342,7 @@ export default function ClientSettlements() {
                 <span className="text-sm text-muted-foreground">Límite de Crédito</span>
               </div>
               <p className="text-3xl font-bold">
-                ${(selectedClienteData.limite_credito || 0).toFixed(2)}
+                ${limiteEfectivo.toFixed(2)}
               </p>
             </CardContent>
           </Card>
@@ -255,7 +353,7 @@ export default function ClientSettlements() {
                 <span className="text-sm text-muted-foreground">Crédito Disponible</span>
               </div>
               <p className="text-3xl font-bold text-primary">
-                ${Math.max(0, (selectedClienteData.limite_credito || 0) - (selectedClienteData.saldo_cuenta_corriente || 0)).toFixed(2)}
+                ${Math.max(0, limiteEfectivo - saldoEfectivo).toFixed(2)}
               </p>
             </CardContent>
           </Card>
@@ -271,7 +369,9 @@ export default function ClientSettlements() {
               Movimientos de Cuenta
             </CardTitle>
             <CardDescription>
-              Historial de cargos y pagos del cliente
+              {sellerVinculado
+                ? 'Historial unificado de envíos y liquidaciones del seller'
+                : 'Historial de cargos y pagos del cliente'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -294,7 +394,7 @@ export default function ClientSettlements() {
                 </TableHeader>
                 <TableBody>
                   {movimientos.map((mov) => (
-                    <TableRow key={mov.id}>
+                    <TableRow key={`${mov.source}-${mov.id}`}>
                       <TableCell>
                         {format(new Date(mov.created_at), 'dd/MM/yy HH:mm', { locale: es })}
                       </TableCell>
@@ -308,7 +408,7 @@ export default function ClientSettlements() {
                         {mov.descripcion || '-'}
                       </TableCell>
                       <TableCell className={`text-right font-medium ${mov.tipo === 'pago' ? 'text-success' : 'text-destructive'}`}>
-                        {mov.tipo === 'pago' ? '-' : '+'}${mov.monto.toFixed(2)}
+                        {mov.tipo === 'pago' ? '-' : '+'}${Math.abs(mov.monto).toFixed(2)}
                       </TableCell>
                       <TableCell className="text-right font-bold">
                         ${mov.saldo_nuevo.toFixed(2)}
@@ -348,18 +448,26 @@ export default function ClientSettlements() {
                 </TableHeader>
                 <TableBody>
                   {clientes.map((cliente) => {
-                    const saldo = cliente.saldo_cuenta_corriente || 0;
-                    const limite = cliente.limite_credito || 0;
+                    const esSeller = !!cliente.ecommerce_seller?.length;
+                    const saldo = esSeller
+                      ? (cliente.ecommerce_seller![0].saldo_cuenta_corriente ?? 0)
+                      : (cliente.saldo_cuenta_corriente ?? 0);
+                    const limite = esSeller
+                      ? (cliente.ecommerce_seller![0].limite_credito ?? 0)
+                      : (cliente.limite_credito ?? 0);
                     const disponible = Math.max(0, limite - saldo);
-                    
+
                     return (
-                      <TableRow 
-                        key={cliente.id} 
+                      <TableRow
+                        key={cliente.id}
                         className="cursor-pointer hover:bg-muted/50"
                         onClick={() => setSelectedCliente(cliente.id)}
                       >
                         <TableCell className="font-medium">
-                          {cliente.nombre} {cliente.apellido}
+                          <div className="flex items-center gap-2">
+                            {esSeller && <ShoppingBag className="h-3.5 w-3.5 text-primary" />}
+                            {cliente.nombre} {cliente.apellido}
+                          </div>
                         </TableCell>
                         <TableCell className={`text-right font-bold ${saldo > 0 ? 'text-destructive' : 'text-success'}`}>
                           ${saldo.toFixed(2)}
@@ -386,7 +494,8 @@ export default function ClientSettlements() {
           <DialogHeader>
             <DialogTitle>Registrar Pago</DialogTitle>
             <DialogDescription>
-              Registra un pago recibido del cliente {selectedClienteData?.nombre}
+              Registra un pago recibido de {selectedClienteData?.nombre}
+              {sellerVinculado && ' (seller)'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -436,8 +545,8 @@ export default function ClientSettlements() {
             <Button variant="outline" onClick={() => setShowPaymentDialog(false)}>
               Cancelar
             </Button>
-            <Button 
-              onClick={() => paymentMutation.mutate()} 
+            <Button
+              onClick={() => paymentMutation.mutate()}
               disabled={paymentMutation.isPending || !montoPago}
               className="bg-success hover:bg-success/90"
             >
