@@ -48,6 +48,13 @@ interface TarifaConceptoPrecio {
   concepto?: TarifaConcepto;
 }
 
+interface EcommerceSeller {
+  id: string;
+  saldo_cuenta_corriente: number | null;
+  limite_credito: number | null;
+  tiene_cuenta_corriente: boolean | null;
+}
+
 interface Client {
   id: string;
   nombre: string;
@@ -63,6 +70,7 @@ interface Client {
   limite_credito?: number | null;
   lat?: number | null;
   lng?: number | null;
+  ecommerce_seller?: EcommerceSeller[] | null;
 }
 
 interface Sucursal {
@@ -468,7 +476,12 @@ export default function NewShipment() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('clientes')
-        .select('*')
+        .select(`
+          *,
+          ecommerce_seller:ecommerce_sellers!ecommerce_sellers_cliente_id_fkey(
+            id, saldo_cuenta_corriente, limite_credito, tiene_cuenta_corriente
+          )
+        `)
         .order('nombre');
       if (error) throw error;
       return data as Client[];
@@ -479,6 +492,13 @@ export default function NewShipment() {
   const clientesCtaCte = useMemo(() => {
     return allClients.filter(c => c.tiene_cuenta_corriente);
   }, [allClients]);
+
+  // Helper: dado un cliente-id de cta cte, obtener su seller vinculado (si existe)
+  const getSellerForCliente = (clienteId: string): EcommerceSeller | null => {
+    const cliente = allClients.find(c => c.id === clienteId);
+    if (!cliente?.ecommerce_seller?.length) return null;
+    return cliente.ecommerce_seller[0];
+  };
 
   // Detectar si el remitente tiene cuenta corriente
   const remitenteConCtaCte = useMemo(() => {
@@ -1070,36 +1090,82 @@ export default function NewShipment() {
 
       // 6. If cuenta corriente, create movement
       if (formData.tipo_pago === 'cuenta_corriente' && formData.cliente_cta_cte_id) {
-        const { data: cliente } = await supabase
-          .from('clientes')
-          .select('saldo_cuenta_corriente')
-          .eq('id', formData.cliente_cta_cte_id)
-          .single();
+        // Detectar si el cliente es un seller → cargar en seller_cuenta_corriente
+        const sellerVinculado = getSellerForCliente(formData.cliente_cta_cte_id);
 
-        const saldoAnterior = Number(cliente?.saldo_cuenta_corriente) || 0;
-        const saldoNuevo = saldoAnterior - precioTotal;
+        if (sellerVinculado) {
+          // Es un seller: cargar en seller_cuenta_corriente y actualizar ecommerce_sellers
+          const { data: sellerActual } = await supabase
+            .from('ecommerce_sellers')
+            .select('saldo_cuenta_corriente')
+            .eq('id', sellerVinculado.id)
+            .single();
 
-        const { error: movError } = await supabase
-          .from('cliente_cuenta_corriente')
-          .insert({
-            cliente_id: formData.cliente_cta_cte_id,
-            envio_id: envio.id,
-            tipo: 'cargo',
-            monto: precioTotal,
-            saldo_anterior: saldoAnterior,
-            saldo_nuevo: saldoNuevo,
-            descripcion: `Envío ${trackingData}`,
-            created_by: user?.id,
-          });
+          const saldoAnterior = Number(sellerActual?.saldo_cuenta_corriente) || 0;
+          const saldoNuevo = saldoAnterior + precioTotal;
 
-        if (movError) throw movError;
+          const { error: movError } = await supabase
+            .from('seller_cuenta_corriente')
+            .insert({
+              seller_id: sellerVinculado.id,
+              envio_id: envio.id,
+              tipo: 'cargo',
+              monto: precioTotal,
+              saldo_anterior: saldoAnterior,
+              saldo_nuevo: saldoNuevo,
+              descripcion: `Envío ${trackingData} (manual)`,
+              created_by: user?.id,
+            });
 
-        const { error: updateError } = await supabase
-          .from('clientes')
-          .update({ saldo_cuenta_corriente: saldoNuevo })
-          .eq('id', formData.cliente_cta_cte_id);
+          if (movError) throw movError;
 
-        if (updateError) throw updateError;
+          const { error: updateSellerError } = await supabase
+            .from('ecommerce_sellers')
+            .update({ saldo_cuenta_corriente: saldoNuevo })
+            .eq('id', sellerVinculado.id);
+
+          if (updateSellerError) throw updateSellerError;
+
+          // También sincronizar el saldo en clientes para consistencia visual
+          const { error: syncClienteError } = await supabase
+            .from('clientes')
+            .update({ saldo_cuenta_corriente: saldoNuevo })
+            .eq('id', formData.cliente_cta_cte_id);
+
+          if (syncClienteError) throw syncClienteError;
+        } else {
+          // Es un cliente común: cargar en cliente_cuenta_corriente
+          const { data: cliente } = await supabase
+            .from('clientes')
+            .select('saldo_cuenta_corriente')
+            .eq('id', formData.cliente_cta_cte_id)
+            .single();
+
+          const saldoAnterior = Number(cliente?.saldo_cuenta_corriente) || 0;
+          const saldoNuevo = saldoAnterior + precioTotal;
+
+          const { error: movError } = await supabase
+            .from('cliente_cuenta_corriente')
+            .insert({
+              cliente_id: formData.cliente_cta_cte_id,
+              envio_id: envio.id,
+              tipo: 'cargo',
+              monto: precioTotal,
+              saldo_anterior: saldoAnterior,
+              saldo_nuevo: saldoNuevo,
+              descripcion: `Envío ${trackingData}`,
+              created_by: user?.id,
+            });
+
+          if (movError) throw movError;
+
+          const { error: updateError } = await supabase
+            .from('clientes')
+            .update({ saldo_cuenta_corriente: saldoNuevo })
+            .eq('id', formData.cliente_cta_cte_id);
+
+          if (updateError) throw updateError;
+        }
       }
 
       return envio;
