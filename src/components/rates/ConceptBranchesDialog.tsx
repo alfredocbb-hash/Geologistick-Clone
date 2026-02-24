@@ -91,21 +91,19 @@ export function ConceptBranchesDialog({
   // Save mutation
   const saveMutation = useMutation({
     mutationFn: async () => {
-      // For each sucursal, upsert the assignment
-      const upsertRows = sucursales
+      const assignments = sucursales
         .filter(s => selectedBranches.has(s.id) || sucursalConceptos.some(sc => sc.sucursal_id === s.id))
         .map(s => ({
           sucursal_id: s.id,
-          concepto_id: conceptId,
           habilitado: selectedBranches.has(s.id),
-          tenant_id: profile?.tenant_id,
-          updated_at: new Date().toISOString(),
         }));
 
-      if (upsertRows.length > 0) {
-        const { error } = await supabase
-          .from('sucursal_conceptos')
-          .upsert(upsertRows, { onConflict: 'sucursal_id,concepto_id' });
+      if (assignments.length > 0) {
+        const { error } = await supabase.rpc('upsert_sucursal_conceptos', {
+          p_concepto_id: conceptId,
+          p_tenant_id: profile?.tenant_id,
+          p_assignments: assignments,
+        });
         if (error) throw error;
       }
     },

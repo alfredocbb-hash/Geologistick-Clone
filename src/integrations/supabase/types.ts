@@ -4236,6 +4236,18 @@ export type Database = {
       }
       start_hoja_ruta: { Args: { p_hoja_id: string }; Returns: Json }
       start_ruta_planificada: { Args: { p_ruta_id: string }; Returns: Json }
+      upsert_sucursal_conceptos: {
+        Args: {
+          p_assignments: Json
+          p_concepto_id: string
+          p_tenant_id: string
+        }
+        Returns: undefined
+      }
+      upsert_sucursal_tarifas: {
+        Args: { p_assignments: Json; p_tarifa_id: string; p_tenant_id: string }
+        Returns: undefined
+      }
       user_belongs_to_tenant: {
         Args: { p_tenant_id: string }
         Returns: boolean
