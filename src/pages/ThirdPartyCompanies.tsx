@@ -93,6 +93,8 @@ interface EmpresaTerciarizada {
   limite_credito: number;
   saldo_cuenta_corriente: number;
   activa: boolean;
+  incluye_iva: boolean;
+  porcentaje_iva: number;
   created_at: string;
 }
 
@@ -111,6 +113,8 @@ interface FormData {
   tiene_cuenta_corriente: boolean;
   limite_credito: number;
   activa: boolean;
+  incluye_iva: boolean;
+  porcentaje_iva: number;
 }
 
 const emptyForm: FormData = {
@@ -128,6 +132,8 @@ const emptyForm: FormData = {
   tiene_cuenta_corriente: false,
   limite_credito: 0,
   activa: true,
+  incluye_iva: false,
+  porcentaje_iva: 21,
 };
 
 export default function ThirdPartyCompanies() {
@@ -255,6 +261,8 @@ export default function ThirdPartyCompanies() {
       tiene_cuenta_corriente: empresa.tiene_cuenta_corriente,
       limite_credito: empresa.limite_credito,
       activa: empresa.activa,
+      incluye_iva: empresa.incluye_iva ?? false,
+      porcentaje_iva: empresa.porcentaje_iva ?? 21,
     });
     setEditingId(empresa.id);
     setIsDialogOpen(true);
@@ -648,6 +656,43 @@ export default function ThirdPartyCompanies() {
                     value={formData.limite_credito}
                     onChange={(e) =>
                       setFormData((p) => ({ ...p, limite_credito: parseFloat(e.target.value) || 0 }))
+                    }
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* IVA Configuration */}
+            <div className="space-y-4">
+              <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
+                Configuración de IVA
+              </h4>
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div>
+                  <p className="font-medium">Incluye IVA</p>
+                  <p className="text-sm text-muted-foreground">
+                    Indica si los montos de esta empresa incluyen IVA
+                  </p>
+                </div>
+                <Switch
+                  checked={formData.incluye_iva}
+                  onCheckedChange={(checked) =>
+                    setFormData((p) => ({ ...p, incluye_iva: checked }))
+                  }
+                />
+              </div>
+              {formData.incluye_iva && (
+                <div className="space-y-2">
+                  <Label>Porcentaje de IVA (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.5}
+                    placeholder="21"
+                    value={formData.porcentaje_iva}
+                    onChange={(e) =>
+                      setFormData((p) => ({ ...p, porcentaje_iva: parseFloat(e.target.value) || 21 }))
                     }
                   />
                 </div>

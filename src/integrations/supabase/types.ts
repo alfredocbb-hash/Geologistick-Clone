@@ -791,9 +791,11 @@ export type Database = {
           direccion: string | null
           email: string | null
           id: string
+          incluye_iva: boolean | null
           limite_credito: number | null
           nombre: string
           notas: string | null
+          porcentaje_iva: number | null
           provincia: string | null
           razon_social: string | null
           saldo_cuenta_corriente: number | null
@@ -813,9 +815,11 @@ export type Database = {
           direccion?: string | null
           email?: string | null
           id?: string
+          incluye_iva?: boolean | null
           limite_credito?: number | null
           nombre: string
           notas?: string | null
+          porcentaje_iva?: number | null
           provincia?: string | null
           razon_social?: string | null
           saldo_cuenta_corriente?: number | null
@@ -835,9 +839,11 @@ export type Database = {
           direccion?: string | null
           email?: string | null
           id?: string
+          incluye_iva?: boolean | null
           limite_credito?: number | null
           nombre?: string
           notas?: string | null
+          porcentaje_iva?: number | null
           provincia?: string | null
           razon_social?: string | null
           saldo_cuenta_corriente?: number | null
@@ -1740,6 +1746,45 @@ export type Database = {
           },
         ]
       }
+      liquidacion_terciarizado_detalles: {
+        Row: {
+          created_at: string
+          envio_id: string
+          id: string
+          liquidacion_id: string
+          monto: number
+        }
+        Insert: {
+          created_at?: string
+          envio_id: string
+          id?: string
+          liquidacion_id: string
+          monto?: number
+        }
+        Update: {
+          created_at?: string
+          envio_id?: string
+          id?: string
+          liquidacion_id?: string
+          monto?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "liquidacion_terciarizado_detalles_envio_id_fkey"
+            columns: ["envio_id"]
+            isOneToOne: false
+            referencedRelation: "envios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "liquidacion_terciarizado_detalles_liquidacion_id_fkey"
+            columns: ["liquidacion_id"]
+            isOneToOne: false
+            referencedRelation: "liquidaciones_terciarizado"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       liquidaciones: {
         Row: {
           aprobado_por: string | null
@@ -2036,6 +2081,78 @@ export type Database = {
           },
           {
             foreignKeyName: "liquidaciones_sucursal_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      liquidaciones_terciarizado: {
+        Row: {
+          cantidad_envios: number
+          created_at: string
+          empresa_id: string
+          estado: string
+          fecha_pago: string | null
+          generado_por: string | null
+          id: string
+          metodo_pago: string | null
+          monto_iva: number
+          monto_neto: number
+          monto_total: number
+          notas: string | null
+          periodo_fin: string
+          periodo_inicio: string
+          referencia_pago: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          cantidad_envios?: number
+          created_at?: string
+          empresa_id: string
+          estado?: string
+          fecha_pago?: string | null
+          generado_por?: string | null
+          id?: string
+          metodo_pago?: string | null
+          monto_iva?: number
+          monto_neto?: number
+          monto_total?: number
+          notas?: string | null
+          periodo_fin: string
+          periodo_inicio: string
+          referencia_pago?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          cantidad_envios?: number
+          created_at?: string
+          empresa_id?: string
+          estado?: string
+          fecha_pago?: string | null
+          generado_por?: string | null
+          id?: string
+          metodo_pago?: string | null
+          monto_iva?: number
+          monto_neto?: number
+          monto_total?: number
+          notas?: string | null
+          periodo_fin?: string
+          periodo_inicio?: string
+          referencia_pago?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "liquidaciones_terciarizado_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_terciarizadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "liquidaciones_terciarizado_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"

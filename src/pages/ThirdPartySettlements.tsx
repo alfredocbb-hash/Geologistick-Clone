@@ -7,45 +7,25 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
-  Building2,
-  DollarSign,
-  Plus,
-  Loader2,
-  ArrowDownCircle,
-  ArrowUpCircle,
-  RefreshCw,
-  CreditCard,
-  Package,
-  AlertCircle,
+  Building2, DollarSign, Plus, Loader2, ArrowDownCircle, ArrowUpCircle,
+  RefreshCw, Package, AlertCircle, Calculator, FileText, Ban, CreditCard,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import { parseDateString } from "@/lib/dateUtils";
 
 interface EmpresaTerciarizada {
   id: string;
@@ -55,6 +35,8 @@ interface EmpresaTerciarizada {
   tiene_cuenta_corriente: boolean;
   limite_credito: number;
   saldo_cuenta_corriente: number;
+  incluye_iva: boolean;
+  porcentaje_iva: number;
 }
 
 interface Movimiento {
@@ -71,6 +53,32 @@ interface Movimiento {
   created_at: string;
 }
 
+interface EnvioLiquidacion {
+  id: string;
+  tracking_number: string;
+  tracking_externo: string | null;
+  nombre_destinatario: string | null;
+  precio_total: number;
+  fecha_entrega: string | null;
+}
+
+interface LiquidacionTerciarizado {
+  id: string;
+  empresa_id: string;
+  periodo_inicio: string;
+  periodo_fin: string;
+  monto_total: number;
+  monto_iva: number;
+  monto_neto: number;
+  cantidad_envios: number;
+  estado: string;
+  notas: string | null;
+  metodo_pago: string | null;
+  referencia_pago: string | null;
+  fecha_pago: string | null;
+  created_at: string;
+}
+
 type PaymentMethod = "efectivo" | "transferencia" | "cheque" | "tarjeta" | "otro";
 
 const METODOS_PAGO: { value: PaymentMethod; label: string }[] = [
@@ -84,74 +92,312 @@ const METODOS_PAGO: { value: PaymentMethod; label: string }[] = [
 export default function ThirdPartySettlements() {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState("liquidaciones");
+
+  // Shared state
   const [selectedEmpresaId, setSelectedEmpresaId] = useState<string | null>(null);
+
+  // Liquidaciones tab state
+  const [liqEmpresaId, setLiqEmpresaId] = useState<string | null>(null);
+  const [periodoInicio, setPeriodoInicio] = useState("");
+  const [periodoFin, setPeriodoFin] = useState("");
+  const [enviosCalculados, setEnviosCalculados] = useState<EnvioLiquidacion[]>([]);
+  const [isCalculating, setIsCalculating] = useState(false);
+  const [hasCalculated, setHasCalculated] = useState(false);
+
+  // Pagar liquidacion dialog
+  const [payLiqDialog, setPayLiqDialog] = useState<LiquidacionTerciarizado | null>(null);
+  const [payLiqForm, setPayLiqForm] = useState({ metodo_pago: "transferencia" as PaymentMethod, referencia_pago: "" });
+
+  // Cancel liquidacion dialog
+  const [cancelLiqDialog, setCancelLiqDialog] = useState<LiquidacionTerciarizado | null>(null);
+
+  // Cuenta Corriente tab state
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [paymentType, setPaymentType] = useState<"pago" | "ajuste">("pago");
   const [paymentForm, setPaymentForm] = useState({
-    monto: 0,
-    descripcion: "",
-    referencia: "",
-    metodo_pago: "transferencia" as PaymentMethod,
+    monto: 0, descripcion: "", referencia: "", metodo_pago: "transferencia" as PaymentMethod,
   });
 
-  // Fetch companies with current account
+  // Fetch all active companies
   const { data: empresas = [], isLoading: loadingEmpresas } = useQuery({
-    queryKey: ["empresas-terciarizadas-cta-cte"],
+    queryKey: ["empresas-terciarizadas-all"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("empresas_terciarizadas")
-        .select("id, codigo, nombre, cuit, tiene_cuenta_corriente, limite_credito, saldo_cuenta_corriente")
-        .eq("tiene_cuenta_corriente", true)
+        .select("id, codigo, nombre, cuit, tiene_cuenta_corriente, limite_credito, saldo_cuenta_corriente, incluye_iva, porcentaje_iva")
         .eq("activa", true)
         .order("nombre");
-
       if (error) throw error;
-      return data as EmpresaTerciarizada[];
+      return (data || []) as EmpresaTerciarizada[];
     },
   });
 
-  const selectedEmpresa = empresas.find((e) => e.id === selectedEmpresaId);
+  const empresasCtaCte = empresas.filter((e) => e.tiene_cuenta_corriente);
+  const selectedEmpresa = empresasCtaCte.find((e) => e.id === selectedEmpresaId);
+  const liqEmpresa = empresas.find((e) => e.id === liqEmpresaId);
 
-  // Fetch movements for selected company
+  // Fetch liquidaciones for selected liq empresa
+  const { data: liquidaciones = [], isLoading: loadingLiquidaciones } = useQuery({
+    queryKey: ["liquidaciones-terciarizado", liqEmpresaId],
+    queryFn: async () => {
+      if (!liqEmpresaId) return [];
+      const { data, error } = await supabase
+        .from("liquidaciones_terciarizado")
+        .select("*")
+        .eq("empresa_id", liqEmpresaId)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data || []) as LiquidacionTerciarizado[];
+    },
+    enabled: !!liqEmpresaId,
+  });
+
+  // Fetch movements for selected CTA CTE empresa
   const { data: movimientos = [], isLoading: loadingMovimientos } = useQuery({
     queryKey: ["terciarizado-cuenta-corriente", selectedEmpresaId],
     queryFn: async () => {
       if (!selectedEmpresaId) return [];
-
       const { data, error } = await supabase
         .from("terciarizado_cuenta_corriente")
         .select("*")
         .eq("empresa_id", selectedEmpresaId)
         .order("created_at", { ascending: false })
         .limit(100);
-
       if (error) throw error;
       return data as Movimiento[];
     },
     enabled: !!selectedEmpresaId,
   });
 
-  // Fetch pending shipments for selected company
-  const { data: enviosPendientes = [], isLoading: loadingEnvios } = useQuery({
-    queryKey: ["envios-terciarizados-empresa", selectedEmpresaId],
-    queryFn: async () => {
-      if (!selectedEmpresaId) return [];
-
+  // Calculate shipments
+  const handleCalculate = async () => {
+    if (!liqEmpresaId || !periodoInicio || !periodoFin) {
+      toast.error("Selecciona empresa y rango de fechas");
+      return;
+    }
+    setIsCalculating(true);
+    try {
       const { data, error } = await supabase
         .from("envios")
-        .select("id, tracking_number, tracking_externo, nombre_destinatario, precio_total, created_at")
-        .eq("empresa_terciarizada_id", selectedEmpresaId)
+        .select("id, tracking_number, tracking_externo, nombre_destinatario, precio_total, fecha_entrega")
+        .eq("empresa_terciarizada_id", liqEmpresaId)
         .eq("es_terciarizado", true)
-        .in("estado", ["pendiente", "recogido", "en_sucursal", "en_transito"])
-        .order("created_at", { ascending: false });
+        .eq("estado", "entregado")
+        .gte("fecha_entrega", periodoInicio)
+        .lte("fecha_entrega", periodoFin + "T23:59:59");
 
       if (error) throw error;
-      return data || [];
+
+      // Filter out already liquidated shipments
+      const envioIds = (data || []).map((e) => e.id);
+      if (envioIds.length > 0) {
+        const { data: yaLiquidados } = await supabase
+          .from("liquidacion_terciarizado_detalles")
+          .select("envio_id")
+          .in("envio_id", envioIds);
+
+        const liquidadosSet = new Set((yaLiquidados || []).map((d) => d.envio_id));
+        setEnviosCalculados((data || []).filter((e) => !liquidadosSet.has(e.id)) as EnvioLiquidacion[]);
+      } else {
+        setEnviosCalculados([]);
+      }
+      setHasCalculated(true);
+    } catch (err: any) {
+      toast.error(`Error al calcular: ${err.message}`);
+    } finally {
+      setIsCalculating(false);
+    }
+  };
+
+  // IVA calculation
+  const montoTotal = enviosCalculados.reduce((sum, e) => sum + (e.precio_total || 0), 0);
+  const calcIVA = (total: number, empresa: EmpresaTerciarizada | undefined) => {
+    if (!empresa?.incluye_iva) return { neto: total, iva: 0, total };
+    const pct = empresa.porcentaje_iva || 21;
+    const neto = total / (1 + pct / 100);
+    return { neto, iva: total - neto, total };
+  };
+  const ivaBreakdown = calcIVA(montoTotal, liqEmpresa);
+
+  // Generate liquidacion mutation
+  const generateMutation = useMutation({
+    mutationFn: async () => {
+      if (!liqEmpresa || enviosCalculados.length === 0) throw new Error("No hay envíos para liquidar");
+
+      const { neto, iva, total } = ivaBreakdown;
+
+      // Create liquidacion
+      const { data: liq, error: liqError } = await supabase
+        .from("liquidaciones_terciarizado")
+        .insert({
+          empresa_id: liqEmpresa.id,
+          periodo_inicio: periodoInicio,
+          periodo_fin: periodoFin,
+          monto_total: total,
+          monto_iva: iva,
+          monto_neto: neto,
+          cantidad_envios: enviosCalculados.length,
+          estado: "generada",
+          generado_por: profile?.user_id,
+          tenant_id: profile?.tenant_id,
+        })
+        .select("id")
+        .single();
+
+      if (liqError) throw liqError;
+
+      // Create details
+      const detalles = enviosCalculados.map((e) => ({
+        liquidacion_id: liq.id,
+        envio_id: e.id,
+        monto: e.precio_total || 0,
+      }));
+      const { error: detError } = await supabase
+        .from("liquidacion_terciarizado_detalles")
+        .insert(detalles);
+      if (detError) throw detError;
+
+      // Register charge in current account if empresa has cta cte
+      if (liqEmpresa.tiene_cuenta_corriente) {
+        const saldoActual = liqEmpresa.saldo_cuenta_corriente || 0;
+        const nuevoSaldo = saldoActual + total;
+
+        const { error: movError } = await supabase
+          .from("terciarizado_cuenta_corriente")
+          .insert({
+            empresa_id: liqEmpresa.id,
+            tipo: "cargo",
+            monto: total,
+            saldo_anterior: saldoActual,
+            saldo_nuevo: nuevoSaldo,
+            descripcion: `Liquidación período ${periodoInicio} a ${periodoFin}`,
+            created_by: profile?.user_id,
+          });
+        if (movError) throw movError;
+
+        const { error: updError } = await supabase
+          .from("empresas_terciarizadas")
+          .update({ saldo_cuenta_corriente: nuevoSaldo })
+          .eq("id", liqEmpresa.id);
+        if (updError) throw updError;
+      }
     },
-    enabled: !!selectedEmpresaId,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["liquidaciones-terciarizado"] });
+      queryClient.invalidateQueries({ queryKey: ["empresas-terciarizadas-all"] });
+      queryClient.invalidateQueries({ queryKey: ["terciarizado-cuenta-corriente"] });
+      queryClient.invalidateQueries({ queryKey: ["empresas-terciarizadas"] });
+      toast.success("Liquidación generada correctamente");
+      setEnviosCalculados([]);
+      setHasCalculated(false);
+    },
+    onError: (err: Error) => toast.error(`Error: ${err.message}`),
   });
 
-  // Register payment mutation
+  // Pay liquidacion mutation
+  const payLiqMutation = useMutation({
+    mutationFn: async () => {
+      if (!payLiqDialog || !liqEmpresa) throw new Error("Datos incompletos");
+
+      const { error } = await supabase
+        .from("liquidaciones_terciarizado")
+        .update({
+          estado: "pagada",
+          metodo_pago: payLiqForm.metodo_pago,
+          referencia_pago: payLiqForm.referencia_pago || null,
+          fecha_pago: new Date().toISOString(),
+        })
+        .eq("id", payLiqDialog.id);
+      if (error) throw error;
+
+      // Register payment in cta cte if applicable
+      if (liqEmpresa.tiene_cuenta_corriente) {
+        const saldoActual = liqEmpresa.saldo_cuenta_corriente || 0;
+        const nuevoSaldo = saldoActual - payLiqDialog.monto_total;
+
+        const { error: movError } = await supabase
+          .from("terciarizado_cuenta_corriente")
+          .insert({
+            empresa_id: liqEmpresa.id,
+            tipo: "pago",
+            monto: -payLiqDialog.monto_total,
+            saldo_anterior: saldoActual,
+            saldo_nuevo: nuevoSaldo,
+            descripcion: `Pago liquidación ${format(parseDateString(payLiqDialog.periodo_inicio), "dd/MM/yy")} - ${format(parseDateString(payLiqDialog.periodo_fin), "dd/MM/yy")}`,
+            metodo_pago: payLiqForm.metodo_pago,
+            referencia: payLiqForm.referencia_pago || null,
+            created_by: profile?.user_id,
+          });
+        if (movError) throw movError;
+
+        const { error: updError } = await supabase
+          .from("empresas_terciarizadas")
+          .update({ saldo_cuenta_corriente: nuevoSaldo })
+          .eq("id", liqEmpresa.id);
+        if (updError) throw updError;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["liquidaciones-terciarizado"] });
+      queryClient.invalidateQueries({ queryKey: ["empresas-terciarizadas-all"] });
+      queryClient.invalidateQueries({ queryKey: ["terciarizado-cuenta-corriente"] });
+      queryClient.invalidateQueries({ queryKey: ["empresas-terciarizadas"] });
+      toast.success("Liquidación pagada");
+      setPayLiqDialog(null);
+    },
+    onError: (err: Error) => toast.error(`Error: ${err.message}`),
+  });
+
+  // Cancel liquidacion mutation
+  const cancelLiqMutation = useMutation({
+    mutationFn: async () => {
+      if (!cancelLiqDialog || !liqEmpresa) throw new Error("Datos incompletos");
+
+      // Delete liquidacion (cascade deletes details)
+      const { error } = await supabase
+        .from("liquidaciones_terciarizado")
+        .delete()
+        .eq("id", cancelLiqDialog.id);
+      if (error) throw error;
+
+      // Reverse charge in cta cte if applicable
+      if (liqEmpresa.tiene_cuenta_corriente) {
+        const saldoActual = liqEmpresa.saldo_cuenta_corriente || 0;
+        const nuevoSaldo = saldoActual - cancelLiqDialog.monto_total;
+
+        const { error: movError } = await supabase
+          .from("terciarizado_cuenta_corriente")
+          .insert({
+            empresa_id: liqEmpresa.id,
+            tipo: "ajuste",
+            monto: -cancelLiqDialog.monto_total,
+            saldo_anterior: saldoActual,
+            saldo_nuevo: nuevoSaldo,
+            descripcion: `Cancelación liquidación ${format(parseDateString(cancelLiqDialog.periodo_inicio), "dd/MM/yy")} - ${format(parseDateString(cancelLiqDialog.periodo_fin), "dd/MM/yy")}`,
+            created_by: profile?.user_id,
+          });
+        if (movError) throw movError;
+
+        const { error: updError } = await supabase
+          .from("empresas_terciarizadas")
+          .update({ saldo_cuenta_corriente: nuevoSaldo })
+          .eq("id", liqEmpresa.id);
+        if (updError) throw updError;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["liquidaciones-terciarizado"] });
+      queryClient.invalidateQueries({ queryKey: ["empresas-terciarizadas-all"] });
+      queryClient.invalidateQueries({ queryKey: ["terciarizado-cuenta-corriente"] });
+      queryClient.invalidateQueries({ queryKey: ["empresas-terciarizadas"] });
+      toast.success("Liquidación cancelada y cargo revertido");
+      setCancelLiqDialog(null);
+    },
+    onError: (err: Error) => toast.error(`Error: ${err.message}`),
+  });
+
+  // CTA CTE payment mutation
   const paymentMutation = useMutation({
     mutationFn: async () => {
       if (!selectedEmpresa) throw new Error("No hay empresa seleccionada");
@@ -160,7 +406,6 @@ export default function ThirdPartySettlements() {
       const montoFinal = paymentType === "pago" ? -paymentForm.monto : paymentForm.monto;
       const nuevoSaldo = selectedEmpresa.saldo_cuenta_corriente + montoFinal;
 
-      // Insert movement
       const { error: movError } = await supabase
         .from("terciarizado_cuenta_corriente")
         .insert({
@@ -174,28 +419,23 @@ export default function ThirdPartySettlements() {
           metodo_pago: paymentType === "pago" ? paymentForm.metodo_pago : null,
           created_by: profile?.user_id,
         });
-
       if (movError) throw movError;
 
-      // Update company balance
       const { error: updateError } = await supabase
         .from("empresas_terciarizadas")
         .update({ saldo_cuenta_corriente: nuevoSaldo })
         .eq("id", selectedEmpresa.id);
-
       if (updateError) throw updateError;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["terciarizado-cuenta-corriente", selectedEmpresaId] });
-      queryClient.invalidateQueries({ queryKey: ["empresas-terciarizadas-cta-cte"] });
+      queryClient.invalidateQueries({ queryKey: ["empresas-terciarizadas-all"] });
       queryClient.invalidateQueries({ queryKey: ["empresas-terciarizadas"] });
       toast.success(paymentType === "pago" ? "Pago registrado correctamente" : "Ajuste registrado correctamente");
       setIsPaymentDialogOpen(false);
       setPaymentForm({ monto: 0, descripcion: "", referencia: "", metodo_pago: "transferencia" });
     },
-    onError: (error: Error) => {
-      toast.error(`Error: ${error.message}`);
-    },
+    onError: (error: Error) => toast.error(`Error: ${error.message}`),
   });
 
   const openPaymentDialog = (type: "pago" | "ajuste") => {
@@ -206,14 +446,10 @@ export default function ThirdPartySettlements() {
 
   const getMovimientoIcon = (tipo: string) => {
     switch (tipo) {
-      case "cargo":
-        return <ArrowUpCircle className="h-4 w-4 text-destructive" />;
-      case "pago":
-        return <ArrowDownCircle className="h-4 w-4 text-green-500" />;
-      case "ajuste":
-        return <RefreshCw className="h-4 w-4 text-blue-500" />;
-      default:
-        return null;
+      case "cargo": return <ArrowUpCircle className="h-4 w-4 text-destructive" />;
+      case "pago": return <ArrowDownCircle className="h-4 w-4 text-green-500" />;
+      case "ajuste": return <RefreshCw className="h-4 w-4 text-blue-500" />;
+      default: return null;
     }
   };
 
@@ -223,379 +459,523 @@ export default function ThirdPartySettlements() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-foreground">Liquidaciones Terciarizados</h1>
-        <p className="text-muted-foreground">Gestiona la cuenta corriente con empresas terciarizadas</p>
+        <p className="text-muted-foreground">Genera liquidaciones y gestiona la cuenta corriente con empresas terciarizadas</p>
       </div>
 
-      {/* Company Selector */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="space-y-2">
-            <Label>Seleccionar Empresa</Label>
-            <Select
-              value={selectedEmpresaId || ""}
-              onValueChange={(value) => setSelectedEmpresaId(value || null)}
-            >
-              <SelectTrigger className="w-full max-w-md">
-                <SelectValue placeholder="Selecciona una empresa..." />
-              </SelectTrigger>
-              <SelectContent>
-                {empresas.map((empresa) => (
-                  <SelectItem key={empresa.id} value={empresa.id}>
-                    <div className="flex items-center gap-2">
-                      <Building2 className="h-4 w-4" />
-                      <span>{empresa.nombre}</span>
-                      <span className="text-muted-foreground">({empresa.codigo})</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="liquidaciones">
+            <FileText className="mr-2 h-4 w-4" />
+            Liquidaciones
+          </TabsTrigger>
+          <TabsTrigger value="cuenta-corriente">
+            <DollarSign className="mr-2 h-4 w-4" />
+            Cuenta Corriente
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Selected Company Details */}
-      {selectedEmpresa && (
-        <>
-          <Card className="border-primary/20">
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-xl">{selectedEmpresa.nombre}</CardTitle>
-                  <p className="text-sm text-muted-foreground">
-                    CUIT: {selectedEmpresa.cuit || "No registrado"}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => openPaymentDialog("ajuste")}>
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Ajuste Manual
-                  </Button>
-                  <Button onClick={() => openPaymentDialog("pago")}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Registrar Pago
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid md:grid-cols-3 gap-4">
-                <div className="p-4 rounded-lg bg-muted/50">
-                  <p className="text-sm text-muted-foreground mb-1">Saldo Actual</p>
-                  <p
-                    className={`text-2xl font-bold ${
-                      selectedEmpresa.saldo_cuenta_corriente < 0 ? "text-destructive" : "text-green-600"
-                    }`}
-                  >
-                    ${selectedEmpresa.saldo_cuenta_corriente.toLocaleString()}
-                  </p>
-                </div>
-                <div className="p-4 rounded-lg bg-muted/50">
-                  <p className="text-sm text-muted-foreground mb-1">Límite de Crédito</p>
-                  <p className="text-2xl font-bold">${selectedEmpresa.limite_credito.toLocaleString()}</p>
-                </div>
-                <div className="p-4 rounded-lg bg-muted/50">
-                  <p className="text-sm text-muted-foreground mb-1">Crédito Disponible</p>
-                  <p className={`text-2xl font-bold ${creditoDisponible < 0 ? "text-destructive" : ""}`}>
-                    ${creditoDisponible.toLocaleString()}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Movements History */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Historial de Movimientos</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {loadingMovimientos ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                </div>
-              ) : movimientos.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground">
-                  <DollarSign className="h-12 w-12 mx-auto mb-2 opacity-20" />
-                  <p>No hay movimientos registrados</p>
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Fecha</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Descripción</TableHead>
-                      <TableHead>Referencia</TableHead>
-                      <TableHead className="text-right">Monto</TableHead>
-                      <TableHead className="text-right">Saldo</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {movimientos.map((mov) => (
-                      <TableRow key={mov.id}>
-                        <TableCell className="whitespace-nowrap">
-                          {format(new Date(mov.created_at), "dd/MM/yy HH:mm", { locale: es })}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {getMovimientoIcon(mov.tipo)}
-                            <Badge
-                              variant={
-                                mov.tipo === "cargo"
-                                  ? "destructive"
-                                  : mov.tipo === "pago"
-                                  ? "default"
-                                  : "secondary"
-                              }
-                            >
-                              {mov.tipo === "cargo"
-                                ? "Cargo"
-                                : mov.tipo === "pago"
-                                ? "Pago"
-                                : "Ajuste"}
-                            </Badge>
-                          </div>
-                        </TableCell>
-                        <TableCell className="max-w-[200px] truncate">
-                          {mov.descripcion || "-"}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">{mov.referencia || "-"}</TableCell>
-                        <TableCell
-                          className={`text-right font-medium ${
-                            mov.monto < 0 ? "text-green-600" : "text-destructive"
-                          }`}
-                        >
-                          {mov.monto < 0 ? "+" : ""}${Math.abs(mov.monto).toLocaleString()}
-                        </TableCell>
-                        <TableCell className="text-right font-mono">
-                          ${mov.saldo_nuevo.toLocaleString()}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Pending Shipments */}
+        {/* ========== TAB LIQUIDACIONES ========== */}
+        <TabsContent value="liquidaciones" className="space-y-6">
+          {/* Calculator */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
-                <Package className="h-5 w-5" />
-                Envíos Pendientes
+                <Calculator className="h-5 w-5" />
+                Calculadora de Liquidación
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-0">
-              {loadingEnvios ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <CardContent className="space-y-4">
+              <div className="grid md:grid-cols-4 gap-4 items-end">
+                <div className="space-y-2">
+                  <Label>Empresa</Label>
+                  <Select value={liqEmpresaId || ""} onValueChange={(v) => { setLiqEmpresaId(v || null); setHasCalculated(false); setEnviosCalculados([]); }}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar empresa..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {empresas.map((e) => (
+                        <SelectItem key={e.id} value={e.id}>
+                          <div className="flex items-center gap-2">
+                            <Building2 className="h-4 w-4" />
+                            <span>{e.nombre}</span>
+                            <span className="text-muted-foreground">({e.codigo})</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              ) : enviosPendientes.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Package className="h-12 w-12 mx-auto mb-2 opacity-20" />
-                  <p>No hay envíos pendientes</p>
+                <div className="space-y-2">
+                  <Label>Desde</Label>
+                  <Input type="date" value={periodoInicio} onChange={(e) => setPeriodoInicio(e.target.value)} />
                 </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Tracking Externo</TableHead>
-                      <TableHead>Destinatario</TableHead>
-                      <TableHead>Fecha</TableHead>
-                      <TableHead className="text-right">Monto</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {enviosPendientes.map((envio) => (
-                      <TableRow key={envio.id}>
-                        <TableCell className="font-mono">{envio.tracking_externo || envio.tracking_number}</TableCell>
-                        <TableCell>{envio.nombre_destinatario || "-"}</TableCell>
-                        <TableCell>
-                          {format(new Date(envio.created_at), "dd/MM/yy", { locale: es })}
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          ${envio.precio_total?.toLocaleString() || "0"}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                <div className="space-y-2">
+                  <Label>Hasta</Label>
+                  <Input type="date" value={periodoFin} onChange={(e) => setPeriodoFin(e.target.value)} />
+                </div>
+                <Button onClick={handleCalculate} disabled={isCalculating || !liqEmpresaId || !periodoInicio || !periodoFin}>
+                  {isCalculating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Calculator className="mr-2 h-4 w-4" />}
+                  Calcular
+                </Button>
+              </div>
+
+              {liqEmpresa?.incluye_iva && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Badge variant="outline">IVA {liqEmpresa.porcentaje_iva}%</Badge>
+                  <span>Los montos incluyen IVA. Se desglosará automáticamente.</span>
+                </div>
               )}
             </CardContent>
           </Card>
-        </>
-      )}
 
-      {/* No company selected */}
-      {!selectedEmpresaId && !loadingEmpresas && (
-        <Card className="border-dashed">
-          <CardContent className="py-12 text-center">
-            <Building2 className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-            <h3 className="font-medium mb-2">Selecciona una empresa</h3>
-            <p className="text-sm text-muted-foreground max-w-md mx-auto">
-              Elige una empresa terciarizada con cuenta corriente habilitada para ver sus movimientos y
-              registrar pagos.
-            </p>
-            {empresas.length === 0 && (
-              <div className="mt-4 p-4 bg-amber-50 dark:bg-amber-950/20 rounded-lg inline-flex items-center gap-2 text-amber-700 dark:text-amber-400">
-                <AlertCircle className="h-4 w-4" />
-                <span className="text-sm">No hay empresas con cuenta corriente habilitada</span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+          {/* Calculated Shipments */}
+          {hasCalculated && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">
+                    Envíos Entregados ({enviosCalculados.length})
+                  </CardTitle>
+                  {enviosCalculados.length > 0 && (
+                    <Button onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending}>
+                      {generateMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+                      Generar Liquidación
+                    </Button>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                {enviosCalculados.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Package className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                    <p>No se encontraron envíos entregados en el período seleccionado</p>
+                  </div>
+                ) : (
+                  <>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Tracking</TableHead>
+                          <TableHead>Destinatario</TableHead>
+                          <TableHead>Fecha Entrega</TableHead>
+                          <TableHead className="text-right">Monto</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {enviosCalculados.map((envio) => (
+                          <TableRow key={envio.id}>
+                            <TableCell className="font-mono">{envio.tracking_externo || envio.tracking_number}</TableCell>
+                            <TableCell>{envio.nombre_destinatario || "-"}</TableCell>
+                            <TableCell>
+                              {envio.fecha_entrega ? format(new Date(envio.fecha_entrega), "dd/MM/yy", { locale: es }) : "-"}
+                            </TableCell>
+                            <TableCell className="text-right font-medium">
+                              ${(envio.precio_total || 0).toLocaleString()}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
 
-      {/* Summary table when no company is selected */}
-      {!selectedEmpresaId && empresas.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Resumen de Empresas</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Empresa</TableHead>
-                  <TableHead>CUIT</TableHead>
-                  <TableHead className="text-right">Límite Crédito</TableHead>
-                  <TableHead className="text-right">Saldo</TableHead>
-                  <TableHead className="text-right">Disponible</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {empresas.map((empresa) => {
-                  const disponible =
-                    empresa.limite_credito - Math.abs(Math.min(0, empresa.saldo_cuenta_corriente));
-                  return (
-                    <TableRow
-                      key={empresa.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => setSelectedEmpresaId(empresa.id)}
-                    >
-                      <TableCell>
+                    {/* Summary */}
+                    <div className="border-t p-4 space-y-2">
+                      {liqEmpresa?.incluye_iva ? (
+                        <>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Monto Neto</span>
+                            <span>${ivaBreakdown.neto.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">IVA ({liqEmpresa.porcentaje_iva}%)</span>
+                            <span>${ivaBreakdown.iva.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          </div>
+                        </>
+                      ) : null}
+                      <div className="flex justify-between font-bold text-lg border-t pt-2">
+                        <span>Total</span>
+                        <span>${montoTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Liquidaciones History */}
+          {liqEmpresaId && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Historial de Liquidaciones</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                {loadingLiquidaciones ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : liquidaciones.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <FileText className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                    <p>No hay liquidaciones generadas</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Período</TableHead>
+                        <TableHead>Envíos</TableHead>
+                        <TableHead className="text-right">Neto</TableHead>
+                        <TableHead className="text-right">IVA</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
+                        <TableHead>Estado</TableHead>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead className="text-right">Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {liquidaciones.map((liq) => (
+                        <TableRow key={liq.id}>
+                          <TableCell className="whitespace-nowrap">
+                            {format(parseDateString(liq.periodo_inicio), "dd/MM/yy")} - {format(parseDateString(liq.periodo_fin), "dd/MM/yy")}
+                          </TableCell>
+                          <TableCell>{liq.cantidad_envios}</TableCell>
+                          <TableCell className="text-right">${liq.monto_neto.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                          <TableCell className="text-right">${liq.monto_iva.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                          <TableCell className="text-right font-medium">${liq.monto_total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                          <TableCell>
+                            <Badge variant={liq.estado === "pagada" ? "default" : "secondary"}>
+                              {liq.estado === "pagada" ? "Pagada" : "Generada"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {format(new Date(liq.created_at), "dd/MM/yy", { locale: es })}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {liq.estado === "generada" && (
+                              <div className="flex justify-end gap-1">
+                                <Button size="sm" variant="outline" onClick={() => { setPayLiqDialog(liq); setPayLiqForm({ metodo_pago: "transferencia", referencia_pago: "" }); }}>
+                                  <CreditCard className="mr-1 h-3 w-3" />
+                                  Pagar
+                                </Button>
+                                <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setCancelLiqDialog(liq)}>
+                                  <Ban className="mr-1 h-3 w-3" />
+                                  Cancelar
+                                </Button>
+                              </div>
+                            )}
+                            {liq.estado === "pagada" && liq.metodo_pago && (
+                              <span className="text-xs text-muted-foreground">
+                                {liq.metodo_pago} {liq.referencia_pago && `- ${liq.referencia_pago}`}
+                              </span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* ========== TAB CUENTA CORRIENTE ========== */}
+        <TabsContent value="cuenta-corriente" className="space-y-6">
+          {/* Company Selector */}
+          <Card>
+            <CardContent className="pt-6">
+              <div className="space-y-2">
+                <Label>Seleccionar Empresa</Label>
+                <Select value={selectedEmpresaId || ""} onValueChange={(value) => setSelectedEmpresaId(value || null)}>
+                  <SelectTrigger className="w-full max-w-md">
+                    <SelectValue placeholder="Selecciona una empresa..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {empresasCtaCte.map((empresa) => (
+                      <SelectItem key={empresa.id} value={empresa.id}>
                         <div className="flex items-center gap-2">
-                          <Building2 className="h-4 w-4 text-muted-foreground" />
-                          <span className="font-medium">{empresa.nombre}</span>
-                          <Badge variant="outline">{empresa.codigo}</Badge>
+                          <Building2 className="h-4 w-4" />
+                          <span>{empresa.nombre}</span>
+                          <span className="text-muted-foreground">({empresa.codigo})</span>
                         </div>
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">{empresa.cuit || "-"}</TableCell>
-                      <TableCell className="text-right">
-                        ${empresa.limite_credito.toLocaleString()}
-                      </TableCell>
-                      <TableCell
-                        className={`text-right font-medium ${
-                          empresa.saldo_cuenta_corriente < 0 ? "text-destructive" : "text-green-600"
-                        }`}
-                      >
-                        ${empresa.saldo_cuenta_corriente.toLocaleString()}
-                      </TableCell>
-                      <TableCell
-                        className={`text-right ${disponible < 0 ? "text-destructive" : ""}`}
-                      >
-                        ${disponible.toLocaleString()}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
 
-      {/* Payment/Adjustment Dialog */}
+          {selectedEmpresa && (
+            <>
+              <Card className="border-primary/20">
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-xl">{selectedEmpresa.nombre}</CardTitle>
+                      <p className="text-sm text-muted-foreground">CUIT: {selectedEmpresa.cuit || "No registrado"}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" onClick={() => openPaymentDialog("ajuste")}>
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                        Ajuste Manual
+                      </Button>
+                      <Button onClick={() => openPaymentDialog("pago")}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Registrar Pago
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid md:grid-cols-3 gap-4">
+                    <div className="p-4 rounded-lg bg-muted/50">
+                      <p className="text-sm text-muted-foreground mb-1">Saldo Actual</p>
+                      <p className={`text-2xl font-bold ${selectedEmpresa.saldo_cuenta_corriente < 0 ? "text-destructive" : "text-green-600"}`}>
+                        ${selectedEmpresa.saldo_cuenta_corriente.toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-muted/50">
+                      <p className="text-sm text-muted-foreground mb-1">Límite de Crédito</p>
+                      <p className="text-2xl font-bold">${selectedEmpresa.limite_credito.toLocaleString()}</p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-muted/50">
+                      <p className="text-sm text-muted-foreground mb-1">Crédito Disponible</p>
+                      <p className={`text-2xl font-bold ${creditoDisponible < 0 ? "text-destructive" : ""}`}>
+                        ${creditoDisponible.toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Movements History */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Historial de Movimientos</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {loadingMovimientos ? (
+                    <div className="flex items-center justify-center py-12">
+                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : movimientos.length === 0 ? (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <DollarSign className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                      <p>No hay movimientos registrados</p>
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Fecha</TableHead>
+                          <TableHead>Tipo</TableHead>
+                          <TableHead>Descripción</TableHead>
+                          <TableHead>Referencia</TableHead>
+                          <TableHead className="text-right">Monto</TableHead>
+                          <TableHead className="text-right">Saldo</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {movimientos.map((mov) => (
+                          <TableRow key={mov.id}>
+                            <TableCell className="whitespace-nowrap">
+                              {format(new Date(mov.created_at), "dd/MM/yy HH:mm", { locale: es })}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                {getMovimientoIcon(mov.tipo)}
+                                <Badge variant={mov.tipo === "cargo" ? "destructive" : mov.tipo === "pago" ? "default" : "secondary"}>
+                                  {mov.tipo === "cargo" ? "Cargo" : mov.tipo === "pago" ? "Pago" : "Ajuste"}
+                                </Badge>
+                              </div>
+                            </TableCell>
+                            <TableCell className="max-w-[200px] truncate">{mov.descripcion || "-"}</TableCell>
+                            <TableCell className="text-muted-foreground">{mov.referencia || "-"}</TableCell>
+                            <TableCell className={`text-right font-medium ${mov.monto < 0 ? "text-green-600" : "text-destructive"}`}>
+                              {mov.monto < 0 ? "+" : ""}${Math.abs(mov.monto).toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-right font-mono">${mov.saldo_nuevo.toLocaleString()}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          )}
+
+          {/* No company selected */}
+          {!selectedEmpresaId && !loadingEmpresas && (
+            <Card className="border-dashed">
+              <CardContent className="py-12 text-center">
+                <Building2 className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+                <h3 className="font-medium mb-2">Selecciona una empresa</h3>
+                <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                  Elige una empresa terciarizada con cuenta corriente habilitada para ver sus movimientos y registrar pagos.
+                </p>
+                {empresasCtaCte.length === 0 && (
+                  <div className="mt-4 p-4 bg-amber-50 dark:bg-amber-950/20 rounded-lg inline-flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                    <AlertCircle className="h-4 w-4" />
+                    <span className="text-sm">No hay empresas con cuenta corriente habilitada</span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Summary table */}
+          {!selectedEmpresaId && empresasCtaCte.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Resumen de Empresas</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Empresa</TableHead>
+                      <TableHead>CUIT</TableHead>
+                      <TableHead className="text-right">Límite Crédito</TableHead>
+                      <TableHead className="text-right">Saldo</TableHead>
+                      <TableHead className="text-right">Disponible</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {empresasCtaCte.map((empresa) => {
+                      const disponible = empresa.limite_credito - Math.abs(Math.min(0, empresa.saldo_cuenta_corriente));
+                      return (
+                        <TableRow key={empresa.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setSelectedEmpresaId(empresa.id)}>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Building2 className="h-4 w-4 text-muted-foreground" />
+                              <span className="font-medium">{empresa.nombre}</span>
+                              <Badge variant="outline">{empresa.codigo}</Badge>
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-mono text-sm">{empresa.cuit || "-"}</TableCell>
+                          <TableCell className="text-right">${empresa.limite_credito.toLocaleString()}</TableCell>
+                          <TableCell className={`text-right font-medium ${empresa.saldo_cuenta_corriente < 0 ? "text-destructive" : "text-green-600"}`}>
+                            ${empresa.saldo_cuenta_corriente.toLocaleString()}
+                          </TableCell>
+                          <TableCell className={`text-right ${disponible < 0 ? "text-destructive" : ""}`}>
+                            ${disponible.toLocaleString()}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {/* ========== DIALOGS ========== */}
+
+      {/* Pay Liquidacion Dialog */}
+      <Dialog open={!!payLiqDialog} onOpenChange={() => setPayLiqDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Pagar Liquidación</DialogTitle>
+            <DialogDescription>
+              Total: ${payLiqDialog?.monto_total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Método de Pago</Label>
+              <Select value={payLiqForm.metodo_pago} onValueChange={(v) => setPayLiqForm((p) => ({ ...p, metodo_pago: v as PaymentMethod }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {METODOS_PAGO.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Referencia</Label>
+              <Input placeholder="Nro. de comprobante, factura, etc." value={payLiqForm.referencia_pago} onChange={(e) => setPayLiqForm((p) => ({ ...p, referencia_pago: e.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayLiqDialog(null)}>Cancelar</Button>
+            <Button onClick={() => payLiqMutation.mutate()} disabled={payLiqMutation.isPending}>
+              {payLiqMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Confirmar Pago
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel Liquidacion Dialog */}
+      <Dialog open={!!cancelLiqDialog} onOpenChange={() => setCancelLiqDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancelar Liquidación</DialogTitle>
+            <DialogDescription>
+              Se eliminará la liquidación y se revertirá el cargo en la cuenta corriente.
+              Período: {cancelLiqDialog && `${format(parseDateString(cancelLiqDialog.periodo_inicio), "dd/MM/yy")} - ${format(parseDateString(cancelLiqDialog.periodo_fin), "dd/MM/yy")}`}
+              {" | "}Total: ${cancelLiqDialog?.monto_total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCancelLiqDialog(null)}>Volver</Button>
+            <Button variant="destructive" onClick={() => cancelLiqMutation.mutate()} disabled={cancelLiqMutation.isPending}>
+              {cancelLiqMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Cancelar Liquidación
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* CTA CTE Payment/Adjustment Dialog */}
       <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              {paymentType === "pago" ? "Registrar Pago" : "Ajuste Manual"}
-            </DialogTitle>
+            <DialogTitle>{paymentType === "pago" ? "Registrar Pago" : "Ajuste Manual"}</DialogTitle>
             <DialogDescription>
               {paymentType === "pago"
                 ? "Registra un pago recibido o realizado a la empresa"
                 : "Realiza un ajuste manual al saldo de la cuenta corriente"}
             </DialogDescription>
           </DialogHeader>
-
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Monto *</Label>
               <div className="relative">
                 <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="number"
-                  min={0}
-                  step={0.01}
-                  placeholder="0.00"
-                  value={paymentForm.monto || ""}
-                  onChange={(e) =>
-                    setPaymentForm((p) => ({ ...p, monto: parseFloat(e.target.value) || 0 }))
-                  }
-                  className="pl-10"
-                />
+                <Input type="number" min={0} step={0.01} placeholder="0.00" value={paymentForm.monto || ""} onChange={(e) => setPaymentForm((p) => ({ ...p, monto: parseFloat(e.target.value) || 0 }))} className="pl-10" />
               </div>
               {paymentType === "ajuste" && (
-                <p className="text-xs text-muted-foreground">
-                  Use valores positivos para aumentar el saldo (cargo) o negativos para reducirlo
-                  (abono)
-                </p>
+                <p className="text-xs text-muted-foreground">Use valores positivos para aumentar el saldo (cargo) o negativos para reducirlo (abono)</p>
               )}
             </div>
-
             {paymentType === "pago" && (
               <div className="space-y-2">
                 <Label>Método de Pago</Label>
-                <Select
-                  value={paymentForm.metodo_pago}
-                  onValueChange={(value) =>
-                    setPaymentForm((p) => ({ ...p, metodo_pago: value as PaymentMethod }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
+                <Select value={paymentForm.metodo_pago} onValueChange={(value) => setPaymentForm((p) => ({ ...p, metodo_pago: value as PaymentMethod }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {METODOS_PAGO.map((m) => (
-                      <SelectItem key={m.value} value={m.value}>
-                        {m.label}
-                      </SelectItem>
-                    ))}
+                    {METODOS_PAGO.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
             )}
-
             <div className="space-y-2">
               <Label>Referencia</Label>
-              <Input
-                placeholder="Nro. de comprobante, factura, etc."
-                value={paymentForm.referencia}
-                onChange={(e) => setPaymentForm((p) => ({ ...p, referencia: e.target.value }))}
-              />
+              <Input placeholder="Nro. de comprobante, factura, etc." value={paymentForm.referencia} onChange={(e) => setPaymentForm((p) => ({ ...p, referencia: e.target.value }))} />
             </div>
-
             <div className="space-y-2">
               <Label>Descripción</Label>
-              <Textarea
-                placeholder="Descripción del movimiento"
-                value={paymentForm.descripcion}
-                onChange={(e) => setPaymentForm((p) => ({ ...p, descripcion: e.target.value }))}
-                rows={2}
-              />
+              <Textarea placeholder="Descripción del movimiento" value={paymentForm.descripcion} onChange={(e) => setPaymentForm((p) => ({ ...p, descripcion: e.target.value }))} rows={2} />
             </div>
           </div>
-
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsPaymentDialogOpen(false)}>
-              Cancelar
-            </Button>
+            <Button variant="outline" onClick={() => setIsPaymentDialogOpen(false)}>Cancelar</Button>
             <Button onClick={() => paymentMutation.mutate()} disabled={paymentMutation.isPending}>
               {paymentMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {paymentType === "pago" ? "Registrar Pago" : "Aplicar Ajuste"}
