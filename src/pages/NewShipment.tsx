@@ -1434,12 +1434,18 @@ export default function NewShipment() {
     setDestinoCoords({ lat: details.lat, lng: details.lng });
   };
 
-  // Update destination coords when sucursal destino changes
+  // Update destination coords and city/postal when sucursal destino changes
   useEffect(() => {
     if (!tieneEntrega && formData.sucursal_destino_id) {
       const sucursalDestino = sucursales.find(s => s.id === formData.sucursal_destino_id);
-      if (sucursalDestino?.lat && sucursalDestino?.lng) {
-        setDestinoCoords({ lat: sucursalDestino.lat, lng: sucursalDestino.lng });
+      if (sucursalDestino) {
+        if (sucursalDestino.lat && sucursalDestino.lng) {
+          setDestinoCoords({ lat: sucursalDestino.lat, lng: sucursalDestino.lng });
+        }
+        setFormData(prev => ({
+          ...prev,
+          destinatario_ciudad: sucursalDestino.ciudad || '',
+        }));
       }
     }
   }, [formData.sucursal_destino_id, sucursales, tieneEntrega]);
