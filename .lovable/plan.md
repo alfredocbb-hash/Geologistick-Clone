@@ -1,45 +1,113 @@
 
 
-# Fix: Filtrar correctamente envios ML "listo para enviar" del planificador
+# Implementar Liquidaciones de Terciarizados con IVA
 
-## Problema
+## Resumen
 
-El cambio anterior (`!envio.requiere_retiro`) es demasiado amplio. Los envios sincronizados de Mercado Libre no tienen `requiere_retiro` seteado (es null/false), entonces TODOS pasan el filtro, incluyendo los que estan en "listo para enviar" (estado `pendiente`) y no deberian aparecer en el planificador.
+Agregar un flujo completo de liquidaciones para empresas terciarizadas, incluyendo calculo automatico de envios entregados en un periodo, generacion formal de liquidaciones, gestion del ciclo de vida (pagar/cancelar), y soporte para IVA configurable por empresa.
 
-Lo que el usuario espera ver:
-- El retiro de Ada Marina Perez (creado manualmente desde pedido, sin `ml_shipment_id`)
-- Envios "en Camino" (estado `recogido`, `en_reparto`, etc.) - ya cubierto
-- **NO** los envios ML en "listo para enviar" (tienen `ml_shipment_id`, estado `pendiente`)
+## Cambios en Base de Datos
 
-## Causa raiz
+### 1. Agregar columnas IVA a `empresas_terciarizadas`
 
-La diferencia entre el envio de Ada Marina Perez y los envios ML auto-sincronizados es que los auto-sincronizados tienen `ml_shipment_id` asignado, mientras que los creados manualmente desde la pagina de pedidos no lo tienen.
+Dos nuevas columnas para configurar si la empresa trabaja con IVA incluido y que porcentaje aplica (igual que sucursales):
 
-## Solucion
+| Columna | Tipo | Default | Descripcion |
+|---|---|---|---|
+| incluye_iva | boolean | false | Si la empresa factura con IVA |
+| porcentaje_iva | numeric | 21 | Porcentaje de IVA aplicable |
 
-Reemplazar la condicion `!envio.requiere_retiro` por `!envio.ml_shipment_id`. Esto permite:
+### 2. Nueva tabla: `liquidaciones_terciarizado`
 
-- Envios de e-commerce creados manualmente (sin `ml_shipment_id`): **aparecen**
-- Envios ML auto-sincronizados en estado pendiente (con `ml_shipment_id`): **NO aparecen**
-- Envios ML en estados avanzados (recogido, en_reparto): **aparecen** (por la condicion de estado que ya existe)
-- Retiros con `requiere_retiro = true`: **aparecen** como retiro
-- Envios reprogramados: **aparecen** (por la condicion existente)
+| Columna | Tipo | Default |
+|---|---|---|
+| id | uuid PK | gen_random_uuid() |
+| empresa_id | uuid FK -> empresas_terciarizadas | - |
+| periodo_inicio | date | - |
+| periodo_fin | date | - |
+| monto_total | numeric | 0 |
+| monto_iva | numeric | 0 |
+| monto_neto | numeric | 0 |
+| cantidad_envios | integer | 0 |
+| estado | text | 'generada' |
+| notas | text | null |
+| metodo_pago | text | null |
+| referencia_pago | text | null |
+| fecha_pago | timestamptz | null |
+| generado_por | uuid | null |
+| tenant_id | uuid | null |
+| created_at | timestamptz | now() |
 
-## Cambio tecnico
+### 3. Nueva tabla: `liquidacion_terciarizado_detalles`
 
-En `src/pages/RoutePlanner.tsx`, linea 269, reemplazar:
+| Columna | Tipo | Default |
+|---|---|---|
+| id | uuid PK | gen_random_uuid() |
+| liquidacion_id | uuid FK -> liquidaciones_terciarizado | - |
+| envio_id | uuid FK -> envios | - |
+| monto | numeric | 0 |
+| created_at | timestamptz | now() |
 
-```typescript
-// Antes:
-!envio.requiere_retiro
+### 4. Politicas RLS
 
-// Despues:
-!envio.ml_shipment_id
+- Admin y supervisor pueden gestionar (INSERT, UPDATE, DELETE no pagadas, SELECT)
+- Mismo patron que `liquidaciones_sucursal`
+
+## Cambios en Frontend
+
+### Archivo: `src/pages/ThirdPartyCompanies.tsx`
+
+Agregar los campos `incluye_iva` y `porcentaje_iva` al formulario de creacion/edicion de empresas terciarizadas (un Switch para activar IVA y un Input para el porcentaje).
+
+### Archivo: `src/pages/ThirdPartySettlements.tsx`
+
+Reescribir con dos tabs principales:
+
+**Tab "Liquidaciones"** (nueva):
+- Seleccionar empresa + rango de fechas
+- Boton "Calcular" que busca envios entregados (`estado = 'entregado'`, `es_terciarizado = true`, `empresa_terciarizada_id = empresa`) en el periodo
+- Tabla de envios encontrados con tracking, destinatario, fecha entrega, monto
+- Resumen: subtotal, IVA (si la empresa tiene `incluye_iva = true`, desglosa neto + IVA al porcentaje configurado), total
+- Boton "Generar Liquidacion":
+  - Crea registro en `liquidaciones_terciarizado` (con monto_total, monto_iva, monto_neto)
+  - Crea detalles en `liquidacion_terciarizado_detalles`
+  - Registra cargo en `terciarizado_cuenta_corriente`
+  - Actualiza `saldo_cuenta_corriente` de la empresa
+- Historial de liquidaciones con acciones: pagar, cancelar
+
+**Tab "Cuenta Corriente"** (existente):
+- Sin cambios: selector de empresa, saldo, historial de movimientos, pagos/ajustes
+
+### Logica de IVA en la liquidacion
+
+```text
+Si empresa.incluye_iva = true:
+  monto_neto = monto_total / (1 + porcentaje_iva/100)
+  monto_iva  = monto_total - monto_neto
+Si empresa.incluye_iva = false:
+  monto_neto = monto_total
+  monto_iva  = 0
 ```
 
-## Archivo a modificar
+El desglose se muestra en la calculadora y se guarda en la liquidacion para referencia futura.
 
-| Archivo | Cambio |
-|---|---|
-| `src/pages/RoutePlanner.tsx` | Cambiar condicion de filtro de `!envio.requiere_retiro` a `!envio.ml_shipment_id` (linea 269) |
+## Flujo completo
+
+```text
+1. Configurar empresa con IVA (ThirdPartyCompanies)
+2. Ir a Liquidaciones Terciarizados
+3. Tab "Liquidaciones" > Seleccionar empresa + fechas
+4. Calcular > Ver envios entregados + desglose IVA
+5. Generar Liquidacion > Se crea liquidacion + cargo en cta cte
+6. Pagar liquidacion > Se registra pago en cta cte
+7. (Opcional) Cancelar > Se revierte el cargo
+```
+
+## Archivos a modificar/crear
+
+| Archivo | Accion | Descripcion |
+|---|---|---|
+| Migracion SQL | Crear | Columnas IVA en empresas_terciarizadas + tablas liquidaciones_terciarizado y liquidacion_terciarizado_detalles con RLS |
+| `src/pages/ThirdPartyCompanies.tsx` | Modificar | Agregar campos incluye_iva y porcentaje_iva al formulario |
+| `src/pages/ThirdPartySettlements.tsx` | Modificar | Agregar tab de liquidaciones con calculadora, IVA, generacion, historial y acciones; mover contenido actual a tab "Cuenta Corriente" |
 
