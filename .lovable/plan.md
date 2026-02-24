@@ -1,75 +1,45 @@
 
 
-# Mapa y paradas lado a lado + Envios agrupados por localidad
+# Fix: Filtrar correctamente envios ML "listo para enviar" del planificador
 
 ## Problema
-1. Al reordenar paradas manualmente, el mapa queda arriba y hay que hacer scroll constante para ver el resultado.
-2. La lista de envios disponibles no permite ver cuantos envios hay por localidad de un vistazo.
+
+El cambio anterior (`!envio.requiere_retiro`) es demasiado amplio. Los envios sincronizados de Mercado Libre no tienen `requiere_retiro` seteado (es null/false), entonces TODOS pasan el filtro, incluyendo los que estan en "listo para enviar" (estado `pendiente`) y no deberian aparecer en el planificador.
+
+Lo que el usuario espera ver:
+- El retiro de Ada Marina Perez (creado manualmente desde pedido, sin `ml_shipment_id`)
+- Envios "en Camino" (estado `recogido`, `en_reparto`, etc.) - ya cubierto
+- **NO** los envios ML en "listo para enviar" (tienen `ml_shipment_id`, estado `pendiente`)
+
+## Causa raiz
+
+La diferencia entre el envio de Ada Marina Perez y los envios ML auto-sincronizados es que los auto-sincronizados tienen `ml_shipment_id` asignado, mientras que los creados manualmente desde la pagina de pedidos no lo tienen.
 
 ## Solucion
 
-### Cambio 1: Layout lado a lado para paradas + mapa
+Reemplazar la condicion `!envio.requiere_retiro` por `!envio.ml_shipment_id`. Esto permite:
 
-Cuando hay una ruta seleccionada (`selectedOption`), reorganizar la seccion en dos columnas:
+- Envios de e-commerce creados manualmente (sin `ml_shipment_id`): **aparecen**
+- Envios ML auto-sincronizados en estado pendiente (con `ml_shipment_id`): **NO aparecen**
+- Envios ML en estados avanzados (recogido, en_reparto): **aparecen** (por la condicion de estado que ya existe)
+- Retiros con `requiere_retiro = true`: **aparecen** como retiro
+- Envios reprogramados: **aparecen** (por la condicion existente)
 
-```text
-+----------------------------------+------------------------------+
-|  Opciones de Ruta (cards)                                       |
-|  [x] Retiros primero   [ ] Distancia minima                    |
-+-----------------------------------------------------------------+
-+----------------------------------+------------------------------+
-|  Orden de Paradas (drag&drop)    |  Mapa Vista Previa           |
-|  1. Marcos Casuso                |  [Google Map reactivo        |
-|  2. Mauricio Del Castillo        |   con polyline que se        |
-|  3. Maria Mercedes Birello       |   actualiza al reordenar]    |
-|  ...                             |                              |
-|  (scroll interno en la lista)    |                              |
-+----------------------------------+------------------------------+
-|  Chofer | Vehiculo | Fecha | Hora | [Crear Ruta]                |
-+-----------------------------------------------------------------+
+## Cambio tecnico
+
+En `src/pages/RoutePlanner.tsx`, linea 269, reemplazar:
+
+```typescript
+// Antes:
+!envio.requiere_retiro
+
+// Despues:
+!envio.ml_shipment_id
 ```
-
-- La lista de paradas tendra `max-h-[500px]` con scroll interno
-- El mapa ocupara la misma altura (`h-[500px]`) y se actualizara reactivamente al reordenar
-- En pantallas chicas (`< lg`) se mantiene apilado vertical
-
-### Cambio 2: Envios agrupados por localidad
-
-Agregar un toggle de vista en la card de "Envios Disponibles" para alternar entre:
-- **Vista lista** (actual): tabla plana con todos los envios
-- **Vista por localidad**: envios agrupados en secciones colapsables por ciudad, cada seccion muestra la cantidad de envios y permite seleccionar/deseleccionar todos los de esa localidad
-
-```text
-+------------------------------------------+
-|  Envios Disponibles    [Lista | Localidad]|
-+------------------------------------------+
-|  > Mar del Plata (5)           [x] Todos |
-|    [x] TRK-001  Entrega  Av. Colon 123  |
-|    [x] TRK-002  Retiro   Luro 456       |
-|    ...                                    |
-|  > Buenos Aires (3)            [ ] Todos |
-|    [ ] TRK-005  Entrega  Rivadavia 789   |
-|    ...                                    |
-+------------------------------------------+
-```
-
-## Cambios tecnicos en `src/pages/RoutePlanner.tsx`
-
-### Para el layout lado a lado:
-1. Agregar un estado `viewGrouped` (boolean) para alternar vistas
-2. Cuando `selectedOption` existe, envolver la card de paradas y un nuevo bloque de mapa en `grid lg:grid-cols-2 gap-4`
-3. El mapa de la columna derecha reutiliza los mismos `mapMarkers` y `routePolyline` que ya se calculan reactivamente
-4. La seccion de asignacion (chofer, vehiculo, fecha, hora, boton crear) queda debajo del grid a ancho completo
-
-### Para envios agrupados por localidad:
-1. Agregar estado `groupByCity` (boolean, default false)
-2. Calcular `groupedEnvios` con `useMemo`: agrupar `filteredEnvios` por ciudad (usando `ciudad_entrega` o `ciudad_retiro` segun el tipo)
-3. Renderizar con `Collapsible` de Radix: cada grupo es colapsable con checkbox de "seleccionar todos" del grupo
-4. Toggle con dos botones (Lista / Localidad) en el header de la card
 
 ## Archivo a modificar
 
 | Archivo | Cambio |
 |---|---|
-| `src/pages/RoutePlanner.tsx` | Layout 2 columnas para paradas+mapa; vista agrupada por localidad en envios disponibles |
+| `src/pages/RoutePlanner.tsx` | Cambiar condicion de filtro de `!envio.requiere_retiro` a `!envio.ml_shipment_id` (linea 269) |
 
