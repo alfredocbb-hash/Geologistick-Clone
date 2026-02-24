@@ -92,32 +92,22 @@ export function TarifaBranchesDialog({
   const saveMutation = useMutation({
     mutationFn: async () => {
       // For each sucursal, upsert the assignment
-      const operations = sucursales.map(async (sucursal) => {
-        const isEnabled = selectedBranches.has(sucursal.id);
-        const existing = sucursalTarifas.find(st => st.sucursal_id === sucursal.id);
+      const upsertRows = sucursales
+        .filter(s => selectedBranches.has(s.id) || sucursalTarifas.some(st => st.sucursal_id === s.id))
+        .map(s => ({
+          sucursal_id: s.id,
+          tarifa_id: tarifaId,
+          habilitada: selectedBranches.has(s.id),
+          tenant_id: profile?.tenant_id,
+          updated_at: new Date().toISOString(),
+        }));
 
-        if (existing) {
-          // Update existing
-          const { error } = await supabase
-            .from('sucursal_tarifas')
-            .update({ habilitada: isEnabled, updated_at: new Date().toISOString() })
-            .eq('id', existing.id);
-          if (error) throw error;
-        } else if (isEnabled) {
-          // Create new only if enabled
-          const { error } = await supabase
-            .from('sucursal_tarifas')
-            .insert({
-              sucursal_id: sucursal.id,
-              tarifa_id: tarifaId,
-              habilitada: true,
-              tenant_id: profile?.tenant_id,
-            });
-          if (error) throw error;
-        }
-      });
-
-      await Promise.all(operations);
+      if (upsertRows.length > 0) {
+        const { error } = await supabase
+          .from('sucursal_tarifas')
+          .upsert(upsertRows, { onConflict: 'sucursal_id,tarifa_id' });
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sucursal-tarifas'] });
