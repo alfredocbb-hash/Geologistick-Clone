@@ -265,8 +265,7 @@ export default function RoutePlanner() {
         !ecommerceEnvioIds.has(envio.id) || 
         urlEnvioIds.has(envio.id) || 
         ['recogido', 'en_sucursal', 'en_reparto'].includes(envio.estado || '') ||
-        (envio.reprogramado_count && envio.reprogramado_count > 0) ||
-        !envio.requiere_retiro
+        (envio.reprogramado_count && envio.reprogramado_count > 0)
       );
 
       // Map to include type (retiro/entrega)
