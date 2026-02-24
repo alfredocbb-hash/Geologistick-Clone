@@ -1,44 +1,36 @@
 
 
-# Fix: Precio de concepto en $0 no se guarda
+# Fix: Auto-seleccion de tarifa no funciona en envios Sucursal a Sucursal
 
 ## Problema
 
-En la pagina de Tarifas, al editar los precios por concepto, si se pone un valor de $0 (como "Flete" en $0), el sistema no lo guarda. Esto ocurre porque el codigo filtra los conceptos antes de guardarlos y descarta cualquiera donde el monto sea 0.
+Cuando un usuario de BlackBox (que tiene activa la feature "auto_seleccion_tarifa_por_zona") crea un envio de tipo **Sucursal a Sucursal** (ej: Berazategui a Rosario), el sistema muestra el error "Ingresa la ciudad del destinatario" en rojo, a pesar de que ya selecciono una sucursal destino.
 
 ## Causa raiz
 
-En `src/pages/Rates.tsx`, linea 415, el filtro de guardado es:
+El motor de auto-deteccion de tarifa busca la ciudad en `formData.destinatario_ciudad` (linea 550 de NewShipment.tsx). Pero cuando el tipo de servicio es `sucursal_sucursal`, el usuario no completa una ciudad manualmente -- selecciona una sucursal destino. El campo `destinatario_ciudad` queda vacio, y la tarifa nunca se detecta.
 
-```text
-.filter(([_, val]) => 
-  (val.es_porcentaje && parseFloat(val.porcentaje) > 0) || 
-  (!val.es_porcentaje && parseFloat(val.monto) > 0)
-)
-```
-
-Esto excluye cualquier concepto con monto = 0, por lo que nunca se inserta ni actualiza en la base de datos.
+La ciudad de la sucursal destino solo se usa al momento de enviar el formulario (linea 934), pero nunca se copia al campo `destinatario_ciudad` durante la edicion.
 
 ## Solucion
 
-Cambiar el filtro para permitir guardar valores de $0. La logica correcta es: guardar el precio si el usuario lo ha definido (es decir, si existe una entrada en el objeto `conceptPrices` para ese concepto), sin importar si el valor es 0.
+Agregar logica en el `useEffect` existente que ya reacciona al cambio de `sucursal_destino_id` (linea 1437-1445) para que tambien copie la ciudad y codigo postal de la sucursal destino a los campos `destinatario_ciudad` y `destinatario_codigo_postal` del formulario. Esto permite que el motor de auto-deteccion de tarifa encuentre la zona correcta.
 
-El filtro se reemplazara por uno que simplemente verifique que el valor es un numero valido (incluyendo 0):
-
-```text
-.filter(([_, val]) => 
-  (val.es_porcentaje && parseFloat(val.porcentaje) >= 0) || 
-  (!val.es_porcentaje && parseFloat(val.monto) >= 0)
-)
-```
-
-Esto permite guardar $0 como precio valido para cualquier concepto.
-
-## Archivo a modificar
+## Cambio tecnico
 
 | Archivo | Accion | Descripcion |
 |---|---|---|
-| `src/pages/Rates.tsx` | Modificar | Cambiar filtro de `> 0` a `>= 0` en la mutacion de guardado de precios por concepto (linea 415) |
+| `src/pages/NewShipment.tsx` | Modificar | En el useEffect de linea 1437, ademas de actualizar coordenadas, copiar `ciudad` y `codigo_postal` de la sucursal destino a `formData.destinatario_ciudad` y `formData.destinatario_codigo_postal` |
+
+El cambio especifico sera en el useEffect existente (lineas 1437-1445):
+
+```text
+Antes:
+  Solo actualiza destinoCoords con lat/lng de la sucursal destino
+
+Despues:
+  Tambien actualiza formData.destinatario_ciudad y formData.destinatario_codigo_postal
+  con los datos de la sucursal destino seleccionada
+```
 
 No se requieren cambios en la base de datos.
-
