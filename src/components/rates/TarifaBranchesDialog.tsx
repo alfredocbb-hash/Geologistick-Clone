@@ -91,21 +91,19 @@ export function TarifaBranchesDialog({
   // Save mutation
   const saveMutation = useMutation({
     mutationFn: async () => {
-      // For each sucursal, upsert the assignment
-      const upsertRows = sucursales
+      const assignments = sucursales
         .filter(s => selectedBranches.has(s.id) || sucursalTarifas.some(st => st.sucursal_id === s.id))
         .map(s => ({
           sucursal_id: s.id,
-          tarifa_id: tarifaId,
           habilitada: selectedBranches.has(s.id),
-          tenant_id: profile?.tenant_id,
-          updated_at: new Date().toISOString(),
         }));
 
-      if (upsertRows.length > 0) {
-        const { error } = await supabase
-          .from('sucursal_tarifas')
-          .upsert(upsertRows, { onConflict: 'sucursal_id,tarifa_id' });
+      if (assignments.length > 0) {
+        const { error } = await supabase.rpc('upsert_sucursal_tarifas', {
+          p_tarifa_id: tarifaId,
+          p_tenant_id: profile?.tenant_id,
+          p_assignments: assignments,
+        });
         if (error) throw error;
       }
     },
