@@ -1,83 +1,73 @@
 
-## Diagnóstico definitivo del error ARCA
+# Plan de correcciones: 4 mejoras solicitadas
 
-### Evidencia de los logs en tiempo real
+## 1. PDF de liquidacion: tarifa $0 para cancelados + columna Localidad en vez de Estado
 
-Los logs de la función revelan que el XML calculado **sí es correcto** en cuanto a montos:
-- `total=7221.98, neto=5968.58, iva=1253.40` ✓ (cálculo correcto)
+### Problema actual
+- En el PDF de liquidacion de sellers, los envios cancelados muestran el precio original en vez de $0
+- La tabla del PDF muestra la columna "Estado" pero el usuario necesita "Localidad" (ciudad de entrega)
 
-Sin embargo AFIP rechaza por **dos razones distintas** según el ambiente:
+### Cambios en `src/lib/generateSettlementPDF.ts`
+- En la funcion `downloadSellerSettlementPDF` (linea 564-570): si `e.estado === 'cancelado'`, setear `precio: 0` en lugar de `e.precio_total`
+- Agregar `ciudad_entrega` al SELECT de la query de envios (linea 560)
+- Mapear el campo `ciudad_entrega` en vez de `estado` en el array de shipments (reemplazar `estado` por un nuevo campo `localidad`)
+- En la funcion `generateSettlementPDF`:
+  - Cambiar encabezado de tabla de "Estado" a "Localidad" (linea 305)
+  - Cambiar el dato renderizado en la celda de `row.estado` a `row.localidad` (linea 344)
 
-**Producción** (WSFEv1 v6.1): código 10070
-```
-"Si ImpNeto es mayor a 0, el objeto AlicIva es obligatorio y no debe ser nulo."
-```
-→ El bloque `<ar:Iva>` llega pero los elementos internos `<AlicIva>`, `<Id>`, `<BaseImp>`, `<Importe>` **no tienen el prefijo de namespace `ar:`**, entonces el parser SOAP de AFIP los descarta y el bloque queda vacío.
+### Cambios en la interfaz `SettlementPDFData`
+- Renombrar el campo `estado` a `localidad` en el tipo `shipments` (linea 43)
 
-**Sandbox** (WSFEv1 v7.0): código 10246
-```
-"Campo Condicion Frente al IVA del receptor es obligatorio conforme a RG 5616."
-```
-→ El tag `<ar:CondicionIvaReceptorId>` está en el XML pero la interpolación con espacios de indentación hace que se genere mal en algunos parsers. Además, en sandbox v7 este campo es **obligatorio** y si no se parsea correctamente se rechaza.
+---
 
-### Causa raíz técnica
+## 2. Estados ML: agregar "Reprogramado" a la tabla de mapeo
 
-El bloque IVA actualmente generado es:
-```xml
-<ar:Iva><AlicIva><Id>5</Id><BaseImp>5968.58</BaseImp><Importe>1253.40</Importe></AlicIva></ar:Iva>
-```
+### Problema actual
+La tabla `ml_status_mapping` no tiene entradas para substatuses de reprogramacion del comprador ni para "segunda visita". Solo existe `rescheduled_by_meli`. Faltan:
+- `shipped` + `rescheduled` (reprogramado generico)
+- `not_delivered` + `returning_to_hub` (volviendo al hub para segunda visita)
+- `shipped` + `second_visit` (segunda visita en camino)
 
-Los elementos internos `<AlicIva>`, `<Id>`, `<BaseImp>`, `<Importe>` **NO tienen el prefijo `ar:`**. El namespace `xmlns:ar="http://ar.gov.afip.dif.FEV1/"` está declarado en el Envelope, pero el parser estricto de AFIP exige que **todos** los elementos dentro de `FECAEDetRequest` usen el prefijo `ar:`. Sin ese prefijo, AFIP trata los elementos como no pertenecientes al namespace y los ignora → `AlicIva` queda nulo.
+### Cambios
+- Migracion SQL para insertar nuevos mappings:
+  - `shipped` / `rescheduled` -> `en_transito` (Reprogramado)
+  - `shipped` / `second_visit` -> `en_reparto` (Segunda visita)
+  - `not_delivered` / `returning_to_hub` -> `en_transito` (Volviendo al hub)
+  - `not_delivered` / `receiver_absent` ya existe, se mantiene
 
-También el `${ivaBlock}` interpolado con sangría de 12 espacios antes puede generar un nodo de texto vacío en algunos parsers SOAP.
+---
 
-### Corrección a aplicar en `supabase/functions/arca-factura/index.ts`
+## 3. Boton "Sincronizar ML" en Gestion de Envios
 
-**Cambio 1**: Todos los elementos del bloque IVA deben llevar el prefijo `ar:`:
+### Problema actual
+El boton de sincronizacion solo existe en E-commerce > Sellers. El usuario necesita un boton en la pagina de Gestion de Envios para que los operadores puedan forzar la sincronizacion de estados de ML cuando no se actualizan automaticamente.
 
-```typescript
-// ANTES (incorrecto — sin namespace en elementos internos):
-const ivaBlock = importeIva > 0.005
-  ? `<ar:Iva><AlicIva><Id>5</Id><BaseImp>...</BaseImp><Importe>...</Importe></AlicIva></ar:Iva>`
-  : '';
+### Cambios en `src/pages/Shipments.tsx`
+- Agregar una query para verificar si el tenant tiene sellers de e-commerce con `plataforma = 'mercadolibre'`
+- Si tiene al menos un seller ML, mostrar un boton "Sincronizar ML" junto al boton de refrescar existente
+- El boton invocara `mercadolibre-sync` para cada seller ML del tenant
+- Mostrar un toast con el resultado de la sincronizacion
+- Agregar estado de `isSyncing` para deshabilitar el boton durante la operacion
 
-// DESPUÉS (correcto — todos los elementos con prefijo ar:):
-const ivaBlock = importeIva > 0.005
-  ? `<ar:Iva><ar:AlicIva><ar:Id>5</ar:Id><ar:BaseImp>${importeNeto.toFixed(2)}</ar:BaseImp><ar:Importe>${importeIva.toFixed(2)}</ar:Importe></ar:AlicIva></ar:Iva>`
-  : '';
-```
+---
 
-**Cambio 2**: Mover `<ar:CondicionIvaReceptorId>` y `${ivaBlock}` dentro del XML sin sangría variable que pueda generar nodos de texto:
+## 4. Clientes duplicados en Terciarizados (Planificador)
 
-El XML del request debe verse así:
-```xml
-<ar:MonCotiz>1</ar:MonCotiz><ar:CondicionIvaReceptorId>5</ar:CondicionIvaReceptorId><ar:Iva><ar:AlicIva><ar:Id>5</ar:Id><ar:BaseImp>5968.58</ar:BaseImp><ar:Importe>1253.40</ar:Importe></ar:AlicIva></ar:Iva>
-```
+### Problema actual
+La query `all_clients` en `ThirdPartyShipmentsTab.tsx` (linea 209-218) hace `SELECT * FROM clientes ORDER BY nombre` sin filtrar por `tenant_id`. Esto trae clientes de otros tenants y ademas la tabla tiene registros duplicados reales (mismo nombre+telefono creados multiples veces).
 
-**Cambio 3**: Agregar log del XML generado para facilitar futuros diagnósticos:
-```typescript
-console.log('[ARCA] SOAP body IVA section:', `CondicionIva=${condicionIvaReceptorNumero}, ivaBlock=${ivaBlock}`);
-```
+### Cambios en `src/components/routes/ThirdPartyShipmentsTab.tsx`
+- Filtrar la query de clientes por `tenant_id` del perfil del usuario actual
+- En `ContactAutocomplete.tsx`: agregar deduplicacion por telefono en el `filteredClients` (usando un Set para evitar mostrar el mismo cliente dos veces basandose en telefono + nombre)
 
-### Archivos a modificar
+---
 
-| Archivo | Líneas | Cambio |
-|---|---|---|
-| `supabase/functions/arca-factura/index.ts` | 553-554 | Agregar prefijo `ar:` a todos los elementos internos del bloque IVA |
-| `supabase/functions/arca-factura/index.ts` | 589-594 | Colocar `CondicionIvaReceptorId` e `ivaBlock` en línea continua sin indentación variable |
+## Archivos a modificar
 
-### Resultado esperado
-
-AFIP producción y sandbox aceptarán el XML porque:
-- `<ar:Iva><ar:AlicIva><ar:Id>5</ar:Id>...` → namespace correcto en todos los nodos
-- `<ar:CondicionIvaReceptorId>5</ar:CondicionIvaReceptorId>` → sin nodos de texto previos
-- IVA 21%: neto=5968.58 + iva=1253.40 = total=7221.98 ✓
-
-### También: Desglose de IVA en el diálogo de emisión
-
-El usuario menciona que "debería mostrar el desglose de IVA con 21%". Actualmente el `InvoiceDataDialog` solo muestra el importe total. Se agregará un cuadro de desglose que muestre:
-- Neto (sin IVA 21%): `total / 1.21`
-- IVA 21%: `total - neto`
-- Total: `total`
-
-Esto se agrega al bloque de "Importe" en el dialog para que el operador sepa exactamente qué montos se enviarán a AFIP.
+| Archivo | Cambio |
+|---|---|
+| `src/lib/generateSettlementPDF.ts` | Tarifa $0 para cancelados, columna Localidad en vez de Estado |
+| `src/pages/Shipments.tsx` | Boton Sincronizar ML condicional |
+| `src/components/routes/ThirdPartyShipmentsTab.tsx` | Filtrar clientes por tenant_id |
+| `src/components/shipments/ContactAutocomplete.tsx` | Deduplicar clientes por telefono+nombre |
+| Migracion SQL | Nuevos mappings de estados ML (reprogramado, segunda visita) |
