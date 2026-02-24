@@ -82,6 +82,8 @@ import { RouteStatsPanel } from "@/components/maps/RouteStatsPanel";
 import { useDriverRoute } from "@/hooks/useDriverRoute";
 import EditRouteDialog from "@/components/routes/EditRouteDialog";
 import { cn } from "@/lib/utils";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ChevronDown, ChevronRight, List, MapPinned } from "lucide-react";
 import CancelRouteDialog from "@/components/routes/CancelRouteDialog";
 import ImportShipmentsDialog from "@/components/import/ImportShipmentsDialog";
 import RescheduledShipmentsList from "@/components/routes/RescheduledShipmentsList";
@@ -139,6 +141,7 @@ export default function RoutePlanner() {
   const [cancellingRoute, setCancellingRoute] = useState<any | null>(null);
   const [urlEnviosProcessed, setUrlEnviosProcessed] = useState(false);
   const [editingLocationEnvio, setEditingLocationEnvio] = useState<EnvioData | null>(null);
+  const [groupByCity, setGroupByCity] = useState(false);
   
   // History tab state
   const [historyDateFrom, setHistoryDateFrom] = useState<Date | undefined>(undefined);
@@ -1028,6 +1031,20 @@ export default function RoutePlanner() {
   const retirosCount = filteredEnvios.filter(e => e.tipo === "retiro").length;
   const entregasCount = filteredEnvios.filter(e => e.tipo === "entrega").length;
 
+  // Group envios by city
+  const groupedEnvios = useMemo(() => {
+    const groups: Record<string, typeof filteredEnvios> = {};
+    filteredEnvios.forEach(envio => {
+      const city = envio.tipo === "retiro"
+        ? (envio.ciudad_retiro || envio.remitente?.ciudad || 'Sin localidad')
+        : (envio.ciudad_entrega || envio.destinatario?.ciudad || 'Sin localidad');
+      if (!groups[city]) groups[city] = [];
+      groups[city].push(envio);
+    });
+    // Sort groups by count descending
+    return Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
+  }, [filteredEnvios]);
+
   return (
     <div className="space-y-6">
       <div>
@@ -1076,6 +1093,24 @@ export default function RoutePlanner() {
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg">Envíos Disponibles</CardTitle>
                   <div className="flex gap-2">
+                    <div className="flex border rounded-md overflow-hidden">
+                      <Button
+                        variant={!groupByCity ? "default" : "ghost"}
+                        size="sm"
+                        className="rounded-none h-8 px-2"
+                        onClick={() => setGroupByCity(false)}
+                      >
+                        <List className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant={groupByCity ? "default" : "ghost"}
+                        size="sm"
+                        className="rounded-none h-8 px-2"
+                        onClick={() => setGroupByCity(true)}
+                      >
+                        <MapPinned className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                     <Button 
                       variant="outline" 
                       size="sm" 
@@ -1128,6 +1163,63 @@ export default function RoutePlanner() {
                   <p className="text-center text-muted-foreground py-8">
                     No hay envíos pendientes
                   </p>
+                ) : groupByCity ? (
+                  <div className="max-h-80 overflow-y-auto space-y-1">
+                    {groupedEnvios.map(([city, envios]) => {
+                      const allSelected = envios.every(e => selectedEnvios.includes(e.id));
+                      const someSelected = envios.some(e => selectedEnvios.includes(e.id));
+                      return (
+                        <Collapsible key={city} defaultOpen>
+                          <div className="flex items-center gap-2 p-2 rounded-md hover:bg-muted/50">
+                            <Checkbox
+                              checked={allSelected}
+                              className={someSelected && !allSelected ? "opacity-50" : ""}
+                              onCheckedChange={(checked) => {
+                                const ids = envios.map(e => e.id);
+                                if (checked) {
+                                  setSelectedEnvios(prev => [...new Set([...prev, ...ids])]);
+                                } else {
+                                  setSelectedEnvios(prev => prev.filter(id => !ids.includes(id)));
+                                }
+                                setRouteOptions([]);
+                                setSelectedOption(null);
+                              }}
+                            />
+                            <CollapsibleTrigger className="group flex items-center gap-2 flex-1 text-left">
+                              <ChevronRight className="h-4 w-4 transition-transform duration-200 group-data-[state=open]:rotate-90" />
+                              <span className="text-sm font-medium">{city}</span>
+                              <Badge variant="outline" className="text-xs">{envios.length}</Badge>
+                            </CollapsibleTrigger>
+                          </div>
+                          <CollapsibleContent>
+                            <div className="pl-8 space-y-1 pb-1">
+                              {envios.map(envio => (
+                                <div
+                                  key={envio.id}
+                                  className="flex items-center gap-2 p-1.5 rounded text-sm hover:bg-muted/30 cursor-pointer"
+                                  onClick={() => toggleEnvio(envio.id)}
+                                >
+                                  <Checkbox
+                                    checked={selectedEnvios.includes(envio.id)}
+                                    onCheckedChange={() => toggleEnvio(envio.id)}
+                                  />
+                                  <span className="font-mono text-xs">{envio.tracking_number}</span>
+                                  <Badge variant={envio.tipo === "retiro" ? "secondary" : "default"} className="text-xs h-5">
+                                    {envio.tipo === "retiro" ? "Retiro" : "Entrega"}
+                                  </Badge>
+                                  <span className="text-xs text-muted-foreground truncate">
+                                    {envio.tipo === "retiro"
+                                      ? (envio.direccion_retiro || envio.remitente?.direccion)
+                                      : (envio.direccion_entrega || envio.destinatario?.direccion)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </CollapsibleContent>
+                        </Collapsible>
+                      );
+                    })}
+                  </div>
                 ) : (
                   <div className="max-h-80 overflow-y-auto">
                     <Table>
@@ -1142,11 +1234,9 @@ export default function RoutePlanner() {
                       </TableHeader>
                       <TableBody>
                         {filteredEnvios.map(envio => {
-                          // Get localidad based on type
                           const localidad = envio.tipo === "retiro"
                             ? (envio.ciudad_retiro || envio.remitente?.ciudad || '-')
                             : (envio.ciudad_entrega || envio.destinatario?.ciudad || '-');
-                          
                           return (
                             <TableRow key={envio.id}>
                               <TableCell>
@@ -1398,62 +1488,80 @@ export default function RoutePlanner() {
                   ))}
                 </div>
 
-                {/* Orden de paradas con drag & drop */}
+                {/* Orden de paradas con drag & drop + mapa lado a lado */}
                 {selectedOption && (
-                  <Card className="border-dashed">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-base flex items-center gap-2">
-                          <MapPin className="h-4 w-4" />
-                          Orden de Paradas
-                        </CardTitle>
-                        <p className="text-xs text-muted-foreground">
-                          Arrastra para reordenar
-                        </p>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <DragDropContext onDragEnd={handleDragEnd}>
-                        <Droppable droppableId="stops">
-                          {(provided) => (
-                            <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-2 max-h-64 overflow-y-auto">
-                              {selectedOption.stops.map((stop, index) => (
-                                <Draggable key={stop.envio_id} draggableId={stop.envio_id} index={index}>
-                                  {(provided, snapshot) => (
-                                    <div
-                                      ref={provided.innerRef}
-                                      {...provided.draggableProps}
-                                      className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
-                                        snapshot.isDragging ? 'bg-primary/10 border-primary shadow-lg' : 'bg-muted/50 hover:bg-muted'
-                                      }`}
-                                    >
-                                      <div {...provided.dragHandleProps} className="cursor-grab active:cursor-grabbing">
-                                        <GripVertical className="h-5 w-5 text-muted-foreground" />
-                                      </div>
-                                      <div className="flex items-center justify-center w-7 h-7 rounded-full bg-primary text-primary-foreground font-bold text-sm shrink-0">
-                                        {index + 1}
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 mb-0.5">
-                                          <Badge variant={stop.tipo === "retiro" ? "secondary" : "default"} className="text-xs">
-                                            {stop.tipo === "retiro" ? "Retiro" : "Entrega"}
-                                          </Badge>
-                                          <span className="font-mono text-xs text-muted-foreground">{stop.tracking}</span>
+                  <div className="grid lg:grid-cols-2 gap-4">
+                    <Card className="border-dashed">
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-base flex items-center gap-2">
+                            <MapPin className="h-4 w-4" />
+                            Orden de Paradas
+                          </CardTitle>
+                          <p className="text-xs text-muted-foreground">
+                            Arrastra para reordenar
+                          </p>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <DragDropContext onDragEnd={handleDragEnd}>
+                          <Droppable droppableId="stops">
+                            {(provided) => (
+                              <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-2 max-h-[420px] overflow-y-auto">
+                                {selectedOption.stops.map((stop, index) => (
+                                  <Draggable key={stop.envio_id} draggableId={stop.envio_id} index={index}>
+                                    {(provided, snapshot) => (
+                                      <div
+                                        ref={provided.innerRef}
+                                        {...provided.draggableProps}
+                                        className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
+                                          snapshot.isDragging ? 'bg-primary/10 border-primary shadow-lg' : 'bg-muted/50 hover:bg-muted'
+                                        }`}
+                                      >
+                                        <div {...provided.dragHandleProps} className="cursor-grab active:cursor-grabbing">
+                                          <GripVertical className="h-5 w-5 text-muted-foreground" />
                                         </div>
-                                        <p className="text-sm font-medium truncate">{stop.cliente_nombre}</p>
-                                        <p className="text-xs text-muted-foreground truncate">{stop.direccion}</p>
+                                        <div className="flex items-center justify-center w-7 h-7 rounded-full bg-primary text-primary-foreground font-bold text-sm shrink-0">
+                                          {index + 1}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-center gap-2 mb-0.5">
+                                            <Badge variant={stop.tipo === "retiro" ? "secondary" : "default"} className="text-xs">
+                                              {stop.tipo === "retiro" ? "Retiro" : "Entrega"}
+                                            </Badge>
+                                            <span className="font-mono text-xs text-muted-foreground">{stop.tracking}</span>
+                                          </div>
+                                          <p className="text-sm font-medium truncate">{stop.cliente_nombre}</p>
+                                          <p className="text-xs text-muted-foreground truncate">{stop.direccion}</p>
+                                        </div>
                                       </div>
-                                    </div>
-                                  )}
-                                </Draggable>
-                              ))}
-                              {provided.placeholder}
-                            </div>
-                          )}
-                        </Droppable>
-                      </DragDropContext>
-                    </CardContent>
-                  </Card>
+                                    )}
+                                  </Draggable>
+                                ))}
+                                {provided.placeholder}
+                              </div>
+                            )}
+                          </Droppable>
+                        </DragDropContext>
+                      </CardContent>
+                    </Card>
+
+                    {/* Mapa reactivo al lado */}
+                    <div className="h-[500px] rounded-lg overflow-hidden border">
+                      <MapView
+                        markers={mapMarkers}
+                        polylinePath={routePolyline}
+                        center={
+                          sucursalOrigen?.lat && sucursalOrigen?.lng 
+                            ? { lat: Number(sucursalOrigen.lat), lng: Number(sucursalOrigen.lng) }
+                            : undefined
+                        }
+                        zoom={12}
+                        height="100%"
+                        onMarkerClick={handleMarkerClick}
+                      />
+                    </div>
+                  </div>
                 )}
 
                 {/* Asignación */}
