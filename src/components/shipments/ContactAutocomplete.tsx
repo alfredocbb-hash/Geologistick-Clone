@@ -50,11 +50,22 @@ export default function ContactAutocomplete({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
 
+  // Deduplicate clients by phone+name
+  const uniqueClients = useMemo(() => {
+    const seen = new Set<string>();
+    return clients.filter((client) => {
+      const key = `${client.telefono}-${client.nombre}`.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [clients]);
+
   const filteredClients = useMemo(() => {
-    if (!search) return clients.slice(0, 10);
+    if (!search) return uniqueClients.slice(0, 10);
     
     const searchLower = search.toLowerCase();
-    return clients.filter((client) => {
+    return uniqueClients.filter((client) => {
       const fullName = `${client.nombre} ${client.apellido || ''}`.toLowerCase();
       const phone = client.telefono?.toLowerCase() || '';
       const dni = client.dni_cuit?.toLowerCase() || '';
@@ -67,7 +78,7 @@ export default function ContactAutocomplete({
         email.includes(searchLower)
       );
     }).slice(0, 10);
-  }, [clients, search]);
+  }, [uniqueClients, search]);
 
   const handleSelect = (client: Client) => {
     onSelect(client);

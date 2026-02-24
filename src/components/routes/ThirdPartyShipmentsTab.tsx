@@ -205,17 +205,20 @@ export default function ThirdPartyShipmentsTab() {
     },
   });
 
-  // Fetch all clients for autocomplete
+  // Fetch all clients for autocomplete (filtered by tenant)
   const { data: allClients = [] } = useQuery({
-    queryKey: ["all_clients"],
+    queryKey: ["all_clients", profile?.tenant_id],
     queryFn: async () => {
+      if (!profile?.tenant_id) return [];
       const { data, error } = await supabase
         .from("clientes")
         .select("*")
+        .eq("tenant_id", profile.tenant_id)
         .order("nombre");
       if (error) throw error;
       return data as Client[];
     },
+    enabled: !!profile?.tenant_id,
   });
 
   // Handler to load existing client data
