@@ -2413,34 +2413,34 @@ export default function NewShipment() {
                 
                 {/* Conceptos Básicos */}
                 {conceptosBasicos.map((cp) => {
-                  const valorDeclarado = parseFloat(formData.valor_declarado) || 0;
-                  const cantidadBultos = parseInt(formData.cantidad_bultos) || 1;
-                  const isPercentage = cp.es_porcentaje && cp.porcentaje;
-                  
-                  let calculatedAmount = isPercentage 
-                    ? valorDeclarado * Number(cp.porcentaje) / 100 
-                    : Number(cp.monto);
-                  
-                  // Multiplicar por cantidad de bultos si aplica
-                  if (cp.multiplicar_por_bultos) {
-                    calculatedAmount *= cantidadBultos;
-                  }
-                  
-                  return (
-                    <div key={cp.id} className="flex justify-between text-sm">
-                      <span>
-                        {cp.concepto?.nombre || 'Concepto'}
-                        {cp.multiplicar_por_bultos && cantidadBultos > 1 && (
-                          <span className="text-xs text-muted-foreground ml-1">
-                            (x{cantidadBultos} bultos)
-                          </span>
-                        )}
-                        {isPercentage && valorDeclarado > 0 && (
-                          <span className="text-xs text-muted-foreground ml-1">
-                            ({cp.porcentaje}% de {formatCurrency(valorDeclarado)})
-                          </span>
-                        )}
-                      </span>
+                  const valorDeclarado = parseFloat(formData.valor_declarado) || (configSeguro?.valor_minimo_declarado || 0);
+                   const cantidadBultos = parseInt(formData.cantidad_bultos) || 1;
+                   const isPercentage = cp.es_porcentaje && cp.porcentaje;
+                   
+                   let calculatedAmount = isPercentage 
+                     ? valorDeclarado * Number(cp.porcentaje) / 100 
+                     : Number(cp.monto);
+                   
+                   // Multiplicar por cantidad de bultos si aplica
+                   if (cp.multiplicar_por_bultos) {
+                     calculatedAmount *= cantidadBultos;
+                   }
+                   
+                   return (
+                     <div key={cp.id} className="flex justify-between text-sm">
+                       <span>
+                         {cp.concepto?.nombre || 'Concepto'}
+                         {cp.multiplicar_por_bultos && cantidadBultos > 1 && (
+                           <span className="text-xs text-muted-foreground ml-1">
+                             (x{cantidadBultos} bultos)
+                           </span>
+                         )}
+                         {isPercentage && valorDeclarado > 0 && (
+                           <span className="text-xs text-muted-foreground ml-1">
+                             ({cp.porcentaje}% de {formatCurrency(valorDeclarado)})
+                           </span>
+                         )}
+                       </span>
                       <span>{formatCurrency(calculatedAmount)}</span>
                     </div>
                   );
@@ -2450,7 +2450,7 @@ export default function NewShipment() {
                 {conceptosAdicionales
                   .filter(cp => conceptosSeleccionados.has(cp.concepto_id))
                   .map((cp) => {
-                    const valorDeclarado = parseFloat(formData.valor_declarado) || 0;
+                    const valorDeclarado = parseFloat(formData.valor_declarado) || (configSeguro?.valor_minimo_declarado || 0);
                     const cantidadBultos = parseInt(formData.cantidad_bultos) || 1;
                     const isPercentage = cp.es_porcentaje && cp.porcentaje;
                     
