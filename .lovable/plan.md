@@ -1,40 +1,44 @@
 
 
-# Fix: Quitar visibilidad de envíos por `created_by` para usuarios de sucursal
+# Fix: Precio de concepto en $0 no se guarda
 
 ## Problema
 
-La politica RLS de `envios` tiene la condicion `created_by = auth.uid()` como fallback. Esto hace que un usuario que creo envios en una sucursal anterior (ej: Berazategui) los siga viendo despues de ser reasignado a otra sucursal (ej: Bahia Blanca).
+En la pagina de Tarifas, al editar los precios por concepto, si se pone un valor de $0 (como "Flete" en $0), el sistema no lo guarda. Esto ocurre porque el codigo filtra los conceptos antes de guardarlos y descarta cualquiera donde el monto sea 0.
+
+## Causa raiz
+
+En `src/pages/Rates.tsx`, linea 415, el filtro de guardado es:
+
+```text
+.filter(([_, val]) => 
+  (val.es_porcentaje && parseFloat(val.porcentaje) > 0) || 
+  (!val.es_porcentaje && parseFloat(val.monto) > 0)
+)
+```
+
+Esto excluye cualquier concepto con monto = 0, por lo que nunca se inserta ni actualiza en la base de datos.
 
 ## Solucion
 
-Eliminar la condicion `created_by = auth.uid()` de la politica. Los usuarios de sucursal solo deben ver envios donde su sucursal actual es origen o destino. Los roles con acceso completo (admin, supervisor, chofer, operador, bodega) no se ven afectados.
+Cambiar el filtro para permitir guardar valores de $0. La logica correcta es: guardar el precio si el usuario lo ha definido (es decir, si existe una entrada en el objeto `conceptPrices` para ese concepto), sin importar si el valor es 0.
 
-## Cambio tecnico
-
-Una migracion SQL que reemplaza la politica:
+El filtro se reemplazara por uno que simplemente verifique que el valor es un numero valido (incluyendo 0):
 
 ```text
-Antes:
-  ...
-  OR (sucursal_origen_id = get_user_sucursal(auth.uid()))
-  OR (sucursal_destino_id = get_user_sucursal(auth.uid()))
-  OR (chofer_id = auth.uid())
-  OR (created_by = auth.uid())    <-- CAUSA DEL PROBLEMA
-
-Despues:
-  ...
-  OR (sucursal_origen_id = get_user_sucursal(auth.uid()))
-  OR (sucursal_destino_id = get_user_sucursal(auth.uid()))
-  OR (chofer_id = auth.uid())
-  -- created_by eliminado
+.filter(([_, val]) => 
+  (val.es_porcentaje && parseFloat(val.porcentaje) >= 0) || 
+  (!val.es_porcentaje && parseFloat(val.monto) >= 0)
+)
 ```
 
-## Archivo
+Esto permite guardar $0 como precio valido para cualquier concepto.
+
+## Archivo a modificar
 
 | Archivo | Accion | Descripcion |
 |---|---|---|
-| Migracion SQL | Crear | Actualizar politica RLS de envios quitando la condicion `created_by = auth.uid()` |
+| `src/pages/Rates.tsx` | Modificar | Cambiar filtro de `> 0` a `>= 0` en la mutacion de guardado de precios por concepto (linea 415) |
 
-No se requieren cambios en el frontend.
+No se requieren cambios en la base de datos.
 
