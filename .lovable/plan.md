@@ -1,32 +1,39 @@
 
 
-# Fix: Detalle de Seguro muestra $0 pero el Total lo incluye
+# Fix: Error de clave duplicada al asignar sucursales a tarifas
 
 ## Problema
 
-Cuando no se ingresa un valor declarado, el "Resumen de Precio" muestra el concepto "Seguro" en $0, pero el Total ya incluye el importe del seguro calculado con el valor minimo declarado configurado. Esto genera una inconsistencia visual (ej: Flete $10,000 + Seguro $0 = Total $12,000).
+Al guardar la asignacion de sucursales a una tarifa, aparece el error:
+**"duplicate key value violates unique constraint 'sucursal_tarifas_sucursal_id_tarifa_id_key'"**
 
-## Causa raiz
+## Causa
 
-Hay dos lugares donde se calcula el importe de los conceptos:
-
-1. **Calculo del total** (linea 575): usa `parseFloat(formData.valor_declarado) || configSeguro?.valor_minimo_declarado` como fallback -- correcto
-2. **Visualizacion del detalle** (linea 2416): usa `parseFloat(formData.valor_declarado) || 0` sin fallback -- incorrecto
-
-Esto hace que el total sume $2,000 de seguro pero la linea individual muestre $0.
+El codigo actual busca registros existentes solo en los datos que ya tiene cargados en memoria (`sucursalTarifas`). Si un registro fue creado previamente pero no esta en esa lista (por ejemplo, fue creado por otro usuario o en otra sesion), el sistema intenta hacer un INSERT que choca con la restriccion de unicidad de la base de datos.
 
 ## Solucion
 
-Actualizar la visualizacion de conceptos basicos y adicionales en el "Resumen de Precio" para que use el mismo fallback al valor minimo declarado que usa el calculo del total.
+Reemplazar la logica de INSERT separado por un **upsert** (insertar o actualizar si ya existe). Esto le dice a la base de datos: "si ya existe un registro con esta combinacion de sucursal + tarifa, simplemente actualizalo en vez de fallar".
+
+El mismo problema existe en el dialogo de asignacion de sucursales a **conceptos** (`ConceptBranchesDialog.tsx`), asi que se corregira en ambos archivos.
 
 ## Cambio tecnico
 
 | Archivo | Accion | Descripcion |
 |---|---|---|
-| `src/pages/NewShipment.tsx` | Modificar | En las lineas 2416 y 2453, cambiar `parseFloat(formData.valor_declarado) \|\| 0` por `parseFloat(formData.valor_declarado) \|\| (configSeguro?.valor_minimo_declarado \|\| 0)` para que el detalle refleje el mismo valor que el calculo |
+| `src/components/rates/TarifaBranchesDialog.tsx` | Modificar | Reemplazar INSERT por upsert con `onConflict: 'sucursal_id,tarifa_id'` en la mutacion de guardado |
+| `src/components/rates/ConceptBranchesDialog.tsx` | Modificar | Reemplazar INSERT por upsert con `onConflict: 'sucursal_id,concepto_id'` en la mutacion de guardado |
 
-El mismo cambio se aplica en dos bloques:
-- Linea 2416: renderizado de conceptos basicos
-- Linea 2453: renderizado de conceptos adicionales
+En ambos casos, la logica cambia de:
+
+```text
+if (existing) update else insert
+```
+
+A:
+
+```text
+upsert con onConflict para que la base de datos maneje duplicados automaticamente
+```
 
 No se requieren cambios en la base de datos.
