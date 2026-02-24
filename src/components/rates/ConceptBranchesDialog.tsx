@@ -92,32 +92,22 @@ export function ConceptBranchesDialog({
   const saveMutation = useMutation({
     mutationFn: async () => {
       // For each sucursal, upsert the assignment
-      const operations = sucursales.map(async (sucursal) => {
-        const isEnabled = selectedBranches.has(sucursal.id);
-        const existing = sucursalConceptos.find(sc => sc.sucursal_id === sucursal.id);
+      const upsertRows = sucursales
+        .filter(s => selectedBranches.has(s.id) || sucursalConceptos.some(sc => sc.sucursal_id === s.id))
+        .map(s => ({
+          sucursal_id: s.id,
+          concepto_id: conceptId,
+          habilitado: selectedBranches.has(s.id),
+          tenant_id: profile?.tenant_id,
+          updated_at: new Date().toISOString(),
+        }));
 
-        if (existing) {
-          // Update existing
-          const { error } = await supabase
-            .from('sucursal_conceptos')
-            .update({ habilitado: isEnabled, updated_at: new Date().toISOString() })
-            .eq('id', existing.id);
-          if (error) throw error;
-        } else if (isEnabled) {
-          // Create new only if enabled
-          const { error } = await supabase
-            .from('sucursal_conceptos')
-            .insert({
-              sucursal_id: sucursal.id,
-              concepto_id: conceptId,
-              habilitado: true,
-              tenant_id: profile?.tenant_id,
-            });
-          if (error) throw error;
-        }
-      });
-
-      await Promise.all(operations);
+      if (upsertRows.length > 0) {
+        const { error } = await supabase
+          .from('sucursal_conceptos')
+          .upsert(upsertRows, { onConflict: 'sucursal_id,concepto_id' });
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sucursal-conceptos'] });
