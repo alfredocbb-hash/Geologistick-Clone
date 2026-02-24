@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -68,6 +68,7 @@ export default function Shipments() {
 
   // Check if user can change status (admin, supervisor, or centro logístico)
   const [isCentroLogistico, setIsCentroLogistico] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   
   useQuery({
     queryKey: ['user-sucursal-check', profile?.sucursal_id],
@@ -83,6 +84,47 @@ export default function Shipments() {
     },
     enabled: !!profile?.sucursal_id,
   });
+
+  // Check if tenant has ML sellers
+  const { data: mlSellers } = useQuery({
+    queryKey: ['ml-sellers-check', profile?.tenant_id],
+    queryFn: async () => {
+      if (!profile?.tenant_id) return [];
+      const { data } = await supabase
+        .from('ecommerce_sellers')
+        .select('id, nombre, store_id')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('plataforma', 'mercadolibre')
+        .eq('activo', true);
+      return data || [];
+    },
+    enabled: !!profile?.tenant_id,
+  });
+
+  const handleSyncML = useCallback(async () => {
+    if (!mlSellers?.length) return;
+    setIsSyncing(true);
+    try {
+      let totalSynced = 0;
+      for (const seller of mlSellers) {
+        const { data, error } = await supabase.functions.invoke('mercadolibre-sync', {
+          body: { seller_id: seller.id },
+        });
+        if (error) {
+          console.error(`Error syncing seller ${seller.nombre}:`, error);
+        } else {
+          totalSynced += data?.synced || 0;
+        }
+      }
+      toast.success(`Sincronización ML completada. ${totalSynced} envío(s) actualizados.`);
+      refetch();
+    } catch (err) {
+      toast.error('Error al sincronizar con Mercado Libre');
+      console.error(err);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [mlSellers]);
 
   const canChangeStatus = isAdmin() || hasRole('supervisor') || isCentroLogistico;
 
@@ -335,6 +377,18 @@ export default function Shipments() {
                   ))}
                 </SelectContent>
               </Select>
+              {mlSellers && mlSellers.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSyncML}
+                  disabled={isSyncing}
+                  className="gap-1.5"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                  Sincronizar ML
+                </Button>
+              )}
               <Button variant="outline" size="icon" onClick={() => refetch()}>
                 <RefreshCw className="h-4 w-4" />
               </Button>

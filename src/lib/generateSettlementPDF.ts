@@ -39,7 +39,7 @@ interface SettlementPDFData {
     tracking: string;
     fecha: string;
     destinatario: string;
-    estado: string;
+    localidad: string;
     precio: number;
   }>;
 }
@@ -302,7 +302,7 @@ export async function generateSettlementPDF(
     doc.text('Tracking', colTracking, y);
     doc.text('Fecha', colFecha, y);
     doc.text('Destinatario', colDest, y);
-    if (colEstado) doc.text('Estado', colEstado, y);
+    if (colEstado) doc.text('Localidad', colEstado, y);
     doc.text('Monto', colMonto, y, { align: 'right' });
   };
 
@@ -341,7 +341,7 @@ export async function generateSettlementPDF(
     doc.text(fecha, colFecha, y);
     doc.text(dest, colDest, y);
     if (colEstado && isSeller) {
-      doc.text((row.estado || '-').substring(0, 14), colEstado, y);
+      doc.text((row.localidad || '-').substring(0, 14), colEstado, y);
     }
     doc.text(formatCurrency(monto), colMonto, y, { align: 'right' });
     rowTotal += monto;
@@ -557,7 +557,7 @@ export async function downloadSellerSettlementPDF(liquidacion: {
   // Fetch envíos vinculados
   const { data: envios } = await supabase
     .from('envios')
-    .select('id, tracking_number, nombre_destinatario, precio_total, estado, created_at')
+    .select('id, tracking_number, nombre_destinatario, precio_total, estado, ciudad_entrega, created_at')
     .eq('liquidacion_seller_id', liquidacion.id)
     .order('created_at', { ascending: true });
 
@@ -565,8 +565,8 @@ export async function downloadSellerSettlementPDF(liquidacion: {
     tracking: e.tracking_number || '-',
     fecha: e.created_at ? format(new Date(e.created_at), 'dd/MM/yy') : '-',
     destinatario: e.nombre_destinatario || '-',
-    estado: e.estado || '-',
-    precio: e.precio_total || 0,
+    localidad: e.ciudad_entrega || '-',
+    precio: e.estado === 'cancelado' ? 0 : (e.precio_total || 0),
   }));
 
   await generateSettlementPDF({
