@@ -1,36 +1,32 @@
 
 
-# Fix: Auto-seleccion de tarifa no funciona en envios Sucursal a Sucursal
+# Fix: Detalle de Seguro muestra $0 pero el Total lo incluye
 
 ## Problema
 
-Cuando un usuario de BlackBox (que tiene activa la feature "auto_seleccion_tarifa_por_zona") crea un envio de tipo **Sucursal a Sucursal** (ej: Berazategui a Rosario), el sistema muestra el error "Ingresa la ciudad del destinatario" en rojo, a pesar de que ya selecciono una sucursal destino.
+Cuando no se ingresa un valor declarado, el "Resumen de Precio" muestra el concepto "Seguro" en $0, pero el Total ya incluye el importe del seguro calculado con el valor minimo declarado configurado. Esto genera una inconsistencia visual (ej: Flete $10,000 + Seguro $0 = Total $12,000).
 
 ## Causa raiz
 
-El motor de auto-deteccion de tarifa busca la ciudad en `formData.destinatario_ciudad` (linea 550 de NewShipment.tsx). Pero cuando el tipo de servicio es `sucursal_sucursal`, el usuario no completa una ciudad manualmente -- selecciona una sucursal destino. El campo `destinatario_ciudad` queda vacio, y la tarifa nunca se detecta.
+Hay dos lugares donde se calcula el importe de los conceptos:
 
-La ciudad de la sucursal destino solo se usa al momento de enviar el formulario (linea 934), pero nunca se copia al campo `destinatario_ciudad` durante la edicion.
+1. **Calculo del total** (linea 575): usa `parseFloat(formData.valor_declarado) || configSeguro?.valor_minimo_declarado` como fallback -- correcto
+2. **Visualizacion del detalle** (linea 2416): usa `parseFloat(formData.valor_declarado) || 0` sin fallback -- incorrecto
+
+Esto hace que el total sume $2,000 de seguro pero la linea individual muestre $0.
 
 ## Solucion
 
-Agregar logica en el `useEffect` existente que ya reacciona al cambio de `sucursal_destino_id` (linea 1437-1445) para que tambien copie la ciudad y codigo postal de la sucursal destino a los campos `destinatario_ciudad` y `destinatario_codigo_postal` del formulario. Esto permite que el motor de auto-deteccion de tarifa encuentre la zona correcta.
+Actualizar la visualizacion de conceptos basicos y adicionales en el "Resumen de Precio" para que use el mismo fallback al valor minimo declarado que usa el calculo del total.
 
 ## Cambio tecnico
 
 | Archivo | Accion | Descripcion |
 |---|---|---|
-| `src/pages/NewShipment.tsx` | Modificar | En el useEffect de linea 1437, ademas de actualizar coordenadas, copiar `ciudad` y `codigo_postal` de la sucursal destino a `formData.destinatario_ciudad` y `formData.destinatario_codigo_postal` |
+| `src/pages/NewShipment.tsx` | Modificar | En las lineas 2416 y 2453, cambiar `parseFloat(formData.valor_declarado) \|\| 0` por `parseFloat(formData.valor_declarado) \|\| (configSeguro?.valor_minimo_declarado \|\| 0)` para que el detalle refleje el mismo valor que el calculo |
 
-El cambio especifico sera en el useEffect existente (lineas 1437-1445):
-
-```text
-Antes:
-  Solo actualiza destinoCoords con lat/lng de la sucursal destino
-
-Despues:
-  Tambien actualiza formData.destinatario_ciudad y formData.destinatario_codigo_postal
-  con los datos de la sucursal destino seleccionada
-```
+El mismo cambio se aplica en dos bloques:
+- Linea 2416: renderizado de conceptos basicos
+- Linea 2453: renderizado de conceptos adicionales
 
 No se requieren cambios en la base de datos.
