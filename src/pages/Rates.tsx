@@ -303,7 +303,7 @@ export default function Rates() {
 
       // Save concept prices (upsert)
       const conceptOperations = Object.entries(data.conceptos)
-        .filter(([_, val]) => (val.es_porcentaje && parseFloat(val.porcentaje) > 0) || (!val.es_porcentaje && parseFloat(val.monto) > 0))
+        .filter(([_, val]) => (val.es_porcentaje && parseFloat(val.porcentaje) >= 0) || (!val.es_porcentaje && parseFloat(val.monto) >= 0))
         .map(async ([conceptoId, val]) => {
           const montoNum = parseFloat(val.monto) || 0;
           const porcentajeNum = parseFloat(val.porcentaje) || null;
@@ -412,7 +412,7 @@ export default function Rates() {
       if (!selectedTarifaForPricing) return;
 
       const operations = Object.entries(conceptPrices)
-        .filter(([_, val]) => (val.es_porcentaje && parseFloat(val.porcentaje) > 0) || (!val.es_porcentaje && parseFloat(val.monto) > 0))
+        .filter(([_, val]) => (val.es_porcentaje && parseFloat(val.porcentaje) >= 0) || (!val.es_porcentaje && parseFloat(val.monto) >= 0))
         .map(async ([conceptoId, val]) => {
           const montoNum = parseFloat(val.monto) || 0;
           const porcentajeNum = parseFloat(val.porcentaje) || null;
