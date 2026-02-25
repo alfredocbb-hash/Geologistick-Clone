@@ -20,7 +20,8 @@ import { Star, Loader2, Home, Package, MapPin } from "lucide-react";
 
 interface RouteStop {
   envio_id: string;
-  tipo: "retiro" | "entrega";
+  sucursal_id?: string;
+  tipo: "retiro" | "entrega" | "sucursal";
   direccion: string;
   lat: number;
   lng: number;

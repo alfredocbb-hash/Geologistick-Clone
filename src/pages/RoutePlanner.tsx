@@ -94,7 +94,8 @@ import EditShipmentLocationDialog from "@/components/routes/EditShipmentLocation
 
 interface RouteStop {
   envio_id: string;
-  tipo: "retiro" | "entrega";
+  sucursal_id?: string;
+  tipo: "retiro" | "entrega" | "sucursal";
   direccion: string;
   lat: number;
   lng: number;
@@ -142,6 +143,7 @@ export default function RoutePlanner() {
   const [urlEnviosProcessed, setUrlEnviosProcessed] = useState(false);
   const [editingLocationEnvio, setEditingLocationEnvio] = useState<EnvioData | null>(null);
   const [groupByCity, setGroupByCity] = useState(false);
+  const [selectedSucursales, setSelectedSucursales] = usePersistedState<string[]>('planner-selected-sucursales', []);
   
   // History tab state
   const [historyDateFrom, setHistoryDateFrom] = useState<Date | undefined>(undefined);
@@ -689,15 +691,28 @@ export default function RoutePlanner() {
     // 3. If optimized route, show ordered stops
     if (selectedOption) {
       selectedOption.stops.forEach((stop, index) => {
-        const envio = selectedEnviosData.find(e => e.id === stop.envio_id);
-        markers.push({
-          id: stop.envio_id,
-          position: { lat: stop.lat, lng: stop.lng },
-          title: `${index + 1}. ${stop.tracking} - ${stop.cliente_nombre}`,
-          icon: stop.tipo === 'retiro' ? 'current' : 'destination',
-          type: 'envio',
-          data: envio,
-        });
+        const stopId = stop.sucursal_id || stop.envio_id;
+        if (stop.tipo === 'sucursal') {
+          const sucData = sucursalesConEnvios.find(s => s.id === stop.sucursal_id);
+          markers.push({
+            id: stopId,
+            position: { lat: stop.lat, lng: stop.lng },
+            title: `${index + 1}. 🏢 ${stop.cliente_nombre}`,
+            icon: 'branch',
+            type: 'sucursal',
+            data: sucData,
+          });
+        } else {
+          const envio = selectedEnviosData.find(e => e.id === stop.envio_id);
+          markers.push({
+            id: stopId,
+            position: { lat: stop.lat, lng: stop.lng },
+            title: `${index + 1}. ${stop.tracking} - ${stop.cliente_nombre}`,
+            icon: stop.tipo === 'retiro' ? 'current' : 'destination',
+            type: 'envio',
+            data: envio,
+          });
+        }
       });
     } else {
       // 4. Show all selected shipments (with and without coords)
@@ -763,8 +778,8 @@ export default function RoutePlanner() {
 
   // Optimize route
   const optimizeRoute = async () => {
-    if (selectedEnvios.length === 0) {
-      toast.error("Selecciona al menos 1 envío");
+    if (selectedEnvios.length === 0 && selectedSucursales.length === 0) {
+      toast.error("Selecciona al menos 1 envío o sucursal");
       return;
     }
 
@@ -821,12 +836,63 @@ export default function RoutePlanner() {
         return;
       }
 
-      // CASO NORMAL: 2+ envíos - optimizar
-      const enviosConCoords = selectedEnviosData.filter(e => e.coords?.lat && e.coords?.lng);
+      // CASO NORMAL: 2+ stops - optimizar
+      // Build sucursal stops
+      const sucursalStops = selectedSucursales
+        .map(sId => sucursalesConEnvios.find(s => s.id === sId))
+        .filter(s => s && s.lat && s.lng)
+        .map(s => ({
+          id: s!.id,
+          tipo: "sucursal" as const,
+          coords: { lat: Number(s!.lat), lng: Number(s!.lng) },
+          direccion: s!.direccion || '',
+          ciudad: s!.ciudad || '',
+          nombre: s!.nombre,
+          tracking_number: '',
+          _isSucursal: true,
+        }));
+
+      const enviosConCoords = [
+        ...selectedEnviosData.filter(e => e.coords?.lat && e.coords?.lng),
+        ...sucursalStops,
+      ];
 
       if (enviosConCoords.length < 2) {
-        toast.error("Los envíos seleccionados no tienen coordenadas suficientes");
+        // Single stop case
+        const singleItem = enviosConCoords[0];
+        if (!singleItem) {
+          toast.error("Los envíos/sucursales seleccionados no tienen coordenadas suficientes");
+          setIsOptimizing(false);
+          return;
+        }
+        const isSuc = (singleItem as any)._isSucursal;
+        const singleStop: RouteStop = {
+          envio_id: isSuc ? '' : singleItem.id,
+          sucursal_id: isSuc ? singleItem.id : undefined,
+          tipo: isSuc ? 'sucursal' : (singleItem as any).tipo,
+          direccion: isSuc ? (singleItem as any).direccion : ((singleItem as any).tipo === "retiro" 
+            ? ((singleItem as any).direccion_retiro || (singleItem as any).remitente?.direccion || "")
+            : ((singleItem as any).direccion_entrega || (singleItem as any).destinatario?.direccion || "")),
+          lat: Number(singleItem.coords!.lat),
+          lng: Number(singleItem.coords!.lng),
+          cliente_nombre: isSuc ? (singleItem as any).nombre : ((singleItem as any).tipo === "retiro"
+            ? ((singleItem as any).nombre_remitente || `${(singleItem as any).remitente?.nombre || ''} ${(singleItem as any).remitente?.apellido || ''}`.trim())
+            : ((singleItem as any).nombre_destinatario || `${(singleItem as any).destinatario?.nombre || ''} ${(singleItem as any).destinatario?.apellido || ''}`.trim())),
+          telefono: isSuc ? '' : ((singleItem as any).tipo === "retiro" ? ((singleItem as any).remitente?.telefono || "") : ((singleItem as any).destinatario?.telefono || "")),
+          tracking: isSuc ? '' : (singleItem as any).tracking_number,
+        };
+        const distancia = calcDistance(originLat, originLng, singleStop.lat, singleStop.lng) * 1.3;
+        const singleOption: RouteOption = {
+          name: isSuc ? "🏢 Sucursal" : ((singleItem as any).tipo === "retiro" ? "🏠 Retiro único" : "📦 Entrega única"),
+          stops: [singleStop],
+          totalDistance: Math.round(distancia * 10) / 10,
+          estimatedTime: Math.round((distancia / 25 + 0.1) * 10) / 10,
+          reasoning: "Ruta directa",
+        };
+        setRouteOptions([singleOption]);
+        setSelectedOption(singleOption);
         setIsOptimizing(false);
+        toast.success("Ruta preparada");
         return;
       }
 
@@ -861,48 +927,55 @@ export default function RoutePlanner() {
         return { ordered, totalDistance };
       };
 
-      // Option 1: Pickups first, then deliveries
-      const retiros = enviosConCoords.filter(e => e.tipo === "retiro");
-      const entregas = enviosConCoords.filter(e => e.tipo === "entrega");
+      // Helper to map a stop from the NN result
+      const mapStop = (e: any): RouteStop => {
+        if (e._isSucursal) {
+          return {
+            envio_id: '',
+            sucursal_id: e.id,
+            tipo: 'sucursal',
+            direccion: e.direccion,
+            lat: Number(e.coords.lat),
+            lng: Number(e.coords.lng),
+            cliente_nombre: e.nombre,
+            telefono: '',
+            tracking: '',
+          };
+        }
+        return {
+          envio_id: e.id,
+          tipo: e.tipo,
+          direccion: e.tipo === "retiro" 
+            ? (e.direccion_retiro || e.remitente?.direccion)
+            : (e.direccion_entrega || e.destinatario?.direccion),
+          lat: Number(e.coords.lat),
+          lng: Number(e.coords.lng),
+          cliente_nombre: e.tipo === "retiro" 
+            ? ((e as any).nombre_remitente || `${e.remitente?.nombre || ''} ${e.remitente?.apellido || ''}`.trim())
+            : ((e as any).nombre_destinatario || `${e.destinatario?.nombre || ''} ${e.destinatario?.apellido || ''}`.trim()),
+          telefono: e.tipo === "retiro" ? e.remitente?.telefono : e.destinatario?.telefono,
+          tracking: e.tracking_number,
+        };
+      };
+
+      // Option 1: Pickups first, then deliveries, sucursales mixed in
+      const retiros = enviosConCoords.filter(e => (e as any).tipo === "retiro");
+      const entregas = enviosConCoords.filter(e => (e as any).tipo === "entrega");
+      const sucursalesInRoute = enviosConCoords.filter(e => (e as any)._isSucursal);
       
       const retirosOpt = nearestNeighbor(retiros, originLat, originLng);
       const lastRetiro = retirosOpt.ordered.length > 0 
         ? retirosOpt.ordered[retirosOpt.ordered.length - 1] 
         : { coords: { lat: originLat, lng: originLng } };
-      const entregasOpt = nearestNeighbor(entregas, Number(lastRetiro.coords.lat), Number(lastRetiro.coords.lng));
+      const entregasYSucursales = [...entregas, ...sucursalesInRoute];
+      const entregasOpt = nearestNeighbor(entregasYSucursales, Number(lastRetiro.coords.lat), Number(lastRetiro.coords.lng));
       
       const option1Distance = retirosOpt.totalDistance + entregasOpt.totalDistance;
-      const option1Stops = [...retirosOpt.ordered, ...entregasOpt.ordered].map(e => ({
-        envio_id: e.id,
-        tipo: e.tipo,
-        direccion: e.tipo === "retiro" 
-          ? (e.direccion_retiro || e.remitente?.direccion)
-          : (e.direccion_entrega || e.destinatario?.direccion),
-        lat: Number(e.coords.lat),
-        lng: Number(e.coords.lng),
-              cliente_nombre: e.tipo === "retiro" 
-                ? ((e as any).nombre_remitente || `${e.remitente?.nombre || ''} ${e.remitente?.apellido || ''}`.trim())
-                : ((e as any).nombre_destinatario || `${e.destinatario?.nombre || ''} ${e.destinatario?.apellido || ''}`.trim()),
-        telefono: e.tipo === "retiro" ? e.remitente?.telefono : e.destinatario?.telefono,
-        tracking: e.tracking_number,
-      }));
+      const option1Stops = [...retirosOpt.ordered, ...entregasOpt.ordered].map(mapStop);
 
       // Option 2: All mixed by nearest neighbor
       const allMixed = nearestNeighbor(enviosConCoords, originLat, originLng);
-      const option2Stops = allMixed.ordered.map(e => ({
-        envio_id: e.id,
-        tipo: e.tipo,
-        direccion: e.tipo === "retiro" 
-          ? (e.direccion_retiro || e.remitente?.direccion)
-          : (e.direccion_entrega || e.destinatario?.direccion),
-        lat: Number(e.coords.lat),
-        lng: Number(e.coords.lng),
-              cliente_nombre: e.tipo === "retiro" 
-                ? ((e as any).nombre_remitente || `${e.remitente?.nombre || ''} ${e.remitente?.apellido || ''}`.trim())
-                : ((e as any).nombre_destinatario || `${e.destinatario?.nombre || ''} ${e.destinatario?.apellido || ''}`.trim()),
-        telefono: e.tipo === "retiro" ? e.remitente?.telefono : e.destinatario?.telefono,
-        tracking: e.tracking_number,
-      }));
+      const option2Stops = allMixed.ordered.map(mapStop);
 
       const options: RouteOption[] = [
         {
@@ -977,7 +1050,9 @@ export default function RoutePlanner() {
       // Create stops
       const paradasData = selectedOption.stops.map((stop, index) => ({
         ruta_id: ruta.id,
-        envio_id: stop.envio_id,
+        envio_id: stop.envio_id || null,
+        sucursal_id: stop.sucursal_id || null,
+        nombre_parada: stop.tipo === 'sucursal' ? stop.cliente_nombre : null,
         orden: index + 1,
         tipo: stop.tipo,
         direccion: stop.direccion,
@@ -991,19 +1066,23 @@ export default function RoutePlanner() {
 
       if (paradasError) throw paradasError;
 
-      // Update shipments with driver
+      // Update shipments with driver (only envio stops)
       const chofer = choferes.find(c => c.user_id === selectedChofer);
-      const envioIds = selectedOption.stops.map(s => s.envio_id);
+      const envioIds = selectedOption.stops
+        .filter(s => s.envio_id)
+        .map(s => s.envio_id);
 
-      const { error: updateError } = await supabase
-        .from("envios")
-        .update({
-          chofer_id: selectedChofer,
-          estado: "en_reparto",
-        })
-        .in("id", envioIds);
+      if (envioIds.length > 0) {
+        const { error: updateError } = await supabase
+          .from("envios")
+          .update({
+            chofer_id: selectedChofer,
+            estado: "en_reparto",
+          })
+          .in("id", envioIds);
 
-      if (updateError) throw updateError;
+        if (updateError) throw updateError;
+      }
 
       return ruta;
     },
@@ -1014,6 +1093,7 @@ export default function RoutePlanner() {
       
       // Reset form
       setSelectedEnvios([]);
+      setSelectedSucursales([]);
       setRouteOptions([]);
       setSelectedOption(null);
       setSelectedChofer("");
@@ -1279,18 +1359,84 @@ export default function RoutePlanner() {
                     <p className="text-sm text-primary font-medium mb-3">
                       {selectedEnvios.length} envío(s) seleccionado(s)
                     </p>
-                    
+                  </div>
+                )}
+
+                {/* Sucursales en Ruta */}
+                {sucursalesConEnvios.filter(s => s.id !== sucursalOrigen?.id && s.lat && s.lng).length > 0 && (
+                  <div className="mt-4 pt-4 border-t">
+                    <p className="text-sm font-medium mb-2 flex items-center gap-2">
+                      <Building2 className="h-4 w-4" />
+                      Sucursales en Ruta
+                    </p>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      Agrega sucursales como paradas intermedias (recoger/dejar paquetes)
+                    </p>
+                    <div className="space-y-1 max-h-40 overflow-y-auto">
+                      {sucursalesConEnvios
+                        .filter(s => s.id !== sucursalOrigen?.id && s.lat && s.lng)
+                        .map(sucursal => (
+                          <div
+                            key={sucursal.id}
+                            className="flex items-center gap-2 p-2 rounded hover:bg-muted/50 cursor-pointer"
+                            onClick={() => {
+                              setSelectedSucursales(prev =>
+                                prev.includes(sucursal.id)
+                                  ? prev.filter(id => id !== sucursal.id)
+                                  : [...prev, sucursal.id]
+                              );
+                              setRouteOptions([]);
+                              setSelectedOption(null);
+                            }}
+                          >
+                            <Checkbox
+                              checked={selectedSucursales.includes(sucursal.id)}
+                              onCheckedChange={() => {
+                                setSelectedSucursales(prev =>
+                                  prev.includes(sucursal.id)
+                                    ? prev.filter(id => id !== sucursal.id)
+                                    : [...prev, sucursal.id]
+                                );
+                                setRouteOptions([]);
+                                setSelectedOption(null);
+                              }}
+                            />
+                            <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <span className="text-sm font-medium">{sucursal.nombre}</span>
+                              {sucursal.ciudad && (
+                                <span className="text-xs text-muted-foreground ml-2">{sucursal.ciudad}</span>
+                              )}
+                            </div>
+                            {sucursal.enviosCount > 0 && (
+                              <Badge variant="outline" className="text-xs">
+                                {sucursal.enviosCount} envíos
+                              </Badge>
+                            )}
+                          </div>
+                        ))}
+                    </div>
+                    {selectedSucursales.length > 0 && (
+                      <p className="text-xs text-primary mt-2">
+                        {selectedSucursales.length} sucursal(es) incluida(s)
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {(selectedEnvios.length > 0 || selectedSucursales.length > 0) && (
+                  <div className="mt-4">
                     <Button 
                       className="w-full" 
                       onClick={optimizeRoute}
-                      disabled={isOptimizing || selectedEnvios.length < 1}
+                      disabled={isOptimizing || (selectedEnvios.length < 1 && selectedSucursales.length < 1)}
                     >
                       {isOptimizing ? (
                         <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Optimizando...</>
-                      ) : selectedEnvios.length === 1 ? (
+                      ) : selectedEnvios.length <= 1 && selectedSucursales.length === 0 ? (
                         <><Navigation className="mr-2 h-4 w-4" />Preparar Ruta</>
                       ) : (
-                        <><Zap className="mr-2 h-4 w-4" />Optimizar Ruta</>
+                        <><Zap className="mr-2 h-4 w-4" />Optimizar Ruta ({selectedEnvios.length} envíos{selectedSucursales.length > 0 ? ` + ${selectedSucursales.length} sucursales` : ''})</>
                       )}
                     </Button>
                   </div>
@@ -1509,8 +1655,10 @@ export default function RoutePlanner() {
                           <Droppable droppableId="stops">
                             {(provided) => (
                               <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-2 max-h-[420px] overflow-y-auto">
-                                {selectedOption.stops.map((stop, index) => (
-                                  <Draggable key={stop.envio_id} draggableId={stop.envio_id} index={index}>
+                                {selectedOption.stops.map((stop, index) => {
+                                  const stopKey = stop.sucursal_id || stop.envio_id;
+                                  return (
+                                  <Draggable key={stopKey} draggableId={stopKey} index={index}>
                                     {(provided, snapshot) => (
                                       <div
                                         ref={provided.innerRef}
@@ -1527,10 +1675,10 @@ export default function RoutePlanner() {
                                         </div>
                                         <div className="flex-1 min-w-0">
                                           <div className="flex items-center gap-2 mb-0.5">
-                                            <Badge variant={stop.tipo === "retiro" ? "secondary" : "default"} className="text-xs">
-                                              {stop.tipo === "retiro" ? "Retiro" : "Entrega"}
+                                            <Badge variant={stop.tipo === "retiro" ? "secondary" : stop.tipo === "sucursal" ? "outline" : "default"} className="text-xs">
+                                              {stop.tipo === "retiro" ? "Retiro" : stop.tipo === "sucursal" ? (<><Building2 className="mr-1 h-3 w-3" />Sucursal</>) : "Entrega"}
                                             </Badge>
-                                            <span className="font-mono text-xs text-muted-foreground">{stop.tracking}</span>
+                                            {stop.tracking && <span className="font-mono text-xs text-muted-foreground">{stop.tracking}</span>}
                                           </div>
                                           <p className="text-sm font-medium truncate">{stop.cliente_nombre}</p>
                                           <p className="text-xs text-muted-foreground truncate">{stop.direccion}</p>
@@ -1538,7 +1686,8 @@ export default function RoutePlanner() {
                                       </div>
                                     )}
                                   </Draggable>
-                                ))}
+                                  );
+                                })}
                                 {provided.placeholder}
                               </div>
                             )}

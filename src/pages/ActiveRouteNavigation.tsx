@@ -28,7 +28,8 @@ import {
   Map as MapIcon,
   DollarSign,
   ChevronRight,
-  CalendarClock
+  CalendarClock,
+  Building2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -245,15 +246,19 @@ export default function ActiveRouteNavigation() {
   const allEnvios = isPlannedRoute 
     ? paradasRuta.map(p => ({
         ...p,
-        envio: {
+        envio: p.envio ? {
           ...p.envio,
           requiere_retiro: p.tipo === 'retiro'
-        }
+        } : null,
+        _isSucursalStop: !p.envio_id && !!p.sucursal_id,
       }))
     : enviosHoja;
 
   // Filter out shipments that have been unassigned (e.g. rescheduled: chofer_id = NULL)
   const envios = allEnvios.filter(item => {
+    // Sucursal stops always show
+    if ((item as any)._isSucursalStop) return true;
+    
     const envio = item.envio;
     if (!envio) return false;
     // Excluir paradas marcadas como reprogramadas en ruta_paradas
@@ -271,17 +276,19 @@ export default function ActiveRouteNavigation() {
   // Calculate stats - incidencia counts as "completed" for driver (no further action needed)
   const stats = useMemo(() => {
     const total = envios.length;
-    const completed = envios.filter(e => 
-      e.envio?.estado === 'entregado' || 
-      e.envio?.estado === 'devuelto' ||
-      e.envio?.estado === 'incidencia' ||
-      e.envio?.estado_retiro === 'retirado'
-    ).length;
-    const failed = envios.filter(e => 
-      e.envio?.estado === 'devuelto' ||
-      e.envio?.estado === 'incidencia' ||
-      e.envio?.estado_retiro === 'fallido'
-    ).length;
+    const completed = envios.filter(e => {
+      if ((e as any)._isSucursalStop) return e.estado === 'completada';
+      return e.envio?.estado === 'entregado' || 
+        e.envio?.estado === 'devuelto' ||
+        e.envio?.estado === 'incidencia' ||
+        e.envio?.estado_retiro === 'retirado';
+    }).length;
+    const failed = envios.filter(e => {
+      if ((e as any)._isSucursalStop) return false;
+      return e.envio?.estado === 'devuelto' ||
+        e.envio?.estado === 'incidencia' ||
+        e.envio?.estado_retiro === 'fallido';
+    }).length;
     const pending = total - completed;
     const progress = total > 0 ? (completed / total) * 100 : 0;
     
@@ -291,6 +298,9 @@ export default function ActiveRouteNavigation() {
   // Get next stop - skip shipments with incident (no further driver action)
   const nextStop = useMemo(() => {
     return envios.find(e => {
+      // Sucursal stop: pending if not completada
+      if ((e as any)._isSucursalStop) return e.estado !== 'completada';
+      
       const envio = e.envio;
       if (!envio) return false;
       
@@ -521,21 +531,28 @@ export default function ActiveRouteNavigation() {
     );
   }
 
-  const nextEnvio = nextStop?.envio;
+  const isSucursalStop = (nextStop as any)?._isSucursalStop;
+  const nextEnvio = isSucursalStop ? null : nextStop?.envio;
   const isPickup = nextEnvio?.requiere_retiro;
   const contact = isPickup ? nextEnvio?.remitente : nextEnvio?.destinatario;
-  const city = isPickup ? nextEnvio?.ciudad_retiro : (nextEnvio?.ciudad_entrega || contact?.ciudad);
-  const address = isPickup 
-    ? `${nextEnvio?.direccion_retiro}`
-    : `${nextEnvio?.direccion_entrega || contact?.direccion}`;
+  const city = isSucursalStop 
+    ? '' 
+    : (isPickup ? nextEnvio?.ciudad_retiro : (nextEnvio?.ciudad_entrega || contact?.ciudad));
+  const address = isSucursalStop 
+    ? ((nextStop as any)?.direccion || '')
+    : (isPickup 
+      ? `${nextEnvio?.direccion_retiro}`
+      : `${nextEnvio?.direccion_entrega || contact?.direccion}`);
   
   // Phone fallback: use linked client's phone OR direct whatsapp_destinatario field
-  const phone = isPickup 
+  const phone = isSucursalStop ? null : (isPickup 
     ? contact?.telefono 
-    : (contact?.telefono || (nextEnvio as any)?.whatsapp_destinatario);
-  const clienteName = isPickup 
-    ? (nextEnvio?.nombre_remitente || `${contact?.nombre || ''} ${contact?.apellido || ''}`.trim())
-    : (nextEnvio?.nombre_destinatario || `${contact?.nombre || ''} ${contact?.apellido || ''}`.trim());
+    : (contact?.telefono || (nextEnvio as any)?.whatsapp_destinatario));
+  const clienteName = isSucursalStop 
+    ? ((nextStop as any)?.nombre_parada || 'Sucursal')
+    : (isPickup 
+      ? (nextEnvio?.nombre_remitente || `${contact?.nombre || ''} ${contact?.apellido || ''}`.trim())
+      : (nextEnvio?.nombre_destinatario || `${contact?.nombre || ''} ${contact?.apellido || ''}`.trim()));
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -622,14 +639,19 @@ export default function ActiveRouteNavigation() {
       </div>
 
       {/* Next Stop Card */}
-      {nextEnvio && (
+      {(nextEnvio || isSucursalStop) && (
         <div className="px-4 mb-4">
           <Card className="border-2 border-primary">
             <CardContent className="p-4">
               {/* Stop Type Badge */}
               <div className="flex items-center justify-between mb-3">
-                <Badge className={isPickup ? 'bg-chofer' : 'bg-primary'}>
-                  {isPickup ? (
+                <Badge className={isSucursalStop ? 'bg-accent' : isPickup ? 'bg-chofer' : 'bg-primary'}>
+                  {isSucursalStop ? (
+                    <>
+                      <Building2 className="h-3 w-3 mr-1" />
+                      PRÓXIMA SUCURSAL
+                    </>
+                  ) : isPickup ? (
                     <>
                       <Home className="h-3 w-3 mr-1" />
                       PRÓXIMO RETIRO
@@ -686,60 +708,87 @@ export default function ActiveRouteNavigation() {
                 </div>
               )}
 
-              {/* Action Buttons - Row 1 */}
-              <div className="grid grid-cols-3 gap-2 mb-2">
-                <Button 
-                  className="bg-primary"
-                  onClick={() => navigateToAddress(address)}
-                >
-                  <Navigation className="h-4 w-4 mr-1" />
-                  Navegar
-                </Button>
-                <Button 
-                  variant="outline"
-                  onClick={() => phone && callCustomer(phone)}
-                  disabled={!phone}
-                >
-                  <Phone className="h-4 w-4 mr-1" />
-                  Llamar
-                </Button>
-                <Button 
-                  variant="outline"
-                  className="bg-green-500/10 border-green-500/30 text-green-600"
-                  onClick={() => phone && whatsAppCustomer(phone, clienteName)}
-                  disabled={!phone}
-                >
-                  <MessageCircle className="h-4 w-4 mr-1" />
-                  WhatsApp
-                </Button>
-              </div>
-
-              {/* Action Buttons - Row 2 */}
-              <div className="grid grid-cols-3 gap-2">
-                <Button 
-                  variant="outline"
-                  className="border-destructive/30 text-destructive"
-                  onClick={() => openDialog(nextEnvio, 'incident')}
-                >
-                  <AlertTriangle className="h-4 w-4 mr-1" />
-                  Problema
-                </Button>
-                <Button 
-                  variant="outline"
-                  className="border-amber-500/30 text-amber-600"
-                  onClick={() => openDialog(nextEnvio, 'reschedule')}
-                >
-                  <CalendarClock className="h-4 w-4 mr-1" />
-                  Reprogramar
-                </Button>
-                <Button 
-                  className={isPickup ? 'bg-chofer hover:bg-chofer/90' : 'bg-success hover:bg-success/90'}
-                  onClick={() => openDialog(nextEnvio, isPickup ? 'pickup' : 'delivery')}
-                >
-                  <CheckCircle className="h-4 w-4 mr-1" />
-                  {isPickup ? 'Retiro OK' : 'Entrega OK'}
-                </Button>
-              </div>
+              {/* Action Buttons */}
+              {isSucursalStop ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <Button 
+                    className="bg-primary"
+                    onClick={() => navigateToAddress(address)}
+                  >
+                    <Navigation className="h-4 w-4 mr-1" />
+                    Navegar
+                  </Button>
+                  <Button 
+                    className="bg-success hover:bg-success/90"
+                    onClick={async () => {
+                      const { error } = await supabase
+                        .from('ruta_paradas')
+                        .update({ estado: 'completada', completada_at: new Date().toISOString() })
+                        .eq('id', nextStop?.id);
+                      if (error) { toast.error('Error al completar parada'); return; }
+                      toast.success('Parada completada');
+                      queryClient.invalidateQueries({ queryKey: ['my-active-route-paradas'] });
+                    }}
+                  >
+                    <CheckCircle className="h-4 w-4 mr-1" />
+                    Llegué
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-2 mb-2">
+                    <Button 
+                      className="bg-primary"
+                      onClick={() => navigateToAddress(address)}
+                    >
+                      <Navigation className="h-4 w-4 mr-1" />
+                      Navegar
+                    </Button>
+                    <Button 
+                      variant="outline"
+                      onClick={() => phone && callCustomer(phone)}
+                      disabled={!phone}
+                    >
+                      <Phone className="h-4 w-4 mr-1" />
+                      Llamar
+                    </Button>
+                    <Button 
+                      variant="outline"
+                      className="bg-green-500/10 border-green-500/30 text-green-600"
+                      onClick={() => phone && whatsAppCustomer(phone, clienteName)}
+                      disabled={!phone}
+                    >
+                      <MessageCircle className="h-4 w-4 mr-1" />
+                      WhatsApp
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <Button 
+                      variant="outline"
+                      className="border-destructive/30 text-destructive"
+                      onClick={() => openDialog(nextEnvio, 'incident')}
+                    >
+                      <AlertTriangle className="h-4 w-4 mr-1" />
+                      Problema
+                    </Button>
+                    <Button 
+                      variant="outline"
+                      className="border-amber-500/30 text-amber-600"
+                      onClick={() => openDialog(nextEnvio, 'reschedule')}
+                    >
+                      <CalendarClock className="h-4 w-4 mr-1" />
+                      Reprogramar
+                    </Button>
+                    <Button 
+                      className={isPickup ? 'bg-chofer hover:bg-chofer/90' : 'bg-success hover:bg-success/90'}
+                      onClick={() => openDialog(nextEnvio, isPickup ? 'pickup' : 'delivery')}
+                    >
+                      <CheckCircle className="h-4 w-4 mr-1" />
+                      {isPickup ? 'Retiro OK' : 'Entrega OK'}
+                    </Button>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>
