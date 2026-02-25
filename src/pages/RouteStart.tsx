@@ -431,15 +431,6 @@ export default function RouteStart() {
                     </div>
                   </div>
                 )}
-                {deliveriesCount > 0 && (
-                  <div className="flex items-center gap-2">
-                    <Package className="h-5 w-5 text-primary" />
-                    <div>
-                      <p className="text-xs text-muted-foreground">ENTREGAS</p>
-                      <p className="font-semibold">{deliveriesCount}</p>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
 
