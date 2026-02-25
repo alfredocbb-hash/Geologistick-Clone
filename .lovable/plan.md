@@ -1,55 +1,27 @@
 
 
-# PDF Terminos y Condiciones del Servicio Flex
+# Mejorar visibilidad del logo en portadas PDF
 
-## Resumen
+## Problema
 
-Crear un nuevo PDF descargable "Terminos y Condiciones del Servicio de Logistica Flex" con branding dinamico del tenant (logo, nombre, color primario), y agregar una nueva Card en la pagina de Configuracion del Sistema con botones de descarga y envio por WhatsApp.
+En la portada de todos los PDFs del sistema, el logo del tenant se coloca directamente sobre el fondo de color primario. Cuando el color primario del tenant es similar al color del logo (como naranja sobre naranja en BeraExpress), el logo no se distingue.
 
-## Contenido del PDF
+## Solucion
 
-El documento incluira portada con branding del tenant y las siguientes secciones:
+Agregar un fondo blanco circular (o redondeado) detras del logo en la portada, creando un "medallion" que garantice que el logo siempre sea visible sin importar el color de fondo.
 
-1. **Tarifas y Facturacion** - Precios netos sin IVA, facturacion con 21% adicional
-2. **Operatoria de Entregas y Visitas** - 2 intentos incluidos, tercer intento con costo adicional
-3. **Liquidaciones y Terminos de Pago** - Liquidacion semanal, plazo 48hs habiles, mora del 5%
-4. **Compromiso de Servicio** - Esfuerzos para cumplir tiempos Flex, seguridad y comunicacion
-
-## Cambios tecnicos
+## Cambio tecnico
 
 | Archivo | Accion | Descripcion |
 |---|---|---|
-| `src/lib/generateFlexTermsPDF.ts` | Crear | Nueva funcion que genera el PDF de terminos y condiciones usando `pdfHelpers.ts`. Recibe el mismo objeto de branding que `generateFlexGuidePDF` (tenantName, logoUrl, primaryColor). Usa el color primario del tenant para encabezados de seccion y portada. Incluye texto legal formateado con subsecciones numeradas |
-| `src/pages/SystemSettings.tsx` | Modificar | Agregar nueva Card con icono `Scale` (o `FileCheck`) de lucide-react. Estado `isGeneratingFlexTermsPDF`. Dos botones: "Descargar" y "WhatsApp", siguiendo el mismo patron de la Card de Guia Flex existente |
+| `src/lib/pdfHelpers.ts` | Modificar | En la funcion `drawCoverPage`, antes de dibujar el logo, agregar un circulo blanco (o rectangulo redondeado blanco) como fondo del logo. Esto crea contraste y hace visible cualquier logo sobre cualquier color de fondo |
 
-### Detalle del PDF
+### Detalle del cambio
 
-La funcion `generateFlexTermsPDF` recibira:
+En `drawCoverPage` (linea ~90), antes de `doc.addImage(...)`:
 
-```text
-{
-  tenantName: string       // ej: "BeraExpress"
-  logoUrl: string | null   // Logo del tenant
-  primaryColor: string     // Color primario hex
-}
-```
+1. Dibujar un circulo blanco centrado con `doc.setFillColor(255,255,255)` y `doc.circle()` o un rectangulo redondeado blanco ligeramente mas grande que el logo (ej: 50x50mm vs logo de 45x45mm)
+2. Esto aplica automaticamente a **todos** los PDFs del sistema (Guia Flex, Terminos Flex, Guia Usuario, reportes, etc.) ya que todos usan `drawCoverPage`
 
-Estructura del documento:
-- **Portada**: Logo del tenant, "{tenantName}", subtitulo "Terminos y Condiciones del Servicio de Logistica Flex"
-- **Introduccion**: Parrafo legal que establece las partes (tenant como prestador, "El Vendedor" como cliente)
-- **Seccion 1 - Tarifas y Facturacion**: Subsecciones 1.1 (Precios Netos) y 1.2 (Facturacion con IVA 21%)
-- **Seccion 2 - Operatoria de Entregas**: Subsecciones 2.1 (2 intentos sin costo) y 2.2 (3er intento = tarifa completa)
-- **Seccion 3 - Liquidaciones**: Subsecciones 3.1 (semanal), 3.2 (48hs habiles) y 3.3 (mora 5%)
-- **Seccion 4 - Compromiso de Servicio**: Parrafo de cierre
-- **Pie**: "{tenantName} -- Velocidad y confianza en cada entrega."
+El resultado visual seria: fondo de color primario -> circulo/rectangulo blanco -> logo del tenant, garantizando visibilidad en todos los casos.
 
-### Detalle de la Card en SystemSettings
-
-- Icono: `Scale` de lucide-react (representando terminos legales)
-- Titulo: "Terminos Flex"
-- Descripcion: "Condiciones comerciales para vendedores Flex"
-- Lista: Tarifas y facturacion, Intentos de entrega, Liquidaciones y pagos, Compromiso de servicio
-- Botones: "Descargar" + "WhatsApp" (mismo patron que la Card de Guia Flex)
-- El mensaje de WhatsApp dira: "Hola! Te comparto los Terminos y Condiciones del servicio Flex de {tenantName}. Por favor revisa el archivo adjunto."
-
-No se requieren cambios en la base de datos.
