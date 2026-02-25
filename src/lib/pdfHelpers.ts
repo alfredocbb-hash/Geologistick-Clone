@@ -87,10 +87,15 @@ export function drawCoverPage(
   doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
   doc.rect(0, 0, pageWidth, 90, 'F');
 
-  // Logo centrado grande en el header
+  // Logo centrado grande en el header con medallón blanco
   if (logoBase64) {
     try {
       const logoSize = 45;
+      const medallionSize = logoSize + 6;
+      const cx = pageWidth / 2;
+      const cy = 12 + logoSize / 2;
+      doc.setFillColor(255, 255, 255);
+      doc.circle(cx, cy, medallionSize / 2, 'F');
       doc.addImage(
         logoBase64,
         'PNG',
