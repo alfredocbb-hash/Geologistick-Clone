@@ -1,55 +1,32 @@
 
 
-# Fix: Envíos manuales con fecha_entrega NULL no aparecen en liquidaciones
+# Fix: Pantalla negra al continuar ruta (crash por null pointer)
 
-## Problema detectado
+## Problema
 
-El envío `ADMIN-ENV-20260223-A4B450` es un envío manual (sin orden e-commerce) vinculado al seller Kingdom Vintage a través de `remitente_id`. Al calcular la liquidación del período 21/02 al 28/02, este envío no aparece porque:
+En `ActiveRouteNavigation.tsx`, la seccion "Next Stop Card" (linea 642) se renderiza cuando `nextEnvio` existe **O** cuando `isSucursalStop` es true. Sin embargo, las secciones de "Customer Info" (linea 680-691), "COD badge" (linea 694) y "Notes" (linea 705) acceden directamente a `nextEnvio.nombre_remitente`, `nextEnvio.pago_contra_entrega` y `nextEnvio.notas` **sin verificar que nextEnvio no sea null**.
 
-- No tiene `ecommerce_order` asociada, por lo que no entra por el flujo de órdenes (que filtra por `fecha_entrega_estimada` de la orden).
-- Entra por el flujo de "envíos comunes" (por `remitente_id`), pero este flujo filtra por `fecha_entrega` y el envío tiene `fecha_entrega = NULL`.
+Cuando la ruta tiene una parada de tipo sucursal como proxima parada, `nextEnvio` es `null`, y acceder a sus propiedades lanza un `TypeError` que crashea React, resultando en la pantalla negra.
 
-## Solución
+Adicionalmente, el componente no tiene proteccion contra errores inesperados, lo que permite que cualquier excepcion no capturada produzca una pantalla en blanco.
 
-Modificar la query de envíos comunes en `src/pages/ecommerce/Settlements.tsx` para que, cuando `fecha_entrega` sea NULL, use `created_at` como alternativa de filtrado.
+## Solucion
 
-Dado que el cliente de Supabase no soporta condiciones OR complejas nativamente, la solución es hacer **dos queries** y combinar resultados sin duplicados:
-
-1. Query original: envíos comunes filtrados por `fecha_entrega` en el rango
-2. Query adicional: envíos comunes donde `fecha_entrega IS NULL`, filtrados por `created_at` en el rango
-
-Luego se combinan ambos conjuntos, eliminando duplicados por `id`.
-
-## Cambios
-
-| Archivo | Lineas | Descripcion |
-|---|---|---|
-| `src/pages/ecommerce/Settlements.tsx` | ~418-445 | Agregar segunda query para envíos con `fecha_entrega` NULL filtrados por `created_at`, combinar con la query existente |
+| Archivo | Cambio |
+|---|---|
+| `src/pages/ActiveRouteNavigation.tsx` | Envolver las secciones de Customer Info, COD badge y Notes con condicional `!isSucursalStop` para que solo se rendericen para paradas de envio. Para paradas de sucursal, mostrar el `nombre_parada` en su lugar. Agregar try-catch en la funcion de completar parada de sucursal. |
 
 ### Detalle tecnico
 
-En la mutacion `calculateMutation`, despues de la query existente de `commonEnvios` (linea 418-425), agregar:
+En la seccion del "Next Stop Card" (dentro del bloque `(nextEnvio || isSucursalStop)`), reorganizar el contenido para separar la info de sucursal vs envio:
 
-```text
-// Query adicional: envios sin fecha_entrega, filtrados por created_at
-const { data: commonEnviosNoDate } = await supabase
-  .from('envios')
-  .select('id, tracking_number, nombre_destinatario, ...')
-  .in('remitente_id', uniqueOnlyClienteIds)
-  .is('fecha_entrega', null)
-  .gte('created_at', fechaInicioStr)
-  .lte('created_at', fechaFinStr)
-  .is('liquidacion_seller_id', null)
-  .order('created_at', { ascending: true });
+1. **Customer Info (lineas 680-691)**: Mostrar `clienteName` (que ya maneja correctamente el caso sucursal en linea 551-555) en lugar de acceder directamente a `nextEnvio.nombre_remitente`/`nextEnvio.nombre_destinatario`
+2. **COD badge (lineas 694-702)**: Envolver con `{nextEnvio?.pago_contra_entrega && ...}` (optional chaining)
+3. **Notes (lineas 705-709)**: Envolver con `{nextEnvio?.notas && ...}` (optional chaining)
 
-// Combinar sin duplicados
-const commonEnvioIds = new Set((commonEnvios || []).map(e => e.id));
-const mergedCommonEnvios = [
-  ...(commonEnvios || []),
-  ...(commonEnviosNoDate || []).filter(e => !commonEnvioIds.has(e.id))
-];
-```
+Esto corrige el crash sin cambiar la logica visual: las paradas de sucursal muestran nombre y direccion, y las de envio muestran la info completa del cliente.
 
-Luego usar `mergedCommonEnvios` en lugar de `commonEnvios` en el filtrado posterior (linea 430).
+## Correccion adicional: RouteStart.tsx duplicado
 
-No se requieren cambios en la base de datos.
+En `RouteStart.tsx`, las lineas 268-282 renderizan el bloque de "ENTREGAS" dos veces (duplicado). Se eliminara la segunda aparicion.
+
