@@ -678,12 +678,7 @@ export default function ActiveRouteNavigation() {
 
               {/* Customer Info */}
               <div className="mb-3">
-                <p className="font-semibold text-lg">
-                  {isPickup 
-                    ? (nextEnvio.nombre_remitente || `${contact?.nombre || ''} ${contact?.apellido || ''}`.trim())
-                    : (nextEnvio.nombre_destinatario || `${contact?.nombre || ''} ${contact?.apellido || ''}`.trim())
-                  }
-                </p>
+                <p className="font-semibold text-lg">{clienteName}</p>
                 <div className="flex items-start gap-2 text-muted-foreground">
                   <MapPin className="h-4 w-4 mt-0.5 shrink-0" />
                   <span className="text-sm">{address}{city ? `, ${city}` : ''}</span>
@@ -691,7 +686,7 @@ export default function ActiveRouteNavigation() {
               </div>
 
               {/* COD Badge */}
-              {nextEnvio.pago_contra_entrega && (
+              {nextEnvio?.pago_contra_entrega && (
                 <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 mb-3 flex items-center gap-2">
                   <DollarSign className="h-5 w-5 text-warning" />
                   <div>
@@ -702,7 +697,7 @@ export default function ActiveRouteNavigation() {
               )}
 
               {/* Notes */}
-              {nextEnvio.notas && (
+              {nextEnvio?.notas && (
                 <div className="bg-muted/50 rounded-lg p-3 mb-3 text-sm">
                   <span className="font-medium">Notas:</span> {nextEnvio.notas}
                 </div>
