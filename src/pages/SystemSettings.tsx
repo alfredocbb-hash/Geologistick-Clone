@@ -3,11 +3,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { DollarSign, Download, FileText, Info, Loader2, MessageCircle, Settings, ShoppingCart, Truck } from "lucide-react";
+import { DollarSign, Download, FileText, Info, Loader2, MessageCircle, Scale, Settings, ShoppingCart, Truck } from "lucide-react";
 import { generateUserGuidePDF } from "@/lib/generateUserGuidePDF";
 import { generateEcommerceGuidePDF } from "@/lib/generateEcommerceGuidePDF";
 import { generateRatesGuidePDF } from "@/lib/generateRatesGuidePDF";
 import { generateFlexGuidePDF } from "@/lib/generateFlexGuidePDF";
+import { generateFlexTermsPDF } from "@/lib/generateFlexTermsPDF";
 import { useTenantContext } from "@/components/providers/TenantProvider";
 import { useToast } from "@/hooks/use-toast";
 
@@ -16,6 +17,7 @@ const SystemSettings = () => {
   const [isGeneratingEcommercePDF, setIsGeneratingEcommercePDF] = useState(false);
   const [isGeneratingRatesPDF, setIsGeneratingRatesPDF] = useState(false);
   const [isGeneratingFlexPDF, setIsGeneratingFlexPDF] = useState(false);
+  const [isGeneratingFlexTermsPDF, setIsGeneratingFlexTermsPDF] = useState(false);
   const { tenant, branding } = useTenantContext();
   const { toast } = useToast();
 
@@ -127,6 +129,51 @@ const SystemSettings = () => {
       });
     } finally {
       setIsGeneratingFlexPDF(false);
+    }
+  };
+
+  const handleDownloadFlexTerms = async () => {
+    setIsGeneratingFlexTermsPDF(true);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await generateFlexTermsPDF(getFlexBranding());
+      toast({
+        title: "PDF generado",
+        description: "Los Términos y Condiciones Flex se han descargado correctamente.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo generar el PDF. Intente nuevamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingFlexTermsPDF(false);
+    }
+  };
+
+  const handleShareFlexTermsWhatsApp = async () => {
+    setIsGeneratingFlexTermsPDF(true);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await generateFlexTermsPDF(getFlexBranding());
+      const name = getFlexBranding().tenantName;
+      const message = encodeURIComponent(
+        `¡Hola! Te comparto los Términos y Condiciones del servicio Flex de ${name}. Por favor revisá el archivo adjunto.`
+      );
+      window.open(`https://wa.me/?text=${message}`, '_blank');
+      toast({
+        title: "PDF descargado",
+        description: "Adjuntá el PDF descargado en el chat de WhatsApp.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo generar el PDF. Intente nuevamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingFlexTermsPDF(false);
     }
   };
 
@@ -367,6 +414,69 @@ const SystemSettings = () => {
           </CardContent>
         </Card>
 
+        {/* Flex Terms */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Scale className="h-5 w-5" />
+              Términos Flex
+            </CardTitle>
+            <CardDescription>
+              Condiciones comerciales para vendedores Flex
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-start gap-4 p-4 rounded-lg border bg-card">
+              <div className="p-3 rounded-lg bg-orange-500/10">
+                <Scale className="h-6 w-6 text-orange-600" />
+              </div>
+              <div className="flex-1 space-y-2">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold">T&C Flex - {branding?.nombre_app || tenant?.nombre || 'Mi Empresa'}</h3>
+                  <Badge variant="secondary">PDF</Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Términos y condiciones del servicio de logística Flex.
+                </p>
+                <ul className="text-xs text-muted-foreground space-y-1 mt-2">
+                  <li>• Tarifas y facturación</li>
+                  <li>• Intentos de entrega</li>
+                  <li>• Liquidaciones y pagos</li>
+                  <li>• Compromiso de servicio</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                onClick={handleDownloadFlexTerms}
+                className="flex-1"
+                variant="outline"
+                disabled={isGeneratingFlexTermsPDF}
+              >
+                {isGeneratingFlexTermsPDF ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Generando...
+                  </>
+                ) : (
+                  <>
+                    <Download className="mr-2 h-4 w-4" />
+                    Descargar
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={handleShareFlexTermsWhatsApp}
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                disabled={isGeneratingFlexTermsPDF}
+              >
+                <MessageCircle className="mr-2 h-4 w-4" />
+                WhatsApp
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
         {/* System Info */}
         <Card>
           <CardHeader>
