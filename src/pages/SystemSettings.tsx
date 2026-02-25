@@ -3,16 +3,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { DollarSign, Download, FileText, Info, Loader2, Settings, ShoppingCart } from "lucide-react";
+import { DollarSign, Download, FileText, Info, Loader2, MessageCircle, Settings, ShoppingCart, Truck } from "lucide-react";
 import { generateUserGuidePDF } from "@/lib/generateUserGuidePDF";
 import { generateEcommerceGuidePDF } from "@/lib/generateEcommerceGuidePDF";
 import { generateRatesGuidePDF } from "@/lib/generateRatesGuidePDF";
+import { generateFlexGuidePDF } from "@/lib/generateFlexGuidePDF";
+import { useTenantContext } from "@/components/providers/TenantProvider";
 import { useToast } from "@/hooks/use-toast";
 
 const SystemSettings = () => {
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isGeneratingEcommercePDF, setIsGeneratingEcommercePDF] = useState(false);
   const [isGeneratingRatesPDF, setIsGeneratingRatesPDF] = useState(false);
+  const [isGeneratingFlexPDF, setIsGeneratingFlexPDF] = useState(false);
+  const { tenant, branding } = useTenantContext();
   const { toast } = useToast();
 
   const handleDownloadGuide = async () => {
@@ -72,6 +76,57 @@ const SystemSettings = () => {
       });
     } finally {
       setIsGeneratingRatesPDF(false);
+    }
+  };
+
+  const getFlexBranding = () => ({
+    tenantName: branding?.nombre_app || tenant?.nombre || 'Mi Empresa',
+    logoUrl: branding?.logo_light || null,
+    primaryColor: branding?.color_primario || '#EAB308',
+  });
+
+  const handleDownloadFlexGuide = async () => {
+    setIsGeneratingFlexPDF(true);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await generateFlexGuidePDF(getFlexBranding());
+      toast({
+        title: "PDF generado",
+        description: "La guía de Envíos Flex se ha descargado correctamente.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo generar el PDF. Intente nuevamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingFlexPDF(false);
+    }
+  };
+
+  const handleShareFlexWhatsApp = async () => {
+    setIsGeneratingFlexPDF(true);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await generateFlexGuidePDF(getFlexBranding());
+      const name = getFlexBranding().tenantName;
+      const message = encodeURIComponent(
+        `¡Hola! Te comparto la Guía Operativa de Envíos Flex de ${name}. Por favor revisá el archivo adjunto.`
+      );
+      window.open(`https://wa.me/?text=${message}`, '_blank');
+      toast({
+        title: "PDF descargado",
+        description: "Adjuntá el PDF descargado en el chat de WhatsApp.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo generar el PDF. Intente nuevamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingFlexPDF(false);
     }
   };
 
@@ -246,6 +301,69 @@ const SystemSettings = () => {
                 </>
               )}
             </Button>
+          </CardContent>
+        </Card>
+
+        {/* Flex Guide */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Truck className="h-5 w-5" />
+              Guía Envíos Flex
+            </CardTitle>
+            <CardDescription>
+              Guía operativa para Mercado Libre Flex
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-start gap-4 p-4 rounded-lg border bg-card">
+              <div className="p-3 rounded-lg bg-yellow-500/10">
+                <Truck className="h-6 w-6 text-yellow-600" />
+              </div>
+              <div className="flex-1 space-y-2">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold">ML Flex - {branding?.nombre_app || tenant?.nombre || 'Mi Empresa'}</h3>
+                  <Badge variant="secondary">PDF</Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Guía con onboarding, horarios de retiro y tarifario vigente.
+                </p>
+                <ul className="text-xs text-muted-foreground space-y-1 mt-2">
+                  <li>• Proceso de alta de servicio</li>
+                  <li>• Horarios y logística de retiro</li>
+                  <li>• Tarifario por zonas</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                onClick={handleDownloadFlexGuide}
+                className="flex-1"
+                variant="outline"
+                disabled={isGeneratingFlexPDF}
+              >
+                {isGeneratingFlexPDF ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Generando...
+                  </>
+                ) : (
+                  <>
+                    <Download className="mr-2 h-4 w-4" />
+                    Descargar
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={handleShareFlexWhatsApp}
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                disabled={isGeneratingFlexPDF}
+              >
+                <MessageCircle className="mr-2 h-4 w-4" />
+                WhatsApp
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
