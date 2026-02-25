@@ -1,44 +1,57 @@
 
 
-# Fix: Error de RLS al guardar sucursales en tarifas
+# PDF Guia Operativa Envios Flex + WhatsApp
 
-## Problema
+## Resumen
 
-Al guardar la asignacion de sucursales a una tarifa, aparece:
-**"new row violates row-level security policy (USING expression) for table sucursal_tarifas"**
+Crear un PDF descargable "Guia Operativa Envios Flex" que use la identidad visual del tenant (logo, nombre, colores) en lugar del logo generico de Geologistick. Incluir opcion de compartir por WhatsApp.
 
-## Causa raiz
+## Contenido del PDF
 
-Existe un registro en `sucursal_tarifas` con un `tenant_id` incorrecto (`a0000000...` en vez de `81be07a7...`). Las reglas de seguridad impiden que el usuario vea o actualice ese registro. Cuando el upsert intenta insertar un nuevo registro para la misma combinacion sucursal+tarifa, la base de datos lo rechaza porque ya existe uno (que el usuario no puede ver).
-
-Este problema puede repetirse si algun proceso futuro crea registros con tenant_id incorrecto.
-
-## Solucion
-
-1. **Corregir el dato corrupto** via migracion SQL
-2. **Crear una funcion SECURITY DEFINER** para manejar el upsert de sucursal_tarifas, que siempre fuerce el tenant_id correcto y evite conflictos futuros
-3. **Hacer lo mismo para sucursal_conceptos** para prevenir el mismo problema
+- **Portada**: Logo del tenant, nombre del tenant (ej: "BeraExpress"), subtitulo "Guia Operativa Envios Flex"
+- **Seccion 1 - Proceso de Onboarding**: Apertura de cuenta, sincronizacion con 2 links, autorizacion
+- **Seccion 2 - Horarios y Logistica de Retiro**: Corte 12:00hs, retiro 12:10-13:00hs, bonificacion desde 5 pedidos
+- **Seccion 3 - Tarifario Vigente**: Tabla con Zona 1 (Berazategui $4,610.99), Zona 2 (Quilmes/F.Varela $7,370.99), Zona 3 (CABA $10,245.99)
 
 ## Cambios tecnicos
 
-| Tipo | Accion | Descripcion |
+| Archivo | Accion | Descripcion |
 |---|---|---|
-| Migracion SQL | Crear | Corregir el registro con tenant_id incorrecto en sucursal_tarifas |
-| Migracion SQL | Crear | Funcion `upsert_sucursal_tarifas` (SECURITY DEFINER) que hace el upsert interno sin restricciones de RLS, validando tenant_id internamente |
-| Migracion SQL | Crear | Funcion `upsert_sucursal_conceptos` (SECURITY DEFINER) equivalente |
-| `src/components/rates/TarifaBranchesDialog.tsx` | Modificar | Llamar a la funcion RPC `upsert_sucursal_tarifas` en vez de hacer upsert directo |
-| `src/components/rates/ConceptBranchesDialog.tsx` | Modificar | Llamar a la funcion RPC `upsert_sucursal_conceptos` en vez de hacer upsert directo |
+| `src/lib/generateFlexGuidePDF.ts` | Crear | Funcion que recibe datos de branding del tenant (logo, nombre, color primario) y genera el PDF con portada personalizada usando `pdfHelpers.ts`. Carga el logo del tenant desde la URL almacenada en `tenant_branding` via canvas para compatibilidad con jsPDF |
+| `src/pages/SystemSettings.tsx` | Modificar | Agregar nueva Card con icono Truck. Importar `useTenantContext` para obtener el branding del tenant actual y pasarlo a la funcion de generacion. Dos botones: "Descargar" y "Enviar por WhatsApp" |
 
-### Detalle de las funciones SQL
+### Detalle de generacion del PDF
 
-Las funciones SECURITY DEFINER recibiran un array de objetos con `sucursal_id` y `habilitada/habilitado`, el `tarifa_id` o `concepto_id`, y el `tenant_id`. Internamente haran:
+La funcion `generateFlexGuidePDF` recibira un objeto con:
 
 ```text
-1. Validar que el usuario sea admin o super_admin
-2. Validar que el tenant_id coincida con el del usuario (o que sea super_admin)
-3. Hacer DELETE + INSERT o UPDATE directo sin restricciones de RLS
-4. Retornar resultado
+{
+  tenantName: string       // ej: "BeraExpress"
+  logoUrl: string | null   // URL del logo del tenant desde tenant_branding.logo_light
+  primaryColor: string     // Color primario hex del tenant
+}
 ```
 
-Esto evita el problema de "registros fantasma" que el usuario no puede ver pero que bloquean la operacion.
+Internamente:
+1. Carga el logo del tenant via canvas (patron de `generateSettlementPDF.ts`) para convertir SVG/CORS a base64
+2. Usa `drawCoverPage` con el nombre del tenant como titulo principal y color primario del tenant
+3. Dibuja las 3 secciones con texto formateado
+4. Dibuja la tabla del tarifario con `doc.rect()` y `doc.text()`
+5. Guarda como `{tenantName}-Guia-Flex.pdf`
+
+### Detalle de la Card en SystemSettings
+
+- Importar `useTenantContext` y `Truck` de lucide
+- Estado `isGeneratingFlexPDF`
+- Handler `handleDownloadFlexGuide`: obtiene branding del tenant context y llama a `generateFlexGuidePDF`
+- Handler `handleShareFlexWhatsApp`: descarga el PDF y abre `https://wa.me/?text=...` con mensaje pre-armado incluyendo el nombre del tenant
+- Color de icono: amarillo (identidad ML Flex)
+
+### Flujo de WhatsApp
+
+1. Se genera y descarga el PDF localmente
+2. Se abre WhatsApp con mensaje pre-cargado: "Hola! Te comparto la Guia Operativa de Envios Flex de {tenantName}. Por favor revisa el archivo adjunto."
+3. El usuario adjunta manualmente el PDF descargado al chat
+
+No se requieren cambios en la base de datos.
 
