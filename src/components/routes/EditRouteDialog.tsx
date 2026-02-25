@@ -36,7 +36,8 @@ import {
   Plus,
   MapPin,
   AlertTriangle,
-  Calendar
+  Calendar,
+  Building2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, addDays } from 'date-fns';
@@ -168,7 +169,13 @@ export default function EditRouteDialog({ route, onClose }: EditRouteDialogProps
 
   // Current stops (excluding those to be removed)
   const currentStops = useMemo(() => {
-    return paradas.filter(p => !envsToRemove.includes(p.envio_id));
+    return paradas.filter(p => {
+      if (p.sucursal_id && !p.envio_id) {
+        // Sucursal stop - check by id
+        return !envsToRemove.includes(p.id);
+      }
+      return !envsToRemove.includes(p.envio_id);
+    });
   }, [paradas, envsToRemove]);
 
   // Toggle remove shipment
@@ -358,7 +365,9 @@ export default function EditRouteDialog({ route, onClose }: EditRouteDialogProps
               <ScrollArea className="h-[300px] pr-4">
                 <div className="space-y-2">
                   {paradas.map((parada) => {
-                    const isRemoved = envsToRemove.includes(parada.envio_id);
+                    const isSucursalStop = !parada.envio_id && !!parada.sucursal_id;
+                    const removeKey = isSucursalStop ? parada.id : parada.envio_id;
+                    const isRemoved = envsToRemove.includes(removeKey);
                     const envio = parada.envio;
                     
                     return (
@@ -377,21 +386,32 @@ export default function EditRouteDialog({ route, onClose }: EditRouteDialogProps
                           
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-0.5">
-                              <Badge variant={parada.tipo === 'retiro' ? 'secondary' : 'default'} className="text-xs">
-                                {parada.tipo === 'retiro' ? (
-                                  <><Home className="mr-1 h-3 w-3" />Retiro</>
-                                ) : (
-                                  <><Package className="mr-1 h-3 w-3" />Entrega</>
-                                )}
-                              </Badge>
-                              <span className="font-mono text-xs text-muted-foreground">
-                                {envio?.tracking_number}
-                              </span>
+                              {isSucursalStop ? (
+                                <Badge variant="outline" className="text-xs">
+                                  <Building2 className="mr-1 h-3 w-3" />Sucursal
+                                </Badge>
+                              ) : (
+                                <Badge variant={parada.tipo === 'retiro' ? 'secondary' : 'default'} className="text-xs">
+                                  {parada.tipo === 'retiro' ? (
+                                    <><Home className="mr-1 h-3 w-3" />Retiro</>
+                                  ) : (
+                                    <><Package className="mr-1 h-3 w-3" />Entrega</>
+                                  )}
+                                </Badge>
+                              )}
+                              {!isSucursalStop && (
+                                <span className="font-mono text-xs text-muted-foreground">
+                                  {envio?.tracking_number}
+                                </span>
+                              )}
                             </div>
                             <p className="text-sm truncate">
-                              {parada.tipo === 'retiro' 
-                                ? envio?.nombre_remitente || `${envio?.remitente?.nombre || ''} ${envio?.remitente?.apellido || ''}`.trim() || 'Sin remitente'
-                                : envio?.nombre_destinatario || `${envio?.destinatario?.nombre || ''} ${envio?.destinatario?.apellido || ''}`.trim() || 'Sin destinatario'
+                              {isSucursalStop 
+                                ? (parada.nombre_parada || 'Sucursal')
+                                : (parada.tipo === 'retiro' 
+                                  ? envio?.nombre_remitente || `${envio?.remitente?.nombre || ''} ${envio?.remitente?.apellido || ''}`.trim() || 'Sin remitente'
+                                  : envio?.nombre_destinatario || `${envio?.destinatario?.nombre || ''} ${envio?.destinatario?.apellido || ''}`.trim() || 'Sin destinatario'
+                                )
                               }
                             </p>
                             <p className="text-xs text-muted-foreground truncate">
@@ -402,7 +422,7 @@ export default function EditRouteDialog({ route, onClose }: EditRouteDialogProps
                           <Button
                             variant={isRemoved ? 'outline' : 'ghost'}
                             size="sm"
-                            onClick={() => toggleRemove(parada.envio_id)}
+                            onClick={() => toggleRemove(removeKey)}
                           >
                             {isRemoved ? (
                               <><Plus className="h-4 w-4 mr-1" />Restaurar</>
@@ -412,8 +432,8 @@ export default function EditRouteDialog({ route, onClose }: EditRouteDialogProps
                           </Button>
                         </div>
                         
-                        {/* Reschedule date option when removed */}
-                        {isRemoved && (
+                        {/* Reschedule date option when removed (only for envio stops) */}
+                        {isRemoved && !isSucursalStop && (
                           <div className="ml-9 mt-2 flex items-center gap-2 bg-muted/30 p-2 rounded">
                             <Calendar className="h-4 w-4 text-muted-foreground" />
                             <Label className="text-xs">Reprogramar para:</Label>

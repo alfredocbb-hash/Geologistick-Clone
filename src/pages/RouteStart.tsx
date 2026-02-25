@@ -16,7 +16,8 @@ import {
   Clock,
   Route,
   Calendar,
-  Navigation
+  Navigation,
+  Building2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -323,6 +324,7 @@ export default function RouteStart() {
   const deliveriesCount = isPlannedRoute
     ? paradas.filter(p => p.tipo === 'entrega').length
     : envios.filter(e => !e.envio?.requiere_retiro).length;
+  const sucursalesCount = isPlannedRoute ? paradas.filter(p => p.tipo === 'sucursal').length : 0;
   const totalStops = isPlannedRoute ? (rutaPlanificada?.total_paradas || paradas.length) : (hojaRuta?.cantidad_envios || envios.length);
   const distanceKm = isPlannedRoute ? rutaPlanificada?.distancia_total_km : hojaRuta?.distancia_total_km;
   const durationHours = isPlannedRoute 
@@ -408,6 +410,24 @@ export default function RouteStart() {
                     <div>
                       <p className="text-xs text-muted-foreground">RETIROS</p>
                       <p className="font-semibold">{pickupsCount}</p>
+                    </div>
+                  </div>
+                )}
+                {deliveriesCount > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Package className="h-5 w-5 text-primary" />
+                    <div>
+                      <p className="text-xs text-muted-foreground">ENTREGAS</p>
+                      <p className="font-semibold">{deliveriesCount}</p>
+                    </div>
+                  </div>
+                )}
+                {sucursalesCount > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Building2 className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <p className="text-xs text-muted-foreground">SUCURSALES</p>
+                      <p className="font-semibold">{sucursalesCount}</p>
                     </div>
                   </div>
                 )}

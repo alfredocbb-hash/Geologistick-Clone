@@ -5,7 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { QRCodeSVG } from 'qrcode.react';
-import { Loader2, MapPin, User, Truck, Package, Home, Calendar, Clock } from 'lucide-react';
+import { Loader2, MapPin, User, Truck, Package, Home, Calendar, Clock, Building2 } from 'lucide-react';
 import { parseDateString } from '@/lib/dateUtils';
 
 export default function PrintPlannedRoute() {
@@ -229,6 +229,31 @@ export default function PrintPlannedRoute() {
           <tbody>
             {ruta.paradas.map((parada: any, index: number) => {
               const envio = parada.envio;
+              const isSucursalStop = !parada.envio_id && !!parada.sucursal_id;
+              
+              if (isSucursalStop) {
+                return (
+                  <tr key={parada.id} className={`border-b ${index % 2 === 1 ? 'bg-gray-50' : ''}`}>
+                    <td className="p-2 font-bold">{index + 1}</td>
+                    <td className="p-2">
+                      <span className="inline-flex items-center gap-1 text-xs bg-gray-100 px-1.5 py-0.5 rounded">
+                        <Building2 className="h-3 w-3" />S
+                      </span>
+                    </td>
+                    <td className="p-2 text-xs text-muted-foreground">-</td>
+                    <td className="p-2">
+                      <div className="font-medium">{parada.nombre_parada || 'Sucursal'}</div>
+                    </td>
+                    <td className="p-2">{parada.direccion || '-'}</td>
+                    <td className="p-2 text-xs">-</td>
+                    <td className="p-2 text-center"></td>
+                    <td className="p-2 text-center">
+                      <div className="w-5 h-5 border-2 border-black mx-auto"></div>
+                    </td>
+                  </tr>
+                );
+              }
+
               const isRetiro = parada.tipo === 'retiro';
               const cliente = isRetiro ? envio?.remitente : envio?.destinatario;
               const clienteName = isRetiro 
@@ -306,6 +331,12 @@ export default function PrintPlannedRoute() {
               <span>Total Entregas:</span>
               <span className="font-bold">{ruta.paradas.filter((p: any) => p.tipo === 'entrega').length}</span>
             </div>
+            {ruta.paradas.filter((p: any) => p.tipo === 'sucursal' || (!p.envio_id && p.sucursal_id)).length > 0 && (
+              <div className="flex justify-between">
+                <span>Sucursales:</span>
+                <span className="font-bold">{ruta.paradas.filter((p: any) => p.tipo === 'sucursal' || (!p.envio_id && p.sucursal_id)).length}</span>
+              </div>
+            )}
             <div className="flex justify-between border-t pt-1 mt-2">
               <span>Cobros COD:</span>
               <span className="font-bold">

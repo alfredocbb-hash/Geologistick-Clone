@@ -2608,45 +2608,51 @@ export type Database = {
           completada_at: string | null
           created_at: string | null
           direccion: string | null
-          envio_id: string
+          envio_id: string | null
           estado: string | null
           hora_estimada: string | null
           id: string
           lat: number | null
           lng: number | null
+          nombre_parada: string | null
           notas: string | null
           orden: number
           ruta_id: string
+          sucursal_id: string | null
           tipo: string
         }
         Insert: {
           completada_at?: string | null
           created_at?: string | null
           direccion?: string | null
-          envio_id: string
+          envio_id?: string | null
           estado?: string | null
           hora_estimada?: string | null
           id?: string
           lat?: number | null
           lng?: number | null
+          nombre_parada?: string | null
           notas?: string | null
           orden: number
           ruta_id: string
+          sucursal_id?: string | null
           tipo: string
         }
         Update: {
           completada_at?: string | null
           created_at?: string | null
           direccion?: string | null
-          envio_id?: string
+          envio_id?: string | null
           estado?: string | null
           hora_estimada?: string | null
           id?: string
           lat?: number | null
           lng?: number | null
+          nombre_parada?: string | null
           notas?: string | null
           orden?: number
           ruta_id?: string
+          sucursal_id?: string | null
           tipo?: string
         }
         Relationships: [
@@ -2662,6 +2668,13 @@ export type Database = {
             columns: ["ruta_id"]
             isOneToOne: false
             referencedRelation: "rutas_planificadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ruta_paradas_sucursal_id_fkey"
+            columns: ["sucursal_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
             referencedColumns: ["id"]
           },
         ]
