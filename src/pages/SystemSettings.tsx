@@ -11,6 +11,7 @@ import { generateFlexGuidePDF } from "@/lib/generateFlexGuidePDF";
 import { generateFlexTermsPDF } from "@/lib/generateFlexTermsPDF";
 import { useTenantContext } from "@/components/providers/TenantProvider";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
 
 const SystemSettings = () => {
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
@@ -20,6 +21,8 @@ const SystemSettings = () => {
   const [isGeneratingFlexTermsPDF, setIsGeneratingFlexTermsPDF] = useState(false);
   const { tenant, branding } = useTenantContext();
   const { toast } = useToast();
+  const { isAdmin } = useAuth();
+  const showFlexCards = isAdmin() && tenant?.ecommerce_enabled === true;
 
   const handleDownloadGuide = async () => {
     setIsGeneratingPDF(true);
@@ -351,7 +354,7 @@ const SystemSettings = () => {
           </CardContent>
         </Card>
 
-        {/* Flex Guide */}
+        {showFlexCards && (<>
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -477,6 +480,7 @@ const SystemSettings = () => {
             </div>
           </CardContent>
         </Card>
+        </>)}
         {/* System Info */}
         <Card>
           <CardHeader>
