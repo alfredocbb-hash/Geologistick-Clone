@@ -1,57 +1,55 @@
 
 
-# PDF Guia Operativa Envios Flex + WhatsApp
+# PDF Terminos y Condiciones del Servicio Flex
 
 ## Resumen
 
-Crear un PDF descargable "Guia Operativa Envios Flex" que use la identidad visual del tenant (logo, nombre, colores) en lugar del logo generico de Geologistick. Incluir opcion de compartir por WhatsApp.
+Crear un nuevo PDF descargable "Terminos y Condiciones del Servicio de Logistica Flex" con branding dinamico del tenant (logo, nombre, color primario), y agregar una nueva Card en la pagina de Configuracion del Sistema con botones de descarga y envio por WhatsApp.
 
 ## Contenido del PDF
 
-- **Portada**: Logo del tenant, nombre del tenant (ej: "BeraExpress"), subtitulo "Guia Operativa Envios Flex"
-- **Seccion 1 - Proceso de Onboarding**: Apertura de cuenta, sincronizacion con 2 links, autorizacion
-- **Seccion 2 - Horarios y Logistica de Retiro**: Corte 12:00hs, retiro 12:10-13:00hs, bonificacion desde 5 pedidos
-- **Seccion 3 - Tarifario Vigente**: Tabla con Zona 1 (Berazategui $4,610.99), Zona 2 (Quilmes/F.Varela $7,370.99), Zona 3 (CABA $10,245.99)
+El documento incluira portada con branding del tenant y las siguientes secciones:
+
+1. **Tarifas y Facturacion** - Precios netos sin IVA, facturacion con 21% adicional
+2. **Operatoria de Entregas y Visitas** - 2 intentos incluidos, tercer intento con costo adicional
+3. **Liquidaciones y Terminos de Pago** - Liquidacion semanal, plazo 48hs habiles, mora del 5%
+4. **Compromiso de Servicio** - Esfuerzos para cumplir tiempos Flex, seguridad y comunicacion
 
 ## Cambios tecnicos
 
 | Archivo | Accion | Descripcion |
 |---|---|---|
-| `src/lib/generateFlexGuidePDF.ts` | Crear | Funcion que recibe datos de branding del tenant (logo, nombre, color primario) y genera el PDF con portada personalizada usando `pdfHelpers.ts`. Carga el logo del tenant desde la URL almacenada en `tenant_branding` via canvas para compatibilidad con jsPDF |
-| `src/pages/SystemSettings.tsx` | Modificar | Agregar nueva Card con icono Truck. Importar `useTenantContext` para obtener el branding del tenant actual y pasarlo a la funcion de generacion. Dos botones: "Descargar" y "Enviar por WhatsApp" |
+| `src/lib/generateFlexTermsPDF.ts` | Crear | Nueva funcion que genera el PDF de terminos y condiciones usando `pdfHelpers.ts`. Recibe el mismo objeto de branding que `generateFlexGuidePDF` (tenantName, logoUrl, primaryColor). Usa el color primario del tenant para encabezados de seccion y portada. Incluye texto legal formateado con subsecciones numeradas |
+| `src/pages/SystemSettings.tsx` | Modificar | Agregar nueva Card con icono `Scale` (o `FileCheck`) de lucide-react. Estado `isGeneratingFlexTermsPDF`. Dos botones: "Descargar" y "WhatsApp", siguiendo el mismo patron de la Card de Guia Flex existente |
 
-### Detalle de generacion del PDF
+### Detalle del PDF
 
-La funcion `generateFlexGuidePDF` recibira un objeto con:
+La funcion `generateFlexTermsPDF` recibira:
 
 ```text
 {
   tenantName: string       // ej: "BeraExpress"
-  logoUrl: string | null   // URL del logo del tenant desde tenant_branding.logo_light
-  primaryColor: string     // Color primario hex del tenant
+  logoUrl: string | null   // Logo del tenant
+  primaryColor: string     // Color primario hex
 }
 ```
 
-Internamente:
-1. Carga el logo del tenant via canvas (patron de `generateSettlementPDF.ts`) para convertir SVG/CORS a base64
-2. Usa `drawCoverPage` con el nombre del tenant como titulo principal y color primario del tenant
-3. Dibuja las 3 secciones con texto formateado
-4. Dibuja la tabla del tarifario con `doc.rect()` y `doc.text()`
-5. Guarda como `{tenantName}-Guia-Flex.pdf`
+Estructura del documento:
+- **Portada**: Logo del tenant, "{tenantName}", subtitulo "Terminos y Condiciones del Servicio de Logistica Flex"
+- **Introduccion**: Parrafo legal que establece las partes (tenant como prestador, "El Vendedor" como cliente)
+- **Seccion 1 - Tarifas y Facturacion**: Subsecciones 1.1 (Precios Netos) y 1.2 (Facturacion con IVA 21%)
+- **Seccion 2 - Operatoria de Entregas**: Subsecciones 2.1 (2 intentos sin costo) y 2.2 (3er intento = tarifa completa)
+- **Seccion 3 - Liquidaciones**: Subsecciones 3.1 (semanal), 3.2 (48hs habiles) y 3.3 (mora 5%)
+- **Seccion 4 - Compromiso de Servicio**: Parrafo de cierre
+- **Pie**: "{tenantName} -- Velocidad y confianza en cada entrega."
 
 ### Detalle de la Card en SystemSettings
 
-- Importar `useTenantContext` y `Truck` de lucide
-- Estado `isGeneratingFlexPDF`
-- Handler `handleDownloadFlexGuide`: obtiene branding del tenant context y llama a `generateFlexGuidePDF`
-- Handler `handleShareFlexWhatsApp`: descarga el PDF y abre `https://wa.me/?text=...` con mensaje pre-armado incluyendo el nombre del tenant
-- Color de icono: amarillo (identidad ML Flex)
-
-### Flujo de WhatsApp
-
-1. Se genera y descarga el PDF localmente
-2. Se abre WhatsApp con mensaje pre-cargado: "Hola! Te comparto la Guia Operativa de Envios Flex de {tenantName}. Por favor revisa el archivo adjunto."
-3. El usuario adjunta manualmente el PDF descargado al chat
+- Icono: `Scale` de lucide-react (representando terminos legales)
+- Titulo: "Terminos Flex"
+- Descripcion: "Condiciones comerciales para vendedores Flex"
+- Lista: Tarifas y facturacion, Intentos de entrega, Liquidaciones y pagos, Compromiso de servicio
+- Botones: "Descargar" + "WhatsApp" (mismo patron que la Card de Guia Flex)
+- El mensaje de WhatsApp dira: "Hola! Te comparto los Terminos y Condiciones del servicio Flex de {tenantName}. Por favor revisa el archivo adjunto."
 
 No se requieren cambios en la base de datos.
-
