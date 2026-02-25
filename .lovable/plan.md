@@ -1,27 +1,24 @@
 
 
-# Mejorar visibilidad del logo en portadas PDF
+# Restringir Cards Flex a ecommerce habilitado + rol admin
 
-## Problema
+## Resumen
 
-En la portada de todos los PDFs del sistema, el logo del tenant se coloca directamente sobre el fondo de color primario. Cuando el color primario del tenant es similar al color del logo (como naranja sobre naranja en BeraExpress), el logo no se distingue.
-
-## Solucion
-
-Agregar un fondo blanco circular (o redondeado) detras del logo en la portada, creando un "medallion" que garantice que el logo siempre sea visible sin importar el color de fondo.
+Mostrar las cards "Guia Envios Flex" y "Terminos Flex" en la pagina de Configuracion del Sistema unicamente cuando:
+1. El tenant tiene `ecommerce_enabled = true`
+2. El usuario tiene rol `admin` o `super_admin`
 
 ## Cambio tecnico
 
 | Archivo | Accion | Descripcion |
 |---|---|---|
-| `src/lib/pdfHelpers.ts` | Modificar | En la funcion `drawCoverPage`, antes de dibujar el logo, agregar un circulo blanco (o rectangulo redondeado blanco) como fondo del logo. Esto crea contraste y hace visible cualquier logo sobre cualquier color de fondo |
+| `src/pages/SystemSettings.tsx` | Modificar | Importar `useAuth` de `@/lib/auth`. Usar `isAdmin()` y `tenant?.ecommerce_enabled` para envolver condicionalmente las dos Cards de Flex (Guia y Terminos) |
 
-### Detalle del cambio
+### Detalle
 
-En `drawCoverPage` (linea ~90), antes de `doc.addImage(...)`:
+1. Agregar `import { useAuth } from '@/lib/auth'`
+2. Dentro del componente, obtener `const { isAdmin } = useAuth()`
+3. Crear una variable `const showFlexCards = isAdmin() && tenant?.ecommerce_enabled === true`
+4. Envolver las dos Cards (Guia Envios Flex y Terminos Flex) con `{showFlexCards && (...)}`
 
-1. Dibujar un circulo blanco centrado con `doc.setFillColor(255,255,255)` y `doc.circle()` o un rectangulo redondeado blanco ligeramente mas grande que el logo (ej: 50x50mm vs logo de 45x45mm)
-2. Esto aplica automaticamente a **todos** los PDFs del sistema (Guia Flex, Terminos Flex, Guia Usuario, reportes, etc.) ya que todos usan `drawCoverPage`
-
-El resultado visual seria: fondo de color primario -> circulo/rectangulo blanco -> logo del tenant, garantizando visibilidad en todos los casos.
-
+No se requieren cambios en la base de datos ni en otros archivos.
