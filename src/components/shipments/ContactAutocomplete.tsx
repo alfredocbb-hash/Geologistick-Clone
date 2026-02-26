@@ -54,7 +54,7 @@ export default function ContactAutocomplete({
   const uniqueClients = useMemo(() => {
     const seen = new Set<string>();
     return clients.filter((client) => {
-      const key = `${client.telefono}-${client.nombre}`.toLowerCase();
+      const key = `${client.nombre}-${client.apellido || ''}-${client.direccion || ''}`.toLowerCase();
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -62,7 +62,7 @@ export default function ContactAutocomplete({
   }, [clients]);
 
   const filteredClients = useMemo(() => {
-    if (!search) return uniqueClients.slice(0, 10);
+    if (!search) return uniqueClients.slice(0, 15);
     
     const searchLower = search.toLowerCase();
     return uniqueClients.filter((client) => {
@@ -70,14 +70,16 @@ export default function ContactAutocomplete({
       const phone = client.telefono?.toLowerCase() || '';
       const dni = client.dni_cuit?.toLowerCase() || '';
       const email = client.email?.toLowerCase() || '';
+      const address = client.direccion?.toLowerCase() || '';
       
       return (
         fullName.includes(searchLower) ||
         phone.includes(searchLower) ||
         dni.includes(searchLower) ||
-        email.includes(searchLower)
+        email.includes(searchLower) ||
+        address.includes(searchLower)
       );
-    }).slice(0, 10);
+    }).slice(0, 15);
   }, [uniqueClients, search]);
 
   const handleSelect = (client: Client) => {
