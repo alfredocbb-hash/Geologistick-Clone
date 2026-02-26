@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -15,6 +15,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Loader2, User, UserPlus, UserX } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { useFormDraft } from '@/hooks/useFormDraft';
+import { DraftIndicator, DraftSavingIndicator } from '@/components/ui/draft-indicator';
 
 const formSchema = z.object({
   nombre: z.string().min(2, 'Nombre requerido'),
@@ -71,24 +73,62 @@ interface CreateSellerDialogProps {
   onSuccess: () => void;
 }
 
+const defaultValues: FormValues = {
+  nombre: '',
+  email: '',
+  plataforma: 'manual',
+  tiene_cuenta_corriente: false,
+  limite_credito: 0,
+  vincular_usuario: 'ninguno',
+  user_id: '',
+  user_email: '',
+  user_password: '',
+  razon_social: '',
+  telefono: '',
+  direccion: '',
+  ciudad: '',
+  provincia: '',
+  codigo_postal: '',
+  cuit: '',
+  store_url: '',
+  sucursal_pickup_id: '',
+  tarifa_id: '',
+};
+
 export function CreateSellerDialog({ open, onOpenChange, onSuccess }: CreateSellerDialogProps) {
   const { tenantId } = useTenant();
   const [isCreatingUser, setIsCreatingUser] = useState(false);
 
+  const {
+    formData: draftData,
+    setFormData: setDraftData,
+    hasDraft,
+    lastSaved,
+    clearDraft,
+    discardDraft,
+    isDraftRecovered,
+    setIsDraftRecovered,
+  } = useFormDraft('create-seller', defaultValues);
+
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      nombre: '',
-      email: '',
-      plataforma: 'manual',
-      tiene_cuenta_corriente: false,
-      limite_credito: 0,
-      vincular_usuario: 'ninguno',
-      user_id: '',
-      user_email: '',
-      user_password: '',
-    },
+    defaultValues,
   });
+
+  // Load recovered draft into form
+  useEffect(() => {
+    if (isDraftRecovered && open) {
+      form.reset(draftData);
+    }
+  }, [isDraftRecovered, open]);
+
+  // Sync form changes to draft
+  useEffect(() => {
+    const subscription = form.watch((value) => {
+      setDraftData(value as FormValues);
+    });
+    return () => subscription.unsubscribe();
+  }, [form.watch, setDraftData]);
 
   const vincularUsuario = form.watch('vincular_usuario');
 
@@ -254,7 +294,8 @@ export function CreateSellerDialog({ open, onOpenChange, onSuccess }: CreateSell
     },
     onSuccess: () => {
       toast({ title: 'Seller creado correctamente' });
-      form.reset();
+      clearDraft();
+      form.reset(defaultValues);
       onSuccess();
     },
     onError: (error: any) => {
@@ -282,6 +323,21 @@ export function CreateSellerDialog({ open, onOpenChange, onSuccess }: CreateSell
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {isDraftRecovered && (
+              <DraftIndicator
+                lastSaved={lastSaved}
+                onDiscard={() => {
+                  discardDraft();
+                  form.reset(defaultValues);
+                }}
+                onDismiss={() => setIsDraftRecovered(false)}
+              />
+            )}
+
+            <div className="flex justify-end">
+              <DraftSavingIndicator hasDraft={hasDraft} lastSaved={lastSaved} />
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
