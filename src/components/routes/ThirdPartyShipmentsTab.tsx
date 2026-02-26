@@ -246,23 +246,29 @@ export default function ThirdPartyShipmentsTab() {
     lat?: number | null;
     lng?: number | null;
   }): Promise<string | null> => {
-    if (!data.telefono && !data.nombre) return null;
+    if (!data.nombre && !data.telefono) return null;
+    const tenantId = profile?.tenant_id;
+    if (!tenantId) return null;
 
-    // Search by phone first
+    const nombreParts = data.nombre.trim().split(" ");
+    const nombre = nombreParts[0];
+    const apellido = nombreParts.slice(1).join(" ") || null;
+
+    // 1. Search by phone + tenant_id
     if (data.telefono) {
       const { data: existing } = await supabase
         .from("clientes")
         .select("id")
         .eq("telefono", data.telefono)
+        .eq("tenant_id", tenantId)
         .maybeSingle();
 
       if (existing) {
-        // Update existing client data
         await supabase
           .from("clientes")
           .update({
-            nombre: data.nombre.split(" ")[0],
-            apellido: data.nombre.split(" ").slice(1).join(" ") || null,
+            nombre,
+            apellido,
             direccion: data.direccion,
             ciudad: data.ciudad,
             codigo_postal: data.codigo_postal,
@@ -275,25 +281,63 @@ export default function ThirdPartyShipmentsTab() {
       }
     }
 
-    // Create new client
+    // 2. Search by nombre + direccion + tenant_id (case-insensitive)
+    if (data.nombre && data.direccion) {
+      const { data: existingByName } = await supabase
+        .from("clientes")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .ilike("nombre", nombre)
+        .ilike("direccion", data.direccion.trim())
+        .maybeSingle();
+
+      if (existingByName) {
+        // Update with latest data
+        await supabase
+          .from("clientes")
+          .update({
+            telefono: data.telefono || undefined,
+            ciudad: data.ciudad,
+            codigo_postal: data.codigo_postal,
+            lat: data.lat,
+            lng: data.lng,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existingByName.id);
+        return existingByName.id;
+      }
+    }
+
+    // 3. Create new client
     const { data: newClient, error } = await supabase
       .from("clientes")
       .insert({
-        nombre: data.nombre.split(" ")[0],
-        apellido: data.nombre.split(" ").slice(1).join(" ") || null,
+        nombre,
+        apellido,
         telefono: data.telefono,
         direccion: data.direccion,
         ciudad: data.ciudad,
         codigo_postal: data.codigo_postal,
         lat: data.lat,
         lng: data.lng,
-        tenant_id: profile?.tenant_id,
+        tenant_id: tenantId,
         sucursal_id: profile?.sucursal_id,
       })
       .select("id")
       .single();
 
     if (error) {
+      // 4. Handle unique constraint violation gracefully
+      if (error.code === "23505") {
+        const { data: fallback } = await supabase
+          .from("clientes")
+          .select("id")
+          .eq("tenant_id", tenantId)
+          .ilike("nombre", nombre)
+          .ilike("direccion", data.direccion.trim())
+          .maybeSingle();
+        if (fallback) return fallback.id;
+      }
       console.error("Error creating client:", error);
       return null;
     }
