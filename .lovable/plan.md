@@ -1,32 +1,69 @@
 
 
-# Fix: Pantalla negra al continuar ruta (crash por null pointer)
+# Fix: Duplicacion de Clientes y busqueda en Terciarizados
 
 ## Problema
 
-En `ActiveRouteNavigation.tsx`, la seccion "Next Stop Card" (linea 642) se renderiza cuando `nextEnvio` existe **O** cuando `isSucursalStop` es true. Sin embargo, las secciones de "Customer Info" (linea 680-691), "COD badge" (linea 694) y "Notes" (linea 705) acceden directamente a `nextEnvio.nombre_remitente`, `nextEnvio.pago_contra_entrega` y `nextEnvio.notas` **sin verificar que nextEnvio no sea null**.
+1. **Duplicados en la tabla clientes**: El formulario de envios terciarizados (`ThirdPartyShipmentsTab`) busca clientes existentes solo por telefono exacto y sin filtrar por `tenant_id`. Si el telefono no coincide exactamente (o esta vacio), se crea un duplicado con el mismo nombre y direccion.
 
-Cuando la ruta tiene una parada de tipo sucursal como proxima parada, `nextEnvio` es `null`, y acceder a sus propiedades lanza un `TypeError` que crashea React, resultando en la pantalla negra.
-
-Adicionalmente, el componente no tiene proteccion contra errores inesperados, lo que permite que cualquier excepcion no capturada produzca una pantalla en blanco.
+2. **Cliente no aparece en el buscador del Planificador (terciarizados)**: El autocomplete de contactos funciona correctamente, pero si el usuario no encuentra al cliente (por diferencia en el nombre o busqueda parcial), carga los datos manualmente y el sistema crea un duplicado.
 
 ## Solucion
 
+### 1. Constraint de base de datos para prevenir duplicados
+
+Agregar un indice unico parcial en la tabla `clientes` para evitar duplicados por `tenant_id` + `nombre` + `direccion` (ignorando nulos).
+
+```text
+CREATE UNIQUE INDEX idx_clientes_unique_nombre_direccion 
+ON clientes (tenant_id, LOWER(TRIM(nombre)), LOWER(TRIM(direccion)))
+WHERE nombre IS NOT NULL AND direccion IS NOT NULL;
+```
+
+Esto previene la creacion de dos clientes con el mismo nombre y direccion dentro del mismo tenant.
+
+### 2. Mejorar findOrCreateClient en ThirdPartyShipmentsTab
+
 | Archivo | Cambio |
 |---|---|
-| `src/pages/ActiveRouteNavigation.tsx` | Envolver las secciones de Customer Info, COD badge y Notes con condicional `!isSucursalStop` para que solo se rendericen para paradas de envio. Para paradas de sucursal, mostrar el `nombre_parada` en su lugar. Agregar try-catch en la funcion de completar parada de sucursal. |
+| `src/components/routes/ThirdPartyShipmentsTab.tsx` | Mejorar `findOrCreateClient` para buscar tambien por nombre+direccion ademas de telefono, y filtrar siempre por `tenant_id`. Manejar el error de constraint duplicado gracefully. |
 
-### Detalle tecnico
+Logica mejorada:
+1. Buscar por telefono + tenant_id (exacto)
+2. Si no encuentra, buscar por nombre + direccion + tenant_id (case-insensitive)
+3. Si encuentra match, retornar el ID existente
+4. Si no encuentra, crear nuevo
+5. Si el INSERT falla por constraint unico, buscar el existente y retornar su ID
 
-En la seccion del "Next Stop Card" (dentro del bloque `(nextEnvio || isSucursalStop)`), reorganizar el contenido para separar la info de sucursal vs envio:
+### 3. Herramienta para limpiar duplicados existentes
 
-1. **Customer Info (lineas 680-691)**: Mostrar `clienteName` (que ya maneja correctamente el caso sucursal en linea 551-555) en lugar de acceder directamente a `nextEnvio.nombre_remitente`/`nextEnvio.nombre_destinatario`
-2. **COD badge (lineas 694-702)**: Envolver con `{nextEnvio?.pago_contra_entrega && ...}` (optional chaining)
-3. **Notes (lineas 705-709)**: Envolver con `{nextEnvio?.notas && ...}` (optional chaining)
+Ejecutar una query de datos para eliminar los duplicados existentes, conservando el registro mas antiguo (primer `created_at`).
 
-Esto corrige el crash sin cambiar la logica visual: las paradas de sucursal muestran nombre y direccion, y las de envio muestran la info completa del cliente.
+```text
+-- Identificar y eliminar duplicados conservando el mas antiguo
+DELETE FROM clientes
+WHERE id NOT IN (
+  SELECT DISTINCT ON (tenant_id, LOWER(TRIM(nombre)), LOWER(TRIM(direccion))) id
+  FROM clientes
+  WHERE nombre IS NOT NULL AND direccion IS NOT NULL
+  ORDER BY tenant_id, LOWER(TRIM(nombre)), LOWER(TRIM(direccion)), created_at ASC
+)
+AND nombre IS NOT NULL 
+AND direccion IS NOT NULL
+AND id NOT IN (
+  SELECT DISTINCT destinatario_id FROM envios WHERE destinatario_id IS NOT NULL
+  UNION
+  SELECT DISTINCT remitente_id FROM envios WHERE remitente_id IS NOT NULL
+);
+```
 
-## Correccion adicional: RouteStart.tsx duplicado
+Nota: Solo se eliminan duplicados que no esten referenciados por envios. Los que si estan referenciados se dejan para revision manual o se actualizan las referencias primero.
 
-En `RouteStart.tsx`, las lineas 268-282 renderizan el bloque de "ENTREGAS" dos veces (duplicado). Se eliminara la segunda aparicion.
+### Resumen de cambios
+
+| Componente | Tipo | Descripcion |
+|---|---|---|
+| Base de datos | Migracion | Indice unico parcial en `clientes(tenant_id, nombre, direccion)` |
+| Base de datos | Datos | Limpiar duplicados existentes no referenciados |
+| `ThirdPartyShipmentsTab.tsx` | Codigo | Mejorar busqueda de cliente existente con fallback por nombre+direccion y filtro tenant_id |
 
