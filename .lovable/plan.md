@@ -1,69 +1,32 @@
 
 
-# Fix: Duplicacion de Clientes y busqueda en Terciarizados
+# Fix: Buscador de clientes en terciarizados no muestra todos los resultados
 
 ## Problema
 
-1. **Duplicados en la tabla clientes**: El formulario de envios terciarizados (`ThirdPartyShipmentsTab`) busca clientes existentes solo por telefono exacto y sin filtrar por `tenant_id`. Si el telefono no coincide exactamente (o esta vacio), se crea un duplicado con el mismo nombre y direccion.
+El componente `ContactAutocomplete` deduplica clientes usando la clave `telefono + nombre`. Muchos clientes tienen el telefono vacio y el mismo `nombre` (ej: "BANCO" para todas las sucursales de bancos), por lo que el sistema los considera duplicados y solo muestra el primero. Esto hace que clientes como "BANCO SANTANDER SUC 099" no aparezcan si ya existe otro "BANCO" con telefono vacio.
 
-2. **Cliente no aparece en el buscador del Planificador (terciarizados)**: El autocomplete de contactos funciona correctamente, pero si el usuario no encuentra al cliente (por diferencia en el nombre o busqueda parcial), carga los datos manualmente y el sistema crea un duplicado.
+Ademas, la busqueda no incluye el campo `direccion`, que es el principal diferenciador cuando hay clientes con el mismo nombre.
 
 ## Solucion
 
-### 1. Constraint de base de datos para prevenir duplicados
+Modificar `src/components/shipments/ContactAutocomplete.tsx`:
 
-Agregar un indice unico parcial en la tabla `clientes` para evitar duplicados por `tenant_id` + `nombre` + `direccion` (ignorando nulos).
+1. **Cambiar la clave de deduplicacion** de `telefono-nombre` a `nombre-apellido-direccion`, que es un identificador mas unico para clientes reales.
 
-```text
-CREATE UNIQUE INDEX idx_clientes_unique_nombre_direccion 
-ON clientes (tenant_id, LOWER(TRIM(nombre)), LOWER(TRIM(direccion)))
-WHERE nombre IS NOT NULL AND direccion IS NOT NULL;
-```
+2. **Agregar busqueda por direccion**, para que el usuario pueda encontrar clientes buscando por calle o ciudad.
 
-Esto previene la creacion de dos clientes con el mismo nombre y direccion dentro del mismo tenant.
+3. **Aumentar el limite de resultados visibles** de 10 a 15 para mejorar la experiencia cuando hay muchos resultados similares.
 
-### 2. Mejorar findOrCreateClient en ThirdPartyShipmentsTab
+## Cambios
 
 | Archivo | Cambio |
 |---|---|
-| `src/components/routes/ThirdPartyShipmentsTab.tsx` | Mejorar `findOrCreateClient` para buscar tambien por nombre+direccion ademas de telefono, y filtrar siempre por `tenant_id`. Manejar el error de constraint duplicado gracefully. |
+| `src/components/shipments/ContactAutocomplete.tsx` | Cambiar clave de deduplicacion, agregar direccion al filtro de busqueda, aumentar limite de resultados |
 
-Logica mejorada:
-1. Buscar por telefono + tenant_id (exacto)
-2. Si no encuentra, buscar por nombre + direccion + tenant_id (case-insensitive)
-3. Si encuentra match, retornar el ID existente
-4. Si no encuentra, crear nuevo
-5. Si el INSERT falla por constraint unico, buscar el existente y retornar su ID
+### Detalle tecnico
 
-### 3. Herramienta para limpiar duplicados existentes
-
-Ejecutar una query de datos para eliminar los duplicados existentes, conservando el registro mas antiguo (primer `created_at`).
-
-```text
--- Identificar y eliminar duplicados conservando el mas antiguo
-DELETE FROM clientes
-WHERE id NOT IN (
-  SELECT DISTINCT ON (tenant_id, LOWER(TRIM(nombre)), LOWER(TRIM(direccion))) id
-  FROM clientes
-  WHERE nombre IS NOT NULL AND direccion IS NOT NULL
-  ORDER BY tenant_id, LOWER(TRIM(nombre)), LOWER(TRIM(direccion)), created_at ASC
-)
-AND nombre IS NOT NULL 
-AND direccion IS NOT NULL
-AND id NOT IN (
-  SELECT DISTINCT destinatario_id FROM envios WHERE destinatario_id IS NOT NULL
-  UNION
-  SELECT DISTINCT remitente_id FROM envios WHERE remitente_id IS NOT NULL
-);
-```
-
-Nota: Solo se eliminan duplicados que no esten referenciados por envios. Los que si estan referenciados se dejan para revision manual o se actualizan las referencias primero.
-
-### Resumen de cambios
-
-| Componente | Tipo | Descripcion |
-|---|---|---|
-| Base de datos | Migracion | Indice unico parcial en `clientes(tenant_id, nombre, direccion)` |
-| Base de datos | Datos | Limpiar duplicados existentes no referenciados |
-| `ThirdPartyShipmentsTab.tsx` | Codigo | Mejorar busqueda de cliente existente con fallback por nombre+direccion y filtro tenant_id |
+- Deduplicacion: `${client.nombre}-${client.apellido}-${client.direccion}` en lugar de `${client.telefono}-${client.nombre}`
+- Filtro: agregar `const address = client.direccion?.toLowerCase() || ''` y `address.includes(searchLower)` a la condicion OR
+- Limite: cambiar `.slice(0, 10)` a `.slice(0, 15)`
 
