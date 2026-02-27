@@ -159,9 +159,11 @@ export default function SuperAdminSubscriptionManager() {
         }, { onConflict: "tenant_id" });
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       toast.success("Plan asignado correctamente");
       queryClient.invalidateQueries({ queryKey: ["admin-tenants-subscriptions"] });
+      // Auto-clear expiry notifications for this tenant
+      clearExpiryNotifications(variables.tenantId);
       setAssignPlanOpen(false);
       resetForms();
     },
@@ -193,9 +195,11 @@ export default function SuperAdminSubscriptionManager() {
         });
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       toast.success("Pago registrado correctamente");
       queryClient.invalidateQueries({ queryKey: ["admin-subscription-payments"] });
+      // Auto-clear expiry notifications for this tenant
+      clearExpiryNotifications(variables.tenantId);
       setRegisterPaymentOpen(false);
       resetForms();
     },
@@ -268,6 +272,27 @@ export default function SuperAdminSubscriptionManager() {
     const d = new Date();
     d.setMonth(d.getMonth() + 1);
     return d.toISOString().split("T")[0];
+  };
+
+  const clearExpiryNotifications = async (tenantId: string) => {
+    try {
+      // Find unread expiry notifications for this tenant
+      const { data: notifs } = await supabase
+        .from("notifications")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("read", false)
+        .like("link", `subscription-expiry-${tenantId}%`);
+
+      if (notifs?.length) {
+        await supabase
+          .from("notifications")
+          .update({ read: true })
+          .in("id", notifs.map(n => n.id));
+      }
+    } catch (e) {
+      console.error("Error clearing expiry notifications:", e);
+    }
   };
 
   const resetForms = () => {
