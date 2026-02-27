@@ -1,45 +1,60 @@
 
-# Pendientes de Federacion + Guia de Super Administrador PDF
 
-## 1. Que falta del sistema de federacion
+# Visibilidad de Conceptos para Super Admin + Concepto con Importe Libre
 
-El sistema base esta implementado (tablas, edge function, UI de partners, derivacion de envios). Quedan estos items pendientes:
+## Problema 1: No se ven los conceptos de otros tenants
 
-| Pendiente | Descripcion |
-|---|---|
-| Notificaciones de partnership | Cuando un tenant recibe una solicitud o un envio derivado, no se genera una notificacion en la tabla `notifications`. Hay que insertar notificaciones desde la edge function `partner-sync`. |
-| Sync de estado bidireccional | Cuando el envio destino cambia de estado (ej: entregado), el envio origen no se entera. Falta un mecanismo para sincronizar estados entre ambos envios vinculados. |
-| Permisos editables | La UI no permite editar los permisos de una partnership activa (ver precio, ver cliente, etc). Solo se setean por defecto al crear. |
+Actualmente, aunque la base de datos permite al super admin ver todos los conceptos (la politica de seguridad lo permite), el codigo del frontend en `Rates.tsx` aplica un filtro adicional que solo muestra conceptos del tenant del usuario logueado. Si el super admin pertenece a un tenant distinto de "Black Box", no ve sus conceptos.
 
-Estos 3 items se implementaran junto con la guia PDF.
+**Solucion**: Cuando el usuario es super admin, no aplicar el filtro de tenant en la consulta de conceptos.
 
-## 2. Guia de Super Administrador (PDF descargable)
+## Problema 2: Concepto con importe editable por sucursal
 
-Se creara un PDF descargable desde la pagina de Configuracion del Sistema, siguiendo el mismo patron que `generateUserGuidePDF.ts`. El documento cubrira todas las funciones exclusivas del super administrador.
+Se necesita que ciertos conceptos (como "Servicio de agencia") permitan que el operador ingrese un importe libre al crear un envio, en lugar de usar un monto fijo predefinido en la tarifa. Ademas, esto debe ser configurable por sucursal.
 
-### Contenido de la guia
+**Solucion**: Agregar un campo `monto_editable` a la tabla `tarifa_conceptos`. Cuando este flag esta activo y el concepto esta seleccionado al crear un envio, se muestra un input numerico en lugar del badge con precio fijo.
 
-- Gestion de Tenants (crear, editar, activar/desactivar empresas)
-- Gestion de Usuarios (crear usuarios con roles, resetear contrasenas, asignar a tenants)
-- Branding por Tenant (logos, colores, dominio personalizado)
-- Permisos por Rol (configurar que puede hacer cada rol)
-- API Keys (generar y administrar claves por tenant)
-- Planes y Suscripciones (trial, planes, limites)
-- Sistema de Federacion (partnerships entre tenants, derivacion de envios)
-- Solicitudes de Trial (revisar y aprobar)
+## Cambios en base de datos
 
-## Cambios
+**Migracion**: Agregar columna `monto_editable` (boolean, default false) a `tarifa_conceptos`.
+
+```sql
+ALTER TABLE public.tarifa_conceptos 
+ADD COLUMN monto_editable BOOLEAN DEFAULT false;
+```
+
+## Cambios en el frontend
+
+### `src/pages/Rates.tsx`
+
+1. **Query de conceptos (linea ~212-230)**: Si `isSuperAdmin()`, no aplicar el filtro `.or(tenant_id.eq..., tenant_id.is.null)`. Traer todos los conceptos y mostrar a que tenant pertenece cada uno.
+2. **Formulario de concepto (linea ~1516-1535)**: Agregar un switch "Importe editable" debajo del toggle de Basico/Adicional. Cuando esta activo, significa que el operador puede ingresar un monto libre al crear el envio.
+3. **Tabla de conceptos**: Mostrar un badge o indicador cuando el concepto tiene `monto_editable = true`.
+
+### `src/pages/NewShipment.tsx`
+
+1. **Interfaces**: Agregar `monto_editable` al tipo `TarifaConcepto`.
+2. **Estado para montos editables (~linea 274)**: Agregar un estado `montosEditables: Record<string, string>` para guardar los importes que el operador ingresa manualmente.
+3. **Seccion de conceptos adicionales (~linea 2338-2376)**: Cuando un concepto tiene `monto_editable = true`, mostrar un Input numerico al lado del checkbox en lugar del badge con precio fijo. El operador escribe el importe que desee.
+4. **Calculo de total (~linea 593-614)**: Para conceptos con `monto_editable`, usar el valor del estado `montosEditables[concepto_id]` en lugar del `monto` de la tarifa.
+5. **Mutation de creacion (~linea 855)**: Al insertar los `envio_detalles`, usar el monto personalizado para conceptos editables.
+
+### `src/integrations/supabase/types.ts`
+
+Se actualizara automaticamente al aplicar la migracion (campo `monto_editable` en `tarifa_conceptos`).
+
+## Flujo de uso
+
+1. Admin de Black Box crea el concepto "Servicio de agencia" como **Adicional** con **Importe editable** activado
+2. Lo habilita solo para las sucursales que quiere (usando el dialogo de sucursales que ya existe)
+3. Configura un precio por concepto en la tarifa (este sera el valor sugerido/default, puede ser $0)
+4. Cuando un operador de una sucursal habilitada crea un envio, ve "Servicio de agencia" como concepto adicional con un campo de texto para ingresar el importe
+5. El operador escribe el monto que corresponda y se suma al total del envio
+
+## Resumen de archivos
 
 | Archivo | Cambio |
 |---|---|
-| `src/lib/generateSuperAdminGuidePDF.ts` | Nuevo archivo con el contenido y generador del PDF de super administrador |
-| `src/pages/SystemSettings.tsx` | Nueva card visible solo para super_admin con boton para descargar la guia |
-| `supabase/functions/partner-sync/index.ts` | Agregar insercion de notificaciones al solicitar partnership, aceptar/rechazar, y derivar envios |
-
-### Detalle tecnico
-
-**PDF**: Seguir el patron exacto de `generateUserGuidePDF.ts` usando los helpers de `pdfHelpers.ts` (portada, indice, secciones con header de color). Nombre del archivo: `guia-super-admin-geologistick.pdf`.
-
-**Notificaciones en partner-sync**: En cada accion relevante (request_partnership, respond_partnership, derive_shipment, accept/reject_shipment), insertar un registro en la tabla `notifications` dirigido a los admins del tenant afectado. Se obtienen los admins con un query a `user_roles` + `profiles`.
-
-**Card en SystemSettings**: Agregar una card con icono Shield, titulo "Guia de Super Administrador", visible solo cuando `isSuperAdmin()` es true. Boton de descarga con spinner de carga.
+| Migracion SQL | Agregar `monto_editable` a `tarifa_conceptos` |
+| `src/pages/Rates.tsx` | Quitar filtro tenant para super admin; agregar switch "Importe editable" en formulario y tabla |
+| `src/pages/NewShipment.tsx` | Input de monto libre para conceptos editables; ajustar calculo de totales |
