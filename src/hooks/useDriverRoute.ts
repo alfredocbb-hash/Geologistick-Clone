@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface LocationHistoryPoint {
@@ -6,6 +6,7 @@ interface LocationHistoryPoint {
   lng: number;
   recorded_at: string;
   speed?: number | null;
+  accuracy?: number | null;
 }
 
 interface SnappedPoint {
@@ -20,6 +21,12 @@ interface DeliveryStop {
   order: number;
 }
 
+interface SignalGap {
+  fromIndex: number;
+  toIndex: number;
+  durationMinutes: number;
+}
+
 interface UseDriverRouteReturn {
   rawHistory: LocationHistoryPoint[];
   snappedRoute: SnappedPoint[];
@@ -31,6 +38,8 @@ interface UseDriverRouteReturn {
   loadRouteByHojaRuta: (driverId: string, hojaRutaId: string) => Promise<void>;
   clearRoute: () => void;
   polylinePath: SnappedPoint[];
+  hasSignalGaps: boolean;
+  signalGaps: SignalGap[];
   routeStats: {
     pointsCount: number;
     snappedPointsCount: number;
@@ -42,6 +51,9 @@ interface UseDriverRouteReturn {
     stopsCount: number;
   };
 }
+
+const MAX_ACCURACY_METERS = 50;
+const SIGNAL_GAP_THRESHOLD_MS = 15 * 60 * 1000; // 15 minutes
 
 // Calculate distance between two points using Haversine formula
 function calculateHaversineDistance(
@@ -62,7 +74,6 @@ function calculateHaversineDistance(
 // Calculate total distance for a path
 function calculateTotalDistance(points: SnappedPoint[]): number {
   if (points.length < 2) return 0;
-  
   let totalDistance = 0;
   for (let i = 1; i < points.length; i++) {
     totalDistance += calculateHaversineDistance(
@@ -76,26 +87,42 @@ function calculateTotalDistance(points: SnappedPoint[]): number {
 // Generate a simple hash for cache lookup
 function generatePointsHash(points: { lat: number; lng: number }[]): string {
   if (points.length === 0) return 'empty';
-  
   const first = points[0];
   const last = points[points.length - 1];
-  
-  // Hash based on count + first point + last point
   const hashData = `${points.length}|${first.lat.toFixed(5)},${first.lng.toFixed(5)}|${last.lat.toFixed(5)},${last.lng.toFixed(5)}`;
-  
-  // Simple hash function
   let hash = 0;
   for (let i = 0; i < hashData.length; i++) {
     const char = hashData.charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32bit integer
+    hash = hash & hash;
   }
   return Math.abs(hash).toString(36);
+}
+
+// Detect signal gaps (>15 min between consecutive points)
+function detectSignalGaps(history: LocationHistoryPoint[]): SignalGap[] {
+  const gaps: SignalGap[] = [];
+  for (let i = 1; i < history.length; i++) {
+    const prev = new Date(history[i - 1].recorded_at).getTime();
+    const curr = new Date(history[i].recorded_at).getTime();
+    const diff = curr - prev;
+    if (diff >= SIGNAL_GAP_THRESHOLD_MS) {
+      gaps.push({
+        fromIndex: i - 1,
+        toIndex: i,
+        durationMinutes: Math.round(diff / (1000 * 60)),
+      });
+    }
+  }
+  return gaps;
 }
 
 type RouteIdentifier = 
   | { type: 'ruta'; rutaId: string }
   | { type: 'hoja_ruta'; hojaRutaId: string };
+
+// In-memory cache to avoid redundant snap-to-roads calls
+const snappedRouteCache = new Map<string, SnappedPoint[]>();
 
 export function useDriverRoute(): UseDriverRouteReturn {
   const [rawHistory, setRawHistory] = useState<LocationHistoryPoint[]>([]);
@@ -104,6 +131,7 @@ export function useDriverRoute(): UseDriverRouteReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [isSnapping, setIsSnapping] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [signalGaps, setSignalGaps] = useState<SignalGap[]>([]);
 
   // Internal function to load route by either ruta_id or hoja_ruta_id
   const loadRouteInternal = useCallback(async (driverId: string, identifier: RouteIdentifier) => {
@@ -113,14 +141,15 @@ export function useDriverRoute(): UseDriverRouteReturn {
     setSnappedRoute([]);
     setRawHistory([]);
     setDeliveryStops([]);
+    setSignalGaps([]);
 
     const routeIdForCache = identifier.type === 'ruta' ? identifier.rutaId : identifier.hojaRutaId;
 
     try {
-      // Build query based on identifier type
+      // Build query - include accuracy for filtering
       let query = supabase
         .from('driver_location_history')
-        .select('lat, lng, recorded_at, speed')
+        .select('lat, lng, recorded_at, speed, accuracy')
         .eq('chofer_id', driverId);
       
       if (identifier.type === 'ruta') {
@@ -133,20 +162,33 @@ export function useDriverRoute(): UseDriverRouteReturn {
 
       if (historyError) throw historyError;
 
-      const formattedHistory = history?.map(h => ({
-        lat: Number(h.lat),
-        lng: Number(h.lng),
-        recorded_at: h.recorded_at || '',
-        speed: h.speed ? Number(h.speed) : null,
-      })) || [];
+      // Filter out imprecise points (accuracy > 50m)
+      const formattedHistory = (history || [])
+        .filter(h => {
+          const acc = h.accuracy ? Number(h.accuracy) : 0;
+          return acc === 0 || acc <= MAX_ACCURACY_METERS;
+        })
+        .map(h => ({
+          lat: Number(h.lat),
+          lng: Number(h.lng),
+          recorded_at: h.recorded_at || '',
+          speed: h.speed ? Number(h.speed) : null,
+          accuracy: h.accuracy ? Number(h.accuracy) : null,
+        }));
 
       setRawHistory(formattedHistory);
 
-      // Fetch delivery stops (completed deliveries) for this route
-      // For hoja_ruta, we need to get envios linked to it
+      // Detect signal gaps
+      const gaps = detectSignalGaps(formattedHistory);
+      setSignalGaps(gaps);
+      if (gaps.length > 0) {
+        console.log(`Detected ${gaps.length} signal gap(s) in route`);
+      }
+
+      // Fetch delivery stops
+      // ... keep existing code (delivery stops fetching logic)
       let deliveriesQuery;
       if (identifier.type === 'hoja_ruta') {
-        // Get envios from hoja_ruta_envios junction table
         const { data: hojaEnvios } = await supabase
           .from('hoja_ruta_envios')
           .select('envio_id')
@@ -166,7 +208,6 @@ export function useDriverRoute(): UseDriverRouteReturn {
             .order('fecha_entrega', { ascending: true });
         }
       } else {
-        // For ruta_id: get envio_ids from ruta_paradas junction table
         const { data: rutaParadas } = await supabase
           .from('ruta_paradas')
           .select('envio_id')
@@ -202,79 +243,87 @@ export function useDriverRoute(): UseDriverRouteReturn {
       // Process with Snap to Roads if we have enough points
       if (formattedHistory.length >= 2) {
         const pointsHash = generatePointsHash(formattedHistory);
-        
-        // Check cache first (only for ruta_id since that's the cache key)
-        const { data: cachedSegment } = await supabase
-          .from('driver_route_segments')
-          .select('snapped_points, total_distance')
-          .eq('ruta_id', routeIdForCache)
-          .eq('chofer_id', driverId)
-          .eq('points_hash', pointsHash)
-          .maybeSingle();
+        const memoryCacheKey = `${routeIdForCache}_${driverId}_${pointsHash}`;
 
-        if (cachedSegment?.snapped_points) {
-          // Use cached data
-          const cachedPoints = cachedSegment.snapped_points as { lat: number; lng: number }[];
-          setSnappedRoute(cachedPoints);
-          console.log(`Cache hit: ${formattedHistory.length} → ${cachedPoints.length} points`);
+        // Check in-memory cache first
+        const memoryCached = snappedRouteCache.get(memoryCacheKey);
+        if (memoryCached) {
+          setSnappedRoute(memoryCached);
+          console.log(`Memory cache hit: ${formattedHistory.length} → ${memoryCached.length} points`);
         } else {
-          // Call snap-to-roads API
-          setIsSnapping(true);
-          try {
-            const { data: snappedData, error: snapError } = await supabase.functions.invoke('snap-to-roads', {
-              body: {
-                points: formattedHistory.map(p => ({ lat: p.lat, lng: p.lng })),
-                interpolate: true
-              }
-            });
+          // Check DB cache
+          const { data: cachedSegment } = await supabase
+            .from('driver_route_segments')
+            .select('snapped_points, total_distance')
+            .eq('ruta_id', routeIdForCache)
+            .eq('chofer_id', driverId)
+            .eq('points_hash', pointsHash)
+            .maybeSingle();
 
-            if (snapError) {
-              console.error('Snap to roads error:', snapError);
-              setError('Error procesando ruta con calles');
-            } else if (snappedData?.snappedPoints && snappedData.snappedPoints.length > 0) {
-              const snappedPoints = snappedData.snappedPoints.map((p: { lat: number; lng: number }) => ({
-                lat: p.lat,
-                lng: p.lng
-              }));
-              setSnappedRoute(snappedPoints);
-              console.log(`Route snapped: ${formattedHistory.length} → ${snappedPoints.length} points`);
-
-              // Save to cache (get user's tenant_id first)
-              try {
-                const { data: profile } = await supabase
-                  .from('profiles')
-                  .select('tenant_id')
-                  .eq('user_id', driverId)
-                  .single();
-
-                if (profile?.tenant_id) {
-                  const totalDistance = calculateTotalDistance(snappedPoints) * 1000; // Convert to meters
-                  
-                  await supabase
-                    .from('driver_route_segments')
-                    .upsert({
-                      ruta_id: routeIdForCache,
-                      chofer_id: driverId,
-                      tenant_id: profile.tenant_id,
-                      points_hash: pointsHash,
-                      raw_points: formattedHistory.map(p => ({ lat: p.lat, lng: p.lng })),
-                      snapped_points: snappedPoints,
-                      total_distance: totalDistance,
-                    }, {
-                      onConflict: 'ruta_id,chofer_id,points_hash'
-                    });
-                  console.log('Route segment cached successfully');
+          if (cachedSegment?.snapped_points) {
+            const cachedPoints = cachedSegment.snapped_points as { lat: number; lng: number }[];
+            setSnappedRoute(cachedPoints);
+            snappedRouteCache.set(memoryCacheKey, cachedPoints);
+            console.log(`DB cache hit: ${formattedHistory.length} → ${cachedPoints.length} points`);
+          } else {
+            // Call snap-to-roads API with interpolate: true
+            setIsSnapping(true);
+            try {
+              const { data: snappedData, error: snapError } = await supabase.functions.invoke('snap-to-roads', {
+                body: {
+                  points: formattedHistory.map(p => ({ lat: p.lat, lng: p.lng })),
+                  interpolate: true
                 }
-              } catch (cacheErr) {
-                console.warn('Failed to cache route segment:', cacheErr);
-                // Non-blocking error - continue with the snapped route
+              });
+
+              if (snapError) {
+                console.error('Snap to roads error:', snapError);
+                setError('Error procesando ruta con calles');
+              } else if (snappedData?.snappedPoints && snappedData.snappedPoints.length > 0) {
+                const snappedPoints = snappedData.snappedPoints.map((p: { lat: number; lng: number }) => ({
+                  lat: p.lat,
+                  lng: p.lng
+                }));
+                setSnappedRoute(snappedPoints);
+                snappedRouteCache.set(memoryCacheKey, snappedPoints);
+                console.log(`Route snapped: ${formattedHistory.length} → ${snappedPoints.length} points`);
+
+                // Save to DB cache
+                try {
+                  const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('tenant_id')
+                    .eq('user_id', driverId)
+                    .single();
+
+                  if (profile?.tenant_id) {
+                    const totalDistance = calculateTotalDistance(snappedPoints) * 1000;
+                    
+                    await supabase
+                      .from('driver_route_segments')
+                      .upsert({
+                        ruta_id: routeIdForCache,
+                        chofer_id: driverId,
+                        tenant_id: profile.tenant_id,
+                        points_hash: pointsHash,
+                        raw_points: formattedHistory.map(p => ({ lat: p.lat, lng: p.lng })),
+                        snapped_points: snappedPoints,
+                        total_distance: totalDistance,
+                      }, {
+                        onConflict: 'ruta_id,chofer_id,points_hash'
+                      });
+                    console.log('Route segment cached successfully');
+                  }
+                } catch (cacheErr) {
+                  console.warn('Failed to cache route segment:', cacheErr);
+                }
               }
+            } catch (snapErr) {
+              console.error('Failed to snap route:', snapErr);
+              setError('Error al conectar con Roads API');
+            } finally {
+              setIsSnapping(false);
             }
-          } catch (snapErr) {
-            console.error('Failed to snap route:', snapErr);
-            setError('Error al conectar con Roads API');
-          } finally {
-            setIsSnapping(false);
           }
         }
       }
@@ -287,12 +336,10 @@ export function useDriverRoute(): UseDriverRouteReturn {
     }
   }, []);
 
-  // Public function to load by ruta_id
   const loadRoute = useCallback(async (driverId: string, rutaId: string) => {
     return loadRouteInternal(driverId, { type: 'ruta', rutaId });
   }, [loadRouteInternal]);
 
-  // Public function to load by hoja_ruta_id
   const loadRouteByHojaRuta = useCallback(async (driverId: string, hojaRutaId: string) => {
     return loadRouteInternal(driverId, { type: 'hoja_ruta', hojaRutaId });
   }, [loadRouteInternal]);
@@ -301,6 +348,7 @@ export function useDriverRoute(): UseDriverRouteReturn {
     setRawHistory([]);
     setSnappedRoute([]);
     setDeliveryStops([]);
+    setSignalGaps([]);
     setError(null);
     setIsLoading(false);
     setIsSnapping(false);
@@ -308,11 +356,11 @@ export function useDriverRoute(): UseDriverRouteReturn {
 
   // Use snapped route if available, otherwise raw points
   const polylinePath = useMemo(() => {
-    if (snappedRoute.length > 0) {
-      return snappedRoute;
-    }
+    if (snappedRoute.length > 0) return snappedRoute;
     return rawHistory.map(point => ({ lat: point.lat, lng: point.lng }));
   }, [rawHistory, snappedRoute]);
+
+  const hasSignalGaps = signalGaps.length > 0;
 
   // Route statistics
   const routeStats = useMemo(() => {
@@ -321,11 +369,9 @@ export function useDriverRoute(): UseDriverRouteReturn {
     const startTime = rawHistory.length > 0 ? rawHistory[0].recorded_at : null;
     const endTime = rawHistory.length > 0 ? rawHistory[rawHistory.length - 1].recorded_at : null;
     
-    // Calculate distance from the path we're using
     const pathToUse = snappedRoute.length > 0 ? snappedRoute : rawHistory.map(p => ({ lat: p.lat, lng: p.lng }));
     const totalDistanceKm = calculateTotalDistance(pathToUse);
     
-    // Calculate duration
     let durationMinutes = 0;
     if (startTime && endTime) {
       const start = new Date(startTime).getTime();
@@ -333,7 +379,6 @@ export function useDriverRoute(): UseDriverRouteReturn {
       durationMinutes = Math.round((end - start) / (1000 * 60));
     }
     
-    // Calculate average speed
     const avgSpeedKmh = durationMinutes > 0 
       ? Math.round((totalDistanceKm / (durationMinutes / 60)) * 10) / 10
       : 0;
@@ -361,6 +406,8 @@ export function useDriverRoute(): UseDriverRouteReturn {
     loadRouteByHojaRuta,
     clearRoute,
     polylinePath,
+    hasSignalGaps,
+    signalGaps,
     routeStats,
   };
 }
