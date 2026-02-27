@@ -67,6 +67,7 @@ import TrialRequests from "./pages/TrialRequests";
 import NotFound from "./pages/NotFound";
 import Reports from "./pages/Reports";
 import Incidents from "./pages/Incidents";
+import Partners from "./pages/Partners";
 import PrintInvoice from "./pages/PrintInvoice";
 import PrintSettlement from "./pages/PrintSettlement";
 import TiendanubeOAuthResult from "./pages/TiendanubeOAuthResult";
@@ -238,6 +239,7 @@ function AppRoutes() {
       <Route path="/admin/landing" element={<LandingContentAdmin />} />
       <Route path="/admin/trial-requests" element={<TrialRequests />} />
       <Route path="/admin/status-guide" element={<DashboardLayout><ShipmentStatusGuide /></DashboardLayout>} />
+      <Route path="/admin/partners" element={<DashboardLayout><Partners /></DashboardLayout>} />
       
       {/* Profile */}
       <Route path="/profile" element={<DashboardLayout><Profile /></DashboardLayout>} />

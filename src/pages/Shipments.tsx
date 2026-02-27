@@ -21,7 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Package, PackagePlus, Search, Filter, RefreshCw, Truck, Clock, CheckCircle, AlertCircle, Printer, XCircle, Eye, History, Shield, CalendarIcon, AlertTriangle } from 'lucide-react';
+import { Package, PackagePlus, Search, Filter, RefreshCw, Truck, Clock, CheckCircle, AlertCircle, Printer, XCircle, Eye, History, Shield, CalendarIcon, AlertTriangle, Handshake } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { format, startOfDay, endOfDay } from 'date-fns';
@@ -31,6 +31,7 @@ import type { Database } from '@/integrations/supabase/types';
 import { ShipmentHistoryDialog } from '@/components/shipments/ShipmentHistoryDialog';
 import { ShipmentDetailsDialog } from '@/components/shipments/ShipmentDetailsDialog';
 import { ChangeStatusDialog } from '@/components/shipments/ChangeStatusDialog';
+import { DeriveShipmentDialog } from '@/components/partners/DeriveShipmentDialog';
 import { parseDateString } from '@/lib/dateUtils';
 
 type ShipmentStatus = Database['public']['Enums']['shipment_status'];
@@ -65,7 +66,8 @@ export default function Shipments() {
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [selectedEnvio, setSelectedEnvio] = useState<any>(null);
-
+  const [deriveDialogOpen, setDeriveDialogOpen] = useState(false);
+  const [envioToDerive, setEnvioToDerive] = useState<any>(null);
   // Check if user can change status (admin, supervisor, or centro logístico)
   const [isCentroLogistico, setIsCentroLogistico] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -551,6 +553,20 @@ export default function Shipments() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            title="Derivar a partner"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEnvioToDerive(envio);
+                              setDeriveDialogOpen(true);
+                            }}
+                          >
+                            <Handshake className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {envio.estado !== 'cancelado' && envio.estado !== 'entregado' && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             title="Cancelar envío"
                             className="text-destructive hover:text-destructive hover:bg-destructive/10"
                             onClick={(e) => {
@@ -649,6 +665,16 @@ export default function Shipments() {
         currentStatus={selectedEnvio?.estado}
         trackingNumber={selectedEnvio?.tracking_number || ''}
       />
+
+      {/* Derive Shipment Dialog */}
+      {envioToDerive && (
+        <DeriveShipmentDialog
+          open={deriveDialogOpen}
+          onOpenChange={setDeriveDialogOpen}
+          envioId={envioToDerive.id}
+          trackingNumber={envioToDerive.tracking_number}
+        />
+      )}
     </div>
   );
 }
