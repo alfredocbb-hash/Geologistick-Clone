@@ -2368,6 +2368,136 @@ export type Database = {
           },
         ]
       }
+      partner_events: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          datos: Json | null
+          evento: string
+          id: string
+          partner_shipment_id: string | null
+          partnership_id: string
+          tenant_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          datos?: Json | null
+          evento: string
+          id?: string
+          partner_shipment_id?: string | null
+          partnership_id: string
+          tenant_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          datos?: Json | null
+          evento?: string
+          id?: string
+          partner_shipment_id?: string | null
+          partnership_id?: string
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partner_events_partner_shipment_id_fkey"
+            columns: ["partner_shipment_id"]
+            isOneToOne: false
+            referencedRelation: "partner_shipments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partner_events_partnership_id_fkey"
+            columns: ["partnership_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partner_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      partner_shipments: {
+        Row: {
+          created_at: string
+          envio_destino_id: string | null
+          envio_origen_id: string
+          estado_sync: string
+          id: string
+          metadata: Json
+          partnership_id: string
+          tenant_destino_id: string
+          tenant_origen_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          envio_destino_id?: string | null
+          envio_origen_id: string
+          estado_sync?: string
+          id?: string
+          metadata?: Json
+          partnership_id: string
+          tenant_destino_id: string
+          tenant_origen_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          envio_destino_id?: string | null
+          envio_origen_id?: string
+          estado_sync?: string
+          id?: string
+          metadata?: Json
+          partnership_id?: string
+          tenant_destino_id?: string
+          tenant_origen_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partner_shipments_envio_destino_id_fkey"
+            columns: ["envio_destino_id"]
+            isOneToOne: false
+            referencedRelation: "envios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partner_shipments_envio_origen_id_fkey"
+            columns: ["envio_origen_id"]
+            isOneToOne: false
+            referencedRelation: "envios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partner_shipments_partnership_id_fkey"
+            columns: ["partnership_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partner_shipments_tenant_destino_id_fkey"
+            columns: ["tenant_destino_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partner_shipments_tenant_origen_id_fkey"
+            columns: ["tenant_origen_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           activo: boolean | null
@@ -3692,6 +3822,74 @@ export type Database = {
             foreignKeyName: "tenant_branding_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_partners: {
+        Row: {
+          created_at: string
+          estado: string
+          id: string
+          notas: string | null
+          permisos: Json
+          solicitado_por: string
+          tarifa_acordada_id: string | null
+          tenant_a_id: string
+          tenant_b_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          estado?: string
+          id?: string
+          notas?: string | null
+          permisos?: Json
+          solicitado_por: string
+          tarifa_acordada_id?: string | null
+          tenant_a_id: string
+          tenant_b_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          estado?: string
+          id?: string
+          notas?: string | null
+          permisos?: Json
+          solicitado_por?: string
+          tarifa_acordada_id?: string | null
+          tenant_a_id?: string
+          tenant_b_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_partners_solicitado_por_fkey"
+            columns: ["solicitado_por"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_partners_tarifa_acordada_id_fkey"
+            columns: ["tarifa_acordada_id"]
+            isOneToOne: false
+            referencedRelation: "tarifas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_partners_tenant_a_id_fkey"
+            columns: ["tenant_a_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_partners_tenant_b_id_fkey"
+            columns: ["tenant_b_id"]
+            isOneToOne: false
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
