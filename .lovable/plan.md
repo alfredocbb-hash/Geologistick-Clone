@@ -1,46 +1,35 @@
 
 
-# Fix: Mostrar banner de vencimiento para suscripciones manuales
+# Redirigir banners de vencimiento a Soporte en lugar de Suscripciones
 
-## Problema
+## Objetivo
 
-Las funciones backend `check-subscription` y `mp-check-subscription` solo verifican suscripciones de Stripe o MercadoPago. Cuando el Super Admin asigna un plan manualmente (sin pasarela de pago), no hay `stripe_subscription_id` ni `mercadopago_subscription_id`, y las funciones devuelven `subscribed: false`. Esto causa que el banner de vencimiento nunca aparezca para esos tenants.
+Cambiar el comportamiento de los banners de vencimiento para que los tenants no vean la pagina de planes/suscripciones, sino que se les indique contactar al soporte de Geologistick para informar sobre su pago.
 
-## Solucion
+## Cambios
 
-Agregar un fallback en ambas funciones para que, si existe un registro en `tenant_subscriptions` con status `active` y sin ID externo de pasarela, devuelvan los datos de suscripcion correctamente usando `current_period_end` de la base de datos.
+### 1. `src/components/trial/TrialBanner.tsx`
+
+Cambiar todos los botones que redirigen a `/subscription` para que en su lugar redirijan a `/support`:
+- "Renovar Plan" y "Renovar" -> Redirigir a `/support` con texto "Contactar Soporte"
+- "Ver Planes" -> Redirigir a `/support` con texto "Contactar Soporte"
+- Actualizar los mensajes secundarios:
+  - "Renueva tu plan para seguir usando todas las funcionalidades" -> "Contacta a soporte para informar tu pago"
+  - "Renueva a tiempo para no perder acceso" -> "Contacta a soporte para gestionar tu renovacion"
+  - "Suscribete para seguir usando todas las funcionalidades" -> "Contacta a soporte para activar tu plan"
+  - "Suscribete ahora para no perder acceso" -> "Contacta a soporte para activar tu plan"
+
+### 2. `src/pages/Subscription.tsx`
+
+Para los tenants (no super admin), reemplazar la vista de planes con una pagina informativa que:
+- Muestre el resumen de la suscripcion actual (si existe) con uso y limites
+- En lugar de la grilla de planes con botones de pago, mostrar un mensaje indicando que deben contactar a soporte para gestionar su suscripcion
+- Incluir un boton "Contactar Soporte" que lleve a `/support`
+- Eliminar el boton "Cancelar Suscripcion" (ya que todo se gestiona via soporte)
 
 ## Detalle tecnico
 
-### Archivo: `supabase/functions/check-subscription/index.ts`
-
-Antes de la busqueda por email en Stripe (linea ~126), agregar un bloque que detecte si `existingSub` tiene status `active` sin `stripe_subscription_id` ni `mercadopago_subscription_id`. En ese caso, devolver directamente:
-
-```text
-{
-  subscribed: true (si current_period_end > now),
-  plan_name: del plan asociado,
-  subscription_end: current_period_end,
-  limits: del plan,
-  usage: del tenant_usage
-}
-```
-
-### Archivo: `supabase/functions/mp-check-subscription/index.ts`
-
-Mismo cambio: antes del fallback a Stripe (linea ~122), si `existingSub` tiene status `active` sin IDs de pasarela, devolver los datos directamente desde la BD.
-
-### Logica del fallback (en ambas funciones)
-
-```text
-Si existingSub existe
-  Y existingSub.status = 'active'
-  Y NO tiene stripe_subscription_id
-  Y NO tiene mercadopago_subscription_id
-Entonces:
-  - Verificar si current_period_end > now()
-  - Si si: subscribed = true con los datos del plan
-  - Si no: subscribed = false (vencida)
-```
-
-No se requieren cambios en la base de datos ni en el frontend. El `TrialBanner` y `useSubscription` ya manejan correctamente los datos una vez que la funcion devuelve `subscribed: true` con `subscription_end`.
+| Archivo | Cambio |
+|---|---|
+| `src/components/trial/TrialBanner.tsx` | Cambiar links de `/subscription` a `/support` y textos de botones/mensajes |
+| `src/pages/Subscription.tsx` | Reemplazar grilla de planes por mensaje de contacto a soporte para tenants |
