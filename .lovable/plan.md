@@ -1,28 +1,61 @@
 
-# Fix: Error de seguridad al enviar notificaciones
 
-## Problema
+# Notificaciones: vista expandida y confirmacion de lectura
 
-La politica RLS de INSERT en la tabla `notifications` solo permite insertar si `tenant_id = current_user_tenant()`. El super admin no pertenece al tenant destino, por lo que la insercion es rechazada.
+## Problema actual
+
+Las notificaciones se reciben correctamente (las politicas RLS de SELECT/UPDATE estan bien configuradas), pero el popover solo muestra un preview corto del titulo y mensaje. No hay forma de:
+1. Abrir la notificacion completa para leer todo el contenido
+2. Ver una confirmacion visual clara de que fue leida
 
 ## Solucion
 
-Agregar una politica RLS que permita a los super admins insertar notificaciones para cualquier tenant.
+Crear un dialog que se abra al hacer clic en una notificacion, mostrando el contenido completo con un boton explicito de "Marcar como leida".
 
-## Cambio
+### Cambios en `src/components/notifications/NotificationPopover.tsx`
+
+1. Agregar un estado para la notificacion seleccionada
+2. Al hacer clic en una notificacion, abrir un Dialog con:
+   - Icono de tipo (info/warning/success/error) con su color
+   - Titulo completo
+   - Mensaje completo (sin truncar)
+   - Fecha y hora
+   - Boton "Marcar como leida" (si no esta leida) que ejecuta `markAsRead` y muestra feedback visual
+   - Indicador de estado: badge "Leida" / "No leida"
+3. Mantener la funcionalidad del link: si la notificacion tiene link, mostrar un boton adicional "Ir al detalle"
+
+### Estructura del Dialog
+
+```text
++------------------------------------------+
+|  [icon] Titulo de la notificacion    [X] |
+|------------------------------------------|
+|                                          |
+|  Mensaje completo de la notificacion     |
+|  sin truncar, mostrando todo el texto    |
+|  que envio el super admin.               |
+|                                          |
+|  Hace 5 minutos                          |
+|                                          |
+|  [Badge: No leida]                       |
+|                                          |
+|------------------------------------------|
+|  [Marcar como leida]    [Ir al detalle]  |
++------------------------------------------+
+```
+
+### Flujo
+
+1. Admin abre el popover de notificaciones
+2. Hace clic en una notificacion
+3. Se abre el dialog con el contenido completo
+4. Presiona "Marcar como leida" -> se ejecuta `markAsRead`, el badge cambia a "Leida", y el indicador de no-leida desaparece tanto en el dialog como en la lista
+5. Si hay link, puede presionar "Ir al detalle" para navegar
+
+## Detalle tecnico
 
 | Archivo | Cambio |
 |---|---|
-| Migracion SQL | Agregar politica INSERT para super_admin en `notifications` |
+| `src/components/notifications/NotificationPopover.tsx` | Agregar Dialog para ver notificacion completa con boton de confirmar lectura |
 
-### SQL
-
-```sql
-CREATE POLICY "Super admins can insert notifications"
-ON public.notifications
-FOR INSERT
-TO authenticated
-WITH CHECK (public.current_user_is_super_admin());
-```
-
-Esto permite al super admin enviar notificaciones a administradores de cualquier empresa sin modificar la politica existente (que sigue funcionando para usuarios normales dentro de su propio tenant).
+No se requieren cambios en base de datos ni nuevas politicas RLS - las existentes ya permiten SELECT y UPDATE correctamente.
