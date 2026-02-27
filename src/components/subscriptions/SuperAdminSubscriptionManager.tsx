@@ -77,22 +77,35 @@ export default function SuperAdminSubscriptionManager() {
   const [notifMessage, setNotifMessage] = useState("");
   const [notifType, setNotifType] = useState("info");
 
-  // Queries
+  // Queries - separate queries to avoid PostgREST RLS nested select issues
   const { data: tenants, isLoading: loadingTenants } = useQuery({
     queryKey: ["admin-tenants-subscriptions"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // Query 1: Get all tenants
+      const { data: tenantsData, error: tenantsError } = await supabase
         .from("tenants")
-        .select(`
-          id, nombre, slug, activo, plan,
-          tenant_subscriptions (
-            id, status, plan_id, current_period_end,
-            subscription_plans ( name, price_monthly )
-          )
-        `)
+        .select("id, nombre, slug, activo, plan")
         .order("nombre");
-      if (error) throw error;
-      return data as unknown as TenantWithSubscription[];
+      if (tenantsError) throw tenantsError;
+
+      // Query 2: Get all subscriptions with their plans
+      const { data: subsData, error: subsError } = await supabase
+        .from("tenant_subscriptions")
+        .select("id, tenant_id, status, plan_id, current_period_end, subscription_plans ( name, price_monthly )");
+      if (subsError) throw subsError;
+
+      // Merge in JS
+      return (tenantsData || []).map(t => ({
+        ...t,
+        tenant_subscriptions: (subsData || [])
+          .filter(s => s.tenant_id === t.id)
+          .map(s => ({ id: s.id, status: s.status, plan_id: s.plan_id, current_period_end: s.current_period_end, subscription_plans: s.subscription_plans }))
+          .length > 0
+          ? (subsData || [])
+              .filter(s => s.tenant_id === t.id)
+              .map(s => ({ id: s.id, status: s.status, plan_id: s.plan_id, current_period_end: s.current_period_end, subscription_plans: s.subscription_plans }))
+          : null,
+      })) as TenantWithSubscription[];
     },
   });
 
