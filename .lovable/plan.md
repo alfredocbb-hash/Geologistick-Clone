@@ -1,61 +1,19 @@
 
 
-# Notificaciones: vista expandida y confirmacion de lectura
+# Permitir cambiar el vencimiento de suscripciones
 
-## Problema actual
+## Cambio
 
-Las notificaciones se reciben correctamente (las politicas RLS de SELECT/UPDATE estan bien configuradas), pero el popover solo muestra un preview corto del titulo y mensaje. No hay forma de:
-1. Abrir la notificacion completa para leer todo el contenido
-2. Ver una confirmacion visual clara de que fue leida
-
-## Solucion
-
-Crear un dialog que se abra al hacer clic en una notificacion, mostrando el contenido completo con un boton explicito de "Marcar como leida".
-
-### Cambios en `src/components/notifications/NotificationPopover.tsx`
-
-1. Agregar un estado para la notificacion seleccionada
-2. Al hacer clic en una notificacion, abrir un Dialog con:
-   - Icono de tipo (info/warning/success/error) con su color
-   - Titulo completo
-   - Mensaje completo (sin truncar)
-   - Fecha y hora
-   - Boton "Marcar como leida" (si no esta leida) que ejecuta `markAsRead` y muestra feedback visual
-   - Indicador de estado: badge "Leida" / "No leida"
-3. Mantener la funcionalidad del link: si la notificacion tiene link, mostrar un boton adicional "Ir al detalle"
-
-### Estructura del Dialog
-
-```text
-+------------------------------------------+
-|  [icon] Titulo de la notificacion    [X] |
-|------------------------------------------|
-|                                          |
-|  Mensaje completo de la notificacion     |
-|  sin truncar, mostrando todo el texto    |
-|  que envio el super admin.               |
-|                                          |
-|  Hace 5 minutos                          |
-|                                          |
-|  [Badge: No leida]                       |
-|                                          |
-|------------------------------------------|
-|  [Marcar como leida]    [Ir al detalle]  |
-+------------------------------------------+
-```
-
-### Flujo
-
-1. Admin abre el popover de notificaciones
-2. Hace clic en una notificacion
-3. Se abre el dialog con el contenido completo
-4. Presiona "Marcar como leida" -> se ejecuta `markAsRead`, el badge cambia a "Leida", y el indicador de no-leida desaparece tanto en el dialog como en la lista
-5. Si hay link, puede presionar "Ir al detalle" para navegar
+Agregar un campo de fecha de vencimiento en el dialogo de "Asignar Plan" para que el super admin pueda elegir o modificar la fecha de vencimiento (`current_period_end`) al asignar un plan, en lugar de que siempre sea "hoy + 1 mes".
 
 ## Detalle tecnico
 
-| Archivo | Cambio |
-|---|---|
-| `src/components/notifications/NotificationPopover.tsx` | Agregar Dialog para ver notificacion completa con boton de confirmar lectura |
+### Archivo: `src/components/subscriptions/SuperAdminSubscriptionManager.tsx`
 
-No se requieren cambios en base de datos ni nuevas politicas RLS - las existentes ya permiten SELECT y UPDATE correctamente.
+1. Agregar un estado `periodEnd` (string, formato `YYYY-MM-DD`) inicializado con la fecha actual + 1 mes, o con el vencimiento existente si el tenant ya tiene suscripcion.
+2. En el dialogo de "Asignar Plan", agregar un campo `<Input type="date">` debajo del selector de plan, con label "Vencimiento".
+3. Al abrir el dialogo (`openAssignPlan`), inicializar `periodEnd` con el `current_period_end` existente o con hoy + 1 mes.
+4. En la mutacion `assignPlanMutation`, usar el valor de `periodEnd` en lugar del calculo automatico de +1 mes.
+5. Incluir `periodEnd` en `resetForms()`.
+
+No se requieren cambios en base de datos.
