@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { Building2, Users, Package, Calendar, CheckCircle, XCircle, Loader2, Key } from 'lucide-react';
+import { Building2, Users, Package, Calendar, CheckCircle, XCircle, Loader2, Key, AlertTriangle } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { format, differenceInDays, isPast } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { TenantApiKeysDialog } from './TenantApiKeysDialog';
@@ -72,6 +73,33 @@ export function TenantDetailsDialog({ open, onOpenChange, tenant }: TenantDetail
 
   const trialInfo = getTrialInfo();
 
+  const getUsageBarColor = (current: number, max: number) => {
+    const pct = max > 0 ? (current / max) * 100 : 0;
+    if (pct >= 100) return 'bg-destructive';
+    if (pct >= 80) return 'bg-yellow-500';
+    return 'bg-primary';
+  };
+
+  const getUsageIconColor = (current: number, max: number) => {
+    const pct = max > 0 ? (current / max) * 100 : 0;
+    if (pct >= 100) return 'bg-destructive/10';
+    if (pct >= 80) return 'bg-yellow-500/10';
+    return 'bg-primary/10';
+  };
+
+  const getUsageIconTextColor = (current: number, max: number) => {
+    const pct = max > 0 ? (current / max) * 100 : 0;
+    if (pct >= 100) return 'text-destructive';
+    if (pct >= 80) return 'text-yellow-500';
+    return 'text-primary';
+  };
+
+  const exceededLimits = stats ? [
+    stats.usuarios > tenant.max_usuarios && 'usuarios',
+    stats.sucursales > tenant.max_sucursales && 'sucursales',
+    stats.envios_mes > tenant.max_envios_mes && 'envíos/mes',
+  ].filter(Boolean) : [];
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
@@ -88,6 +116,17 @@ export function TenantDetailsDialog({ open, onOpenChange, tenant }: TenantDetail
           </div>
         ) : (
           <div className="space-y-6">
+            {/* Exceeded Limits Alert */}
+            {exceededLimits.length > 0 && (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Límites excedidos</AlertTitle>
+                <AlertDescription>
+                  Esta empresa excede los límites de su plan en: {exceededLimits.join(', ')}.
+                </AlertDescription>
+              </Alert>
+            )}
+
             {/* Status Row */}
             <div className="flex items-center gap-4">
               <Badge variant={tenant.activo ? 'default' : 'secondary'} className="text-sm">
@@ -166,65 +205,37 @@ export function TenantDetailsDialog({ open, onOpenChange, tenant }: TenantDetail
             <div>
               <h3 className="font-semibold mb-4">Uso Actual</h3>
               <div className="grid grid-cols-3 gap-4">
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-primary/10">
-                        <Users className="h-5 w-5 text-primary" />
+                {[
+                  { icon: Users, label: 'usuarios', current: stats?.usuarios || 0, max: tenant.max_usuarios },
+                  { icon: Building2, label: 'sucursales', current: stats?.sucursales || 0, max: tenant.max_sucursales },
+                  { icon: Package, label: 'envíos/mes', current: stats?.envios_mes || 0, max: tenant.max_envios_mes, formatMax: true },
+                ].map(({ icon: Icon, label, current, max, formatMax }) => (
+                  <Card key={label}>
+                    <CardContent className="pt-6">
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-lg ${getUsageIconColor(current, max)}`}>
+                          <Icon className={`h-5 w-5 ${getUsageIconTextColor(current, max)}`} />
+                        </div>
+                        <div>
+                          <p className="text-2xl font-bold">{current}</p>
+                          <p className="text-sm text-muted-foreground">
+                            de {formatMax ? max.toLocaleString() : max} {label}
+                          </p>
+                        </div>
+                        {current > max && <AlertTriangle className="h-4 w-4 text-destructive ml-auto" />}
                       </div>
-                      <div>
-                        <p className="text-2xl font-bold">{stats?.usuarios || 0}</p>
-                        <p className="text-sm text-muted-foreground">de {tenant.max_usuarios} usuarios</p>
+                      <div className="mt-2 bg-muted rounded-full h-2">
+                        <div 
+                          className={`${getUsageBarColor(current, max)} h-2 rounded-full transition-all`}
+                          style={{ width: `${Math.min((current / max) * 100, 100)}%` }}
+                        />
                       </div>
-                    </div>
-                    <div className="mt-2 bg-muted rounded-full h-2">
-                      <div 
-                        className="bg-primary h-2 rounded-full transition-all"
-                        style={{ width: `${Math.min(((stats?.usuarios || 0) / tenant.max_usuarios) * 100, 100)}%` }}
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-primary/10">
-                        <Building2 className="h-5 w-5 text-primary" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold">{stats?.sucursales || 0}</p>
-                        <p className="text-sm text-muted-foreground">de {tenant.max_sucursales} sucursales</p>
-                      </div>
-                    </div>
-                    <div className="mt-2 bg-muted rounded-full h-2">
-                      <div 
-                        className="bg-primary h-2 rounded-full transition-all"
-                        style={{ width: `${Math.min(((stats?.sucursales || 0) / tenant.max_sucursales) * 100, 100)}%` }}
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-primary/10">
-                        <Package className="h-5 w-5 text-primary" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold">{stats?.envios_mes || 0}</p>
-                        <p className="text-sm text-muted-foreground">de {tenant.max_envios_mes.toLocaleString()} envíos/mes</p>
-                      </div>
-                    </div>
-                    <div className="mt-2 bg-muted rounded-full h-2">
-                      <div 
-                        className="bg-primary h-2 rounded-full transition-all"
-                        style={{ width: `${Math.min(((stats?.envios_mes || 0) / tenant.max_envios_mes) * 100, 100)}%` }}
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
+                      {current > max && (
+                        <p className="text-xs text-destructive mt-1">Excede el límite en {current - max}</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
             </div>
 

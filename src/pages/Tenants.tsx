@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Building2, Plus, Search, Users, Package, Calendar, MoreHorizontal, CheckCircle, XCircle, Eye, Pencil, Trash2, Palette } from 'lucide-react';
+import { Building2, Plus, Search, Users, Package, Calendar, MoreHorizontal, CheckCircle, XCircle, Eye, Pencil, Trash2, Palette, AlertTriangle } from 'lucide-react';
 import { format, differenceInDays, isPast } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -34,6 +34,7 @@ interface TenantWithStats {
   created_at: string;
   usuarios_count: number;
   sucursales_count: number;
+  envios_mes_count: number;
 }
 
 export default function Tenants() {
@@ -60,17 +61,20 @@ export default function Tenants() {
       if (tenantsError) throw tenantsError;
 
       // Then get counts for each tenant
+      const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
       const tenantsWithStats: TenantWithStats[] = await Promise.all(
         (tenantsData || []).map(async (tenant) => {
-          const [usersResult, branchesResult] = await Promise.all([
+          const [usersResult, branchesResult, shipmentsResult] = await Promise.all([
             supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id),
-            supabase.from('sucursales').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id).eq('activa', true)
+            supabase.from('sucursales').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id).eq('activa', true),
+            supabase.from('envios').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id).gte('created_at', monthStart)
           ]);
 
           return {
             ...tenant,
             usuarios_count: usersResult.count || 0,
-            sucursales_count: branchesResult.count || 0
+            sucursales_count: branchesResult.count || 0,
+            envios_mes_count: shipmentsResult.count || 0
           };
         })
       );
@@ -98,11 +102,25 @@ export default function Tenants() {
     return matchesSearch && matchesPlan && matchesStatus;
   }) || [];
 
+  const getUsageColor = (current: number, max: number) => {
+    const pct = max > 0 ? (current / max) * 100 : 0;
+    if (pct >= 100) return 'text-destructive font-semibold';
+    if (pct >= 80) return 'text-yellow-600 dark:text-yellow-500 font-medium';
+    return '';
+  };
+
+  const isExceeded = (current: number, max: number) => current > max;
+
   const stats = {
     total: tenants?.length || 0,
     active: tenants?.filter(t => t.activo).length || 0,
     trial: tenants?.filter(t => t.plan === 'trial').length || 0,
-    expired: tenants?.filter(t => t.trial_ends_at && isPast(new Date(t.trial_ends_at)) && t.plan === 'trial').length || 0
+    expired: tenants?.filter(t => t.trial_ends_at && isPast(new Date(t.trial_ends_at)) && t.plan === 'trial').length || 0,
+    exceeded: tenants?.filter(t => 
+      t.usuarios_count > t.max_usuarios || 
+      t.sucursales_count > t.max_sucursales || 
+      t.envios_mes_count > t.max_envios_mes
+    ).length || 0
   };
 
   const getPlanBadge = (plan: string) => {
@@ -178,7 +196,7 @@ export default function Tenants() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Total Empresas</CardTitle>
@@ -213,6 +231,15 @@ export default function Tenants() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-destructive">{stats.expired}</div>
+          </CardContent>
+        </Card>
+        <Card className={stats.exceeded > 0 ? 'border-destructive' : ''}>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Excedidas</CardTitle>
+            <AlertTriangle className={`h-4 w-4 ${stats.exceeded > 0 ? 'text-destructive' : 'text-muted-foreground'}`} />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${stats.exceeded > 0 ? 'text-destructive' : ''}`}>{stats.exceeded}</div>
           </CardContent>
         </Card>
       </div>
@@ -264,6 +291,7 @@ export default function Tenants() {
                 <TableHead>Trial</TableHead>
                 <TableHead>Usuarios</TableHead>
                 <TableHead>Sucursales</TableHead>
+                <TableHead>Envíos/Mes</TableHead>
                 <TableHead>Creada</TableHead>
                 <TableHead className="w-10"></TableHead>
               </TableRow>
@@ -271,13 +299,13 @@ export default function Tenants() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8">
+                    <TableCell colSpan={9} className="text-center py-8">
                     Cargando empresas...
                   </TableCell>
                 </TableRow>
               ) : filteredTenants.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                     No se encontraron empresas
                   </TableCell>
                 </TableRow>
@@ -298,15 +326,24 @@ export default function Tenants() {
                     </TableCell>
                     <TableCell>{getTrialStatus(tenant)}</TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Users className="h-4 w-4 text-muted-foreground" />
+                      <div className={`flex items-center gap-1 ${getUsageColor(tenant.usuarios_count, tenant.max_usuarios)}`}>
+                        <Users className="h-4 w-4" />
                         <span>{tenant.usuarios_count}/{tenant.max_usuarios}</span>
+                        {isExceeded(tenant.usuarios_count, tenant.max_usuarios) && <AlertTriangle className="h-3.5 w-3.5" />}
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Building2 className="h-4 w-4 text-muted-foreground" />
+                      <div className={`flex items-center gap-1 ${getUsageColor(tenant.sucursales_count, tenant.max_sucursales)}`}>
+                        <Building2 className="h-4 w-4" />
                         <span>{tenant.sucursales_count}/{tenant.max_sucursales}</span>
+                        {isExceeded(tenant.sucursales_count, tenant.max_sucursales) && <AlertTriangle className="h-3.5 w-3.5" />}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className={`flex items-center gap-1 ${getUsageColor(tenant.envios_mes_count, tenant.max_envios_mes)}`}>
+                        <Package className="h-4 w-4" />
+                        <span>{tenant.envios_mes_count}/{tenant.max_envios_mes.toLocaleString()}</span>
+                        {isExceeded(tenant.envios_mes_count, tenant.max_envios_mes) && <AlertTriangle className="h-3.5 w-3.5" />}
                       </div>
                     </TableCell>
                     <TableCell>
