@@ -1,49 +1,62 @@
 
+# Fix: Suscripciones de cobro por Mercado Pago
 
-# Alertas de exceso de limites por tenant
+## Problemas detectados
 
-## Problema
+El sistema de suscripciones por Mercado Pago ya existe pero tiene **3 bugs criticos** que impiden que funcione:
 
-Cuando una empresa supera los limites de su plan (ej: BlackBox tiene 14/10 sucursales, 15/15 usuarios), no hay ninguna alerta visual ni para el super admin en la tabla de empresas, ni en el detalle. Las barras de progreso simplemente se llenan pero no cambian de color ni muestran advertencia.
+### Bug 1: Columnas incorrectas en las queries
+Las 4 edge functions (`mp-create-subscription`, `mp-check-subscription`, `mp-cancel-subscription`, `mp-subscription-webhook`) consultan `system_integrations` usando columnas `key` y `value`, pero las columnas reales son `config_key` y `config_value`. Ademas usan `.eq("type", "mercado_pago")` pero la columna se llama `integration_type`.
 
-## Cambios propuestos
+### Bug 2: Credenciales MP del tenant equivocado
+Las funciones buscan las credenciales de MP en el tenant del usuario que se suscribe. Pero para cobrar suscripciones SaaS, se necesitan las credenciales de MP del **dueño de la plataforma** (tu cuenta). La solucion es usar un secret de entorno (`MP_SUBSCRIPTION_ACCESS_TOKEN`) para las suscripciones, independiente de la config de cada tenant.
 
-### 1. Tabla de Empresas (`src/pages/Tenants.tsx`)
+### Bug 3: No se crea el registro en `tenant_subscriptions`
+`mp-create-subscription` crea la suscripcion en MP pero nunca inserta el registro en la tabla `tenant_subscriptions`, por lo que `mp-check-subscription` no puede encontrarlo despues.
 
-- Colorear en rojo los conteos que excedan el limite (ej: "14/10" en rojo)
-- Colorear en amarillo/naranja los que esten al 100% (ej: "15/15")
-- Agregar una nueva stats card "Excedidas" que cuente tenants con al menos un limite superado
-- Agregar un icono de alerta (triangulo) junto a los valores excedidos
+## Solucion
 
-### 2. Detalle del Tenant (`src/components/tenants/TenantDetailsDialog.tsx`)
+### 1. Agregar secret `MP_SUBSCRIPTION_ACCESS_TOKEN`
+Se pedira tu access token de Mercado Pago para cobrar suscripciones. Este es diferente del que cada tenant configura para sus propios cobros.
 
-- Cambiar color de las barras de progreso: verde normal, amarillo al 80%+, rojo al 100%+
-- Mostrar un banner/alerta en la parte superior cuando hay limites excedidos
-- Agregar texto descriptivo "Excede el limite" cuando el uso supera el maximo
+### 2. Corregir `mp-create-subscription`
+- Usar `MP_SUBSCRIPTION_ACCESS_TOKEN` del entorno en lugar de buscar en `system_integrations`
+- Insertar registro en `tenant_subscriptions` con el `mercadopago_subscription_id` devuelto por MP
+- Corregir la `back_url` para redirigir correctamente
 
-### 3. Agregar envios/mes a la tabla de Tenants
+### 3. Corregir `mp-check-subscription`
+- Usar `MP_SUBSCRIPTION_ACCESS_TOKEN` del entorno
+- Corregir nombres de columnas (`config_key`/`config_value`, `integration_type`)
 
-Actualmente la tabla solo muestra usuarios y sucursales. Agregar columna de envios del mes para tener visibilidad completa (requiere contar envios del mes actual por tenant en la query).
+### 4. Corregir `mp-cancel-subscription`
+- Usar `MP_SUBSCRIPTION_ACCESS_TOKEN` del entorno
+- Corregir nombres de columnas
 
-## Detalle tecnico
+### 5. Corregir `mp-subscription-webhook`
+- Usar `MP_SUBSCRIPTION_ACCESS_TOKEN` del entorno
+- Manejar suscripciones nuevas que llegan por webhook (crear registro en `tenant_subscriptions` si no existe, parseando el `external_reference`)
+
+## Archivos a modificar
 
 | Archivo | Cambio |
 |---|---|
-| `src/pages/Tenants.tsx` | Agregar logica de color en celdas de usuarios/sucursales, nueva stats card "Excedidas", contar envios del mes |
-| `src/components/tenants/TenantDetailsDialog.tsx` | Barras de progreso con colores segun porcentaje, banner de alerta cuando hay exceso |
+| Secret `MP_SUBSCRIPTION_ACCESS_TOKEN` | Nuevo secret con el access token de tu cuenta de MP |
+| `supabase/functions/mp-create-subscription/index.ts` | Usar secret, corregir columnas, insertar en `tenant_subscriptions` |
+| `supabase/functions/mp-check-subscription/index.ts` | Usar secret, corregir columnas |
+| `supabase/functions/mp-cancel-subscription/index.ts` | Usar secret, corregir columnas |
+| `supabase/functions/mp-subscription-webhook/index.ts` | Usar secret, manejar nuevas suscripciones |
 
-### Logica de colores
+## Flujo corregido
 
 ```text
- Uso < 80%   -->  texto normal, barra verde/primary
- 80% <= Uso < 100%  -->  texto amarillo, barra amarillo
- Uso >= 100%  -->  texto rojo + icono alerta, barra roja
+1. Admin del tenant va a /subscription
+2. Elige plan y hace clic en "Suscribirse"
+3. mp-create-subscription:
+   - Usa MP_SUBSCRIPTION_ACCESS_TOKEN (tu cuenta)
+   - Crea preapproval en MP
+   - Inserta registro en tenant_subscriptions
+   - Devuelve URL de pago
+4. Usuario paga en MP
+5. Webhook actualiza estado en tenant_subscriptions
+6. mp-check-subscription verifica estado periodicamente
 ```
-
-### Stats card nueva en Tenants.tsx
-
-Se agrega una card "Excedidas" que cuenta tenants donde `usuarios_count > max_usuarios` OR `sucursales_count > max_sucursales`. Esto da visibilidad inmediata al super admin.
-
-### Envios del mes en la tabla
-
-Se agrega al fetch de cada tenant un conteo de `envios` del mes actual (`gte created_at` del primer dia del mes) para mostrarlo en la tabla y detectar excesos tambien en envios.
