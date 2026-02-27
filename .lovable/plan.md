@@ -1,62 +1,86 @@
 
 
-# Notificaciones de Admin a Sucursales
+# Notificaciones automaticas de vencimiento de suscripcion
 
-## Objetivo
+## Situacion actual
 
-Permitir que los administradores de cada empresa envien notificaciones a los usuarios de sus sucursales, similar a como el super admin envia notificaciones a los tenants.
+- Solo existe un banner visual para el periodo de prueba (trial), no para suscripciones pagas.
+- Las notificaciones de suscripcion se envian manualmente por el Super Admin.
+- No hay ningun proceso automatico que avise antes del vencimiento.
+- Las notificaciones no desaparecen cuando se registra un pago.
 
-## Cambios
+## Solucion propuesta
 
-### 1. Nuevo componente: `src/components/notifications/SendBranchNotificationDialog.tsx`
+Crear un sistema automatico que:
+1. Notifique a los admins de cada tenant **5 dias antes** del vencimiento de su suscripcion.
+2. Evite enviar notificaciones duplicadas.
+3. Las notificaciones de vencimiento se marquen automaticamente como resueltas cuando se registra/renueva el pago.
 
-Un dialogo reutilizable que permite al admin:
-- Seleccionar una o todas las sucursales de su tenant
-- Elegir el tipo de notificacion (info, advertencia, exito, error)
-- Escribir titulo y mensaje
-- Enviar la notificacion a todos los usuarios de la(s) sucursal(es) seleccionada(s)
+### 1. Edge Function: `notify-subscription-expiry`
 
-La logica de envio:
-1. Consultar `profiles` filtrando por `tenant_id` del admin y opcionalmente por `sucursal_id`
-2. Insertar una notificacion por cada usuario encontrado en la tabla `notifications`
-3. La politica RLS existente (`tenant_id = current_user_tenant()`) ya permite esta insercion
+Una funcion backend que revise las suscripciones proximas a vencer y envie notificaciones automaticas.
 
-### 2. Integrar el boton en el Dashboard o header
+Logica:
+- Buscar en `tenant_subscriptions` las suscripciones activas con `current_period_end` entre hoy y hoy + 5 dias.
+- Para cada una, verificar si ya se envio una notificacion de tipo "subscription_expiry" para ese periodo (usando un campo `link` con un identificador unico como `subscription-expiry-{tenant_id}-{YYYY-MM}`).
+- Si no existe, insertar una notificacion para todos los admins del tenant con titulo "Tu suscripcion vence pronto" y un mensaje indicando la fecha.
+- Tambien notificar si ya vencio (current_period_end < hoy).
 
-Agregar un boton "Enviar Notificacion" en la pagina de Dashboard (`src/pages/Dashboard.tsx`) visible solo para admins, que abra el dialogo.
+### 2. Cron Job (pg_cron)
 
-### 3. Sin cambios en base de datos
+Programar la ejecucion diaria de la Edge Function (una vez al dia es suficiente).
 
-La politica RLS existente para INSERT ya permite que usuarios autenticados inserten notificaciones donde `tenant_id = current_user_tenant()`, lo cual cubre este caso perfectamente. No se necesitan migraciones.
+```text
+Frecuencia: 0 9 * * * (todos los dias a las 9:00 UTC)
+```
+
+### 3. Auto-limpiar notificaciones al renovar
+
+Cuando el Super Admin registra un pago o asigna un plan (en `SuperAdminSubscriptionManager`), marcar como leidas las notificaciones de vencimiento pendientes de ese tenant. Esto se hace buscando notificaciones con `link` que contenga `subscription-expiry-{tenant_id}` y `read = false`, y actualizandolas a `read = true`.
+
+### 4. Banner de vencimiento para suscripciones pagas
+
+Extender el `TrialBanner` existente para que tambien muestre un aviso cuando la suscripcion paga esta por vencer (usando `daysRemaining` del hook `useSubscription`), no solo para trials.
 
 ## Detalle tecnico
 
 | Archivo | Cambio |
 |---|---|
-| `src/components/notifications/SendBranchNotificationDialog.tsx` | Nuevo componente: dialogo para enviar notificaciones a sucursales |
-| `src/pages/Dashboard.tsx` | Agregar boton "Enviar Notificacion" para admins que abre el dialogo |
+| `supabase/functions/notify-subscription-expiry/index.ts` | Nueva Edge Function que busca suscripciones por vencer y crea notificaciones |
+| `src/components/subscriptions/SuperAdminSubscriptionManager.tsx` | Al asignar plan o registrar pago, marcar como leidas las notificaciones de vencimiento del tenant |
+| `src/components/trial/TrialBanner.tsx` | Extender para mostrar aviso de vencimiento de suscripcion paga (no solo trial) |
+| SQL (cron job) | Programar ejecucion diaria de la funcion |
 
-### Estructura del dialogo
+### Flujo completo
 
 ```text
-+-----------------------------------------------+
-|  Enviar Notificacion                      [X]  |
-|-----------------------------------------------|
-|  Sucursal: [Todas las sucursales  v]          |
-|  Tipo:     [Informacion          v]           |
-|  Titulo:   [________________________]         |
-|  Mensaje:  [________________________]         |
-|            [________________________]         |
-|-----------------------------------------------|
-|                    [Cancelar]  [Enviar]        |
-+-----------------------------------------------+
+Dia -5: Cron ejecuta notify-subscription-expiry
+        -> Encuentra tenant con vencimiento en 5 dias
+        -> Inserta notificacion para admins del tenant
+        -> Admins ven la notificacion en su popover + banner
+
+Dia 0:  Si no pago, se envia notificacion de "suscripcion vencida"
+
+Pago:   Super Admin asigna plan / registra pago
+        -> Se marcan como leidas las notificaciones de vencimiento
+        -> El banner desaparece porque la suscripcion se renueva
 ```
 
-### Flujo
+### Logica de la Edge Function
 
-1. Admin abre el Dashboard y presiona "Enviar Notificacion"
-2. Selecciona la sucursal destino (o "Todas")
-3. Escribe titulo, mensaje y tipo
-4. Presiona "Enviar"
-5. Se insertan notificaciones para cada usuario de esa sucursal
-6. Los usuarios ven la notificacion en su popover en tiempo real (ya funciona con el canal realtime existente)
+```text
+1. Buscar tenant_subscriptions WHERE status = 'active'
+   AND current_period_end BETWEEN now() AND now() + 5 days
+
+2. Para cada resultado:
+   a. Generar link_id = 'subscription-expiry-{tenant_id}-{YYYY-MM}'
+   b. Verificar si ya existe notificacion con ese link
+   c. Si no existe:
+      - Buscar admins del tenant (user_roles.role = 'admin')
+      - Insertar notificacion por cada admin
+
+3. Buscar suscripciones vencidas (current_period_end < now())
+   y enviar notificacion similar si no existe
+```
+
+No se requieren cambios en la estructura de la base de datos. Se usa el campo `link` existente en la tabla `notifications` como identificador para evitar duplicados y para poder limpiar las notificaciones al renovar.
