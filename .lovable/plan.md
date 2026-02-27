@@ -1,62 +1,115 @@
 
-# Fix: Suscripciones de cobro por Mercado Pago
 
-## Problemas detectados
+# Panel de Gestion de Suscripciones para Super Admin
 
-El sistema de suscripciones por Mercado Pago ya existe pero tiene **3 bugs criticos** que impiden que funcione:
+## Resumen
 
-### Bug 1: Columnas incorrectas en las queries
-Las 4 edge functions (`mp-create-subscription`, `mp-check-subscription`, `mp-cancel-subscription`, `mp-subscription-webhook`) consultan `system_integrations` usando columnas `key` y `value`, pero las columnas reales son `config_key` y `config_value`. Ademas usan `.eq("type", "mercado_pago")` pero la columna se llama `integration_type`.
+Crear un panel completo en `/subscription` que, cuando lo visita el super admin, muestre todas las empresas con sus suscripciones, pagos acreditados/pendientes, y permita asignar planes manualmente (incluyendo pagos en efectivo) y enviar notificaciones.
 
-### Bug 2: Credenciales MP del tenant equivocado
-Las funciones buscan las credenciales de MP en el tenant del usuario que se suscribe. Pero para cobrar suscripciones SaaS, se necesitan las credenciales de MP del **dueño de la plataforma** (tu cuenta). La solucion es usar un secret de entorno (`MP_SUBSCRIPTION_ACCESS_TOKEN`) para las suscripciones, independiente de la config de cada tenant.
+## Cambios en base de datos
 
-### Bug 3: No se crea el registro en `tenant_subscriptions`
-`mp-create-subscription` crea la suscripcion en MP pero nunca inserta el registro en la tabla `tenant_subscriptions`, por lo que `mp-check-subscription` no puede encontrarlo despues.
+### Nueva tabla `subscription_payments`
 
-## Solucion
+Para registrar cada pago de suscripcion (ya sea automatico por MP o manual en efectivo/transferencia):
 
-### 1. Agregar secret `MP_SUBSCRIPTION_ACCESS_TOKEN`
-Se pedira tu access token de Mercado Pago para cobrar suscripciones. Este es diferente del que cada tenant configura para sus propios cobros.
+```text
+subscription_payments
+  id             uuid PK
+  tenant_id      uuid FK -> tenants
+  plan_id        uuid FK -> subscription_plans  
+  amount         numeric NOT NULL
+  payment_method text NOT NULL (mercadopago, efectivo, transferencia)
+  status         text DEFAULT 'paid' (paid, pending, failed)
+  reference      text (numero de recibo, ID de MP, etc)
+  period_start   timestamptz
+  period_end     timestamptz
+  notes          text
+  created_by     uuid (super admin que registro)
+  created_at     timestamptz DEFAULT now()
+```
 
-### 2. Corregir `mp-create-subscription`
-- Usar `MP_SUBSCRIPTION_ACCESS_TOKEN` del entorno en lugar de buscar en `system_integrations`
-- Insertar registro en `tenant_subscriptions` con el `mercadopago_subscription_id` devuelto por MP
-- Corregir la `back_url` para redirigir correctamente
+Con RLS: solo super_admin puede leer/escribir.
 
-### 3. Corregir `mp-check-subscription`
-- Usar `MP_SUBSCRIPTION_ACCESS_TOKEN` del entorno
-- Corregir nombres de columnas (`config_key`/`config_value`, `integration_type`)
+## Cambios en frontend
 
-### 4. Corregir `mp-cancel-subscription`
-- Usar `MP_SUBSCRIPTION_ACCESS_TOKEN` del entorno
-- Corregir nombres de columnas
+### 1. Modificar `src/pages/Subscription.tsx`
 
-### 5. Corregir `mp-subscription-webhook`
-- Usar `MP_SUBSCRIPTION_ACCESS_TOKEN` del entorno
-- Manejar suscripciones nuevas que llegan por webhook (crear registro en `tenant_subscriptions` si no existe, parseando el `external_reference`)
+Detectar si el usuario es super admin con `useAuth().isSuperAdmin()`. Si lo es, renderizar `SuperAdminSubscriptionManager` en lugar de la vista de planes para suscribirse.
 
-## Archivos a modificar
+### 2. Crear `src/components/subscriptions/SuperAdminSubscriptionManager.tsx`
+
+Componente principal con 2 tabs:
+
+**Tab "Empresas y Planes":**
+- Stats cards: Total empresas, Con suscripcion activa, Sin plan, Pagos pendientes
+- Tabla de empresas con columnas:
+  - Nombre empresa
+  - Plan actual (badge) o "Sin plan"
+  - Estado suscripcion (activo/pendiente/cancelado/trial)
+  - Ultimo pago (fecha + metodo)
+  - Proximo vencimiento
+  - Acciones: Asignar plan, Registrar pago, Notificar
+- Dialog "Asignar/Cambiar Plan": selector de plan, upsert en `tenant_subscriptions`
+- Dialog "Enviar Notificacion": titulo, mensaje, tipo -> inserta en `notifications` para todos los admins del tenant
+
+**Tab "Pagos":**
+- Filtros: empresa, estado (acreditado/pendiente), metodo de pago, rango de fechas
+- Tabla de pagos con columnas:
+  - Empresa
+  - Plan
+  - Monto
+  - Metodo (MP / Efectivo / Transferencia)
+  - Estado (badge verde "Acreditado" / amarillo "Pendiente")
+  - Periodo cubierto
+  - Referencia
+  - Fecha
+- Dialog "Registrar Pago Manual": seleccionar empresa, plan, monto (precargado del plan), metodo de pago (efectivo/transferencia/otro), referencia, periodo, notas
+- Boton para marcar pagos pendientes como acreditados
+
+### 3. Flujo de asignacion + pago manual
+
+1. Super admin selecciona empresa -> "Asignar Plan"
+2. Elige plan -> se hace upsert en `tenant_subscriptions` con status "active"
+3. Opcionalmente registra el pago: inserta en `subscription_payments` con metodo "efectivo" o "transferencia"
+4. El tenant queda con su plan activo inmediatamente
+
+### 4. Flujo de notificacion
+
+Se buscan usuarios con rol `admin` del tenant seleccionado via `user_roles` + `profiles`, y se inserta una notificacion para cada uno.
+
+## Detalle tecnico
 
 | Archivo | Cambio |
 |---|---|
-| Secret `MP_SUBSCRIPTION_ACCESS_TOKEN` | Nuevo secret con el access token de tu cuenta de MP |
-| `supabase/functions/mp-create-subscription/index.ts` | Usar secret, corregir columnas, insertar en `tenant_subscriptions` |
-| `supabase/functions/mp-check-subscription/index.ts` | Usar secret, corregir columnas |
-| `supabase/functions/mp-cancel-subscription/index.ts` | Usar secret, corregir columnas |
-| `supabase/functions/mp-subscription-webhook/index.ts` | Usar secret, manejar nuevas suscripciones |
+| Migracion SQL | Crear tabla `subscription_payments` con RLS para super_admin |
+| `src/pages/Subscription.tsx` | Agregar deteccion de super admin, renderizar componente diferente |
+| `src/components/subscriptions/SuperAdminSubscriptionManager.tsx` | Nuevo: tabla de empresas + tabs + dialogs de asignar plan, registrar pago, notificar |
 
-## Flujo corregido
+### Queries principales
+
+1. Tenants con suscripcion: `tenants` LEFT JOIN `tenant_subscriptions` + `subscription_plans`
+2. Pagos: `subscription_payments` JOIN `tenants` + `subscription_plans`
+3. Planes disponibles: `subscription_plans` WHERE `is_active = true`
+4. Admins del tenant: `profiles` JOIN `user_roles` WHERE `role = 'admin'` AND `tenant_id = X`
+5. Registrar pago: INSERT en `subscription_payments`
+6. Asignar plan: UPSERT en `tenant_subscriptions`
+
+### Estructura de la tabla principal
 
 ```text
-1. Admin del tenant va a /subscription
-2. Elige plan y hace clic en "Suscribirse"
-3. mp-create-subscription:
-   - Usa MP_SUBSCRIPTION_ACCESS_TOKEN (tu cuenta)
-   - Crea preapproval en MP
-   - Inserta registro en tenant_subscriptions
-   - Devuelve URL de pago
-4. Usuario paga en MP
-5. Webhook actualiza estado en tenant_subscriptions
-6. mp-check-subscription verifica estado periodicamente
+| Empresa    | Plan          | Estado  | Ultimo Pago        | Vencimiento | Acciones               |
+|------------|---------------|---------|--------------------|-------------|------------------------|
+| BlackBox   | Profesional   | Activo  | 01/02 - Efectivo   | 01/03       | [Plan] [Pago] [Notif]  |
+| MiEmpresa  | Sin plan      | -       | -                  | -           | [Plan] [Pago] [Notif]  |
+| LogiCorp   | Basico        | Activo  | 15/02 - MP         | 15/03       | [Plan] [Pago] [Notif]  |
+```
+
+### Estructura de la tabla de pagos
+
+```text
+| Empresa    | Plan        | Monto     | Metodo        | Estado     | Periodo        | Ref     |
+|------------|-------------|-----------|---------------|------------|----------------|---------|
+| BlackBox   | Profesional | $15.000   | Efectivo      | Acreditado | 01/02 - 01/03  | REC-001 |
+| LogiCorp   | Basico      | $8.000    | Mercado Pago  | Acreditado | 15/02 - 15/03  | MP-XXX  |
+| OtraEmp    | Profesional | $15.000   | Transferencia | Pendiente  | 01/03 - 01/04  | -       |
 ```
