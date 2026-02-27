@@ -58,16 +58,10 @@ serve(async (req) => {
       throw new Error("No active Mercado Pago subscription found");
     }
 
-    // Get MP credentials
-    const { data: mpConfig } = await supabaseClient
-      .from("system_integrations")
-      .select("key, value")
-      .eq("tenant_id", profile.tenant_id)
-      .eq("type", "mercado_pago");
-
-    const accessToken = mpConfig?.find(c => c.key === "access_token")?.value;
+    // Use platform-level MP access token
+    const accessToken = Deno.env.get("MP_SUBSCRIPTION_ACCESS_TOKEN");
     if (!accessToken) {
-      throw new Error("Mercado Pago credentials not found");
+      throw new Error("Mercado Pago subscription credentials not configured");
     }
 
     // Cancel subscription in Mercado Pago

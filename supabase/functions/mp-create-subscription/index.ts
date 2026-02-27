@@ -47,18 +47,12 @@ serve(async (req) => {
     }
     logStep("Found tenant", { tenantId: profile.tenant_id });
 
-    // Get Mercado Pago credentials from system_integrations
-    const { data: mpConfig } = await supabaseClient
-      .from("system_integrations")
-      .select("key, value")
-      .eq("tenant_id", profile.tenant_id)
-      .eq("type", "mercado_pago");
-
-    const accessToken = mpConfig?.find(c => c.key === "access_token")?.value;
+    // Use platform-level MP access token (not tenant's)
+    const accessToken = Deno.env.get("MP_SUBSCRIPTION_ACCESS_TOKEN");
     if (!accessToken) {
-      throw new Error("Mercado Pago no está configurado. Ve a Integraciones para configurarlo.");
+      throw new Error("Mercado Pago no está configurado para suscripciones. Contacta al administrador de la plataforma.");
     }
-    logStep("Found MP credentials");
+    logStep("Using platform MP credentials");
 
     // Get plan from request
     const { planId } = await req.json();
@@ -114,6 +108,25 @@ serve(async (req) => {
       subscriptionId: mpData.id, 
       initPoint: mpData.init_point 
     });
+
+    // Insert record in tenant_subscriptions
+    const { error: insertError } = await supabaseClient
+      .from("tenant_subscriptions")
+      .upsert({
+        tenant_id: profile.tenant_id,
+        plan_id: planId,
+        status: "pending",
+        mercadopago_subscription_id: mpData.id,
+        current_period_start: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "tenant_id" });
+
+    if (insertError) {
+      logStep("Error inserting tenant_subscription", { error: insertError.message });
+      // Don't fail the whole flow, the webhook will also try to create it
+    } else {
+      logStep("Tenant subscription record created");
+    }
 
     return new Response(JSON.stringify({ 
       url: mpData.init_point,
