@@ -18,6 +18,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useSubscription, SubscriptionPlan } from "@/hooks/useSubscription";
+import { useAuth } from "@/lib/auth";
+import SuperAdminSubscriptionManager from "@/components/subscriptions/SuperAdminSubscriptionManager";
 
 const planIcons: Record<string, typeof Crown> = {
   "LogiTrack Básico": Zap,
@@ -26,6 +28,17 @@ const planIcons: Record<string, typeof Crown> = {
 };
 
 export default function Subscription() {
+  const { isSuperAdmin } = useAuth();
+
+  // If super admin, render the management panel
+  if (isSuperAdmin()) {
+    return <SuperAdminSubscriptionManager />;
+  }
+
+  return <TenantSubscriptionView />;
+}
+
+function TenantSubscriptionView() {
   const [searchParams] = useSearchParams();
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
