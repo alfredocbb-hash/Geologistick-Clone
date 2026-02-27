@@ -1,60 +1,63 @@
 
 
-# Visibilidad de Conceptos para Super Admin + Concepto con Importe Libre
+# Fix: Error al guardar concepto con precio $0 en tarifa de otro tenant
 
-## Problema 1: No se ven los conceptos de otros tenants
+## Problema
 
-Actualmente, aunque la base de datos permite al super admin ver todos los conceptos (la politica de seguridad lo permite), el codigo del frontend en `Rates.tsx` aplica un filtro adicional que solo muestra conceptos del tenant del usuario logueado. Si el super admin pertenece a un tenant distinto de "Black Box", no ve sus conceptos.
+El trigger `validate_concepto_tenant` en la tabla `tarifa_concepto_precios` compara estrictamente el `tenant_id` del concepto con el de la tarifa. Cuando el super admin (que pertenece a un tenant diferente, ej: su propio tenant) crea un concepto y quiere asignarle un precio en una tarifa de Beraexpress (otro tenant), el trigger rechaza la operacion porque los tenant_id no coinciden.
 
-**Solucion**: Cuando el usuario es super admin, no aplicar el filtro de tenant en la consulta de conceptos.
+Tambien falla cuando el concepto tiene `tenant_id = NULL` (concepto global), ya que `NULL IS DISTINCT FROM uuid` siempre es `true`.
 
-## Problema 2: Concepto con importe editable por sucursal
+## Solucion
 
-Se necesita que ciertos conceptos (como "Servicio de agencia") permitan que el operador ingrese un importe libre al crear un envio, en lugar de usar un monto fijo predefinido en la tarifa. Ademas, esto debe ser configurable por sucursal.
+Modificar la funcion `validate_concepto_tenant` para:
 
-**Solucion**: Agregar un campo `monto_editable` a la tabla `tarifa_conceptos`. Cuando este flag esta activo y el concepto esta seleccionado al crear un envio, se muestra un input numerico en lugar del badge con precio fijo.
+1. Si el concepto tiene `tenant_id = NULL` (concepto global), permitir la asociacion con cualquier tarifa
+2. Si el usuario actual es super admin, permitir la operacion sin restriccion de tenant
+3. Solo aplicar la validacion estricta para usuarios normales
 
-## Cambios en base de datos
+## Cambio en base de datos
 
-**Migracion**: Agregar columna `monto_editable` (boolean, default false) a `tarifa_conceptos`.
+Una sola migracion que reemplaza la funcion del trigger:
 
 ```sql
-ALTER TABLE public.tarifa_conceptos 
-ADD COLUMN monto_editable BOOLEAN DEFAULT false;
+CREATE OR REPLACE FUNCTION public.validate_concepto_tenant()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_concepto_tenant_id UUID;
+  v_tarifa_tenant_id UUID;
+BEGIN
+  SELECT tenant_id INTO v_concepto_tenant_id FROM tarifa_conceptos WHERE id = NEW.concepto_id;
+  SELECT tenant_id INTO v_tarifa_tenant_id FROM tarifas WHERE id = NEW.tarifa_id;
+  
+  -- Permitir conceptos globales (sin tenant) en cualquier tarifa
+  IF v_concepto_tenant_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+  
+  -- Permitir si el usuario es super admin
+  IF public.current_user_is_super_admin() THEN
+    RETURN NEW;
+  END IF;
+  
+  -- Validacion normal: deben coincidir los tenants
+  IF v_concepto_tenant_id IS DISTINCT FROM v_tarifa_tenant_id THEN
+    RAISE EXCEPTION 'El concepto (tenant %) no pertenece al mismo tenant que la tarifa (tenant %)',
+      v_concepto_tenant_id, v_tarifa_tenant_id;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$;
 ```
 
-## Cambios en el frontend
-
-### `src/pages/Rates.tsx`
-
-1. **Query de conceptos (linea ~212-230)**: Si `isSuperAdmin()`, no aplicar el filtro `.or(tenant_id.eq..., tenant_id.is.null)`. Traer todos los conceptos y mostrar a que tenant pertenece cada uno.
-2. **Formulario de concepto (linea ~1516-1535)**: Agregar un switch "Importe editable" debajo del toggle de Basico/Adicional. Cuando esta activo, significa que el operador puede ingresar un monto libre al crear el envio.
-3. **Tabla de conceptos**: Mostrar un badge o indicador cuando el concepto tiene `monto_editable = true`.
-
-### `src/pages/NewShipment.tsx`
-
-1. **Interfaces**: Agregar `monto_editable` al tipo `TarifaConcepto`.
-2. **Estado para montos editables (~linea 274)**: Agregar un estado `montosEditables: Record<string, string>` para guardar los importes que el operador ingresa manualmente.
-3. **Seccion de conceptos adicionales (~linea 2338-2376)**: Cuando un concepto tiene `monto_editable = true`, mostrar un Input numerico al lado del checkbox en lugar del badge con precio fijo. El operador escribe el importe que desee.
-4. **Calculo de total (~linea 593-614)**: Para conceptos con `monto_editable`, usar el valor del estado `montosEditables[concepto_id]` en lugar del `monto` de la tarifa.
-5. **Mutation de creacion (~linea 855)**: Al insertar los `envio_detalles`, usar el monto personalizado para conceptos editables.
-
-### `src/integrations/supabase/types.ts`
-
-Se actualizara automaticamente al aplicar la migracion (campo `monto_editable` en `tarifa_conceptos`).
-
-## Flujo de uso
-
-1. Admin de Black Box crea el concepto "Servicio de agencia" como **Adicional** con **Importe editable** activado
-2. Lo habilita solo para las sucursales que quiere (usando el dialogo de sucursales que ya existe)
-3. Configura un precio por concepto en la tarifa (este sera el valor sugerido/default, puede ser $0)
-4. Cuando un operador de una sucursal habilitada crea un envio, ve "Servicio de agencia" como concepto adicional con un campo de texto para ingresar el importe
-5. El operador escribe el monto que corresponda y se suma al total del envio
-
-## Resumen de archivos
+No se requieren cambios en el frontend. Solo esta migracion resuelve el error.
 
 | Archivo | Cambio |
 |---|---|
-| Migracion SQL | Agregar `monto_editable` a `tarifa_conceptos` |
-| `src/pages/Rates.tsx` | Quitar filtro tenant para super admin; agregar switch "Importe editable" en formulario y tabla |
-| `src/pages/NewShipment.tsx` | Input de monto libre para conceptos editables; ajustar calculo de totales |
+| Migracion SQL | Actualizar funcion `validate_concepto_tenant` para permitir NULL y bypass para super admins |
+
