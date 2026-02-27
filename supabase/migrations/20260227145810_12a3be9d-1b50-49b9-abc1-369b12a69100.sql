@@ -1,0 +1,1 @@
+ALTER TABLE public.tarifa_conceptos ADD COLUMN monto_editable BOOLEAN DEFAULT false;

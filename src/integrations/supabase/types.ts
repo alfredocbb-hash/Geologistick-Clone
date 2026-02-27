@@ -3548,6 +3548,7 @@ export type Database = {
           descripcion: string | null
           es_basico: boolean | null
           id: string
+          monto_editable: boolean | null
           nombre: string
           orden: number | null
           tenant_id: string | null
@@ -3560,6 +3561,7 @@ export type Database = {
           descripcion?: string | null
           es_basico?: boolean | null
           id?: string
+          monto_editable?: boolean | null
           nombre: string
           orden?: number | null
           tenant_id?: string | null
@@ -3572,6 +3574,7 @@ export type Database = {
           descripcion?: string | null
           es_basico?: boolean | null
           id?: string
+          monto_editable?: boolean | null
           nombre?: string
           orden?: number | null
           tenant_id?: string | null
