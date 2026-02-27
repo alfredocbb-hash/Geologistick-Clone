@@ -76,6 +76,7 @@ export default function SuperAdminSubscriptionManager() {
   const [notifTitle, setNotifTitle] = useState("");
   const [notifMessage, setNotifMessage] = useState("");
   const [notifType, setNotifType] = useState("info");
+  const [periodEnd, setPeriodEnd] = useState("");
 
   // Queries - separate queries to avoid PostgREST RLS nested select issues
   const { data: tenants, isLoading: loadingTenants } = useQuery({
@@ -141,10 +142,10 @@ export default function SuperAdminSubscriptionManager() {
 
   // Mutations
   const assignPlanMutation = useMutation({
-    mutationFn: async ({ tenantId, planId }: { tenantId: string; planId: string }) => {
+    mutationFn: async ({ tenantId, planId, periodEndDate }: { tenantId: string; planId: string; periodEndDate: string }) => {
       const now = new Date();
-      const periodEnd = new Date(now);
-      periodEnd.setMonth(periodEnd.getMonth() + 1);
+      // Use the selected date, setting it to end of day UTC
+      const endDate = new Date(periodEndDate + "T23:59:59Z");
 
       const { error } = await supabase
         .from("tenant_subscriptions")
@@ -153,7 +154,7 @@ export default function SuperAdminSubscriptionManager() {
           plan_id: planId,
           status: "active",
           current_period_start: now.toISOString(),
-          current_period_end: periodEnd.toISOString(),
+          current_period_end: endDate.toISOString(),
           cancel_at_period_end: false,
         }, { onConflict: "tenant_id" });
       if (error) throw error;
@@ -263,8 +264,15 @@ export default function SuperAdminSubscriptionManager() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const getDefaultPeriodEnd = () => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 1);
+    return d.toISOString().split("T")[0];
+  };
+
   const resetForms = () => {
     setSelectedPlanId("");
+    setPeriodEnd("");
     setPaymentMethod("efectivo");
     setPaymentAmount("");
     setPaymentReference("");
@@ -278,6 +286,8 @@ export default function SuperAdminSubscriptionManager() {
     setSelectedTenant(tenant);
     const currentPlanId = tenant.tenant_subscriptions?.[0]?.plan_id || "";
     setSelectedPlanId(currentPlanId);
+    const existingEnd = tenant.tenant_subscriptions?.[0]?.current_period_end;
+    setPeriodEnd(existingEnd ? existingEnd.split("T")[0] : getDefaultPeriodEnd());
     setAssignPlanOpen(true);
   };
 
@@ -560,6 +570,14 @@ export default function SuperAdminSubscriptionManager() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label>Vencimiento</Label>
+              <Input
+                type="date"
+                value={periodEnd}
+                onChange={(e) => setPeriodEnd(e.target.value)}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAssignPlanOpen(false)}>Cancelar</Button>
@@ -567,8 +585,9 @@ export default function SuperAdminSubscriptionManager() {
               onClick={() => selectedTenant && assignPlanMutation.mutate({
                 tenantId: selectedTenant.id,
                 planId: selectedPlanId,
+                periodEndDate: periodEnd,
               })}
-              disabled={!selectedPlanId || assignPlanMutation.isPending}
+              disabled={!selectedPlanId || !periodEnd || assignPlanMutation.isPending}
             >
               {assignPlanMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Asignar Plan
