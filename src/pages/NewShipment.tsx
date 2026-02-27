@@ -2479,9 +2479,14 @@ export default function NewShipment() {
                     const cantidadBultos = parseInt(formData.cantidad_bultos) || 1;
                     const isPercentage = cp.es_porcentaje && cp.porcentaje;
                     
-                    let calculatedAmount = isPercentage 
-                      ? valorDeclarado * Number(cp.porcentaje) / 100 
-                      : Number(cp.monto);
+                    let calculatedAmount = 0;
+                    if (cp.concepto?.monto_editable && montosEditables[cp.concepto_id]) {
+                      calculatedAmount = parseFloat(montosEditables[cp.concepto_id]) || 0;
+                    } else if (isPercentage) {
+                      calculatedAmount = valorDeclarado * Number(cp.porcentaje) / 100;
+                    } else {
+                      calculatedAmount = Number(cp.monto);
+                    }
                     
                     // Multiplicar por cantidad de bultos si aplica
                     if (cp.multiplicar_por_bultos) {

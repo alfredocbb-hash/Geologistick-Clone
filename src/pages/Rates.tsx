@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -215,23 +216,44 @@ export default function Rates() {
 
   // Fetch conceptos (filtered by tenant, super admin sees all)
   const userTenantId = (profile as any)?.tenant_id;
+  const [conceptoTenantFilter, setConceptoTenantFilter] = useState<string>('all');
   const { data: conceptos = [] } = useQuery({
-    queryKey: ['tarifa_conceptos', userTenantId, isSuperAdmin()],
+    queryKey: ['tarifa_conceptos', userTenantId, isSuperAdmin(), conceptoTenantFilter],
     queryFn: async () => {
       let query = supabase
         .from('tarifa_conceptos')
         .select('*, tenant:tenants(id, nombre)')
         .order('orden');
       
-      // Super admin sees ALL concepts across tenants
       if (!isSuperAdmin() && userTenantId) {
         query = query.or(`tenant_id.eq.${userTenantId},tenant_id.is.null`);
+      } else if (isSuperAdmin() && conceptoTenantFilter !== 'all') {
+        if (conceptoTenantFilter === 'global') {
+          query = query.is('tenant_id', null);
+        } else {
+          query = query.eq('tenant_id', conceptoTenantFilter);
+        }
       }
       
       const { data, error } = await query;
       if (error) throw error;
       return data as TarifaConcepto[];
     },
+  });
+
+  // Fetch tenants list for super admin filter
+  const { data: allTenants = [] } = useQuery({
+    queryKey: ['tenants-list-for-concepts'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('tenants')
+        .select('id, nombre')
+        .eq('activo', true)
+        .order('nombre');
+      if (error) throw error;
+      return data;
+    },
+    enabled: isSuperAdmin(),
   });
 
   // Fetch precios por concepto para la tarifa seleccionada
@@ -1430,14 +1452,30 @@ export default function Rates() {
         {/* Conceptos Tab */}
         <TabsContent value="conceptos" className="space-y-6">
           <div className="flex justify-between items-center">
-            <div>
-              <p className="text-muted-foreground">
-                Define los conceptos que componen las tarifas.
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Los conceptos <strong>básicos</strong> están disponibles para todas las sucursales.
-                Los <strong>adicionales</strong> se habilitan por sucursal.
-              </p>
+            <div className="flex items-center gap-4">
+              <div>
+                <p className="text-muted-foreground">
+                  Define los conceptos que componen las tarifas.
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Los conceptos <strong>básicos</strong> están disponibles para todas las sucursales.
+                  Los <strong>adicionales</strong> se habilitan por sucursal.
+                </p>
+              </div>
+              {isSuperAdmin() && (
+                <Select value={conceptoTenantFilter} onValueChange={setConceptoTenantFilter}>
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="Filtrar por empresa" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas las empresas</SelectItem>
+                    <SelectItem value="global">Globales (sin tenant)</SelectItem>
+                    {allTenants.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <Dialog
               open={isConceptDialogOpen}
