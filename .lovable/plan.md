@@ -1,50 +1,48 @@
 
+# Fix: Aislamiento de conceptos por tenant
 
-# Fix: Conceptos de otros tenants + Resumen de precio no refleja importe editable
+## Problema
 
-## Problema 1: Conceptos de otros tenants visibles
+Actualmente hay varias fallas en el filtrado de conceptos por tenant:
 
-Siendo super admin, la vista de conceptos muestra TODOS los conceptos de todos los tenants. Esto es confuso porque se mezclan conceptos de diferentes empresas. La solucion es filtrar los conceptos segun el tenant de la tarifa seleccionada cuando se esta en la vista de precios por concepto, y en la tabla general mostrar claramente a que tenant pertenece cada concepto para evitar confusion.
+1. **NewShipment.tsx**: La query de `tarifa_conceptos` no filtra por tenant. Aunque la RLS lo filtra para usuarios normales, el super admin ve todos los conceptos de todos los tenants cuando crea un envio.
 
-**Cambio**: En `Rates.tsx`, la tabla de conceptos ya muestra el badge del tenant. Para evitar confusion, se agregara un filtro por tenant en la tabla de conceptos cuando hay un tenant seleccionado/visible, para que el super admin pueda filtrar por empresa.
+2. **Rates.tsx**: Cuando el super admin crea un concepto nuevo, se guarda con `profile?.tenant_id` (el tenant del super admin), no con el tenant que esta administrando. Si el super admin quiere crear un concepto para Beraexpress, se crea con el tenant equivocado.
 
-## Problema 2: Resumen de precio muestra $0 para conceptos editables
+3. **RLS de `tarifa_conceptos`**: La politica SELECT no incluye `tenant_id IS NULL`, por lo que los conceptos globales no son visibles para usuarios normales.
 
-El calculo del total SI usa el valor ingresado en el input (linea 608 de `NewShipment.tsx`), pero la seccion "Resumen de Precio" (lineas 2474-2510) NO lo usa. La linea 2482-2484 calcula el monto con `Number(cp.monto)` (que es 0 para conceptos editables) en lugar de usar `montosEditables[cp.concepto_id]`.
+## Cambios propuestos
 
-**Cambio**: En la seccion de Resumen de Precio, para conceptos adicionales con `monto_editable`, usar el valor de `montosEditables` en lugar de `cp.monto`.
+### 1. Base de datos - Actualizar RLS de `tarifa_conceptos`
+
+Modificar la politica SELECT para incluir conceptos globales (tenant_id IS NULL):
+
+```sql
+-- De:
+((tenant_id = current_user_tenant()) OR is_super_admin(auth.uid()))
+-- A:
+((tenant_id = current_user_tenant()) OR tenant_id IS NULL OR is_super_admin(auth.uid()))
+```
+
+### 2. Rates.tsx - Fijar tenant_id al crear conceptos como super admin
+
+Cuando el super admin crea un concepto, debe usar el `conceptoTenantFilter` seleccionado (si hay uno) en lugar del tenant del super admin. Esto evita que los conceptos se creen con el tenant equivocado.
+
+Linea 403: Cambiar `tenant_id: profile?.tenant_id` por logica que use el filtro de tenant activo si es super admin.
+
+### 3. NewShipment.tsx - Filtrar conceptos por tenant del usuario
+
+Agregar filtro `tenant_id` en la query de `tarifa_conceptos` (linea 348-357) para que solo traiga conceptos del tenant del usuario (y globales). Aunque la RLS ya filtra para usuarios normales, esto es una buena practica de defensa en profundidad.
+
+```typescript
+// Agregar filtro:
+.or(`tenant_id.eq.${profile?.tenant_id},tenant_id.is.null`)
+```
 
 ## Archivos a modificar
 
 | Archivo | Cambio |
 |---|---|
-| `src/pages/NewShipment.tsx` | En el Resumen de Precio (lineas 2474-2510), usar `montosEditables[cp.concepto_id]` cuando el concepto es editable |
-| `src/pages/Rates.tsx` | Agregar filtro por tenant en la tabla de conceptos para que el super admin pueda ver solo los de un tenant especifico |
-
-## Detalle tecnico
-
-### NewShipment.tsx - Resumen de Precio (lineas ~2482-2484)
-
-Antes:
-```typescript
-let calculatedAmount = isPercentage 
-  ? valorDeclarado * Number(cp.porcentaje) / 100 
-  : Number(cp.monto);
-```
-
-Despues:
-```typescript
-let calculatedAmount = 0;
-if (cp.concepto?.monto_editable && montosEditables[cp.concepto_id]) {
-  calculatedAmount = parseFloat(montosEditables[cp.concepto_id]) || 0;
-} else if (isPercentage) {
-  calculatedAmount = valorDeclarado * Number(cp.porcentaje) / 100;
-} else {
-  calculatedAmount = Number(cp.monto);
-}
-```
-
-### Rates.tsx - Filtro de conceptos por tenant
-
-Agregar un selector/filtro de tenant en la seccion de conceptos para que el super admin pueda ver solo los conceptos de una empresa especifica, en lugar de ver todos mezclados.
-
+| Migracion SQL | Actualizar RLS policy de `tarifa_conceptos` para incluir `tenant_id IS NULL` |
+| `src/pages/Rates.tsx` | Usar tenant del filtro al crear conceptos como super admin |
+| `src/pages/NewShipment.tsx` | Agregar filtro de tenant en query de conceptos |
