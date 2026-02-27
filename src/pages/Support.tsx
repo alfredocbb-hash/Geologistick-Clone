@@ -57,7 +57,7 @@ const Support = () => {
     {
       question: "¿Cuáles son los horarios de entrega?",
       answer:
-        "Los horarios de entrega son de lunes a viernes de 9:00 a 18:00, y sábados de 9:00 a 13:00. Para envíos especiales o entregas fuera de horario, consulta con tu empresa de logística.",
+        "Los horarios de entrega son de lunes a viernes de 9:00 a 18:00. Para envíos especiales o entregas fuera de horario, consulta con tu empresa de logística.",
     },
     {
       question: "¿Cómo puedo cambiar la dirección de entrega?",
@@ -125,7 +125,7 @@ const Support = () => {
                 </div>
                 <h3 className="font-semibold text-foreground mb-2">Horarios</h3>
                 <p className="text-foreground">Lun - Vie: 9:00 - 18:00</p>
-                <p className="text-muted-foreground text-sm mt-2">Sábados: 9:00 - 13:00</p>
+                <p className="text-muted-foreground text-sm mt-2"></p>
               </CardContent>
             </Card>
           </div>
