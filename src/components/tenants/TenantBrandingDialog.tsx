@@ -1,17 +1,17 @@
-import { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LogoUploader } from '@/components/branding/LogoUploader';
-import { toast } from 'sonner';
-import { Loader2, Palette, Image, Building2, Globe } from 'lucide-react';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { LogoUploader } from "@/components/branding/LogoUploader";
+import { toast } from "sonner";
+import { Loader2, Palette, Image, Building2, Globe } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface TenantBrandingDialogProps {
   open: boolean;
@@ -52,34 +52,34 @@ interface BrandingFormData {
 }
 
 const defaultBranding: BrandingFormData = {
-  nombre_app: '',
-  meta_title: '',
-  meta_description: '',
-  footer_text: '',
-  support_email: '',
-  support_phone: '',
-  color_primario: '#3b82f6',
-  color_primario_foreground: '#ffffff',
-  color_secundario: '#64748b',
-  color_acento: '#f59e0b',
-  color_sidebar: '#f8fafc',
-  color_sidebar_dark: '#1e293b',
-  color_fondo: '#ffffff',
-  color_fondo_dark: '#0f172a',
-  logo_light: '',
-  logo_dark: '',
-  favicon: '',
-  company_address: '',
-  company_city: '',
-  company_country: '',
-  company_description: '',
-  social_twitter: '',
-  social_linkedin: '',
-  social_instagram: '',
-  social_facebook: '',
-  social_whatsapp: '',
-  custom_css: '',
-  custom_domain: '',
+  nombre_app: "",
+  meta_title: "",
+  meta_description: "",
+  footer_text: "",
+  support_email: "",
+  support_phone: "",
+  color_primario: "#3b82f6",
+  color_primario_foreground: "#ffffff",
+  color_secundario: "#64748b",
+  color_acento: "#f59e0b",
+  color_sidebar: "#f8fafc",
+  color_sidebar_dark: "#1e293b",
+  color_fondo: "#ffffff",
+  color_fondo_dark: "#0f172a",
+  logo_light: "",
+  logo_dark: "",
+  favicon: "",
+  company_address: "",
+  company_city: "",
+  company_country: "",
+  company_description: "",
+  social_twitter: "",
+  social_linkedin: "",
+  social_instagram: "",
+  social_facebook: "",
+  social_whatsapp: "",
+  custom_css: "",
+  custom_domain: "",
 };
 
 export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: TenantBrandingDialogProps) {
@@ -87,15 +87,11 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
   const queryClient = useQueryClient();
 
   const { data: branding, isLoading } = useQuery({
-    queryKey: ['tenant-branding', tenant.id],
+    queryKey: ["tenant-branding", tenant.id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('tenant_branding')
-        .select('*')
-        .eq('tenant_id', tenant.id)
-        .single();
+      const { data, error } = await supabase.from("tenant_branding").select("*").eq("tenant_id", tenant.id).single();
 
-      if (error && error.code !== 'PGRST116') throw error;
+      if (error && error.code !== "PGRST116") throw error;
       return data;
     },
     enabled: open,
@@ -105,33 +101,33 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
     if (branding) {
       setFormData({
         nombre_app: branding.nombre_app || tenant.nombre,
-        meta_title: branding.meta_title || '',
-        meta_description: branding.meta_description || '',
-        footer_text: branding.footer_text || '',
-        support_email: branding.support_email || '',
-        support_phone: branding.support_phone || '',
-        color_primario: branding.color_primario || '#3b82f6',
-        color_primario_foreground: branding.color_primario_foreground || '#ffffff',
-        color_secundario: branding.color_secundario || '#64748b',
-        color_acento: branding.color_acento || '#f59e0b',
-        color_sidebar: branding.color_sidebar || '#f8fafc',
-        color_sidebar_dark: branding.color_sidebar_dark || '#1e293b',
-        color_fondo: branding.color_fondo || '#ffffff',
-        color_fondo_dark: branding.color_fondo_dark || '#0f172a',
-        logo_light: branding.logo_light || '',
-        logo_dark: branding.logo_dark || '',
-        favicon: branding.favicon || '',
-        company_address: branding.company_address || '',
-        company_city: branding.company_city || '',
-        company_country: branding.company_country || '',
-        company_description: branding.company_description || '',
-        social_twitter: branding.social_twitter || '',
-        social_linkedin: branding.social_linkedin || '',
-        social_instagram: branding.social_instagram || '',
-        social_facebook: branding.social_facebook || '',
-        social_whatsapp: branding.social_whatsapp || '',
-        custom_css: branding.custom_css || '',
-        custom_domain: branding.custom_domain || '',
+        meta_title: branding.meta_title || "",
+        meta_description: branding.meta_description || "",
+        footer_text: branding.footer_text || "",
+        support_email: branding.support_email || "",
+        support_phone: branding.support_phone || "",
+        color_primario: branding.color_primario || "#3b82f6",
+        color_primario_foreground: branding.color_primario_foreground || "#ffffff",
+        color_secundario: branding.color_secundario || "#64748b",
+        color_acento: branding.color_acento || "#f59e0b",
+        color_sidebar: branding.color_sidebar || "#f8fafc",
+        color_sidebar_dark: branding.color_sidebar_dark || "#1e293b",
+        color_fondo: branding.color_fondo || "#ffffff",
+        color_fondo_dark: branding.color_fondo_dark || "#0f172a",
+        logo_light: branding.logo_light || "",
+        logo_dark: branding.logo_dark || "",
+        favicon: branding.favicon || "",
+        company_address: branding.company_address || "",
+        company_city: branding.company_city || "",
+        company_country: branding.company_country || "",
+        company_description: branding.company_description || "",
+        social_twitter: branding.social_twitter || "",
+        social_linkedin: branding.social_linkedin || "",
+        social_instagram: branding.social_instagram || "",
+        social_facebook: branding.social_facebook || "",
+        social_whatsapp: branding.social_whatsapp || "",
+        custom_css: branding.custom_css || "",
+        custom_domain: branding.custom_domain || "",
       });
     } else {
       setFormData({ ...defaultBranding, nombre_app: tenant.nombre });
@@ -140,28 +136,29 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
 
   const saveMutation = useMutation({
     mutationFn: async (data: BrandingFormData) => {
-      const { error } = await supabase
-        .from('tenant_branding')
-        .upsert({
+      const { error } = await supabase.from("tenant_branding").upsert(
+        {
           tenant_id: tenant.id,
           ...data,
-        }, { onConflict: 'tenant_id' });
+        },
+        { onConflict: "tenant_id" },
+      );
 
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tenant-branding', tenant.id] });
-      toast.success('Branding guardado correctamente');
+      queryClient.invalidateQueries({ queryKey: ["tenant-branding", tenant.id] });
+      toast.success("Branding guardado correctamente");
       onSuccess?.();
       onOpenChange(false);
     },
     onError: (error: Error) => {
-      toast.error('Error al guardar: ' + error.message);
+      toast.error("Error al guardar: " + error.message);
     },
   });
 
   const handleChange = (field: keyof BrandingFormData, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSave = () => {
@@ -207,7 +204,7 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                           <Label>Nombre de la Aplicación</Label>
                           <Input
                             value={formData.nombre_app}
-                            onChange={(e) => handleChange('nombre_app', e.target.value)}
+                            onChange={(e) => handleChange("nombre_app", e.target.value)}
                             placeholder="Mi Empresa"
                           />
                         </div>
@@ -215,7 +212,7 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                           <Label>Título SEO</Label>
                           <Input
                             value={formData.meta_title}
-                            onChange={(e) => handleChange('meta_title', e.target.value)}
+                            onChange={(e) => handleChange("meta_title", e.target.value)}
                             placeholder="Título para buscadores"
                           />
                         </div>
@@ -224,7 +221,7 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                         <Label>Descripción SEO</Label>
                         <Textarea
                           value={formData.meta_description}
-                          onChange={(e) => handleChange('meta_description', e.target.value)}
+                          onChange={(e) => handleChange("meta_description", e.target.value)}
                           placeholder="Descripción para buscadores"
                           rows={2}
                         />
@@ -235,7 +232,7 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                           <Input
                             type="email"
                             value={formData.support_email}
-                            onChange={(e) => handleChange('support_email', e.target.value)}
+                            onChange={(e) => handleChange("support_email", e.target.value)}
                             placeholder="soporte@empresa.com"
                           />
                         </div>
@@ -243,7 +240,7 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                           <Label>Teléfono de Soporte</Label>
                           <Input
                             value={formData.support_phone}
-                            onChange={(e) => handleChange('support_phone', e.target.value)}
+                            onChange={(e) => handleChange("support_phone", e.target.value)}
                             placeholder="+54 11 1234-5678"
                           />
                         </div>
@@ -252,8 +249,8 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                         <Label>Texto del Footer</Label>
                         <Input
                           value={formData.footer_text}
-                          onChange={(e) => handleChange('footer_text', e.target.value)}
-                          placeholder="© 2024 Mi Empresa. Todos los derechos reservados."
+                          onChange={(e) => handleChange("footer_text", e.target.value)}
+                          placeholder="© 2024 Geologistick. Todos los derechos reservados."
                         />
                       </div>
                     </CardContent>
@@ -267,9 +264,7 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                         <Palette className="h-4 w-4" />
                         Paleta de Colores
                       </CardTitle>
-                      <CardDescription>
-                        Personaliza los colores de la interfaz
-                      </CardDescription>
+                      <CardDescription>Personaliza los colores de la interfaz</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="grid grid-cols-2 gap-4">
@@ -279,12 +274,12 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                             <Input
                               type="color"
                               value={formData.color_primario}
-                              onChange={(e) => handleChange('color_primario', e.target.value)}
+                              onChange={(e) => handleChange("color_primario", e.target.value)}
                               className="w-14 h-10 p-1 cursor-pointer"
                             />
                             <Input
                               value={formData.color_primario}
-                              onChange={(e) => handleChange('color_primario', e.target.value)}
+                              onChange={(e) => handleChange("color_primario", e.target.value)}
                               className="flex-1"
                             />
                           </div>
@@ -295,12 +290,12 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                             <Input
                               type="color"
                               value={formData.color_primario_foreground}
-                              onChange={(e) => handleChange('color_primario_foreground', e.target.value)}
+                              onChange={(e) => handleChange("color_primario_foreground", e.target.value)}
                               className="w-14 h-10 p-1 cursor-pointer"
                             />
                             <Input
                               value={formData.color_primario_foreground}
-                              onChange={(e) => handleChange('color_primario_foreground', e.target.value)}
+                              onChange={(e) => handleChange("color_primario_foreground", e.target.value)}
                               className="flex-1"
                             />
                           </div>
@@ -313,12 +308,12 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                             <Input
                               type="color"
                               value={formData.color_secundario}
-                              onChange={(e) => handleChange('color_secundario', e.target.value)}
+                              onChange={(e) => handleChange("color_secundario", e.target.value)}
                               className="w-14 h-10 p-1 cursor-pointer"
                             />
                             <Input
                               value={formData.color_secundario}
-                              onChange={(e) => handleChange('color_secundario', e.target.value)}
+                              onChange={(e) => handleChange("color_secundario", e.target.value)}
                               className="flex-1"
                             />
                           </div>
@@ -329,12 +324,12 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                             <Input
                               type="color"
                               value={formData.color_acento}
-                              onChange={(e) => handleChange('color_acento', e.target.value)}
+                              onChange={(e) => handleChange("color_acento", e.target.value)}
                               className="w-14 h-10 p-1 cursor-pointer"
                             />
                             <Input
                               value={formData.color_acento}
-                              onChange={(e) => handleChange('color_acento', e.target.value)}
+                              onChange={(e) => handleChange("color_acento", e.target.value)}
                               className="flex-1"
                             />
                           </div>
@@ -347,12 +342,12 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                             <Input
                               type="color"
                               value={formData.color_sidebar}
-                              onChange={(e) => handleChange('color_sidebar', e.target.value)}
+                              onChange={(e) => handleChange("color_sidebar", e.target.value)}
                               className="w-14 h-10 p-1 cursor-pointer"
                             />
                             <Input
                               value={formData.color_sidebar}
-                              onChange={(e) => handleChange('color_sidebar', e.target.value)}
+                              onChange={(e) => handleChange("color_sidebar", e.target.value)}
                               className="flex-1"
                             />
                           </div>
@@ -363,12 +358,12 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                             <Input
                               type="color"
                               value={formData.color_sidebar_dark}
-                              onChange={(e) => handleChange('color_sidebar_dark', e.target.value)}
+                              onChange={(e) => handleChange("color_sidebar_dark", e.target.value)}
                               className="w-14 h-10 p-1 cursor-pointer"
                             />
                             <Input
                               value={formData.color_sidebar_dark}
-                              onChange={(e) => handleChange('color_sidebar_dark', e.target.value)}
+                              onChange={(e) => handleChange("color_sidebar_dark", e.target.value)}
                               className="flex-1"
                             />
                           </div>
@@ -417,15 +412,13 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                         <Image className="h-4 w-4" />
                         Logos e Imágenes
                       </CardTitle>
-                      <CardDescription>
-                        Sube el logo de la empresa en diferentes formatos
-                      </CardDescription>
+                      <CardDescription>Sube el logo de la empresa en diferentes formatos</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
                       <LogoUploader
                         label="Logo (Modo Claro)"
                         value={formData.logo_light}
-                        onChange={(url) => handleChange('logo_light', url)}
+                        onChange={(url) => handleChange("logo_light", url)}
                         tenantId={tenant.id}
                         fileType="logo-light"
                         helpText="Recomendado: PNG transparente, 200x60px"
@@ -433,7 +426,7 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                       <LogoUploader
                         label="Logo (Modo Oscuro)"
                         value={formData.logo_dark}
-                        onChange={(url) => handleChange('logo_dark', url)}
+                        onChange={(url) => handleChange("logo_dark", url)}
                         tenantId={tenant.id}
                         fileType="logo-dark"
                         helpText="Logo para usar sobre fondos oscuros"
@@ -441,7 +434,7 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                       <LogoUploader
                         label="Favicon"
                         value={formData.favicon}
-                        onChange={(url) => handleChange('favicon', url)}
+                        onChange={(url) => handleChange("favicon", url)}
                         tenantId={tenant.id}
                         fileType="favicon"
                         accept="image/png,image/x-icon,image/svg+xml"
@@ -464,7 +457,7 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                         <Label>Dirección</Label>
                         <Input
                           value={formData.company_address}
-                          onChange={(e) => handleChange('company_address', e.target.value)}
+                          onChange={(e) => handleChange("company_address", e.target.value)}
                           placeholder="Av. Principal 123"
                         />
                       </div>
@@ -473,7 +466,7 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                           <Label>Ciudad</Label>
                           <Input
                             value={formData.company_city}
-                            onChange={(e) => handleChange('company_city', e.target.value)}
+                            onChange={(e) => handleChange("company_city", e.target.value)}
                             placeholder="Buenos Aires"
                           />
                         </div>
@@ -481,7 +474,7 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                           <Label>País</Label>
                           <Input
                             value={formData.company_country}
-                            onChange={(e) => handleChange('company_country', e.target.value)}
+                            onChange={(e) => handleChange("company_country", e.target.value)}
                             placeholder="Argentina"
                           />
                         </div>
@@ -490,7 +483,7 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                         <Label>Descripción de la Empresa</Label>
                         <Textarea
                           value={formData.company_description}
-                          onChange={(e) => handleChange('company_description', e.target.value)}
+                          onChange={(e) => handleChange("company_description", e.target.value)}
                           placeholder="Breve descripción de la empresa..."
                           rows={3}
                         />
@@ -508,7 +501,7 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                           <Label>Facebook</Label>
                           <Input
                             value={formData.social_facebook}
-                            onChange={(e) => handleChange('social_facebook', e.target.value)}
+                            onChange={(e) => handleChange("social_facebook", e.target.value)}
                             placeholder="https://facebook.com/..."
                           />
                         </div>
@@ -516,7 +509,7 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                           <Label>Instagram</Label>
                           <Input
                             value={formData.social_instagram}
-                            onChange={(e) => handleChange('social_instagram', e.target.value)}
+                            onChange={(e) => handleChange("social_instagram", e.target.value)}
                             placeholder="https://instagram.com/..."
                           />
                         </div>
@@ -526,7 +519,7 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                           <Label>Twitter/X</Label>
                           <Input
                             value={formData.social_twitter}
-                            onChange={(e) => handleChange('social_twitter', e.target.value)}
+                            onChange={(e) => handleChange("social_twitter", e.target.value)}
                             placeholder="https://twitter.com/..."
                           />
                         </div>
@@ -534,7 +527,7 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                           <Label>LinkedIn</Label>
                           <Input
                             value={formData.social_linkedin}
-                            onChange={(e) => handleChange('social_linkedin', e.target.value)}
+                            onChange={(e) => handleChange("social_linkedin", e.target.value)}
                             placeholder="https://linkedin.com/..."
                           />
                         </div>
@@ -543,7 +536,7 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                         <Label>WhatsApp</Label>
                         <Input
                           value={formData.social_whatsapp}
-                          onChange={(e) => handleChange('social_whatsapp', e.target.value)}
+                          onChange={(e) => handleChange("social_whatsapp", e.target.value)}
                           placeholder="+54 9 11 1234-5678"
                         />
                       </div>
