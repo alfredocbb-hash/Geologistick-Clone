@@ -5,6 +5,46 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+async function notifyTenantAdmins(
+  serviceClient: any,
+  tenantId: string,
+  titulo: string,
+  mensaje: string,
+  tipo: string = 'partnership'
+) {
+  try {
+    // Get admin user_ids for this tenant
+    const { data: admins } = await serviceClient
+      .from('profiles')
+      .select('user_id, user_roles!inner(role)')
+      .eq('tenant_id', tenantId)
+      .in('user_roles.role', ['admin', 'super_admin'])
+
+    if (!admins || admins.length === 0) return
+
+    const notifications = admins.map((admin: any) => ({
+      user_id: admin.user_id,
+      titulo,
+      mensaje,
+      tipo,
+      leida: false,
+    }))
+
+    await serviceClient.from('notifications').insert(notifications)
+  } catch (e) {
+    console.error('Error sending partner notifications:', e)
+  }
+}
+
+async function getTenantName(serviceClient: any, tenantId: string): Promise<string> {
+  const { data } = await serviceClient
+    .from('tenants')
+    .select('nombre')
+    .eq('id', tenantId)
+    .single()
+  return data?.nombre || 'Empresa'
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -94,6 +134,16 @@ Deno.serve(async (req) => {
           tenant_id: tenantId,
         })
 
+        // Notify target tenant admins
+        const senderName = await getTenantName(serviceClient, tenantId)
+        await notifyTenantAdmins(
+          serviceClient,
+          target_tenant_id,
+          'Nueva solicitud de asociación',
+          `${senderName} quiere asociarse con tu empresa. Revisá la solicitud en Empresas Asociadas.`,
+          'partnership'
+        )
+
         return new Response(JSON.stringify({ partnership: data }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
       }
 
@@ -118,6 +168,19 @@ Deno.serve(async (req) => {
           created_by: userId,
           tenant_id: tenantId,
         })
+
+        // Notify the other tenant
+        const otherTenantId = data.tenant_a_id === tenantId ? data.tenant_b_id : data.tenant_a_id
+        const responderName = await getTenantName(serviceClient, tenantId)
+        await notifyTenantAdmins(
+          serviceClient,
+          otherTenantId,
+          accept ? 'Asociación aceptada' : 'Asociación rechazada',
+          accept
+            ? `${responderName} aceptó tu solicitud de asociación. Ya podés derivar envíos.`
+            : `${responderName} rechazó tu solicitud de asociación.`,
+          'partnership'
+        )
 
         return new Response(JSON.stringify({ partnership: data }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
       }
@@ -188,6 +251,16 @@ Deno.serve(async (req) => {
           created_by: userId,
           tenant_id: tenantId,
         })
+
+        // Notify target tenant
+        const deriverName = await getTenantName(serviceClient, tenantId)
+        await notifyTenantAdmins(
+          serviceClient,
+          target_tenant_id,
+          'Nuevo envío derivado',
+          `${deriverName} te derivó el envío ${envio.tracking_number}. Revisalo en Empresas Asociadas.`,
+          'partnership'
+        )
 
         return new Response(JSON.stringify({ partner_shipment: partnerShipment }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
       }
@@ -266,11 +339,29 @@ Deno.serve(async (req) => {
           tenant_id: tenantId,
         })
 
+        // Notify origin tenant
+        const accepterName = await getTenantName(serviceClient, tenantId)
+        await notifyTenantAdmins(
+          serviceClient,
+          ps.tenant_origen_id,
+          'Envío derivado aceptado',
+          `${accepterName} aceptó el envío ${meta.tracking_origen}. Tracking destino: ${newEnvio.tracking_number}.`,
+          'partnership'
+        )
+
         return new Response(JSON.stringify({ envio: newEnvio }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
       }
 
       case 'reject_shipment': {
         const { partner_shipment_id } = body
+
+        // Get data before updating
+        const { data: ps } = await serviceClient
+          .from('partner_shipments')
+          .select('partnership_id, tenant_origen_id, metadata')
+          .eq('id', partner_shipment_id)
+          .eq('tenant_destino_id', tenantId)
+          .single()
 
         const { error } = await serviceClient
           .from('partner_shipments')
@@ -279,13 +370,6 @@ Deno.serve(async (req) => {
           .eq('tenant_destino_id', tenantId)
 
         if (error) throw error
-
-        // Get partnership_id for logging
-        const { data: ps } = await serviceClient
-          .from('partner_shipments')
-          .select('partnership_id')
-          .eq('id', partner_shipment_id)
-          .single()
 
         if (ps) {
           await serviceClient.from('partner_events').insert({
@@ -296,6 +380,17 @@ Deno.serve(async (req) => {
             created_by: userId,
             tenant_id: tenantId,
           })
+
+          // Notify origin tenant
+          const rejecterName = await getTenantName(serviceClient, tenantId)
+          const meta = ps.metadata as any
+          await notifyTenantAdmins(
+            serviceClient,
+            ps.tenant_origen_id,
+            'Envío derivado rechazado',
+            `${rejecterName} rechazó el envío ${meta?.tracking_origen || ''}. Revisá alternativas en Empresas Asociadas.`,
+            'partnership'
+          )
         }
 
         return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
