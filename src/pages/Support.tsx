@@ -6,22 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { 
-  Mail, 
-  Phone, 
-  Clock, 
-  MessageCircle, 
-  HelpCircle, 
-  ChevronDown,
-  Send,
-  CheckCircle2
-} from "lucide-react";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
+import { Mail, Phone, Clock, MessageCircle, HelpCircle, ChevronDown, Send, CheckCircle2 } from "lucide-react";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { toast } from "sonner";
 
 const Support = () => {
@@ -29,7 +15,7 @@ const Support = () => {
     name: "",
     email: "",
     subject: "",
-    message: ""
+    message: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -37,14 +23,14 @@ const Support = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    
+
     // Simulate form submission
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
     setIsSubmitting(false);
     setIsSubmitted(true);
     toast.success("Mensaje enviado correctamente. Te responderemos pronto.");
-    
+
     // Reset form after a delay
     setTimeout(() => {
       setFormData({ name: "", email: "", subject: "", message: "" });
@@ -55,28 +41,34 @@ const Support = () => {
   const faqs = [
     {
       question: "¿Cómo puedo rastrear mi envío?",
-      answer: "Puedes rastrear tu envío ingresando el número de tracking en nuestra página de seguimiento. También recibirás actualizaciones automáticas por WhatsApp o email si el remitente ha proporcionado tus datos de contacto."
+      answer:
+        "Puedes rastrear tu envío ingresando el número de tracking en nuestra página de seguimiento. También recibirás actualizaciones automáticas por WhatsApp o email si el remitente ha proporcionado tus datos de contacto.",
     },
     {
       question: "¿Cómo conecto mi tienda de TiendaNube?",
-      answer: "Desde el panel de administración, ve a Configuración > Integraciones y haz clic en 'Conectar TiendaNube'. Serás redirigido a TiendaNube para autorizar la conexión. Una vez autorizado, tus pedidos se sincronizarán automáticamente."
+      answer:
+        "Desde el panel de administración, ve a Configuración > Integraciones y haz clic en 'Conectar TiendaNube'. Serás redirigido a TiendaNube para autorizar la conexión. Una vez autorizado, tus pedidos se sincronizarán automáticamente.",
     },
     {
       question: "¿Qué hago si mi paquete no llegó?",
-      answer: "Primero verifica el estado en la página de tracking. Si muestra 'Entregado' pero no lo recibiste, contacta inmediatamente a soporte con el número de tracking. Investigaremos el caso y te ayudaremos a resolverlo."
+      answer:
+        "Primero verifica el estado en la página de tracking. Si muestra 'Entregado' pero no lo recibiste, contacta inmediatamente a soporte con el número de tracking. Investigaremos el caso y te ayudaremos a resolverlo.",
     },
     {
       question: "¿Cuáles son los horarios de entrega?",
-      answer: "Los horarios de entrega son de lunes a viernes de 9:00 a 18:00, y sábados de 9:00 a 13:00. Para envíos especiales o entregas fuera de horario, consulta con tu empresa de logística."
+      answer:
+        "Los horarios de entrega son de lunes a viernes de 9:00 a 18:00, y sábados de 9:00 a 13:00. Para envíos especiales o entregas fuera de horario, consulta con tu empresa de logística.",
     },
     {
       question: "¿Cómo puedo cambiar la dirección de entrega?",
-      answer: "Si el envío aún no está en camino, puedes solicitar el cambio de dirección contactando al remitente o a soporte. Una vez que el paquete está en reparto, las modificaciones pueden no ser posibles."
+      answer:
+        "Si el envío aún no está en camino, puedes solicitar el cambio de dirección contactando al remitente o a soporte. Una vez que el paquete está en reparto, las modificaciones pueden no ser posibles.",
     },
     {
       question: "¿Qué métodos de pago aceptan?",
-      answer: "Aceptamos transferencia bancaria, MercadoPago, tarjetas de crédito/débito y efectivo contra entrega (según configuración del envío). Los métodos disponibles dependen de cada empresa de logística."
-    }
+      answer:
+        "Aceptamos transferencia bancaria, MercadoPago, tarjetas de crédito/débito y efectivo contra entrega (según configuración del envío). Los métodos disponibles dependen de cada empresa de logística.",
+    },
   ];
 
   return (
@@ -86,12 +78,10 @@ const Support = () => {
         <div className="container max-w-6xl mx-auto px-4">
           {/* Header */}
           <div className="text-center mb-12">
-            <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
-              Centro de Soporte
-            </h1>
+            <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-4">Centro de Soporte</h1>
             <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-              ¿Necesitas ayuda? Estamos aquí para asistirte. Consulta nuestras preguntas 
-              frecuentes o contáctanos directamente.
+              ¿Necesitas ayuda? Estamos aquí para asistirte. Consulta nuestras preguntas frecuentes o contáctanos
+              directamente.
             </p>
           </div>
 
@@ -103,15 +93,10 @@ const Support = () => {
                   <Mail className="h-6 w-6 text-primary" />
                 </div>
                 <h3 className="font-semibold text-foreground mb-2">Email</h3>
-                <a 
-                  href="mailto:soporte@geologistick.com" 
-                  className="text-primary hover:underline"
-                >
+                <a href="mailto:soporte@geologistick.com" className="text-primary hover:underline">
                   soporte@geologistick.com
                 </a>
-                <p className="text-muted-foreground text-sm mt-2">
-                  Respondemos en menos de 24 horas
-                </p>
+                <p className="text-muted-foreground text-sm mt-2">Respondemos en menos de 24 horas</p>
               </CardContent>
             </Card>
 
@@ -121,17 +106,15 @@ const Support = () => {
                   <MessageCircle className="h-6 w-6 text-primary" />
                 </div>
                 <h3 className="font-semibold text-foreground mb-2">WhatsApp</h3>
-                <a 
-                  href="https://wa.me/5491112345678" 
+                <a
+                  href="https://wa.me/5491151767139"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary hover:underline"
                 >
-                  +54 9 11 1234-5678
+                  +54 9 11 5176-7139
                 </a>
-                <p className="text-muted-foreground text-sm mt-2">
-                  Atención en tiempo real
-                </p>
+                <p className="text-muted-foreground text-sm mt-2">Atención en tiempo real</p>
               </CardContent>
             </Card>
 
@@ -142,9 +125,7 @@ const Support = () => {
                 </div>
                 <h3 className="font-semibold text-foreground mb-2">Horarios</h3>
                 <p className="text-foreground">Lun - Vie: 9:00 - 18:00</p>
-                <p className="text-muted-foreground text-sm mt-2">
-                  Sábados: 9:00 - 13:00
-                </p>
+                <p className="text-muted-foreground text-sm mt-2">Sábados: 9:00 - 13:00</p>
               </CardContent>
             </Card>
           </div>
@@ -162,12 +143,8 @@ const Support = () => {
                 {isSubmitted ? (
                   <div className="text-center py-8">
                     <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold text-foreground mb-2">
-                      ¡Mensaje Enviado!
-                    </h3>
-                    <p className="text-muted-foreground">
-                      Te responderemos lo antes posible.
-                    </p>
+                    <h3 className="text-lg font-semibold text-foreground mb-2">¡Mensaje Enviado!</h3>
+                    <p className="text-muted-foreground">Te responderemos lo antes posible.</p>
                   </div>
                 ) : (
                   <form onSubmit={handleSubmit} className="space-y-4">
@@ -245,12 +222,8 @@ const Support = () => {
                 <Accordion type="single" collapsible className="w-full">
                   {faqs.map((faq, index) => (
                     <AccordionItem key={index} value={`item-${index}`}>
-                      <AccordionTrigger className="text-left text-sm">
-                        {faq.question}
-                      </AccordionTrigger>
-                      <AccordionContent className="text-muted-foreground text-sm">
-                        {faq.answer}
-                      </AccordionContent>
+                      <AccordionTrigger className="text-left text-sm">{faq.question}</AccordionTrigger>
+                      <AccordionContent className="text-muted-foreground text-sm">{faq.answer}</AccordionContent>
                     </AccordionItem>
                   ))}
                 </Accordion>
