@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useAuth } from '@/lib/auth';
 import { useTenant } from '@/hooks/useTenant';
 import { useQuery } from '@tanstack/react-query';
@@ -5,14 +6,18 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Package, Truck, DollarSign, Users, TrendingUp, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Package, Truck, DollarSign, Users, TrendingUp, Clock, CheckCircle, AlertCircle, Bell } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { getTodayString } from '@/lib/dateUtils';
+import SendBranchNotificationDialog from '@/components/notifications/SendBranchNotificationDialog';
 
 export default function Dashboard() {
   const { profile, roles } = useAuth();
   const { tenantId } = useTenant();
+  const [notifDialogOpen, setNotifDialogOpen] = useState(false);
+  const isAdmin = roles.includes('admin') || roles.includes('super_admin');
 
   // Fetch real stats - v2 forces cache invalidation
   const { data: stats, isLoading: statsLoading } = useQuery({
@@ -164,9 +169,17 @@ export default function Dashboard() {
     <div className="space-y-8">
       {/* Welcome Section */}
       <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight">
-          ¡Hola, {profile?.nombre || 'Usuario'}! 👋
-        </h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold tracking-tight">
+            ¡Hola, {profile?.nombre || 'Usuario'}! 👋
+          </h1>
+          {isAdmin && (
+            <Button variant="outline" size="sm" onClick={() => setNotifDialogOpen(true)}>
+              <Bell className="h-4 w-4 mr-2" />
+              Enviar Notificación
+            </Button>
+          )}
+        </div>
         <p className="text-muted-foreground">
           Aquí está el resumen de tu operación logística de hoy.
         </p>
@@ -178,6 +191,8 @@ export default function Dashboard() {
           ))}
         </div>
       </div>
+
+      <SendBranchNotificationDialog open={notifDialogOpen} onOpenChange={setNotifDialogOpen} />
 
       {/* Stats Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
