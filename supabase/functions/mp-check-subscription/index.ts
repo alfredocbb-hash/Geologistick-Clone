@@ -119,6 +119,40 @@ serve(async (req) => {
       }
     }
 
+    // Fallback: manual subscription (assigned by Super Admin, no payment gateway)
+    if (existingSub && existingSub.status === 'active' && !existingSub.mercadopago_subscription_id && !existingSub.stripe_subscription_id) {
+      logStep("Found manual subscription (no gateway)", { subId: existingSub.id });
+
+      const isActive = existingSub.current_period_end
+        ? new Date(existingSub.current_period_end) > new Date()
+        : true;
+
+      const monthYear = new Date().toISOString().slice(0, 7);
+      const { data: usage } = await supabaseClient
+        .from("tenant_usage")
+        .select("*")
+        .eq("tenant_id", profile.tenant_id)
+        .eq("month_year", monthYear)
+        .single();
+
+      return new Response(JSON.stringify({
+        subscribed: isActive,
+        plan_name: existingSub.subscription_plans?.name,
+        subscription_end: existingSub.current_period_end,
+        cancel_at_period_end: false,
+        limits: {
+          max_users: existingSub.subscription_plans?.max_users,
+          max_branches: existingSub.subscription_plans?.max_branches,
+          max_shipments_month: existingSub.subscription_plans?.max_shipments_month,
+        },
+        usage: usage || { shipments_count: 0, users_count: 0, branches_count: 0 },
+        payment_method: "manual",
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
     // Fallback to Stripe if configured
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
     if (stripeKey && existingSub?.stripe_subscription_id) {
