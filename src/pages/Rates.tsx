@@ -106,6 +106,9 @@ interface TarifaConcepto {
   activo: boolean;
   orden: number;
   es_basico: boolean;
+  monto_editable?: boolean;
+  tenant_id?: string | null;
+  tenant?: { id: string; nombre: string } | null;
 }
 
 interface TarifaConceptoPrecio {
@@ -168,6 +171,7 @@ export default function Rates() {
     activo: true,
     orden: 0,
     es_basico: true,
+    monto_editable: false,
   });
 
   const [conceptPrices, setConceptPrices] = useState<Record<string, { monto: string; es_porcentaje: boolean; porcentaje: string; multiplicar_por_bultos: boolean }>>({});
@@ -209,17 +213,18 @@ export default function Rates() {
     },
   });
 
-  // Fetch conceptos (filtered by tenant)
+  // Fetch conceptos (filtered by tenant, super admin sees all)
   const userTenantId = (profile as any)?.tenant_id;
   const { data: conceptos = [] } = useQuery({
-    queryKey: ['tarifa_conceptos', userTenantId],
+    queryKey: ['tarifa_conceptos', userTenantId, isSuperAdmin()],
     queryFn: async () => {
       let query = supabase
         .from('tarifa_conceptos')
-        .select('*')
+        .select('*, tenant:tenants(id, nombre)')
         .order('orden');
       
-      if (userTenantId) {
+      // Super admin sees ALL concepts across tenants
+      if (!isSuperAdmin() && userTenantId) {
         query = query.or(`tenant_id.eq.${userTenantId},tenant_id.is.null`);
       }
       
@@ -361,6 +366,7 @@ export default function Rates() {
         activo: data.activo,
         orden: data.orden,
         es_basico: data.es_basico,
+        monto_editable: data.monto_editable,
       };
 
       if (editingConcept) {
@@ -593,6 +599,7 @@ export default function Rates() {
       activo: true,
       orden: conceptos.length,
       es_basico: true,
+      monto_editable: false,
     });
     setEditingConcept(null);
   };
@@ -652,6 +659,7 @@ export default function Rates() {
       activo: concept.activo,
       orden: concept.orden,
       es_basico: concept.es_basico ?? true,
+      monto_editable: (concept as any).monto_editable ?? false,
     });
     setIsConceptDialogOpen(true);
   };
@@ -1514,7 +1522,7 @@ export default function Rates() {
                   </div>
 
                   {/* Basic/Additional toggle */}
-                  <div className="border-t pt-4">
+                  <div className="border-t pt-4 space-y-4">
                     <div className="flex items-center justify-between">
                       <div>
                         <Label htmlFor="concept_basico">Concepto Básico</Label>
@@ -1529,6 +1537,21 @@ export default function Rates() {
                         checked={conceptFormData.es_basico}
                         onCheckedChange={(checked) =>
                           setConceptFormData({ ...conceptFormData, es_basico: checked })
+                        }
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label htmlFor="concept_monto_editable">Importe editable</Label>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          El operador ingresa un monto libre al crear el envío
+                        </p>
+                      </div>
+                      <Switch
+                        id="concept_monto_editable"
+                        checked={conceptFormData.monto_editable}
+                        onCheckedChange={(checked) =>
+                          setConceptFormData({ ...conceptFormData, monto_editable: checked })
                         }
                       />
                     </div>
@@ -1590,12 +1613,24 @@ export default function Rates() {
                           </code>
                         </TableCell>
                         <TableCell>
-                          <Badge
-                            variant={concepto.es_basico ? 'default' : 'outline'}
-                            className={concepto.es_basico ? 'bg-primary/10 text-primary' : 'border-warning text-warning'}
-                          >
-                            {concepto.es_basico ? 'Básico' : 'Adicional'}
-                          </Badge>
+                          <div className="flex items-center gap-1.5">
+                            <Badge
+                              variant={concepto.es_basico ? 'default' : 'outline'}
+                              className={concepto.es_basico ? 'bg-primary/10 text-primary' : 'border-warning text-warning'}
+                            >
+                              {concepto.es_basico ? 'Básico' : 'Adicional'}
+                            </Badge>
+                            {(concepto as any).monto_editable && (
+                              <Badge variant="outline" className="text-xs">
+                                $ Libre
+                              </Badge>
+                            )}
+                            {isSuperAdmin() && (concepto as any).tenant && (
+                              <Badge variant="secondary" className="text-xs">
+                                {(concepto as any).tenant.nombre}
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="text-muted-foreground">
                           {concepto.descripcion || '-'}

@@ -35,6 +35,7 @@ interface TarifaConcepto {
   codigo: string;
   es_basico?: boolean | null;
   activo?: boolean | null;
+  monto_editable?: boolean | null;
 }
 
 interface TarifaConceptoPrecio {
@@ -272,6 +273,8 @@ export default function NewShipment() {
   
   // State for selected additional concepts
   const [conceptosSeleccionados, setConceptosSeleccionados] = useState<Set<string>>(new Set());
+  // State for editable concept amounts (monto_editable)
+  const [montosEditables, setMontosEditables] = useState<Record<string, string>>({});
   // Derived states
   const esRetiroAlmacenaje = tipoServicioDetalle === 'retiro_almacenaje';
   const tieneRetiro = tipoServicioDetalle === 'puerta_sucursal' || tipoServicioDetalle === 'puerta_puerta' || esRetiroAlmacenaje;
@@ -345,7 +348,7 @@ export default function NewShipment() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('tarifa_conceptos')
-        .select('id, nombre, codigo, es_basico, activo')
+        .select('id, nombre, codigo, es_basico, activo, monto_editable')
         .eq('activo', true)
         .order('orden');
       if (error) throw error;
@@ -426,7 +429,7 @@ export default function NewShipment() {
       if (!formData.tarifa_id) return [];
       const { data, error } = await supabase
         .from('tarifa_concepto_precios')
-        .select('*, concepto:tarifa_conceptos(id, nombre, codigo, es_basico, activo)')
+        .select('*, concepto:tarifa_conceptos(id, nombre, codigo, es_basico, activo, monto_editable)')
         .eq('tarifa_id', formData.tarifa_id);
       if (error) throw error;
       return data as (TarifaConceptoPrecio & { es_porcentaje?: boolean; porcentaje?: number })[];
@@ -601,7 +604,10 @@ export default function NewShipment() {
       .filter(cp => conceptosSeleccionados.has(cp.concepto_id))
       .reduce((sum, cp) => {
         let montoConcepto = 0;
-        if (cp.es_porcentaje && cp.porcentaje) {
+        // If concept is monto_editable, use the operator-entered value
+        if (cp.concepto?.monto_editable && montosEditables[cp.concepto_id]) {
+          montoConcepto = parseFloat(montosEditables[cp.concepto_id]) || 0;
+        } else if (cp.es_porcentaje && cp.porcentaje) {
           montoConcepto = valorDeclarado * Number(cp.porcentaje) / 100;
         } else {
           montoConcepto = Number(cp.monto);
@@ -611,7 +617,7 @@ export default function NewShipment() {
         }
         return sum + montoConcepto;
       }, 0);
-  }, [conceptosAdicionales, conceptosSeleccionados, formData.valor_declarado, formData.cantidad_bultos, configSeguro]);
+  }, [conceptosAdicionales, conceptosSeleccionados, formData.valor_declarado, formData.cantidad_bultos, configSeguro, montosEditables]);
 
   // Calcular flete base con descripción detallada
   const { fleteCalculado, fleteDescripcion, metodoAplicado, multiplicadoPorBultos } = useMemo(() => {
@@ -1060,7 +1066,10 @@ export default function NewShipment() {
         }
         
         let montoConcepto = 0;
-        if (cp.es_porcentaje && cp.porcentaje) {
+        // Use operator-entered amount for editable concepts
+        if (cp.concepto?.monto_editable && montosEditables[cp.concepto_id]) {
+          montoConcepto = parseFloat(montosEditables[cp.concepto_id]) || 0;
+        } else if (cp.es_porcentaje && cp.porcentaje) {
           // Calculate percentage-based amount from declared value
           montoConcepto = valorDeclaradoReal * Number(cp.porcentaje) / 100;
         } else {
@@ -2364,11 +2373,27 @@ export default function NewShipment() {
                           {cp.concepto?.nombre}
                         </Label>
                       </div>
-                      <Badge variant="outline" className="bg-background">
-                        {cp.es_porcentaje && cp.porcentaje 
-                          ? `${cp.porcentaje}%` 
-                          : formatCurrency(cp.monto)}
-                      </Badge>
+                      {cp.concepto?.monto_editable ? (
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="Importe"
+                          className="w-28 h-8 text-sm"
+                          value={montosEditables[cp.concepto_id] || ''}
+                          onChange={(e) => setMontosEditables(prev => ({
+                            ...prev,
+                            [cp.concepto_id]: e.target.value,
+                          }))}
+                          disabled={!conceptosSeleccionados.has(cp.concepto_id)}
+                        />
+                      ) : (
+                        <Badge variant="outline" className="bg-background">
+                          {cp.es_porcentaje && cp.porcentaje 
+                            ? `${cp.porcentaje}%` 
+                            : formatCurrency(cp.monto)}
+                        </Badge>
+                      )}
                     </div>
                   ))}
                 </div>
