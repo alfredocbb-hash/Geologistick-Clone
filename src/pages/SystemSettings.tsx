@@ -3,12 +3,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { DollarSign, Download, FileText, Info, Loader2, MessageCircle, Scale, Settings, ShoppingCart, Truck } from "lucide-react";
+import { DollarSign, Download, FileText, Info, Loader2, MessageCircle, Scale, Settings, Shield, ShoppingCart, Truck } from "lucide-react";
 import { generateUserGuidePDF } from "@/lib/generateUserGuidePDF";
 import { generateEcommerceGuidePDF } from "@/lib/generateEcommerceGuidePDF";
 import { generateRatesGuidePDF } from "@/lib/generateRatesGuidePDF";
 import { generateFlexGuidePDF } from "@/lib/generateFlexGuidePDF";
 import { generateFlexTermsPDF } from "@/lib/generateFlexTermsPDF";
+import { generateSuperAdminGuidePDF } from "@/lib/generateSuperAdminGuidePDF";
 import { useTenantContext } from "@/components/providers/TenantProvider";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
@@ -19,9 +20,10 @@ const SystemSettings = () => {
   const [isGeneratingRatesPDF, setIsGeneratingRatesPDF] = useState(false);
   const [isGeneratingFlexPDF, setIsGeneratingFlexPDF] = useState(false);
   const [isGeneratingFlexTermsPDF, setIsGeneratingFlexTermsPDF] = useState(false);
+  const [isGeneratingSuperAdminPDF, setIsGeneratingSuperAdminPDF] = useState(false);
   const { tenant, branding } = useTenantContext();
   const { toast } = useToast();
-  const { isAdmin } = useAuth();
+  const { isAdmin, isSuperAdmin } = useAuth();
   const showFlexCards = isAdmin() && tenant?.ecommerce_enabled === true;
 
   const handleDownloadGuide = async () => {
@@ -481,6 +483,80 @@ const SystemSettings = () => {
           </CardContent>
         </Card>
         </>)}
+        {/* Super Admin Guide */}
+        {isSuperAdmin() && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Shield className="h-5 w-5" />
+                Guía de Super Administrador
+              </CardTitle>
+              <CardDescription>
+                Manual de gestión del sistema
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-start gap-4 p-4 rounded-lg border bg-card">
+                <div className="p-3 rounded-lg bg-purple-500/10">
+                  <Shield className="h-6 w-6 text-purple-600" />
+                </div>
+                <div className="flex-1 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold">Panel de Control</h3>
+                    <Badge variant="secondary">PDF</Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Guía completa para la administración central del sistema.
+                  </p>
+                  <ul className="text-xs text-muted-foreground space-y-1 mt-2">
+                    <li>• Gestión de tenants y usuarios</li>
+                    <li>• Branding, permisos y API Keys</li>
+                    <li>• Planes, suscripciones y federación</li>
+                    <li>• Solicitudes de trial</li>
+                  </ul>
+                </div>
+              </div>
+              
+              <Button 
+                onClick={async () => {
+                  setIsGeneratingSuperAdminPDF(true);
+                  try {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    await generateSuperAdminGuidePDF();
+                    toast({
+                      title: "PDF generado",
+                      description: "La guía de Super Administrador se ha descargado correctamente.",
+                    });
+                  } catch (error) {
+                    toast({
+                      title: "Error",
+                      description: "No se pudo generar el PDF. Intente nuevamente.",
+                      variant: "destructive",
+                    });
+                  } finally {
+                    setIsGeneratingSuperAdminPDF(false);
+                  }
+                }}
+                className="w-full"
+                variant="outline"
+                disabled={isGeneratingSuperAdminPDF}
+              >
+                {isGeneratingSuperAdminPDF ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Generando PDF...
+                  </>
+                ) : (
+                  <>
+                    <Download className="mr-2 h-4 w-4" />
+                    Descargar Guía Super Admin
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         {/* System Info */}
         <Card>
           <CardHeader>
