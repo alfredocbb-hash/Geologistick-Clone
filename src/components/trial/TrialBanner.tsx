@@ -25,12 +25,12 @@ export function TrialBanner() {
                 <AlertTriangle className="h-4 w-4 text-destructive" />
               </div>
               <div>
-                <p className="text-sm font-medium text-destructive">Tu suscripción ha vencido</p>
-                <p className="text-xs text-destructive/80">Renueva tu plan para seguir usando todas las funcionalidades</p>
+               <p className="text-sm font-medium text-destructive">Tu suscripción ha vencido</p>
+                <p className="text-xs text-destructive/80">Contacta a soporte para informar tu pago</p>
               </div>
             </div>
             <Button asChild size="sm" variant="destructive">
-              <Link to="/subscription">Renovar Plan</Link>
+              <Link to="/support">Contactar Soporte</Link>
             </Button>
           </div>
         </div>
@@ -49,13 +49,13 @@ export function TrialBanner() {
                 Tu suscripción vence en {subDaysRemaining} {subDaysRemaining === 1 ? "día" : "días"}
               </p>
               <p className="text-xs text-amber-600/80 dark:text-amber-500">
-                Renueva a tiempo para no perder acceso
+                Contacta a soporte para gestionar tu renovación
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Button asChild size="sm" className="bg-amber-600 hover:bg-amber-700">
-              <Link to="/subscription">Renovar</Link>
+              <Link to="/support">Contactar Soporte</Link>
             </Button>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setDismissed(true)}>
               <X className="h-4 w-4" />
@@ -80,11 +80,11 @@ export function TrialBanner() {
             </div>
             <div>
               <p className="text-sm font-medium text-destructive">Tu período de prueba ha expirado</p>
-              <p className="text-xs text-destructive/80">Suscríbete para seguir usando todas las funcionalidades</p>
+                <p className="text-xs text-destructive/80">Contacta a soporte para activar tu plan</p>
+              </div>
             </div>
-          </div>
-          <Button asChild size="sm" variant="destructive">
-            <Link to="/subscription">Ver Planes</Link>
+            <Button asChild size="sm" variant="destructive">
+              <Link to="/support">Contactar Soporte</Link>
           </Button>
         </div>
       </div>
@@ -108,13 +108,13 @@ export function TrialBanner() {
                   : `Período de prueba: ${trialDaysRemaining} días restantes`}
               </p>
               <p className={`text-xs ${isUrgent ? "text-amber-600/80 dark:text-amber-500" : "text-muted-foreground"}`}>
-                {isUrgent ? "Suscríbete ahora para no perder acceso" : "Explora todas las funcionalidades sin límites"}
+                {isUrgent ? "Contacta a soporte para activar tu plan" : "Explora todas las funcionalidades sin límites"}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Button asChild size="sm" variant={isUrgent ? "default" : "outline"} className={isUrgent ? "bg-amber-600 hover:bg-amber-700" : ""}>
-              <Link to="/subscription">Ver Planes</Link>
+              <Link to="/support">Contactar Soporte</Link>
             </Button>
             {!isUrgent && (
               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setDismissed(true)}>
