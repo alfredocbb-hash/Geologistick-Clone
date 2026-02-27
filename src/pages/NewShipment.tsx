@@ -346,11 +346,16 @@ export default function NewShipment() {
   const { data: conceptos = [] } = useQuery({
     queryKey: ['tarifa_conceptos'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('tarifa_conceptos')
         .select('id, nombre, codigo, es_basico, activo, monto_editable')
         .eq('activo', true)
         .order('orden');
+      // Filtrar por tenant del usuario + conceptos globales
+      if (profile?.tenant_id) {
+        query = query.or(`tenant_id.eq.${profile.tenant_id},tenant_id.is.null`);
+      }
+      const { data, error } = await query;
       if (error) throw error;
       return data as TarifaConcepto[];
     },

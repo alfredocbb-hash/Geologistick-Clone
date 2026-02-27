@@ -398,9 +398,13 @@ export default function Rates() {
           .eq('id', editingConcept.id);
         if (error) throw error;
       } else {
+        // Si es super admin, usar el tenant del filtro activo; si no, usar el del perfil
+        const targetTenantId = isSuperAdmin() && conceptoTenantFilter !== 'all' && conceptoTenantFilter !== 'global'
+          ? conceptoTenantFilter
+          : profile?.tenant_id;
         const { error } = await supabase.from('tarifa_conceptos').insert({
           ...conceptData,
-          tenant_id: profile?.tenant_id,
+          tenant_id: targetTenantId || null,
         });
         if (error) throw error;
       }
