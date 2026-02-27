@@ -1,63 +1,50 @@
 
 
-# Fix: Error al guardar concepto con precio $0 en tarifa de otro tenant
+# Fix: Conceptos de otros tenants + Resumen de precio no refleja importe editable
 
-## Problema
+## Problema 1: Conceptos de otros tenants visibles
 
-El trigger `validate_concepto_tenant` en la tabla `tarifa_concepto_precios` compara estrictamente el `tenant_id` del concepto con el de la tarifa. Cuando el super admin (que pertenece a un tenant diferente, ej: su propio tenant) crea un concepto y quiere asignarle un precio en una tarifa de Beraexpress (otro tenant), el trigger rechaza la operacion porque los tenant_id no coinciden.
+Siendo super admin, la vista de conceptos muestra TODOS los conceptos de todos los tenants. Esto es confuso porque se mezclan conceptos de diferentes empresas. La solucion es filtrar los conceptos segun el tenant de la tarifa seleccionada cuando se esta en la vista de precios por concepto, y en la tabla general mostrar claramente a que tenant pertenece cada concepto para evitar confusion.
 
-Tambien falla cuando el concepto tiene `tenant_id = NULL` (concepto global), ya que `NULL IS DISTINCT FROM uuid` siempre es `true`.
+**Cambio**: En `Rates.tsx`, la tabla de conceptos ya muestra el badge del tenant. Para evitar confusion, se agregara un filtro por tenant en la tabla de conceptos cuando hay un tenant seleccionado/visible, para que el super admin pueda filtrar por empresa.
 
-## Solucion
+## Problema 2: Resumen de precio muestra $0 para conceptos editables
 
-Modificar la funcion `validate_concepto_tenant` para:
+El calculo del total SI usa el valor ingresado en el input (linea 608 de `NewShipment.tsx`), pero la seccion "Resumen de Precio" (lineas 2474-2510) NO lo usa. La linea 2482-2484 calcula el monto con `Number(cp.monto)` (que es 0 para conceptos editables) en lugar de usar `montosEditables[cp.concepto_id]`.
 
-1. Si el concepto tiene `tenant_id = NULL` (concepto global), permitir la asociacion con cualquier tarifa
-2. Si el usuario actual es super admin, permitir la operacion sin restriccion de tenant
-3. Solo aplicar la validacion estricta para usuarios normales
+**Cambio**: En la seccion de Resumen de Precio, para conceptos adicionales con `monto_editable`, usar el valor de `montosEditables` en lugar de `cp.monto`.
 
-## Cambio en base de datos
-
-Una sola migracion que reemplaza la funcion del trigger:
-
-```sql
-CREATE OR REPLACE FUNCTION public.validate_concepto_tenant()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
-DECLARE
-  v_concepto_tenant_id UUID;
-  v_tarifa_tenant_id UUID;
-BEGIN
-  SELECT tenant_id INTO v_concepto_tenant_id FROM tarifa_conceptos WHERE id = NEW.concepto_id;
-  SELECT tenant_id INTO v_tarifa_tenant_id FROM tarifas WHERE id = NEW.tarifa_id;
-  
-  -- Permitir conceptos globales (sin tenant) en cualquier tarifa
-  IF v_concepto_tenant_id IS NULL THEN
-    RETURN NEW;
-  END IF;
-  
-  -- Permitir si el usuario es super admin
-  IF public.current_user_is_super_admin() THEN
-    RETURN NEW;
-  END IF;
-  
-  -- Validacion normal: deben coincidir los tenants
-  IF v_concepto_tenant_id IS DISTINCT FROM v_tarifa_tenant_id THEN
-    RAISE EXCEPTION 'El concepto (tenant %) no pertenece al mismo tenant que la tarifa (tenant %)',
-      v_concepto_tenant_id, v_tarifa_tenant_id;
-  END IF;
-  
-  RETURN NEW;
-END;
-$$;
-```
-
-No se requieren cambios en el frontend. Solo esta migracion resuelve el error.
+## Archivos a modificar
 
 | Archivo | Cambio |
 |---|---|
-| Migracion SQL | Actualizar funcion `validate_concepto_tenant` para permitir NULL y bypass para super admins |
+| `src/pages/NewShipment.tsx` | En el Resumen de Precio (lineas 2474-2510), usar `montosEditables[cp.concepto_id]` cuando el concepto es editable |
+| `src/pages/Rates.tsx` | Agregar filtro por tenant en la tabla de conceptos para que el super admin pueda ver solo los de un tenant especifico |
+
+## Detalle tecnico
+
+### NewShipment.tsx - Resumen de Precio (lineas ~2482-2484)
+
+Antes:
+```typescript
+let calculatedAmount = isPercentage 
+  ? valorDeclarado * Number(cp.porcentaje) / 100 
+  : Number(cp.monto);
+```
+
+Despues:
+```typescript
+let calculatedAmount = 0;
+if (cp.concepto?.monto_editable && montosEditables[cp.concepto_id]) {
+  calculatedAmount = parseFloat(montosEditables[cp.concepto_id]) || 0;
+} else if (isPercentage) {
+  calculatedAmount = valorDeclarado * Number(cp.porcentaje) / 100;
+} else {
+  calculatedAmount = Number(cp.monto);
+}
+```
+
+### Rates.tsx - Filtro de conceptos por tenant
+
+Agregar un selector/filtro de tenant en la seccion de conceptos para que el super admin pueda ver solo los conceptos de una empresa especifica, en lugar de ver todos mezclados.
 
