@@ -59,14 +59,8 @@ serve(async (req) => {
 
     // If we have a Mercado Pago subscription, verify it
     if (existingSub?.mercadopago_subscription_id) {
-      // Get MP credentials
-      const { data: mpConfig } = await supabaseClient
-        .from("system_integrations")
-        .select("key, value")
-        .eq("tenant_id", profile.tenant_id)
-        .eq("type", "mercado_pago");
-
-      const accessToken = mpConfig?.find(c => c.key === "access_token")?.value;
+      // Use platform-level MP access token
+      const accessToken = Deno.env.get("MP_SUBSCRIPTION_ACCESS_TOKEN");
       
       if (accessToken) {
         try {
@@ -128,7 +122,6 @@ serve(async (req) => {
     // Fallback to Stripe if configured
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
     if (stripeKey && existingSub?.stripe_subscription_id) {
-      // Import Stripe dynamically
       const Stripe = (await import("https://esm.sh/stripe@14.21.0")).default;
       const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
       
@@ -136,7 +129,6 @@ serve(async (req) => {
         const subscription = await stripe.subscriptions.retrieve(existingSub.stripe_subscription_id);
         const isActive = ["active", "trialing"].includes(subscription.status);
 
-        // Get current month usage
         const monthYear = new Date().toISOString().slice(0, 7);
         const { data: usage } = await supabaseClient
           .from("tenant_usage")
