@@ -14,16 +14,22 @@ interface Location {
 
 interface UseGeolocationOptions {
   enabled?: boolean;
-  updateInterval?: number; // milliseconds
+  updateInterval?: number;
   enableHighAccuracy?: boolean;
-  activeRouteId?: string | null; // ID de ruta planificada activa
-  activeHojaRutaId?: string | null; // ID de hoja de ruta activa
-  movementThreshold?: number; // meters - force update if moved more than this
+  activeRouteId?: string | null;
+  activeHojaRutaId?: string | null;
+  movementThreshold?: number;
 }
+
+const MAX_ACCURACY_FOR_HISTORY = 50; // meters - discard imprecise points
+const ACTIVE_ROUTE_INTERVAL = 10000; // 10s when route active
+const DEFAULT_INTERVAL = 15000; // 15s default
+const MIN_MOVEMENT_ACTIVE = 3; // 3m minimum movement with active route
+const MIN_MOVEMENT_DEFAULT = 5; // 5m minimum movement default
 
 // Calculate distance between two coordinates in meters (Haversine formula)
 function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371000; // Earth's radius in meters
+  const R = 6371000;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLng = (lng2 - lng1) * Math.PI / 180;
   const a = 
@@ -37,12 +43,18 @@ function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: numbe
 export function useGeolocation(options: UseGeolocationOptions = {}) {
   const { 
     enabled = false, 
-    updateInterval = 15000, // 15 seconds default (improved from 30s)
+    updateInterval, 
     enableHighAccuracy = true,
     activeRouteId = null,
     activeHojaRutaId = null,
-    movementThreshold = 50, // 50 meters default
+    movementThreshold = 50,
   } = options;
+  
+  const hasActiveRoute = !!(activeRouteId || activeHojaRutaId);
+  
+  // Dynamic interval: 10s with active route, 15s otherwise
+  const effectiveInterval = updateInterval ?? (hasActiveRoute ? ACTIVE_ROUTE_INTERVAL : DEFAULT_INTERVAL);
+  const minMovement = hasActiveRoute ? MIN_MOVEMENT_ACTIVE : MIN_MOVEMENT_DEFAULT;
   
   const { user, profile } = useAuth();
   const [location, setLocation] = useState<Location | null>(null);
@@ -59,7 +71,7 @@ export function useGeolocation(options: UseGeolocationOptions = {}) {
     if (!user?.id) return;
 
     try {
-      // Update current location
+      // Always update current location (even if imprecise - useful for "last seen")
       const { error: upsertError } = await supabase
         .from('driver_locations')
         .upsert({
@@ -76,10 +88,12 @@ export function useGeolocation(options: UseGeolocationOptions = {}) {
         console.error('Error updating location:', upsertError);
       }
 
-      // Improved history recording logic:
-      // - Save every 15 seconds when moving
-      // - Force save immediately if moved more than threshold
-      // - Skip if stationary (avoid duplicates)
+      // FILTER: Do NOT save to history if accuracy > 50m
+      if (loc.accuracy > MAX_ACCURACY_FOR_HISTORY) {
+        console.log(`Skipping history: accuracy ${loc.accuracy.toFixed(0)}m > ${MAX_ACCURACY_FOR_HISTORY}m`);
+        return;
+      }
+
       const now = Date.now();
       const timeSinceLastHistory = now - lastHistoryUpdateRef.current;
       const lastSaved = lastSavedLocationRef.current;
@@ -96,8 +110,8 @@ export function useGeolocation(options: UseGeolocationOptions = {}) {
         shouldSaveHistory = true;
         console.log(`Movement detected: ${distanceMoved.toFixed(1)}m - forcing history save`);
       }
-      // Regular interval save (15 seconds) but only if we've moved at least 5 meters
-      else if (timeSinceLastHistory >= 15000 && distanceMoved >= 5) {
+      // Regular interval save but only if we've moved at least minMovement
+      else if (timeSinceLastHistory >= effectiveInterval && distanceMoved >= minMovement) {
         shouldSaveHistory = true;
       }
       // First point always saved
@@ -126,13 +140,13 @@ export function useGeolocation(options: UseGeolocationOptions = {}) {
         if (historyError) {
           console.error('Error saving location history:', historyError);
         } else if (distanceMoved > 0) {
-          console.log(`Location history saved (moved ${distanceMoved.toFixed(1)}m)`);
+          console.log(`Location history saved (moved ${distanceMoved.toFixed(1)}m, accuracy ${loc.accuracy.toFixed(0)}m)`);
         }
       }
     } catch (err) {
       console.error('Error saving location:', err);
     }
-  }, [user?.id, profile?.tenant_id, activeRouteId, activeHojaRutaId, movementThreshold]);
+  }, [user?.id, profile?.tenant_id, activeRouteId, activeHojaRutaId, movementThreshold, effectiveInterval, minMovement]);
 
   // Handle position update (native)
   const handleNativePositionUpdate = useCallback((position: Position | null) => {
@@ -149,13 +163,12 @@ export function useGeolocation(options: UseGeolocationOptions = {}) {
     setLocation(newLocation);
     setError(null);
 
-    // Only update to Supabase if enough time has passed
     const now = Date.now();
-    if (now - lastUpdateRef.current >= updateInterval) {
+    if (now - lastUpdateRef.current >= effectiveInterval) {
       lastUpdateRef.current = now;
       updateLocationToSupabase(newLocation);
     }
-  }, [updateInterval, updateLocationToSupabase]);
+  }, [effectiveInterval, updateLocationToSupabase]);
 
   // Handle position update (web)
   const handleWebPositionUpdate = useCallback((position: GeolocationPosition) => {
@@ -170,25 +183,24 @@ export function useGeolocation(options: UseGeolocationOptions = {}) {
     setLocation(newLocation);
     setError(null);
 
-    // Only update to Supabase if enough time has passed
     const now = Date.now();
-    if (now - lastUpdateRef.current >= updateInterval) {
+    if (now - lastUpdateRef.current >= effectiveInterval) {
       lastUpdateRef.current = now;
       updateLocationToSupabase(newLocation);
     }
-  }, [updateInterval, updateLocationToSupabase]);
+  }, [effectiveInterval, updateLocationToSupabase]);
 
   // Handle position error
   const handlePositionError = useCallback((err: GeolocationPositionError | any) => {
     const code = err?.code || 0;
     switch (code) {
-      case 1: // PERMISSION_DENIED
+      case 1:
         setError('Permiso de ubicación denegado');
         break;
-      case 2: // POSITION_UNAVAILABLE
+      case 2:
         setError('Ubicación no disponible');
         break;
-      case 3: // TIMEOUT
+      case 3:
         setError('Tiempo de espera agotado');
         break;
       default:
@@ -199,7 +211,6 @@ export function useGeolocation(options: UseGeolocationOptions = {}) {
   // Start tracking (native)
   const startNativeTracking = useCallback(async () => {
     try {
-      // Request permissions first
       const permStatus = await Geolocation.requestPermissions();
       
       if (permStatus.location !== 'granted') {
@@ -209,14 +220,12 @@ export function useGeolocation(options: UseGeolocationOptions = {}) {
 
       setIsTracking(true);
       
-      // Get initial position
       const position = await Geolocation.getCurrentPosition({
         enableHighAccuracy,
         timeout: 10000,
       });
       handleNativePositionUpdate(position);
 
-      // Watch position
       const watchId = await Geolocation.watchPosition(
         { enableHighAccuracy },
         (position, err) => {
@@ -244,14 +253,12 @@ export function useGeolocation(options: UseGeolocationOptions = {}) {
 
     setIsTracking(true);
     
-    // Get initial position
     navigator.geolocation.getCurrentPosition(
       handleWebPositionUpdate,
       handlePositionError,
       { enableHighAccuracy, timeout: 10000, maximumAge: 0 }
     );
 
-    // Watch position
     watchIdRef.current = navigator.geolocation.watchPosition(
       handleWebPositionUpdate,
       handlePositionError,

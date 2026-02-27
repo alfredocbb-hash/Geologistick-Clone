@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Building2, Package, Truck, RefreshCw, AlertCircle, Navigation, User, Clock, MapPin, Route, Eye, EyeOff, X } from "lucide-react";
+import { Building2, Package, Truck, RefreshCw, AlertCircle, Navigation, User, Clock, MapPin, Route, Eye, EyeOff, X, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import MapView from "@/components/maps/MapView";
 import { RouteStatsPanel } from "@/components/maps/RouteStatsPanel";
@@ -308,19 +308,25 @@ export default function LiveMap() {
     try {
       const { data: history, error } = await supabase
         .from('driver_location_history')
-        .select('lat, lng, recorded_at, speed')
+        .select('lat, lng, recorded_at, speed, accuracy')
         .eq('chofer_id', driverId)
         .eq('ruta_id', rutaId)
         .order('recorded_at', { ascending: true });
 
       if (error) throw error;
 
-      const rawHistory = history?.map(h => ({
-        lat: Number(h.lat),
-        lng: Number(h.lng),
-        recorded_at: h.recorded_at || '',
-        speed: h.speed ? Number(h.speed) : null,
-      })) || [];
+      // Filter out imprecise points (accuracy > 50m)
+      const rawHistory = (history || [])
+        .filter(h => {
+          const acc = h.accuracy ? Number(h.accuracy) : 0;
+          return acc === 0 || acc <= 50;
+        })
+        .map(h => ({
+          lat: Number(h.lat),
+          lng: Number(h.lng),
+          recorded_at: h.recorded_at || '',
+          speed: h.speed ? Number(h.speed) : null,
+        }));
 
       setDialogRouteHistory(rawHistory);
 
@@ -691,6 +697,14 @@ export default function LiveMap() {
                                      `${driverRoute.routeStats.pointsCount} puntos GPS → ${driverRoute.routeStats.snappedPointsCount} sobre calles` :
                                      `${driverRoute.routeStats.pointsCount} puntos GPS`}
                                 </p>
+                                {driverRoute.hasSignalGaps && (
+                                  <div className="flex items-center gap-1 mt-1">
+                                    <WifiOff className="h-3 w-3 text-destructive" />
+                                    <span className="text-xs text-destructive font-medium">
+                                      Trayectoria incompleta - {driverRoute.signalGaps.length} tramo(s) sin señal
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                             </div>
                             <Button
