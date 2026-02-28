@@ -377,7 +377,7 @@ export default function NewShipment() {
     enabled: !!sucursalOrigenId,
   });
 
-  // Query para tarifas habilitadas por sucursal
+  // Query para tarifas habilitadas por sucursal origen
   const { data: sucursalTarifas = [] } = useQuery({
     queryKey: ['sucursal-tarifas', sucursalOrigenId],
     queryFn: async () => {
@@ -391,6 +391,25 @@ export default function NewShipment() {
       return data;
     },
     enabled: !!sucursalOrigenId,
+  });
+
+  // Query para tarifas habilitadas por sucursal destino (bidireccional para sucursal-a-sucursal)
+  const sucursalDestinoId = formData.sucursal_destino_id;
+  const necesitaBusquedaDestino = (tipoServicioDetalle === 'sucursal_sucursal' || tipoServicioDetalle === 'puerta_sucursal') && !!sucursalDestinoId;
+  
+  const { data: sucursalDestinoTarifas = [] } = useQuery({
+    queryKey: ['sucursal-tarifas-destino', sucursalDestinoId],
+    queryFn: async () => {
+      if (!sucursalDestinoId) return [];
+      const { data, error } = await supabase
+        .from('sucursal_tarifas')
+        .select('tarifa_id')
+        .eq('sucursal_id', sucursalDestinoId)
+        .eq('habilitada', true);
+      if (error) throw error;
+      return data;
+    },
+    enabled: necesitaBusquedaDestino,
   });
 
   // Query para configuración de seguro
@@ -528,18 +547,30 @@ export default function NewShipment() {
   }, [formData.remitente_dni, formData.remitente_nombre, allClients]);
 
   // Filtrar tarifas disponibles por sucursal (si hay asignaciones, solo mostrar las habilitadas)
+  // Para sucursal-a-sucursal, combinar tarifas del origen y del destino (búsqueda bidireccional)
   const tarifasDisponibles = useMemo(() => {
     if (!tarifas) return [];
     
+    // Combinar tarifas de origen + destino (sin duplicados)
+    const allSucursalTarifas = [...sucursalTarifas];
+    if (necesitaBusquedaDestino && sucursalDestinoTarifas.length > 0) {
+      const origenIds = new Set(sucursalTarifas.map(st => st.tarifa_id));
+      for (const st of sucursalDestinoTarifas) {
+        if (!origenIds.has(st.tarifa_id)) {
+          allSucursalTarifas.push(st);
+        }
+      }
+    }
+    
     // Si no hay asignaciones en sucursal_tarifas, mostrar todas las tarifas activas
-    if (sucursalTarifas.length === 0) {
+    if (allSucursalTarifas.length === 0) {
       return tarifas;
     }
     
-    // Filtrar solo las tarifas habilitadas para esta sucursal
-    const tarifaIdsHabilitados = new Set(sucursalTarifas.map(st => st.tarifa_id));
+    // Filtrar solo las tarifas habilitadas para estas sucursales
+    const tarifaIdsHabilitados = new Set(allSucursalTarifas.map(st => st.tarifa_id));
     return tarifas.filter(t => tarifaIdsHabilitados.has(t.id));
-  }, [tarifas, sucursalTarifas]);
+  }, [tarifas, sucursalTarifas, sucursalDestinoTarifas, necesitaBusquedaDestino]);
 
   // Auto-seleccionar tarifa si solo hay una disponible (solo cuando NO hay auto-selección por zona activa)
   useEffect(() => {
