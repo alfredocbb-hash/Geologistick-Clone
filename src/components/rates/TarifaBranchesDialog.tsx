@@ -99,6 +99,8 @@ export function TarifaBranchesDialog({
         }));
 
       if (assignments.length > 0) {
+        // p_tenant_id is kept for signature compatibility but the RPC
+        // now derives tenant from the tarifa itself to prevent mismatches
         const { error } = await supabase.rpc('upsert_sucursal_tarifas', {
           p_tarifa_id: tarifaId,
           p_tenant_id: profile?.tenant_id,
