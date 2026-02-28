@@ -1,40 +1,61 @@
 
 
-# Fix: Tarifas para envios Sucursal a Sucursal en BlackBox
+# Fix: RLS en sucursal_zonas + Tarifas sucursal-a-sucursal
 
-## Problema identificado
+## Problema 1: Error RLS al agregar zonas de cobertura
 
-Cuando se crea un envio "Sucursal a Sucursal", el sistema busca tarifas asignadas a la **sucursal de origen**. La tarifa "De Bsas a Mdq, Bahia blanca, Rosario, Mendoza, Cordoba" tiene "mar del plata" como zona destino, pero **no esta asignada a la sucursal Rosario** en la tabla `sucursal_tarifas`. Por eso Rosario no puede encontrar tarifa para Mar del Plata.
+La politica RLS de `sucursal_zonas` para INSERT/UPDATE/DELETE requiere `is_admin(auth.uid())` y `tenant_id = current_user_tenant()`, pero **no incluye super admins**. Esto causa que:
+- Super admins (que no tienen tenant_id) no puedan gestionar zonas
+- Cualquier usuario no-admin reciba "new row violates row-level security policy"
 
-## Solucion
+**Solucion**: Actualizar la politica "Admins manage coverage zones for their tenant" para agregar `OR is_super_admin(auth.uid())`, siguiendo el patron usado en todas las demas tablas del sistema.
 
-### 1. Correccion de datos: asignar tarifa a Rosario
+## Problema 2: No aparecen tarifas en envios sucursal-a-sucursal
 
-Insertar el registro faltante en `sucursal_tarifas` para que la sucursal Rosario tenga habilitada la tarifa "De Bsas a Mdq, Bahia blanca, Rosario, Mendoza, Cordoba".
+La correccion de datos (asignar tarifa a Rosario en `sucursal_tarifas`) no se ejecuto en la implementacion anterior - solo se modifico el codigo bidireccional. Falta insertar el registro en la base de datos.
 
-- Sucursal: ROSARIO (SANTA FE) - `89334282-6670-41f2-bdf9-a9cf1518a64c`
-- Tarifa: De Bsas a Mdq... - `10e24a96-c522-4df1-88ed-0c042050df41`
-- Tenant: BlackBox Cargas - `81be07a7-73a0-4986-994e-5365478343eb`
+**Solucion**: Crear una migracion que inserte el registro faltante en `sucursal_tarifas` para la sucursal Rosario con la tarifa correspondiente de BlackBox.
 
-### 2. Mejora de codigo: busqueda bidireccional para sucursal-a-sucursal
+## Cambios tecnicos
 
-Actualmente el sistema solo busca tarifas del origen. Para envios sucursal-a-sucursal, tambien deberia considerar tarifas asignadas a la sucursal destino que cubran la ruta inversa. Esto evitara que el problema se repita con otras combinaciones.
+### 1. Migracion SQL
 
-**Archivo: `src/pages/NewShipment.tsx`**
+Una sola migracion con:
 
-En la query de `sucursal-tarifas` (linea ~381), cuando el tipo de servicio es `sucursal_sucursal` o `puerta_sucursal`, agregar una segunda consulta que traiga las tarifas habilitadas para la sucursal destino tambien:
+```sql
+-- Fix 1: RLS sucursal_zonas - agregar soporte super admin
+DROP POLICY IF EXISTS "Admins manage coverage zones for their tenant" ON public.sucursal_zonas;
+CREATE POLICY "Admins manage coverage zones for their tenant"
+  ON public.sucursal_zonas FOR ALL TO authenticated
+  USING (
+    (sucursal_id IN (SELECT id FROM sucursales WHERE tenant_id = current_user_tenant())
+     AND is_admin(auth.uid()))
+    OR is_super_admin(auth.uid())
+  )
+  WITH CHECK (
+    (sucursal_id IN (SELECT id FROM sucursales WHERE tenant_id = current_user_tenant())
+     AND is_admin(auth.uid()))
+    OR is_super_admin(auth.uid())
+  );
 
-```text
-Si tipoServicio es sucursal_sucursal y hay sucursal_destino_id:
-  1. Traer tarifas habilitadas del origen (actual)
-  2. Traer tarifas habilitadas del destino (nuevo)
-  3. Combinar ambos conjuntos en tarifasDisponibles (sin duplicados)
+-- Fix 2: Asignar tarifa a Rosario (BlackBox)
+INSERT INTO public.sucursal_tarifas (sucursal_id, tarifa_id, habilitada, tenant_id)
+VALUES (
+  '89334282-6670-41f2-bdf9-a9cf1518a64c',
+  '10e24a96-c522-4df1-88ed-0c042050df41',
+  true,
+  '81be07a7-73a0-4986-994e-5365478343eb'
+)
+ON CONFLICT (sucursal_id, tarifa_id) DO UPDATE SET habilitada = true;
 ```
 
-Esto se implementa agregando una segunda query condicional y fusionando los resultados en el `useMemo` de `tarifasDisponibles`.
+### 2. Sin cambios de codigo frontend
+
+El codigo bidireccional ya implementado en `NewShipment.tsx` es correcto. Solo faltaba la data.
 
 ## Impacto
 
-- No requiere cambios en la base de datos (esquema)
-- Solo se modifica `NewShipment.tsx` para la busqueda bidireccional
-- Se inserta un registro de datos para la correccion inmediata de BlackBox
+- Super admins podran gestionar zonas de cobertura de cualquier sucursal
+- Admins de tenant siguen gestionando solo sus propias sucursales
+- BlackBox: Rosario podra ver y usar la tarifa para Mar del Plata
+
