@@ -7,11 +7,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Package, MapPin, Search, Clock, CheckCircle2, Truck, AlertCircle, Calendar } from "lucide-react";
+import { Package, MapPin, Search, Clock, CheckCircle2, Truck, AlertCircle, Calendar, CalendarClock } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
-type ShipmentStatus = 'pendiente' | 'recogido' | 'en_sucursal' | 'en_transito' | 'en_reparto' | 'entregado' | 'devuelto' | 'cancelado';
+type ShipmentStatus = 'pendiente' | 'recogido' | 'en_sucursal' | 'en_transito' | 'en_reparto' | 'entregado' | 'devuelto' | 'cancelado' | 'primera_visita' | 'segunda_visita' | 'reprogramado';
 
 interface TrackingResponse {
   tracking_number: string;
@@ -70,6 +70,9 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; icon:
   entregado: { label: "Entregado", color: "bg-green-500", icon: CheckCircle2 },
   devuelto: { label: "Devuelto", color: "bg-red-500", icon: AlertCircle },
   cancelado: { label: "Cancelado", color: "bg-gray-500", icon: AlertCircle },
+  primera_visita: { label: "1a Visita", color: "bg-amber-600", icon: AlertCircle },
+  segunda_visita: { label: "2a Visita", color: "bg-red-400", icon: AlertCircle },
+  reprogramado: { label: "Reprogramado", color: "bg-indigo-500", icon: CalendarClock },
 };
 
 const statusOrder: ShipmentStatus[] = [

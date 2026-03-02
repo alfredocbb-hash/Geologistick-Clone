@@ -13,7 +13,9 @@ import {
   User,
   ScanLine,
   Building2,
-  AlertTriangle
+  AlertTriangle,
+  AlertCircle,
+  CalendarClock,
 } from 'lucide-react';
 
 const statusData = [
@@ -97,6 +99,30 @@ const alternativeStatuses = [
     color: 'bg-destructive',
     icon: AlertTriangle,
     fromStatuses: ['cualquier estado'],
+  },
+  {
+    status: 'primera_visita',
+    label: '1a Visita',
+    description: 'Primer intento de entrega fallido - destinatario ausente',
+    color: 'bg-amber-600',
+    icon: AlertCircle,
+    fromStatuses: ['en_reparto'],
+  },
+  {
+    status: 'segunda_visita',
+    label: '2a Visita',
+    description: 'Segundo intento de entrega fallido',
+    color: 'bg-red-400',
+    icon: AlertCircle,
+    fromStatuses: ['primera_visita'],
+  },
+  {
+    status: 'reprogramado',
+    label: 'Reprogramado',
+    description: 'La entrega fue reprogramada para otra fecha',
+    color: 'bg-indigo-500',
+    icon: CalendarClock,
+    fromStatuses: ['primera_visita', 'segunda_visita', 'en_reparto'],
   },
 ];
 
