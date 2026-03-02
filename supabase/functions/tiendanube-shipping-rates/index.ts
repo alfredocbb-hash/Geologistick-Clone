@@ -143,14 +143,14 @@ Deno.serve(async (req) => {
       // Standard tarifa
       supabase
         .from("tarifas")
-        .select("id, nombre, precio_base, tipo_tarifa, rangos_precios, multiplicar_flete_por_bultos")
+        .select("id, nombre, precio_base, tipo_tarifa, rangos_precios, multiplicar_flete_por_bultos, express_surcharge")
         .eq("id", sellerData.tarifa_id)
         .maybeSingle(),
       // Express tarifa (if configured)
       sellerData.tarifa_express_id
         ? supabase
             .from("tarifas")
-            .select("id, nombre, precio_base, tipo_tarifa, rangos_precios, multiplicar_flete_por_bultos")
+            .select("id, nombre, precio_base, tipo_tarifa, rangos_precios, multiplicar_flete_por_bultos, express_surcharge")
             .eq("id", sellerData.tarifa_express_id)
             .maybeSingle()
         : Promise.resolve({ data: null, error: null }),
@@ -203,7 +203,7 @@ Deno.serve(async (req) => {
     // Add express shipping rate if configured
     if (tarifaExpress) {
       const expressBasePrice = calculateRate(tarifaExpress, totalWeight, [], totalItemCount);
-      const expressSurcharge = Number(sellerData.express_surcharge) || 0;
+      const expressSurcharge = Number(sellerData.express_surcharge) || Number((tarifaExpress as any).express_surcharge) || 0;
       const expressPrice = expressBasePrice + expressSurcharge;
       
       console.log("Express price calculated:", expressPrice, "(base:", expressBasePrice, "+ surcharge:", expressSurcharge, ")");

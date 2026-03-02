@@ -3657,6 +3657,7 @@ export type Database = {
           comision_chofer_porcentaje: number | null
           created_at: string | null
           created_by: string | null
+          express_surcharge: number | null
           id: string
           multiplicar_flete_por_bultos: boolean | null
           nombre: string
@@ -3680,6 +3681,7 @@ export type Database = {
           comision_chofer_porcentaje?: number | null
           created_at?: string | null
           created_by?: string | null
+          express_surcharge?: number | null
           id?: string
           multiplicar_flete_por_bultos?: boolean | null
           nombre: string
@@ -3703,6 +3705,7 @@ export type Database = {
           comision_chofer_porcentaje?: number | null
           created_at?: string | null
           created_by?: string | null
+          express_surcharge?: number | null
           id?: string
           multiplicar_flete_por_bultos?: boolean | null
           nombre?: string

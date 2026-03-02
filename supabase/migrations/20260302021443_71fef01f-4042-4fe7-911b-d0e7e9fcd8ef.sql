@@ -1,0 +1,1 @@
+ALTER TABLE public.tarifas ADD COLUMN IF NOT EXISTS express_surcharge NUMERIC DEFAULT 0;

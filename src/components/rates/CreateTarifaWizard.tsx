@@ -54,7 +54,7 @@ interface FormData {
   umbral_volumen_cm: number;
   multiplicar_flete_por_bultos: boolean;
   conceptos: Record<string, ConceptoPrice>;
-  express_surcharge?: string;
+  express_surcharge: string;
 }
 
 interface TarifaConcepto {
@@ -354,7 +354,7 @@ export function CreateTarifaWizard({
             </div>
             <div className="space-y-2">
               {activeConceptos.map((concepto) => {
-                const isSeguro = concepto.codigo?.toLowerCase() === "seguro";
+                const isSeguro = concepto.codigo?.toLowerCase().includes("seguro");
                 const currentValue = formData.conceptos[concepto.id] || {
                   monto: "",
                   es_porcentaje: isSeguro,
