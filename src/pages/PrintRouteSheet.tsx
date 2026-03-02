@@ -127,7 +127,7 @@ export default function PrintRouteSheet() {
       </div>
 
       {/* Contenido imprimible */}
-      <div className="print-content bg-white p-8 max-w-4xl mx-auto">
+      <div className="print-content bg-white text-black p-8 max-w-4xl mx-auto">
         {/* Encabezado */}
         <div className="flex justify-between items-start border-b-2 border-black pb-4 mb-6">
           <div>
