@@ -268,6 +268,7 @@ export default function RoutePlanner() {
         urlEnvioIds.has(envio.id) || 
         ['recogido', 'en_sucursal', 'en_reparto'].includes(envio.estado || '') ||
         (envio.reprogramado_count && envio.reprogramado_count > 0) ||
+        (envio.ultima_reprogramacion != null) ||
         !envio.ml_shipment_id
       );
 
