@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -53,10 +54,16 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; icon:
 export default function Shipments() {
   const { isAdmin, hasRole, user, profile } = useAuth();
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [dateFrom, setDateFrom] = useState<Date>(new Date());
-  const [dateTo, setDateTo] = useState<Date>(new Date());
+  const [search, setSearch] = usePersistedState('shipments-search', '');
+  const [statusFilter, setStatusFilter] = usePersistedState('shipments-status-filter', 'all');
+  const [dateFromISO, setDateFromISO] = usePersistedState('shipments-date-from', new Date().toISOString());
+  const [dateToISO, setDateToISO] = usePersistedState('shipments-date-to', new Date().toISOString());
+  const dateFrom = useMemo(() => new Date(dateFromISO), [dateFromISO]);
+  const dateTo = useMemo(() => new Date(dateToISO), [dateToISO]);
+  const setDateFrom = useCallback((d: Date) => setDateFromISO(d.toISOString()), [setDateFromISO]);
+  const setDateTo = useCallback((d: Date) => setDateToISO(d.toISOString()), [setDateToISO]);
+  const [dateFromOpen, setDateFromOpen] = useState(false);
+  const [dateToOpen, setDateToOpen] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [envioToCancel, setEnvioToCancel] = useState<any>(null);
   const [cancelReason, setCancelReason] = useState('');
@@ -249,6 +256,14 @@ export default function Shipments() {
 
   const StatusBadge = ({ status }: { status: ShipmentStatus }) => {
     const config = statusConfig[status];
+    if (!config) {
+      return (
+        <Badge className="bg-gray-400 text-white gap-1">
+          <AlertCircle className="h-3 w-3" />
+          {status || 'Desconocido'}
+        </Badge>
+      );
+    }
     const Icon = config.icon;
     return (
       <Badge className={`${config.color} text-white gap-1`}>
@@ -333,7 +348,7 @@ export default function Shipments() {
               />
             </div>
             <div className="flex gap-2">
-              <Popover>
+              <Popover open={dateFromOpen} onOpenChange={setDateFromOpen}>
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="w-[160px] justify-start text-left font-normal">
                     <CalendarIcon className="mr-2 h-4 w-4" />
@@ -344,13 +359,13 @@ export default function Shipments() {
                   <Calendar
                     mode="single"
                     selected={dateFrom}
-                    onSelect={(date) => date && setDateFrom(date)}
+                    onSelect={(date) => { if (date) { setDateFrom(date); setDateFromOpen(false); } }}
                     locale={es}
                     className="pointer-events-auto"
                   />
                 </PopoverContent>
               </Popover>
-              <Popover>
+              <Popover open={dateToOpen} onOpenChange={setDateToOpen}>
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="w-[160px] justify-start text-left font-normal">
                     <CalendarIcon className="mr-2 h-4 w-4" />
@@ -361,7 +376,7 @@ export default function Shipments() {
                   <Calendar
                     mode="single"
                     selected={dateTo}
-                    onSelect={(date) => date && setDateTo(date)}
+                    onSelect={(date) => { if (date) { setDateTo(date); setDateToOpen(false); } }}
                     locale={es}
                     className="pointer-events-auto"
                   />
