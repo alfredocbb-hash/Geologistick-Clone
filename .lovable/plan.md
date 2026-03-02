@@ -1,85 +1,89 @@
 
-# Correcciones y mejoras al sistema de Tarifas
 
-## Problemas identificados y soluciones
+# Envíos cancelados sin visitas deben valer $0 en liquidaciones
 
-### 1. Seguro no se detecta (Bug critico)
-**Problema**: El codigo busca `codigo === "seguro"` pero los tenants usan codigos como `"BE-SEGURO"`. Por eso el toggle %/$ nunca aparece y el seguro no se calcula.
+## Problema
 
-**Solucion**: Cambiar todas las comparaciones a busqueda por subcadena (`codigo.includes("seguro")`) en:
-- `src/components/rates/CreateTarifaWizard.tsx` (linea 357)
-- `src/components/rates/TarifaSandbox.tsx` (linea 146)
-- `src/pages/Rates.tsx` (lineas 714 y 1370)
+Cuando se calcula o consulta una liquidación de seller, los envíos con estado "cancelado" muestran el precio completo (ej: $10.245,99). La regla de negocio correcta es:
 
-### 2. Flete duplicado en detalles del envio
-**Problema**: Al guardar un envio, se crea una linea "Flete" con el monto calculado (correcto). Pero si existe un concepto "BE-FLETE" con monto $0, puede generar confusion visual en el recibo.
+- **Cancelado SIN visitas (intentos de entrega)** -> Precio = $0 (no se cobra)
+- **Cancelado CON visitas** -> Se mantiene el precio (el chofer intentó entregar, hubo costo operativo)
 
-**Solucion**: En `src/pages/NewShipment.tsx` (linea 1096-1102), agregar la exclusion del concepto Flete no solo por `codigo === 'flete'` sino tambien por subcadena (`codigo.includes('flete')`), para que `BE-FLETE` tambien se excluya correctamente del detalle (ya que el flete calculado lo cubre).
+Una "visita" se determina consultando `envio_historial` buscando registros donde `estado_nuevo` sea `en_reparto` o `no_entregado` (es decir, el paquete salió a ruta al menos una vez).
 
-### 3. Sandbox no simula rangos escalonados
-**Problema**: La calculadora `TarifaSandbox.tsx` solo usa el metodo simple (base + adicional/kg) pero ignora `rangos_kg` y el calculo por volumen que si usa `NewShipment.tsx`.
+## Cambios necesarios
 
-**Solucion**: Actualizar `simulateRate()` en `TarifaSandbox.tsx` para:
-- Prioridad 1: Si hay `rangos_kg` configurados, buscar el rango aplicable
-- Prioridad 2: Metodo simple (base + adicional/kg)
-- Agregar input de dimensiones opcional para simular cobro por volumen
-- Replicar la misma logica que `NewShipment.tsx` lineas 688-748
+### 1. Calculo de liquidacion (`src/pages/ecommerce/Settlements.tsx`)
 
-### 4. Campo express_surcharge no se persiste
-**Problema**: El wizard permite configurar un recargo express pero el campo no existe en la tabla `tarifas`.
+En la `calculateMutation` (aprox. linea 506-622), despues de calcular `precioFinal` para cada envio, agregar una verificacion:
 
-**Solucion**:
-- Crear migracion para agregar columna `express_surcharge NUMERIC DEFAULT 0` a la tabla `tarifas`
-- Actualizar `saveMutation` en `Rates.tsx` para incluir `express_surcharge` en el objeto `tarifaData`
-- Actualizar la Edge Function `tiendanube-shipping-rates` para leer `express_surcharge` de la tarifa (ademas del seller)
-- Actualizar `handleEdit` en `Rates.tsx` para cargar el campo al editar
+- Si `e.estado === 'cancelado'`, consultar `envio_historial` para ese envio
+- Buscar registros con `estado_nuevo IN ('en_reparto', 'no_entregado')`
+- Si no hay registros (0 visitas), forzar `precioFinal = 0`
+- Agregar campo `tiene_visitas: boolean` al objeto retornado para mostrar indicador visual
 
-## Detalle tecnico por archivo
+Para optimizar, se hara una sola consulta batch de `envio_historial` para todos los envios cancelados del lote, en lugar de una consulta individual por envio.
 
-### Migracion DB: agregar express_surcharge
-```sql
-ALTER TABLE tarifas ADD COLUMN express_surcharge NUMERIC DEFAULT 0;
-```
+### 2. Saldos por Seller (`src/pages/ecommerce/Settlements.tsx`)
 
-### `src/components/rates/CreateTarifaWizard.tsx`
-- Linea 357: Cambiar `concepto.codigo?.toLowerCase() === "seguro"` por `concepto.codigo?.toLowerCase().includes("seguro")`
+En la query `sellerBalances` (aprox. linea 149-313), aplicar la misma logica: obtener el estado de cada envio (ya se puede agregar `estado` al select), y para los cancelados verificar visitas antes de sumar su precio.
 
-### `src/components/rates/TarifaSandbox.tsx`
-- Linea 146: Cambiar deteccion de seguro a subcadena
-- Lineas 62-75: Agregar logica de rangos escalonados (prioridad sobre metodo simple):
+### 3. Detalle de liquidacion (`src/components/ecommerce/SellerLiquidacionDetailDialog.tsx`)
 
-```text
-Si rangos_kg tiene datos Y peso > 0:
-  1. Buscar rango donde peso >= desde Y peso <= hasta
-  2. Si encuentra: usar rango.precio como flete
-  3. Si no: usar ultimo rango (peso excedido)
-Si no hay rangos_kg:
-  Usar metodo simple (base + adicional/kg)
-```
+En la query de envios vinculados (linea 60-70), agregar `estado` al select (ya lo tiene). Luego:
 
-- Agregar input opcional de dimensiones (AxBxC cm) para simular cobro por volumen cuando el tipo es "peso" y hay umbral configurado
+- Consultar `envio_historial` para los envios cancelados del lote
+- En la tabla, mostrar `$0` para cancelados sin visitas
+- Agregar un indicador visual (tooltip o texto) que explique por que vale $0
+- Recalcular el total de la tabla excluyendo cancelados sin visitas
 
-### `src/pages/Rates.tsx`
-- Linea 714: Cambiar deteccion de seguro a subcadena
-- Linea 1370: Cambiar deteccion de seguro a subcadena
-- En `saveMutation` (linea ~292-312): Agregar `express_surcharge: parseFloat(data.express_surcharge || '0') || 0` al objeto `tarifaData`
-- En `handleEdit` (linea ~634-677): Cargar `express_surcharge` del tarifa editada
-- En `resetForm`: Agregar `express_surcharge: ''` al estado inicial
+### 4. Generacion de liquidacion (`src/pages/ecommerce/Settlements.tsx`)
 
-### `src/pages/NewShipment.tsx`
-- Lineas 1098-1101: Cambiar la exclusion del concepto flete para usar subcadena:
+En `generateMutation` (linea 668-746), al actualizar `precio_total` del envio en la BD, respetar el $0 para cancelados sin visitas (ya viene calculado desde el paso 1).
+
+## Detalle tecnico
+
+### Consulta batch de visitas
+
 ```typescript
-if (conceptoCode?.includes('flete') || conceptoName?.includes('flete')) {
-  return; // ya incluido como flete calculado
+// Obtener IDs de envios cancelados
+const cancelledIds = allEnviosData
+  .filter(e => e.estado === 'cancelado')
+  .map(e => e.id);
+
+// Una sola consulta para todos
+const { data: visitasData } = await supabase
+  .from('envio_historial')
+  .select('envio_id')
+  .in('envio_id', cancelledIds)
+  .in('estado_nuevo', ['en_reparto', 'no_entregado']);
+
+// Set de envios que SI tienen visitas
+const enviosConVisitas = new Set(
+  (visitasData || []).map(v => v.envio_id)
+);
+
+// Al mapear envios:
+if (e.estado === 'cancelado' && !enviosConVisitas.has(e.id)) {
+  precioFinal = 0;
 }
 ```
 
-### `supabase/functions/tiendanube-shipping-rates/index.ts`
-- Linea 146: Agregar `express_surcharge` al select de tarifas
-- Usar `tarifa.express_surcharge` como fallback si el seller no tiene configurado su propio surcharge
+### Indicador visual en el detalle
 
-## Resumen de cambios
-- **1 migracion DB**: agregar `express_surcharge` a `tarifas`
-- **4 archivos frontend**: corregir deteccion seguro, flete duplicado, sandbox completo
-- **1 edge function**: leer `express_surcharge` de tarifa
-- **0 cambios de logica de guardado** (saveMutation solo se extiende con el nuevo campo)
+En la tabla de envios del dialog, para cancelados sin visitas:
+- Precio mostrado: `$0`  
+- Tooltip o texto small: "Sin visitas - no se cobra"
+- Color: gris/muted en lugar de naranja
+
+### Archivos modificados
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/pages/ecommerce/Settlements.tsx` | Logica de cancelados en `calculateMutation`, `sellerBalances`, y `generateMutation` |
+| `src/components/ecommerce/SellerLiquidacionDetailDialog.tsx` | Consulta de visitas + display condicional en tabla |
+
+### Sin cambios de base de datos
+
+No se requieren migraciones. Solo se agrega una consulta adicional a `envio_historial` (tabla existente).
+
