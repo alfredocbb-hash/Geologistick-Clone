@@ -4576,6 +4576,9 @@ export type Database = {
         | "cancelado"
         | "incidencia"
         | "no_entregado"
+        | "primera_visita"
+        | "segunda_visita"
+        | "reprogramado"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -4750,6 +4753,9 @@ export const Constants = {
         "cancelado",
         "incidencia",
         "no_entregado",
+        "primera_visita",
+        "segunda_visita",
+        "reprogramado",
       ],
     },
   },

@@ -5,11 +5,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Package, Search, MapPin, Clock, CheckCircle, Truck, AlertCircle, Loader2 } from 'lucide-react';
+import { Package, Search, MapPin, Clock, CheckCircle, Truck, AlertCircle, Loader2, CalendarClock } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-type ShipmentStatus = 'pendiente' | 'recogido' | 'en_sucursal' | 'en_transito' | 'en_reparto' | 'entregado' | 'devuelto' | 'cancelado';
+type ShipmentStatus = 'pendiente' | 'recogido' | 'en_sucursal' | 'en_transito' | 'en_reparto' | 'entregado' | 'devuelto' | 'cancelado' | 'primera_visita' | 'segunda_visita' | 'reprogramado';
 
 interface TrackingResponse {
   tracking_number: string;
@@ -69,6 +69,9 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; bgCol
   entregado: { label: 'Entregado', color: 'text-green-600', bgColor: 'bg-green-100', icon: CheckCircle },
   devuelto: { label: 'Devuelto', color: 'text-red-600', bgColor: 'bg-red-100', icon: AlertCircle },
   cancelado: { label: 'Cancelado', color: 'text-gray-600', bgColor: 'bg-gray-100', icon: AlertCircle },
+  primera_visita: { label: '1a Visita', color: 'text-amber-700', bgColor: 'bg-amber-100', icon: AlertCircle },
+  segunda_visita: { label: '2a Visita', color: 'text-red-500', bgColor: 'bg-red-100', icon: AlertCircle },
+  reprogramado: { label: 'Reprogramado', color: 'text-indigo-600', bgColor: 'bg-indigo-100', icon: CalendarClock },
 };
 
 const statusOrder: ShipmentStatus[] = ['pendiente', 'recogido', 'en_sucursal', 'en_transito', 'en_reparto', 'entregado'];

@@ -22,7 +22,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Package, PackagePlus, Search, Filter, RefreshCw, Truck, Clock, CheckCircle, AlertCircle, Printer, XCircle, Eye, History, Shield, CalendarIcon, AlertTriangle, Handshake } from 'lucide-react';
+import { Package, PackagePlus, Search, Filter, RefreshCw, Truck, Clock, CheckCircle, AlertCircle, Printer, XCircle, Eye, History, Shield, CalendarIcon, AlertTriangle, Handshake, CalendarClock } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { format, startOfDay, endOfDay } from 'date-fns';
@@ -49,6 +49,9 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; icon:
   cancelado: { label: 'Cancelado', color: 'bg-gray-500', icon: AlertCircle },
   incidencia: { label: 'Incidencia', color: 'bg-amber-500', icon: AlertCircle },
   no_entregado: { label: 'No Entregado', color: 'bg-red-600', icon: AlertCircle },
+  primera_visita: { label: '1a Visita', color: 'bg-amber-600', icon: AlertCircle },
+  segunda_visita: { label: '2a Visita', color: 'bg-red-400', icon: AlertCircle },
+  reprogramado: { label: 'Reprogramado', color: 'bg-indigo-500', icon: CalendarClock },
 };
 
 export default function Shipments() {

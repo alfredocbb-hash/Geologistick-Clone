@@ -25,6 +25,7 @@ import {
   AlertCircle,
   ArrowRight,
   Shield,
+  CalendarClock,
 } from 'lucide-react';
 import type { Database } from '@/integrations/supabase/types';
 
@@ -105,6 +106,24 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; icon:
     icon: AlertCircle, 
     description: 'El envío no pudo ser entregado' 
   },
+  primera_visita: { 
+    label: '1a Visita', 
+    color: 'bg-amber-600', 
+    icon: AlertCircle, 
+    description: 'Primer intento de entrega fallido - destinatario ausente' 
+  },
+  segunda_visita: { 
+    label: '2a Visita', 
+    color: 'bg-red-400', 
+    icon: AlertCircle, 
+    description: 'Segundo intento de entrega fallido' 
+  },
+  reprogramado: { 
+    label: 'Reprogramado', 
+    color: 'bg-indigo-500', 
+    icon: CalendarClock, 
+    description: 'La entrega fue reprogramada para otra fecha' 
+  },
 };
 
 const statusOrder: ShipmentStatus[] = [
@@ -113,6 +132,9 @@ const statusOrder: ShipmentStatus[] = [
   'en_sucursal',
   'en_transito',
   'en_reparto',
+  'primera_visita',
+  'segunda_visita',
+  'reprogramado',
   'entregado',
   'devuelto',
   'cancelado',
