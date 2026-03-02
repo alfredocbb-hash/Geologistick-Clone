@@ -1,37 +1,49 @@
 
 
-# Fix: Envíos de ruta cancelada no visibles en planificador
+# Fix: Envíos de ruta cancelada de Lucas Galarza no aparecen
 
-## Problema raíz
+## Diagnóstico
 
-La cancelación de la ruta de Lucas Galarza ocurrió **antes** del fix anterior. Esos envíos quedaron en estado `pendiente` (código viejo), y el filtro de e-commerce del planificador (línea 266-272) los excluye porque son envíos con `ml_shipment_id` en estado `pendiente` sin `reprogramado_count > 0`.
+La ruta RP-20260302-8889 de Lucas Galarza fue cancelada **antes** de los fixes anteriores. Los 13 envíos quedaron en estado `pendiente` sin `chofer_id`, pero **sin** `ultima_reprogramacion` ni `reprogramado_count`. Por eso:
 
-El fix del `CancelRouteDialog` solo aplica a **futuras** cancelaciones. Los datos ya existentes necesitan corrección.
+- La migración anterior (que buscaba `ultima_reprogramacion IS NOT NULL`) no los encontró
+- El fix de código (misma condición) tampoco los incluye
 
 ## Solución (2 partes)
 
-### 1. Migración: corregir envíos ya afectados
+### 1. Corrección de datos existentes
 
-Ejecutar una migración SQL que actualice a `en_sucursal` los envíos que:
-- Pertenecen a rutas canceladas
-- Están en estado `pendiente`
-- Tienen `chofer_id IS NULL`
-- Tienen `ml_shipment_id` (son de e-commerce)
+Actualizar a `en_sucursal` todos los envíos de e-commerce en `pendiente` sin chofer asignado que tienen historial de cancelación de ruta. Se identifican los envíos exactos via la tabla `envio_historial` donde las notas contienen "cancelada".
 
-Esto recupera los envíos de la ruta de Lucas Galarza (y cualquier otro caso similar).
+Los 13 envíos afectados de la ruta RP-20260302-8889 serán actualizados.
 
-### 2. Robustez en el filtro del planificador
+### 2. Filtro más robusto en el planificador
 
-Modificar el filtro de e-commerce en `src/pages/RoutePlanner.tsx` (líneas 266-272) para incluir también envíos que tengan historial de cancelación de ruta reciente. Alternativa más simple: ampliar la condición existente para que envíos de e-commerce en `pendiente` que tengan `ultima_reprogramacion` (indicador de que pasaron por una ruta) también sean visibles.
+**Archivo:** `src/pages/RoutePlanner.tsx` (líneas 266-272)
+
+Agregar una condición adicional: envíos de e-commerce en `pendiente` que no tengan chofer asignado también deben mostrarse. La lógica es:
+
+- Un envío e-commerce **nuevo** en `pendiente` tiene sentido ocultarlo (aún no fue recolectado del seller)
+- Un envío e-commerce en `pendiente` **sin chofer** que ya pasó por una ruta (fue liberado) debe verse
+
+La condición nueva será: `(envio.estado === 'pendiente' && !envio.chofer_id && envio.ml_shipment_id)` -- pero esto es demasiado amplio. Mejor verificar si el envío tiene historial previo, o simplemente confiar en que los envíos e-commerce sin chofer en `pendiente` que tienen `sucursal_actual_id` seteado ya fueron procesados.
+
+Solución más simple y segura: cambiar el filtro para no excluir envíos de e-commerce que estén en `pendiente` **si no tienen chofer asignado**. Porque los nuevos tampoco tienen chofer, pero ya aparecen en la pestaña de ecommerce/orders, no en el planificador directo.
+
+En resumen, la condición del filtro se amplía agregando:
+```typescript
+(envio.estado === 'pendiente' && !envio.chofer_id)
+```
+
+Esto es seguro porque el query principal ya filtra por estados específicos y la sucursal del usuario.
 
 ## Archivos a modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| Migración SQL | UPDATE envíos de rutas canceladas de `pendiente` a `en_sucursal` |
-| `src/pages/RoutePlanner.tsx` | Agregar condición: envíos e-commerce en `pendiente` con `ultima_reprogramacion` también se muestran |
+| Datos (SQL UPDATE) | Actualizar los 13 envíos de ruta cancelada de `pendiente` a `en_sucursal` |
+| `src/pages/RoutePlanner.tsx` | Agregar condición al filtro: envíos e-commerce en `pendiente` sin chofer se muestran |
 
-## Sin riesgo
+## Sin cambios de esquema
 
-- La migración es idempotente (solo afecta envíos en `pendiente` sin chofer)
-- El filtro ampliado no introduce envíos no deseados porque `ultima_reprogramacion` solo se setea en flujos de cancelación/reprogramación
+Solo UPDATE de datos existentes y ajuste de filtro en código.
