@@ -29,7 +29,8 @@ interface InvoiceDataDialogProps {
   open: boolean;
   onClose: () => void;
   onSuccess: (facturaData: FacturaResult) => void;
-  envioId: string;
+  envioId?: string;
+  liquidacionSellerId?: string;
   importeTotal: number;
 }
 
@@ -56,6 +57,7 @@ export function InvoiceDataDialog({
   onClose,
   onSuccess,
   envioId,
+  liquidacionSellerId,
   importeTotal,
 }: InvoiceDataDialogProps) {
   const [tipoComprobante, setTipoComprobante] = useState<'A' | 'B' | 'C'>('B');
@@ -108,7 +110,8 @@ export function InvoiceDataDialog({
 
       const { data, error } = await supabase.functions.invoke('arca-factura', {
         body: {
-          envio_id: envioId,
+          envio_id: envioId || undefined,
+          liquidacion_seller_id: liquidacionSellerId || undefined,
           tipo_comprobante: tipoComprobante,
           environment: selectedEnvironment,
           receptor: {
