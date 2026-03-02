@@ -1,88 +1,106 @@
 
-## Diagnóstico confirmado (con evidencia)
 
-Do I know what the issue is? **Sí**.
+# Fix: Textos invisibles en paginas de impresion (dark mode)
 
-El problema del QR no es solo visual: hay un desfasaje real en los datos que se codifican.
+## Problema
 
-1. La factura reportada (`ad4111c6-83c5-46b8-8c26-2ac546292d25`) está `emitida`, con CAE y monto correcto.
-2. En DB, `fecha_emision` está guardada como `2026-03-02 00:00:00+00`.
-3. En Argentina eso se interpreta como **2026-03-01** al convertir con `new Date(...)` en frontend.
-4. `PrintInvoice` hoy usa esa conversión local para:
-   - mostrar la fecha en pantalla
-   - construir `fecha` dentro del JSON del QR
-5. Resultado: el QR termina con fecha **01/03/2026**, pero el comprobante autorizado en ARCA corresponde al día **02/03/2026**.  
-   Esto explica el “CAE no existe / datos no válidos” al constatar.
-6. Además, el banner “DOCUMENTO NO FISCAL - SANDBOX” sigue saliendo porque `PrintInvoice` toma entorno desde `arca_config`, y en este proyecto esa tabla tiene solo `sandbox`, mientras la integración activa real se gestiona en `system_integrations`.
+Cuando el usuario tiene el tema oscuro activado, todas las paginas de impresion HTML muestran el texto casi invisible. Esto ocurre porque:
 
-## Archivos implicados
+- El body hereda `text-foreground` del tema activo
+- En dark mode, `--foreground` es `hsl(214 32% 95%)` (casi blanco)
+- Las paginas de impresion fuerzan `bg-white`, pero el texto sigue siendo claro
+- Resultado: texto blanco sobre fondo blanco = ilegible
 
-- `src/pages/PrintInvoice.tsx`
-- `supabase/functions/arca-factura/index.ts`
+La captura del usuario en `PrintPlannedRoute` lo confirma: "HOJA DE RUTA", datos de ruta, chofer, y paradas estan practicamente invisibles.
 
-## Plan de corrección
+## Paginas afectadas
 
-### 1) Corregir fecha fiscal del QR y de la vista previa (sin desfase horario)
+| Pagina | Tipo de impresion | Afectada |
+|--------|-------------------|----------|
+| `PrintPlannedRoute.tsx` | HTML directo | Si (confirmado por screenshot) |
+| `PrintRouteSheet.tsx` | HTML directo | Si |
+| `PrintInvoice.tsx` | HTML + html2canvas | Si (html2canvas captura colores dark) |
+| `PrintSettlement.tsx` | HTML + jsPDF download | Si (vista previa en pantalla) |
+| `PrintReceipt.tsx` | HTML + jsPDF download | Si (vista previa en pantalla) |
+| `PrintLabel.tsx` | Solo jsPDF nativo | No (genera PDF sin DOM) |
+
+## Solucion
+
+### 1. Agregar regla CSS global para forzar colores claros en impresion
+
+**Archivo:** `src/index.css`
+
+Agregar una regla `@media print` que sobreescriba las variables CSS del dark mode con los valores del tema claro:
+
+```css
+@media print {
+  :root, .dark {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --muted: 214 32% 95%;
+    --muted-foreground: 215 16% 47%;
+    --border: 214 32% 91%;
+    --secondary: 214 32% 91%;
+    --secondary-foreground: 222 47% 11%;
+  }
+}
+```
+
+Esto aplica a todas las paginas de impresion automaticamente sin tocar cada archivo individual.
+
+### 2. Forzar colores en el contenedor de PrintPlannedRoute
+
+**Archivo:** `src/pages/PrintPlannedRoute.tsx`
+
+Agregar `text-black` al contenedor raiz para redundancia, asegurando que la hoja impresa use texto negro explicitamente:
+
+```tsx
+<div className="min-h-screen bg-white text-black p-4 print:p-2">
+```
+
+### 3. Forzar colores en PrintRouteSheet
+
+**Archivo:** `src/pages/PrintRouteSheet.tsx`
+
+Agregar `text-black` al contenedor `.print-content`:
+
+```tsx
+<div className="print-content bg-white text-black p-8 max-w-4xl mx-auto">
+```
+
+### 4. Forzar colores en PrintInvoice (critico para html2canvas)
+
 **Archivo:** `src/pages/PrintInvoice.tsx`
 
-- Crear helper para fecha fiscal estable (sin timezone drift), usando el valor date-only:
-  - tomar `factura.fecha_emision?.slice(0, 10)` como fuente principal.
-- Usar esa fecha:
-  - en el JSON del QR (`fecha`)
-  - en la fecha mostrada en el encabezado de la factura.
-- Evitar `format(new Date(factura.fecha_emision), ...)` directo sobre timestamp con zona cuando el campo representa fecha fiscal.
+El `html2canvas` captura los colores del DOM en el momento. Si el usuario esta en dark mode, el PDF tambien saldra con colores claros. Agregar clase explicita:
 
-Impacto esperado: el QR de esa factura pasará de `2026-03-01` a `2026-03-02`.
+```tsx
+<Card id="invoice-print-area" className="shadow-lg print:shadow-none print:border-0 bg-white text-black [&_*]:text-black [&_.text-muted-foreground]:!text-gray-500">
+```
 
----
+Alternativa mas limpia: antes de capturar con html2canvas, aplicar temporalmente la clase `light` al documento y removerla despues.
 
-### 2) Separar “entorno de emisión” de “datos de emisor” en impresión
-**Archivo:** `src/pages/PrintInvoice.tsx`
+### 5. Forzar colores en PrintSettlement y PrintReceipt
 
-- Dejar de decidir `isSandbox` con `arca_config.environment`.
-- Leer estado de ARCA desde `system_integrations` (source of truth actual para sandbox/production).
-- Regla:
-  - si la factura trae entorno persistido (ver paso 3), usarlo;
-  - si no lo trae:
-    - si solo hay un entorno completo configurado, usar ese;
-    - si hay ambos, marcar como “entorno no determinable” (no etiquetar automáticamente como sandbox).
-- Mantener `arca_config` solo como fallback para datos de cabecera (razón social/condición IVA) mientras exista.
+**Archivos:** `src/pages/PrintSettlement.tsx`, `src/pages/PrintReceipt.tsx`
 
-Impacto esperado: dejar de mostrar “NO FISCAL” por falsos positivos.
+Aplicar `text-black` a los contenedores principales de la Card visible.
 
----
+## Resumen de archivos modificados
 
-### 3) Persistir metadatos de emisión para trazabilidad futura
-**Archivo:** `supabase/functions/arca-factura/index.ts`
+| Archivo | Cambio |
+|---------|--------|
+| `src/index.css` | Regla `@media print` global con variables light mode |
+| `src/pages/PrintPlannedRoute.tsx` | `text-black` en contenedor |
+| `src/pages/PrintRouteSheet.tsx` | `text-black` en contenedor |
+| `src/pages/PrintInvoice.tsx` | Forzar tema claro antes de html2canvas |
+| `src/pages/PrintSettlement.tsx` | `text-black` en Card |
+| `src/pages/PrintReceipt.tsx` | `text-black` en Card |
 
-- Al emitir, guardar en `facturas.arca_response`:
-  - `environment` real usado (`sandbox`/`production`)
-  - `fecha_comprobante` enviada a WSFE (`CbteFch`)
-- Ajustar creación/actualización para que `fecha_emision` se derive explícitamente de la fecha fiscal usada en la emisión (misma fuente de verdad del QR).
+## Sin cambios de base de datos
 
-Esto evita ambigüedad histórica y elimina adivinanzas al reimprimir.
-
----
-
-### 4) Endurecimiento de QR (compatibilidad)
-**Archivo:** `src/pages/PrintInvoice.tsx`
-
-- Mantener formato RG 4291/2018 y codificación Base64 del JSON.
-- Encapsular `p=` con `encodeURIComponent(...)` para evitar problemas de transporte URL en casos con caracteres Base64 especiales.
-- Conservar estructura exacta de campos requerida por ARCA.
-
----
-
-## Validación funcional (end-to-end)
-
-1. Reabrir `/print-invoice?factura_id=ad4111c6-83c5-46b8-8c26-2ac546292d25`.
-2. Verificar que la fecha visible del comprobante sea **02/03/2026**.
-3. Escanear QR desde esa vista (y PDF) y constatar en ARCA.
-4. Confirmar que ya no aparezca el error genérico de “CAE no existe / datos incompletos”.
-5. Probar también una factura sandbox real para validar que el comportamiento de advertencia sigue siendo correcto.
-
-## Riesgo y alcance
-
-- No requiere migración estructural para resolver este caso.
-- Cambio acotado a impresión + metadatos de emisión en función backend.
-- Riesgo bajo: no modifica lógica de autorización del CAE, solo coherencia de datos mostrados/codificados.
+No se requieren migraciones.
