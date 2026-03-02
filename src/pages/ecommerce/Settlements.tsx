@@ -81,6 +81,7 @@ interface CalculatedEnvio {
   zona_match: string | null;
   estado: string | null;
   created_at: string;
+  tiene_visitas?: boolean;
 }
 
 const METODOS_PAGO = [
@@ -204,7 +205,7 @@ export default function Settlements() {
           const chunk = allEnvioIds.slice(i, i + 500);
           const { data: enviosData } = await supabase
             .from('envios')
-            .select('id, ciudad_entrega, precio_total')
+            .select('id, ciudad_entrega, precio_total, estado')
             .in('id', chunk);
           (enviosData || []).forEach(e => enviosMap.set(e.id, e));
         }
@@ -219,7 +220,7 @@ export default function Settlements() {
           if (!seller.cliente_id) continue;
           const { data: commonEnvios } = await supabase
             .from('envios')
-            .select('id, ciudad_entrega, precio_total')
+            .select('id, ciudad_entrega, precio_total, estado')
             .eq('remitente_id', seller.cliente_id);
           const filtered = (commonEnvios || []).filter(e => !allOrderEnvioIds.has(e.id));
           filtered.forEach(e => enviosMap.set(e.id, e));
@@ -241,7 +242,21 @@ export default function Settlements() {
         paymentsBySeller.set(p.seller_id, current + Math.abs(p.monto || 0));
       });
 
-      // 3. Calculate per seller
+      // 3. Batch check visitas for all cancelled envios
+      const allCancelledIds = [...enviosMap.values()]
+        .filter(e => e.estado === 'cancelado')
+        .map(e => e.id);
+      let balanceEnviosConVisitas = new Set<string>();
+      if (allCancelledIds.length > 0) {
+        const { data: visitasData } = await supabase
+          .from('envio_historial')
+          .select('envio_id')
+          .in('envio_id', allCancelledIds)
+          .in('estado_nuevo', ['en_reparto', 'no_entregado'] as any[]);
+        balanceEnviosConVisitas = new Set((visitasData || []).map(v => v.envio_id));
+      }
+
+      // 4. Calculate per seller
       for (const seller of sellers) {
         const ecomEnvioIds = envioIdsBySeller.get(seller.id) || [];
         const commonIds = commonEnviosBySeller.get(seller.id) || [];
@@ -251,6 +266,11 @@ export default function Settlements() {
         for (const envioId of allSellerEnvioIds) {
           const envio = enviosMap.get(envioId);
           if (!envio) continue;
+
+          // Cancelado sin visitas = $0
+          if (envio.estado === 'cancelado' && !balanceEnviosConVisitas.has(envio.id)) {
+            continue; // precio = 0, no sumar
+          }
 
           let precio = envio.precio_total || 0;
 
@@ -472,6 +492,20 @@ export default function Settlements() {
         const uniqueCommon = filteredCommonEnvios.filter(e => !ecommerceIds.has(e.id));
         const allEnviosData = [...ecommerceEnvios, ...uniqueCommon];
 
+        // 5b: Batch query visitas for cancelled shipments
+        const cancelledIds = allEnviosData
+          .filter(e => e.estado === 'cancelado')
+          .map(e => e.id);
+        
+        let enviosConVisitas = new Set<string>();
+        if (cancelledIds.length > 0) {
+          const { data: visitasData } = await supabase
+            .from('envio_historial')
+            .select('envio_id')
+            .in('envio_id', cancelledIds)
+            .in('estado_nuevo', ['en_reparto', 'no_entregado'] as any[]);
+          enviosConVisitas = new Set((visitasData || []).map(v => v.envio_id));
+        }
         // Collect unique tarifa_ids from selected sellers
         const sellerTarifaMap = new Map<string, string | null>();
         selectedSellerObjs.forEach(s => sellerTarifaMap.set(s.id, s.tarifa_id));
@@ -606,6 +640,12 @@ export default function Settlements() {
           }
           // If no tarifa and no zone match, keep original precio_total as fallback
 
+          // Cancelado sin visitas = $0
+          const tieneVisitas = e.estado === 'cancelado' ? enviosConVisitas.has(e.id) : true;
+          if (e.estado === 'cancelado' && !tieneVisitas) {
+            precioFinal = 0;
+          }
+
           return {
             id: e.id,
             tracking_number: e.tracking_number,
@@ -618,6 +658,7 @@ export default function Settlements() {
             zona_match: zonaMatch,
             estado: e.estado,
             created_at: e.created_at,
+            tiene_visitas: tieneVisitas,
           };
         });
       }
@@ -734,7 +775,11 @@ export default function Settlements() {
         if (sellerEnvios.length > 0) {
           for (const envio of sellerEnvios) {
             const updateData: any = { liquidacion_seller_id: liquidacion.id };
-            if (envio.precio_calculado && envio.precio_total > 0) {
+            // Cancelado sin visitas: forzar precio_total = 0
+            if (envio.estado === 'cancelado' && envio.tiene_visitas === false) {
+              updateData.precio_total = 0;
+              updateData.tarifa_metodo_aplicado = 'cancelado_sin_visitas';
+            } else if (envio.precio_calculado && envio.precio_total > 0) {
               updateData.precio_total = envio.precio_total;
               updateData.tarifa_metodo_aplicado = 'zona_liquidacion';
             }

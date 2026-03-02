@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -13,7 +13,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Printer, Download, Calendar, DollarSign, FileText, Package, Receipt } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Printer, Download, Calendar, DollarSign, FileText, Package, Receipt, Info } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { parseDateString } from '@/lib/dateUtils';
@@ -70,6 +71,37 @@ export function SellerLiquidacionDetailDialog({
     },
     enabled: open && !!liquidacion?.id,
   });
+
+  // Fetch visitas for cancelled envíos
+  const { data: enviosConVisitasSet } = useQuery({
+    queryKey: ['seller-liquidacion-visitas', liquidacion?.id, envios?.map((e: any) => e.id).join(',')],
+    queryFn: async () => {
+      const cancelledIds = (envios || [])
+        .filter((e: any) => e.estado === 'cancelado')
+        .map((e: any) => e.id);
+      if (cancelledIds.length === 0) return new Set<string>();
+
+      const { data: visitasData } = await supabase
+        .from('envio_historial')
+        .select('envio_id')
+        .in('envio_id', cancelledIds)
+        .in('estado_nuevo', ['en_reparto', 'no_entregado'] as any[]);
+
+      return new Set((visitasData || []).map(v => v.envio_id));
+    },
+    enabled: open && !!envios && envios.length > 0,
+  });
+
+  // Helper: is a cancelled envio without visits?
+  const isCancelledNoVisits = (envio: any) =>
+    envio.estado === 'cancelado' && !(enviosConVisitasSet || new Set()).has(envio.id);
+
+  // Adjusted total excluding cancelled without visits
+  const adjustedTotal = useMemo(() => {
+    if (!envios) return 0;
+    return envios.reduce((sum: number, e: any) =>
+      sum + (isCancelledNoVisits(e) ? 0 : (e.precio_total || 0)), 0);
+  }, [envios, enviosConVisitasSet]);
 
   // Fetch factura if exists
   const { data: factura } = useQuery({
@@ -375,8 +407,10 @@ export function SellerLiquidacionDetailDialog({
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {envios?.map((envio) => (
-                            <TableRow key={envio.id}>
+                          {envios?.map((envio) => {
+                            const noVisits = isCancelledNoVisits(envio);
+                            return (
+                            <TableRow key={envio.id} className={noVisits ? 'opacity-60' : ''}>
                               <TableCell className="text-sm">
                                 {format(new Date(envio.created_at), 'dd/MM/yy HH:mm')}
                               </TableCell>
@@ -385,11 +419,26 @@ export function SellerLiquidacionDetailDialog({
                               <TableCell>
                                 <Badge variant="outline" className="text-xs">{envio.estado || '-'}</Badge>
                               </TableCell>
-                              <TableCell className="text-right font-medium text-orange-600">
-                                ${envio.precio_total?.toLocaleString()}
+                              <TableCell className={`text-right font-medium ${noVisits ? 'text-muted-foreground' : 'text-orange-600'}`}>
+                                {noVisits ? (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger className="flex items-center justify-end gap-1">
+                                        $0
+                                        <Info className="h-3 w-3" />
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Sin visitas - no se cobra</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                ) : (
+                                  `$${envio.precio_total?.toLocaleString()}`
+                                )}
                               </TableCell>
                             </TableRow>
-                          ))}
+                            );
+                          })}
                           {envios?.length === 0 && (
                             <TableRow>
                               <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
@@ -401,7 +450,7 @@ export function SellerLiquidacionDetailDialog({
                             <TableRow className="bg-muted/50 font-semibold">
                               <TableCell colSpan={4} className="text-right">Total Envíos:</TableCell>
                               <TableCell className="text-right text-orange-600">
-                                ${envios.reduce((sum, e) => sum + (e.precio_total || 0), 0).toLocaleString()}
+                                ${adjustedTotal.toLocaleString()}
                               </TableCell>
                             </TableRow>
                           )}
