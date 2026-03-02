@@ -1,16 +1,19 @@
 import { Link } from "react-router-dom";
 import { useTrial } from "@/hooks/useTrial";
 import { useSubscription } from "@/hooks/useSubscription";
+import { useAuth } from "@/lib/auth";
 import { Clock, AlertTriangle, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 
 export function TrialBanner() {
+  const { isAdmin } = useAuth();
   const { isOnTrial, daysRemaining: trialDaysRemaining, isTrialExpired, hasActiveSubscription, isLoading: trialLoading } = useTrial();
   const { subscription, daysRemaining: subDaysRemaining, isLoading: subLoading } = useSubscription();
   const [dismissed, setDismissed] = useState(false);
 
   if (trialLoading || subLoading || dismissed) return null;
+  if (!isAdmin()) return null;
 
   // 1. Paid subscription expiring soon (≤5 days)
   if (subscription?.subscribed && subDaysRemaining !== null && subDaysRemaining <= 5) {
