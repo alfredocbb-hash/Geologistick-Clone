@@ -1,86 +1,59 @@
 
 
-# Agregar estados "Primera Visita", "Segunda Visita" y "Reprogramado" al sistema
+# Fix: Eliminar mapeos duplicados en ml_status_mapping
 
-## Situacion actual
+## Problema encontrado
 
-El enum `shipment_status` tiene 11 valores: `pendiente`, `recogido`, `en_sucursal`, `en_bodega`, `en_transito`, `en_reparto`, `entregado`, `devuelto`, `cancelado`, `incidencia`, `no_entregado`.
+Ambas funciones (`mercadolibre-webhook` y `mercadolibre-sync`) consultan `ml_status_mapping` usando `.maybeSingle()`, que **falla silenciosamente cuando hay mas de 1 fila** para la misma combinacion `(ml_status, ml_substatus)`.
 
-Faltan estados que ML usa frecuentemente y que el sistema necesita representar internamente: **primera_visita**, **segunda_visita** y **reprogramado**.
+Actualmente hay duplicados:
+- `not_delivered` + `receiver_absent` tiene 2 filas: una mapea a `no_entregado` (antigua) y otra a `primera_visita` (nueva)
+- `shipped` + `second_visit` posiblemente tambien tiene conflicto con `en_reparto`
 
-Actualmente, cuando ML reporta `shipped/rescheduled` o `not_delivered/second_visit`, el mapeo los envía a `en_transito` o `en_reparto`, perdiendo la información específica del sub-estado.
+Cuando `.maybeSingle()` encuentra 2+ filas, retorna error/null, y la logica cae al fallback generico (sin substatus), lo que resulta en estados incorrectos como `pendiente`.
 
-## Cambios
+## Solucion
 
-### 1. Base de datos (SQL Migration)
-
-Agregar 3 nuevos valores al enum `shipment_status`:
-
-```sql
-ALTER TYPE shipment_status ADD VALUE IF NOT EXISTS 'primera_visita';
-ALTER TYPE shipment_status ADD VALUE IF NOT EXISTS 'segunda_visita';
-ALTER TYPE shipment_status ADD VALUE IF NOT EXISTS 'reprogramado';
-```
-
-Actualizar `ml_status_mapping` para que estos sub-estados de ML se mapeen a los nuevos estados internos:
+### 1. SQL Migration: Limpiar duplicados y agregar constraint unico
 
 ```sql
-UPDATE ml_status_mapping 
-SET estado_interno = 'reprogramado' 
-WHERE ml_status = 'shipped' AND ml_substatus = 'rescheduled';
+-- Eliminar mapeos antiguos que fueron reemplazados por los nuevos
+DELETE FROM ml_status_mapping 
+WHERE ml_status = 'not_delivered' 
+  AND ml_substatus = 'receiver_absent' 
+  AND estado_interno = 'no_entregado';
 
+-- Actualizar shipped + second_visit si existe con estado incorrecto
 UPDATE ml_status_mapping 
-SET estado_interno = 'reprogramado' 
-WHERE ml_status = 'shipped' AND ml_substatus = 'rescheduled_by_meli';
+SET estado_interno = 'segunda_visita',
+    descripcion = 'Segunda visita de entrega'
+WHERE ml_status = 'shipped' 
+  AND ml_substatus = 'second_visit' 
+  AND estado_interno != 'segunda_visita';
 
-INSERT INTO ml_status_mapping (ml_status, ml_substatus, estado_interno, descripcion)
-VALUES 
-  ('shipped', 'rescheduled_by_buyer', 'reprogramado', 'Reprogramado por el comprador'),
-  ('not_delivered', 'second_visit', 'segunda_visita', 'Segunda visita de entrega'),
-  ('not_delivered', 'receiver_absent', 'primera_visita', 'Primera visita - destinatario ausente')
-ON CONFLICT DO NOTHING;
+-- Agregar constraint unico para prevenir futuros duplicados
+ALTER TABLE ml_status_mapping 
+ADD CONSTRAINT ml_status_mapping_unique_status 
+UNIQUE (ml_status, ml_substatus);
 ```
 
-### 2. UI - statusConfig en 6 archivos
+### 2. Corregir el envio 46563818704
 
-Agregar los 3 nuevos estados a cada `statusConfig`:
+Actualizar manualmente el envio que quedo en estado incorrecto:
 
-| Estado | Label | Color | Icono |
-|--------|-------|-------|-------|
-| `primera_visita` | 1a Visita | `bg-amber-600` | `AlertCircle` |
-| `segunda_visita` | 2a Visita | `bg-red-400` | `AlertCircle` |
-| `reprogramado` | Reprogramado | `bg-indigo-500` | `CalendarClock` |
-
-Archivos a modificar:
-- `src/pages/Shipments.tsx`
-- `src/pages/Tracking.tsx`
-- `src/pages/TrackingEmbed.tsx`
-- `src/components/shipments/ShipmentDetailsDialog.tsx`
-- `src/components/shipments/ShipmentHistoryDialog.tsx`
-- `src/components/shipments/ChangeStatusDialog.tsx`
-
-### 3. Guia de estados (`src/pages/ShipmentStatusGuide.tsx`)
-
-Agregar los 3 nuevos estados a `alternativeStatuses` para que aparezcan en la documentacion visual.
-
-### 4. Flujo logico
-
-Los nuevos estados se integran en el flujo existente:
-- `en_reparto` -> `primera_visita` (destinatario ausente, 1er intento)
-- `primera_visita` -> `segunda_visita` (2do intento fallido)
-- `primera_visita` / `segunda_visita` -> `reprogramado` (se reprograma entrega)
-- `reprogramado` -> `pendiente` o `en_reparto` (se reintenta)
+```sql
+UPDATE envios 
+SET estado_ml = 'primera_visita',
+    ml_sync_status = 'synced',
+    ml_last_sync_at = now()
+WHERE ml_shipment_id = 46563818704;
+```
 
 ## Archivos a modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| Base de datos (SQL) | Agregar 3 valores al enum + actualizar ml_status_mapping |
-| `src/pages/Shipments.tsx` | Agregar 3 estados a statusConfig |
-| `src/pages/Tracking.tsx` | Agregar 3 estados a statusConfig |
-| `src/pages/TrackingEmbed.tsx` | Agregar 3 estados a statusConfig |
-| `src/components/shipments/ShipmentDetailsDialog.tsx` | Agregar 3 estados a statusConfig |
-| `src/components/shipments/ShipmentHistoryDialog.tsx` | Agregar 3 estados a statusConfig |
-| `src/components/shipments/ChangeStatusDialog.tsx` | Agregar 3 estados a statusConfig + statusOrder |
-| `src/pages/ShipmentStatusGuide.tsx` | Agregar a alternativeStatuses |
+| Base de datos (SQL) | Eliminar duplicados, agregar UNIQUE constraint, corregir envio |
+
+No se requieren cambios en el codigo de las edge functions ya que la logica de consulta es correcta — el problema es solo datos duplicados en la tabla.
 
