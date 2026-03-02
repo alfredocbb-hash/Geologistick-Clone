@@ -359,6 +359,7 @@ Deno.serve(async (req) => {
 
         await supabase.from('envios').update({
           estado: mapping.estado_interno,
+          estado_ml: shipment.status,
           ml_sync_status: 'synced',
           ml_last_sync_at: now,
         }).eq('id', existingEnvio.id);
@@ -392,6 +393,7 @@ Deno.serve(async (req) => {
       } else {
         // No mapping or same status, just update sync timestamp
         await supabase.from('envios').update({
+          estado_ml: shipment.status,
           ml_sync_status: 'synced',
           ml_last_sync_at: now,
         }).eq('id', existingEnvio.id);
