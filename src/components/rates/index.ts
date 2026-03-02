@@ -6,3 +6,6 @@ export { WeightRangesEditor } from './WeightRangesEditor';
 export type { WeightRange } from './WeightRangesEditor';
 export { InsuranceConfigDialog } from './InsuranceConfigDialog';
 export { BulkRateUpdateDialog } from './BulkRateUpdateDialog';
+export { CreateTarifaWizard } from './CreateTarifaWizard';
+export { TarifaSandbox } from './TarifaSandbox';
+export { FormTooltip } from './FormTooltip';

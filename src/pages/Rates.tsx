@@ -60,6 +60,7 @@ import {
   InsuranceConfigDialog,
   BulkRateUpdateDialog,
   WeightRangesEditor,
+  CreateTarifaWizard,
 } from '@/components/rates';
 import type { RateType, WeightRange } from '@/components/rates';
 
@@ -596,16 +597,16 @@ export default function Rates() {
     setFormData({
       nombre: '',
       tipo_tarifa: 'peso',
-      precio_base: '',
+      precio_base: '5000',
       precio_por_kg: '',
       precio_por_km: '',
       precio_por_m3: '',
       zona_origen: '',
       zona_destino: '',
-      comision_chofer_porcentaje: '',
+      comision_chofer_porcentaje: '10',
       comision_chofer_fija: '',
       activa: true,
-      peso_base_hasta: '',
+      peso_base_hasta: '5',
       adicional_por_kg: '',
       volumen_base_hasta: '',
       adicional_por_m3: '',
@@ -752,270 +753,7 @@ export default function Rates() {
     }
   };
 
-  // Render dynamic fields based on rate type
-  const renderRateTypeFields = () => {
-    switch (formData.tipo_tarifa) {
-      case 'peso':
-        return (
-          <div className="space-y-4">
-            <div className="space-y-4 p-4 rounded-lg bg-muted/50 border">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <Weight className="h-4 w-4" />
-                Configuración por Peso - Método Simple
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="peso_base_hasta">Peso incluido en base (Kg)</Label>
-                  <Input
-                    id="peso_base_hasta"
-                    type="number"
-                    step="0.1"
-                    value={formData.peso_base_hasta}
-                    onChange={(e) => setFormData({ ...formData, peso_base_hasta: e.target.value })}
-                    placeholder="5"
-                  />
-                  <p className="text-xs text-muted-foreground">Kg incluidos en el precio base (Flete)</p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="adicional_por_kg">Precio por Kg adicional</Label>
-                  <Input
-                    id="adicional_por_kg"
-                    type="number"
-                    step="0.01"
-                    value={formData.adicional_por_kg}
-                    onChange={(e) => setFormData({ ...formData, adicional_por_kg: e.target.value })}
-                    placeholder="150"
-                  />
-                  <p className="text-xs text-muted-foreground">Se cobra por cada kg que exceda el base</p>
-                </div>
-              </div>
-            </div>
-            
-            {/* Weight Ranges Editor */}
-            <div className="p-4 rounded-lg bg-muted/50 border">
-              <WeightRangesEditor
-                ranges={formData.rangos_kg}
-                onChange={(ranges) => setFormData({ ...formData, rangos_kg: ranges })}
-                umbralVolumen={formData.umbral_volumen_cm}
-                onUmbralChange={(umbral) => setFormData({ ...formData, umbral_volumen_cm: umbral })}
-                precioPorM3={parseFloat(formData.precio_por_m3) || 0}
-                onPrecioM3Change={(precio) => setFormData({ ...formData, precio_por_m3: precio.toString() })}
-                showVolumeSettings={true}
-              />
-            </div>
-          </div>
-        );
-      case 'distancia':
-        return (
-          <div className="space-y-2 p-4 rounded-lg bg-muted/50 border">
-            <div className="flex items-center gap-2 text-sm font-medium mb-2">
-              <Ruler className="h-4 w-4" />
-              Configuración por Distancia
-            </div>
-            <Label htmlFor="precio_por_km">Precio por Kilómetro</Label>
-            <Input
-              id="precio_por_km"
-              type="number"
-              step="0.01"
-              value={formData.precio_por_km}
-              onChange={(e) => setFormData({ ...formData, precio_por_km: e.target.value })}
-              placeholder="50"
-            />
-            <p className="text-xs text-muted-foreground">Se multiplica por la distancia calculada entre origen y destino</p>
-          </div>
-        );
-      case 'volumen':
-        return (
-          <div className="space-y-4 p-4 rounded-lg bg-muted/50 border">
-            <div className="flex items-center gap-2 text-sm font-medium">
-              <Box className="h-4 w-4" />
-              Configuración por Volumen
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="volumen_base_hasta">Volumen incluido en base (m³)</Label>
-                <Input
-                  id="volumen_base_hasta"
-                  type="number"
-                  step="0.01"
-                  value={formData.volumen_base_hasta}
-                  onChange={(e) => setFormData({ ...formData, volumen_base_hasta: e.target.value })}
-                  placeholder="0.5"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="adicional_por_m3">Precio por m³ adicional</Label>
-                <Input
-                  id="adicional_por_m3"
-                  type="number"
-                  step="0.01"
-                  value={formData.adicional_por_m3}
-                  onChange={(e) => setFormData({ ...formData, adicional_por_m3: e.target.value })}
-                  placeholder="500"
-                />
-              </div>
-            </div>
-          </div>
-        );
-      case 'zona':
-      case 'codigo_postal':
-        return (
-          <div className="space-y-4 p-4 rounded-lg bg-muted/50 border">
-            <div className="flex items-center gap-2 text-sm font-medium">
-              <MapPin className="h-4 w-4" />
-              Configuración por {formData.tipo_tarifa === 'codigo_postal' ? 'Código Postal' : 'Zona'}
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="zona_origen">
-                  {formData.tipo_tarifa === 'codigo_postal' ? 'CP Origen' : 'Zona Origen'}
-                </Label>
-                <Input
-                  id="zona_origen"
-                  value={formData.zona_origen}
-                  onChange={(e) => setFormData({ ...formData, zona_origen: e.target.value })}
-                  placeholder={formData.tipo_tarifa === 'codigo_postal' ? 'Ej: 1000' : 'Ej: Capital'}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="zona_destino">
-                  {formData.tipo_tarifa === 'codigo_postal' ? 'CP Destino' : 'Zona Destino'}
-                </Label>
-                <Input
-                  id="zona_destino"
-                  value={formData.zona_destino}
-                  onChange={(e) => setFormData({ ...formData, zona_destino: e.target.value })}
-                  placeholder={formData.tipo_tarifa === 'codigo_postal' ? 'Ej: 1900' : 'Ej: GBA'}
-                />
-              </div>
-            </div>
-          </div>
-        );
-      default:
-        return null;
-    }
-  };
-
-  // Render concept prices inline in the form
-  const renderConceptPrices = () => {
-    const activeConceptos = conceptos.filter(c => c.activo);
-    if (activeConceptos.length === 0) return null;
-
-    return (
-      <div className="border-t pt-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <Layers className="h-4 w-4" />
-          <Label className="font-medium">Precios por Concepto</Label>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Define los montos para cada concepto. El precio base es el <strong>Flete</strong>.
-        </p>
-        
-        <div className="space-y-3">
-          {activeConceptos.map(concepto => {
-            const isSeguro = concepto.codigo?.toLowerCase() === 'seguro';
-            const currentValue = formData.conceptos[concepto.id] || { monto: '', es_porcentaje: isSeguro, porcentaje: '', multiplicar_por_bultos: false };
-            
-            return (
-              <div key={concepto.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm truncate">{concepto.nombre}</span>
-                    <Badge variant="outline" className="text-xs shrink-0">
-                      {concepto.es_basico ? 'Básico' : 'Adicional'}
-                    </Badge>
-                  </div>
-                  {concepto.descripcion && (
-                    <p className="text-xs text-muted-foreground truncate">{concepto.descripcion}</p>
-                  )}
-                </div>
-                
-                {isSeguro ? (
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1">
-                      <Switch
-                        id={`porcentaje-${concepto.id}`}
-                        checked={currentValue.es_porcentaje}
-                        onCheckedChange={(checked) => {
-                          setFormData({
-                            ...formData,
-                            conceptos: {
-                              ...formData.conceptos,
-                              [concepto.id]: { ...currentValue, es_porcentaje: checked }
-                            }
-                          });
-                        }}
-                      />
-                      <Label htmlFor={`porcentaje-${concepto.id}`} className="text-xs">
-                        {currentValue.es_porcentaje ? '%' : '$'}
-                      </Label>
-                    </div>
-                    {currentValue.es_porcentaje ? (
-                      <div className="w-24">
-                        <Input
-                          type="number"
-                          step="0.01"
-                          placeholder="2.5"
-                          value={currentValue.porcentaje}
-                          onChange={(e) => {
-                            setFormData({
-                              ...formData,
-                              conceptos: {
-                                ...formData.conceptos,
-                                [concepto.id]: { ...currentValue, porcentaje: e.target.value }
-                              }
-                            });
-                          }}
-                          className="text-right"
-                        />
-                        <p className="text-[10px] text-muted-foreground mt-1">% del valor declarado</p>
-                      </div>
-                    ) : (
-                      <div className="w-28">
-                        <Input
-                          type="number"
-                          step="0.01"
-                          placeholder="0.00"
-                          value={currentValue.monto}
-                          onChange={(e) => {
-                            setFormData({
-                              ...formData,
-                              conceptos: {
-                                ...formData.conceptos,
-                                [concepto.id]: { ...currentValue, monto: e.target.value }
-                              }
-                            });
-                          }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="w-28">
-                    <Input
-                      type="number"
-                      step="0.01"
-                      placeholder="0.00"
-                      value={currentValue.monto}
-                      onChange={(e) => {
-                        setFormData({
-                          ...formData,
-                          conceptos: {
-                            ...formData.conceptos,
-                            [concepto.id]: { ...currentValue, monto: e.target.value, es_porcentaje: false }
-                          }
-                        });
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
+  // renderRateTypeFields and renderConceptPrices moved to CreateTarifaWizard
 
   if (!isAdmin()) {
     return (
@@ -1083,135 +821,24 @@ export default function Rates() {
                   Nueva Tarifa
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+              <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>
                     {editingTarifa ? 'Editar Tarifa' : 'Nueva Tarifa'}
                   </DialogTitle>
                 </DialogHeader>
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  {/* Rate Type Selector */}
-                  <RateTypeSelector
-                    value={formData.tipo_tarifa}
-                    onChange={(value) => setFormData({ ...formData, tipo_tarifa: value })}
-                  />
-
-                  <div className="space-y-2">
-                    <Label htmlFor="nombre">Nombre de la Tarifa *</Label>
-                    <Input
-                      id="nombre"
-                      value={formData.nombre}
-                      onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                      placeholder="Ej: Envío Local, Express, etc."
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="precio_base">Precio Base *</Label>
-                    <Input
-                      id="precio_base"
-                      type="number"
-                      step="0.01"
-                      value={formData.precio_base}
-                      onChange={(e) => setFormData({ ...formData, precio_base: e.target.value })}
-                      required
-                    />
-                  </div>
-
-                  {/* Multiplicar flete por bultos */}
-                  <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border">
-                    <div>
-                      <Label className="font-medium">Multiplicar flete por bultos</Label>
-                      <p className="text-xs text-muted-foreground">
-                        Si está activo, el flete base se multiplica por la cantidad de bultos
-                      </p>
-                    </div>
-                    <Switch
-                      checked={formData.multiplicar_flete_por_bultos}
-                      onCheckedChange={(checked) =>
-                        setFormData({ ...formData, multiplicar_flete_por_bultos: checked })
-                      }
-                    />
-                  </div>
-
-                  {/* Dynamic fields based on rate type */}
-                  {renderRateTypeFields()}
-
-                  {/* Concept prices inline */}
-                  {renderConceptPrices()}
-
-                  <div className="border-t pt-4">
-                    <h4 className="text-sm font-medium mb-3">Comisión Chofer</h4>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="comision_chofer_porcentaje">Porcentaje %</Label>
-                        <Input
-                          id="comision_chofer_porcentaje"
-                          type="number"
-                          step="0.01"
-                          value={formData.comision_chofer_porcentaje}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              comision_chofer_porcentaje: e.target.value,
-                            })
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="comision_chofer_fija">Monto Fijo</Label>
-                        <Input
-                          id="comision_chofer_fija"
-                          type="number"
-                          step="0.01"
-                          value={formData.comision_chofer_fija}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              comision_chofer_fija: e.target.value,
-                            })
-                          }
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="activa">Tarifa Activa</Label>
-                    <Switch
-                      id="activa"
-                      checked={formData.activa}
-                      onCheckedChange={(checked) =>
-                        setFormData({ ...formData, activa: checked })
-                      }
-                    />
-                  </div>
-
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        resetForm();
-                        setIsDialogOpen(false);
-                      }}
-                    >
-                      Cancelar
-                    </Button>
-                    <Button
-                      type="submit"
-                      disabled={saveMutation.isPending}
-                      className="bg-tarifas hover:bg-tarifas/90"
-                    >
-                      {saveMutation.isPending
-                        ? 'Guardando...'
-                        : editingTarifa
-                        ? 'Actualizar'
-                        : 'Crear'}
-                    </Button>
-                  </div>
-                </form>
+                <CreateTarifaWizard
+                  formData={formData}
+                  setFormData={setFormData}
+                  onSubmit={handleSubmit}
+                  onCancel={() => {
+                    resetForm();
+                    setIsDialogOpen(false);
+                  }}
+                  editingTarifa={editingTarifa}
+                  conceptos={conceptos}
+                  isPending={saveMutation.isPending}
+                />
               </DialogContent>
             </Dialog>
           </div>
