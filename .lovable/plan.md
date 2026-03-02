@@ -1,53 +1,37 @@
 
 
-# Fix: Envios liberados de ruta cancelada no aparecen en Crear Ruta
+# Fix: Envíos de ruta cancelada no visibles en planificador
 
-## Problema
+## Problema raíz
 
-Al cancelar una ruta y elegir "Liberar para replanificar", los envios de e-commerce/ML desaparecen del planificador porque:
+La cancelación de la ruta de Lucas Galarza ocurrió **antes** del fix anterior. Esos envíos quedaron en estado `pendiente` (código viejo), y el filtro de e-commerce del planificador (línea 266-272) los excluye porque son envíos con `ml_shipment_id` en estado `pendiente` sin `reprogramado_count > 0`.
 
-1. `CancelRouteDialog` los pone en estado `pendiente`
-2. El filtro de e-commerce en el planificador **excluye** envios de e-commerce en estado `pendiente` (asumiendo que aun no fueron recolectados)
-3. Pero estos envios ya estaban recolectados y en reparto -- ponerlos en `pendiente` es semanticamente incorrecto
+El fix del `CancelRouteDialog` solo aplica a **futuras** cancelaciones. Los datos ya existentes necesitan corrección.
 
-## Solucion
+## Solución (2 partes)
 
-### Archivo: `src/components/routes/CancelRouteDialog.tsx`
+### 1. Migración: corregir envíos ya afectados
 
-Cambiar el estado destino de `pendiente` a `en_sucursal` cuando la accion es "liberar". Estos envios ya fueron recolectados y estaban en una ruta activa, asi que fisicamente estan en la sucursal esperando ser re-asignados.
+Ejecutar una migración SQL que actualice a `en_sucursal` los envíos que:
+- Pertenecen a rutas canceladas
+- Están en estado `pendiente`
+- Tienen `chofer_id IS NULL`
+- Tienen `ml_shipment_id` (son de e-commerce)
 
-- Accion **"release"**: estado -> `en_sucursal` (los paquetes estan fisicamente en la sucursal, listos para re-planificar)
-- Accion **"reschedule"**: estado -> `pendiente` (se reprograman para otra fecha, comportamiento actual correcto)
+Esto recupera los envíos de la ruta de Lucas Galarza (y cualquier otro caso similar).
 
-Esto resuelve el problema porque el filtro del planificador (linea 269) ya permite envios e-commerce en estado `en_sucursal`.
+### 2. Robustez en el filtro del planificador
 
-### Cambio en detalle
+Modificar el filtro de e-commerce en `src/pages/RoutePlanner.tsx` (líneas 266-272) para incluir también envíos que tengan historial de cancelación de ruta reciente. Alternativa más simple: ampliar la condición existente para que envíos de e-commerce en `pendiente` que tengan `ultima_reprogramacion` (indicador de que pasaron por una ruta) también sean visibles.
 
-En la mutacion, reemplazar:
+## Archivos a modificar
 
-```typescript
-const updateData: any = {
-  chofer_id: null,
-  estado: 'pendiente',
-};
-```
+| Archivo | Cambio |
+|---------|--------|
+| Migración SQL | UPDATE envíos de rutas canceladas de `pendiente` a `en_sucursal` |
+| `src/pages/RoutePlanner.tsx` | Agregar condición: envíos e-commerce en `pendiente` con `ultima_reprogramacion` también se muestran |
 
-Por:
+## Sin riesgo
 
-```typescript
-const updateData: any = {
-  chofer_id: null,
-  estado: action === 'release' ? 'en_sucursal' : 'pendiente',
-};
-```
-
-Y ajustar las entradas del historial para reflejar el estado correcto:
-
-```typescript
-estado_nuevo: action === 'release' ? 'en_sucursal' : 'pendiente',
-```
-
-### Sin cambios de base de datos
-
-No se requieren migraciones.
-
+- La migración es idempotente (solo afecta envíos en `pendiente` sin chofer)
+- El filtro ampliado no introduce envíos no deseados porque `ultima_reprogramacion` solo se setea en flujos de cancelación/reprogramación
