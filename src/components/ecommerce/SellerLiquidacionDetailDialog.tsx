@@ -472,7 +472,7 @@ export function SellerLiquidacionDetailDialog({
         open={invoiceDialogOpen}
         onClose={() => setInvoiceDialogOpen(false)}
         onSuccess={handleInvoiceSuccess}
-        envioId={liquidacion.id}
+        liquidacionSellerId={liquidacion.id}
         importeTotal={Math.abs(liquidacion.saldo_periodo || 0)}
       />
     </>
