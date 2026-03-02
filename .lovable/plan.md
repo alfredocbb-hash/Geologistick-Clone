@@ -1,68 +1,49 @@
 
+Objetivo: que los envíos en estado `pendiente` no aparezcan ni en la consulta previa ni dentro de la liquidación de seller (no solo en $0, sino excluidos).
 
-# Excluir envios con estado "pendiente" de liquidaciones de sellers
+Hallazgo clave: hoy `pendiente` se deja con `precioFinal = 0`, pero igual queda en `calculatedEnvios`, se vincula con `liquidacion_seller_id` al generar, y luego vuelve a aparecer en el detalle.
 
-## Problema
+Plan de implementación
 
-Los envios con estado "pendiente" (que aun no fueron recogidos por ningun chofer) aparecen en las liquidaciones de sellers y se les asigna un valor. Estos envios no deben liquidarse porque todavia no entraron al circuito operativo.
+1) Excluir `pendiente` desde el origen del cálculo (no solo ponerlo en 0)
+- Archivo: `src/pages/ecommerce/Settlements.tsx`
+- En `calculateMutation`:
+  - Filtrar `ecommerceEnvios` y `filteredCommonEnvios` para que no incluyan `estado === 'pendiente'`.
+  - Aplicar un filtro defensivo antes del map final (`allEnviosData`) para garantizar que no pase ninguno pendiente.
+  - Eliminar el bloque que hoy hace `precioFinal = 0` para pendientes (ya no deberían entrar).
+- Resultado: no aparecen en “Resumen Envíos”, no suman cantidad, no entran al total ni al botón de generar.
 
-## Regla de negocio
+2) Evitar que se vinculen pendientes al generar liquidación
+- Archivo: `src/pages/ecommerce/Settlements.tsx`
+- En `generateMutation`:
+  - Agregar guard clause defensivo en el loop de `sellerEnvios` para saltar cualquier envío pendiente si llegara por datos legacy/cache.
+- Resultado: nuevas liquidaciones no enlazan pendientes en `envios.liquidacion_seller_id`.
 
-- **Envio pendiente**: no debe incluirse en el calculo ni en la liquidacion. El paquete aun no fue procesado.
-- Solo se liquidan envios que ya pasaron al menos por el estado "recogido" (es decir, que entraron al circuito logistico).
+3) Ajustar conteos y consulta de “Saldos por Seller”
+- Archivo: `src/pages/ecommerce/Settlements.tsx`
+- En `sellerBalances`:
+  - Mantener exclusión de pendientes en el total.
+  - Corregir `cantEnvios` para contar solo envíos efectivamente liquidables (hoy cuenta IDs totales, incluidos pendientes/cancelados sin visitas).
+- Resultado: la grilla de saldos no “trae” pendientes en la cantidad operativa mostrada.
 
-## Cambios
+4) Excluir pendientes en el detalle de liquidación ya generada
+- Archivo: `src/components/ecommerce/SellerLiquidacionDetailDialog.tsx`
+- En query de envíos de la liquidación:
+  - Excluir `estado = 'pendiente'` en la consulta (y mantener filtro defensivo en memoria).
+- Resultado: aunque existan liquidaciones históricas con pendientes vinculados, no se muestran en la consulta del detalle.
 
-### `src/pages/ecommerce/Settlements.tsx`
+5) Consistencia en PDF de seller (misma regla visual)
+- Archivo: `src/lib/generateSettlementPDF.ts`
+- En `downloadSellerSettlementPDF`:
+  - Excluir pendientes al traer envíos para el PDF.
+- Resultado: lo que se ve en pantalla y lo que se descarga quedan alineados.
 
-**1. Saldos por Seller (sellerBalances, linea ~266-273)**
+Validación (end-to-end)
+- Caso 1: período con entregados + pendientes -> en cálculo solo aparecen los liquidables.
+- Caso 2: generar liquidación -> verificar que ningún `pendiente` quede con `liquidacion_seller_id`.
+- Caso 3: abrir detalle de liquidación histórica que tenía pendientes -> no deben listarse.
+- Caso 4: descargar PDF de esa liquidación -> tampoco deben figurar pendientes.
 
-Agregar condicion: si `envio.estado === 'pendiente'`, saltar (no sumar al total). Similar a como ya se hace con cancelados sin visitas.
-
-```typescript
-// Pendiente = no liquidar
-if (envio.estado === 'pendiente') {
-  continue;
-}
-```
-
-**2. Calculo de liquidacion (calculateMutation, linea ~540)**
-
-En el mapeo de `allEnviosData`, agregar la exclusion de envios pendientes. Esto se hace filtrando antes de mapear o asignando `precioFinal = 0` con una marca especial.
-
-La solucion mas limpia es filtrar antes del mapeo:
-```typescript
-const allEnviosData = [...ecommerceEnvios, ...uniqueCommon]
-  .filter(e => e.estado !== 'pendiente'); // Excluir pendientes
-```
-
-**3. Generacion (generateMutation)**
-
-No requiere cambio adicional: al excluir los pendientes del calculo, estos no llegaran a la generacion.
-
-### `src/components/ecommerce/SellerLiquidacionDetailDialog.tsx`
-
-Para liquidaciones ya generadas que pudieran tener envios pendientes vinculados (datos historicos), agregar la misma logica visual:
-
-- Mostrar envios pendientes con `$0` y tooltip "Pendiente - no se liquida"
-- Excluirlos del total ajustado
-- Aplicar estilo `opacity-60` similar a cancelados sin visitas
-
-Modificar la funcion `isCancelledNoVisits` para que tambien cubra pendientes, renombrandola a algo mas generico como `isExcludedFromSettlement`:
-
-```typescript
-const isExcludedFromSettlement = (envio: any) =>
-  envio.estado === 'pendiente' ||
-  (envio.estado === 'cancelado' && !(enviosConVisitasSet || new Set()).has(envio.id));
-```
-
-## Archivos modificados
-
-| Archivo | Cambio |
-|---------|--------|
-| `src/pages/ecommerce/Settlements.tsx` | Excluir pendientes en `sellerBalances` y `calculateMutation` |
-| `src/components/ecommerce/SellerLiquidacionDetailDialog.tsx` | Mostrar pendientes como $0 con indicador visual |
-
-## Sin cambios de base de datos
-
-No se requieren migraciones. Solo se agregan filtros en el frontend.
+Notas técnicas
+- No requiere migraciones de base de datos.
+- Se mantiene intacta la regla ya implementada para cancelados sin visitas (`$0`), solo se cambia la semántica de `pendiente` a “exclusión total”.
