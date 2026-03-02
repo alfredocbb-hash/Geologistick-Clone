@@ -92,15 +92,16 @@ export function SellerLiquidacionDetailDialog({
     enabled: open && !!envios && envios.length > 0,
   });
 
-  // Helper: is a cancelled envio without visits?
-  const isCancelledNoVisits = (envio: any) =>
-    envio.estado === 'cancelado' && !(enviosConVisitasSet || new Set()).has(envio.id);
+  // Helper: is envio excluded from settlement? (pendiente or cancelado sin visitas)
+  const isExcludedFromSettlement = (envio: any) =>
+    envio.estado === 'pendiente' ||
+    (envio.estado === 'cancelado' && !(enviosConVisitasSet || new Set()).has(envio.id));
 
   // Adjusted total excluding cancelled without visits
   const adjustedTotal = useMemo(() => {
     if (!envios) return 0;
     return envios.reduce((sum: number, e: any) =>
-      sum + (isCancelledNoVisits(e) ? 0 : (e.precio_total || 0)), 0);
+      sum + (isExcludedFromSettlement(e) ? 0 : (e.precio_total || 0)), 0);
   }, [envios, enviosConVisitasSet]);
 
   // Fetch factura if exists
@@ -408,9 +409,9 @@ export function SellerLiquidacionDetailDialog({
                         </TableHeader>
                         <TableBody>
                           {envios?.map((envio) => {
-                            const noVisits = isCancelledNoVisits(envio);
+                            const excluded = isExcludedFromSettlement(envio);
                             return (
-                            <TableRow key={envio.id} className={noVisits ? 'opacity-60' : ''}>
+                            <TableRow key={envio.id} className={excluded ? 'opacity-60' : ''}>
                               <TableCell className="text-sm">
                                 {format(new Date(envio.created_at), 'dd/MM/yy HH:mm')}
                               </TableCell>
@@ -419,8 +420,8 @@ export function SellerLiquidacionDetailDialog({
                               <TableCell>
                                 <Badge variant="outline" className="text-xs">{envio.estado || '-'}</Badge>
                               </TableCell>
-                              <TableCell className={`text-right font-medium ${noVisits ? 'text-muted-foreground' : 'text-orange-600'}`}>
-                                {noVisits ? (
+                              <TableCell className={`text-right font-medium ${excluded ? 'text-muted-foreground' : 'text-orange-600'}`}>
+                                {excluded ? (
                                   <TooltipProvider>
                                     <Tooltip>
                                       <TooltipTrigger className="flex items-center justify-end gap-1">
@@ -428,7 +429,7 @@ export function SellerLiquidacionDetailDialog({
                                         <Info className="h-3 w-3" />
                                       </TooltipTrigger>
                                       <TooltipContent>
-                                        <p>Sin visitas - no se cobra</p>
+                                        <p>{envio.estado === 'pendiente' ? 'Pendiente - no se liquida' : 'Sin visitas - no se cobra'}</p>
                                       </TooltipContent>
                                     </Tooltip>
                                   </TooltipProvider>
