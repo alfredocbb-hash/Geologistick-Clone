@@ -399,7 +399,7 @@ export default function PrintInvoice() {
         </div>
 
         {/* Invoice Preview */}
-        <Card id="invoice-print-area" className="shadow-lg print:shadow-none print:border-0">
+        <Card id="invoice-print-area" className="shadow-lg print:shadow-none print:border-0 bg-white text-black [&_*]:text-black [&_.text-muted-foreground]:!text-gray-500">
           {/* Sandbox Banner */}
           {isSandbox && (
             <div className="bg-red-500/10 border-b border-red-500/20 text-center py-2 print:py-1">

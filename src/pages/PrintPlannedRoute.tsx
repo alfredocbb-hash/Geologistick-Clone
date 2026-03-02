@@ -104,7 +104,7 @@ export default function PrintPlannedRoute() {
   }
 
   return (
-    <div className="min-h-screen bg-white p-4 print:p-2">
+    <div className="min-h-screen bg-white text-black p-4 print:p-2">
       <style>{`
         @media print {
           @page { 

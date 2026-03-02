@@ -232,7 +232,7 @@ export default function PrintSettlement() {
         </div>
 
         {/* Settlement Preview */}
-        <Card className="shadow-lg print:shadow-none print:border-0">
+        <Card className="shadow-lg print:shadow-none print:border-0 bg-white text-black [&_*]:text-black [&_.text-muted-foreground]:!text-gray-500">
           <CardHeader className="border-b bg-muted/30">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-4">

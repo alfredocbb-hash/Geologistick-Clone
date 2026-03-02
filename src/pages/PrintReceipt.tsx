@@ -193,7 +193,7 @@ export default function PrintReceipt() {
         </div>
 
         {/* Receipt Preview */}
-        <Card className="shadow-lg">
+        <Card className="shadow-lg bg-white text-black [&_*]:text-black [&_.text-muted-foreground]:!text-gray-500">
           <CardHeader className="border-b bg-slate-50">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-4">
