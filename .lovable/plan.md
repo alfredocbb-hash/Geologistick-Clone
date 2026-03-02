@@ -1,25 +1,75 @@
 
 
-# Fix: Remover condición de filtro demasiado amplia
+# Fix: Sincronizar campo estado_ml en webhook y corregir envío 46563112028
 
 ## Problema
 
-La condición agregada `(envio.estado === 'pendiente' && !envio.chofer_id)` muestra envíos ML nuevos (como el 46566297799) que aún no fueron recolectados del seller. Esto satura el planificador con envíos no accionables.
+MercadoLibre muestra el envío 46563112028 como "reprogramado" (`shipped/rescheduled`), pero el sistema interno muestra `estado_ml = pendiente`. Esto ocurre porque:
+
+1. El webhook (`mercadolibre-webhook`) actualiza el `estado` interno pero **nunca actualiza `estado_ml`**
+2. La función de sync tampoco actualizó este envío porque su estado interno es `incidencia`
 
 ## Solución
 
-**Archivo:** `src/pages/RoutePlanner.tsx` (línea 272)
+### 1. Corregir el webhook para actualizar `estado_ml`
 
-Remover la línea:
+**Archivo:** `supabase/functions/mercadolibre-webhook/index.ts`
+
+En la sección donde se actualiza un envío existente (aprox. línea 210), agregar `estado_ml` al UPDATE:
+
 ```typescript
-(envio.estado === 'pendiente' && !envio.chofer_id) ||
+// Antes:
+await supabase.from('envios').update({
+  estado: mapping.estado_interno,
+  ml_sync_status: 'synced',
+  ml_last_sync_at: now,
+}).eq('id', existingEnvio.id);
+
+// Después:
+await supabase.from('envios').update({
+  estado: mapping.estado_interno,
+  estado_ml: shipment.status,
+  ml_sync_status: 'synced',
+  ml_last_sync_at: now,
+}).eq('id', existingEnvio.id);
 ```
 
-Los envíos de la ruta cancelada de Lucas Galarza ya fueron corregidos a `en_sucursal` por la migración SQL, así que pasan el filtro existente en línea 269. No se necesita esta condición adicional.
+También agregar `estado_ml` en el caso donde no hay cambio de estado (solo sync timestamp), para que siempre refleje el último estado conocido de ML:
 
-El filtro queda con las condiciones originales que ya cubren todos los casos:
-- Estados avanzados (`recogido`, `en_sucursal`, `en_reparto`)
-- Envíos reprogramados (`reprogramado_count > 0`)
-- Envíos con `ultima_reprogramacion`
-- Envíos no-ML (manuales)
+```typescript
+// En el else (sin cambio de estado):
+await supabase.from('envios').update({
+  estado_ml: shipment.status,
+  ml_sync_status: 'synced',
+  ml_last_sync_at: now,
+}).eq('id', existingEnvio.id);
+```
 
+### 2. Corregir datos del envío 46563112028
+
+**SQL Migration:** Actualizar el `estado_ml` de este envío específico para reflejar el estado real de ML.
+
+```sql
+UPDATE envios
+SET estado_ml = 'shipped',
+    ml_sync_status = 'synced',
+    ml_last_sync_at = now()
+WHERE ml_shipment_id = 46563112028;
+```
+
+### 3. Agregar `estado_ml` al UPDATE de ecommerce_orders en el webhook
+
+En la misma sección del webhook, el `ml_shipping_status` de `ecommerce_orders` ya se actualiza correctamente. Solo verificar que sigue funcionando.
+
+## Archivos a modificar
+
+| Archivo | Cambio |
+|---------|--------|
+| `supabase/functions/mercadolibre-webhook/index.ts` | Agregar `estado_ml: shipment.status` en los dos UPDATE de envíos existentes |
+| Base de datos (SQL) | Corregir `estado_ml` del envío 46563112028 |
+
+## Impacto
+
+- Futuras notificaciones de ML actualizarán correctamente `estado_ml`
+- La UI mostrará el estado real de ML en la columna correspondiente
+- Las discrepancias entre estado interno y ML serán visibles para los operadores
