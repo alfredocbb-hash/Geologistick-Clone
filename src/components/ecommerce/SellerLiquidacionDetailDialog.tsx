@@ -64,6 +64,7 @@ export function SellerLiquidacionDetailDialog({
         .from('envios') as any)
         .select('id, tracking_number, nombre_destinatario, direccion_entrega, precio_total, estado, created_at')
         .eq('liquidacion_seller_id', liquidacion?.id)
+        .neq('estado', 'pendiente')
         .order('created_at', { ascending: true });
 
       if (error) throw error;
