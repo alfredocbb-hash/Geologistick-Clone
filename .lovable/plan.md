@@ -1,60 +1,86 @@
 
-# Fix: Pantalla negra en Envíos + Pérdida de estado al cambiar pestaña
 
-## Causa raíz de la pantalla negra
+# Agregar estados "Primera Visita", "Segunda Visita" y "Reprogramado" al sistema
 
-El error real es un crash en `StatusBadge` (línea 251):
+## Situacion actual
 
-```
-TypeError: can't access property "icon", config is undefined
-```
+El enum `shipment_status` tiene 11 valores: `pendiente`, `recogido`, `en_sucursal`, `en_bodega`, `en_transito`, `en_reparto`, `entregado`, `devuelto`, `cancelado`, `incidencia`, `no_entregado`.
 
-Esto ocurre porque `envio.estado_ml` contiene valores de MercadoLibre como `"shipped"` que no existen en `statusConfig`. Cuando se renderiza `<StatusBadge status={envio.estado_ml as ShipmentStatus} />` (línea 482), `statusConfig["shipped"]` es `undefined`, y al intentar acceder a `config.icon` el componente crashea y deja la pantalla en negro.
+Faltan estados que ML usa frecuentemente y que el sistema necesita representar internamente: **primera_visita**, **segunda_visita** y **reprogramado**.
 
-## Cambios en `src/pages/Shipments.tsx`
+Actualmente, cuando ML reporta `shipped/rescheduled` o `not_delivered/second_visit`, el mapeo los envía a `en_transito` o `en_reparto`, perdiendo la información específica del sub-estado.
 
-### 1. Proteger StatusBadge contra estados desconocidos
+## Cambios
 
-Agregar un fallback cuando el estado no existe en `statusConfig`:
+### 1. Base de datos (SQL Migration)
 
-```typescript
-const StatusBadge = ({ status }: { status: ShipmentStatus }) => {
-  const config = statusConfig[status];
-  if (!config) {
-    return (
-      <Badge className="bg-gray-400 text-white gap-1">
-        <AlertCircle className="h-3 w-3" />
-        {status || 'Desconocido'}
-      </Badge>
-    );
-  }
-  const Icon = config.icon;
-  return (
-    <Badge className={`${config.color} text-white gap-1`}>
-      <Icon className="h-3 w-3" />
-      {config.label}
-    </Badge>
-  );
-};
+Agregar 3 nuevos valores al enum `shipment_status`:
+
+```sql
+ALTER TYPE shipment_status ADD VALUE IF NOT EXISTS 'primera_visita';
+ALTER TYPE shipment_status ADD VALUE IF NOT EXISTS 'segunda_visita';
+ALTER TYPE shipment_status ADD VALUE IF NOT EXISTS 'reprogramado';
 ```
 
-### 2. Controlar Popovers de fecha para cierre automático
+Actualizar `ml_status_mapping` para que estos sub-estados de ML se mapeen a los nuevos estados internos:
 
-Agregar estados `dateFromOpen` y `dateToOpen` y cerrar el Popover al seleccionar fecha:
+```sql
+UPDATE ml_status_mapping 
+SET estado_interno = 'reprogramado' 
+WHERE ml_status = 'shipped' AND ml_substatus = 'rescheduled';
 
-```typescript
-const [dateFromOpen, setDateFromOpen] = useState(false);
-const [dateToOpen, setDateToOpen] = useState(false);
+UPDATE ml_status_mapping 
+SET estado_interno = 'reprogramado' 
+WHERE ml_status = 'shipped' AND ml_substatus = 'rescheduled_by_meli';
+
+INSERT INTO ml_status_mapping (ml_status, ml_substatus, estado_interno, descripcion)
+VALUES 
+  ('shipped', 'rescheduled_by_buyer', 'reprogramado', 'Reprogramado por el comprador'),
+  ('not_delivered', 'second_visit', 'segunda_visita', 'Segunda visita de entrega'),
+  ('not_delivered', 'receiver_absent', 'primera_visita', 'Primera visita - destinatario ausente')
+ON CONFLICT DO NOTHING;
 ```
 
-Aplicar `open` y `onOpenChange` en ambos `<Popover>`, y cerrar en `onSelect`.
+### 2. UI - statusConfig en 6 archivos
 
-### 3. Persistir filtros con `usePersistedState`
+Agregar los 3 nuevos estados a cada `statusConfig`:
 
-Reemplazar `useState` por `usePersistedState` para `search`, `statusFilter`, `dateFrom` y `dateTo`, guardando las fechas como string ISO y parseándolas al usarlas.
+| Estado | Label | Color | Icono |
+|--------|-------|-------|-------|
+| `primera_visita` | 1a Visita | `bg-amber-600` | `AlertCircle` |
+| `segunda_visita` | 2a Visita | `bg-red-400` | `AlertCircle` |
+| `reprogramado` | Reprogramado | `bg-indigo-500` | `CalendarClock` |
 
-## Archivo a modificar
+Archivos a modificar:
+- `src/pages/Shipments.tsx`
+- `src/pages/Tracking.tsx`
+- `src/pages/TrackingEmbed.tsx`
+- `src/components/shipments/ShipmentDetailsDialog.tsx`
+- `src/components/shipments/ShipmentHistoryDialog.tsx`
+- `src/components/shipments/ChangeStatusDialog.tsx`
+
+### 3. Guia de estados (`src/pages/ShipmentStatusGuide.tsx`)
+
+Agregar los 3 nuevos estados a `alternativeStatuses` para que aparezcan en la documentacion visual.
+
+### 4. Flujo logico
+
+Los nuevos estados se integran en el flujo existente:
+- `en_reparto` -> `primera_visita` (destinatario ausente, 1er intento)
+- `primera_visita` -> `segunda_visita` (2do intento fallido)
+- `primera_visita` / `segunda_visita` -> `reprogramado` (se reprograma entrega)
+- `reprogramado` -> `pendiente` o `en_reparto` (se reintenta)
+
+## Archivos a modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/pages/Shipments.tsx` | StatusBadge con fallback, Popovers controlados, filtros persistidos |
+| Base de datos (SQL) | Agregar 3 valores al enum + actualizar ml_status_mapping |
+| `src/pages/Shipments.tsx` | Agregar 3 estados a statusConfig |
+| `src/pages/Tracking.tsx` | Agregar 3 estados a statusConfig |
+| `src/pages/TrackingEmbed.tsx` | Agregar 3 estados a statusConfig |
+| `src/components/shipments/ShipmentDetailsDialog.tsx` | Agregar 3 estados a statusConfig |
+| `src/components/shipments/ShipmentHistoryDialog.tsx` | Agregar 3 estados a statusConfig |
+| `src/components/shipments/ChangeStatusDialog.tsx` | Agregar 3 estados a statusConfig + statusOrder |
+| `src/pages/ShipmentStatusGuide.tsx` | Agregar a alternativeStatuses |
+
