@@ -52,6 +52,27 @@ function normalizarTipoComprobante(tipo: string | null | undefined): string {
 }
 
 /**
+ * Extrae la fecha fiscal (YYYY-MM-DD) sin drift de timezone.
+ * Usa slice(0,10) sobre el string ISO almacenado en DB.
+ */
+function getFechaFiscal(fechaEmision: string | null | undefined): string {
+  if (!fechaEmision) return format(new Date(), 'yyyy-MM-dd');
+  // Si viene como "2026-03-02T00:00:00+00" o "2026-03-02 00:00:00+00", tomar solo la parte de fecha
+  return fechaEmision.slice(0, 10);
+}
+
+/**
+ * Formatea fecha fiscal para mostrar en la factura (sin timezone drift).
+ */
+function formatFechaFiscalDisplay(fechaFiscal: string): string {
+  // fechaFiscal es "YYYY-MM-DD" – parseamos manualmente para evitar timezone
+  const [year, month, day] = fechaFiscal.split('-').map(Number);
+  const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  return `${day} de ${months[month - 1]} de ${year}`;
+}
+
+/**
  * Genera la URL del QR AFIP conforme a la RG 4291/2018.
  * Formato: https://www.afip.gob.ar/fe/qr/?p=BASE64_JSON
  */
@@ -83,9 +104,12 @@ function buildAfipQRUrl(
 
   const cuitEmisor = parseInt((arcaConfig?.cuit || '').replace(/[-]/g, '')) || 0;
 
+  // Usar fecha fiscal estable (sin timezone drift)
+  const fechaFiscal = getFechaFiscal(factura.fecha_emision);
+
   const qrJson = {
     ver: 1,
-    fecha: format(new Date(factura.fecha_emision || new Date()), 'yyyy-MM-dd'),
+    fecha: fechaFiscal,
     cuit: cuitEmisor,
     ptoVta: factura.punto_venta || 1,
     tipoCmp,
@@ -100,7 +124,7 @@ function buildAfipQRUrl(
   };
 
   const base64 = btoa(JSON.stringify(qrJson));
-  return `https://www.afip.gob.ar/fe/qr/?p=${base64}`;
+  return `https://www.afip.gob.ar/fe/qr/?p=${encodeURIComponent(base64)}`;
 }
 
 export default function PrintInvoice() {
@@ -199,6 +223,51 @@ export default function PrintInvoice() {
     enabled: !!tenantId,
   });
 
+  // Fetch resolved environment from system_integrations (source of truth)
+  const { data: resolvedEnvironment } = useQuery({
+    queryKey: ['print-invoice-resolved-env', tenantId],
+    queryFn: async () => {
+      if (!tenantId) return 'sandbox';
+      // Check if factura has environment persisted in arca_response
+      if (factura?.arca_response && typeof factura.arca_response === 'object') {
+        const arcaResp = factura.arca_response as Record<string, unknown>;
+        if (arcaResp.environment === 'production' || arcaResp.environment === 'sandbox') {
+          return arcaResp.environment as string;
+        }
+      }
+      // Fallback: check system_integrations for production ARCA config
+      const { data: prodKeys } = await supabase
+        .from('system_integrations')
+        .select('config_key')
+        .eq('integration_type', 'arca')
+        .eq('environment', 'production')
+        .eq('is_active', true)
+        .eq('tenant_id', tenantId)
+        .in('config_key', ['cuit', 'cert_pem', 'private_key', 'punto_venta']);
+      // If all 4 required keys exist in production, it's production
+      const prodKeyNames = (prodKeys || []).map((k: { config_key: string }) => k.config_key);
+      const hasFullProduction = ['cuit', 'cert_pem', 'private_key', 'punto_venta']
+        .every(k => prodKeyNames.includes(k));
+      if (hasFullProduction) return 'production';
+      // Check sandbox
+      const { data: sbKeys } = await supabase
+        .from('system_integrations')
+        .select('config_key')
+        .eq('integration_type', 'arca')
+        .eq('environment', 'sandbox')
+        .eq('is_active', true)
+        .eq('tenant_id', tenantId)
+        .in('config_key', ['cuit', 'cert_pem', 'private_key', 'punto_venta']);
+      const sbKeyNames = (sbKeys || []).map((k: { config_key: string }) => k.config_key);
+      const hasFullSandbox = ['cuit', 'cert_pem', 'private_key', 'punto_venta']
+        .every(k => sbKeyNames.includes(k));
+      if (hasFullSandbox && !hasFullProduction) return 'sandbox';
+      // Both or neither — don't label as sandbox
+      return 'unknown';
+    },
+    enabled: !!tenantId && !!factura,
+  });
+
   // Fetch branding
   const { data: branding } = useQuery({
     queryKey: ['print-invoice-branding', tenantId],
@@ -218,7 +287,7 @@ export default function PrintInvoice() {
   // Normalizar tipo_comprobante (soporta 'A','B','C' y 'factura_a','factura_b','factura_c')
   const tipoNormalizado = factura ? normalizarTipoComprobante(factura.tipo_comprobante) : '';
   const isFacturaA = tipoNormalizado.includes('_a');
-  const isSandbox = arcaConfig?.environment === 'sandbox';
+  const isSandbox = resolvedEnvironment === 'sandbox';
 
   // URL QR AFIP conforme RG 4291/2018
   const afipQRUrl = factura ? buildAfipQRUrl(factura, arcaConfig) : '';
@@ -395,7 +464,7 @@ export default function PrintInvoice() {
                   Nº {formatNumeroComprobante(factura.punto_venta, factura.numero_comprobante)}
                 </p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Fecha: {factura.fecha_emision ? format(new Date(factura.fecha_emision), "d 'de' MMMM 'de' yyyy", { locale: es }) : '-'}
+                  Fecha: {factura.fecha_emision ? formatFechaFiscalDisplay(getFechaFiscal(factura.fecha_emision)) : '-'}
                 </p>
               </div>
             </div>

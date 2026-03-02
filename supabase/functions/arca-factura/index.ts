@@ -533,8 +533,11 @@ async function solicitarCAE(
     ? '0'
     : (receptor.cuit?.replace(/[-]/g, '') || receptor.dni || '0');
 
-  const today = new Date();
-  const fechaComprobante = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+  // Usar hora Argentina (UTC-3) para la fecha del comprobante fiscal
+  const nowMs = Date.now();
+  const AR_OFFSET_MS = 3 * 60 * 60 * 1000;
+  const argentinaDate = new Date(nowMs - AR_OFFSET_MS);
+  const fechaComprobante = `${argentinaDate.getUTCFullYear()}${String(argentinaDate.getUTCMonth()+1).padStart(2,'0')}${String(argentinaDate.getUTCDate()).padStart(2,'0')}`;
 
   // AFIP requiere el objeto IVA cuando ImpNeto > 0, independientemente del tipo de comprobante (A, B o C)
   // Solo incluir el bloque <ar:Iva> si importeIva > 0 (RG AFIP error 10070)
@@ -904,8 +907,12 @@ async function createFacturaRecord(
     importe_neto: importeNeto,
     importe_iva: importeIva,
     importe_total: importeTotal,
-    // CORRECCIÓN Bug 4: Guardar fecha_emision para que AFIP pueda validar el comprobante
-    fecha_emision: new Date().toISOString().split('T')[0],
+    // Fecha fiscal: usar hora Argentina (UTC-3) para consistencia con CbteFch
+    fecha_emision: (() => {
+      const AR_OFFSET = 3 * 60 * 60 * 1000;
+      const d = new Date(Date.now() - AR_OFFSET);
+      return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+    })(),
     estado: 'pendiente',
     created_by: userId,
   };
@@ -1148,11 +1155,21 @@ serve(async (req) => {
     );
 
     if (arcaResult.success && arcaResult.cae) {
+      // Persistir environment y fecha_comprobante en arca_response para trazabilidad
+      const enrichedArcaResponse = {
+        ...arcaResult,
+        environment,
+        fecha_comprobante: (() => {
+          const AR_OFFSET = 3 * 60 * 60 * 1000;
+          const d = new Date(Date.now() - AR_OFFSET);
+          return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+        })(),
+      };
       await supabase.from('facturas').update({
         cae: arcaResult.cae,
         cae_vencimiento: arcaResult.caeVencimiento,
         estado: 'emitida',
-        arca_response: arcaResult,
+        arca_response: enrichedArcaResponse,
       }).eq('id', factura.id);
 
       if (envio_id) {
