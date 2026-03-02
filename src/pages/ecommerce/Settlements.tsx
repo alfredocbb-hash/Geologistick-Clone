@@ -267,6 +267,9 @@ export default function Settlements() {
           const envio = enviosMap.get(envioId);
           if (!envio) continue;
 
+          // Pendiente = no liquidar
+          if (envio.estado === 'pendiente') continue;
+
           // Cancelado sin visitas = $0
           if (envio.estado === 'cancelado' && !balanceEnviosConVisitas.has(envio.id)) {
             continue; // precio = 0, no sumar
@@ -639,6 +642,11 @@ export default function Settlements() {
             }
           }
           // If no tarifa and no zone match, keep original precio_total as fallback
+
+          // Pendiente = no liquidar
+          if (e.estado === 'pendiente') {
+            precioFinal = 0;
+          }
 
           // Cancelado sin visitas = $0
           const tieneVisitas = e.estado === 'cancelado' ? enviosConVisitas.has(e.id) : true;
