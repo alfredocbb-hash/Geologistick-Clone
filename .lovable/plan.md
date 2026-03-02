@@ -1,149 +1,85 @@
 
-# Rediseno del formulario de Tarifas: de formulario de BD a herramienta logistica
+# Correcciones y mejoras al sistema de Tarifas
 
-## Resumen
+## Problemas identificados y soluciones
 
-Reemplazar el Dialog actual de creacion/edicion de tarifas (formulario largo con scroll, ~130 lineas de JSX) por un nuevo componente con:
-1. Selector simplificado de tipo de calculo (Precio Fijo vs Por Peso)
-2. Campos dinamicos claros con tooltips
-3. Toggle de multiplicador con explicacion
-4. Conceptos integrados en el mismo flujo
-5. Calculadora sandbox lateral en tiempo real
-6. Soporte Express con surcharge visual
+### 1. Seguro no se detecta (Bug critico)
+**Problema**: El codigo busca `codigo === "seguro"` pero los tenants usan codigos como `"BE-SEGURO"`. Por eso el toggle %/$ nunca aparece y el seguro no se calcula.
 
-No hay cambios de base de datos. Toda la logica de guardado (`saveMutation`) permanece intacta en `Rates.tsx`.
+**Solucion**: Cambiar todas las comparaciones a busqueda por subcadena (`codigo.includes("seguro")`) en:
+- `src/components/rates/CreateTarifaWizard.tsx` (linea 357)
+- `src/components/rates/TarifaSandbox.tsx` (linea 146)
+- `src/pages/Rates.tsx` (lineas 714 y 1370)
 
-## Archivos a crear
+### 2. Flete duplicado en detalles del envio
+**Problema**: Al guardar un envio, se crea una linea "Flete" con el monto calculado (correcto). Pero si existe un concepto "BE-FLETE" con monto $0, puede generar confusion visual en el recibo.
 
-### 1. `src/components/rates/CreateTarifaWizard.tsx`
+**Solucion**: En `src/pages/NewShipment.tsx` (linea 1096-1102), agregar la exclusion del concepto Flete no solo por `codigo === 'flete'` sino tambien por subcadena (`codigo.includes('flete')`), para que `BE-FLETE` tambien se excluya correctamente del detalle (ya que el flete calculado lo cubre).
 
-Componente principal que reemplaza el contenido del Dialog. Layout en 2 columnas (formulario + sandbox).
+### 3. Sandbox no simula rangos escalonados
+**Problema**: La calculadora `TarifaSandbox.tsx` solo usa el metodo simple (base + adicional/kg) pero ignora `rangos_kg` y el calculo por volumen que si usa `NewShipment.tsx`.
 
-**Columna izquierda - Formulario:**
+**Solucion**: Actualizar `simulateRate()` en `TarifaSandbox.tsx` para:
+- Prioridad 1: Si hay `rangos_kg` configurados, buscar el rango aplicable
+- Prioridad 2: Metodo simple (base + adicional/kg)
+- Agregar input de dimensiones opcional para simular cobro por volumen
+- Replicar la misma logica que `NewShipment.tsx` lineas 688-748
 
-- **Seccion 1: Como quieres cobrar?**
-  - Dos cards grandes clicables: "Precio Fijo" y "Por Peso"
-  - Si elige "Precio Fijo": solo muestra precio_base + nombre
-  - Si elige "Por Peso": despliega peso_base_hasta, adicional_por_kg (mapeados a `rangos_precios`)
-  - Los demas tipos (distancia, zona, codigo_postal, volumen) se ofrecen como "Avanzado" colapsable debajo
+### 4. Campo express_surcharge no se persiste
+**Problema**: El wizard permite configurar un recargo express pero el campo no existe en la tabla `tarifas`.
 
-- **Seccion 2: Nombre + Precio Base**
-  - Input nombre con tooltip: "Nombre descriptivo, ej: Envio Local Buenos Aires"
-  - Input precio_base con tooltip: "Monto minimo por envio. Siempre se cobra como piso"
+**Solucion**:
+- Crear migracion para agregar columna `express_surcharge NUMERIC DEFAULT 0` a la tabla `tarifas`
+- Actualizar `saveMutation` en `Rates.tsx` para incluir `express_surcharge` en el objeto `tarifaData`
+- Actualizar la Edge Function `tiendanube-shipping-rates` para leer `express_surcharge` de la tarifa (ademas del seller)
+- Actualizar `handleEdit` en `Rates.tsx` para cargar el campo al editar
 
-- **Seccion 3: Toggle multiplicador**
-  - Switch `multiplicar_flete_por_bultos`
-  - Texto claro: "Si se activa, el precio base se cobra por cada unidad/bulto del envio"
+## Detalle tecnico por archivo
 
-- **Seccion 4: Cargos Adicionales (Conceptos)**
-  - Lista de conceptos activos del tenant con inputs de monto inline
-  - Toggle % / $ para seguro
-  - Tooltip: "Estos cargos se suman al flete base. Los basicos se cobran siempre"
-
-- **Seccion 5: Express (colapsable)**
-  - Campo `express_surcharge` presentado como "+ recargo sobre tarifa base"
-  - Tooltip: "Este monto se agrega al precio final cuando el envio es express"
-
-- **Seccion 6: Comision Chofer + Switch Activa**
-  - Mismos campos actuales con tooltips
-
-**Columna derecha - Calculadora Sandbox:**
-
-- Inputs: "Peso de ejemplo (kg)" y "Cantidad de bultos"
-- Replica exacta de la funcion `calculateRate` del backend
-- Muestra desglose en tiempo real:
-
-```text
-Flete base:         $5,000
-  x 3 bultos:       $15,000
-Excedente peso:     $1,500
-  (12kg - 5kg base) x $300/kg
-Concepto Seguro:    $250 (2.5%)
-Concepto Embalaje:  $800
---------------------------
-Total estimado:     $17,550
+### Migracion DB: agregar express_surcharge
+```sql
+ALTER TABLE tarifas ADD COLUMN express_surcharge NUMERIC DEFAULT 0;
 ```
 
-- Se actualiza reactivamente al cambiar cualquier campo del formulario
+### `src/components/rates/CreateTarifaWizard.tsx`
+- Linea 357: Cambiar `concepto.codigo?.toLowerCase() === "seguro"` por `concepto.codigo?.toLowerCase().includes("seguro")`
 
-### 2. `src/components/rates/TarifaSandbox.tsx`
+### `src/components/rates/TarifaSandbox.tsx`
+- Linea 146: Cambiar deteccion de seguro a subcadena
+- Lineas 62-75: Agregar logica de rangos escalonados (prioridad sobre metodo simple):
 
-Componente de la calculadora sandbox (columna derecha).
+```text
+Si rangos_kg tiene datos Y peso > 0:
+  1. Buscar rango donde peso >= desde Y peso <= hasta
+  2. Si encuentra: usar rango.precio como flete
+  3. Si no: usar ultimo rango (peso excedido)
+Si no hay rangos_kg:
+  Usar metodo simple (base + adicional/kg)
+```
 
-Props: `formData`, `conceptos` (los activos con sus montos configurados)
+- Agregar input opcional de dimensiones (AxBxC cm) para simular cobro por volumen cuando el tipo es "peso" y hay umbral configurado
 
-Logica interna: replica exacta de `calculateRate`:
+### `src/pages/Rates.tsx`
+- Linea 714: Cambiar deteccion de seguro a subcadena
+- Linea 1370: Cambiar deteccion de seguro a subcadena
+- En `saveMutation` (linea ~292-312): Agregar `express_surcharge: parseFloat(data.express_surcharge || '0') || 0` al objeto `tarifaData`
+- En `handleEdit` (linea ~634-677): Cargar `express_surcharge` del tarifa editada
+- En `resetForm`: Agregar `express_surcharge: ''` al estado inicial
+
+### `src/pages/NewShipment.tsx`
+- Lineas 1098-1101: Cambiar la exclusion del concepto flete para usar subcadena:
 ```typescript
-function simulateRate(formData, pesoEjemplo, cantidadBultos) {
-  let precio = parseFloat(formData.precio_base) || 0;
-  
-  if (formData.multiplicar_flete_por_bultos && cantidadBultos > 1) {
-    precio *= cantidadBultos;
-  }
-  
-  if (formData.tipo_tarifa === 'peso') {
-    const pesoBase = parseFloat(formData.peso_base_hasta) || 0;
-    const adicional = parseFloat(formData.adicional_por_kg) || 0;
-    if (pesoEjemplo > pesoBase) {
-      precio += (pesoEjemplo - pesoBase) * adicional;
-    }
-  }
-  
-  // Sumar conceptos basicos
-  // ...
-  return { total, desglose };
+if (conceptoCode?.includes('flete') || conceptoName?.includes('flete')) {
+  return; // ya incluido como flete calculado
 }
 ```
 
-### 3. `src/components/rates/FormTooltip.tsx`
+### `supabase/functions/tiendanube-shipping-rates/index.ts`
+- Linea 146: Agregar `express_surcharge` al select de tarifas
+- Usar `tarifa.express_surcharge` como fallback si el seller no tiene configurado su propio surcharge
 
-Componente reutilizable: Label + icono HelpCircle + Tooltip de Shadcn.
-
-```tsx
-<FormTooltip 
-  label="Precio Base" 
-  tooltip="Monto minimo por envio. Se aplica siempre como piso del calculo"
-  required 
-/>
-```
-
-## Cambios en archivos existentes
-
-### `src/pages/Rates.tsx`
-
-- Lineas 1073-1216 (Dialog de creacion): reemplazar contenido con `<CreateTarifaWizard />`
-- Ampliar Dialog a `max-w-4xl` para acomodar 2 columnas
-- Pasar como props: `formData`, `setFormData`, `onSubmit`, `editingTarifa`, `conceptos`, `isPending`
-- Eliminar funciones `renderRateTypeFields()` y `renderConceptPrices()` (se mueven al wizard)
-- Smart defaults al abrir "Nueva Tarifa" (no edicion):
-  - `precio_base`: "5000"
-  - `tipo_tarifa`: "peso"
-  - `peso_base_hasta`: "5"
-  - `comision_chofer_porcentaje`: "10"
-
-### `src/components/rates/index.ts`
-
-- Agregar exports: `CreateTarifaWizard`, `TarifaSandbox`, `FormTooltip`
-
-## Mapa de tooltips
-
-| Campo | Tooltip |
-|-------|---------|
-| Nombre | Nombre descriptivo para identificar esta tarifa |
-| Precio Base | Monto minimo por envio. Se aplica siempre como piso |
-| Multiplicar x bultos | Si activo, el precio base se cobra por cada unidad del envio |
-| Peso incluido en base | Kilogramos cubiertos por el precio base sin cargo adicional |
-| Precio por Kg adicional | Cargo extra por cada kg que exceda el peso base |
-| Precio por Km | Cargo por cada km de distancia entre origen y destino |
-| Zona Origen/Destino | Ciudad o zona que define la ruta de esta tarifa |
-| Comision chofer % | Porcentaje del total que se asigna al chofer |
-| Comision chofer fija | Monto fijo por envio para el chofer |
-| Recargo Express | Monto adicional que se suma al precio final en envios express |
-
-## Consideraciones tecnicas
-
-- No hay cambios de base de datos
-- La logica de `saveMutation` no cambia, solo se reorganiza la UI
-- Se reutilizan componentes existentes: `WeightRangesEditor`, `RateTypeSelector` (como fallback avanzado), Shadcn Switch/Input/Tooltip
-- Responsive: en mobile las 2 columnas se apilan (sandbox debajo)
-- El `RateTypeSelector` original se mantiene disponible dentro de una seccion "Modo avanzado" colapsable (Collapsible) para tipos distancia/zona/volumen/CP
+## Resumen de cambios
+- **1 migracion DB**: agregar `express_surcharge` a `tarifas`
+- **4 archivos frontend**: corregir deteccion seguro, flete duplicado, sandbox completo
+- **1 edge function**: leer `express_surcharge` de tarifa
+- **0 cambios de logica de guardado** (saveMutation solo se extiende con el nuevo campo)
