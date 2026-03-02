@@ -1,89 +1,68 @@
 
 
-# Envíos cancelados sin visitas deben valer $0 en liquidaciones
+# Excluir envios con estado "pendiente" de liquidaciones de sellers
 
 ## Problema
 
-Cuando se calcula o consulta una liquidación de seller, los envíos con estado "cancelado" muestran el precio completo (ej: $10.245,99). La regla de negocio correcta es:
+Los envios con estado "pendiente" (que aun no fueron recogidos por ningun chofer) aparecen en las liquidaciones de sellers y se les asigna un valor. Estos envios no deben liquidarse porque todavia no entraron al circuito operativo.
 
-- **Cancelado SIN visitas (intentos de entrega)** -> Precio = $0 (no se cobra)
-- **Cancelado CON visitas** -> Se mantiene el precio (el chofer intentó entregar, hubo costo operativo)
+## Regla de negocio
 
-Una "visita" se determina consultando `envio_historial` buscando registros donde `estado_nuevo` sea `en_reparto` o `no_entregado` (es decir, el paquete salió a ruta al menos una vez).
+- **Envio pendiente**: no debe incluirse en el calculo ni en la liquidacion. El paquete aun no fue procesado.
+- Solo se liquidan envios que ya pasaron al menos por el estado "recogido" (es decir, que entraron al circuito logistico).
 
-## Cambios necesarios
+## Cambios
 
-### 1. Calculo de liquidacion (`src/pages/ecommerce/Settlements.tsx`)
+### `src/pages/ecommerce/Settlements.tsx`
 
-En la `calculateMutation` (aprox. linea 506-622), despues de calcular `precioFinal` para cada envio, agregar una verificacion:
+**1. Saldos por Seller (sellerBalances, linea ~266-273)**
 
-- Si `e.estado === 'cancelado'`, consultar `envio_historial` para ese envio
-- Buscar registros con `estado_nuevo IN ('en_reparto', 'no_entregado')`
-- Si no hay registros (0 visitas), forzar `precioFinal = 0`
-- Agregar campo `tiene_visitas: boolean` al objeto retornado para mostrar indicador visual
-
-Para optimizar, se hara una sola consulta batch de `envio_historial` para todos los envios cancelados del lote, en lugar de una consulta individual por envio.
-
-### 2. Saldos por Seller (`src/pages/ecommerce/Settlements.tsx`)
-
-En la query `sellerBalances` (aprox. linea 149-313), aplicar la misma logica: obtener el estado de cada envio (ya se puede agregar `estado` al select), y para los cancelados verificar visitas antes de sumar su precio.
-
-### 3. Detalle de liquidacion (`src/components/ecommerce/SellerLiquidacionDetailDialog.tsx`)
-
-En la query de envios vinculados (linea 60-70), agregar `estado` al select (ya lo tiene). Luego:
-
-- Consultar `envio_historial` para los envios cancelados del lote
-- En la tabla, mostrar `$0` para cancelados sin visitas
-- Agregar un indicador visual (tooltip o texto) que explique por que vale $0
-- Recalcular el total de la tabla excluyendo cancelados sin visitas
-
-### 4. Generacion de liquidacion (`src/pages/ecommerce/Settlements.tsx`)
-
-En `generateMutation` (linea 668-746), al actualizar `precio_total` del envio en la BD, respetar el $0 para cancelados sin visitas (ya viene calculado desde el paso 1).
-
-## Detalle tecnico
-
-### Consulta batch de visitas
+Agregar condicion: si `envio.estado === 'pendiente'`, saltar (no sumar al total). Similar a como ya se hace con cancelados sin visitas.
 
 ```typescript
-// Obtener IDs de envios cancelados
-const cancelledIds = allEnviosData
-  .filter(e => e.estado === 'cancelado')
-  .map(e => e.id);
-
-// Una sola consulta para todos
-const { data: visitasData } = await supabase
-  .from('envio_historial')
-  .select('envio_id')
-  .in('envio_id', cancelledIds)
-  .in('estado_nuevo', ['en_reparto', 'no_entregado']);
-
-// Set de envios que SI tienen visitas
-const enviosConVisitas = new Set(
-  (visitasData || []).map(v => v.envio_id)
-);
-
-// Al mapear envios:
-if (e.estado === 'cancelado' && !enviosConVisitas.has(e.id)) {
-  precioFinal = 0;
+// Pendiente = no liquidar
+if (envio.estado === 'pendiente') {
+  continue;
 }
 ```
 
-### Indicador visual en el detalle
+**2. Calculo de liquidacion (calculateMutation, linea ~540)**
 
-En la tabla de envios del dialog, para cancelados sin visitas:
-- Precio mostrado: `$0`  
-- Tooltip o texto small: "Sin visitas - no se cobra"
-- Color: gris/muted en lugar de naranja
+En el mapeo de `allEnviosData`, agregar la exclusion de envios pendientes. Esto se hace filtrando antes de mapear o asignando `precioFinal = 0` con una marca especial.
 
-### Archivos modificados
+La solucion mas limpia es filtrar antes del mapeo:
+```typescript
+const allEnviosData = [...ecommerceEnvios, ...uniqueCommon]
+  .filter(e => e.estado !== 'pendiente'); // Excluir pendientes
+```
+
+**3. Generacion (generateMutation)**
+
+No requiere cambio adicional: al excluir los pendientes del calculo, estos no llegaran a la generacion.
+
+### `src/components/ecommerce/SellerLiquidacionDetailDialog.tsx`
+
+Para liquidaciones ya generadas que pudieran tener envios pendientes vinculados (datos historicos), agregar la misma logica visual:
+
+- Mostrar envios pendientes con `$0` y tooltip "Pendiente - no se liquida"
+- Excluirlos del total ajustado
+- Aplicar estilo `opacity-60` similar a cancelados sin visitas
+
+Modificar la funcion `isCancelledNoVisits` para que tambien cubra pendientes, renombrandola a algo mas generico como `isExcludedFromSettlement`:
+
+```typescript
+const isExcludedFromSettlement = (envio: any) =>
+  envio.estado === 'pendiente' ||
+  (envio.estado === 'cancelado' && !(enviosConVisitasSet || new Set()).has(envio.id));
+```
+
+## Archivos modificados
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/pages/ecommerce/Settlements.tsx` | Logica de cancelados en `calculateMutation`, `sellerBalances`, y `generateMutation` |
-| `src/components/ecommerce/SellerLiquidacionDetailDialog.tsx` | Consulta de visitas + display condicional en tabla |
+| `src/pages/ecommerce/Settlements.tsx` | Excluir pendientes en `sellerBalances` y `calculateMutation` |
+| `src/components/ecommerce/SellerLiquidacionDetailDialog.tsx` | Mostrar pendientes como $0 con indicador visual |
 
-### Sin cambios de base de datos
+## Sin cambios de base de datos
 
-No se requieren migraciones. Solo se agrega una consulta adicional a `envio_historial` (tabla existente).
-
+No se requieren migraciones. Solo se agregan filtros en el frontend.
