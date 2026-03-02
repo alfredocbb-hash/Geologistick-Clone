@@ -30,6 +30,23 @@ const ML_STATUS_LABELS: Record<string, { label: string; icon: React.ElementType;
   cancelled: { label: 'Cancelado', icon: AlertCircle, color: 'bg-gray-500' },
 };
 
+const ML_SUBSTATUS_LABELS: Record<string, string> = {
+  rescheduled: 'Reprogramado',
+  rescheduled_by_buyer: 'Reprogramado por comprador',
+  rescheduled_by_meli: 'Reprogramado por ML',
+  returning_to_hub: 'Volviendo a centro',
+  second_visit: 'Segunda visita',
+  ready_to_print: 'Listo para imprimir',
+  printed: 'Etiqueta impresa',
+  in_hub: 'En centro de distribución',
+  waiting_for_withdrawal: 'Esperando retiro',
+  receiver_absent: 'Destinatario ausente',
+  buyer_refused: 'Rechazado por comprador',
+  stolen: 'Robado',
+  damaged: 'Dañado',
+  lost: 'Extraviado',
+};
+
 export function MLShipmentHistorySection({ shipmentId, sellerId }: MLShipmentHistorySectionProps) {
   const [showHistory, setShowHistory] = useState(false);
 
@@ -103,7 +120,16 @@ export function MLShipmentHistorySection({ shipmentId, sellerId }: MLShipmentHis
                           {config.label}
                         </Badge>
                         {event.substatus && event.substatus !== event.status && (
-                          <span className="text-xs text-muted-foreground">{event.substatus}</span>
+                          <Badge
+                            variant="outline"
+                            className={`text-xs ${
+                              ['rescheduled', 'rescheduled_by_buyer', 'rescheduled_by_meli', 'receiver_absent', 'second_visit'].includes(event.substatus)
+                                ? 'bg-yellow-50 border-yellow-300 text-yellow-700 dark:bg-yellow-900/30 dark:border-yellow-600 dark:text-yellow-400'
+                                : ''
+                            }`}
+                          >
+                            {ML_SUBSTATUS_LABELS[event.substatus] || event.substatus}
+                          </Badge>
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
