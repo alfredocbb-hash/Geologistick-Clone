@@ -1,4 +1,3 @@
-import { useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -9,7 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { ArrowLeft, Loader2, Package, Printer, Download, FileText, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
+import { QRCodeSVG } from 'qrcode.react';
 import jsPDF from 'jspdf';
 import { toast } from 'sonner';
 
@@ -108,7 +107,6 @@ export default function PrintInvoice() {
   const [searchParams] = useSearchParams();
   const envioId = searchParams.get('id');
   const facturaId = searchParams.get('factura_id');
-  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // Fetch factura by factura_id or by envio_id
   const { data: factura, isLoading: loadingFactura } = useQuery({
@@ -176,19 +174,27 @@ export default function PrintInvoice() {
   // Resolve tenant_id from envio or factura
   const tenantId = envio?.tenant_id || factura?.tenant_id;
 
-  // Fetch ARCA config for emisor data
+  // Fetch ARCA config for emisor data — preferir producción
   const { data: arcaConfig } = useQuery({
     queryKey: ['print-invoice-arca', tenantId],
     queryFn: async () => {
       if (!tenantId) return null;
-      const { data, error } = await supabase
+      const { data: prodConfig } = await supabase
         .from('arca_config')
         .select('*')
         .eq('tenant_id', tenantId)
         .eq('is_active', true)
-        .single();
-      if (error) return null;
-      return data;
+        .eq('environment', 'production')
+        .maybeSingle();
+      if (prodConfig) return prodConfig;
+      const { data: sbConfig } = await supabase
+        .from('arca_config')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .eq('environment', 'sandbox')
+        .maybeSingle();
+      return sbConfig;
     },
     enabled: !!tenantId,
   });
@@ -229,110 +235,42 @@ export default function PrintInvoice() {
 
   const handleDownloadPDF = async () => {
     if (!factura) return;
-    const doc = new jsPDF();
-    const pw = doc.internal.pageSize.getWidth();
-    let y = 20;
+    const invoiceElement = document.getElementById('invoice-print-area');
+    if (!invoiceElement) return;
 
-    const tipoLabel = TIPO_COMPROBANTE_LABELS[tipoNormalizado] || tipoNormalizado.toUpperCase();
+    try {
+      toast.info('Generando PDF...');
+      // Hide non-print elements temporarily
+      const badge = invoiceElement.querySelector('[data-print-hide]');
+      if (badge) (badge as HTMLElement).style.display = 'none';
 
-    // Title
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.text(tipoLabel, pw / 2, y, { align: 'center' });
-    y += 8;
-    doc.setFontSize(12);
-    doc.text(`N.o ${formatNumeroComprobante(factura.punto_venta, factura.numero_comprobante)}`, pw / 2, y, { align: 'center' });
-    y += 10;
+      const html2canvasModule = await import('html2canvas');
+      const html2canvas = html2canvasModule.default;
+      const canvas = await html2canvas(invoiceElement, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+      });
 
-    if (isSandbox) {
-      doc.setFontSize(10);
-      doc.setTextColor(200, 0, 0);
-      doc.text('DOCUMENTO NO FISCAL - SANDBOX', pw / 2, y, { align: 'center' });
-      doc.setTextColor(0, 0, 0);
-      y += 8;
+      if (badge) (badge as HTMLElement).style.display = '';
+
+      const imgData = canvas.toDataURL('image/png');
+      const doc = new jsPDF('p', 'mm', 'a4');
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const imgRatio = canvas.width / canvas.height;
+      const pdfWidth = pageWidth - 20;
+      const pdfHeight = pdfWidth / imgRatio;
+
+      doc.addImage(imgData, 'PNG', 10, 10, pdfWidth, Math.min(pdfHeight, pageHeight - 20));
+
+      const fileName = `factura-${formatNumeroComprobante(factura.punto_venta, factura.numero_comprobante)}${envio?.tracking_number ? `-${envio.tracking_number}` : ''}.pdf`;
+      doc.save(fileName);
+      toast.success('Factura descargada');
+    } catch {
+      toast.error('Error al generar PDF');
     }
-
-    doc.setDrawColor(200); doc.line(20, y, pw - 20, y); y += 8;
-
-    // Emisor
-    doc.setFontSize(10); doc.setFont('helvetica', 'bold');
-    doc.text('EMISOR', 20, y); y += 6;
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Razon Social: ${arcaConfig?.razon_social || '-'}`, 20, y); y += 5;
-    doc.text(`CUIT: ${arcaConfig?.cuit || '-'}`, 20, y); y += 5;
-    doc.text(`Condicion IVA: ${CONDICION_IVA_LABELS[arcaConfig?.condicion_iva || ''] || '-'}`, 20, y); y += 5;
-    if (arcaConfig?.domicilio_comercial) { doc.text(`Domicilio: ${arcaConfig.domicilio_comercial}`, 20, y); y += 5; }
-    doc.text(`Fecha: ${factura.fecha_emision ? format(new Date(factura.fecha_emision), 'dd/MM/yyyy') : '-'}`, 20, y); y += 8;
-
-    // Receptor
-    doc.setFont('helvetica', 'bold');
-    doc.text('RECEPTOR', 20, y); y += 6;
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Nombre: ${factura.receptor_nombre || '-'}`, 20, y); y += 5;
-    doc.text(`CUIT/DNI: ${factura.receptor_cuit || '-'}`, 20, y); y += 5;
-    doc.text(`Condicion IVA: ${CONDICION_IVA_LABELS[factura.receptor_condicion_iva || ''] || '-'}`, 20, y); y += 5;
-    if (factura.receptor_domicilio) { doc.text(`Domicilio: ${factura.receptor_domicilio}`, 20, y); y += 5; }
-    y += 5;
-
-    doc.setDrawColor(200); doc.line(20, y, pw - 20, y); y += 8;
-
-    // Conceptos
-    doc.setFont('helvetica', 'bold');
-    doc.text('DETALLE', 20, y); y += 7;
-    doc.setFontSize(9);
-    doc.setFillColor(230, 230, 230);
-    doc.rect(20, y - 4, pw - 40, 8, 'F');
-    doc.text('Concepto', 22, y);
-    doc.text('Importe', 160, y);
-    y += 8;
-
-    doc.setFont('helvetica', 'normal');
-    conceptosAMostrar.forEach((c) => {
-      doc.text(c.nombre_concepto || '-', 22, y);
-      doc.text(formatCurrency(c.monto || 0), 160, y);
-      y += 6;
-    });
-
-    y += 4;
-    if (isFacturaA && factura.importe_iva) {
-      doc.text(`Neto Gravado: ${formatCurrency(factura.importe_neto)}`, 120, y); y += 5;
-      doc.text(`IVA (21%): ${formatCurrency(factura.importe_iva)}`, 120, y); y += 5;
-    }
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text(`TOTAL: ${formatCurrency(factura.importe_total)}`, 120, y); y += 12;
-
-    // CAE
-    doc.setFontSize(9); doc.setFont('helvetica', 'normal');
-    doc.text(`CAE: ${factura.cae || '-'}`, 20, y); y += 5;
-    doc.text(`Vto. CAE: ${factura.cae_vencimiento ? format(new Date(factura.cae_vencimiento), 'dd/MM/yyyy') : '-'}`, 20, y); y += 10;
-
-    // QR AFIP en el PDF (obligatorio)
-    if (factura.cae && qrCanvasRef.current) {
-      try {
-        const qrDataUrl = qrCanvasRef.current.toDataURL('image/png');
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
-        doc.text('QR AFIP (Verificación)', 20, y); y += 4;
-        doc.addImage(qrDataUrl, 'PNG', 20, y, 30, 30);
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(7);
-        doc.text('Escanee para verificar en AFIP', 52, y + 10);
-        doc.text(`https://www.afip.gob.ar/fe/qr/`, 52, y + 16);
-        y += 35;
-      } catch {
-        // Si no se puede incluir el QR, continuar sin él
-      }
-    }
-
-    // Footer
-    const fy = doc.internal.pageSize.getHeight() - 15;
-    doc.setFontSize(8); doc.setTextColor(128);
-    doc.text(`Generado el ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, pw / 2, fy, { align: 'center' });
-
-    const fileName = `factura-${formatNumeroComprobante(factura.punto_venta, factura.numero_comprobante)}-${envio?.tracking_number || ''}.pdf`;
-    doc.save(fileName);
-    toast.success('Factura descargada');
   };
 
   if (loadingFactura) {
@@ -369,14 +307,6 @@ export default function PrintInvoice() {
 
   return (
     <div className="min-h-screen bg-slate-100 py-8 px-4 print:bg-white print:py-0">
-      {/* Canvas oculto para el QR — usado al generar el PDF */}
-      <div className="hidden">
-        <QRCodeCanvas
-          ref={qrCanvasRef}
-          value={afipQRUrl || 'N/A'}
-          size={200}
-        />
-      </div>
 
       <div className="max-w-3xl mx-auto">
         {/* Header - hidden on print */}
@@ -400,7 +330,7 @@ export default function PrintInvoice() {
         </div>
 
         {/* Invoice Preview */}
-        <Card className="shadow-lg print:shadow-none print:border-0">
+        <Card id="invoice-print-area" className="shadow-lg print:shadow-none print:border-0">
           {/* Sandbox Banner */}
           {isSandbox && (
             <div className="bg-red-500/10 border-b border-red-500/20 text-center py-2 print:py-1">
@@ -572,7 +502,7 @@ export default function PrintInvoice() {
               <span>
                 {isSandbox ? 'DOCUMENTO NO FISCAL - Generado en entorno de pruebas' : 'Comprobante electrónico'}
               </span>
-              <Badge variant="secondary" className="text-xs print:hidden">
+              <Badge variant="secondary" className="text-xs print:hidden" data-print-hide>
                 VISTA PREVIA
               </Badge>
             </div>
