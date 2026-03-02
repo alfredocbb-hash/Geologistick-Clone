@@ -71,7 +71,7 @@ export default function CancelRouteDialog({ route, onClose }: CancelRouteDialogP
         // 2. Update shipments - always set to pendiente (reprogramado is tracked via ultima_reprogramacion)
         const updateData: any = {
           chofer_id: null,
-          estado: 'pendiente',
+          estado: action === 'release' ? 'en_sucursal' : 'pendiente',
         };
         
         if (action === 'reschedule') {
@@ -90,7 +90,7 @@ export default function CancelRouteDialog({ route, onClose }: CancelRouteDialogP
         const historyEntries = envioIds.map(envioId => ({
           envio_id: envioId,
           estado_anterior: 'en_reparto' as const,
-          estado_nuevo: 'pendiente' as const,
+          estado_nuevo: (action === 'release' ? 'en_sucursal' : 'pendiente') as any,
           notas: `Ruta ${route.numero} cancelada. ${reason || 'Sin motivo especificado'}${
             action === 'reschedule' ? `. Reprogramado para ${format(new Date(rescheduleDate), 'dd/MM/yyyy', { locale: es })}` : ''
           }`,
