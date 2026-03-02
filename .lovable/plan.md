@@ -1,49 +1,90 @@
 
-Objetivo: que los envíos en estado `pendiente` no aparezcan ni en la consulta previa ni dentro de la liquidación de seller (no solo en $0, sino excluidos).
 
-Hallazgo clave: hoy `pendiente` se deja con `precioFinal = 0`, pero igual queda en `calculatedEnvios`, se vincula con `liquidacion_seller_id` al generar, y luego vuelve a aparecer en el detalle.
+# Investigacion y correccion del historial ML para pedidos reprogramados
 
-Plan de implementación
+## Problema detectado
 
-1) Excluir `pendiente` desde el origen del cálculo (no solo ponerlo en 0)
-- Archivo: `src/pages/ecommerce/Settlements.tsx`
-- En `calculateMutation`:
-  - Filtrar `ecommerceEnvios` y `filteredCommonEnvios` para que no incluyan `estado === 'pendiente'`.
-  - Aplicar un filtro defensivo antes del map final (`allEnviosData`) para garantizar que no pase ninguno pendiente.
-  - Eliminar el bloque que hoy hace `precioFinal = 0` para pendientes (ya no deberían entrar).
-- Resultado: no aparecen en “Resumen Envíos”, no suman cantidad, no entran al total ni al botón de generar.
+Al revisar el componente `MLShipmentHistorySection` y la edge function `mercadolibre-shipment-history`, se identificaron los siguientes problemas:
 
-2) Evitar que se vinculen pendientes al generar liquidación
-- Archivo: `src/pages/ecommerce/Settlements.tsx`
-- En `generateMutation`:
-  - Agregar guard clause defensivo en el loop de `sellerEnvios` para saltar cualquier envío pendiente si llegara por datos legacy/cache.
-- Resultado: nuevas liquidaciones no enlazan pendientes en `envios.liquidacion_seller_id`.
+1. **No hay logs de la funcion**: la edge function nunca registro actividad, lo que sugiere que puede estar fallando silenciosamente (ej: error de autenticacion, respuesta inesperada de la API de ML).
 
-3) Ajustar conteos y consulta de “Saldos por Seller”
-- Archivo: `src/pages/ecommerce/Settlements.tsx`
-- En `sellerBalances`:
-  - Mantener exclusión de pendientes en el total.
-  - Corregir `cantEnvios` para contar solo envíos efectivamente liquidables (hoy cuenta IDs totales, incluidos pendientes/cancelados sin visitas).
-- Resultado: la grilla de saldos no “trae” pendientes en la cantidad operativa mostrada.
+2. **Formato de respuesta de ML**: La API de MercadoLibre `/shipments/{id}/history` puede devolver los datos bajo una estructura diferente a la esperada. El codigo asume que la respuesta es `{ history: [...] }` directamente, pero ML podria devolverlo como array o bajo otra clave (ej: `status_history`).
 
-4) Excluir pendientes en el detalle de liquidación ya generada
-- Archivo: `src/components/ecommerce/SellerLiquidacionDetailDialog.tsx`
-- En query de envíos de la liquidación:
-  - Excluir `estado = 'pendiente'` en la consulta (y mantener filtro defensivo en memoria).
-- Resultado: aunque existan liquidaciones históricas con pendientes vinculados, no se muestran en la consulta del detalle.
+3. **Substatuses de reprogramacion no contemplados**: El mapa `ML_STATUS_LABELS` solo cubre estados principales (`pending`, `handling`, `ready_to_ship`, `shipped`, `delivered`, `not_delivered`, `cancelled`). Los substatuses de reprogramacion como `rescheduled`, `rescheduled_by_buyer`, `returning_to_hub`, `second_visit`, etc. no se muestran con etiquetas descriptivas.
 
-5) Consistencia en PDF de seller (misma regla visual)
-- Archivo: `src/lib/generateSettlementPDF.ts`
-- En `downloadSellerSettlementPDF`:
-  - Excluir pendientes al traer envíos para el PDF.
-- Resultado: lo que se ve en pantalla y lo que se descarga quedan alineados.
+## Plan de cambios
 
-Validación (end-to-end)
-- Caso 1: período con entregados + pendientes -> en cálculo solo aparecen los liquidables.
-- Caso 2: generar liquidación -> verificar que ningún `pendiente` quede con `liquidacion_seller_id`.
-- Caso 3: abrir detalle de liquidación histórica que tenía pendientes -> no deben listarse.
-- Caso 4: descargar PDF de esa liquidación -> tampoco deben figurar pendientes.
+### 1. Mejorar la edge function con logging diagnostico
 
-Notas técnicas
-- No requiere migraciones de base de datos.
-- Se mantiene intacta la regla ya implementada para cancelados sin visitas (`$0`), solo se cambia la semántica de `pendiente` a “exclusión total”.
+**Archivo**: `supabase/functions/mercadolibre-shipment-history/index.ts`
+
+- Agregar `console.log` al inicio para confirmar que la funcion se ejecuta
+- Loguear la respuesta cruda de la API de ML antes de parsearla
+- Detectar si la respuesta de ML tiene una estructura diferente (ej: array directo vs objeto con clave)
+- Cambiar `getClaims` a `getUser` para consistencia con funciones que si funcionan (como `check-subscription`)
+
+```typescript
+// Cambiar autenticacion
+const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+if (authError || !user) { ... }
+const userId = user.id;
+```
+
+- Manejar la respuesta de ML de forma flexible:
+```typescript
+const rawHistory = await historyResponse.json();
+console.log('[ML History] Raw response keys:', Object.keys(rawHistory));
+
+// ML puede devolver array directo o bajo una clave
+const history = Array.isArray(rawHistory) 
+  ? rawHistory 
+  : rawHistory.history || rawHistory.status_history || [];
+```
+
+### 2. Agregar labels para substatuses de reprogramacion
+
+**Archivo**: `src/components/ecommerce/MLShipmentHistorySection.tsx`
+
+Ampliar `ML_STATUS_LABELS` y agregar un mapa de substatuses para mostrar etiquetas descriptivas:
+
+```typescript
+const ML_SUBSTATUS_LABELS: Record<string, string> = {
+  rescheduled: 'Reprogramado',
+  rescheduled_by_buyer: 'Reprogramado por comprador',
+  rescheduled_by_meli: 'Reprogramado por ML',
+  returning_to_hub: 'Volviendo a centro',
+  second_visit: 'Segunda visita',
+  ready_to_print: 'Listo para imprimir',
+  printed: 'Etiqueta impresa',
+  in_hub: 'En centro de distribucion',
+  waiting_for_withdrawal: 'Esperando retiro',
+  receiver_absent: 'Destinatario ausente',
+  buyer_refused: 'Rechazado por comprador',
+};
+```
+
+Mostrar el substatus con su label en lugar del valor crudo.
+
+### 3. Mostrar substatus de forma mas visible
+
+En la timeline del historial, cuando el substatus indica reprogramacion, mostrarlo con un badge de color diferente (amarillo/naranja) para que sea visualmente evidente:
+
+```typescript
+{event.substatus && (
+  <Badge variant="outline" className="text-xs bg-yellow-50 border-yellow-300 text-yellow-700">
+    {ML_SUBSTATUS_LABELS[event.substatus] || event.substatus}
+  </Badge>
+)}
+```
+
+## Archivos modificados
+
+| Archivo | Cambio |
+|---------|--------|
+| `supabase/functions/mercadolibre-shipment-history/index.ts` | Fix auth, logging, manejo flexible de respuesta ML |
+| `src/components/ecommerce/MLShipmentHistorySection.tsx` | Labels de substatuses, UI mejorada para reprogramados |
+
+## Sin cambios de base de datos
+
+No se requieren migraciones. Los cambios son en la edge function y en el frontend.
+
