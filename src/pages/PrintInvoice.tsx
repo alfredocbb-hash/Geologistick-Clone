@@ -107,12 +107,22 @@ function buildAfipQRUrl(
 export default function PrintInvoice() {
   const [searchParams] = useSearchParams();
   const envioId = searchParams.get('id');
+  const facturaId = searchParams.get('factura_id');
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Fetch factura
+  // Fetch factura by factura_id or by envio_id
   const { data: factura, isLoading: loadingFactura } = useQuery({
-    queryKey: ['print-factura', envioId],
+    queryKey: ['print-factura', facturaId, envioId],
     queryFn: async () => {
+      if (facturaId) {
+        const { data, error } = await supabase
+          .from('facturas')
+          .select('*')
+          .eq('id', facturaId)
+          .single();
+        if (error) throw error;
+        return data;
+      }
       if (!envioId) return null;
       const { data, error } = await supabase
         .from('facturas')
@@ -124,14 +134,15 @@ export default function PrintInvoice() {
       if (error) throw error;
       return data;
     },
-    enabled: !!envioId,
+    enabled: !!envioId || !!facturaId,
   });
 
-  // Fetch envio with relations
+  // Fetch envio with relations (use envioId from URL or from factura.envio_id)
+  const resolvedEnvioId = envioId || factura?.envio_id;
   const { data: envio } = useQuery({
-    queryKey: ['print-invoice-envio', envioId],
+    queryKey: ['print-invoice-envio', resolvedEnvioId],
     queryFn: async () => {
-      if (!envioId) return null;
+      if (!resolvedEnvioId) return null;
       const { data, error } = await supabase
         .from('envios')
         .select(`
@@ -139,60 +150,63 @@ export default function PrintInvoice() {
           remitente:clientes!envios_remitente_id_fkey(nombre, apellido, direccion, ciudad, dni_cuit),
           destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, direccion, ciudad, dni_cuit)
         `)
-        .eq('id', envioId)
+        .eq('id', resolvedEnvioId)
         .single();
       if (error) throw error;
       return data;
     },
-    enabled: !!envioId,
+    enabled: !!resolvedEnvioId,
   });
 
   // Fetch detalles
   const { data: detalles } = useQuery({
-    queryKey: ['print-invoice-detalles', envioId],
+    queryKey: ['print-invoice-detalles', resolvedEnvioId],
     queryFn: async () => {
-      if (!envioId) return [];
+      if (!resolvedEnvioId) return [];
       const { data, error } = await supabase
         .from('envio_detalles')
         .select('nombre_concepto, monto')
-        .eq('envio_id', envioId);
+        .eq('envio_id', resolvedEnvioId);
       if (error) throw error;
       return data || [];
     },
-    enabled: !!envioId,
+    enabled: !!resolvedEnvioId,
   });
+
+  // Resolve tenant_id from envio or factura
+  const tenantId = envio?.tenant_id || factura?.tenant_id;
 
   // Fetch ARCA config for emisor data
   const { data: arcaConfig } = useQuery({
-    queryKey: ['print-invoice-arca', envio?.tenant_id],
+    queryKey: ['print-invoice-arca', tenantId],
     queryFn: async () => {
-      if (!envio?.tenant_id) return null;
+      if (!tenantId) return null;
       const { data, error } = await supabase
         .from('arca_config')
         .select('*')
-        .eq('tenant_id', envio.tenant_id)
+        .eq('tenant_id', tenantId)
         .eq('is_active', true)
         .single();
       if (error) return null;
       return data;
     },
-    enabled: !!envio?.tenant_id,
+    enabled: !!tenantId,
   });
 
   // Fetch branding
   const { data: branding } = useQuery({
-    queryKey: ['print-invoice-branding', envio?.tenant_id],
+    queryKey: ['print-invoice-branding', tenantId],
     queryFn: async () => {
-      if (!envio?.tenant_id) return null;
+      if (!tenantId) return null;
       const { data, error } = await supabase
         .from('tenant_branding')
         .select('logo_light, nombre_app')
-        .eq('tenant_id', envio.tenant_id)
+        .eq('tenant_id', tenantId)
         .single();
       if (error) return null;
       return data;
     },
-    enabled: !!envio?.tenant_id,
+    enabled: !!tenantId,
   });
 
   // Normalizar tipo_comprobante (soporta 'A','B','C' y 'factura_a','factura_b','factura_c')
