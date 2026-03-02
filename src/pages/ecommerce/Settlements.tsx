@@ -326,7 +326,13 @@ export default function Settlements() {
         balances[seller.id] = {
           totalEnvios,
           totalPagos,
-          cantEnvios: allSellerEnvioIds.length,
+          cantEnvios: allSellerEnvioIds.filter(id => {
+            const e = enviosMap.get(id);
+            if (!e) return false;
+            if (e.estado === 'pendiente') return false;
+            if (e.estado === 'cancelado' && !balanceEnviosConVisitas.has(e.id)) return false;
+            return true;
+          }).length,
           saldoCalculado: totalEnvios - totalPagos,
         };
       }
@@ -493,7 +499,8 @@ export default function Settlements() {
         // 5: Combinar ambos conjuntos sin duplicados
         const ecommerceIds = new Set(ecommerceEnvios.map(e => e.id));
         const uniqueCommon = filteredCommonEnvios.filter(e => !ecommerceIds.has(e.id));
-        const allEnviosData = [...ecommerceEnvios, ...uniqueCommon];
+        const allEnviosData = [...ecommerceEnvios, ...uniqueCommon]
+          .filter(e => e.estado !== 'pendiente');
 
         // 5b: Batch query visitas for cancelled shipments
         const cancelledIds = allEnviosData
@@ -643,11 +650,6 @@ export default function Settlements() {
           }
           // If no tarifa and no zone match, keep original precio_total as fallback
 
-          // Pendiente = no liquidar
-          if (e.estado === 'pendiente') {
-            precioFinal = 0;
-          }
-
           // Cancelado sin visitas = $0
           const tieneVisitas = e.estado === 'cancelado' ? enviosConVisitas.has(e.id) : true;
           if (e.estado === 'cancelado' && !tieneVisitas) {
@@ -782,6 +784,8 @@ export default function Settlements() {
         // Link envíos
         if (sellerEnvios.length > 0) {
           for (const envio of sellerEnvios) {
+            // Guard: skip pendiente (defensive, shouldn't arrive here)
+            if (envio.estado === 'pendiente') continue;
             const updateData: any = { liquidacion_seller_id: liquidacion.id };
             // Cancelado sin visitas: forzar precio_total = 0
             if (envio.estado === 'cancelado' && envio.tiene_visitas === false) {

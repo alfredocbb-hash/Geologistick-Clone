@@ -559,6 +559,7 @@ export async function downloadSellerSettlementPDF(liquidacion: {
     .from('envios')
     .select('id, tracking_number, nombre_destinatario, precio_total, estado, ciudad_entrega, created_at')
     .eq('liquidacion_seller_id', liquidacion.id)
+    .neq('estado', 'pendiente')
     .order('created_at', { ascending: true });
 
   const shipmentItems = (envios || []).map((e: any) => ({
