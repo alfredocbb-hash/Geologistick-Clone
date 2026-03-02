@@ -1097,7 +1097,7 @@ export default function NewShipment() {
         // Skip flete if already included above (avoid duplicates)
         const conceptoCode = cp.concepto?.codigo?.toLowerCase();
         const conceptoName = cp.concepto?.nombre?.toLowerCase();
-        if (conceptoCode === 'flete' || conceptoName === 'flete') {
+        if (conceptoCode?.includes('flete') || conceptoName?.includes('flete')) {
           return;
         }
         

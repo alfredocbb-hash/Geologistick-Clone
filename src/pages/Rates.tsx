@@ -164,6 +164,7 @@ export default function Rates() {
     multiplicar_flete_por_bultos: false,
     // Conceptos inline
     conceptos: {} as Record<string, { monto: string; es_porcentaje: boolean; porcentaje: string; multiplicar_por_bultos: boolean }>,
+    express_surcharge: '',
   });
 
   const [conceptFormData, setConceptFormData] = useState({
@@ -309,6 +310,7 @@ export default function Rates() {
           ? parseFloat(data.comision_chofer_fija)
           : null,
         activa: data.activa,
+        express_surcharge: parseFloat(data.express_surcharge || '0') || 0,
       };
 
       let tarifaId = editingTarifa?.id;
@@ -614,6 +616,7 @@ export default function Rates() {
       umbral_volumen_cm: 50,
       multiplicar_flete_por_bultos: false,
       conceptos: {},
+      express_surcharge: '',
     });
     setEditingTarifa(null);
   };
@@ -673,6 +676,7 @@ export default function Rates() {
       umbral_volumen_cm: tarifa.umbral_volumen_cm || 50,
       multiplicar_flete_por_bultos: tarifa.multiplicar_flete_por_bultos ?? false,
       conceptos: conceptosMap,
+      express_surcharge: (tarifa as any).express_surcharge?.toString() || '',
     });
     setIsDialogOpen(true);
   };
@@ -711,7 +715,7 @@ export default function Rates() {
             porcentaje: existingPrice.porcentaje?.toString() || '',
             multiplicar_por_bultos: existingPrice.multiplicar_por_bultos || false,
           }
-        : { monto: '0', es_porcentaje: c.codigo?.toLowerCase() === 'seguro', porcentaje: '', multiplicar_por_bultos: false };
+        : { monto: '0', es_porcentaje: !!c.codigo?.toLowerCase().includes('seguro'), porcentaje: '', multiplicar_por_bultos: false };
     });
     setConceptPrices(prices);
     setIsPricingDialogOpen(true);
@@ -1367,7 +1371,7 @@ export default function Rates() {
               Asigna un monto a cada concepto para esta tarifa.
             </p>
             {conceptos.filter(c => c.activo).map((concepto) => {
-              const isSeguro = concepto.codigo?.toLowerCase() === 'seguro';
+              const isSeguro = !!concepto.codigo?.toLowerCase().includes('seguro');
               const currentValue = conceptPrices[concepto.id] || { monto: '0', es_porcentaje: isSeguro, porcentaje: '', multiplicar_por_bultos: false };
               
               return (
