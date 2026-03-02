@@ -1,90 +1,62 @@
 
 
-# Investigacion y correccion del historial ML para pedidos reprogramados
+# Fix: Facturación de liquidaciones de seller
 
-## Problema detectado
+## Problema
 
-Al revisar el componente `MLShipmentHistorySection` y la edge function `mercadolibre-shipment-history`, se identificaron los siguientes problemas:
+El componente `InvoiceDataDialog` se usa para facturar tanto envíos individuales como liquidaciones de sellers. Sin embargo, solo acepta `envioId` como prop. Cuando se invoca desde `SellerLiquidacionDetailDialog`, se pasa el ID de la liquidacion como `envioId`:
 
-1. **No hay logs de la funcion**: la edge function nunca registro actividad, lo que sugiere que puede estar fallando silenciosamente (ej: error de autenticacion, respuesta inesperada de la API de ML).
-
-2. **Formato de respuesta de ML**: La API de MercadoLibre `/shipments/{id}/history` puede devolver los datos bajo una estructura diferente a la esperada. El codigo asume que la respuesta es `{ history: [...] }` directamente, pero ML podria devolverlo como array o bajo otra clave (ej: `status_history`).
-
-3. **Substatuses de reprogramacion no contemplados**: El mapa `ML_STATUS_LABELS` solo cubre estados principales (`pending`, `handling`, `ready_to_ship`, `shipped`, `delivered`, `not_delivered`, `cancelled`). Los substatuses de reprogramacion como `rescheduled`, `rescheduled_by_buyer`, `returning_to_hub`, `second_visit`, etc. no se muestran con etiquetas descriptivas.
-
-## Plan de cambios
-
-### 1. Mejorar la edge function con logging diagnostico
-
-**Archivo**: `supabase/functions/mercadolibre-shipment-history/index.ts`
-
-- Agregar `console.log` al inicio para confirmar que la funcion se ejecuta
-- Loguear la respuesta cruda de la API de ML antes de parsearla
-- Detectar si la respuesta de ML tiene una estructura diferente (ej: array directo vs objeto con clave)
-- Cambiar `getClaims` a `getUser` para consistencia con funciones que si funcionan (como `check-subscription`)
-
-```typescript
-// Cambiar autenticacion
-const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-if (authError || !user) { ... }
-const userId = user.id;
+```tsx
+<InvoiceDataDialog envioId={liquidacion.id} ... />
 ```
 
-- Manejar la respuesta de ML de forma flexible:
-```typescript
-const rawHistory = await historyResponse.json();
-console.log('[ML History] Raw response keys:', Object.keys(rawHistory));
+La edge function `arca-factura` recibe `envio_id` con un UUID que corresponde a una liquidacion, intenta buscarlo en la tabla `envios`, no lo encuentra, y devuelve error.
 
-// ML puede devolver array directo o bajo una clave
-const history = Array.isArray(rawHistory) 
-  ? rawHistory 
-  : rawHistory.history || rawHistory.status_history || [];
-```
+## Solucion
 
-### 2. Agregar labels para substatuses de reprogramacion
+Agregar soporte para `liquidacion_seller_id` en el `InvoiceDataDialog`.
 
-**Archivo**: `src/components/ecommerce/MLShipmentHistorySection.tsx`
+### 1. `src/components/invoicing/InvoiceDataDialog.tsx`
 
-Ampliar `ML_STATUS_LABELS` y agregar un mapa de substatuses para mostrar etiquetas descriptivas:
+- Agregar prop opcional `liquidacionSellerId?: string`
+- Hacer `envioId` opcional (ya que puede venir uno u otro)
+- En la mutacion, enviar `liquidacion_seller_id` en lugar de `envio_id` cuando corresponda:
 
 ```typescript
-const ML_SUBSTATUS_LABELS: Record<string, string> = {
-  rescheduled: 'Reprogramado',
-  rescheduled_by_buyer: 'Reprogramado por comprador',
-  rescheduled_by_meli: 'Reprogramado por ML',
-  returning_to_hub: 'Volviendo a centro',
-  second_visit: 'Segunda visita',
-  ready_to_print: 'Listo para imprimir',
-  printed: 'Etiqueta impresa',
-  in_hub: 'En centro de distribucion',
-  waiting_for_withdrawal: 'Esperando retiro',
-  receiver_absent: 'Destinatario ausente',
-  buyer_refused: 'Rechazado por comprador',
-};
+body: {
+  envio_id: envioId || undefined,
+  liquidacion_seller_id: liquidacionSellerId || undefined,
+  tipo_comprobante,
+  environment: selectedEnvironment,
+  receptor: { ... },
+  importe_total: importeTotal,
+}
 ```
 
-Mostrar el substatus con su label en lugar del valor crudo.
+### 2. `src/components/ecommerce/SellerLiquidacionDetailDialog.tsx`
 
-### 3. Mostrar substatus de forma mas visible
+- Cambiar la invocacion para usar la prop correcta:
 
-En la timeline del historial, cuando el substatus indica reprogramacion, mostrarlo con un badge de color diferente (amarillo/naranja) para que sea visualmente evidente:
-
-```typescript
-{event.substatus && (
-  <Badge variant="outline" className="text-xs bg-yellow-50 border-yellow-300 text-yellow-700">
-    {ML_SUBSTATUS_LABELS[event.substatus] || event.substatus}
-  </Badge>
-)}
+```tsx
+<InvoiceDataDialog
+  open={invoiceDialogOpen}
+  onClose={() => setInvoiceDialogOpen(false)}
+  onSuccess={handleInvoiceSuccess}
+  liquidacionSellerId={liquidacion.id}
+  importeTotal={Math.abs(liquidacion.saldo_periodo || 0)}
+/>
 ```
+
+- Quitar `envioId` de esta invocacion.
 
 ## Archivos modificados
 
 | Archivo | Cambio |
 |---------|--------|
-| `supabase/functions/mercadolibre-shipment-history/index.ts` | Fix auth, logging, manejo flexible de respuesta ML |
-| `src/components/ecommerce/MLShipmentHistorySection.tsx` | Labels de substatuses, UI mejorada para reprogramados |
+| `src/components/invoicing/InvoiceDataDialog.tsx` | Agregar prop `liquidacionSellerId`, enviar campo correcto a la edge function |
+| `src/components/ecommerce/SellerLiquidacionDetailDialog.tsx` | Usar `liquidacionSellerId` en vez de `envioId` |
 
 ## Sin cambios de base de datos
 
-No se requieren migraciones. Los cambios son en la edge function y en el frontend.
+La edge function ya soporta `liquidacion_seller_id` -- el problema es solo del frontend que enviaba el campo equivocado.
 
