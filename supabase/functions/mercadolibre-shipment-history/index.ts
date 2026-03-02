@@ -13,6 +13,7 @@ Deno.serve(async (req) => {
   }
 
   try {
+    console.log('[ML History] Function invoked');
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -20,6 +21,7 @@ Deno.serve(async (req) => {
     // Verify authentication
     const authHeader = req.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
+      console.error('[ML History] No Authorization header');
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -27,15 +29,17 @@ Deno.serve(async (req) => {
     }
 
     const token = authHeader.replace('Bearer ', '');
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+      console.error('[ML History] Auth error:', authError?.message);
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const userId = claimsData.claims.sub;
+    const userId = user.id;
+    console.log('[ML History] Authenticated user:', userId);
 
     // Get params from query string
     const url = new URL(req.url);
@@ -88,6 +92,7 @@ Deno.serve(async (req) => {
     }
 
     // Call ML API for shipment history
+    console.log('[ML History] Fetching history for shipment:', shipmentId);
     const historyResponse = await fetch(`${ML_API_BASE}/shipments/${shipmentId}/history`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -101,7 +106,18 @@ Deno.serve(async (req) => {
       );
     }
 
-    const history = await historyResponse.json();
+    const rawHistory = await historyResponse.json();
+    console.log('[ML History] Raw response type:', typeof rawHistory, Array.isArray(rawHistory) ? 'array' : 'object');
+    if (rawHistory && typeof rawHistory === 'object' && !Array.isArray(rawHistory)) {
+      console.log('[ML History] Raw response keys:', Object.keys(rawHistory));
+    }
+
+    // ML may return array directly or under a key
+    const history = Array.isArray(rawHistory)
+      ? rawHistory
+      : rawHistory.history || rawHistory.status_history || [];
+
+    console.log('[ML History] Parsed history entries:', history.length);
 
     return new Response(
       JSON.stringify({ history }),
