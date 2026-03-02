@@ -337,6 +337,16 @@ export function SellerLiquidacionDetailDialog({
                           </div>
                         )}
                       </div>
+                      <div className="mt-3 pt-3 border-t flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(`/print-invoice?factura_id=${factura.id}`, '_blank')}
+                        >
+                          <Printer className="h-4 w-4 mr-2" />
+                          Imprimir Factura
+                        </Button>
+                      </div>
                     </CardContent>
                   </Card>
                 )}
