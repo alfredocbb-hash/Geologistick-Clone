@@ -184,6 +184,7 @@ export default function ThirdPartySettlements() {
         .eq("empresa_terciarizada_id", liqEmpresaId)
         .eq("es_terciarizado", true)
         .eq("estado", "entregado")
+        .neq("tipo_pago", "destino")
         .gte("fecha_entrega", periodoInicio)
         .lte("fecha_entrega", periodoFin + "T23:59:59");
 
