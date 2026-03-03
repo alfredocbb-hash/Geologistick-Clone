@@ -321,6 +321,7 @@ export default function NewShipment() {
       if (error) throw error;
       return data as Sucursal[];
     },
+    enabled: !!user,
   });
 
   // Sucursales destino (para retiro en sucursal)
@@ -359,6 +360,7 @@ export default function NewShipment() {
       if (error) throw error;
       return data as TarifaConcepto[];
     },
+    enabled: !!user && !!profile?.tenant_id,
   });
 
   // Query para obtener conceptos habilitados para la sucursal del usuario
@@ -513,6 +515,7 @@ export default function NewShipment() {
       if (error) throw error;
       return data as Client[];
     },
+    enabled: !!user && !!profile?.tenant_id,
   });
 
   // Clientes con cuenta corriente (filtered from allClients)
@@ -1548,6 +1551,18 @@ export default function NewShipment() {
   };
 
   const today = new Date().toISOString().split('T')[0];
+
+  // Loading state while essential data loads
+  if (!user || !profile || loadingSucursalUsuario || loadingTarifas) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
+          <p className="text-muted-foreground">Cargando formulario...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Si no tiene sucursal asignada, mostrar mensaje
   if (!loadingSucursalUsuario && !sucursalOrigenId) {
