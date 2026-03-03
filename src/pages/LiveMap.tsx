@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Building2, Package, Truck, RefreshCw, AlertCircle, Navigation, User, Clock, MapPin, Route, Eye, EyeOff, X, WifiOff } from "lucide-react";
+import { Building2, Package, Truck, RefreshCw, AlertCircle, Navigation, User, Clock, MapPin, Route, Eye, EyeOff, X, WifiOff, Bot, Sparkles, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import MapView from "@/components/maps/MapView";
 import { RouteStatsPanel } from "@/components/maps/RouteStatsPanel";
@@ -13,6 +13,7 @@ import { formatDistanceToNow, format } from "date-fns";
 import { es } from "date-fns/locale";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useDriverRoute } from "@/hooks/useDriverRoute";
+import { toast } from "sonner";
 
 interface SucursalConEnvios {
   id: string;
@@ -57,6 +58,30 @@ interface LocationHistoryPoint {
   speed?: number | null;
 }
 
+interface DriverAnalysis {
+  eta_proxima_parada: string;
+  eta_fin_ruta: string;
+  riesgo_demora: "bajo" | "medio" | "alto";
+  razon_riesgo: string;
+  anomalias: Array<{
+    tipo: string;
+    mensaje: string;
+    severidad: "info" | "warning" | "critical";
+  }>;
+  resumen: string;
+}
+
+interface OperationsSummary {
+  resumen_general: string;
+  chofer_mas_eficiente?: string;
+  alertas: Array<{
+    chofer: string;
+    tipo: string;
+    mensaje: string;
+  }>;
+  sugerencias: string[];
+}
+
 export default function LiveMap() {
   const [activeTab, setActiveTab] = useState("sucursales");
   const [driverLocations, setDriverLocations] = useState<DriverLocation[]>([]);
@@ -72,6 +97,13 @@ export default function LiveMap() {
   const [loadingDialogHistory, setLoadingDialogHistory] = useState(false);
   const [dialogSnappedRoute, setDialogSnappedRoute] = useState<{ lat: number; lng: number }[]>([]);
   const [isDialogSnapping, setIsDialogSnapping] = useState(false);
+
+  // AI Analysis state
+  const [aiAnalysis, setAiAnalysis] = useState<Record<string, DriverAnalysis>>({});
+  const [loadingAiAnalysis, setLoadingAiAnalysis] = useState<Record<string, boolean>>({});
+  const [showSummaryDialog, setShowSummaryDialog] = useState(false);
+  const [operationsSummary, setOperationsSummary] = useState<OperationsSummary | null>(null);
+  const [loadingSummary, setLoadingSummary] = useState(false);
 
   // Hook for main map route visualization
   const driverRoute = useDriverRoute();
@@ -364,6 +396,153 @@ export default function LiveMap() {
     }
   };
 
+  // AI Analysis: per driver
+  const analyzeDriver = async (driver: DriverLocation) => {
+    if (!driver.ruta_activa) return;
+    
+    setLoadingAiAnalysis(prev => ({ ...prev, [driver.chofer_id]: true }));
+    
+    try {
+      // Fetch pending stops for this route
+      const { data: paradas } = await supabase
+        .from("ruta_paradas")
+        .select("envio_id, orden, estado")
+        .eq("ruta_id", driver.ruta_activa.id)
+        .order("orden");
+
+      const pendingParadas = paradas?.filter(p => p.estado === "pendiente") || [];
+      const completedParadas = paradas?.filter(p => p.estado === "completada") || [];
+
+      // Fetch envio details for pending stops
+      const pendingEnvioIds = pendingParadas.map(p => p.envio_id).filter(Boolean);
+      let pendingStops: Array<{ lat: number; lng: number; address: string; trackingNumber: string }> = [];
+      if (pendingEnvioIds.length > 0) {
+        const { data: envios } = await supabase
+          .from("envios")
+          .select("id, tracking_number, direccion_entrega, destinatario_lat, destinatario_lng")
+          .in("id", pendingEnvioIds);
+        pendingStops = (envios || [])
+          .filter(e => e.destinatario_lat && e.destinatario_lng)
+          .map(e => ({
+            lat: Number(e.destinatario_lat),
+            lng: Number(e.destinatario_lng),
+            address: e.direccion_entrega || "",
+            trackingNumber: e.tracking_number,
+          }));
+      }
+
+      // Fetch completed deliveries
+      const completedEnvioIds = completedParadas.map(p => p.envio_id).filter(Boolean);
+      let completedStops: Array<{ lat: number; lng: number; deliveredAt: string; trackingNumber: string }> = [];
+      if (completedEnvioIds.length > 0) {
+        const { data: envios } = await supabase
+          .from("envios")
+          .select("id, tracking_number, entrega_lat, entrega_lng, fecha_entrega")
+          .in("id", completedEnvioIds)
+          .eq("estado", "entregado");
+        completedStops = (envios || [])
+          .filter(e => e.entrega_lat && e.entrega_lng && e.fecha_entrega)
+          .map(e => ({
+            lat: Number(e.entrega_lat),
+            lng: Number(e.entrega_lng),
+            deliveredAt: e.fecha_entrega!,
+            trackingNumber: e.tracking_number,
+          }));
+      }
+
+      // Fetch recent location history
+      const { data: history } = await supabase
+        .from("driver_location_history")
+        .select("lat, lng, recorded_at, speed")
+        .eq("chofer_id", driver.chofer_id)
+        .eq("ruta_id", driver.ruta_activa.id)
+        .order("recorded_at", { ascending: true })
+        .limit(100);
+
+      const { data: fnData, error: fnError } = await supabase.functions.invoke("analyze-driver-route", {
+        body: {
+          mode: "driver",
+          driverId: driver.chofer_id,
+          routeId: driver.ruta_activa.id,
+          currentPosition: { lat: driver.lat, lng: driver.lng },
+          pendingStops,
+          completedStops,
+          locationHistory: (history || []).map(h => ({
+            lat: Number(h.lat),
+            lng: Number(h.lng),
+            recorded_at: h.recorded_at,
+            speed: h.speed ? Number(h.speed) : undefined,
+          })),
+        },
+      });
+
+      if (fnError) throw fnError;
+      if (fnData?.error) throw new Error(fnData.error);
+
+      setAiAnalysis(prev => ({ ...prev, [driver.chofer_id]: fnData.analysis }));
+      toast.success("Análisis IA completado");
+    } catch (err) {
+      console.error("AI analysis error:", err);
+      toast.error("Error al analizar ruta con IA");
+    } finally {
+      setLoadingAiAnalysis(prev => ({ ...prev, [driver.chofer_id]: false }));
+    }
+  };
+
+  // AI Summary: all drivers
+  const generateSummary = async () => {
+    setLoadingSummary(true);
+    setShowSummaryDialog(true);
+    setOperationsSummary(null);
+
+    try {
+      const driversWithRoutes = driverLocations.filter(d => d.ruta_activa);
+      
+      const driversData = driversWithRoutes.map(d => {
+        const status = getDriverStatus(d.updated_at);
+        return {
+          name: `${d.nombre} ${d.apellido}`,
+          activeRoute: d.ruta_activa!.numero,
+          completedStops: 0, // Will be enriched by AI based on available data
+          pendingStops: 0,
+          status: status.label,
+          lastUpdate: formatDistanceToNow(new Date(d.updated_at), { addSuffix: true, locale: es }),
+        };
+      });
+
+      // Also include drivers without active route for context
+      const inactiveDrivers = driverLocations.filter(d => !d.ruta_activa);
+      inactiveDrivers.forEach(d => {
+        const status = getDriverStatus(d.updated_at);
+        driversData.push({
+          name: `${d.nombre} ${d.apellido}`,
+          activeRoute: "Sin ruta activa",
+          completedStops: 0,
+          pendingStops: 0,
+          status: status.label,
+          lastUpdate: formatDistanceToNow(new Date(d.updated_at), { addSuffix: true, locale: es }),
+        });
+      });
+
+      const { data: fnData, error: fnError } = await supabase.functions.invoke("analyze-driver-route", {
+        body: {
+          mode: "summary",
+          driversData,
+        },
+      });
+
+      if (fnError) throw fnError;
+      if (fnData?.error) throw new Error(fnData.error);
+
+      setOperationsSummary(fnData.analysis);
+    } catch (err) {
+      console.error("AI summary error:", err);
+      toast.error("Error al generar resumen IA");
+    } finally {
+      setLoadingSummary(false);
+    }
+  };
+
   // Generate polyline path from dialog history - use snapped if available
   const dialogPolylinePath = useMemo(() => {
     if (dialogSnappedRoute.length > 0) {
@@ -411,6 +590,15 @@ export default function LiveMap() {
   const totalEnSucursal = sucursalesData.reduce((acc, s) => acc + s.envios_en_sucursal, 0);
   const totalEnReparto = sucursalesData.reduce((acc, s) => acc + s.envios_en_reparto, 0);
   const centrosLogisticos = sucursalesData.filter(s => s.es_centro_logistico).length;
+
+  const getRiskBadge = (risk: string) => {
+    switch (risk) {
+      case "bajo": return <Badge className="bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30">🟢 Bajo</Badge>;
+      case "medio": return <Badge className="bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-500/30">🟡 Medio</Badge>;
+      case "alto": return <Badge className="bg-red-500/20 text-red-700 dark:text-red-400 border-red-500/30">🔴 Alto</Badge>;
+      default: return null;
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -641,15 +829,31 @@ export default function LiveMap() {
                       Ubicación de choferes con rutas activas
                     </CardDescription>
                   </div>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={() => refetchDrivers()}
-                    className="flex items-center gap-2"
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                    Actualizar
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={generateSummary}
+                      disabled={loadingSummary || driverLocations.length === 0}
+                      className="flex items-center gap-2"
+                    >
+                      {loadingSummary ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-4 w-4" />
+                      )}
+                      Resumen IA
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => refetchDrivers()}
+                      className="flex items-center gap-2"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      Actualizar
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
@@ -792,7 +996,7 @@ export default function LiveMap() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3 max-h-[300px] overflow-y-auto">
+                  <div className="space-y-3 max-h-[500px] overflow-y-auto">
                     {driverLocations.length === 0 ? (
                       <p className="text-sm text-muted-foreground text-center py-4">
                         No hay choferes activos
@@ -802,86 +1006,153 @@ export default function LiveMap() {
                         const status = getDriverStatus(driver.updated_at);
                         const hasActiveRoute = !!driver.ruta_activa;
                         const hasHistoricalRoute = !hasActiveRoute && !!driver.ultima_ruta;
+                        const analysis = aiAnalysis[driver.chofer_id];
+                        const isAnalyzing = loadingAiAnalysis[driver.chofer_id];
                         
                         return (
                           <div
                             key={driver.id}
-                            className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border"
+                            className="rounded-lg bg-muted/50 border overflow-hidden"
                           >
-                            <div className="flex items-center gap-3">
-                              <div className={`w-3 h-3 rounded-full ${status.color}`} />
-                              <div>
-                                <p className="text-sm font-medium">
-                                  {driver.nombre} {driver.apellido}
-                                </p>
-                                {hasActiveRoute && (
-                                  <p className="text-xs text-muted-foreground">
-                                    Ruta: {driver.ruta_activa!.numero}
+                            <div className="flex items-center justify-between p-3">
+                              <div className="flex items-center gap-3">
+                                <div className={`w-3 h-3 rounded-full ${status.color}`} />
+                                <div>
+                                  <p className="text-sm font-medium">
+                                    {driver.nombre} {driver.apellido}
                                   </p>
+                                  {hasActiveRoute && (
+                                    <p className="text-xs text-muted-foreground">
+                                      Ruta: {driver.ruta_activa!.numero}
+                                    </p>
+                                  )}
+                                  {hasHistoricalRoute && (
+                                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                      <Clock className="h-3 w-3" />
+                                      Última: {formatDistanceToNow(new Date(driver.ultima_ruta!.fecha), { addSuffix: true, locale: es })}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="text-right flex flex-col items-end gap-1">
+                                <Badge variant="outline" className="text-xs">
+                                  {status.label}
+                                </Badge>
+                                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <Clock className="h-3 w-3" />
+                                  {formatDistanceToNow(new Date(driver.updated_at), { 
+                                    addSuffix: true, 
+                                    locale: es 
+                                  })}
+                                </p>
+                                {/* Route buttons */}
+                                {hasActiveRoute && (
+                                  <div className="flex gap-1 flex-wrap justify-end">
+                                    <Button
+                                      size="sm"
+                                      variant={selectedDriverForMap === driver.chofer_id ? "default" : "ghost"}
+                                      className="h-6 text-xs px-2"
+                                      onClick={() => toggleRouteOnMap(driver.chofer_id, driver.ruta_activa!.id)}
+                                    >
+                                      {selectedDriverForMap === driver.chofer_id ? (
+                                        <><EyeOff className="h-3 w-3 mr-1" />Ocultar</>
+                                      ) : (
+                                        <><Eye className="h-3 w-3 mr-1" />Ver en mapa</>
+                                      )}
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 text-xs px-2"
+                                      onClick={() => loadRouteHistoryForDialog(driver.chofer_id, driver.ruta_activa!.id)}
+                                    >
+                                      <Route className="h-3 w-3 mr-1" />
+                                      Detalles
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 text-xs px-2"
+                                      onClick={() => analyzeDriver(driver)}
+                                      disabled={isAnalyzing}
+                                    >
+                                      {isAnalyzing ? (
+                                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                      ) : (
+                                        <Bot className="h-3 w-3 mr-1" />
+                                      )}
+                                      IA
+                                    </Button>
+                                  </div>
                                 )}
                                 {hasHistoricalRoute && (
-                                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                                    <Clock className="h-3 w-3" />
-                                    Última: {formatDistanceToNow(new Date(driver.ultima_ruta!.fecha), { addSuffix: true, locale: es })}
-                                  </p>
+                                  <div className="flex gap-1">
+                                    <Button
+                                      size="sm"
+                                      variant={selectedDriverForMap === driver.chofer_id ? "default" : "outline"}
+                                      className="h-6 text-xs px-2"
+                                      onClick={() => toggleRouteOnMap(driver.chofer_id, driver.ultima_ruta!.id)}
+                                    >
+                                      {selectedDriverForMap === driver.chofer_id ? (
+                                        <><EyeOff className="h-3 w-3 mr-1" />Ocultar</>
+                                      ) : (
+                                        <><Route className="h-3 w-3 mr-1" />Ver último recorrido</>
+                                      )}
+                                    </Button>
+                                  </div>
                                 )}
                               </div>
                             </div>
-                            <div className="text-right flex flex-col items-end gap-1">
-                              <Badge variant="outline" className="text-xs">
-                                {status.label}
-                              </Badge>
-                              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                                <Clock className="h-3 w-3" />
-                                {formatDistanceToNow(new Date(driver.updated_at), { 
-                                  addSuffix: true, 
-                                  locale: es 
-                                })}
-                              </p>
-                              {/* Botones para ruta activa */}
-                              {hasActiveRoute && (
-                                <div className="flex gap-1">
-                                  <Button
-                                    size="sm"
-                                    variant={selectedDriverForMap === driver.chofer_id ? "default" : "ghost"}
-                                    className="h-6 text-xs px-2"
-                                    onClick={() => toggleRouteOnMap(driver.chofer_id, driver.ruta_activa!.id)}
-                                  >
-                                    {selectedDriverForMap === driver.chofer_id ? (
-                                      <><EyeOff className="h-3 w-3 mr-1" />Ocultar</>
-                                    ) : (
-                                      <><Eye className="h-3 w-3 mr-1" />Ver en mapa</>
-                                    )}
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-6 text-xs px-2"
-                                    onClick={() => loadRouteHistoryForDialog(driver.chofer_id, driver.ruta_activa!.id)}
-                                  >
-                                    <Route className="h-3 w-3 mr-1" />
-                                    Detalles
-                                  </Button>
+
+                            {/* AI Analysis result inline */}
+                            {analysis && (
+                              <div className="border-t px-3 py-2 bg-muted/30 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <Bot className="h-3.5 w-3.5 text-primary" />
+                                    <span className="text-xs font-medium">Análisis IA</span>
+                                  </div>
+                                  {getRiskBadge(analysis.riesgo_demora)}
                                 </div>
-                              )}
-                              {/* Botón para ver última ruta completada */}
-                              {hasHistoricalRoute && (
-                                <div className="flex gap-1">
-                                  <Button
-                                    size="sm"
-                                    variant={selectedDriverForMap === driver.chofer_id ? "default" : "outline"}
-                                    className="h-6 text-xs px-2"
-                                    onClick={() => toggleRouteOnMap(driver.chofer_id, driver.ultima_ruta!.id)}
-                                  >
-                                    {selectedDriverForMap === driver.chofer_id ? (
-                                      <><EyeOff className="h-3 w-3 mr-1" />Ocultar</>
-                                    ) : (
-                                      <><Route className="h-3 w-3 mr-1" />Ver último recorrido</>
-                                    )}
-                                  </Button>
+                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                  <div className="bg-background/60 rounded p-1.5">
+                                    <span className="text-muted-foreground">ETA próxima:</span>
+                                    <span className="font-medium ml-1">{analysis.eta_proxima_parada}</span>
+                                  </div>
+                                  <div className="bg-background/60 rounded p-1.5">
+                                    <span className="text-muted-foreground">Fin ruta:</span>
+                                    <span className="font-medium ml-1">{analysis.eta_fin_ruta}</span>
+                                  </div>
                                 </div>
-                              )}
-                            </div>
+                                {analysis.anomalias.length > 0 && (
+                                  <div className="space-y-1">
+                                    {analysis.anomalias.map((a, idx) => (
+                                      <div key={idx} className={`text-xs rounded px-2 py-1 ${
+                                        a.severidad === "critical" ? "bg-red-500/10 text-red-700 dark:text-red-400" :
+                                        a.severidad === "warning" ? "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400" :
+                                        "bg-blue-500/10 text-blue-700 dark:text-blue-400"
+                                      }`}>
+                                        {a.severidad === "critical" ? "🔴" : a.severidad === "warning" ? "⚠️" : "ℹ️"} {a.mensaje}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                <p className="text-xs text-muted-foreground italic">{analysis.resumen}</p>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-5 text-xs px-1"
+                                  onClick={() => setAiAnalysis(prev => {
+                                    const next = { ...prev };
+                                    delete next[driver.chofer_id];
+                                    return next;
+                                  })}
+                                >
+                                  <X className="h-3 w-3 mr-1" />
+                                  Cerrar
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         );
                       })
@@ -974,13 +1245,11 @@ export default function LiveMap() {
                 <div className="h-[400px] rounded-lg overflow-hidden border relative">
                   <MapView
                     markers={[
-                      // Start point
                       {
                         position: dialogPolylinePath[0],
                         title: "Inicio del recorrido",
                         icon: "origin",
                       },
-                      // Current/Last point
                       {
                         position: dialogPolylinePath[dialogPolylinePath.length - 1],
                         title: "Posición actual",
@@ -992,7 +1261,6 @@ export default function LiveMap() {
                     polylinePath={dialogPolylinePath}
                   />
                   
-                  {/* Route type indicator */}
                   <div className="absolute top-3 right-3 z-10">
                     <Badge 
                       variant={dialogSnappedRoute.length > 0 ? "default" : "secondary"}
@@ -1049,6 +1317,75 @@ export default function LiveMap() {
               </>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* AI Operations Summary Dialog */}
+      <Dialog open={showSummaryDialog} onOpenChange={setShowSummaryDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              Resumen Operativo con IA
+            </DialogTitle>
+          </DialogHeader>
+
+          {loadingSummary ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-4">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">Analizando operación en curso...</p>
+            </div>
+          ) : operationsSummary ? (
+            <div className="space-y-4 overflow-y-auto">
+              {/* General Summary */}
+              <div className="bg-muted/50 rounded-lg p-4">
+                <h4 className="font-medium text-sm mb-2">📊 Resumen General</h4>
+                <p className="text-sm whitespace-pre-line">{operationsSummary.resumen_general}</p>
+              </div>
+
+              {/* Most efficient driver */}
+              {operationsSummary.chofer_mas_eficiente && (
+                <div className="bg-green-500/10 rounded-lg p-4 border border-green-500/20">
+                  <h4 className="font-medium text-sm mb-1 text-green-700 dark:text-green-400">🏆 Chofer más eficiente</h4>
+                  <p className="text-sm">{operationsSummary.chofer_mas_eficiente}</p>
+                </div>
+              )}
+
+              {/* Alerts */}
+              {operationsSummary.alertas.length > 0 && (
+                <div>
+                  <h4 className="font-medium text-sm mb-2">⚠️ Alertas</h4>
+                  <div className="space-y-2">
+                    {operationsSummary.alertas.map((alerta, idx) => (
+                      <div key={idx} className="bg-yellow-500/10 rounded-lg px-3 py-2 border border-yellow-500/20">
+                        <p className="text-xs font-medium text-yellow-700 dark:text-yellow-400">{alerta.chofer}</p>
+                        <p className="text-sm">{alerta.mensaje}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Suggestions */}
+              {operationsSummary.sugerencias.length > 0 && (
+                <div>
+                  <h4 className="font-medium text-sm mb-2">💡 Sugerencias</h4>
+                  <ul className="space-y-1">
+                    {operationsSummary.sugerencias.map((s, idx) => (
+                      <li key={idx} className="text-sm flex items-start gap-2">
+                        <span className="text-primary mt-0.5">•</span>
+                        <span>{s}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <p>No se pudo generar el resumen</p>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
