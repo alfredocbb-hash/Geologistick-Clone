@@ -73,3 +73,5 @@ project_id = "uhlgimnmfifmrxraorrl"
     verify_jwt = false
   [functions.tiendanube-webhook]
     verify_jwt = false
+  [functions.analyze-driver-route]
+    verify_jwt = false
