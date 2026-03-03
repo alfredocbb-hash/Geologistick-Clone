@@ -1,64 +1,73 @@
 
 
-# Fix: Congelamiento al crear envío — App se queda trabada después de crear
+# Fix: Cancelación de envíos — limpiar pagos y movimientos de caja
 
-## Problema confirmado
+## Problema
 
-Los envíos de `bahiablanca@blackbox.com` se crean correctamente en la base de datos (5 hoy, todos `tipo_pago: destino`). El problema ocurre **después** de la creación exitosa:
+Cuando se cancela un envío desde `Shipments.tsx`, solo se actualiza el `estado` a `cancelado` y se inserta historial. **No se limpian**:
+1. Los **pagos** (`pagos`) asociados al envío — si ya fue cobrado por chofer o en sucursal, esos registros quedan activos
+2. Los **movimientos de caja** (`movimientos_caja`) — si hubo un cobro en sucursal que generó un ingreso en caja, ese importe queda sumando en la sesión
 
-1. El `onSuccess` del mutation (línea 1232) ejecuta `clearDraft()` sin try/catch
-2. Si `clearDraft()` o `queryClient.invalidateQueries()` lanza una excepción, el `navigate()` de la línea 1265 **nunca se ejecuta**
-3. React Query atrapa la excepción internamente, el componente queda en estado inconsistente
-4. El router de React deja de responder → la app parece "congelada"
-
-Esto pasa en **todos los navegadores y usuarios** porque es un bug de código, no del navegador.
+El mismo problema existe en `ChangeStatusDialog.tsx` cuando se cambia manualmente a `cancelado`.
 
 ## Solución
 
-### Archivo: `src/pages/NewShipment.tsx`
+### 1. `src/pages/Shipments.tsx` — `cancelMutation`
 
-**1. Proteger `onSuccess` con try/catch** — garantizar que `navigate()` se ejecute siempre:
+Después de actualizar `estado: 'cancelado'`, agregar:
+- **Anular pagos**: buscar pagos del envío y marcarlos como `estado: 'anulado'`
+- **Compensar caja**: si hay movimientos de caja con `envio_id`, insertar un movimiento de egreso compensatorio con `monto` igual y concepto "Anulación por cancelación de envío"
 
-```typescript
-onSuccess: (data) => {
-  try { clearDraft(); } catch (e) { console.error('Error clearing draft:', e); }
-  
-  try {
-    queryClient.invalidateQueries({ queryKey: ['envios'] });
-    queryClient.invalidateQueries({ queryKey: ['all_clients'] });
-    queryClient.invalidateQueries({ queryKey: ['clientes_cta_cte'] });
-  } catch (e) { console.error('Error invalidating queries:', e); }
-  
-  if (formData.tipo_pago === 'contado') {
-    setCreatedEnvio({...});
-    setShowPaymentModal(true);
-  } else {
-    // toast + navigate (siempre se ejecuta)
-    navigate(`/print-label?id=${data.id}`);
-  }
-},
-```
+### 2. `src/components/shipments/ChangeStatusDialog.tsx` — `changeStatusMutation`
 
-**2. Agregar `onSettled` como safety net** — si por alguna razón el navigate falla, forzar la redirección después de 3 segundos:
+Cuando `newStatus === 'cancelado'`, aplicar la misma lógica de anulación de pagos y compensación de caja.
+
+### 3. `src/components/routes/CancelRouteDialog.tsx` — `cancelMutation`
+
+Revisar si al cancelar ruta también debe anularse pagos de los envíos. Actualmente los envíos vuelven a `en_sucursal` o `pendiente`, no a `cancelado`, así que no aplica anulación — es correcto.
+
+### Flujo de anulación (compartido)
 
 ```typescript
-onSettled: (data, error) => {
-  if (data && !error && formData.tipo_pago !== 'contado') {
-    setTimeout(() => {
-      if (window.location.pathname.includes('/shipments/new')) {
-        navigate(`/print-label?id=${data.id}`, { replace: true });
-      }
-    }, 3000);
-  }
-},
-```
+// 1. Anular pagos existentes del envío
+const { data: pagos } = await supabase
+  .from('pagos')
+  .select('id')
+  .eq('envio_id', envioId)
+  .in('estado', ['cobrado_chofer', 'rendido', 'pagado']);
 
-**3. Agregar handler global de `unhandledrejection` en `App.tsx`** — evitar que promesas no capturadas congelen la app en general.
+if (pagos?.length) {
+  await supabase
+    .from('pagos')
+    .update({ estado: 'anulado' })
+    .in('id', pagos.map(p => p.id));
+}
+
+// 2. Compensar movimientos de caja
+const { data: movimientos } = await supabase
+  .from('movimientos_caja')
+  .select('id, sesion_caja_id, monto, concepto')
+  .eq('envio_id', envioId)
+  .eq('tipo', 'ingreso');
+
+if (movimientos?.length) {
+  for (const mov of movimientos) {
+    await supabase.from('movimientos_caja').insert({
+      sesion_caja_id: mov.sesion_caja_id,
+      envio_id: envioId,
+      tipo: 'egreso',
+      monto: mov.monto,
+      concepto: `Anulación: ${mov.concepto}`,
+      created_by: user?.id,
+    });
+  }
+}
+```
 
 ### Archivos a modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/pages/NewShipment.tsx` | Envolver `onSuccess` en try/catch, agregar `onSettled` como safety net |
-| `src/App.tsx` | Agregar `useEffect` con listener de `unhandledrejection` |
+| `src/pages/Shipments.tsx` | Agregar anulación de pagos + compensación caja en `cancelMutation` |
+| `src/components/shipments/ChangeStatusDialog.tsx` | Agregar misma lógica cuando `newStatus === 'cancelado'` |
 
