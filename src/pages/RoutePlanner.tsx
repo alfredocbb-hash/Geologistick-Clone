@@ -127,6 +127,7 @@ export default function RoutePlanner() {
   const [routeStartTime, setRouteStartTime] = usePersistedState('planner-route-time', "09:00");
   const clearPersistedState = useClearPersistedState('planner-selected-envios');
   const [isOptimizing, setIsOptimizing] = useState(false);
+  const [isAIOptimizing, setIsAIOptimizing] = useState(false);
   const [routeOptions, setRouteOptions] = useState<RouteOption[]>([]);
   const [selectedOption, setSelectedOption] = useState<RouteOption | null>(null);
   const [filterType, setFilterType] = useState<"all" | "retiro" | "entrega">("all");
@@ -1000,6 +1001,67 @@ export default function RoutePlanner() {
       setSelectedOption(options[0]);
       toast.success("Rutas optimizadas generadas");
 
+      // Trigger AI optimization in background
+      setIsAIOptimizing(true);
+      try {
+        const aiStops = enviosConCoords.map((e, idx) => ({
+          index: idx,
+          lat: Number(e.coords!.lat),
+          lng: Number(e.coords!.lng),
+          tipo: (e as any)._isSucursal ? "sucursal" : (e as any).tipo,
+          direccion: (e as any)._isSucursal ? (e as any).direccion : (
+            (e as any).tipo === "retiro" 
+              ? ((e as any).direccion_retiro || (e as any).remitente?.direccion || "")
+              : ((e as any).direccion_entrega || (e as any).destinatario?.direccion || "")
+          ),
+          horario_preferido: (e as any).horario_preferido_entrega || "cualquier_hora",
+          ciudad: (e as any)._isSucursal ? (e as any).ciudad : (
+            (e as any).tipo === "retiro"
+              ? ((e as any).ciudad_retiro || (e as any).remitente?.ciudad || "")
+              : ((e as any).ciudad_entrega || (e as any).destinatario?.ciudad || "")
+          ),
+        }));
+
+        const { data: aiData, error: aiError } = await supabase.functions.invoke('optimize-route', {
+          body: {
+            stops: aiStops,
+            origin: { lat: originLat, lng: originLng },
+          },
+        });
+
+        if (aiError) throw aiError;
+        if (aiData?.error) throw new Error(aiData.error);
+
+        const aiOrderedStops = (aiData.ordered_indices as number[]).map(
+          (idx: number) => mapStop(enviosConCoords[idx])
+        );
+        const aiDistance = calculateTotalDistance(aiOrderedStops);
+        const aiTime = Math.round((aiDistance / 25 + aiOrderedStops.length * 0.1) * 10) / 10;
+
+        const aiOption: RouteOption = {
+          name: "🧠 Optimizada con IA",
+          stops: aiOrderedStops,
+          totalDistance: aiDistance,
+          estimatedTime: aiTime,
+          reasoning: aiData.reasoning || "Ruta optimizada por IA considerando zonas, horarios y tipo de parada.",
+        };
+
+        setRouteOptions(prev => [...prev, aiOption]);
+        toast.success("Opción IA disponible", { description: "Se agregó una tercera opción optimizada con inteligencia artificial." });
+      } catch (aiErr: any) {
+        console.error("AI optimization failed:", aiErr);
+        // Don't show error toast for rate limits, show specific message
+        const msg = aiErr?.message || "";
+        if (msg.includes("429") || msg.includes("límite")) {
+          toast.info("Optimización IA no disponible temporalmente", { description: "Se están usando las opciones locales." });
+        } else if (msg.includes("402") || msg.includes("créditos")) {
+          toast.info("Créditos de IA agotados", { description: "Se están usando las opciones locales." });
+        }
+        // Silently fail - local options are already available
+      } finally {
+        setIsAIOptimizing(false);
+      }
+
     } catch (error) {
       console.error("Error optimizing:", error);
       toast.error("Error al optimizar la ruta");
@@ -1601,7 +1663,7 @@ export default function RoutePlanner() {
                 <CardTitle className="text-lg">Opciones de Ruta</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid md:grid-cols-2 gap-4">
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {routeOptions.map((option, index) => (
                     <div
                       key={index}
@@ -1635,6 +1697,13 @@ export default function RoutePlanner() {
                       <p className="text-xs text-muted-foreground">{option.reasoning}</p>
                     </div>
                   ))}
+                  {isAIOptimizing && (
+                    <div className="border rounded-lg p-4 border-dashed flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                      <span className="text-sm font-medium">Optimizando con IA...</span>
+                      <span className="text-xs">Analizando zonas y horarios</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Orden de paradas con drag & drop + mapa lado a lado */}
