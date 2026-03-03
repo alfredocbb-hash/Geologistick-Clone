@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -47,6 +47,7 @@ import {
   Unlock,
   Calculator,
   Banknote,
+  Building2,
 } from 'lucide-react';
 import type { Database } from '@/integrations/supabase/types';
 import { ReceiveRenditionDialog } from '@/components/renditions/ReceiveRenditionDialog';
@@ -105,6 +106,8 @@ const STATUS_CONFIG: Record<CashSessionStatus, { label: string; color: string; i
 export default function Cash() {
   const { user, profile, isAdmin, hasRole } = useAuth();
   const queryClient = useQueryClient();
+  const [selectedSucursalId, setSelectedSucursalId] = useState<string | null>(null);
+  const [historyFilter, setHistoryFilter] = useState<string>('selected'); // 'selected' | 'todas'
   const [isOpenDialogOpen, setIsOpenDialogOpen] = useState(false);
   const [isCloseDialogOpen, setIsCloseDialogOpen] = useState(false);
   const [isMovementDialogOpen, setIsMovementDialogOpen] = useState(false);
@@ -126,6 +129,13 @@ export default function Cash() {
     referencia: '',
   });
 
+  // Default selectedSucursalId to user's branch
+  useEffect(() => {
+    if (profile?.sucursal_id && !selectedSucursalId) {
+      setSelectedSucursalId(profile.sucursal_id);
+    }
+  }, [profile?.sucursal_id]);
+
   const canManageCash = isAdmin() || hasRole('operador') || hasRole('sucursal');
 
   // Fetch sucursales
@@ -141,62 +151,58 @@ export default function Cash() {
     },
   });
 
-  // Fetch current open session
+  // Fetch current open session - filtered by selectedSucursalId
   const { data: currentSession, isLoading: loadingSession } = useQuery({
-    queryKey: ['current-cash-session', user?.id, profile?.tenant_id],
+    queryKey: ['current-cash-session', selectedSucursalId],
     queryFn: async () => {
-      if (!user || !profile?.tenant_id) return null;
+      if (!user || !selectedSucursalId) return null;
       
-      // First get branch IDs for current tenant
-      const { data: tenantSucursales } = await supabase
-        .from('sucursales')
-        .select('id')
-        .eq('tenant_id', profile.tenant_id);
-      
-      const sucursalIds = tenantSucursales?.map(s => s.id) || [];
-      
-      if (sucursalIds.length === 0) return null;
-      
-      let query = supabase
+      const { data, error } = await supabase
         .from('sesiones_caja')
         .select('*')
         .eq('estado', 'abierta')
-        .in('sucursal_id', sucursalIds);
-      
-      // If not admin, further filter to user's session or their branch
-      if (!isAdmin()) {
-        query = query.or(`usuario_id.eq.${user.id},sucursal_id.eq.${profile?.sucursal_id}`);
-      }
-      
-      const { data, error } = await query
+        .eq('sucursal_id', selectedSucursalId)
         .order('created_at', { ascending: false })
         .limit(1);
       if (error) throw error;
       return (data && data.length > 0 ? data[0] : null) as CashSession | null;
     },
-    enabled: !!user && !!profile?.tenant_id,
+    enabled: !!user && !!selectedSucursalId,
   });
 
-  // Fetch session history
+  // Fetch session history - filtered by selected branch or all
   const { data: sessionHistory = [], isLoading: loadingHistory } = useQuery({
-    queryKey: ['cash-sessions-history', profile?.tenant_id],
+    queryKey: ['cash-sessions-history', profile?.tenant_id, historyFilter === 'todas' ? 'todas' : selectedSucursalId],
     queryFn: async () => {
       if (!profile?.tenant_id) return [];
       
-      // Get branch IDs for current tenant
-      const { data: tenantSucursales } = await supabase
-        .from('sucursales')
-        .select('id')
-        .eq('tenant_id', profile.tenant_id);
+      if (historyFilter === 'todas' && isAdmin()) {
+        // Admin viewing all branches
+        const { data: tenantSucursales } = await supabase
+          .from('sucursales')
+          .select('id')
+          .eq('tenant_id', profile.tenant_id);
+        
+        const sucursalIds = tenantSucursales?.map(s => s.id) || [];
+        if (sucursalIds.length === 0) return [];
+        
+        const { data, error } = await supabase
+          .from('sesiones_caja')
+          .select('*')
+          .in('sucursal_id', sucursalIds)
+          .order('fecha_apertura', { ascending: false })
+          .limit(20);
+        if (error) throw error;
+        return data as CashSession[];
+      }
       
-      const sucursalIds = tenantSucursales?.map(s => s.id) || [];
-      
-      if (sucursalIds.length === 0) return [];
+      // Filter by selected branch
+      if (!selectedSucursalId) return [];
       
       const { data, error } = await supabase
         .from('sesiones_caja')
         .select('*')
-        .in('sucursal_id', sucursalIds)
+        .eq('sucursal_id', selectedSucursalId)
         .order('fecha_apertura', { ascending: false })
         .limit(20);
       if (error) throw error;
@@ -224,16 +230,16 @@ export default function Cash() {
   // Open cash session
   const openSessionMutation = useMutation({
     mutationFn: async (data: { monto_inicial: number; notas_apertura: string }) => {
-      if (!user || !profile?.sucursal_id) {
-        throw new Error('Usuario sin sucursal asignada');
+      if (!user || !selectedSucursalId) {
+        throw new Error('No hay sucursal seleccionada');
       }
 
       if (currentSession) {
-        throw new Error('Ya existe una sesión de caja abierta. Ciérrela antes de abrir una nueva.');
+        throw new Error('Ya existe una sesión de caja abierta en esta sucursal. Ciérrela antes de abrir una nueva.');
       }
 
       const { error } = await supabase.from('sesiones_caja').insert({
-        sucursal_id: profile.sucursal_id,
+        sucursal_id: selectedSucursalId,
         usuario_id: user.id,
         monto_inicial: data.monto_inicial,
         notas_apertura: data.notas_apertura || null,
@@ -387,15 +393,36 @@ export default function Cash() {
             Gestión de apertura, cierre y movimientos de caja
           </p>
         </div>
-        {!currentSession && canManageCash && (
-          <Button
-            onClick={() => setIsOpenDialogOpen(true)}
-            className="bg-caja hover:bg-caja/90"
-          >
-            <Unlock className="h-4 w-4 mr-2" />
-            Abrir Caja
-          </Button>
-        )}
+        <div className="flex items-center gap-3">
+          {/* Branch selector for admins */}
+          {isAdmin() && sucursales.length > 1 && (
+            <Select
+              value={selectedSucursalId || ''}
+              onValueChange={(value) => setSelectedSucursalId(value)}
+            >
+              <SelectTrigger className="w-[220px]">
+                <Building2 className="h-4 w-4 mr-2 text-muted-foreground" />
+                <SelectValue placeholder="Seleccionar sucursal" />
+              </SelectTrigger>
+              <SelectContent>
+                {sucursales.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.nombre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {!currentSession && canManageCash && (
+            <Button
+              onClick={() => setIsOpenDialogOpen(true)}
+              className="bg-caja hover:bg-caja/90"
+            >
+              <Unlock className="h-4 w-4 mr-2" />
+              Abrir Caja
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Active Session */}
@@ -676,10 +703,26 @@ export default function Cash() {
       {/* History Tab */}
       <Card className="glass">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="h-5 w-5" />
-            Historial de Sesiones
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5" />
+              Historial de Sesiones
+            </CardTitle>
+            {isAdmin() && sucursales.length > 1 && (
+              <Select
+                value={historyFilter}
+                onValueChange={setHistoryFilter}
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="selected">Sucursal actual</SelectItem>
+                  <SelectItem value="todas">Todas las sucursales</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {loadingHistory ? (
