@@ -759,6 +759,17 @@ export default function RoutePlanner() {
     return path;
   }, [selectedOption, sucursalOrigen]);
 
+  // Delivery stop markers for route traceability
+  const routeDeliveryStops = useMemo(() => {
+    if (!selectedOption) return [];
+    return selectedOption.stops.map((stop, index) => ({
+      position: { lat: stop.lat, lng: stop.lng },
+      time: stop.tipo === 'sucursal' ? '🏢' : stop.tipo === 'retiro' ? '🏠' : '📦',
+      trackingNumber: stop.tracking || stop.cliente_nombre,
+      order: index + 1,
+    }));
+  }, [selectedOption]);
+
   const toggleEnvio = (id: string) => {
     setSelectedEnvios(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
@@ -1580,6 +1591,8 @@ export default function RoutePlanner() {
                   <MapView
                     markers={mapMarkers}
                     polylinePath={routePolyline}
+                    useGradient={!!selectedOption}
+                    deliveryStops={routeDeliveryStops}
                     center={
                       sucursalOrigen?.lat && sucursalOrigen?.lng 
                         ? { lat: Number(sucursalOrigen.lat), lng: Number(sucursalOrigen.lng) }
@@ -1772,6 +1785,8 @@ export default function RoutePlanner() {
                       <MapView
                         markers={mapMarkers}
                         polylinePath={routePolyline}
+                        useGradient={!!selectedOption}
+                        deliveryStops={routeDeliveryStops}
                         center={
                           sucursalOrigen?.lat && sucursalOrigen?.lng 
                             ? { lat: Number(sucursalOrigen.lat), lng: Number(sucursalOrigen.lng) }
