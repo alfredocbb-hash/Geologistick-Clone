@@ -1,49 +1,64 @@
 
 
-# Fix: Aislamiento de Caja por Sucursal + Selector para Admins
+# Fix: Congelamiento al crear envío — App se queda trabada después de crear
 
-## Problema
+## Problema confirmado
 
-La query de `currentSession` (líneas 160-168) para admins trae la primera sesión abierta de **cualquier** sucursal del tenant usando `.in('sucursal_id', sucursalIds)`. Esto hace que Administración y Berazategui compartan la misma caja visible.
+Los envíos de `bahiablanca@blackbox.com` se crean correctamente en la base de datos (5 hoy, todos `tipo_pago: destino`). El problema ocurre **después** de la creación exitosa:
 
-El admin de "Administración" necesita:
-1. Tener su **propia** caja (la de su sucursal asignada)
-2. Poder **ver y administrar** las cajas de otras sucursales mediante un selector
+1. El `onSuccess` del mutation (línea 1232) ejecuta `clearDraft()` sin try/catch
+2. Si `clearDraft()` o `queryClient.invalidateQueries()` lanza una excepción, el `navigate()` de la línea 1265 **nunca se ejecuta**
+3. React Query atrapa la excepción internamente, el componente queda en estado inconsistente
+4. El router de React deja de responder → la app parece "congelada"
+
+Esto pasa en **todos los navegadores y usuarios** porque es un bug de código, no del navegador.
 
 ## Solución
 
-### Cambios en `src/pages/Cash.tsx`
+### Archivo: `src/pages/NewShipment.tsx`
 
-1. **Agregar estado `selectedSucursalId`** — por defecto la sucursal del usuario (`profile.sucursal_id`). Admins pueden cambiarla con un selector.
+**1. Proteger `onSuccess` con try/catch** — garantizar que `navigate()` se ejecute siempre:
 
-2. **Selector de sucursal para admins** — un `<Select>` en el header que permite elegir qué caja ver/gestionar entre todas las sucursales activas del tenant.
-
-3. **Filtrar `currentSession` por `selectedSucursalId`** — reemplazar `.in('sucursal_id', sucursalIds)` por `.eq('sucursal_id', selectedSucursalId)` para todos los roles. Esto aísla cada sucursal.
-
-4. **Filtrar `sessionHistory` por `selectedSucursalId`** — el historial muestra solo la sucursal seleccionada. Agregar opción "Todas" para ver historial consolidado.
-
-5. **Apertura de caja usa `selectedSucursalId`** — reemplazar `profile.sucursal_id` en la mutación de apertura por `selectedSucursalId`, permitiendo al admin abrir caja en cualquier sucursal.
-
-6. **Query keys incluyen `selectedSucursalId`** — para invalidación correcta del cache.
-
-### Flujo resultante
-
-```text
-Admin de "Administración":
-  [Selector: Administración ▼]  ← su propia caja por defecto
-    → Ve/abre/cierra caja de Administración
-  [Selector: Berazategui]
-    → Ve/abre/cierra caja de Berazategui
-  [Selector: Todas (historial)]
-    → Ve historial consolidado
-
-Operador de "Berazategui":
-  Sin selector → solo ve su propia caja
+```typescript
+onSuccess: (data) => {
+  try { clearDraft(); } catch (e) { console.error('Error clearing draft:', e); }
+  
+  try {
+    queryClient.invalidateQueries({ queryKey: ['envios'] });
+    queryClient.invalidateQueries({ queryKey: ['all_clients'] });
+    queryClient.invalidateQueries({ queryKey: ['clientes_cta_cte'] });
+  } catch (e) { console.error('Error invalidating queries:', e); }
+  
+  if (formData.tipo_pago === 'contado') {
+    setCreatedEnvio({...});
+    setShowPaymentModal(true);
+  } else {
+    // toast + navigate (siempre se ejecuta)
+    navigate(`/print-label?id=${data.id}`);
+  }
+},
 ```
 
-### Archivo a modificar
+**2. Agregar `onSettled` como safety net** — si por alguna razón el navigate falla, forzar la redirección después de 3 segundos:
+
+```typescript
+onSettled: (data, error) => {
+  if (data && !error && formData.tipo_pago !== 'contado') {
+    setTimeout(() => {
+      if (window.location.pathname.includes('/shipments/new')) {
+        navigate(`/print-label?id=${data.id}`, { replace: true });
+      }
+    }, 3000);
+  }
+},
+```
+
+**3. Agregar handler global de `unhandledrejection` en `App.tsx`** — evitar que promesas no capturadas congelen la app en general.
+
+### Archivos a modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/pages/Cash.tsx` | Agregar `selectedSucursalId`, selector UI, filtrar queries/mutaciones por sucursal |
+| `src/pages/NewShipment.tsx` | Envolver `onSuccess` en try/catch, agregar `onSettled` como safety net |
+| `src/App.tsx` | Agregar `useEffect` con listener de `unhandledrejection` |
 
