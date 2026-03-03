@@ -162,12 +162,16 @@ export function ChangeStatusDialog({
         updateData.chofer_id = null;
       }
 
-      const { error: updateError } = await supabase
+      const { data: updatedRows, error: updateError } = await supabase
         .from('envios')
         .update(updateData)
-        .eq('id', envioId);
+        .eq('id', envioId)
+        .select('id');
       
       if (updateError) throw updateError;
+      if (!updatedRows || updatedRows.length === 0) {
+        throw new Error('No se pudo actualizar el envío. Verificá que tenés permisos para modificar envíos de esta sucursal.');
+      }
 
       const { error: historyError } = await supabase
         .from('envio_historial')
