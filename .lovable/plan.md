@@ -1,30 +1,58 @@
 
-# Fix: Usuarios con rol "sucursal" no pueden cancelar envíos
 
-## Problema confirmado
+# Bug: Movimiento de caja de seller de otro tenant aparece en caja equivocada
 
-Verifiqué directamente en la base de datos:
-- Los 3 envíos `SUC07BERA-ENV-20260303-*` siguen en estado `en_sucursal` (no cancelados)
-- El historial muestra 4 intentos de cancelación (2 envíos x 2 intentos cada uno) — el usuario intentó varias veces
-- El toast "Envío cancelado exitosamente" aparece porque el código no detecta que el UPDATE no afectó filas
+## Problema
 
-**Causa raíz**: La política RLS de UPDATE en `envios` solo permite actualizar a usuarios con rol `admin` o al chofer asignado. El usuario `bahiablanca@blackbox.com` tiene rol `sucursal`, por lo tanto:
-1. El UPDATE a `envios` falla silenciosamente (0 filas afectadas, sin error)
-2. El INSERT a `envio_historial` sí funciona (RLS diferente)
-3. El código no verifica si el UPDATE realmente modificó filas → muestra éxito falso
+En `src/pages/ecommerce/Settlements.tsx`, línea 902-908, cuando se paga una liquidación de seller en efectivo, el código busca la sesión de caja abierta **sin filtrar por sucursal ni por tenant**:
+
+```typescript
+const { data: sesion } = await supabase
+  .from('sesiones_caja')
+  .select('id')
+  .eq('estado', 'abierta')
+  .order('fecha_apertura', { ascending: false })
+  .limit(1)
+  .maybeSingle();
+```
+
+Esto devuelve **cualquier caja abierta del sistema**, por lo que si Beraexpress pagó una liquidación del seller ABRAHAM ARDEBACO mientras la caja de Bahía Blanca (BlackBox) estaba abierta, el egreso se registró en la caja equivocada.
 
 ## Solución
 
-### 1. Actualizar política RLS de UPDATE en `envios`
-Agregar los roles `sucursal`, `operador` y `despachador` a la política de UPDATE, permitiéndoles actualizar envíos de su sucursal (origen o destino).
+Filtrar la sesión de caja por la sucursal del usuario logueado:
 
-### 2. Validar que el UPDATE realmente afectó filas
-En `Shipments.tsx` y `ChangeStatusDialog.tsx`, después del UPDATE verificar que se retornó data. Si no, lanzar error explicativo.
+```typescript
+// Obtener sucursal del usuario
+const { data: userProfile } = await supabase
+  .from('profiles')
+  .select('sucursal_id')
+  .eq('user_id', user?.id)
+  .maybeSingle();
+
+if (userProfile?.sucursal_id) {
+  const { data: sesion } = await supabase
+    .from('sesiones_caja')
+    .select('id')
+    .eq('estado', 'abierta')
+    .eq('sucursal_id', userProfile.sucursal_id)
+    .order('fecha_apertura', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  // ...
+}
+```
+
+Adicionalmente, **eliminar el movimiento erróneo** de la caja de BlackBox (id: `83ddcd2e-...`).
+
+### Revisar otros usos del mismo patrón
+
+Buscar en todo el codebase si hay otros lugares donde se busca `sesiones_caja` sin filtrar por sucursal/tenant, y corregirlos también.
 
 ### Archivos a modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| Migración SQL | Ampliar política RLS de UPDATE en `envios` para incluir roles `sucursal`, `operador`, `despachador` |
-| `src/pages/Shipments.tsx` | Validar que el UPDATE afectó filas antes de mostrar éxito |
-| `src/components/shipments/ChangeStatusDialog.tsx` | Misma validación |
+| `src/pages/ecommerce/Settlements.tsx` | Filtrar sesión de caja por `sucursal_id` del usuario |
+| Migración SQL | Eliminar el movimiento erróneo `83ddcd2e-8131-4ad9-af8f-ed8243ca5ffb` de la caja de BlackBox |
+
