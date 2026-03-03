@@ -1,47 +1,48 @@
 
 
-# Mejoras con IA para Mapa en Vivo / Choferes en Ruta
+# Plan: Mejoras operativas y protocolo de Check-in obligatorio
 
-## Funcionalidades actuales
-La sección ya tiene: tracking GPS en tiempo real, visualización de recorridos con Snap to Roads, estadísticas de rutas, detección de brechas de señal, y lista de choferes con estado (activo/reciente/sin señal).
+## Puntos operativos (no requieren código)
 
-## Mejoras posibles con IA
+Los primeros 3 puntos son **acciones operativas** que deben realizarse manualmente por el equipo:
 
-### 1. Estimación inteligente de hora de entrega (ETA)
-Usar la IA para analizar la posición actual del chofer, las paradas restantes, y el historial de velocidad/tiempos para estimar cuándo llegará a cada parada pendiente. Mostrar un badge "ETA: ~14:30" junto a cada chofer con ruta activa.
+1. **Contactar a Lucas Galarza** — Llamar/WhatsApp directamente. Esto no es algo que el sistema pueda hacer automáticamente.
+2. **Auditoría de dispositivos GPS** — Revisar físicamente los teléfonos de Kevin Bernard, Valentina Castano y el chofer sin nombre. Verificar que la app esté instalada, permisos de ubicación habilitados, y batería suficiente.
+3. **Depurar rutas abandonadas** — Puedo ayudar a cerrar automáticamente rutas viejas no ejecutadas, pero primero necesitaría confirmación de cuáles cerrar.
 
-### 2. Detección de anomalías en ruta
-La IA analiza el recorrido del chofer vs. la ruta planificada y detecta desvíos significativos, paradas prolongadas no planificadas, o comportamiento inusual. Muestra alertas como "⚠️ Detenido 25 min en ubicación no planificada".
+---
 
-### 3. Resumen inteligente del día
-Un botón "Resumen IA" que genera un análisis narrativo del rendimiento de los choferes: quién fue más eficiente, quién tuvo más incidencias, tiempos promedio por entrega, y sugerencias de mejora.
+## Feature: Protocolo de Check-in obligatorio (implementable)
 
-### 4. Predicción de demoras
-Basándose en la velocidad actual, cantidad de paradas restantes y horarios, la IA predice si un chofer va a completar su ruta a tiempo o si hay riesgo de demora, permitiendo reasignar envíos proactivamente.
+### Concepto
+Al abrir la app móvil cada día, el chofer debe hacer un **Check-in** que:
+- Confirma que está disponible para trabajar
+- Fuerza la sincronización de ubicación GPS
+- Registra la hora de inicio de jornada
+- Alerta al admin si un chofer NO hizo check-in después de cierta hora
 
-## Plan técnico
+### Cambios técnicos
 
 | Componente | Cambio |
 |-----------|--------|
-| Nueva edge function `analyze-driver-route` | Recibe posición actual, paradas pendientes, historial GPS; usa Lovable AI (gemini-3-flash-preview) para generar ETA, detectar anomalías y predecir demoras |
-| `src/pages/LiveMap.tsx` | Agregar botón "Análisis IA" por chofer que invoca la edge function y muestra resultados en un panel/dialog |
-| `src/pages/LiveMap.tsx` | Agregar panel de "Resumen IA" general que analiza todos los choferes activos |
+| **Nueva tabla** `driver_checkins` | `id`, `chofer_id`, `tenant_id`, `fecha` (date), `checked_in_at` (timestamp), `lat`, `lng`, `accuracy`, `device_info` |
+| **`MobileAppLayout.tsx`** | Antes de mostrar el contenido, verificar si el chofer ya hizo check-in hoy. Si no, mostrar pantalla de check-in obligatoria |
+| **Nuevo componente** `CheckInScreen.tsx` | Pantalla con botón "Iniciar Jornada" que obtiene ubicación GPS y registra el check-in |
+| **`LiveMap.tsx`** | En la tab de choferes, mostrar badge de "Check-in: ✅ 08:15" o "⚠️ Sin check-in" junto a cada chofer |
 
-### Edge function: `analyze-driver-route`
-- Input: `{ driverId, routeId, currentPosition, pendingStops[], completedStops[], locationHistory[] }`
-- Usa tool calling para retornar estructura: `{ eta_next_stop, eta_completion, anomalies[], delay_risk, summary }`
-- Modelo: `google/gemini-3-flash-preview` (rápido y económico)
+### Flujo del chofer
+1. Abre la app → ve pantalla de Check-in con botón grande "Iniciar Jornada"
+2. Toca el botón → se obtiene GPS → se guarda en `driver_checkins`
+3. Se actualiza `driver_locations` con la posición actual
+4. Se desbloquea la app normal
 
-### UI: Panel de análisis por chofer
-- Botón "🤖 Análisis" junto a cada chofer con ruta activa
-- Muestra: ETA próxima parada, riesgo de demora (🟢🟡🔴), anomalías detectadas
-- Se integra en la tarjeta del chofer existente
-
-### UI: Resumen general con IA
-- Botón "Resumen IA" en el header de la tab "Choferes en Ruta"
-- Dialog con análisis narrativo generado por IA de toda la operación en curso
+### Flujo del admin (LiveMap)
+- Cada chofer muestra si hizo check-in hoy y a qué hora
+- Los choferes sin check-in después de las 9:00 AM aparecen con alerta roja
 
 ### Archivos a crear/modificar
-- **Crear**: `supabase/functions/analyze-driver-route/index.ts`
-- **Modificar**: `src/pages/LiveMap.tsx` (agregar botones de análisis IA + panels de resultado)
+- **Crear**: `src/components/mobile/CheckInScreen.tsx`
+- **Modificar**: `src/components/mobile/MobileAppLayout.tsx` (agregar guard de check-in)
+- **Modificar**: `src/pages/LiveMap.tsx` (mostrar estado de check-in por chofer)
+- **Nueva migración**: tabla `driver_checkins` con RLS
 
