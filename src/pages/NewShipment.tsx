@@ -1230,25 +1230,31 @@ export default function NewShipment() {
       return envio;
     },
     onSuccess: (data) => {
-      // Clear draft on successful save
-      clearDraft();
+      // Clear draft — protected to never block navigation
+      try { clearDraft(); } catch (e) { console.error('[NewShipment] Error clearing draft:', e); }
       
-      queryClient.invalidateQueries({ queryKey: ['envios'] });
-      queryClient.invalidateQueries({ queryKey: ['all_clients'] });
-      queryClient.invalidateQueries({ queryKey: ['clientes_cta_cte'] });
+      try {
+        queryClient.invalidateQueries({ queryKey: ['envios'] });
+        queryClient.invalidateQueries({ queryKey: ['all_clients'] });
+        queryClient.invalidateQueries({ queryKey: ['clientes_cta_cte'] });
+      } catch (e) { console.error('[NewShipment] Error invalidating queries:', e); }
       
       // Si es pago contado, mostrar modal para seleccionar método de pago
       if (formData.tipo_pago === 'contado') {
-        setCreatedEnvio({
-          id: data.id,
-          tracking_number: data.tracking_number,
-          precio_total: data.precio_total,
-          remitente_id: data.remitente_id || '',
-        });
-        setShowPaymentModal(true);
+        try {
+          setCreatedEnvio({
+            id: data.id,
+            tracking_number: data.tracking_number,
+            precio_total: data.precio_total,
+            remitente_id: data.remitente_id || '',
+          });
+          setShowPaymentModal(true);
+        } catch (e) {
+          console.error('[NewShipment] Error showing payment modal:', e);
+          navigate(`/print-label?id=${data.id}`);
+        }
       } else {
         // Para cuenta corriente o destinatario, redirigir directamente
-        // Verificar si hubo advertencia en el movimiento de cta cte
         const ctaCteWarning = (data as any).__ctaCteWarning;
         if (ctaCteWarning) {
           toast({
@@ -1263,6 +1269,18 @@ export default function NewShipment() {
           });
         }
         navigate(`/print-label?id=${data.id}`);
+      }
+    },
+    onSettled: (data, error) => {
+      // Safety net: if mutation succeeded but user is still on this page after 3s, force navigate
+      if (data && !error && formData.tipo_pago !== 'contado') {
+        const envioId = data.id;
+        setTimeout(() => {
+          if (window.location.pathname.includes('/shipments/new')) {
+            console.warn('[NewShipment] Safety net: forcing navigation to print-label');
+            navigate(`/print-label?id=${envioId}`, { replace: true });
+          }
+        }, 3000);
       }
     },
     onError: (error) => {
