@@ -4563,6 +4563,7 @@ export type Database = {
         | "reembolsado"
         | "cobrado_chofer"
         | "rendido"
+        | "anulado"
       settlement_status: "generada" | "enviada" | "pagada" | "rechazada"
       shipment_status:
         | "pendiente"
@@ -4739,6 +4740,7 @@ export const Constants = {
         "reembolsado",
         "cobrado_chofer",
         "rendido",
+        "anulado",
       ],
       settlement_status: ["generada", "enviada", "pagada", "rechazada"],
       shipment_status: [

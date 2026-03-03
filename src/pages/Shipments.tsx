@@ -160,6 +160,41 @@ export default function Shipments() {
         });
       
       if (historyError) throw historyError;
+
+      // Anular pagos activos del envío
+      const { data: pagos } = await supabase
+        .from('pagos')
+        .select('id')
+        .eq('envio_id', envioId)
+        .in('estado', ['cobrado_chofer', 'rendido', 'pagado']);
+
+      if (pagos?.length) {
+        await supabase
+          .from('pagos')
+          .update({ estado: 'anulado' })
+          .in('id', pagos.map(p => p.id));
+      }
+
+      // Compensar movimientos de caja (insertar egreso por cada ingreso)
+      const { data: movimientos } = await supabase
+        .from('movimientos_caja')
+        .select('id, sesion_caja_id, monto, concepto, metodo_pago')
+        .eq('envio_id', envioId)
+        .eq('tipo', 'ingreso');
+
+      if (movimientos?.length) {
+        for (const mov of movimientos) {
+          await supabase.from('movimientos_caja').insert({
+            sesion_caja_id: mov.sesion_caja_id,
+            envio_id: envioId,
+            tipo: 'egreso',
+            monto: mov.monto,
+            concepto: `Anulación: ${mov.concepto}`,
+            metodo_pago: mov.metodo_pago || 'efectivo',
+            created_by: user?.id,
+          });
+        }
+      }
     },
     onSuccess: () => {
       toast.success('Envío cancelado exitosamente');
