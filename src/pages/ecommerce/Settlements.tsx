@@ -898,11 +898,12 @@ export default function Settlements() {
             .eq('id', payingLiquidacion.seller_id);
 
           // Acción 3: Si método = efectivo → registrar egreso en caja activa
-          if (payMetodo === 'efectivo') {
+          if (payMetodo === 'efectivo' && profile?.sucursal_id) {
             const { data: sesion } = await supabase
               .from('sesiones_caja')
               .select('id')
               .eq('estado', 'abierta')
+              .eq('sucursal_id', profile.sucursal_id)
               .order('fecha_apertura', { ascending: false })
               .limit(1)
               .maybeSingle();
