@@ -180,6 +180,42 @@ export function ChangeStatusDialog({
         });
       
       if (historyError) throw historyError;
+
+      // Si se cancela, anular pagos y compensar caja
+      if (newStatus === 'cancelado') {
+        const { data: pagos } = await supabase
+          .from('pagos')
+          .select('id')
+          .eq('envio_id', envioId)
+          .in('estado', ['cobrado_chofer', 'rendido', 'pagado']);
+
+        if (pagos?.length) {
+          await supabase
+            .from('pagos')
+            .update({ estado: 'anulado' })
+            .in('id', pagos.map(p => p.id));
+        }
+
+        const { data: movimientos } = await supabase
+          .from('movimientos_caja')
+          .select('id, sesion_caja_id, monto, concepto, metodo_pago')
+          .eq('envio_id', envioId)
+          .eq('tipo', 'ingreso');
+
+        if (movimientos?.length) {
+          for (const mov of movimientos) {
+            await supabase.from('movimientos_caja').insert({
+              sesion_caja_id: mov.sesion_caja_id,
+              envio_id: envioId,
+              tipo: 'egreso',
+              monto: mov.monto,
+              concepto: `Anulación: ${mov.concepto}`,
+              metodo_pago: mov.metodo_pago || 'efectivo',
+              created_by: user?.id,
+            });
+          }
+        }
+      }
     },
     onSuccess: () => {
       toast.success(`Estado actualizado a "${statusConfig[newStatus!].label}"`);
