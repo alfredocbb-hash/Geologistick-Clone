@@ -142,12 +142,16 @@ export default function Shipments() {
 
   const cancelMutation = useMutation({
     mutationFn: async ({ envioId, reason, previousStatus }: { envioId: string; reason: string; previousStatus: string | null }) => {
-      const { error: updateError } = await supabase
+      const { data: updateData, error: updateError } = await supabase
         .from('envios')
         .update({ estado: 'cancelado' })
-        .eq('id', envioId);
+        .eq('id', envioId)
+        .select('id');
       
       if (updateError) throw updateError;
+      if (!updateData || updateData.length === 0) {
+        throw new Error('No se pudo actualizar el envío. Verificá que tenés permisos para cancelar envíos de esta sucursal.');
+      }
 
       const { error: historyError } = await supabase
         .from('envio_historial')
