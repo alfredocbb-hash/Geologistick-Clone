@@ -1,3 +1,4 @@
+import React, { useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -258,22 +259,37 @@ function AppRoutes() {
   );
 }
 
+// Global handler to prevent unhandled promise rejections from freezing the app
+function GlobalErrorBoundary({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    const handler = (event: PromiseRejectionEvent) => {
+      console.error('[GlobalErrorBoundary] Unhandled promise rejection:', event.reason);
+      event.preventDefault();
+    };
+    window.addEventListener('unhandledrejection', handler);
+    return () => window.removeEventListener('unhandledrejection', handler);
+  }, []);
+  return <>{children}</>;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <AuthProvider>
-            <TenantProvider>
-              <GoogleMapsProvider>
-                <AppRoutes />
-              </GoogleMapsProvider>
-            </TenantProvider>
-          </AuthProvider>
-        </BrowserRouter>
-      </TooltipProvider>
+      <GlobalErrorBoundary>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <AuthProvider>
+              <TenantProvider>
+                <GoogleMapsProvider>
+                  <AppRoutes />
+                </GoogleMapsProvider>
+              </TenantProvider>
+            </AuthProvider>
+          </BrowserRouter>
+        </TooltipProvider>
+      </GlobalErrorBoundary>
     </ThemeProvider>
   </QueryClientProvider>
 );
