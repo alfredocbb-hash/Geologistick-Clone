@@ -103,7 +103,8 @@ export function useReportsData(filters: ReportsFilters) {
         .select('ciudad_entrega, provincia, precio_total')
         .eq('tenant_id', tenantId!)
         .gte('created_at', from)
-        .lte('created_at', to);
+        .lte('created_at', to)
+        .not('estado', 'in', '(cancelado,devuelto)');
 
       if (filters.sucursalId) {
         query = query.eq('sucursal_origen_id', filters.sucursalId);
@@ -248,7 +249,9 @@ export function useReportsData(filters: ReportsFilters) {
       const totalEnvios = envios.length;
       const entregados = envios.filter(e => e.estado === 'entregado').length;
       const tasaEntrega = totalEnvios > 0 ? Math.round((entregados / totalEnvios) * 100) : 0;
-      const ingresosTotales = envios.reduce((sum, e) => sum + (e.precio_total || 0), 0);
+      const ingresosTotales = envios
+        .filter(e => e.estado !== 'cancelado' && e.estado !== 'devuelto')
+        .reduce((sum, e) => sum + (e.precio_total || 0), 0);
 
       // Evolution by day
       const dailyMap = new Map<string, number>();

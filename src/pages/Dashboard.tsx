@@ -27,12 +27,13 @@ export default function Dashboard() {
       
       const today = getTodayString();
       
-      // Envíos de hoy
+      // Envíos de hoy (excluir cancelados/devueltos)
       const { count: todayShipments } = await supabase
         .from('envios')
         .select('*', { count: 'exact', head: true })
         .eq('tenant_id', tenantId)
-        .gte('created_at', today);
+        .gte('created_at', today)
+        .not('estado', 'in', '(cancelado,devuelto)');
 
       // En tránsito
       const { count: inTransit } = await supabase
@@ -41,12 +42,13 @@ export default function Dashboard() {
         .eq('tenant_id', tenantId)
         .in('estado', ['en_transito', 'en_reparto']);
 
-      // Ingresos del día (envíos de hoy)
+      // Ingresos del día (excluir cancelados/devueltos)
       const { data: todayRevenue } = await supabase
         .from('envios')
         .select('precio_total')
         .eq('tenant_id', tenantId)
-        .gte('created_at', today);
+        .gte('created_at', today)
+        .not('estado', 'in', '(cancelado,devuelto)');
       
       const revenue = todayRevenue?.reduce((sum, e) => sum + (e.precio_total || 0), 0) || 0;
 
