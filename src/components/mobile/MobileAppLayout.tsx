@@ -16,6 +16,8 @@ import { FlexScanScreen } from './FlexScanScreen';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useAuth } from '@/lib/auth';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useCheckIn } from '@/hooks/useCheckIn';
+import { CheckInScreen } from './CheckInScreen';
 import { useTenant } from '@/hooks/useTenant';
 import { NotificationPopover } from '@/components/notifications/NotificationPopover';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
@@ -31,6 +33,7 @@ export function MobileAppLayout() {
   const { hasPermission, isLoading: permissionsLoading } = usePermissions();
   const { tenant } = useTenant();
   const queryClient = useQueryClient();
+  const { checkedIn, isLoading: checkInLoading, invalidate: invalidateCheckIn } = useCheckIn();
 
   // Show splash screen briefly on first load
   useEffect(() => {
@@ -95,6 +98,11 @@ export function MobileAppLayout() {
         <p className="text-slate-400 text-sm">Cargando permisos...</p>
       </div>
     );
+  }
+
+  // Check-in guard for drivers
+  if (userRole === 'chofer' && !checkInLoading && !checkedIn) {
+    return <CheckInScreen onCheckInComplete={invalidateCheckIn} />;
   }
 
   const renderTabContent = () => {
