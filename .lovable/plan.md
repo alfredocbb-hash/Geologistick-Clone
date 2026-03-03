@@ -1,38 +1,33 @@
 
 
-# Optimización de Rutas con IA
+# Diagnóstico: Página se congela al crear envío en otra computadora
 
-## Situación Actual
-El planificador de rutas (`RoutePlanner.tsx`) usa un algoritmo **nearest-neighbor** que calcula distancia euclidiana (línea recta) entre paradas. Genera 2 opciones:
-1. Retiros primero, luego entregas
-2. Todo mezclado por distancia mínima
+## Problema identificado
 
-**Limitaciones**: No considera tráfico, franjas horarias reales, ni evalúa múltiples combinaciones. La distancia es en línea recta × 1.3 (factor de corrección).
+Después de revisar el código en detalle, encontré varios problemas que pueden causar congelamiento en la página `/shipments/new`:
 
-## Plan
+### 1. Queries sin protección de autenticación
+- La query `sucursales` (línea 313) y `allClients` (línea 501) **no tienen `enabled` guard** — se ejecutan inmediatamente aunque `profile` no esté cargado todavía. En una computadora nueva, la autenticación puede demorar más y estas queries fallan silenciosamente o causan errores de RLS.
+- La query `tarifa_conceptos` (línea 346) usa `profile?.tenant_id` pero no tiene `enabled: !!profile?.tenant_id`, lo que puede enviar queries con filtros `null`.
 
-### 1. Crear edge function `optimize-route`
-Nueva función que recibe las paradas con coordenadas y franjas horarias, y usa Lovable AI (Gemini Flash) para generar rutas optimizadas considerando:
-- Proximidad geográfica real (clusters de zona)
-- Franjas horarias preferidas (mañana/tarde/noche)
-- Separación retiros vs entregas
-- Sucursales como puntos intermedios
+### 2. Componente excesivamente pesado
+- `NewShipment.tsx` tiene **2653 líneas** con 15+ queries de React Query, múltiples `useMemo` pesados, y Google Maps — todo renderizado simultáneamente.
 
-La IA recibirá las coordenadas y restricciones, y devolverá el orden óptimo de paradas usando **tool calling** para output estructurado.
+### 3. Falta de estado de carga inicial
+- No hay un loading state mientras se cargan los datos iniciales (sucursal del usuario, tarifas, conceptos). El componente intenta renderizar el formulario completo antes de tener los datos necesarios.
 
-### 2. Modificar `RoutePlanner.tsx`
-Reemplazar el algoritmo nearest-neighbor por una llamada a la edge function. Se agrega una tercera opción de ruta: "🧠 Optimizada con IA" que aparece junto a las dos opciones existentes (que se mantienen como fallback rápido).
+## Plan de corrección
 
-### Archivos a crear/modificar
+### Archivo: `src/pages/NewShipment.tsx`
 
-| Archivo | Cambio |
-|---------|--------|
-| `supabase/functions/optimize-route/index.ts` | Nueva edge function con Lovable AI |
-| `src/pages/RoutePlanner.tsx` | Agregar llamada a la edge function y opción IA |
+1. **Agregar `enabled` guards a todas las queries sin protección**:
+   - `sucursales`: agregar `enabled: !!user`
+   - `allClients`: agregar `enabled: !!user && !!profile?.tenant_id`
+   - `tarifa_conceptos`: agregar `enabled: !!user && !!profile?.tenant_id`
 
-### Detalle técnico
-- Modelo: `google/gemini-3-flash-preview` (rápido y eficiente para este caso)
-- Se usa tool calling para obtener output estructurado (array de índices ordenados)
-- Fallback: si la IA falla, se mantienen las 2 opciones locales existentes
-- La edge function NO persiste datos, solo calcula y devuelve el orden
+2. **Agregar loading state inicial**: mostrar spinner mientras se cargan los datos esenciales (sucursal del usuario, tarifas) antes de renderizar el formulario completo.
+
+3. **Envolver el cálculo de precio en try/catch**: el `useMemo` de precio (línea 660+) accede a propiedades de `selectedTarifa` que podría ser undefined si las queries aún no cargaron.
+
+Estos cambios son mínimos y quirúrgicos — 3 líneas de `enabled` + un bloque de loading al inicio del render.
 
