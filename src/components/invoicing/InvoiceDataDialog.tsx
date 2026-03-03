@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Loader2, FileText, AlertCircle, CheckCircle } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { useARCAIntegration, determinarTipoFactura, validateCUIT, formatCUIT } from '@/hooks/useARCAConfig';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
@@ -67,6 +68,7 @@ export function InvoiceDataDialog({
   const [domicilio, setDomicilio] = useState('');
   const [cuitError, setCuitError] = useState('');
   const [selectedEnvironment, setSelectedEnvironment] = useState<'sandbox' | 'production'>('production');
+  const [ivaIncluido, setIvaIncluido] = useState(true);
 
   const { isConfigured, config, hasBothEnvironments, isLoading: arcaLoading } = useARCAIntegration(selectedEnvironment);
 
@@ -108,6 +110,9 @@ export function InvoiceDataDialog({
         throw new Error('Factura A requiere CUIT válido');
       }
 
+      // Calculate the final total (always with IVA included) to send to backend
+      const importeTotalConIva = ivaIncluido ? importeTotal : Math.round(importeTotal * 1.21 * 100) / 100;
+
       const { data, error } = await supabase.functions.invoke('arca-factura', {
         body: {
           envio_id: envioId || undefined,
@@ -120,7 +125,7 @@ export function InvoiceDataDialog({
             condicion_iva: condicionIva,
             domicilio: domicilio.trim() || undefined,
           },
-          importe_total: importeTotal,
+          importe_total: importeTotalConIva,
         },
       });
 
@@ -156,6 +161,7 @@ export function InvoiceDataDialog({
     setDomicilio('');
     setCuitError('');
     setTipoComprobante('B');
+    setIvaIncluido(true);
     onClose();
   };
 
@@ -232,21 +238,45 @@ export function InvoiceDataDialog({
             </Alert>
           )}
 
-          {/* Amount breakdown */}
-          <div className="p-3 bg-muted rounded-lg space-y-1">
-            <div className="flex justify-between items-center text-sm">
-              <span className="text-muted-foreground">Neto (sin IVA 21%):</span>
-              <span>{formatCurrency(Math.round((importeTotal / 1.21) * 100) / 100)}</span>
-            </div>
-            <div className="flex justify-between items-center text-sm">
-              <span className="text-muted-foreground">IVA 21%:</span>
-              <span>{formatCurrency(Math.round((importeTotal - Math.round((importeTotal / 1.21) * 100) / 100) * 100) / 100)}</span>
-            </div>
-            <div className="flex justify-between items-center border-t pt-1 mt-1">
-              <span className="text-sm font-medium">Total:</span>
-              <span className="text-lg font-bold">{formatCurrency(importeTotal)}</span>
-            </div>
+          {/* IVA toggle */}
+          <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/40">
+            <Label htmlFor="iva-toggle" className="text-sm font-medium cursor-pointer">
+              {ivaIncluido ? 'IVA incluido en el monto' : 'Agregar IVA 21% al monto'}
+            </Label>
+            <Switch
+              id="iva-toggle"
+              checked={ivaIncluido}
+              onCheckedChange={setIvaIncluido}
+            />
           </div>
+
+          {/* Amount breakdown */}
+          {(() => {
+            const neto = ivaIncluido
+              ? Math.round((importeTotal / 1.21) * 100) / 100
+              : importeTotal;
+            const total = ivaIncluido
+              ? importeTotal
+              : Math.round(importeTotal * 1.21 * 100) / 100;
+            const iva = Math.round((total - neto) * 100) / 100;
+
+            return (
+              <div className="p-3 bg-muted rounded-lg space-y-1">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground">Neto (sin IVA 21%):</span>
+                  <span>{formatCurrency(neto)}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground">IVA 21%:</span>
+                  <span>{formatCurrency(iva)}</span>
+                </div>
+                <div className="flex justify-between items-center border-t pt-1 mt-1">
+                  <span className="text-sm font-medium">Total:</span>
+                  <span className="text-lg font-bold">{formatCurrency(total)}</span>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Invoice Type */}
           <div className="space-y-2">
