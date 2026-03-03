@@ -1,59 +1,49 @@
 
 
-# Fix: Eliminar mapeos duplicados en ml_status_mapping
+# Fix: Aislamiento de Caja por Sucursal + Selector para Admins
 
-## Problema encontrado
+## Problema
 
-Ambas funciones (`mercadolibre-webhook` y `mercadolibre-sync`) consultan `ml_status_mapping` usando `.maybeSingle()`, que **falla silenciosamente cuando hay mas de 1 fila** para la misma combinacion `(ml_status, ml_substatus)`.
+La query de `currentSession` (líneas 160-168) para admins trae la primera sesión abierta de **cualquier** sucursal del tenant usando `.in('sucursal_id', sucursalIds)`. Esto hace que Administración y Berazategui compartan la misma caja visible.
 
-Actualmente hay duplicados:
-- `not_delivered` + `receiver_absent` tiene 2 filas: una mapea a `no_entregado` (antigua) y otra a `primera_visita` (nueva)
-- `shipped` + `second_visit` posiblemente tambien tiene conflicto con `en_reparto`
+El admin de "Administración" necesita:
+1. Tener su **propia** caja (la de su sucursal asignada)
+2. Poder **ver y administrar** las cajas de otras sucursales mediante un selector
 
-Cuando `.maybeSingle()` encuentra 2+ filas, retorna error/null, y la logica cae al fallback generico (sin substatus), lo que resulta en estados incorrectos como `pendiente`.
+## Solución
 
-## Solucion
+### Cambios en `src/pages/Cash.tsx`
 
-### 1. SQL Migration: Limpiar duplicados y agregar constraint unico
+1. **Agregar estado `selectedSucursalId`** — por defecto la sucursal del usuario (`profile.sucursal_id`). Admins pueden cambiarla con un selector.
 
-```sql
--- Eliminar mapeos antiguos que fueron reemplazados por los nuevos
-DELETE FROM ml_status_mapping 
-WHERE ml_status = 'not_delivered' 
-  AND ml_substatus = 'receiver_absent' 
-  AND estado_interno = 'no_entregado';
+2. **Selector de sucursal para admins** — un `<Select>` en el header que permite elegir qué caja ver/gestionar entre todas las sucursales activas del tenant.
 
--- Actualizar shipped + second_visit si existe con estado incorrecto
-UPDATE ml_status_mapping 
-SET estado_interno = 'segunda_visita',
-    descripcion = 'Segunda visita de entrega'
-WHERE ml_status = 'shipped' 
-  AND ml_substatus = 'second_visit' 
-  AND estado_interno != 'segunda_visita';
+3. **Filtrar `currentSession` por `selectedSucursalId`** — reemplazar `.in('sucursal_id', sucursalIds)` por `.eq('sucursal_id', selectedSucursalId)` para todos los roles. Esto aísla cada sucursal.
 
--- Agregar constraint unico para prevenir futuros duplicados
-ALTER TABLE ml_status_mapping 
-ADD CONSTRAINT ml_status_mapping_unique_status 
-UNIQUE (ml_status, ml_substatus);
+4. **Filtrar `sessionHistory` por `selectedSucursalId`** — el historial muestra solo la sucursal seleccionada. Agregar opción "Todas" para ver historial consolidado.
+
+5. **Apertura de caja usa `selectedSucursalId`** — reemplazar `profile.sucursal_id` en la mutación de apertura por `selectedSucursalId`, permitiendo al admin abrir caja en cualquier sucursal.
+
+6. **Query keys incluyen `selectedSucursalId`** — para invalidación correcta del cache.
+
+### Flujo resultante
+
+```text
+Admin de "Administración":
+  [Selector: Administración ▼]  ← su propia caja por defecto
+    → Ve/abre/cierra caja de Administración
+  [Selector: Berazategui]
+    → Ve/abre/cierra caja de Berazategui
+  [Selector: Todas (historial)]
+    → Ve historial consolidado
+
+Operador de "Berazategui":
+  Sin selector → solo ve su propia caja
 ```
 
-### 2. Corregir el envio 46563818704
-
-Actualizar manualmente el envio que quedo en estado incorrecto:
-
-```sql
-UPDATE envios 
-SET estado_ml = 'primera_visita',
-    ml_sync_status = 'synced',
-    ml_last_sync_at = now()
-WHERE ml_shipment_id = 46563818704;
-```
-
-## Archivos a modificar
+### Archivo a modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| Base de datos (SQL) | Eliminar duplicados, agregar UNIQUE constraint, corregir envio |
-
-No se requieren cambios en el codigo de las edge functions ya que la logica de consulta es correcta — el problema es solo datos duplicados en la tabla.
+| `src/pages/Cash.tsx` | Agregar `selectedSucursalId`, selector UI, filtrar queries/mutaciones por sucursal |
 
