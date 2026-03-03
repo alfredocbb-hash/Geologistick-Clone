@@ -1,33 +1,47 @@
 
 
-# Diagnóstico: Página se congela al crear envío en otra computadora
+# Mejoras con IA para Mapa en Vivo / Choferes en Ruta
 
-## Problema identificado
+## Funcionalidades actuales
+La sección ya tiene: tracking GPS en tiempo real, visualización de recorridos con Snap to Roads, estadísticas de rutas, detección de brechas de señal, y lista de choferes con estado (activo/reciente/sin señal).
 
-Después de revisar el código en detalle, encontré varios problemas que pueden causar congelamiento en la página `/shipments/new`:
+## Mejoras posibles con IA
 
-### 1. Queries sin protección de autenticación
-- La query `sucursales` (línea 313) y `allClients` (línea 501) **no tienen `enabled` guard** — se ejecutan inmediatamente aunque `profile` no esté cargado todavía. En una computadora nueva, la autenticación puede demorar más y estas queries fallan silenciosamente o causan errores de RLS.
-- La query `tarifa_conceptos` (línea 346) usa `profile?.tenant_id` pero no tiene `enabled: !!profile?.tenant_id`, lo que puede enviar queries con filtros `null`.
+### 1. Estimación inteligente de hora de entrega (ETA)
+Usar la IA para analizar la posición actual del chofer, las paradas restantes, y el historial de velocidad/tiempos para estimar cuándo llegará a cada parada pendiente. Mostrar un badge "ETA: ~14:30" junto a cada chofer con ruta activa.
 
-### 2. Componente excesivamente pesado
-- `NewShipment.tsx` tiene **2653 líneas** con 15+ queries de React Query, múltiples `useMemo` pesados, y Google Maps — todo renderizado simultáneamente.
+### 2. Detección de anomalías en ruta
+La IA analiza el recorrido del chofer vs. la ruta planificada y detecta desvíos significativos, paradas prolongadas no planificadas, o comportamiento inusual. Muestra alertas como "⚠️ Detenido 25 min en ubicación no planificada".
 
-### 3. Falta de estado de carga inicial
-- No hay un loading state mientras se cargan los datos iniciales (sucursal del usuario, tarifas, conceptos). El componente intenta renderizar el formulario completo antes de tener los datos necesarios.
+### 3. Resumen inteligente del día
+Un botón "Resumen IA" que genera un análisis narrativo del rendimiento de los choferes: quién fue más eficiente, quién tuvo más incidencias, tiempos promedio por entrega, y sugerencias de mejora.
 
-## Plan de corrección
+### 4. Predicción de demoras
+Basándose en la velocidad actual, cantidad de paradas restantes y horarios, la IA predice si un chofer va a completar su ruta a tiempo o si hay riesgo de demora, permitiendo reasignar envíos proactivamente.
 
-### Archivo: `src/pages/NewShipment.tsx`
+## Plan técnico
 
-1. **Agregar `enabled` guards a todas las queries sin protección**:
-   - `sucursales`: agregar `enabled: !!user`
-   - `allClients`: agregar `enabled: !!user && !!profile?.tenant_id`
-   - `tarifa_conceptos`: agregar `enabled: !!user && !!profile?.tenant_id`
+| Componente | Cambio |
+|-----------|--------|
+| Nueva edge function `analyze-driver-route` | Recibe posición actual, paradas pendientes, historial GPS; usa Lovable AI (gemini-3-flash-preview) para generar ETA, detectar anomalías y predecir demoras |
+| `src/pages/LiveMap.tsx` | Agregar botón "Análisis IA" por chofer que invoca la edge function y muestra resultados en un panel/dialog |
+| `src/pages/LiveMap.tsx` | Agregar panel de "Resumen IA" general que analiza todos los choferes activos |
 
-2. **Agregar loading state inicial**: mostrar spinner mientras se cargan los datos esenciales (sucursal del usuario, tarifas) antes de renderizar el formulario completo.
+### Edge function: `analyze-driver-route`
+- Input: `{ driverId, routeId, currentPosition, pendingStops[], completedStops[], locationHistory[] }`
+- Usa tool calling para retornar estructura: `{ eta_next_stop, eta_completion, anomalies[], delay_risk, summary }`
+- Modelo: `google/gemini-3-flash-preview` (rápido y económico)
 
-3. **Envolver el cálculo de precio en try/catch**: el `useMemo` de precio (línea 660+) accede a propiedades de `selectedTarifa` que podría ser undefined si las queries aún no cargaron.
+### UI: Panel de análisis por chofer
+- Botón "🤖 Análisis" junto a cada chofer con ruta activa
+- Muestra: ETA próxima parada, riesgo de demora (🟢🟡🔴), anomalías detectadas
+- Se integra en la tarjeta del chofer existente
 
-Estos cambios son mínimos y quirúrgicos — 3 líneas de `enabled` + un bloque de loading al inicio del render.
+### UI: Resumen general con IA
+- Botón "Resumen IA" en el header de la tab "Choferes en Ruta"
+- Dialog con análisis narrativo generado por IA de toda la operación en curso
+
+### Archivos a crear/modificar
+- **Crear**: `supabase/functions/analyze-driver-route/index.ts`
+- **Modificar**: `src/pages/LiveMap.tsx` (agregar botones de análisis IA + panels de resultado)
 
