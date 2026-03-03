@@ -1,73 +1,30 @@
 
+# Fix: Usuarios con rol "sucursal" no pueden cancelar envíos
 
-# Fix: Cancelación de envíos — limpiar pagos y movimientos de caja
+## Problema confirmado
 
-## Problema
+Verifiqué directamente en la base de datos:
+- Los 3 envíos `SUC07BERA-ENV-20260303-*` siguen en estado `en_sucursal` (no cancelados)
+- El historial muestra 4 intentos de cancelación (2 envíos x 2 intentos cada uno) — el usuario intentó varias veces
+- El toast "Envío cancelado exitosamente" aparece porque el código no detecta que el UPDATE no afectó filas
 
-Cuando se cancela un envío desde `Shipments.tsx`, solo se actualiza el `estado` a `cancelado` y se inserta historial. **No se limpian**:
-1. Los **pagos** (`pagos`) asociados al envío — si ya fue cobrado por chofer o en sucursal, esos registros quedan activos
-2. Los **movimientos de caja** (`movimientos_caja`) — si hubo un cobro en sucursal que generó un ingreso en caja, ese importe queda sumando en la sesión
-
-El mismo problema existe en `ChangeStatusDialog.tsx` cuando se cambia manualmente a `cancelado`.
+**Causa raíz**: La política RLS de UPDATE en `envios` solo permite actualizar a usuarios con rol `admin` o al chofer asignado. El usuario `bahiablanca@blackbox.com` tiene rol `sucursal`, por lo tanto:
+1. El UPDATE a `envios` falla silenciosamente (0 filas afectadas, sin error)
+2. El INSERT a `envio_historial` sí funciona (RLS diferente)
+3. El código no verifica si el UPDATE realmente modificó filas → muestra éxito falso
 
 ## Solución
 
-### 1. `src/pages/Shipments.tsx` — `cancelMutation`
+### 1. Actualizar política RLS de UPDATE en `envios`
+Agregar los roles `sucursal`, `operador` y `despachador` a la política de UPDATE, permitiéndoles actualizar envíos de su sucursal (origen o destino).
 
-Después de actualizar `estado: 'cancelado'`, agregar:
-- **Anular pagos**: buscar pagos del envío y marcarlos como `estado: 'anulado'`
-- **Compensar caja**: si hay movimientos de caja con `envio_id`, insertar un movimiento de egreso compensatorio con `monto` igual y concepto "Anulación por cancelación de envío"
-
-### 2. `src/components/shipments/ChangeStatusDialog.tsx` — `changeStatusMutation`
-
-Cuando `newStatus === 'cancelado'`, aplicar la misma lógica de anulación de pagos y compensación de caja.
-
-### 3. `src/components/routes/CancelRouteDialog.tsx` — `cancelMutation`
-
-Revisar si al cancelar ruta también debe anularse pagos de los envíos. Actualmente los envíos vuelven a `en_sucursal` o `pendiente`, no a `cancelado`, así que no aplica anulación — es correcto.
-
-### Flujo de anulación (compartido)
-
-```typescript
-// 1. Anular pagos existentes del envío
-const { data: pagos } = await supabase
-  .from('pagos')
-  .select('id')
-  .eq('envio_id', envioId)
-  .in('estado', ['cobrado_chofer', 'rendido', 'pagado']);
-
-if (pagos?.length) {
-  await supabase
-    .from('pagos')
-    .update({ estado: 'anulado' })
-    .in('id', pagos.map(p => p.id));
-}
-
-// 2. Compensar movimientos de caja
-const { data: movimientos } = await supabase
-  .from('movimientos_caja')
-  .select('id, sesion_caja_id, monto, concepto')
-  .eq('envio_id', envioId)
-  .eq('tipo', 'ingreso');
-
-if (movimientos?.length) {
-  for (const mov of movimientos) {
-    await supabase.from('movimientos_caja').insert({
-      sesion_caja_id: mov.sesion_caja_id,
-      envio_id: envioId,
-      tipo: 'egreso',
-      monto: mov.monto,
-      concepto: `Anulación: ${mov.concepto}`,
-      created_by: user?.id,
-    });
-  }
-}
-```
+### 2. Validar que el UPDATE realmente afectó filas
+En `Shipments.tsx` y `ChangeStatusDialog.tsx`, después del UPDATE verificar que se retornó data. Si no, lanzar error explicativo.
 
 ### Archivos a modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/pages/Shipments.tsx` | Agregar anulación de pagos + compensación caja en `cancelMutation` |
-| `src/components/shipments/ChangeStatusDialog.tsx` | Agregar misma lógica cuando `newStatus === 'cancelado'` |
-
+| Migración SQL | Ampliar política RLS de UPDATE en `envios` para incluir roles `sucursal`, `operador`, `despachador` |
+| `src/pages/Shipments.tsx` | Validar que el UPDATE afectó filas antes de mostrar éxito |
+| `src/components/shipments/ChangeStatusDialog.tsx` | Misma validación |
