@@ -346,6 +346,50 @@ export type Database = {
           },
         ]
       }
+      driver_checkins: {
+        Row: {
+          accuracy: number | null
+          checked_in_at: string
+          chofer_id: string
+          device_info: string | null
+          fecha: string
+          id: string
+          lat: number | null
+          lng: number | null
+          tenant_id: string | null
+        }
+        Insert: {
+          accuracy?: number | null
+          checked_in_at?: string
+          chofer_id: string
+          device_info?: string | null
+          fecha?: string
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          tenant_id?: string | null
+        }
+        Update: {
+          accuracy?: number | null
+          checked_in_at?: string
+          chofer_id?: string
+          device_info?: string | null
+          fecha?: string
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "driver_checkins_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       driver_location_history: {
         Row: {
           accuracy: number | null
