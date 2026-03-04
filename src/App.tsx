@@ -13,6 +13,7 @@ import { MobileLoginScreen } from "@/components/mobile/MobileLoginScreen";
 import { useNativePlatform } from "@/hooks/useNativePlatform";
 import { Loader2 } from "lucide-react";
 import { ThemeProvider } from "next-themes";
+import { ChunkErrorBoundary } from "@/components/ChunkErrorBoundary";
 
 // Pages
 import Index from "./pages/Index";
@@ -283,7 +284,9 @@ const App = () => (
             <AuthProvider>
               <TenantProvider>
                 <GoogleMapsProvider>
-                  <AppRoutes />
+                  <ChunkErrorBoundary>
+                    <AppRoutes />
+                  </ChunkErrorBoundary>
                 </GoogleMapsProvider>
               </TenantProvider>
             </AuthProvider>
