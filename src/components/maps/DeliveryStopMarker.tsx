@@ -21,8 +21,9 @@ function DeliveryStopMarkerComponent({
 }: DeliveryStopMarkerProps) {
   const [showInfo, setShowInfo] = useState(false);
 
-  const formattedTime = time 
-    ? format(new Date(time), "HH:mm", { locale: es })
+  const parsedDate = time ? new Date(time) : null;
+  const formattedTime = parsedDate && !isNaN(parsedDate.getTime())
+    ? format(parsedDate, "HH:mm", { locale: es })
     : '';
 
   return (
