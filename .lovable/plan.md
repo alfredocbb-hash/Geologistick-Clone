@@ -1,22 +1,21 @@
 
 
-# Plan: Incluir estados ML en filtro de Reprogramados
+# Plan: Fix black screen crash in Route Planner
 
-## Cambio único
+## Root Cause
+The `DeliveryStopMarker` component (line 24-26) crashes when `time` is a non-empty but invalid date string. `new Date(time)` produces an invalid Date, and `date-fns` `format()` throws `RangeError: Invalid time value`. Since there's no error boundary, this crashes the entire React tree → black screen.
 
-### Modificar: `src/components/routes/RescheduledShipmentsList.tsx` (línea 49)
+## Fix
 
-Ampliar el filtro `.in('estado', ...)` para incluir los estados operativos de ML:
+### Modify: `src/components/maps/DeliveryStopMarker.tsx` (line 24-26)
+Add a validity check before formatting:
 
 ```typescript
-// Antes
-.in('estado', ['pendiente', 'recogido', 'en_sucursal'])
-
-// Después
-.in('estado', ['pendiente', 'recogido', 'en_sucursal', 'reprogramado', 'primera_visita', 'segunda_visita'])
+const parsedDate = time ? new Date(time) : null;
+const formattedTime = parsedDate && !isNaN(parsedDate.getTime())
+  ? format(parsedDate, "HH:mm", { locale: es })
+  : '';
 ```
 
-También eliminar el filtro `.is('chofer_id', null)` (línea 50), ya que los envíos ML reprogramados suelen tener chofer asignado del intento previo y deben aparecer para re-asignación.
-
-Un cambio de dos líneas. Sin cambios en backend.
+One-file, 3-line change. No backend or other component changes needed.
 
