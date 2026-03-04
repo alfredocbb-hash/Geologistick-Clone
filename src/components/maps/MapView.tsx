@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import { GradientPolyline } from './GradientPolyline';
 import { DeliveryStopMarker } from './DeliveryStopMarker';
+import { DriverMarker, type DriverMarkerData } from './DriverMarker';
 
 export interface MarkerInfo {
   position: { lat: number; lng: number };
@@ -193,19 +194,34 @@ function MapViewComponent({
       >
         {/* Render markers if not showing route */}
         {!directions && markers.map((marker, index) => (
-          <Marker
-            key={marker.id || index}
-            position={marker.position}
-            title={marker.title}
-            icon={getMarkerIcon(marker.icon)}
-            onClick={() => {
-              if (marker.onClick) {
-                marker.onClick();
-              } else if (onMarkerClick) {
-                onMarkerClick(marker);
-              }
-            }}
-          />
+          marker.icon === 'driver' ? (
+            <DriverMarker
+              key={marker.id || `driver-${index}`}
+              position={marker.position}
+              data={marker.data as DriverMarkerData}
+              onClick={() => {
+                if (marker.onClick) {
+                  marker.onClick();
+                } else if (onMarkerClick) {
+                  onMarkerClick(marker);
+                }
+              }}
+            />
+          ) : (
+            <Marker
+              key={marker.id || index}
+              position={marker.position}
+              title={marker.title}
+              icon={getMarkerIcon(marker.icon)}
+              onClick={() => {
+                if (marker.onClick) {
+                  marker.onClick();
+                } else if (onMarkerClick) {
+                  onMarkerClick(marker);
+                }
+              }}
+            />
+          )
         ))}
 
         {/* Render directions */}
