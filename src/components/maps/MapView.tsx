@@ -67,7 +67,7 @@ const getMarkerIcon = (type?: MarkerInfo['icon']): string => {
     branch: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png',
     current: 'https://maps.google.com/mapfiles/ms/icons/yellow-dot.png',
     warning: 'https://maps.google.com/mapfiles/ms/icons/grey-dot.png',
-    driver: 'https://maps.google.com/mapfiles/ms/icons/truck.png',
+    driver: 'https://maps.google.com/mapfiles/kml/shapes/cabs.png',
   };
   return icons[type || 'branch'] || icons.branch;
 };
