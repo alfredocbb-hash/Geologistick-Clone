@@ -1,21 +1,29 @@
 
 
-# Plan: Fix black screen crash in Route Planner
+# Plan: Fix driver markers not visible on Live Map
 
 ## Root Cause
-The `DeliveryStopMarker` component (line 24-26) crashes when `time` is a non-empty but invalid date string. `new Date(time)` produces an invalid Date, and `date-fns` `format()` throws `RangeError: Invalid time value`. Since there's no error boundary, this crashes the entire React tree → black screen.
+
+In `MapView.tsx` (line 66), the `getMarkerIcon` function maps `'driver'` to the URL `https://maps.google.com/mapfiles/ms/icons/truck.png`. This URL **does not exist** in Google's hosted marker icon set. When Google Maps can't load the icon, the marker simply doesn't render, making all drivers invisible on the map.
 
 ## Fix
 
-### Modify: `src/components/maps/DeliveryStopMarker.tsx` (line 24-26)
-Add a validity check before formatting:
+### Modify: `src/components/maps/MapView.tsx` (line 66)
+
+Replace the invalid `truck.png` URL with a valid, distinctive icon for drivers. Options:
 
 ```typescript
-const parsedDate = time ? new Date(time) : null;
-const formattedTime = parsedDate && !isNaN(parsedDate.getTime())
-  ? format(parsedDate, "HH:mm", { locale: es })
-  : '';
+const icons = {
+  origin: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png',
+  destination: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png',
+  branch: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png',
+  current: 'https://maps.google.com/mapfiles/ms/icons/yellow-dot.png',
+  warning: 'https://maps.google.com/mapfiles/ms/icons/grey-dot.png',
+  driver: 'https://maps.google.com/mapfiles/kml/shapes/cabs.png',
+};
 ```
 
-One-file, 3-line change. No backend or other component changes needed.
+The URL `https://maps.google.com/mapfiles/kml/shapes/cabs.png` is a valid Google-hosted vehicle/cab icon that will render correctly on the map.
+
+One-line change. No backend modifications needed.
 
