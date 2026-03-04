@@ -1,26 +1,22 @@
 
 
-# Plan: Excluir envíos "pago destino" de liquidaciones terciarizadas
+# Plan: Incluir estados ML en filtro de Reprogramados
 
-## Problema
-La consulta de cálculo en `ThirdPartySettlements.tsx` (línea 181-188) trae todos los envíos entregados de la empresa terciarizada sin filtrar por tipo de pago. Los envíos con `tipo_pago = 'destino'` no deberían incluirse porque el pago lo realiza el destinatario, no la empresa terciarizada.
+## Cambio único
 
-## Solución
+### Modificar: `src/components/routes/RescheduledShipmentsList.tsx` (línea 49)
 
-### Modificar: `src/pages/ThirdPartySettlements.tsx`
-En la función `handleCalculate()` (línea ~181), agregar un filtro `.neq('tipo_pago', 'destino')` a la consulta de Supabase para excluir los envíos con pago destino:
+Ampliar el filtro `.in('estado', ...)` para incluir los estados operativos de ML:
 
 ```typescript
-const { data, error } = await supabase
-  .from("envios")
-  .select("id, tracking_number, tracking_externo, nombre_destinatario, precio_total, fecha_entrega")
-  .eq("empresa_terciarizada_id", liqEmpresaId)
-  .eq("es_terciarizado", true)
-  .eq("estado", "entregado")
-  .neq("tipo_pago", "destino")  // ← agregar esta línea
-  .gte("fecha_entrega", periodoInicio)
-  .lte("fecha_entrega", periodoFin + "T23:59:59");
+// Antes
+.in('estado', ['pendiente', 'recogido', 'en_sucursal'])
+
+// Después
+.in('estado', ['pendiente', 'recogido', 'en_sucursal', 'reprogramado', 'primera_visita', 'segunda_visita'])
 ```
 
-Es un cambio de una sola línea. No requiere cambios en el backend ni en otras páginas.
+También eliminar el filtro `.is('chofer_id', null)` (línea 50), ya que los envíos ML reprogramados suelen tener chofer asignado del intento previo y deben aparecer para re-asignación.
+
+Un cambio de dos líneas. Sin cambios en backend.
 
