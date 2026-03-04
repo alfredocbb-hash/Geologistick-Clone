@@ -258,18 +258,37 @@ export default function LiveMap() {
     refetchInterval: 30000,
   });
 
-  // Realtime subscription for driver locations
+  // Realtime subscription for driver locations — merge directly into state
   useEffect(() => {
     const channel = supabase
       .channel('driver-locations-realtime')
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'driver_locations'
+        },
+        (payload) => {
+          const updated = payload.new as { chofer_id: string; lat: number; lng: number; updated_at: string; accuracy: number | null };
+          setDriverLocations(prev =>
+            prev.map(d =>
+              d.chofer_id === updated.chofer_id
+                ? { ...d, lat: updated.lat, lng: updated.lng, updated_at: updated.updated_at, accuracy: updated.accuracy }
+                : d
+            )
+          );
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
           schema: 'public',
           table: 'driver_locations'
         },
         () => {
+          // New driver appeared — need full refetch to get profile/route data
           refetchDrivers();
         }
       )
@@ -280,6 +299,7 @@ export default function LiveMap() {
     };
   }, [refetchDrivers]);
 
+  // Sync initial/refetched data into local state
   useEffect(() => {
     setDriverLocations(driversData);
   }, [driversData]);
