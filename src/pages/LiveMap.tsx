@@ -89,6 +89,12 @@ export default function LiveMap() {
   // State for main map route visualization (street-level traceability)
   const [selectedDriverForMap, setSelectedDriverForMap] = useState<string | null>(null);
   const [selectedRouteForMap, setSelectedRouteForMap] = useState<string | null>(null);
+  const [pendingStopsMarkers, setPendingStopsMarkers] = useState<Array<{
+    position: { lat: number; lng: number };
+    trackingNumber: string;
+    address: string;
+    order: number;
+  }>>([]);
   
   // State for dialog route visualization (legacy)
   const [showRouteDialog, setShowRouteDialog] = useState(false);
@@ -294,12 +300,18 @@ export default function LiveMap() {
     }));
   }, [sucursalesConCoords]);
 
-  // Map markers for drivers
+  // Map markers for drivers - include data for DriverMarker component
   const driverMarkers = useMemo(() => {
     return driverLocations.map(driver => ({
       position: { lat: Number(driver.lat), lng: Number(driver.lng) },
       title: `${driver.nombre} ${driver.apellido}`,
       icon: 'driver' as const,
+      data: {
+        nombre: driver.nombre,
+        apellido: driver.apellido,
+        updated_at: driver.updated_at,
+        ruta_activa: driver.ruta_activa,
+      },
     }));
   }, [driverLocations]);
 
@@ -314,20 +326,68 @@ export default function LiveMap() {
     return { color: "bg-red-500", label: "Sin señal" };
   };
 
+  // Load pending stops for a driver's active route
+  const loadPendingStops = useCallback(async (rutaId: string) => {
+    try {
+      const { data: paradas } = await supabase
+        .from("ruta_paradas")
+        .select("envio_id, orden, estado")
+        .eq("ruta_id", rutaId)
+        .eq("estado", "pendiente")
+        .order("orden");
+
+      if (!paradas || paradas.length === 0) {
+        setPendingStopsMarkers([]);
+        return;
+      }
+
+      const envioIds = paradas.map(p => p.envio_id).filter(Boolean);
+      if (envioIds.length === 0) {
+        setPendingStopsMarkers([]);
+        return;
+      }
+
+      const { data: envios } = await supabase
+        .from("envios")
+        .select("id, tracking_number, direccion_entrega, destinatario_lat, destinatario_lng")
+        .in("id", envioIds);
+
+      const stops = (paradas || [])
+        .map(p => {
+          const envio = envios?.find(e => e.id === p.envio_id);
+          if (!envio?.destinatario_lat || !envio?.destinatario_lng) return null;
+          return {
+            position: { lat: Number(envio.destinatario_lat), lng: Number(envio.destinatario_lng) },
+            trackingNumber: envio.tracking_number,
+            address: envio.direccion_entrega || '',
+            order: p.orden || 0,
+          };
+        })
+        .filter(Boolean) as typeof pendingStopsMarkers;
+
+      setPendingStopsMarkers(stops);
+    } catch (err) {
+      console.error('Error loading pending stops:', err);
+      setPendingStopsMarkers([]);
+    }
+  }, []);
+
   // Toggle route visualization on main map
   const toggleRouteOnMap = useCallback((driverId: string, rutaId: string) => {
     if (selectedDriverForMap === driverId) {
       // Hide route
       setSelectedDriverForMap(null);
       setSelectedRouteForMap(null);
+      setPendingStopsMarkers([]);
       driverRoute.clearRoute();
     } else {
       // Show route
       setSelectedDriverForMap(driverId);
       setSelectedRouteForMap(rutaId);
       driverRoute.loadRoute(driverId, rutaId);
+      loadPendingStops(rutaId);
     }
-  }, [selectedDriverForMap, driverRoute]);
+  }, [selectedDriverForMap, driverRoute, loadPendingStops]);
 
   // Load route history for dialog (legacy)
   const loadRouteHistoryForDialog = async (driverId: string, rutaId: string) => {
@@ -567,10 +627,12 @@ export default function LiveMap() {
       position: { lat: number; lng: number };
       title: string;
       icon: 'origin' | 'destination' | 'branch' | 'current' | 'warning' | 'driver';
+      data?: any;
     }> = driverMarkers.map(m => ({
       position: m.position,
       title: m.title,
       icon: 'driver' as const,
+      data: m.data,
     }));
     
     // Add start point marker when showing route
@@ -581,9 +643,20 @@ export default function LiveMap() {
         icon: "origin" as const,
       });
     }
+
+    // Add pending delivery stop markers (orange destination markers)
+    if (selectedDriverForMap && pendingStopsMarkers.length > 0) {
+      pendingStopsMarkers.forEach((stop) => {
+        markers.push({
+          position: stop.position,
+          title: `Parada #${stop.order} - ${stop.trackingNumber}`,
+          icon: 'destination' as const,
+        });
+      });
+    }
     
     return markers;
-  }, [driverMarkers, driverRoute.polylinePath, selectedDriverForMap]);
+  }, [driverMarkers, driverRoute.polylinePath, selectedDriverForMap, pendingStopsMarkers]);
 
   // Stats
   const totalPendientes = sucursalesData.reduce((acc, s) => acc + s.envios_pendientes, 0);
