@@ -6,6 +6,8 @@ import { AppSidebar } from './AppSidebar';
 import { AppHeader } from './AppHeader';
 import { TrialBanner } from '@/components/trial/TrialBanner';
 import { Loader2 } from 'lucide-react';
+import { useSubscriptionBlock } from '@/hooks/useSubscriptionBlock';
+import { SubscriptionBlockScreen } from '@/components/subscription/SubscriptionBlockScreen';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -13,6 +15,7 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const { user, loading } = useAuth();
+  const { isBlocked, reason } = useSubscriptionBlock();
 
   if (loading) {
     return (
@@ -27,6 +30,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (isBlocked) {
+    return <SubscriptionBlockScreen reason={reason} />;
   }
 
   return (
