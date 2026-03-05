@@ -5,10 +5,13 @@ import { useSellerData } from '@/hooks/useSellerData';
 import { SellerHeader } from './SellerHeader';
 import { SellerSidebar } from './SellerSidebar';
 import { Loader2 } from 'lucide-react';
+import { useSubscriptionBlock } from '@/hooks/useSubscriptionBlock';
+import { SubscriptionBlockScreen } from '@/components/subscription/SubscriptionBlockScreen';
 
 export function SellerLayout() {
   const { user, loading: authLoading, hasRole } = useAuth();
   const { seller, isLoading: sellerLoading } = useSellerData();
+  const { isBlocked, reason } = useSubscriptionBlock();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Loading state
@@ -23,6 +26,11 @@ export function SellerLayout() {
   // Not authenticated
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Subscription/trial expired
+  if (isBlocked) {
+    return <SubscriptionBlockScreen reason={reason} />;
   }
 
   // Not a seller

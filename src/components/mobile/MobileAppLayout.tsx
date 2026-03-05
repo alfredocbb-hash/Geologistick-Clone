@@ -21,6 +21,8 @@ import { CheckInScreen } from './CheckInScreen';
 import { useTenant } from '@/hooks/useTenant';
 import { NotificationPopover } from '@/components/notifications/NotificationPopover';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { useSubscriptionBlock } from '@/hooks/useSubscriptionBlock';
+import { SubscriptionBlockScreen } from '@/components/subscription/SubscriptionBlockScreen';
 
 export type UserMobileRole = 'chofer' | 'centro_logistico' | 'sucursal';
 
@@ -34,6 +36,7 @@ export function MobileAppLayout() {
   const { tenant } = useTenant();
   const queryClient = useQueryClient();
   const { checkedIn, isLoading: checkInLoading, invalidate: invalidateCheckIn } = useCheckIn();
+  const { isBlocked, reason: blockReason } = useSubscriptionBlock();
 
   // Show splash screen briefly on first load
   useEffect(() => {
@@ -98,6 +101,11 @@ export function MobileAppLayout() {
         <p className="text-slate-400 text-sm">Cargando permisos...</p>
       </div>
     );
+  }
+
+  // Subscription/trial block
+  if (isBlocked) {
+    return <SubscriptionBlockScreen reason={blockReason} />;
   }
 
   // Check-in guard for drivers
