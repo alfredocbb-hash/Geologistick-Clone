@@ -1,51 +1,47 @@
 
 
-# Diagnóstico: "new row violates row-level security policy for table 'clientes'"
+# Bloqueo total cuando vence la suscripción o el trial
 
-## Qué significa el error
+## Situación actual
+- Cuando un trial/suscripción vence, solo se muestra un banner informativo
+- El usuario puede seguir operando sin restricciones
 
-Al crear un envío nuevo, el sistema intenta insertar un registro en la tabla `clientes` (para el remitente o destinatario) y la política de seguridad RLS lo rechaza.
+## Diseño
 
-## Análisis
+Crear un componente `SubscriptionBlockScreen` que se renderice en `DashboardLayout` y `SellerLayout` cuando se detecte que la suscripción/trial venció, bloqueando completamente el acceso al sistema.
 
-**Política INSERT actual en `clientes`:**
-```sql
-WITH CHECK (
-  tenant_id = current_user_tenant()
-  AND (is_admin OR operador OR atencion_cliente OR sucursal OR despachador OR supervisor
-       OR sucursal_id = get_user_sucursal(auth.uid()))
-)
-```
+**Lógica de bloqueo:**
+1. Trial expirado (`plan === 'trial'` y `trial_ends_at <= now`) → bloqueado
+2. Suscripción vencida (`tenant_subscriptions.status !== 'active'` o `current_period_end < now`) → bloqueado
+3. Super admins → nunca bloqueados
+4. Sin datos de suscripción aún cargando → no bloquear (evitar falsos positivos)
 
-**El usuario "Soporte" (alfredobernard2025@gmail.com):**
-- Roles: `sucursal`, `despachador` -- ambos están en la política
-- Tenant: `81be07a7-...` -- correcto
-- Sucursal: `BURZACO(BS AS)`
+## Cambios
 
-**Problema identificado:** El rol `chofer` **no está** en la política INSERT. Si otro usuario con rol `chofer` (u otro rol no listado) intenta crear un envío, falla. Pero este usuario sí tiene los roles correctos.
+### 1. Nuevo hook: `src/hooks/useSubscriptionBlock.ts`
+Hook liviano que consulta `tenants` + `tenant_subscriptions` para determinar si el tenant está bloqueado. Retorna `{ isBlocked, isLoading, reason }`.
 
-**Causa más probable:** La **política SELECT** restringe la visibilidad de clientes por sucursal. Cuando el sistema busca un cliente existente por teléfono/DNI, si ese cliente pertenece a **otra sucursal**, el SELECT devuelve vacío (por RLS). Luego intenta crear uno nuevo, pero el `tenant_id` pasado desde `profile?.tenant_id` puede no coincidir si el profile no cargó correctamente, o hay un conflicto con el constraint único que se manifiesta como error RLS.
+- Si `plan === 'trial'` y `trial_ends_at <= now` → bloqueado, reason: "trial_expired"
+- Si tiene `tenant_subscriptions` con `status !== 'active'` o `current_period_end < now` → bloqueado, reason: "subscription_expired"
+- Si `plan !== 'trial'` y no tiene `tenant_subscriptions` → no bloqueado (tenant sin plan configurado, se permite acceso)
 
-## Solución propuesta
+### 2. Nuevo componente: `src/components/subscription/SubscriptionBlockScreen.tsx`
+Pantalla fullscreen con:
+- Icono y mensaje claro: "Tu suscripción ha vencido"
+- Texto: "Para continuar usando el sistema, contactá al equipo de soporte"
+- Botón "Contactar Soporte" → link a `/support` (o mailto si está bloqueado del dashboard)
+- Botón "Cerrar sesión"
+- Sin sidebar, sin header, sin acceso a nada
 
-### 1. Agregar el rol `chofer` a la política INSERT de `clientes`
-Para que choferes que también crean envíos puedan insertar clientes.
+### 3. Modificar `src/components/layout/DashboardLayout.tsx`
+- Importar `useSubscriptionBlock` y `useAuth`
+- Después de verificar autenticación, si `isBlocked && !isSuperAdmin()` → renderizar `<SubscriptionBlockScreen reason={reason} />`
 
-### 2. Mejorar la política SELECT de `clientes` 
-Permitir que roles operativos (`despachador`, `operador`, `atencion_cliente`) vean **todos los clientes del tenant** (no solo los de su sucursal), ya que necesitan buscar clientes existentes al crear envíos.
+### 4. Modificar `src/components/seller/SellerLayout.tsx`
+- Misma lógica: si `isBlocked` → mostrar `<SubscriptionBlockScreen />`
 
-### 3. Agregar búsqueda por nombre+dirección en `findOrCreateClient`
-Como se discutió anteriormente, agregar un paso de búsqueda por nombre+dirección antes del INSERT, y manejar el error `23505` con un fallback de recuperación.
+### 5. Modificar `src/components/mobile/MobileAppLayout.tsx`
+- Misma lógica para la app móvil
 
-## Cambios técnicos
-
-### Migración SQL
-- Actualizar política SELECT de `clientes`: roles `sucursal`, `despachador`, `operador`, `atencion_cliente`, `supervisor` ven todos los clientes del tenant
-- Actualizar política INSERT de `clientes`: agregar rol `chofer`
-
-### Código (NewShipment.tsx)
-- Agregar paso 3 de búsqueda por nombre+dirección (case-insensitive) antes del INSERT
-- Mejorar el catch de error `23505` para hacer fallback a SELECT en vez de propagar error
-
-**3 cambios: 1 migración SQL + 1 archivo de código.**
+**4 archivos nuevos/modificados. Super admins nunca son bloqueados.**
 
