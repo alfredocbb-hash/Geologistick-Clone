@@ -647,8 +647,8 @@ export default function BranchSettlements() {
 
           await supabase.from('movimientos_caja').insert({
             sesion_caja_id: cajaAbierta[0].id,
-            tipo: 'egreso',
-            concepto: `Pago liquidación sucursal ${sucursalNombre} - ${periodo}`,
+            tipo: 'ingreso',
+            concepto: `Cobro liquidación sucursal ${sucursalNombre} - ${periodo}`,
             monto: liquidacionData.total_comisiones || 0,
             metodo_pago: 'efectivo' as PaymentMethod,
             referencia: referenciaPago || null,

@@ -911,8 +911,8 @@ export default function Settlements() {
             if (sesion) {
               await supabase.from('movimientos_caja').insert({
                 sesion_caja_id: sesion.id,
-                tipo: 'egreso',
-                concepto: `Pago liquidación seller: ${payingLiquidacion.seller?.nombre || ''}`,
+                tipo: 'ingreso',
+                concepto: `Cobro liquidación seller: ${payingLiquidacion.seller?.nombre || ''}`,
                 monto: montoPago,
                 metodo_pago: 'efectivo' as any,
                 referencia: payReferencia || payingLiquidacion.id,
