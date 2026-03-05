@@ -1,47 +1,28 @@
 
 
-# Bloqueo total cuando vence la suscripción o el trial
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
-## Situación actual
-- Cuando un trial/suscripción vence, solo se muestra un banner informativo
-- El usuario puede seguir operando sin restricciones
+## Problema
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
-## Diseño
+## Solución
 
-Crear un componente `SubscriptionBlockScreen` que se renderice en `DashboardLayout` y `SellerLayout` cuando se detecte que la suscripción/trial venció, bloqueando completamente el acceso al sistema.
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-**Lógica de bloqueo:**
-1. Trial expirado (`plan === 'trial'` y `trial_ends_at <= now`) → bloqueado
-2. Suscripción vencida (`tenant_subscriptions.status !== 'active'` o `current_period_end < now`) → bloqueado
-3. Super admins → nunca bloqueados
-4. Sin datos de suscripción aún cargando → no bloquear (evitar falsos positivos)
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-## Cambios
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-### 1. Nuevo hook: `src/hooks/useSubscriptionBlock.ts`
-Hook liviano que consulta `tenants` + `tenant_subscriptions` para determinar si el tenant está bloqueado. Retorna `{ isBlocked, isLoading, reason }`.
-
-- Si `plan === 'trial'` y `trial_ends_at <= now` → bloqueado, reason: "trial_expired"
-- Si tiene `tenant_subscriptions` con `status !== 'active'` o `current_period_end < now` → bloqueado, reason: "subscription_expired"
-- Si `plan !== 'trial'` y no tiene `tenant_subscriptions` → no bloqueado (tenant sin plan configurado, se permite acceso)
-
-### 2. Nuevo componente: `src/components/subscription/SubscriptionBlockScreen.tsx`
-Pantalla fullscreen con:
-- Icono y mensaje claro: "Tu suscripción ha vencido"
-- Texto: "Para continuar usando el sistema, contactá al equipo de soporte"
-- Botón "Contactar Soporte" → link a `/support` (o mailto si está bloqueado del dashboard)
-- Botón "Cerrar sesión"
-- Sin sidebar, sin header, sin acceso a nada
-
-### 3. Modificar `src/components/layout/DashboardLayout.tsx`
-- Importar `useSubscriptionBlock` y `useAuth`
-- Después de verificar autenticación, si `isBlocked && !isSuperAdmin()` → renderizar `<SubscriptionBlockScreen reason={reason} />`
-
-### 4. Modificar `src/components/seller/SellerLayout.tsx`
-- Misma lógica: si `isBlocked` → mostrar `<SubscriptionBlockScreen />`
-
-### 5. Modificar `src/components/mobile/MobileAppLayout.tsx`
-- Misma lógica para la app móvil
-
-**4 archivos nuevos/modificados. Super admins nunca son bloqueados.**
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 
