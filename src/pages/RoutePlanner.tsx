@@ -66,6 +66,7 @@ import {
   Star,
   XCircle,
   History,
+  RotateCcw,
   X,
   Search,
   CalendarIcon,
@@ -85,6 +86,7 @@ import { cn } from "@/lib/utils";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown, ChevronRight, List, MapPinned } from "lucide-react";
 import CancelRouteDialog from "@/components/routes/CancelRouteDialog";
+import ReopenRouteDialog from "@/components/routes/ReopenRouteDialog";
 import ImportShipmentsDialog from "@/components/import/ImportShipmentsDialog";
 import RescheduledShipmentsList from "@/components/routes/RescheduledShipmentsList";
 import SaveFrequentRouteDialog from "@/components/routes/SaveFrequentRouteDialog";
@@ -145,6 +147,7 @@ export default function RoutePlanner() {
   const [editingLocationEnvio, setEditingLocationEnvio] = useState<EnvioData | null>(null);
   const [groupByCity, setGroupByCity] = useState(false);
   const [selectedSucursales, setSelectedSucursales] = usePersistedState<string[]>('planner-selected-sucursales', []);
+  const [reopeningRoute, setReopeningRoute] = useState<any | null>(null);
   
   // History tab state
   const [historyDateFrom, setHistoryDateFrom] = useState<Date | undefined>(undefined);
@@ -2180,6 +2183,17 @@ export default function RoutePlanner() {
                         <Printer className="mr-1 h-4 w-4" />
                         Imprimir
                       </Button>
+                      {(roles.includes("admin") || roles.includes("super_admin")) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setReopeningRoute(ruta)}
+                          className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20"
+                        >
+                          <RotateCcw className="h-4 w-4 mr-1" />
+                          Reabrir
+                        </Button>
+                      )}
                       {ruta.has_gps_history && ruta.chofer_id && (
                         <Button
                           variant="outline"
@@ -2284,7 +2298,13 @@ export default function RoutePlanner() {
         />
       )}
 
-      {/* Import Shipments Dialog */}
+      {/* Reopen Route Dialog */}
+      {reopeningRoute && (
+        <ReopenRouteDialog
+          route={reopeningRoute}
+          onClose={() => setReopeningRoute(null)}
+        />
+      )}
       <ImportShipmentsDialog
         open={showImportDialog}
         onOpenChange={setShowImportDialog}

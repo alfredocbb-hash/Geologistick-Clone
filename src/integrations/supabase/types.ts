@@ -4551,6 +4551,7 @@ export type Database = {
         }
         Returns: Json
       }
+      reopen_ruta_planificada: { Args: { p_ruta_id: string }; Returns: Json }
       reschedule_envio: {
         Args: { p_envio_id: string; p_new_date: string; p_reason?: string }
         Returns: undefined
