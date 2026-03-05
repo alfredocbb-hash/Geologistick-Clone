@@ -860,7 +860,39 @@ export default function NewShipment() {
       }
     }
 
-    // 3. Solo si no existe, crear nuevo cliente
+    // 3. Buscar por nombre+dirección (case-insensitive) para evitar duplicados por el índice único
+    if (data.nombre && data.direccion) {
+      const { data: clientByNameAddr, error: nameAddrError } = await supabase
+        .from('clientes')
+        .select('*')
+        .ilike('nombre', data.nombre.trim())
+        .ilike('direccion', data.direccion.trim())
+        .maybeSingle();
+      
+      if (nameAddrError) {
+        console.error('Error buscando cliente por nombre+dirección:', nameAddrError);
+      }
+      
+      if (clientByNameAddr) {
+        const { error: updateError } = await supabase
+          .from('clientes')
+          .update({
+            apellido: data.apellido || clientByNameAddr.apellido,
+            telefono: data.telefono || clientByNameAddr.telefono,
+            email: data.email || clientByNameAddr.email,
+            ciudad: data.ciudad || clientByNameAddr.ciudad,
+            codigo_postal: data.codigo_postal || clientByNameAddr.codigo_postal,
+            dni_cuit: data.dni_cuit || clientByNameAddr.dni_cuit,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', clientByNameAddr.id);
+
+        if (updateError) throw updateError;
+        return clientByNameAddr.id;
+      }
+    }
+
+    // 4. Solo si no existe, crear nuevo cliente
     const tenantId = profile?.tenant_id ?? null;
     if (!tenantId) {
       throw new Error('No se pudo determinar el tenant del usuario. Cerrá sesión e ingresá nuevamente.');
@@ -869,32 +901,71 @@ export default function NewShipment() {
     // Si no viene sucursal, asignamos la del usuario para asegurar visibilidad y evitar bloqueos por RLS
     const sucursalIdToUse = data.sucursal_id ?? profile?.sucursal_id ?? null;
 
-    const { data: newClient, error: createError } = await supabase
-      .from('clientes')
-      .insert({
-        nombre: data.nombre,
-        apellido: data.apellido,
-        telefono: data.telefono,
-        email: data.email,
-        direccion: data.direccion,
-        ciudad: data.ciudad,
-        codigo_postal: data.codigo_postal,
-        dni_cuit: data.dni_cuit,
-        sucursal_id: sucursalIdToUse,
-        tenant_id: tenantId,
-      })
-      .select()
-      .single();
+    try {
+      const { data: newClient, error: createError } = await supabase
+        .from('clientes')
+        .insert({
+          nombre: data.nombre,
+          apellido: data.apellido,
+          telefono: data.telefono,
+          email: data.email,
+          direccion: data.direccion,
+          ciudad: data.ciudad,
+          codigo_postal: data.codigo_postal,
+          dni_cuit: data.dni_cuit,
+          sucursal_id: sucursalIdToUse,
+          tenant_id: tenantId,
+        })
+        .select()
+        .single();
 
-    if (createError) {
-      // Manejo específico para error de duplicado
-      if (createError.message?.includes('idx_clientes_dni_cuit_unique') || 
-          createError.code === '23505') {
-        throw new Error(`Ya existe un cliente con el DNI/CUIT ${data.dni_cuit}. Por favor verifique los datos.`);
+      if (createError) {
+        // Si es error de duplicado (23505), intentar recuperar el cliente existente
+        if (createError.code === '23505') {
+          console.warn('Cliente duplicado detectado, recuperando existente...', createError.message);
+          
+          // Buscar por nombre+dirección como fallback
+          const { data: existingClient } = await supabase
+            .from('clientes')
+            .select('id')
+            .ilike('nombre', data.nombre.trim())
+            .ilike('direccion', data.direccion.trim())
+            .maybeSingle();
+          
+          if (existingClient) {
+            return existingClient.id;
+          }
+          
+          // Si tampoco encuentra, buscar por DNI
+          if (data.dni_cuit) {
+            const { data: existByDni } = await supabase
+              .from('clientes')
+              .select('id')
+              .ilike('dni_cuit', data.dni_cuit.trim())
+              .maybeSingle();
+            if (existByDni) return existByDni.id;
+          }
+          
+          throw new Error(`No se pudo crear ni encontrar el cliente. Verifique los datos e intente nuevamente.`);
+        }
+        throw createError;
       }
-      throw createError;
+      return newClient.id;
+    } catch (err: any) {
+      // Re-throw errors ya manejados
+      if (err.message?.includes('No se pudo crear ni encontrar')) throw err;
+      if (err.code === '23505') {
+        // Último intento de recuperación
+        const { data: fallbackClient } = await supabase
+          .from('clientes')
+          .select('id')
+          .ilike('nombre', data.nombre.trim())
+          .ilike('direccion', data.direccion.trim())
+          .maybeSingle();
+        if (fallbackClient) return fallbackClient.id;
+      }
+      throw err;
     }
-    return newClient.id;
   };
 
   const createShipmentMutation = useMutation({
