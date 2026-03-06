@@ -625,6 +625,47 @@ export default function IntegrationSettings() {
                     </div>
                   )}
 
+                  {/* Email SMTP Test Panel */}
+                  {key === 'email_smtp' && (
+                    <div className="p-4 bg-muted/50 rounded-lg space-y-4 border border-border">
+                      <div>
+                        <Label className="font-medium text-foreground">Enviar email de prueba</Label>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Envía un email de prueba a tu dirección para verificar que la configuración SMTP funciona correctamente
+                        </p>
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        onClick={testSmtpEmail}
+                        disabled={emailTesting}
+                        className="w-full sm:w-auto"
+                      >
+                        {emailTesting ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Mail className="h-4 w-4 mr-2" />
+                        )}
+                        {emailTesting ? 'Enviando...' : 'Enviar email de prueba'}
+                      </Button>
+
+                      {emailTestResult && (
+                        <div className={`rounded-lg border p-4 ${emailTestResult.success ? 'bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800' : 'bg-destructive/5 border-destructive/20'}`}>
+                          <div className="flex items-center gap-2">
+                            {emailTestResult.success ? (
+                              <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
+                            ) : (
+                              <XCircle className="h-4 w-4 text-destructive shrink-0" />
+                            )}
+                            <span className={`font-medium text-sm ${emailTestResult.success ? 'text-green-700 dark:text-green-300' : 'text-destructive'}`}>
+                              {emailTestResult.success ? emailTestResult.message : emailTestResult.error}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* ARCA Connection Test Panel */}
                   {key === 'arca' && (
                     <div className="p-4 bg-muted/50 rounded-lg space-y-4 border border-border">
