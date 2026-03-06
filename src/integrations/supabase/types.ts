@@ -1023,6 +1023,7 @@ export type Database = {
           dni_remitente: string | null
           dni_retira: string | null
           duracion_estimada_minutos: number | null
+          email_destinatario: string | null
           empresa_terciarizada: string | null
           empresa_terciarizada_id: string | null
           entrega_lat: number | null
@@ -1120,6 +1121,7 @@ export type Database = {
           dni_remitente?: string | null
           dni_retira?: string | null
           duracion_estimada_minutos?: number | null
+          email_destinatario?: string | null
           empresa_terciarizada?: string | null
           empresa_terciarizada_id?: string | null
           entrega_lat?: number | null
@@ -1217,6 +1219,7 @@ export type Database = {
           dni_remitente?: string | null
           dni_retira?: string | null
           duracion_estimada_minutos?: number | null
+          email_destinatario?: string | null
           empresa_terciarizada?: string | null
           empresa_terciarizada_id?: string | null
           entrega_lat?: number | null
