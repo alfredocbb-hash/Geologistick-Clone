@@ -273,6 +273,9 @@ export default function NewShipment() {
   const [createdEnvio, setCreatedEnvio] = useState<{ id: string; tracking_number: string; precio_total: number; remitente_id: string } | null>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   
+  // Sucursal destino combobox state
+  const [sucursalDestinoOpen, setSucursalDestinoOpen] = useState(false);
+  
   // State for selected additional concepts
   const [conceptosSeleccionados, setConceptosSeleccionados] = useState<Set<string>>(new Set());
   // State for editable concept amounts (monto_editable)
