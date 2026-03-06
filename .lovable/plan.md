@@ -1,28 +1,31 @@
 
 
-# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
+# Mejoras: Select de sucursal con búsqueda + Tracking más corto y limpio
 
-## Problema
-Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
+## Problemas
+1. **Select de sucursal destino**: Sin búsqueda, difícil encontrar entre muchas sucursales. Además muestra el código que no aporta al usuario.
+2. **Tracking number muy largo**: El formato actual `XXX-ENV-20260306-A1B2C3` tiene ~22 caracteres, difícil de copiar/dictar para el cliente final.
 
-## Solución
+## Cambios
 
-### 1. Nueva función SQL: `reopen_ruta_planificada`
-- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
-- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
-- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
-- Inserta registro en `envio_historial` para cada envío reactivado
-- Retorna JSON con resultado y cantidad de envíos reactivados
+### 1. Select de sucursal con búsqueda (`src/pages/NewShipment.tsx`, líneas ~2217-2232)
+- Reemplazar `<Select>` por `Popover` + `Command` (combobox searchable)
+- Mostrar solo **nombre** y **dirección/ciudad** (sin código)
+- Filtrar por nombre, ciudad o dirección al escribir
+- Mostrar la sucursal seleccionada en el trigger
 
-### 2. Nuevo componente: `ReopenRouteDialog.tsx`
-- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
-- Muestra cuántos envíos serán reactivados
-- Botón "Reabrir Ruta" que invoca el RPC
+### 2. Tracking number más corto
+**Migración SQL** — Actualizar `generate_tracking_number()`:
+- Nuevo formato: `ENV-XXXXXX` (10 caracteres) usando 6 caracteres alfanuméricos aleatorios
+- Mucho más fácil de copiar, dictar y compartir
+- Se mantiene unicidad con el loop de verificación existente
 
-### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
-- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
-- Al hacer click, abre `ReopenRouteDialog`
-- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
+### 3. Tracking page — Limpiar visualización (`src/pages/Tracking.tsx`)
+- En la línea 222, quitar el estilo `font-mono` del tracking number
+- Agregar botón "Copiar" junto al tracking para facilitar copiado
 
-**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
+### Archivos a modificar
+1. `src/pages/NewShipment.tsx` — combobox searchable para sucursal destino
+2. `supabase/migrations/` — nueva migración para `generate_tracking_number()` con formato corto
+3. `src/pages/Tracking.tsx` — botón copiar tracking
 
