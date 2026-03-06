@@ -90,6 +90,7 @@ const TrackingEmbed = () => {
   
   const [trackingInput, setTrackingInput] = useState(initialTracking);
   const [searchedTracking, setSearchedTracking] = useState(initialTracking);
+  const [copied, setCopied] = useState(false);
 
   // Fetch shipment via Edge Function (bypasses RLS for public access)
   // Short codes (< 15 chars) are searched by suffix in the Edge Function
@@ -199,7 +200,19 @@ const TrackingEmbed = () => {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <p className="text-sm text-muted-foreground">Tracking</p>
-                    <p className="font-mono font-bold">{envio.tracking_number}</p>
+                    <p className="font-bold flex items-center gap-2">
+                      {envio.tracking_number}
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(envio.tracking_number);
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 2000);
+                        }}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        {copied ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4" />}
+                      </button>
+                    </p>
                   </div>
                   {envio.estado && statusConfig[envio.estado] && (
                     <Badge 
