@@ -1,28 +1,22 @@
 
 
-# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
+# Fix: constraint único en `tarifa_conceptos.codigo` debe ser por tenant
 
 ## Problema
-Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
+La tabla `tarifa_conceptos` tiene un constraint `UNIQUE (codigo)` global. Esto significa que si un tenant (ej. Beraexpress) ya tiene un concepto con código "FLETE", otro tenant (ej. Blackbox) no puede crear uno con el mismo código. El error es: `duplicate key value violates unique constraint "tarifa_conceptos_codigo_key"`.
 
 ## Solución
+Reemplazar el constraint `UNIQUE (codigo)` por un constraint compuesto `UNIQUE (codigo, tenant_id)`. Esto permite que cada tenant tenga sus propios códigos sin colisionar con otros.
 
-### 1. Nueva función SQL: `reopen_ruta_planificada`
-- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
-- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
-- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
-- Inserta registro en `envio_historial` para cada envío reactivado
-- Retorna JSON con resultado y cantidad de envíos reactivados
+## Cambios
 
-### 2. Nuevo componente: `ReopenRouteDialog.tsx`
-- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
-- Muestra cuántos envíos serán reactivados
-- Botón "Reabrir Ruta" que invoca el RPC
+### 1. Migración SQL
+- `DROP` el constraint actual `tarifa_conceptos_codigo_key`
+- `CREATE` un nuevo constraint `UNIQUE (codigo, tenant_id)` — esto permite el mismo código en diferentes tenants, y también permite conceptos globales (`tenant_id IS NULL`) siempre que no repitan código entre sí.
 
-### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
-- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
-- Al hacer click, abre `ReopenRouteDialog`
-- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
+### 2. Sin cambios en código frontend
+El código de inserción/actualización ya maneja `tenant_id` correctamente. Solo falta arreglar el constraint en la base de datos.
 
-**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
+## Archivo a modificar
+1. **Migración SQL** — cambiar constraint de `UNIQUE (codigo)` a `UNIQUE (codigo, tenant_id)`
 
