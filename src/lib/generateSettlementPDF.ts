@@ -118,9 +118,12 @@ export async function generateSettlementPDF(
   const bodyStart = 40;
 
   const drawHeader = () => {
-    // Colored header bar
-    doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+    // White header bar with colored bottom border
+    doc.setFillColor(255, 255, 255);
     doc.rect(0, 0, pageWidth, headerH, 'F');
+    doc.setDrawColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+    doc.setLineWidth(1.5);
+    doc.line(0, headerH, pageWidth, headerH);
 
     let logoEndX = 12;
 
@@ -143,23 +146,24 @@ export async function generateSettlementPDF(
       } catch { /* continue without logo */ }
     }
 
-    // Company name
-    doc.setTextColor(255, 255, 255);
+    // Company name - dark text on white background
+    doc.setTextColor(24, 24, 27);
     doc.setFontSize(13);
     doc.setFont('helvetica', 'bold');
     doc.text(appName, logoEndX, headerH / 2 - 2);
 
     // Settlement type title
-    const titleText = isSeller
+    doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
+    doc.text(isSeller
       ? 'LIQUIDACIÓN DE SELLER'
       : isBranch
         ? 'LIQUIDACIÓN DE SUCURSAL'
-        : 'LIQUIDACIÓN DE CHOFER';
-    doc.setFontSize(8.5);
-    doc.setFont('helvetica', 'normal');
-    doc.text(titleText, logoEndX, headerH / 2 + 6);
+        : 'LIQUIDACIÓN DE CHOFER', logoEndX, headerH / 2 + 6);
 
     // Period on the right
+    doc.setTextColor(100, 100, 100);
     doc.setFontSize(8);
     doc.text(`Período: ${periodoStr}`, pageWidth - 10, headerH / 2 + 6, { align: 'right' });
   };
