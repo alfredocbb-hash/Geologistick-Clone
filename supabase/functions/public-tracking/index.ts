@@ -114,7 +114,7 @@ serve(async (req: Request) => {
 
     // SECURITY: Require full tracking number for unauthenticated public access
     // This prevents enumeration attacks via short suffix matching
-    const isShortCode = trackingCode.length < 15;
+    const isShortCode = trackingCode.length < 8;
     if (isShortCode && !isAuthenticated) {
       return new Response(
         JSON.stringify({ error: "Full tracking number required for public access" }),
