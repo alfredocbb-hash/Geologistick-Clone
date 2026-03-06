@@ -2219,22 +2219,49 @@ export default function NewShipment() {
                     <p className="text-sm text-muted-foreground">
                       El destinatario retirará el paquete en esta sucursal
                     </p>
-                    <Select
-                      value={formData.sucursal_destino_id}
-                      onValueChange={(v) => handleChange('sucursal_destino_id', v)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Seleccionar sucursal de destino" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {sucursalesDestino.map((s) => (
-                          <SelectItem key={s.id} value={s.id}>
-                            {s.codigo && `${s.codigo} - `}{s.nombre}
-                            {s.ciudad && ` (${s.ciudad})`}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Popover open={sucursalDestinoOpen} onOpenChange={setSucursalDestinoOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={sucursalDestinoOpen}
+                          className="w-full justify-between font-normal"
+                        >
+                          {formData.sucursal_destino_id
+                            ? (() => {
+                                const sel = sucursalesDestino.find(s => s.id === formData.sucursal_destino_id);
+                                return sel ? `${sel.nombre}${sel.ciudad ? ` - ${sel.ciudad}` : ''}` : 'Seleccionar sucursal';
+                              })()
+                            : 'Seleccionar sucursal de destino'}
+                          <MapPin className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="Buscar sucursal..." />
+                          <CommandList>
+                            <CommandEmpty>No se encontraron sucursales</CommandEmpty>
+                            {sucursalesDestino.map((s) => (
+                              <CommandItem
+                                key={s.id}
+                                value={`${s.nombre} ${s.ciudad || ''} ${s.direccion || ''}`}
+                                onSelect={() => {
+                                  handleChange('sucursal_destino_id', s.id);
+                                  setSucursalDestinoOpen(false);
+                                }}
+                              >
+                                <div className="flex flex-col">
+                                  <span className="font-medium">{s.nombre}</span>
+                                  <span className="text-xs text-muted-foreground">
+                                    {[s.direccion, s.ciudad].filter(Boolean).join(', ')}
+                                  </span>
+                                </div>
+                              </CommandItem>
+                            ))}
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
                   </div>
                 </>
               )}
