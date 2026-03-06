@@ -83,6 +83,7 @@ export default function Tracking() {
   
   const [trackingNumber, setTrackingNumber] = useState('');
   const [searchedTracking, setSearchedTracking] = useState('');
+  const [copied, setCopied] = useState(false);
 
   // Initialize search from URL path or query parameter
   useEffect(() => {
