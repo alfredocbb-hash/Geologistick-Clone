@@ -163,6 +163,10 @@ export default function IntegrationSettings() {
   const [generatingDiagrama, setGeneratingDiagrama] = useState(false);
   const [generatingFAQs, setGeneratingFAQs] = useState(false);
 
+  // Email SMTP Test state
+  const [emailTesting, setEmailTesting] = useState(false);
+  const [emailTestResult, setEmailTestResult] = useState<{ success: boolean; message?: string; error?: string } | null>(null);
+
   // ARCA Connection Test state
   const [arcaTestEnv, setArcaTestEnv] = useState<IntegrationEnvironment>('sandbox');
   const [arcaTestResult, setArcaTestResult] = useState<{
@@ -320,6 +324,31 @@ export default function IntegrationSettings() {
       setArcaTestResult({ success: false, error: err instanceof Error ? err.message : 'Error desconocido' });
     } finally {
       setArcaTesting(false);
+    }
+  };
+
+  const testSmtpEmail = async () => {
+    if (!tenantId) return;
+    setEmailTesting(true);
+    setEmailTestResult(null);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user?.email) throw new Error('No se pudo obtener tu email');
+      
+      const { data, error } = await supabase.functions.invoke('send-tenant-email', {
+        body: {
+          tenant_id: tenantId,
+          to: user.email,
+          template: 'test',
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setEmailTestResult({ success: true, message: `Email de prueba enviado a ${user.email}` });
+    } catch (err) {
+      setEmailTestResult({ success: false, error: err instanceof Error ? err.message : 'Error desconocido' });
+    } finally {
+      setEmailTesting(false);
     }
   };
 
@@ -593,6 +622,47 @@ export default function IntegrationSettings() {
                       >
                         Ver documentación de {config.name}
                       </a>
+                    </div>
+                  )}
+
+                  {/* Email SMTP Test Panel */}
+                  {key === 'email_smtp' && (
+                    <div className="p-4 bg-muted/50 rounded-lg space-y-4 border border-border">
+                      <div>
+                        <Label className="font-medium text-foreground">Enviar email de prueba</Label>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Envía un email de prueba a tu dirección para verificar que la configuración SMTP funciona correctamente
+                        </p>
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        onClick={testSmtpEmail}
+                        disabled={emailTesting}
+                        className="w-full sm:w-auto"
+                      >
+                        {emailTesting ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Mail className="h-4 w-4 mr-2" />
+                        )}
+                        {emailTesting ? 'Enviando...' : 'Enviar email de prueba'}
+                      </Button>
+
+                      {emailTestResult && (
+                        <div className={`rounded-lg border p-4 ${emailTestResult.success ? 'bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800' : 'bg-destructive/5 border-destructive/20'}`}>
+                          <div className="flex items-center gap-2">
+                            {emailTestResult.success ? (
+                              <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
+                            ) : (
+                              <XCircle className="h-4 w-4 text-destructive shrink-0" />
+                            )}
+                            <span className={`font-medium text-sm ${emailTestResult.success ? 'text-green-700 dark:text-green-300' : 'text-destructive'}`}>
+                              {emailTestResult.success ? emailTestResult.message : emailTestResult.error}
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
