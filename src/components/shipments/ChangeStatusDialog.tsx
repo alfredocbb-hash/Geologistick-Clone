@@ -235,7 +235,7 @@ export function ChangeStatusDialog({
           try {
             const { data: envio } = await supabase
               .from('envios')
-              .select('email_destinatario, tracking_number, nombre_destinatario, direccion_entrega, tenant_id')
+              .select('email_destinatario, tracking_number, nombre_destinatario, direccion_entrega, tenant_id, pago_contra_entrega, precio_total')
               .eq('id', envioId)
               .single();
             if (envio?.email_destinatario && envio?.tenant_id) {
@@ -249,6 +249,9 @@ export function ChangeStatusDialog({
                   estado_nuevo: newStatus,
                   nombre_destinatario: envio.nombre_destinatario || '',
                   direccion_entrega: envio.direccion_entrega || '',
+                  pago_contra_entrega: envio.pago_contra_entrega || false,
+                  precio_total: envio.precio_total,
+                  tracking_url: `${window.location.origin}/tracking?q=${envio.tracking_number}`,
                 },
               });
             }
