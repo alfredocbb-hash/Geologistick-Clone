@@ -1,37 +1,28 @@
 
 
-# Mejoras: Select sucursal con búsqueda + Tracking corto + Botón copiar
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
-## Cambios
+## Problema
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
-### 1. Migración SQL — `generate_tracking_number()` más corto
-Actualizar ambas versiones de la función (con y sin parámetro `p_sucursal_id`):
-- **Sin parámetro**: formato `ENV-XXXXXX` (10 chars) con 6 caracteres alfanuméricos aleatorios (sin caracteres ambiguos O/0/I/1/L)
-- **Con parámetro**: mismo formato `ENV-XXXXXX` (ya no incluye código de sucursal ni fecha para mantenerlo corto)
-- Se mantiene el loop de unicidad existente
+## Solución
 
-### 2. Edge Function `public-tracking` — Ajustar umbral de código corto
-- Línea 117: cambiar threshold de `< 15` a `< 8` para que el nuevo formato `ENV-XXXXXX` (10 chars) pase la validación pública sin problema
-- Los nuevos trackings de 10 chars serán aceptados como búsqueda pública
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-### 3. `src/pages/NewShipment.tsx` — Combobox searchable para sucursal destino
-- Agregar imports de `Popover`, `PopoverTrigger`, `PopoverContent`, `Command`, `CommandInput`, `CommandList`, `CommandEmpty`, `CommandItem`
-- Reemplazar el `<Select>` de sucursal destino (líneas 2217-2232) por un combobox con búsqueda
-- Mostrar **nombre** y **dirección/ciudad** (sin código)
-- Filtrar por nombre, ciudad o dirección
-- Estado local `sucursalSearch` y `sucursalOpen`
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-### 4. `src/pages/Tracking.tsx` — Botón copiar + limpiar estilo
-- Línea 222: quitar `font-mono`, agregar botón "Copiar" con icono `Copy` de lucide que copie el tracking al clipboard con feedback toast
-- Importar `Copy` de lucide y `useToast`
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-### 5. `src/pages/TrackingEmbed.tsx` — Botón copiar
-- Línea 202: agregar botón copiar junto al tracking number, mismo patrón que Tracking.tsx
-
-## Archivos a modificar
-1. **Nueva migración SQL** — actualizar `generate_tracking_number()` (ambas versiones)
-2. **`supabase/functions/public-tracking/index.ts`** — threshold `< 8`
-3. **`src/pages/NewShipment.tsx`** — combobox searchable
-4. **`src/pages/Tracking.tsx`** — botón copiar + quitar font-mono
-5. **`src/pages/TrackingEmbed.tsx`** — botón copiar
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 
