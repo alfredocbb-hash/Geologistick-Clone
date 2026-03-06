@@ -425,6 +425,35 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
       queryClient.invalidateQueries({ queryKey: ['my-active-route-envios-hoja'] });
       queryClient.invalidateQueries({ queryKey: ['my-active-route-hoja'] });
       queryClient.invalidateQueries({ queryKey: ['my-active-route-planificada'] });
+
+      // Fire-and-forget: send email notification for delivery
+      if (profile?.tenant_id) {
+        (async () => {
+          try {
+            const { data: envio } = await supabase
+              .from('envios')
+              .select('email_destinatario, tracking_number, nombre_destinatario, direccion_entrega, tenant_id')
+              .eq('id', shipment.id)
+              .single();
+            if (envio?.email_destinatario && envio?.tenant_id) {
+              const { sendShipmentEmail } = await import('@/lib/emailNotifications');
+              sendShipmentEmail({
+                tenant_id: envio.tenant_id,
+                to: envio.email_destinatario,
+                template: 'status_change',
+                data: {
+                  tracking_number: envio.tracking_number,
+                  estado_nuevo: 'entregado',
+                  nombre_destinatario: envio.nombre_destinatario || '',
+                  direccion_entrega: envio.direccion_entrega || '',
+                },
+              });
+            }
+          } catch (e) {
+            console.error('[DeliveryConfirmation] Email notification error:', e);
+          }
+        })();
+      }
       
       toast.success('¡Entrega confirmada exitosamente!');
       onSuccess();

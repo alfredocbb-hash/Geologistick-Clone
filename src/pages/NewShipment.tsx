@@ -1136,6 +1136,7 @@ export default function NewShipment() {
           dni_remitente: formData.remitente_dni || null,
           dni_destinatario: formData.destinatario_dni || null,
           whatsapp_destinatario: formData.destinatario_whatsapp || null,
+          email_destinatario: formData.destinatario_email || null,
         })
         .select()
         .single();
@@ -1312,6 +1313,22 @@ export default function NewShipment() {
         queryClient.invalidateQueries({ queryKey: ['all_clients'] });
         queryClient.invalidateQueries({ queryKey: ['clientes_cta_cte'] });
       } catch (e) { console.error('[NewShipment] Error invalidating queries:', e); }
+
+      // Fire-and-forget: send email notification if email is available
+      if (data.email_destinatario && profile?.tenant_id) {
+        import('@/lib/emailNotifications').then(({ sendShipmentEmail }) => {
+          sendShipmentEmail({
+            tenant_id: profile.tenant_id!,
+            to: data.email_destinatario!,
+            template: 'shipment_created',
+            data: {
+              tracking_number: data.tracking_number,
+              nombre_destinatario: data.nombre_destinatario || '',
+              direccion_entrega: data.direccion_entrega || '',
+            },
+          });
+        }).catch(() => {});
+      }
       
       // Si es pago contado, mostrar modal para seleccionar método de pago
       if (formData.tipo_pago === 'contado') {

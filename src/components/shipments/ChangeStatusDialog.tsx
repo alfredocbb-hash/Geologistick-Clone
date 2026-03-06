@@ -227,6 +227,37 @@ export function ChangeStatusDialog({
       queryClient.invalidateQueries({ queryKey: ['envios-stats'] });
       queryClient.invalidateQueries({ queryKey: ['envio-details', envioId] });
       queryClient.invalidateQueries({ queryKey: ['envio-historial', envioId] });
+
+      // Fire-and-forget: send email notification for relevant status changes
+      const relevantStates = ['en_sucursal', 'en_reparto', 'entregado', 'devuelto'];
+      if (newStatus && relevantStates.includes(newStatus) && envioId) {
+        (async () => {
+          try {
+            const { data: envio } = await supabase
+              .from('envios')
+              .select('email_destinatario, tracking_number, nombre_destinatario, direccion_entrega, tenant_id')
+              .eq('id', envioId)
+              .single();
+            if (envio?.email_destinatario && envio?.tenant_id) {
+              const { sendShipmentEmail } = await import('@/lib/emailNotifications');
+              sendShipmentEmail({
+                tenant_id: envio.tenant_id,
+                to: envio.email_destinatario,
+                template: 'status_change',
+                data: {
+                  tracking_number: envio.tracking_number,
+                  estado_nuevo: newStatus,
+                  nombre_destinatario: envio.nombre_destinatario || '',
+                  direccion_entrega: envio.direccion_entrega || '',
+                },
+              });
+            }
+          } catch (e) {
+            console.error('[ChangeStatus] Email notification error:', e);
+          }
+        })();
+      }
+
       handleClose();
     },
     onError: (error) => {
