@@ -1325,6 +1325,9 @@ export default function NewShipment() {
               tracking_number: data.tracking_number,
               nombre_destinatario: data.nombre_destinatario || '',
               direccion_entrega: data.direccion_entrega || '',
+              pago_contra_entrega: formData.tipo_pago === 'destinatario' || formData.tipo_pago === 'contado',
+              precio_total: data.precio_total,
+              tracking_url: `${window.location.origin}/tracking?q=${data.tracking_number}`,
             },
           });
         }).catch(() => {});

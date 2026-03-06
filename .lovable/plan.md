@@ -1,43 +1,28 @@
 
 
-# Correcciones en emails de notificación
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
-## Problemas detectados
-1. **`=20` aparece en el email** — Es un artefacto de quoted-printable encoding. El template HTML usa template literals con indentación, y los espacios/saltos de línea se codifican como `=20`. Solución: eliminar indentación innecesaria en los template strings del HTML.
-2. **Falta nombre del destinatario** — El saludo dice "Hola," sin nombre. Aunque el código lo incluye, se necesita verificar que se pase correctamente y mejorar el formato a "Hola **Nombre**,".
-3. **Falta link de tracking público** — El email no incluye un enlace para que el destinatario siga su envío.
-4. **Falta indicar pago en destino** — Si el envío es `pago_contra_entrega`, debería mostrarse un aviso con el monto a abonar.
+## Problema
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
-## Cambios
+## Solución
 
-### 1. `supabase/functions/send-tenant-email/index.ts`
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-**`templateShipmentCreated`** y **`templateStatusChange`**:
-- Eliminar indentación de los template literals HTML (causa del `=20`)
-- Mejorar saludo: `Hola <strong>${destinatario}</strong>,`
-- Agregar link de tracking público usando `tracking_url` del data
-- Agregar sección condicional de pago en destino si `pago_contra_entrega === true`, mostrando el monto
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-### 2. Pasar datos adicionales desde los triggers
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-**`src/pages/NewShipment.tsx`** (línea ~1324):
-- Agregar `pago_contra_entrega`, `precio_total` y `tracking_url` al objeto `data`
-
-**`src/components/shipments/ChangeStatusDialog.tsx`** (línea ~238):
-- Agregar `pago_contra_entrega`, `precio_total` y `tracking_url` al select y al objeto `data`
-
-**`src/components/delivery/DeliveryConfirmation.tsx`** (línea ~435):
-- Agregar `pago_contra_entrega`, `precio_total` y `tracking_url` al select y al objeto `data`
-
-### 3. URL de tracking
-
-Se construirá en el frontend como `${window.location.origin}/tracking?q=${tracking_number}` (misma lógica que `getTrackingUrl` en ShipmentDetailsDialog) y se pasará como `tracking_url` en el data del email.
-
-En la Edge Function, se renderizará como un botón "Seguí tu envío" con link al URL público.
-
-## Archivos a modificar
-1. `supabase/functions/send-tenant-email/index.ts` — fix `=20`, agregar tracking link, pago en destino
-2. `src/pages/NewShipment.tsx` — pasar datos extra al email
-3. `src/components/shipments/ChangeStatusDialog.tsx` — pasar datos extra
-4. `src/components/delivery/DeliveryConfirmation.tsx` — pasar datos extra
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 
