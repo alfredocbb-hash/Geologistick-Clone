@@ -327,6 +327,31 @@ export default function IntegrationSettings() {
     }
   };
 
+  const testSmtpEmail = async () => {
+    if (!tenantId) return;
+    setEmailTesting(true);
+    setEmailTestResult(null);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user?.email) throw new Error('No se pudo obtener tu email');
+      
+      const { data, error } = await supabase.functions.invoke('send-tenant-email', {
+        body: {
+          tenant_id: tenantId,
+          to: user.email,
+          template: 'test',
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setEmailTestResult({ success: true, message: `Email de prueba enviado a ${user.email}` });
+    } catch (err) {
+      setEmailTestResult({ success: false, error: err instanceof Error ? err.message : 'Error desconocido' });
+    } finally {
+      setEmailTesting(false);
+    }
+  };
+
   if (tenantLoading) {
     return (
       <div className="flex items-center justify-center py-16">
