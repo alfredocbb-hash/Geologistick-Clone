@@ -1,0 +1,1 @@
+ALTER TABLE public.envios ADD COLUMN email_destinatario TEXT;
