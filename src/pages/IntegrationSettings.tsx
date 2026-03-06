@@ -163,6 +163,10 @@ export default function IntegrationSettings() {
   const [generatingDiagrama, setGeneratingDiagrama] = useState(false);
   const [generatingFAQs, setGeneratingFAQs] = useState(false);
 
+  // Email SMTP Test state
+  const [emailTesting, setEmailTesting] = useState(false);
+  const [emailTestResult, setEmailTestResult] = useState<{ success: boolean; message?: string; error?: string } | null>(null);
+
   // ARCA Connection Test state
   const [arcaTestEnv, setArcaTestEnv] = useState<IntegrationEnvironment>('sandbox');
   const [arcaTestResult, setArcaTestResult] = useState<{
