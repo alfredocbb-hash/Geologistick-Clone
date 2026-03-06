@@ -83,19 +83,17 @@ export function drawCoverPage(
 ) {
   const pageHeight = doc.internal.pageSize.getHeight();
   
-  // Fondo de encabezado con color primario
-  doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+  // White header with colored bottom border
+  doc.setFillColor(255, 255, 255);
   doc.rect(0, 0, pageWidth, 90, 'F');
+  doc.setDrawColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+  doc.setLineWidth(2);
+  doc.line(0, 90, pageWidth, 90);
 
-  // Logo centrado grande en el header con medallón blanco
+  // Logo centrado grande en el header
   if (logoBase64) {
     try {
       const logoSize = 45;
-      const medallionSize = logoSize + 6;
-      const cx = pageWidth / 2;
-      const cy = 12 + logoSize / 2;
-      doc.setFillColor(255, 255, 255);
-      doc.circle(cx, cy, medallionSize / 2, 'F');
       doc.addImage(
         logoBase64,
         'PNG',
@@ -109,8 +107,8 @@ export function drawCoverPage(
     }
   }
 
-  // Nombre de la empresa debajo del logo
-  doc.setTextColor(255, 255, 255);
+  // Nombre de la empresa debajo del logo - dark text
+  doc.setTextColor(24, 24, 27);
   doc.setFontSize(22);
   doc.setFont('helvetica', 'bold');
   doc.text(mainTitle, pageWidth / 2, 70, { align: 'center' });
@@ -118,6 +116,7 @@ export function drawCoverPage(
   // Subtítulo
   doc.setFontSize(12);
   doc.setFont('helvetica', 'normal');
+  doc.setTextColor(100, 100, 100);
   doc.text(subtitle, pageWidth / 2, 82, { align: 'center' });
 
   // Título del documento (zona blanca)
@@ -166,11 +165,14 @@ export function drawSectionHeader(
   pageWidth: number,
   primaryColor: [number, number, number] = [59, 130, 246]
 ) {
-  // Barra de color con título
-  doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+  // White bar with colored bottom border
+  doc.setFillColor(255, 255, 255);
   doc.rect(0, 0, pageWidth, 28, 'F');
+  doc.setDrawColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+  doc.setLineWidth(1.5);
+  doc.line(0, 28, pageWidth, 28);
 
-  doc.setTextColor(255, 255, 255);
+  doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
   doc.text(title, 20, 18);

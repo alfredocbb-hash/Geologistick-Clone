@@ -1,32 +1,28 @@
 
 
-# Fondo blanco para headers en emails y PDFs
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
 ## Problema
-El header de los emails y PDFs usa el color primario del tenant como fondo. Cuando el logo del tenant es del mismo color (ej: Beraexpress naranja), el logo no se aprecia.
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
 ## Solución
-Cambiar todos los headers a **fondo blanco con borde/línea del color primario**, texto oscuro, y el logo visible con sus colores originales.
 
-## Archivos a modificar
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-### 1. `supabase/functions/send-tenant-email/index.ts` (líneas 99-101)
-- Header: `background: #ffffff` + `border-bottom: 3px solid ${branding.color}`
-- Título: `color: #18181b` en vez de `#ffffff`
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-### 2. `src/lib/generateSettlementPDF.ts` (líneas 120-165)
-- `drawHeader()`: fondo blanco en vez de `primaryRgb`, texto oscuro, línea inferior con color primario
-- Logo y nombre visibles sobre fondo claro
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-### 3. `src/lib/pdfHelpers.ts`
-- `drawCoverPage()` (líneas 87-121): header rect blanco + borde inferior de color primario, texto del nombre en color oscuro, medallón con borde de color en vez de fondo de color
-- `drawSectionHeader()` (líneas 170-176): barra blanca con borde inferior de color, texto en color primario
-
-### 4. `src/lib/generateShipmentReceiptPDF.ts`
-- El receipt ya usa texto coloreado sobre fondo blanco — sin cambios necesarios (ya está bien)
-
-### 5. `src/lib/exportReportPDF.ts`
-- Si usa `drawCoverPage`/`drawSectionHeader` de pdfHelpers, hereda los cambios automáticamente
-
-**Resumen: 3 archivos modificados (email template + settlement PDF + pdfHelpers). Los demás PDFs que usan pdfHelpers heredan el cambio.**
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 
