@@ -210,7 +210,14 @@ serve(async (req: Request) => {
     const destinatario = Array.isArray(envio.destinatario) ? envio.destinatario[0] : envio.destinatario;
 
     // Determine current branch based on status
-    const sucursalActual = sucursalEntrega?.nombre || sucursalDestino?.nombre || null;
+    let sucursalActual: string | null = null;
+    if (envio.estado === 'en_sucursal' || envio.estado === 'pendiente' || envio.estado === 'recogido') {
+      sucursalActual = sucursalEntrega?.nombre || sucursalOrigen?.nombre || null;
+    } else if (envio.estado === 'entregado') {
+      sucursalActual = sucursalEntrega?.nombre || sucursalDestino?.nombre || null;
+    } else {
+      sucursalActual = sucursalDestino?.nombre || null;
+    }
 
     // Build response - mask PII for public (unauthenticated) access
     const response = {
