@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import { useFormDraft } from '@/hooks/useFormDraft';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import { useTenant } from '@/hooks/useTenant';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -205,11 +206,14 @@ export default function NewShipment() {
   const autoSeleccionPorZona = !!(tenant?.configuracion as any)?.auto_seleccion_tarifa_por_zona;
   const [tarifaFueAutoDetectada, setTarifaFueAutoDetectada] = useState(false);
 
-  // Tipo de servicio detallado (4 opciones)
-  const [tipoServicioDetalle, setTipoServicioDetalle] = useState<TipoServicioDetalle>('sucursal_sucursal');
+  // Tipo de servicio detallado (4 opciones) — persisted to survive tab switches
+  const [tipoServicioDetalle, setTipoServicioDetalle] = usePersistedState<TipoServicioDetalle>('ns-tipo-servicio', 'sucursal_sucursal');
   
-  // Días preferidos de entrega
-  const [diasPreferidos, setDiasPreferidos] = useState<string[]>([]);
+  // Días preferidos de entrega — persisted
+  const [diasPreferidos, setDiasPreferidos] = usePersistedState<string[]>('ns-dias-preferidos', []);
+
+  // Guard contra navegación duplicada y doble-submit
+  const navigationAttemptedRef = useRef(false);
 
   // Form data with draft persistence
   const initialFormData = {
@@ -1313,6 +1317,12 @@ export default function NewShipment() {
       // Clear draft — protected to never block navigation
       try { clearDraft(); } catch (e) { console.error('[NewShipment] Error clearing draft:', e); }
       
+      // Clear persisted auxiliary states
+      try {
+        sessionStorage.removeItem('ns-tipo-servicio');
+        sessionStorage.removeItem('ns-dias-preferidos');
+      } catch (e) { console.error('[NewShipment] Error clearing persisted state:', e); }
+
       try {
         queryClient.invalidateQueries({ queryKey: ['envios'] });
         queryClient.invalidateQueries({ queryKey: ['all_clients'] });
@@ -1350,7 +1360,11 @@ export default function NewShipment() {
           setShowPaymentModal(true);
         } catch (e) {
           console.error('[NewShipment] Error showing payment modal:', e);
-          navigate(`/print-label?id=${data.id}`);
+          setSucursalDestinoOpen(false);
+          if (!navigationAttemptedRef.current) {
+            navigationAttemptedRef.current = true;
+            navigate(`/print-label?id=${data.id}`);
+          }
         }
       } else {
         // Para cuenta corriente o destinatario, redirigir directamente
@@ -1367,7 +1381,12 @@ export default function NewShipment() {
             description: `Tracking: ${data.tracking_number}. Redirigiendo a etiqueta...`,
           });
         }
-        navigate(`/print-label?id=${data.id}`);
+        // Close any open popovers before navigating
+        setSucursalDestinoOpen(false);
+        if (!navigationAttemptedRef.current) {
+          navigationAttemptedRef.current = true;
+          navigate(`/print-label?id=${data.id}`);
+        }
       }
     },
     onSettled: (data, error) => {
@@ -1394,6 +1413,9 @@ export default function NewShipment() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Guard contra doble-submit
+    if (createShipmentMutation.isPending || navigationAttemptedRef.current) return;
+    navigationAttemptedRef.current = false;
     // Validar que haya caja abierta
     if (!cajaAbierta) {
       toast({
@@ -1563,7 +1585,11 @@ export default function NewShipment() {
       });
       
       setShowPaymentModal(false);
-      navigate(`/print-label?id=${createdEnvio.id}`);
+      setSucursalDestinoOpen(false);
+      if (!navigationAttemptedRef.current) {
+        navigationAttemptedRef.current = true;
+        navigate(`/print-label?id=${createdEnvio.id}`);
+      }
     } catch (error: any) {
       toast({
         title: 'Error al registrar pago',
