@@ -1317,6 +1317,12 @@ export default function NewShipment() {
       // Clear draft — protected to never block navigation
       try { clearDraft(); } catch (e) { console.error('[NewShipment] Error clearing draft:', e); }
       
+      // Clear persisted auxiliary states
+      try {
+        sessionStorage.removeItem('ns-tipo-servicio');
+        sessionStorage.removeItem('ns-dias-preferidos');
+      } catch (e) { console.error('[NewShipment] Error clearing persisted state:', e); }
+
       try {
         queryClient.invalidateQueries({ queryKey: ['envios'] });
         queryClient.invalidateQueries({ queryKey: ['all_clients'] });
@@ -1354,7 +1360,11 @@ export default function NewShipment() {
           setShowPaymentModal(true);
         } catch (e) {
           console.error('[NewShipment] Error showing payment modal:', e);
-          navigate(`/print-label?id=${data.id}`);
+          setSucursalDestinoOpen(false);
+          if (!navigationAttemptedRef.current) {
+            navigationAttemptedRef.current = true;
+            navigate(`/print-label?id=${data.id}`);
+          }
         }
       } else {
         // Para cuenta corriente o destinatario, redirigir directamente
@@ -1371,7 +1381,12 @@ export default function NewShipment() {
             description: `Tracking: ${data.tracking_number}. Redirigiendo a etiqueta...`,
           });
         }
-        navigate(`/print-label?id=${data.id}`);
+        // Close any open popovers before navigating
+        setSucursalDestinoOpen(false);
+        if (!navigationAttemptedRef.current) {
+          navigationAttemptedRef.current = true;
+          navigate(`/print-label?id=${data.id}`);
+        }
       }
     },
     onSettled: (data, error) => {
@@ -1398,6 +1413,9 @@ export default function NewShipment() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Guard contra doble-submit
+    if (createShipmentMutation.isPending || navigationAttemptedRef.current) return;
+    navigationAttemptedRef.current = false;
     // Validar que haya caja abierta
     if (!cajaAbierta) {
       toast({
@@ -1567,7 +1585,11 @@ export default function NewShipment() {
       });
       
       setShowPaymentModal(false);
-      navigate(`/print-label?id=${createdEnvio.id}`);
+      setSucursalDestinoOpen(false);
+      if (!navigationAttemptedRef.current) {
+        navigationAttemptedRef.current = true;
+        navigate(`/print-label?id=${createdEnvio.id}`);
+      }
     } catch (error: any) {
       toast({
         title: 'Error al registrar pago',
