@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import { useFormDraft } from '@/hooks/useFormDraft';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import { useTenant } from '@/hooks/useTenant';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -205,11 +206,14 @@ export default function NewShipment() {
   const autoSeleccionPorZona = !!(tenant?.configuracion as any)?.auto_seleccion_tarifa_por_zona;
   const [tarifaFueAutoDetectada, setTarifaFueAutoDetectada] = useState(false);
 
-  // Tipo de servicio detallado (4 opciones)
-  const [tipoServicioDetalle, setTipoServicioDetalle] = useState<TipoServicioDetalle>('sucursal_sucursal');
+  // Tipo de servicio detallado (4 opciones) — persisted to survive tab switches
+  const [tipoServicioDetalle, setTipoServicioDetalle] = usePersistedState<TipoServicioDetalle>('ns-tipo-servicio', 'sucursal_sucursal');
   
-  // Días preferidos de entrega
-  const [diasPreferidos, setDiasPreferidos] = useState<string[]>([]);
+  // Días preferidos de entrega — persisted
+  const [diasPreferidos, setDiasPreferidos] = usePersistedState<string[]>('ns-dias-preferidos', []);
+
+  // Guard contra navegación duplicada y doble-submit
+  const navigationAttemptedRef = useRef(false);
 
   // Form data with draft persistence
   const initialFormData = {
