@@ -1,28 +1,40 @@
 
 
-# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
+# Fix: "En Sucursal" muestra sucursal incorrecta en tracking
 
 ## Problema
-Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
+
+En `supabase/functions/public-tracking/index.ts` línea 213:
+```typescript
+const sucursalActual = sucursalEntrega?.nombre || sucursalDestino?.nombre || null;
+```
+
+Esto siempre devuelve la sucursal de destino/entrega. Cuando un envío "sucursal a sucursal" está en estado `en_sucursal` y todavía está en la sucursal de origen (no ha sido despachado), el tracking muestra el nombre de la sucursal destino en vez de la de origen.
 
 ## Solución
 
-### 1. Nueva función SQL: `reopen_ruta_planificada`
-- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
-- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
-- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
-- Inserta registro en `envio_historial` para cada envío reactivado
-- Retorna JSON con resultado y cantidad de envíos reactivados
+Cambiar la lógica en `public-tracking/index.ts` línea 213 para determinar `sucursalActual` según el estado del envío:
 
-### 2. Nuevo componente: `ReopenRouteDialog.tsx`
-- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
-- Muestra cuántos envíos serán reactivados
-- Botón "Reabrir Ruta" que invoca el RPC
+- Si `estado` es `pendiente`, `recogido`, o `en_sucursal` **y** no hay `sucursal_entrega` registrada → mostrar `sucursal_origen`
+- Si `estado` es `en_transito`, `en_reparto` → mostrar `sucursal_destino`  
+- Si `estado` es `entregado` y `entregado_en_sucursal` → mostrar `sucursal_entrega` o `sucursal_destino`
 
-### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
-- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
-- Al hacer click, abre `ReopenRouteDialog`
-- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
+Lógica concreta:
+```typescript
+let sucursalActual: string | null = null;
+if (envio.estado === 'en_sucursal' || envio.estado === 'pendiente' || envio.estado === 'recogido') {
+  // Package is still at origin unless explicitly delivered to another branch
+  sucursalActual = sucursalEntrega?.nombre || sucursalOrigen?.nombre || null;
+} else if (envio.estado === 'entregado') {
+  sucursalActual = sucursalEntrega?.nombre || sucursalDestino?.nombre || null;
+} else {
+  // en_transito, en_reparto, etc.
+  sucursalActual = sucursalDestino?.nombre || null;
+}
+```
 
-**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
+Esto corrige que cuando Ranelagh ingresa el envío y está "en sucursal", el tracking diga "En Sucursal (Ranelagh)" en vez de mostrar la sucursal destino.
+
+## Archivo a modificar
+- `supabase/functions/public-tracking/index.ts` (línea 213)
 
