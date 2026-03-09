@@ -1046,6 +1046,7 @@ export default function NewShipment() {
           .select('id')
           .ilike('nombre', data.nombre.trim())
           .ilike('direccion', data.direccion.trim())
+          .limit(1)
           .maybeSingle();
         if (fallbackClient) return fallbackClient.id;
       }
