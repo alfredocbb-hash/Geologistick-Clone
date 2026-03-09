@@ -580,6 +580,17 @@ export default function NewShipment() {
     
     const { data: found } = await query.limit(1).maybeSingle();
     if (found) {
+      // Si los datos ya coinciden con el formulario, es el mismo cliente cargado — no alertar
+      const currentName = target === 'remitente' ? formData.remitente_nombre?.trim() : formData.destinatario_nombre?.trim();
+      const currentDir = target === 'remitente' ? formData.remitente_direccion?.trim() : formData.destinatario_direccion?.trim();
+      
+      if (
+        found.nombre?.toLowerCase() === currentName?.toLowerCase() &&
+        found.direccion?.toLowerCase() === currentDir?.toLowerCase()
+      ) {
+        return;
+      }
+      
       setPendingClientMatch({ client: found as Client, target });
     }
   };
