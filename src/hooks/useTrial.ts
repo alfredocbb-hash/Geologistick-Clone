@@ -83,8 +83,9 @@ export function useTrial() {
       };
     },
     enabled: !!user,
-    refetchInterval: 60000, // Refetch every minute
+    refetchInterval: 60000,
     staleTime: 30000,
+    refetchOnWindowFocus: false,
   });
 
   return {

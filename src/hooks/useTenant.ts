@@ -97,6 +97,7 @@ export function useTenant() {
       return data as TenantBranding | null;
     },
     enabled: !!user && !!tenantId && shouldLoadBranding,
+    refetchOnWindowFocus: false,
   });
 
   return {

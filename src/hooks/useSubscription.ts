@@ -81,6 +81,7 @@ export function useSubscription() {
       }));
     },
     enabled: !!user,
+    refetchOnWindowFocus: false,
   });
 
   const createCheckoutMP = async (planId: string) => {
