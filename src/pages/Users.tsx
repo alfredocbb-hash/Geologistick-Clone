@@ -198,6 +198,7 @@ export default function Users() {
       return data as Tenant[];
     },
     enabled: isSuperAdmin(),
+    refetchOnWindowFocus: false,
   });
 
   // Fetch sucursales - Super Admin needs all branches across tenants
