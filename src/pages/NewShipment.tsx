@@ -556,15 +556,29 @@ export default function NewShipment() {
     enabled: !!user && !!profile?.tenant_id,
   });
 
-  // Check existing client on phone blur
-  const checkExistingClient = async (phone: string, target: 'remitente' | 'destinatario') => {
-    if (!phone || phone.trim().length < 6) return;
-    const { data: found } = await supabase
+  // Check existing client on DNI blur (nombre+apellido+DNI)
+  const checkExistingClient = async (dniValue: string, target: 'remitente' | 'destinatario') => {
+    // Skip if client was loaded manually from ContactAutocomplete
+    if (clientLoadedManually[target]) return;
+    
+    const dni = dniValue?.trim();
+    if (!dni || dni.length < 6) return;
+    
+    const nombre = target === 'remitente' ? formData.remitente_nombre?.trim() : formData.destinatario_nombre?.trim();
+    if (!nombre) return;
+    
+    let query = supabase
       .from('clientes')
       .select('*')
-      .eq('telefono', phone.trim())
-      .limit(1)
-      .maybeSingle();
+      .ilike('nombre', nombre)
+      .ilike('dni_cuit', dni);
+    
+    const apellido = target === 'remitente' ? formData.remitente_apellido?.trim() : formData.destinatario_apellido?.trim();
+    if (apellido) {
+      query = query.ilike('apellido', apellido);
+    }
+    
+    const { data: found } = await query.limit(1).maybeSingle();
     if (found) {
       setPendingClientMatch({ client: found as Client, target });
     }
