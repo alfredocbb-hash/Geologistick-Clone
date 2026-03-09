@@ -48,7 +48,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         <div className="flex-1 flex flex-col min-w-0">
           <TrialBanner />
           <AppHeader />
-          <main className="flex-1 overflow-auto p-3 sm:p-4 md:p-6 lg:p-8 animate-fade-in">
+          <main className="flex-1 overflow-auto p-3 sm:p-4 md:p-6 lg:p-8">
             <div className="max-w-full">
               {children}
             </div>

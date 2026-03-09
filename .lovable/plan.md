@@ -1,33 +1,28 @@
 
 
-# Fix: Parpadeo persistente en Firefox al volver a la pestaña
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
-## Diagnóstico
+## Problema
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
-La consola de Firefox muestra: **"El diseño se forzó antes de que la página se cargara completamente"** — un FOUC (Flash of Unstyled Content). Combinado con dos problemas restantes en el código:
+## Solución
 
-### Causa 1: `useBranchConfig` sin protección
-El hook `useBranchConfig` (usado en `AppSidebar`) **no tiene `refetchOnWindowFocus: false`**. Cuando Firefox refoca, este hook refetcha, `isLoading` pasa a `true` brevemente, y el sidebar muestra el **skeleton de carga** (líneas 356-375 de AppSidebar).
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-### Causa 2: `animate-fade-in` en el contenido principal
-En `DashboardLayout.tsx` línea 51, el `<main>` tiene la clase `animate-fade-in`. Cada re-render del layout (causado por cualquier cambio de estado) **re-dispara la animación de entrada**, generando el efecto de "parpadeo" del contenido.
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-## Cambios
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-### 1. `src/hooks/useBranchConfig.ts`
-Agregar `refetchOnWindowFocus: false` a la query (como ya se hizo en los otros hooks de layout).
-
-### 2. `src/components/layout/DashboardLayout.tsx`
-Eliminar `animate-fade-in` del `<main>`. Esta animación se re-dispara en cada re-render y causa el flash visual al volver a la pestaña.
-
-### 3. `src/components/layout/AppSidebar.tsx`
-Cambiar el guard de loading para que **no muestre skeleton si ya hay datos cargados** (usar `isLoading && !permissions.length` en vez de solo `isLoading`). Esto evita el flash del sidebar cuando los datos ya están en caché y solo se están refrescando en background.
-
-## Archivos a modificar
-
-| Archivo | Cambio |
-|---------|--------|
-| `src/hooks/useBranchConfig.ts` | Agregar `refetchOnWindowFocus: false` |
-| `src/components/layout/DashboardLayout.tsx` | Eliminar `animate-fade-in` del main |
-| `src/components/layout/AppSidebar.tsx` | No mostrar skeleton si ya hay datos en caché |
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 

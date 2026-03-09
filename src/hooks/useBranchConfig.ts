@@ -38,6 +38,7 @@ export function useBranchConfig(): BranchConfig {
     },
     enabled: !!profile?.sucursal_id,
     staleTime: 5 * 60 * 1000, // 5 minutes cache
+    refetchOnWindowFocus: false,
   });
 
   // Super admin or admin without branch can see everything
