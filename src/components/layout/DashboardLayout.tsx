@@ -13,6 +13,11 @@ interface DashboardLayoutProps {
   children: ReactNode;
 }
 
+function getSidebarCookieState(): boolean {
+  const match = document.cookie.match(/sidebar:state=(true|false)/);
+  return match ? match[1] === 'true' : true;
+}
+
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const { user, loading } = useAuth();
   const { isBlocked, reason } = useSubscriptionBlock();
