@@ -60,8 +60,9 @@ export function useSubscription() {
       return data as SubscriptionData;
     },
     enabled: !!user && !!session,
-    refetchInterval: 60000, // Refetch every minute
+    refetchInterval: 60000,
     staleTime: 30000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: plans, isLoading: isLoadingPlans } = useQuery({
