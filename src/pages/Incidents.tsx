@@ -70,7 +70,7 @@ export default function Incidents() {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'pendiente' | 'resuelto'>('pendiente');
+  const [activeTab, setActiveTab] = usePersistedState<'pendiente' | 'resuelto'>('ui-tab-incidents', 'pendiente');
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
 

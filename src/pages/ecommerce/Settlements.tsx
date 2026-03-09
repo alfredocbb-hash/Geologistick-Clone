@@ -99,7 +99,7 @@ export default function Settlements() {
   const queryClient = useQueryClient();
 
   // Tab state
-  const [activeTab, setActiveTab] = useState('sellers');
+  const [activeTab, setActiveTab] = usePersistedState('ui-tab-ecommerce-settlements', 'sellers');
 
   // Existing states
   const [settlementDialogOpen, setSettlementDialogOpen] = useState(false);

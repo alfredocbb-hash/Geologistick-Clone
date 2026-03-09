@@ -128,7 +128,7 @@ interface TarifaConceptoPrecio {
 export default function Rates() {
   const { isAdmin, isSuperAdmin, profile, user } = useAuth();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState('tarifas');
+  const [activeTab, setActiveTab] = usePersistedState('ui-tab-rates', 'tarifas');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isConceptDialogOpen, setIsConceptDialogOpen] = useState(false);
   const [isPricingDialogOpen, setIsPricingDialogOpen] = useState(false);

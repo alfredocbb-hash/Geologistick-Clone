@@ -84,7 +84,7 @@ interface OperationsSummary {
 }
 
 export default function LiveMap() {
-  const [activeTab, setActiveTab] = useState("sucursales");
+  const [activeTab, setActiveTab] = usePersistedState('ui-tab-live-map', "sucursales");
   const [driverLocations, setDriverLocations] = useState<DriverLocation[]>([]);
   
   // State for main map route visualization (street-level traceability)

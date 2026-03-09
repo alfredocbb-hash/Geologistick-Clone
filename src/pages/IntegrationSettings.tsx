@@ -155,7 +155,7 @@ const INTEGRATIONS_CONFIG: Record<IntegrationType, {
 };
 
 export default function IntegrationSettings() {
-  const [activeTab, setActiveTab] = useState<IntegrationType>('mercado_pago');
+  const [activeTab, setActiveTab] = usePersistedState<IntegrationType>('ui-tab-integrations', 'mercado_pago');
   const [environment, setEnvironment] = useState<IntegrationEnvironment>('sandbox');
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const [formData, setFormData] = useState<Record<string, string>>({});

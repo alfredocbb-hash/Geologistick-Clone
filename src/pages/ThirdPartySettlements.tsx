@@ -93,7 +93,7 @@ const METODOS_PAGO: { value: PaymentMethod; label: string }[] = [
 export default function ThirdPartySettlements() {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState("liquidaciones");
+  const [activeTab, setActiveTab] = usePersistedState('ui-tab-third-party-settlements', "liquidaciones");
 
   // Shared state
   const [selectedEmpresaId, setSelectedEmpresaId] = useState<string | null>(null);
