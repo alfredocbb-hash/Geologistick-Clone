@@ -373,6 +373,7 @@ export default function NewShipment() {
       return data as TarifaConcepto[];
     },
     enabled: !!user && !!profile?.tenant_id,
+    refetchOnWindowFocus: false,
   });
 
   // Query para obtener conceptos habilitados para la sucursal del usuario
