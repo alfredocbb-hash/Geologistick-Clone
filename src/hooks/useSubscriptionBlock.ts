@@ -69,6 +69,7 @@ export function useSubscriptionBlock(): SubscriptionBlockResult {
     enabled: !!user && !!profile?.tenant_id,
     staleTime: 30000,
     refetchInterval: 60000,
+    refetchOnWindowFocus: false,
   });
 
   // Super admins are never blocked

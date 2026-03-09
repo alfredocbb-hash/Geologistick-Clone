@@ -1,43 +1,28 @@
 
 
-# Fix: Sidebar se abre solo al volver a la pestaña
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
-## Causa raíz
-
-El `SidebarProvider` en `sidebar.tsx` **escribe** el estado del sidebar en una cookie (`sidebar:state`) cuando cambia, pero **nunca lee** esa cookie al inicializarse. Siempre arranca con `defaultOpen = true`.
-
-Cuando el usuario vuelve a la pestaña, los refetch globales causan re-renders. Si algún estado transitorio provoca un remount del `SidebarProvider`, el sidebar se resetea a abierto.
+## Problema
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
 ## Solución
 
-### 1. `src/components/layout/DashboardLayout.tsx` — Leer la cookie y pasarla como `defaultOpen`
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-Antes de renderizar `SidebarProvider`, leer la cookie `sidebar:state` y usar su valor como prop:
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-```typescript
-function getSidebarCookieState(): boolean {
-  const match = document.cookie.match(/sidebar:state=(true|false)/);
-  return match ? match[1] === 'true' : true; // default: abierto
-}
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-// En el componente:
-<SidebarProvider defaultOpen={getSidebarCookieState()}>
-```
-
-Esto es un cambio mínimo de ~5 líneas en un solo archivo. No se modifica `sidebar.tsx` (archivo auto-generado de shadcn).
-
-### 2. `src/hooks/useSubscriptionBlock.ts` — Agregar `refetchOnWindowFocus: false`
-
-Este hook puede causar re-renders innecesarios al volver a la pestaña. Agregar la protección:
-
-```typescript
-refetchOnWindowFocus: false,
-```
-
-## Archivos a modificar
-
-| Archivo | Cambio |
-|---------|--------|
-| `src/components/layout/DashboardLayout.tsx` | Leer cookie y pasar `defaultOpen` |
-| `src/hooks/useSubscriptionBlock.ts` | `refetchOnWindowFocus: false` |
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 

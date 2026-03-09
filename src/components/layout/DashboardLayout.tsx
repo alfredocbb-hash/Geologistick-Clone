@@ -13,6 +13,11 @@ interface DashboardLayoutProps {
   children: ReactNode;
 }
 
+function getSidebarCookieState(): boolean {
+  const match = document.cookie.match(/sidebar:state=(true|false)/);
+  return match ? match[1] === 'true' : true;
+}
+
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const { user, loading } = useAuth();
   const { isBlocked, reason } = useSubscriptionBlock();
@@ -37,7 +42,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   return (
-    <SidebarProvider>
+    <SidebarProvider defaultOpen={getSidebarCookieState()}>
       <div className="flex min-h-screen w-full overflow-hidden">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
