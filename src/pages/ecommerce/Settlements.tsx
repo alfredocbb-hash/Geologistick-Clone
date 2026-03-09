@@ -471,7 +471,7 @@ export default function Settlements() {
           // Query 1: envíos comunes filtrados por fecha_entrega en el rango
           const { data: commonEnvios, error: commonError } = await supabase
             .from('envios')
-            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, estado, created_at')
+            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, estado, created_at, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
             .in('remitente_id', uniqueOnlyClienteIds)
             .gte('fecha_entrega', fechaInicioStr)
             .lte('fecha_entrega', fechaFinStr)
