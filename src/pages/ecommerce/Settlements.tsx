@@ -1380,7 +1380,7 @@ export default function Settlements() {
                                     {format(new Date(envio.created_at), 'dd/MM/yy')}
                                   </TableCell>
                                   <TableCell className="font-mono text-sm">{envio.tracking_number}</TableCell>
-                                  <TableCell className="text-sm">{envio.nombre_destinatario || '-'}</TableCell>
+                                  <TableCell className="text-sm">{envio.nombre_destinatario || (envio.destinatario ? `${envio.destinatario.nombre || ''} ${envio.destinatario.apellido || ''}`.trim() : '') || '-'}</TableCell>
                                   <TableCell className="text-sm">{envio.ciudad_entrega || '-'}</TableCell>
                                   <TableCell>
                                     <Badge variant="outline" className="text-xs">{envio.estado || '-'}</Badge>
