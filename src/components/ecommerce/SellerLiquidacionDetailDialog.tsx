@@ -62,7 +62,7 @@ export function SellerLiquidacionDetailDialog({
     queryFn: async () => {
       const { data, error } = await (supabase
         .from('envios') as any)
-        .select('id, tracking_number, nombre_destinatario, direccion_entrega, precio_total, estado, created_at')
+        .select('id, tracking_number, nombre_destinatario, direccion_entrega, precio_total, estado, created_at, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
         .eq('liquidacion_seller_id', liquidacion?.id)
         .neq('estado', 'pendiente')
         .order('created_at', { ascending: true });
@@ -427,7 +427,7 @@ export function SellerLiquidacionDetailDialog({
                                 {format(new Date(envio.created_at), 'dd/MM/yy HH:mm')}
                               </TableCell>
                               <TableCell className="font-mono text-sm">{envio.tracking_number}</TableCell>
-                              <TableCell className="text-sm">{envio.nombre_destinatario || '-'}</TableCell>
+                              <TableCell className="text-sm">{envio.nombre_destinatario || (envio.destinatario ? `${envio.destinatario.nombre || ''} ${envio.destinatario.apellido || ''}`.trim() : '') || '-'}</TableCell>
                               <TableCell>
                                 <Badge variant="outline" className="text-xs">{envio.estado || '-'}</Badge>
                               </TableCell>

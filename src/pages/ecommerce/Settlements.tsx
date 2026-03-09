@@ -83,6 +83,7 @@ interface CalculatedEnvio {
   estado: string | null;
   created_at: string;
   tiene_visitas?: boolean;
+  destinatario?: { nombre: string | null; apellido: string | null } | null;
 }
 
 const METODOS_PAGO = [
@@ -401,9 +402,7 @@ export default function Settlements() {
         .from('ecommerce_orders')
         .select('envio_id, seller_id')
         .in('seller_id', calcSellers)
-        .not('envio_id', 'is', null)
-        .gte('fecha_entrega_estimada', fechaInicioStr)
-        .lte('fecha_entrega_estimada', fechaFinStr);
+        .not('envio_id', 'is', null);
 
       if (ordersError) throw ordersError;
 
@@ -420,15 +419,37 @@ export default function Settlements() {
       // Cargar los envíos de ecommerce_orders
       let ecommerceEnvios: any[] = [];
       if (sellerEnvioIds.length > 0) {
-        const { data: ecomEnvios, error: ecomError } = await supabase
-          .from('envios')
-          .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, estado, created_at')
+        // Query 1: envíos e-commerce con fecha_entrega en el rango
+        const { data: ecomEnvios, error: ecomError } = await (supabase
+          .from('envios') as any)
+          .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, estado, created_at, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
           .in('id', sellerEnvioIds)
+          .gte('fecha_entrega', fechaInicioStr)
+          .lte('fecha_entrega', fechaFinStr)
           .is('liquidacion_seller_id', null)
           .order('created_at', { ascending: true });
 
         if (ecomError) throw ecomError;
-        ecommerceEnvios = ecomEnvios || [];
+
+        // Query 2: envíos e-commerce sin fecha_entrega, filtrados por created_at
+        const { data: ecomEnviosNoDate, error: ecomNoDateError } = await (supabase
+          .from('envios') as any)
+          .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, estado, created_at, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
+          .in('id', sellerEnvioIds)
+          .is('fecha_entrega', null)
+          .gte('created_at', fechaInicioStr)
+          .lte('created_at', fechaFinStr)
+          .is('liquidacion_seller_id', null)
+          .order('created_at', { ascending: true });
+
+        if (ecomNoDateError) throw ecomNoDateError;
+
+        // Combinar sin duplicados
+        const ecomIds = new Set((ecomEnvios || []).map((e: any) => e.id));
+        ecommerceEnvios = [
+          ...(ecomEnvios || []),
+          ...(ecomEnviosNoDate || []).filter((e: any) => !ecomIds.has(e.id))
+        ];
       }
 
       // 3. Buscar TODOS los envio_ids de ecommerce_orders relacionados (para excluirlos de comunes)
@@ -451,7 +472,7 @@ export default function Settlements() {
           // Query 1: envíos comunes filtrados por fecha_entrega en el rango
           const { data: commonEnvios, error: commonError } = await supabase
             .from('envios')
-            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, estado, created_at')
+            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, estado, created_at, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
             .in('remitente_id', uniqueOnlyClienteIds)
             .gte('fecha_entrega', fechaInicioStr)
             .lte('fecha_entrega', fechaFinStr)
@@ -463,7 +484,7 @@ export default function Settlements() {
           // Query 2: envíos sin fecha_entrega, filtrados por created_at en el rango
           const { data: commonEnviosNoDate, error: commonNoDateError } = await (supabase
             .from('envios') as any)
-            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, estado, created_at')
+            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, estado, created_at, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
             .in('remitente_id', uniqueOnlyClienteIds)
             .is('fecha_entrega', null)
             .gte('created_at', fechaInicioStr)
@@ -1360,7 +1381,7 @@ export default function Settlements() {
                                     {format(new Date(envio.created_at), 'dd/MM/yy')}
                                   </TableCell>
                                   <TableCell className="font-mono text-sm">{envio.tracking_number}</TableCell>
-                                  <TableCell className="text-sm">{envio.nombre_destinatario || '-'}</TableCell>
+                                  <TableCell className="text-sm">{envio.nombre_destinatario || (envio.destinatario ? `${envio.destinatario.nombre || ''} ${envio.destinatario.apellido || ''}`.trim() : '') || '-'}</TableCell>
                                   <TableCell className="text-sm">{envio.ciudad_entrega || '-'}</TableCell>
                                   <TableCell>
                                     <Badge variant="outline" className="text-xs">{envio.estado || '-'}</Badge>
