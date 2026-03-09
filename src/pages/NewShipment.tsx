@@ -914,6 +914,7 @@ export default function NewShipment() {
         .from('clientes')
         .select('*')
         .eq('telefono', data.telefono)
+        .limit(1)
         .maybeSingle();
       
       if (phoneError) {
