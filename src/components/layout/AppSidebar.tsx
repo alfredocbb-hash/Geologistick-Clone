@@ -336,8 +336,9 @@ export function AppSidebar() {
     return (first + last).toUpperCase() || 'U';
   };
 
-  // Show minimal sidebar while loading permissions or branch config
-  if (isLoading || branchLoading) {
+  // Show minimal sidebar while loading permissions or branch config (only on first load, not background refetch)
+  const isFirstLoad = (isLoading && permissions.length === 0) || (branchLoading && !sucursal);
+  if (isFirstLoad) {
     return <Sidebar collapsible="icon" className="border-r-0">
         <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
           <div className="flex items-center gap-3">
