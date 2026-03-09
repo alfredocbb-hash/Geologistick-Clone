@@ -236,6 +236,7 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
       return data;
     },
     enabled: !!tenantId && open,
+    refetchOnWindowFocus: false,
   });
 
   const { data: tarifas } = useQuery({
