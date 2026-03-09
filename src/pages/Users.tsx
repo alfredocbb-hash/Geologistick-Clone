@@ -278,6 +278,7 @@ export default function Users() {
       if (error) throw error;
       return data as UserRole[];
     },
+    refetchOnWindowFocus: false,
   });
 
   // Update profile mutation with optimistic updates

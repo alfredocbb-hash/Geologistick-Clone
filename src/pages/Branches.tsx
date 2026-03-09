@@ -208,6 +208,7 @@ export default function Branches() {
       return (data || []) as SucursalComision[];
     },
     enabled: !!selectedSucursalForCommissions,
+    refetchOnWindowFocus: false,
   });
 
   // Conceptos a mostrar (excluir recepcion y cobros) - memoizado para evitar re-renders

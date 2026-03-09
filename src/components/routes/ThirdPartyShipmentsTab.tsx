@@ -221,6 +221,7 @@ export default function ThirdPartyShipmentsTab() {
       return data as Client[];
     },
     enabled: !!profile?.tenant_id,
+    refetchOnWindowFocus: false,
   });
 
   // Handler to load existing client data

@@ -156,6 +156,7 @@ export default function Clients() {
       if (error) throw error;
       return data as Client[];
     },
+    refetchOnWindowFocus: false,
   });
 
   // Create/Update mutation

@@ -479,6 +479,7 @@ export default function NewShipment() {
       return data as (TarifaConceptoPrecio & { es_porcentaje?: boolean; porcentaje?: number })[];
     },
     enabled: !!formData.tarifa_id,
+    refetchOnWindowFocus: false,
   });
 
   // Clasificar conceptos en básicos y adicionales

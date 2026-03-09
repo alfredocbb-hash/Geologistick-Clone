@@ -168,6 +168,7 @@ export default function ThirdPartyCompanies() {
       if (error) throw error;
       return data as EmpresaTerciarizada[];
     },
+    refetchOnWindowFocus: false,
   });
 
   // Create mutation

@@ -251,6 +251,7 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
       return data;
     },
     enabled: !!tenantId && open,
+    refetchOnWindowFocus: false,
   });
 
   // Function to ensure user has seller role (idempotent using upsert)

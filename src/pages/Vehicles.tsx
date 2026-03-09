@@ -168,6 +168,7 @@ export default function Vehicles() {
       const driverIds = new Set(roles?.map(r => r.user_id));
       return data?.filter(p => driverIds.has(p.user_id)) || [];
     },
+    refetchOnWindowFocus: false,
   });
 
   const saveMutation = useMutation({

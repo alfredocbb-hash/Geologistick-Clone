@@ -177,6 +177,7 @@ export function CreateSellerDialog({ open, onOpenChange, onSuccess }: CreateSell
       return data;
     },
     enabled: !!tenantId && open,
+    refetchOnWindowFocus: false,
   });
 
   // Function to ensure user has seller role (idempotent using upsert)

@@ -92,10 +92,10 @@ import EcommerceSettlements from "./pages/ecommerce/Settlements";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 5 * 60 * 1000, // 5 minutos: datos frescos por más tiempo
-      gcTime: 10 * 60 * 1000,   // 10 minutos: mantener en caché
-      refetchOnWindowFocus: false, // NO refetch al volver a la ventana
-      refetchOnReconnect: true,   // SÍ refetch al reconectar internet
+      staleTime: 30 * 1000,          // 30s: balance entre frescura y performance
+      gcTime: 10 * 60 * 1000,        // 10 minutos: mantener en caché para nav rápida
+      refetchOnWindowFocus: true,     // SÍ refetch al volver a la ventana
+      refetchOnReconnect: true,       // SÍ refetch al reconectar internet
       retry: 1, // Reintentar solo 1 vez en error
     },
   },
