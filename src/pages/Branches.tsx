@@ -215,6 +215,31 @@ export default function Branches() {
     refetchOnWindowFocus: false,
   });
 
+  // Fetch names for orphan concept IDs (from other tenants) referenced in sucursal_comisiones
+  const orphanConceptIds = useMemo(() => {
+    if (!sucursalComisiones.length || !conceptos.length) return [];
+    const tenantConceptIds = new Set(conceptos.map(c => c.id));
+    const foreignIds = [...new Set(sucursalComisiones.map(c => c.concepto_id))].filter(id => !tenantConceptIds.has(id));
+    return foreignIds;
+  }, [sucursalComisiones, conceptos]);
+
+  const { data: orphanConceptNames = {} } = useQuery({
+    queryKey: ['orphan_concept_names', orphanConceptIds],
+    queryFn: async () => {
+      if (!orphanConceptIds.length) return {};
+      const { data, error } = await supabase
+        .from('tarifa_conceptos')
+        .select('id, nombre')
+        .in('id', orphanConceptIds);
+      if (error) throw error;
+      const map: Record<string, string> = {};
+      (data || []).forEach((c: { id: string; nombre: string }) => { map[c.id] = c.nombre; });
+      return map;
+    },
+    enabled: orphanConceptIds.length > 0,
+    refetchOnWindowFocus: false,
+  });
+
   // Conceptos a mostrar (excluir recepcion y cobros) - memoizado para evitar re-renders
   const conceptosFiltrados = useMemo(() => 
     conceptos.filter(c => !['recepcion', 'cobros'].includes(c.codigo)),
@@ -222,14 +247,26 @@ export default function Branches() {
   );
 
   // Initialize commission data when dialog opens - separado por tipo_rol
+  // Uses name-based fallback when concept IDs don't match (cross-tenant legacy data)
   useEffect(() => {
     if (selectedSucursalForCommissions && conceptosFiltrados.length > 0) {
+      const findExisting = (concepto: TarifaConcepto, tipoRol: 'emision' | 'recepcion') => {
+        // Direct ID match first
+        const byId = sucursalComisiones.find(
+          (c) => c.concepto_id === concepto.id && c.tipo_rol === tipoRol
+        );
+        if (byId) return byId;
+        // Fallback: match by concept name using orphan names map
+        return sucursalComisiones.find(
+          (c) => c.tipo_rol === tipoRol &&
+            orphanConceptNames[c.concepto_id]?.toLowerCase() === concepto.nombre.toLowerCase()
+        );
+      };
+
       // Inicializar datos de EMISIÓN
       const emisionData: Record<string, CommissionValues> = {};
       conceptosFiltrados.forEach((concepto) => {
-        const existing = sucursalComisiones.find(
-          (c) => c.concepto_id === concepto.id && c.tipo_rol === 'emision'
-        );
+        const existing = findExisting(concepto, 'emision');
         emisionData[concepto.id] = {
           contado: existing?.porcentaje_contado?.toString() || '0',
           destino: existing?.porcentaje_destino?.toString() || '0',
@@ -242,9 +279,7 @@ export default function Branches() {
       // Inicializar datos de RECEPCIÓN
       const recepcionData: Record<string, CommissionValues> = {};
       conceptosFiltrados.forEach((concepto) => {
-        const existing = sucursalComisiones.find(
-          (c) => c.concepto_id === concepto.id && c.tipo_rol === 'recepcion'
-        );
+        const existing = findExisting(concepto, 'recepcion');
         recepcionData[concepto.id] = {
           contado: existing?.porcentaje_contado?.toString() || '0',
           destino: existing?.porcentaje_destino?.toString() || '0',
@@ -254,7 +289,7 @@ export default function Branches() {
       });
       setRecepcionCommissionData(recepcionData);
     }
-  }, [selectedSucursalForCommissions, conceptosFiltrados, sucursalComisiones]);
+  }, [selectedSucursalForCommissions, conceptosFiltrados, sucursalComisiones, orphanConceptNames]);
 
   // Create/Update sucursal mutation
   const saveMutation = useMutation({
@@ -349,6 +384,7 @@ export default function Branches() {
   };
 
   // Save commissions mutation - guarda ambos roles (emisión y recepción)
+  // Also cleans up orphan concept IDs from other tenants after saving
   const saveCommissionsMutation = useMutation({
     mutationFn: async () => {
       if (!selectedSucursalForCommissions) return;
@@ -366,9 +402,19 @@ export default function Branches() {
       });
 
       await Promise.all(operations);
+
+      // Clean up orphan records (old concept IDs from other tenants)
+      if (orphanConceptIds.length > 0) {
+        await supabase
+          .from('sucursal_comisiones')
+          .delete()
+          .eq('sucursal_id', selectedSucursalForCommissions.id)
+          .in('concepto_id', orphanConceptIds);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sucursal_comisiones'] });
+      queryClient.invalidateQueries({ queryKey: ['orphan_concept_names'] });
       toast.success('Comisiones guardadas');
       setIsCommissionsDialogOpen(false);
     },
