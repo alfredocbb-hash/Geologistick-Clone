@@ -2370,7 +2370,6 @@ export default function NewShipment() {
                                 onSelect={() => {
                                   setSucursalDestinoOpen(false);
                                   requestAnimationFrame(() => {
-                                    handleChange('sucursal_destino_id', s.id);
                                     if (s.lat && s.lng) {
                                       setDestinoCoords({ lat: s.lat, lng: s.lng });
                                     }
