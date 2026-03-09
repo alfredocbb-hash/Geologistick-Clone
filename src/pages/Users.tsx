@@ -260,6 +260,7 @@ export default function Users() {
       
       return data as Profile[];
     },
+    refetchOnWindowFocus: false,
   });
 
   // Filter profiles by tenant if filter is applied
