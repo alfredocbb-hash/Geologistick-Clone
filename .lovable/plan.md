@@ -1,28 +1,43 @@
 
 
-# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
+# Fix: Alert "Cliente encontrado" al crear envío con cliente ya seleccionado
 
 ## Problema
-Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
+
+Cuando el usuario selecciona un cliente existente desde el autocompletado (ContactAutocomplete), al hacer click en "Crear Envío" se dispara el `onBlur` del campo DNI, que ejecuta `checkExistingClient`. Si en algún momento se editó cualquier campo del formulario que haya reseteado el flag `clientLoadedManually`, la función encuentra al mismo cliente que ya fue cargado y muestra el AlertDialog "Cliente encontrado", bloqueando la creación del envío.
+
+## Causa raíz
+
+El `onChange` del input de DNI (líneas 2106 y 2274) resetea `clientLoadedManually` a `false` cada vez que el valor cambia, incluso si fue cambiado programáticamente o si el usuario tocó el campo sin intención de buscar otro cliente. Al hacer click en "Crear Envío", el `onBlur` del campo DNI se dispara y `checkExistingClient` ya no tiene el flag de protección.
 
 ## Solución
 
-### 1. Nueva función SQL: `reopen_ruta_planificada`
-- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
-- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
-- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
-- Inserta registro en `envio_historial` para cada envío reactivado
-- Retorna JSON con resultado y cantidad de envíos reactivados
+En `checkExistingClient`, agregar una segunda capa de protección: si los datos del cliente encontrado (nombre + DNI + dirección) coinciden con los que ya están en el formulario, no mostrar el alert porque es el mismo cliente que ya está cargado.
 
-### 2. Nuevo componente: `ReopenRouteDialog.tsx`
-- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
-- Muestra cuántos envíos serán reactivados
-- Botón "Reabrir Ruta" que invoca el RPC
+### `src/pages/NewShipment.tsx` — función `checkExistingClient` (líneas 560-585)
 
-### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
-- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
-- Al hacer click, abre `ReopenRouteDialog`
-- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
+Agregar después de encontrar el cliente (línea 582):
 
-**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
+```typescript
+if (found) {
+  // Si los datos ya coinciden con el formulario, es el mismo cliente cargado — no alertar
+  const currentName = target === 'remitente' ? formData.remitente_nombre?.trim() : formData.destinatario_nombre?.trim();
+  const currentDir = target === 'remitente' ? formData.remitente_direccion?.trim() : formData.destinatario_direccion?.trim();
+  
+  if (
+    found.nombre?.toLowerCase() === currentName?.toLowerCase() &&
+    found.direccion?.toLowerCase() === currentDir?.toLowerCase()
+  ) {
+    return; // Same client already in form, skip alert
+  }
+  
+  setPendingClientMatch({ client: found as Client, target });
+}
+```
+
+## Archivo a modificar
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/pages/NewShipment.tsx` | Agregar comparación en `checkExistingClient` para evitar alertar si el cliente encontrado ya es el que está cargado en el formulario |
 
