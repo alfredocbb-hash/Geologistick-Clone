@@ -427,6 +427,7 @@ export default function NewShipment() {
       return data;
     },
     enabled: necesitaBusquedaDestino,
+    refetchOnWindowFocus: false,
   });
 
   // Query para configuración de seguro
