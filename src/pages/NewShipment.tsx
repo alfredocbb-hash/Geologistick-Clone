@@ -2133,7 +2133,11 @@ export default function NewShipment() {
                 <Input
                   id="remitente_dni"
                   value={formData.remitente_dni}
-                  onChange={(e) => handleChange('remitente_dni', e.target.value)}
+                  onChange={(e) => {
+                    handleChange('remitente_dni', e.target.value);
+                    setClientLoadedManually(prev => ({ ...prev, remitente: false }));
+                  }}
+                  onBlur={(e) => checkExistingClient(e.target.value, 'remitente')}
                   placeholder="Ej: 12345678 o 20-12345678-9"
                 />
               </div>
