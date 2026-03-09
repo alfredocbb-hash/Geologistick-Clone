@@ -186,6 +186,7 @@ export default function ThirdPartyShipmentsTab() {
       if (error) throw error;
       return data as EmpresaTerciarizada[];
     },
+    refetchOnWindowFocus: false,
   });
 
   // Fetch pending third-party shipments
