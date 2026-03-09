@@ -293,6 +293,9 @@ export default function NewShipment() {
     target: 'remitente' | 'destinatario';
   } | null>(null);
   
+  // Flag to prevent redundant alerts when client was loaded from ContactAutocomplete
+  const [clientLoadedManually, setClientLoadedManually] = useState<{ remitente: boolean; destinatario: boolean }>({ remitente: false, destinatario: false });
+  
   // Sucursal destino combobox state
   const [sucursalDestinoOpen, setSucursalDestinoOpen] = useState(false);
   
