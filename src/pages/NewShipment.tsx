@@ -2018,9 +2018,9 @@ export default function NewShipment() {
                       // Defer heavy client load to let Select portal unmount first (Chrome fix)
                       const selectedClient = clientesCtaCte.find(c => c.id === v);
                       if (selectedClient) {
-                        requestAnimationFrame(() => {
+                        setTimeout(() => {
                           handleLoadSenderClient(selectedClient);
-                        });
+                        }, 0);
                       }
                     }}
                   >
