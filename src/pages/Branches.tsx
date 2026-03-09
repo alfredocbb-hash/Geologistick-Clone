@@ -247,14 +247,26 @@ export default function Branches() {
   );
 
   // Initialize commission data when dialog opens - separado por tipo_rol
+  // Uses name-based fallback when concept IDs don't match (cross-tenant legacy data)
   useEffect(() => {
     if (selectedSucursalForCommissions && conceptosFiltrados.length > 0) {
+      const findExisting = (concepto: TarifaConcepto, tipoRol: 'emision' | 'recepcion') => {
+        // Direct ID match first
+        const byId = sucursalComisiones.find(
+          (c) => c.concepto_id === concepto.id && c.tipo_rol === tipoRol
+        );
+        if (byId) return byId;
+        // Fallback: match by concept name using orphan names map
+        return sucursalComisiones.find(
+          (c) => c.tipo_rol === tipoRol &&
+            orphanConceptNames[c.concepto_id]?.toLowerCase() === concepto.nombre.toLowerCase()
+        );
+      };
+
       // Inicializar datos de EMISIÓN
       const emisionData: Record<string, CommissionValues> = {};
       conceptosFiltrados.forEach((concepto) => {
-        const existing = sucursalComisiones.find(
-          (c) => c.concepto_id === concepto.id && c.tipo_rol === 'emision'
-        );
+        const existing = findExisting(concepto, 'emision');
         emisionData[concepto.id] = {
           contado: existing?.porcentaje_contado?.toString() || '0',
           destino: existing?.porcentaje_destino?.toString() || '0',
@@ -267,9 +279,7 @@ export default function Branches() {
       // Inicializar datos de RECEPCIÓN
       const recepcionData: Record<string, CommissionValues> = {};
       conceptosFiltrados.forEach((concepto) => {
-        const existing = sucursalComisiones.find(
-          (c) => c.concepto_id === concepto.id && c.tipo_rol === 'recepcion'
-        );
+        const existing = findExisting(concepto, 'recepcion');
         recepcionData[concepto.id] = {
           contado: existing?.porcentaje_contado?.toString() || '0',
           destino: existing?.porcentaje_destino?.toString() || '0',
@@ -279,7 +289,7 @@ export default function Branches() {
       });
       setRecepcionCommissionData(recepcionData);
     }
-  }, [selectedSucursalForCommissions, conceptosFiltrados, sucursalComisiones]);
+  }, [selectedSucursalForCommissions, conceptosFiltrados, sucursalComisiones, orphanConceptNames]);
 
   // Create/Update sucursal mutation
   const saveMutation = useMutation({
