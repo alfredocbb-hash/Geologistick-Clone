@@ -1013,6 +1013,7 @@ export default function NewShipment() {
             .select('id')
             .ilike('nombre', data.nombre.trim())
             .ilike('direccion', data.direccion.trim())
+            .limit(1)
             .maybeSingle();
           
           if (existingClient) {
