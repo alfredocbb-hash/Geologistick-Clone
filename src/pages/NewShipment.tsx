@@ -1699,7 +1699,10 @@ export default function NewShipment() {
       remitente_ciudad: details.city || prev.remitente_ciudad,
       remitente_codigo_postal: details.postalCode || prev.remitente_codigo_postal,
     }));
-    setOrigenCoords({ lat: details.lat, lng: details.lng });
+    // Defer coords update to avoid cascading re-renders with distance calc (Chrome fix)
+    requestAnimationFrame(() => {
+      setOrigenCoords({ lat: details.lat, lng: details.lng });
+    });
   };
 
   const handleDestinatarioAddressSelect = (details: AddressDetails) => {
@@ -1709,7 +1712,10 @@ export default function NewShipment() {
       destinatario_ciudad: details.city || prev.destinatario_ciudad,
       destinatario_codigo_postal: details.postalCode || prev.destinatario_codigo_postal,
     }));
-    setDestinoCoords({ lat: details.lat, lng: details.lng });
+    // Defer coords update to avoid cascading re-renders with distance calc (Chrome fix)
+    requestAnimationFrame(() => {
+      setDestinoCoords({ lat: details.lat, lng: details.lng });
+    });
   };
 
   // Update destination coords and city/postal when sucursal destino changes
