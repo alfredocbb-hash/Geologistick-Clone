@@ -342,6 +342,7 @@ export default function Settlements() {
       return balances;
     },
     enabled: !!tenantId && !!sellers && sellers.length > 0,
+    refetchOnWindowFocus: false,
   });
 
 
