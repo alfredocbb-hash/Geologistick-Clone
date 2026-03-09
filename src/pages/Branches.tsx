@@ -172,6 +172,7 @@ export default function Branches() {
       if (error) throw error;
       return data as Sucursal[];
     },
+    refetchOnWindowFocus: false,
   });
 
   // Get centros logísticos for dropdown
