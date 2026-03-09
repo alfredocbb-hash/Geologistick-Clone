@@ -1602,6 +1602,7 @@ export default function NewShipment() {
   };
 
   const handleLoadSenderClient = (client: Client) => {
+    setClientLoadedManually(prev => ({ ...prev, remitente: true }));
     setFormData(prev => ({
       ...prev,
       remitente_nombre: client.nombre,
