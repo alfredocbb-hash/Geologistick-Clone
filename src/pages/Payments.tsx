@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -158,7 +159,7 @@ export default function Payments() {
   const { profile, hasRole, isAdmin } = useAuth();
   const isBranchUser = hasRole('sucursal') && !isAdmin();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState('historial');
+  const [activeTab, setActiveTab] = usePersistedState('ui-tab-payments', 'historial');
   const [searchTerm, setSearchTerm] = useState('');
   const [methodFilter, setMethodFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');

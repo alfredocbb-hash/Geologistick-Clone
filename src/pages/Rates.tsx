@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -127,7 +128,7 @@ interface TarifaConceptoPrecio {
 export default function Rates() {
   const { isAdmin, isSuperAdmin, profile, user } = useAuth();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState('tarifas');
+  const [activeTab, setActiveTab] = usePersistedState('ui-tab-rates', 'tarifas');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isConceptDialogOpen, setIsConceptDialogOpen] = useState(false);
   const [isPricingDialogOpen, setIsPricingDialogOpen] = useState(false);
@@ -214,6 +215,7 @@ export default function Rates() {
       
       return tarifasWithCreator as Tarifa[];
     },
+    refetchOnWindowFocus: false,
   });
 
   // Fetch conceptos (filtered by tenant, super admin sees all)

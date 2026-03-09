@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { usePersistedState } from '@/hooks/usePersistedState';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
@@ -92,7 +93,7 @@ const METODOS_PAGO: { value: PaymentMethod; label: string }[] = [
 export default function ThirdPartySettlements() {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState("liquidaciones");
+  const [activeTab, setActiveTab] = usePersistedState('ui-tab-third-party-settlements', "liquidaciones");
 
   // Shared state
   const [selectedEmpresaId, setSelectedEmpresaId] = useState<string | null>(null);
@@ -131,6 +132,7 @@ export default function ThirdPartySettlements() {
       if (error) throw error;
       return (data || []) as EmpresaTerciarizada[];
     },
+    refetchOnWindowFocus: false,
   });
 
   const empresasCtaCte = empresas.filter((e) => e.tiene_cuenta_corriente);
@@ -151,6 +153,7 @@ export default function ThirdPartySettlements() {
       return (data || []) as LiquidacionTerciarizado[];
     },
     enabled: !!liqEmpresaId,
+    refetchOnWindowFocus: false,
   });
 
   // Fetch movements for selected CTA CTE empresa

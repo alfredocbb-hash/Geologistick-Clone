@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -95,7 +96,7 @@ const getPermissionCategory = (key: string): string => {
 export default function RolePermissions() {
   const { isSuperAdmin } = useAuth();
   const queryClient = useQueryClient();
-  const [selectedRole, setSelectedRole] = useState<AppRole>('chofer');
+  const [selectedRole, setSelectedRole] = usePersistedState<AppRole>('ui-tab-role-permissions', 'chofer');
 
   // Fetch all permissions
   const { data: permissions = [], isLoading } = useQuery({

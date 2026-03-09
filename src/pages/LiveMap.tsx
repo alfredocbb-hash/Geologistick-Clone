@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
+import { usePersistedState } from '@/hooks/usePersistedState';
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -83,7 +84,7 @@ interface OperationsSummary {
 }
 
 export default function LiveMap() {
-  const [activeTab, setActiveTab] = useState("sucursales");
+  const [activeTab, setActiveTab] = usePersistedState('ui-tab-live-map', "sucursales");
   const [driverLocations, setDriverLocations] = useState<DriverLocation[]>([]);
   
   // State for main map route visualization (street-level traceability)

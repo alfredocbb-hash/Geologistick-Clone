@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
@@ -98,7 +99,7 @@ export default function Settlements() {
   const queryClient = useQueryClient();
 
   // Tab state
-  const [activeTab, setActiveTab] = useState('sellers');
+  const [activeTab, setActiveTab] = usePersistedState('ui-tab-ecommerce-settlements', 'sellers');
 
   // Existing states
   const [settlementDialogOpen, setSettlementDialogOpen] = useState(false);
@@ -144,6 +145,7 @@ export default function Settlements() {
       return data as Seller[];
     },
     enabled: !!tenantId,
+    refetchOnWindowFocus: false,
   });
 
   // Recalculate balances using tariff logic for Saldos por Seller tab
@@ -340,6 +342,7 @@ export default function Settlements() {
       return balances;
     },
     enabled: !!tenantId && !!sellers && sellers.length > 0,
+    refetchOnWindowFocus: false,
   });
 
 
@@ -360,6 +363,7 @@ export default function Settlements() {
       return data as SellerLiquidacion[];
     },
     enabled: !!tenantId,
+    refetchOnWindowFocus: false,
   });
 
   // Calculate mutation - now includes envíos and multi-seller
