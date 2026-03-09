@@ -332,6 +332,7 @@ export default function NewShipment() {
       return data as Sucursal[];
     },
     enabled: !!user,
+    refetchOnWindowFocus: false,
   });
 
   // Sucursales destino (para retiro en sucursal)
