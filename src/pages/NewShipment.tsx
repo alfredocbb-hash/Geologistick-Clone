@@ -2147,7 +2147,6 @@ export default function NewShipment() {
                   id="remitente_telefono"
                   value={formData.remitente_telefono}
                   onChange={(e) => handleChange('remitente_telefono', e.target.value)}
-                  onBlur={(e) => checkExistingClient(e.target.value, 'remitente')}
                   required
                 />
               </div>
