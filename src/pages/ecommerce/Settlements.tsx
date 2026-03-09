@@ -401,9 +401,7 @@ export default function Settlements() {
         .from('ecommerce_orders')
         .select('envio_id, seller_id')
         .in('seller_id', calcSellers)
-        .not('envio_id', 'is', null)
-        .gte('fecha_entrega_estimada', fechaInicioStr)
-        .lte('fecha_entrega_estimada', fechaFinStr);
+        .not('envio_id', 'is', null);
 
       if (ordersError) throw ordersError;
 
