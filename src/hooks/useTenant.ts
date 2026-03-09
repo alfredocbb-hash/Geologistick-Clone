@@ -79,6 +79,7 @@ export function useTenant() {
       return data as Tenant;
     },
     enabled: !!user && !!tenantId && shouldLoadBranding,
+    refetchOnWindowFocus: false,
   });
 
   const { data: branding, isLoading: brandingLoading } = useQuery({
@@ -96,6 +97,7 @@ export function useTenant() {
       return data as TenantBranding | null;
     },
     enabled: !!user && !!tenantId && shouldLoadBranding,
+    refetchOnWindowFocus: false,
   });
 
   return {

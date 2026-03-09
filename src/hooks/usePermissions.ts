@@ -33,6 +33,7 @@ export function usePermissions() {
       return data as RolePermission[];
     },
     enabled: roles.length > 0,
+    refetchOnWindowFocus: false,
   });
 
   // Check if user has a specific permission
