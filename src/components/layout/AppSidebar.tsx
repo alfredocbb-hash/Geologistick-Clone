@@ -276,12 +276,12 @@ export function AppSidebar() {
   } = useAuth();
   const {
     hasPermission,
-    isLoading
+    isLoading,
+    permissions
   } = usePermissions();
-  const {
-    realizaEntregas,
-    isLoading: branchLoading
-  } = useBranchConfig();
+  const branchConfig = useBranchConfig();
+  const realizaEntregas = branchConfig.realizaEntregas;
+  const branchLoading = branchConfig.isLoading;
   const { tenant } = useTenantContext();
   const { branding } = useTenantContext();
   const location = useLocation();
