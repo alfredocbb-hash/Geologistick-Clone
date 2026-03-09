@@ -2301,7 +2301,11 @@ export default function NewShipment() {
                   <Input
                     id="destinatario_dni"
                     value={formData.destinatario_dni}
-                    onChange={(e) => handleChange('destinatario_dni', e.target.value)}
+                    onChange={(e) => {
+                      handleChange('destinatario_dni', e.target.value);
+                      setClientLoadedManually(prev => ({ ...prev, destinatario: false }));
+                    }}
+                    onBlur={(e) => checkExistingClient(e.target.value, 'destinatario')}
                   />
                 </div>
                 <div className="space-y-2">
