@@ -145,6 +145,7 @@ export default function Settlements() {
       return data as Seller[];
     },
     enabled: !!tenantId,
+    refetchOnWindowFocus: false,
   });
 
   // Recalculate balances using tariff logic for Saldos por Seller tab
