@@ -1717,10 +1717,11 @@ export default function NewShipment() {
         if (sucursalDestino.lat && sucursalDestino.lng) {
           setDestinoCoords({ lat: sucursalDestino.lat, lng: sucursalDestino.lng });
         }
-        setFormData(prev => ({
-          ...prev,
-          destinatario_ciudad: sucursalDestino.ciudad || '',
-        }));
+        const newCiudad = sucursalDestino.ciudad || '';
+        setFormData(prev => {
+          if (prev.destinatario_ciudad === newCiudad) return prev;
+          return { ...prev, destinatario_ciudad: newCiudad };
+        });
       }
     }
   }, [formData.sucursal_destino_id, sucursales, tieneEntrega]);
