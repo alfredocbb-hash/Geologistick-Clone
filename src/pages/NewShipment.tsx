@@ -1206,6 +1206,8 @@ export default function NewShipment() {
           dni_destinatario: formData.destinatario_dni || null,
           whatsapp_destinatario: formData.destinatario_whatsapp || null,
           email_destinatario: formData.destinatario_email || null,
+          nombre_destinatario: [formData.destinatario_nombre, formData.destinatario_apellido].filter(Boolean).join(' ') || null,
+          nombre_remitente: [formData.remitente_nombre, formData.remitente_apellido].filter(Boolean).join(' ') || null,
         })
         .select()
         .single();
