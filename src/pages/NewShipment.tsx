@@ -880,6 +880,7 @@ export default function NewShipment() {
         .from('clientes')
         .select('*')
         .ilike('dni_cuit', data.dni_cuit.trim())
+        .limit(1)
         .maybeSingle();
       
       if (dniError) {
