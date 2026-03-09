@@ -407,6 +407,7 @@ export default function NewShipment() {
       return data;
     },
     enabled: !!sucursalOrigenId,
+    refetchOnWindowFocus: false,
   });
 
   // Query para tarifas habilitadas por sucursal destino (bidireccional para sucursal-a-sucursal)
