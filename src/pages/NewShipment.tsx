@@ -353,6 +353,7 @@ export default function NewShipment() {
       return data;
     },
     enabled: !!user && !!profile,
+    refetchOnWindowFocus: false,
   });
 
   const { data: conceptos = [] } = useQuery({
