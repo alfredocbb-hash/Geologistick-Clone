@@ -131,6 +131,7 @@ export default function Vehicles() {
         chofer: v.chofer_asignado_id ? drivers[v.chofer_asignado_id] : null
       })) || [];
     },
+    refetchOnWindowFocus: false,
   });
 
   const { data: sucursales } = useQuery({
