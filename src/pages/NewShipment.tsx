@@ -1713,9 +1713,9 @@ export default function NewShipment() {
       destinatario_codigo_postal: details.postalCode || prev.destinatario_codigo_postal,
     }));
     // Defer coords update to avoid cascading re-renders with distance calc (Chrome fix)
-    requestAnimationFrame(() => {
+    setTimeout(() => {
       setDestinoCoords({ lat: details.lat, lng: details.lng });
-    });
+    }, 0);
   };
 
   // Update destination coords and city/postal when sucursal destino changes
