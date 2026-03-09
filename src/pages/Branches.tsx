@@ -179,20 +179,23 @@ export default function Branches() {
   // Get centros logísticos for dropdown
   const centrosLogisticos = sucursales.filter(s => s.es_centro_logistico);
 
+  // Derive tenant from selected branch (for super admins) or user's tenant
+  const effectiveTenantId = selectedSucursalForCommissions?.tenant_id || tenantId;
+
   // Fetch conceptos
   const { data: conceptos = [] } = useQuery({
-    queryKey: ['tarifa_conceptos', tenantId],
+    queryKey: ['tarifa_conceptos', effectiveTenantId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('tarifa_conceptos')
         .select('*')
         .eq('activo', true)
-        .eq('tenant_id', tenantId)
+        .eq('tenant_id', effectiveTenantId!)
         .order('orden');
       if (error) throw error;
       return data as TarifaConcepto[];
     },
-    enabled: !!tenantId,
+    enabled: !!effectiveTenantId,
     refetchOnWindowFocus: false,
   });
 
