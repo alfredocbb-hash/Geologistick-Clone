@@ -949,6 +949,7 @@ export default function NewShipment() {
         .select('*')
         .ilike('nombre', data.nombre.trim())
         .ilike('direccion', data.direccion.trim())
+        .limit(1)
         .maybeSingle();
       
       if (nameAddrError) {
