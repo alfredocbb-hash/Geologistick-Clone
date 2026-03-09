@@ -309,6 +309,7 @@ export default function NewShipment() {
       return data as Sucursal;
     },
     enabled: !!sucursalOrigenId,
+    refetchOnWindowFocus: false,
   });
 
   // Set origin coordinates from user's sucursal
