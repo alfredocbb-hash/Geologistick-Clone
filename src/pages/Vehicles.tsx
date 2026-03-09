@@ -146,6 +146,7 @@ export default function Vehicles() {
       if (error) throw error;
       return data;
     },
+    refetchOnWindowFocus: false,
   });
 
   const { data: drivers } = useQuery({
