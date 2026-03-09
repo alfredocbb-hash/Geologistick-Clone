@@ -716,7 +716,10 @@ export default function NewShipment() {
     );
 
     if (match) {
-      setFormData(prev => ({ ...prev, tarifa_id: match.id }));
+      setFormData(prev => {
+        if (prev.tarifa_id === match.id) return prev;
+        return { ...prev, tarifa_id: match.id };
+      });
       setTarifaFueAutoDetectada(true);
     } else {
       setTarifaFueAutoDetectada(false);
