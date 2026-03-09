@@ -443,6 +443,7 @@ export default function NewShipment() {
       return data;
     },
     enabled: !!profile?.tenant_id,
+    refetchOnWindowFocus: false,
   });
 
   // Query para verificar si hay caja abierta en la sucursal del usuario
