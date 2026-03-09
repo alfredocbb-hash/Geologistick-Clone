@@ -413,7 +413,7 @@ export default function NewShipment() {
   });
 
   // Query para tarifas habilitadas por sucursal origen
-  const { data: sucursalTarifas = [] } = useQuery({
+  const { data: sucursalTarifas = [], isLoading: loadingSucursalTarifas } = useQuery({
     queryKey: ['sucursal-tarifas', sucursalOrigenId],
     queryFn: async () => {
       if (!sucursalOrigenId) return [];
