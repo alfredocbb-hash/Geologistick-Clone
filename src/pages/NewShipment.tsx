@@ -2891,6 +2891,44 @@ export default function NewShipment() {
         onConfirm={handlePaymentConfirm}
         isLoading={isProcessingPayment}
       />
+
+      {/* Alert dialog for existing client match */}
+      <AlertDialog open={!!pendingClientMatch} onOpenChange={(open) => { if (!open) setPendingClientMatch(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cliente encontrado</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>Se encontró un cliente con este teléfono ya registrado en el sistema:</p>
+                <div className="p-3 bg-muted rounded-lg space-y-1 text-sm">
+                  <p className="font-medium text-foreground">
+                    {pendingClientMatch?.client.nombre} {pendingClientMatch?.client.apellido || ''}
+                  </p>
+                  {pendingClientMatch?.client.telefono && (
+                    <p>📞 {pendingClientMatch.client.telefono}</p>
+                  )}
+                  {pendingClientMatch?.client.direccion && (
+                    <p>📍 {pendingClientMatch.client.direccion}{pendingClientMatch.client.ciudad ? `, ${pendingClientMatch.client.ciudad}` : ''}</p>
+                  )}
+                  {pendingClientMatch?.client.dni_cuit && (
+                    <p>🪪 {pendingClientMatch.client.dni_cuit}</p>
+                  )}
+                  {pendingClientMatch?.client.email && (
+                    <p>✉️ {pendingClientMatch.client.email}</p>
+                  )}
+                </div>
+                <p>¿Deseas cargar los datos de este cliente en el formulario?</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No, continuar manual</AlertDialogCancel>
+            <AlertDialogAction onClick={applyClientMatch}>
+              Sí, cargar datos
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
