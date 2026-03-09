@@ -192,6 +192,7 @@ export default function Branches() {
       return data as TarifaConcepto[];
     },
     enabled: !!tenantId,
+    refetchOnWindowFocus: false,
   });
 
   // Fetch comisiones para la sucursal seleccionada (incluye tipo_rol)
