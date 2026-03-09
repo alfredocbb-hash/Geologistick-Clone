@@ -220,6 +220,7 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
       return data;
     },
     enabled: !!tenantId && open,
+    refetchOnWindowFocus: false,
   });
 
   // Fetch sucursales and tarifas
