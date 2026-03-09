@@ -215,6 +215,7 @@ export default function Rates() {
       
       return tarifasWithCreator as Tarifa[];
     },
+    refetchOnWindowFocus: false,
   });
 
   // Fetch conceptos (filtered by tenant, super admin sees all)

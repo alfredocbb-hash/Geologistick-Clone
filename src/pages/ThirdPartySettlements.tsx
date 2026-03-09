@@ -153,6 +153,7 @@ export default function ThirdPartySettlements() {
       return (data || []) as LiquidacionTerciarizado[];
     },
     enabled: !!liqEmpresaId,
+    refetchOnWindowFocus: false,
   });
 
   // Fetch movements for selected CTA CTE empresa

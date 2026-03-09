@@ -96,7 +96,7 @@ const getPermissionCategory = (key: string): string => {
 export default function RolePermissions() {
   const { isSuperAdmin } = useAuth();
   const queryClient = useQueryClient();
-  const [selectedRole, setSelectedRole] = useState<AppRole>('chofer');
+  const [selectedRole, setSelectedRole] = usePersistedState<AppRole>('ui-tab-role-permissions', 'chofer');
 
   // Fetch all permissions
   const { data: permissions = [], isLoading } = useQuery({

@@ -363,6 +363,7 @@ export default function Settlements() {
       return data as SellerLiquidacion[];
     },
     enabled: !!tenantId,
+    refetchOnWindowFocus: false,
   });
 
   // Calculate mutation - now includes envíos and multi-seller

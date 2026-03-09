@@ -221,6 +221,7 @@ export default function IntegrationSettings() {
       return configMap;
     },
     enabled: !!tenantId,
+    refetchOnWindowFocus: false,
   });
 
   const saveMutation = useMutation({
