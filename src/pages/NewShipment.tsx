@@ -464,6 +464,7 @@ export default function NewShipment() {
       return data && data.length > 0 ? data[0] : null;
     },
     enabled: !!sucursalOrigenId,
+    refetchOnWindowFocus: false,
   });
 
   const { data: conceptoPrecios = [] } = useQuery({
