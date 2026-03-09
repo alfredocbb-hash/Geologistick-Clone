@@ -162,6 +162,7 @@ export function CreateSellerDialog({ open, onOpenChange, onSuccess }: CreateSell
       return data;
     },
     enabled: !!tenantId && open,
+    refetchOnWindowFocus: false,
   });
 
   const { data: tarifas } = useQuery({
