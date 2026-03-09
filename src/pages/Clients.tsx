@@ -134,6 +134,7 @@ export default function Clients() {
       if (error) throw error;
       return data as Sucursal[];
     },
+    refetchOnWindowFocus: false,
   });
 
   // Fetch clients
