@@ -2015,10 +2015,12 @@ export default function NewShipment() {
                     value={formData.cliente_cta_cte_id}
                     onValueChange={(v) => {
                       handleChange('cliente_cta_cte_id', v);
-                      // Autocargar datos del cliente seleccionado como remitente
+                      // Defer heavy client load to let Select portal unmount first (Chrome fix)
                       const selectedClient = clientesCtaCte.find(c => c.id === v);
                       if (selectedClient) {
-                        handleLoadSenderClient(selectedClient);
+                        requestAnimationFrame(() => {
+                          handleLoadSenderClient(selectedClient);
+                        });
                       }
                     }}
                   >
