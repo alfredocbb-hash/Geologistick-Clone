@@ -203,6 +203,7 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
       return data;
     },
     enabled: !!seller.user_id && open,
+    refetchOnWindowFocus: false,
   });
 
   // Fetch available users for linking
@@ -219,6 +220,7 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
       return data;
     },
     enabled: !!tenantId && open,
+    refetchOnWindowFocus: false,
   });
 
   // Fetch sucursales and tarifas
@@ -234,6 +236,7 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
       return data;
     },
     enabled: !!tenantId && open,
+    refetchOnWindowFocus: false,
   });
 
   const { data: tarifas } = useQuery({
@@ -248,6 +251,7 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
       return data;
     },
     enabled: !!tenantId && open,
+    refetchOnWindowFocus: false,
   });
 
   // Function to ensure user has seller role (idempotent using upsert)

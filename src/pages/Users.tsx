@@ -198,6 +198,7 @@ export default function Users() {
       return data as Tenant[];
     },
     enabled: isSuperAdmin(),
+    refetchOnWindowFocus: false,
   });
 
   // Fetch sucursales - Super Admin needs all branches across tenants
@@ -213,7 +214,8 @@ export default function Users() {
       return data as Sucursal[];
     },
     enabled: !!currentUser,
-    staleTime: 5 * 60 * 1000, // 5 minutes cache
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   // Filter sucursales based on selected tenant (for super admin editing)
@@ -258,6 +260,7 @@ export default function Users() {
       
       return data as Profile[];
     },
+    refetchOnWindowFocus: false,
   });
 
   // Filter profiles by tenant if filter is applied
@@ -275,6 +278,7 @@ export default function Users() {
       if (error) throw error;
       return data as UserRole[];
     },
+    refetchOnWindowFocus: false,
   });
 
   // Update profile mutation with optimistic updates

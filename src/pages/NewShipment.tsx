@@ -309,6 +309,7 @@ export default function NewShipment() {
       return data as Sucursal;
     },
     enabled: !!sucursalOrigenId,
+    refetchOnWindowFocus: false,
   });
 
   // Set origin coordinates from user's sucursal
@@ -331,6 +332,7 @@ export default function NewShipment() {
       return data as Sucursal[];
     },
     enabled: !!user,
+    refetchOnWindowFocus: false,
   });
 
   // Sucursales destino (para retiro en sucursal)
@@ -351,6 +353,7 @@ export default function NewShipment() {
       return data;
     },
     enabled: !!user && !!profile,
+    refetchOnWindowFocus: false,
   });
 
   const { data: conceptos = [] } = useQuery({
@@ -370,6 +373,7 @@ export default function NewShipment() {
       return data as TarifaConcepto[];
     },
     enabled: !!user && !!profile?.tenant_id,
+    refetchOnWindowFocus: false,
   });
 
   // Query para obtener conceptos habilitados para la sucursal del usuario
@@ -386,6 +390,7 @@ export default function NewShipment() {
       return data;
     },
     enabled: !!sucursalOrigenId,
+    refetchOnWindowFocus: false,
   });
 
   // Query para tarifas habilitadas por sucursal origen
@@ -402,6 +407,7 @@ export default function NewShipment() {
       return data;
     },
     enabled: !!sucursalOrigenId,
+    refetchOnWindowFocus: false,
   });
 
   // Query para tarifas habilitadas por sucursal destino (bidireccional para sucursal-a-sucursal)
@@ -421,6 +427,7 @@ export default function NewShipment() {
       return data;
     },
     enabled: necesitaBusquedaDestino,
+    refetchOnWindowFocus: false,
   });
 
   // Query para configuración de seguro
@@ -436,6 +443,7 @@ export default function NewShipment() {
       return data;
     },
     enabled: !!profile?.tenant_id,
+    refetchOnWindowFocus: false,
   });
 
   // Query para verificar si hay caja abierta en la sucursal del usuario
@@ -456,6 +464,7 @@ export default function NewShipment() {
       return data && data.length > 0 ? data[0] : null;
     },
     enabled: !!sucursalOrigenId,
+    refetchOnWindowFocus: false,
   });
 
   const { data: conceptoPrecios = [] } = useQuery({
@@ -470,6 +479,7 @@ export default function NewShipment() {
       return data as (TarifaConceptoPrecio & { es_porcentaje?: boolean; porcentaje?: number })[];
     },
     enabled: !!formData.tarifa_id,
+    refetchOnWindowFocus: false,
   });
 
   // Clasificar conceptos en básicos y adicionales

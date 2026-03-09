@@ -172,6 +172,7 @@ export default function Branches() {
       if (error) throw error;
       return data as Sucursal[];
     },
+    refetchOnWindowFocus: false,
   });
 
   // Get centros logísticos for dropdown
@@ -191,6 +192,7 @@ export default function Branches() {
       return data as TarifaConcepto[];
     },
     enabled: !!tenantId,
+    refetchOnWindowFocus: false,
   });
 
   // Fetch comisiones para la sucursal seleccionada (incluye tipo_rol)
@@ -206,6 +208,7 @@ export default function Branches() {
       return (data || []) as SucursalComision[];
     },
     enabled: !!selectedSucursalForCommissions,
+    refetchOnWindowFocus: false,
   });
 
   // Conceptos a mostrar (excluir recepcion y cobros) - memoizado para evitar re-renders

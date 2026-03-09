@@ -186,6 +186,7 @@ export default function ThirdPartyShipmentsTab() {
       if (error) throw error;
       return data as EmpresaTerciarizada[];
     },
+    refetchOnWindowFocus: false,
   });
 
   // Fetch pending third-party shipments
@@ -203,6 +204,7 @@ export default function ThirdPartyShipmentsTab() {
       if (error) throw error;
       return data || [];
     },
+    refetchOnWindowFocus: false,
   });
 
   // Fetch all clients for autocomplete (filtered by tenant)
@@ -219,6 +221,7 @@ export default function ThirdPartyShipmentsTab() {
       return data as Client[];
     },
     enabled: !!profile?.tenant_id,
+    refetchOnWindowFocus: false,
   });
 
   // Handler to load existing client data

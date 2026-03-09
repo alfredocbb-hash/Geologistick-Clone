@@ -146,6 +146,7 @@ export function CreateSellerDialog({ open, onOpenChange, onSuccess }: CreateSell
       return data;
     },
     enabled: !!tenantId && open,
+    refetchOnWindowFocus: false,
   });
 
   // Fetch sucursales and tarifas for selects
@@ -161,6 +162,7 @@ export function CreateSellerDialog({ open, onOpenChange, onSuccess }: CreateSell
       return data;
     },
     enabled: !!tenantId && open,
+    refetchOnWindowFocus: false,
   });
 
   const { data: tarifas } = useQuery({
@@ -175,6 +177,7 @@ export function CreateSellerDialog({ open, onOpenChange, onSuccess }: CreateSell
       return data;
     },
     enabled: !!tenantId && open,
+    refetchOnWindowFocus: false,
   });
 
   // Function to ensure user has seller role (idempotent using upsert)
