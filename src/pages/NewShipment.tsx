@@ -293,6 +293,9 @@ export default function NewShipment() {
     target: 'remitente' | 'destinatario';
   } | null>(null);
   
+  // Flag to prevent redundant alerts when client was loaded from ContactAutocomplete
+  const [clientLoadedManually, setClientLoadedManually] = useState<{ remitente: boolean; destinatario: boolean }>({ remitente: false, destinatario: false });
+  
   // Sucursal destino combobox state
   const [sucursalDestinoOpen, setSucursalDestinoOpen] = useState(false);
   
@@ -553,15 +556,29 @@ export default function NewShipment() {
     enabled: !!user && !!profile?.tenant_id,
   });
 
-  // Check existing client on phone blur
-  const checkExistingClient = async (phone: string, target: 'remitente' | 'destinatario') => {
-    if (!phone || phone.trim().length < 6) return;
-    const { data: found } = await supabase
+  // Check existing client on DNI blur (nombre+apellido+DNI)
+  const checkExistingClient = async (dniValue: string, target: 'remitente' | 'destinatario') => {
+    // Skip if client was loaded manually from ContactAutocomplete
+    if (clientLoadedManually[target]) return;
+    
+    const dni = dniValue?.trim();
+    if (!dni || dni.length < 6) return;
+    
+    const nombre = target === 'remitente' ? formData.remitente_nombre?.trim() : formData.destinatario_nombre?.trim();
+    if (!nombre) return;
+    
+    let query = supabase
       .from('clientes')
       .select('*')
-      .eq('telefono', phone.trim())
-      .limit(1)
-      .maybeSingle();
+      .ilike('nombre', nombre)
+      .ilike('dni_cuit', dni);
+    
+    const apellido = target === 'remitente' ? formData.remitente_apellido?.trim() : formData.destinatario_apellido?.trim();
+    if (apellido) {
+      query = query.ilike('apellido', apellido);
+    }
+    
+    const { data: found } = await query.limit(1).maybeSingle();
     if (found) {
       setPendingClientMatch({ client: found as Client, target });
     }
@@ -908,41 +925,7 @@ export default function NewShipment() {
       }
     }
     
-    // 2. Si no encontró por DNI, buscar por teléfono en la base de datos
-    if (data.telefono) {
-      const { data: clientByPhone, error: phoneError } = await supabase
-        .from('clientes')
-        .select('*')
-        .eq('telefono', data.telefono)
-        .limit(1)
-        .maybeSingle();
-      
-      if (phoneError) {
-        console.error('Error buscando cliente por teléfono:', phoneError);
-      }
-      
-      if (clientByPhone) {
-        // Actualizar datos del cliente existente
-        const { error: updateError } = await supabase
-          .from('clientes')
-          .update({
-            nombre: data.nombre,
-            apellido: data.apellido || clientByPhone.apellido,
-            email: data.email || clientByPhone.email,
-            direccion: data.direccion || clientByPhone.direccion,
-            ciudad: data.ciudad || clientByPhone.ciudad,
-            codigo_postal: data.codigo_postal || clientByPhone.codigo_postal,
-            dni_cuit: data.dni_cuit || clientByPhone.dni_cuit,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', clientByPhone.id);
-
-        if (updateError) throw updateError;
-        return clientByPhone.id;
-      }
-    }
-
-    // 3. Buscar por nombre+dirección (case-insensitive) para evitar duplicados por el índice único
+    // 2. Buscar por nombre+dirección (case-insensitive) para evitar duplicados por el índice único
     if (data.nombre && data.direccion) {
       const { data: clientByNameAddr, error: nameAddrError } = await supabase
         .from('clientes')
@@ -1585,6 +1568,7 @@ export default function NewShipment() {
   };
 
   const handleLoadSenderClient = (client: Client) => {
+    setClientLoadedManually(prev => ({ ...prev, remitente: true }));
     setFormData(prev => ({
       ...prev,
       remitente_nombre: client.nombre,
@@ -1609,6 +1593,7 @@ export default function NewShipment() {
   };
 
   const handleLoadRecipientClient = (client: Client) => {
+    setClientLoadedManually(prev => ({ ...prev, destinatario: true }));
     setFormData(prev => ({
       ...prev,
       destinatario_nombre: client.nombre,
@@ -2114,7 +2099,11 @@ export default function NewShipment() {
                 <Input
                   id="remitente_dni"
                   value={formData.remitente_dni}
-                  onChange={(e) => handleChange('remitente_dni', e.target.value)}
+                  onChange={(e) => {
+                    handleChange('remitente_dni', e.target.value);
+                    setClientLoadedManually(prev => ({ ...prev, remitente: false }));
+                  }}
+                  onBlur={(e) => checkExistingClient(e.target.value, 'remitente')}
                   placeholder="Ej: 12345678 o 20-12345678-9"
                 />
               </div>
@@ -2124,7 +2113,6 @@ export default function NewShipment() {
                   id="remitente_telefono"
                   value={formData.remitente_telefono}
                   onChange={(e) => handleChange('remitente_telefono', e.target.value)}
-                  onBlur={(e) => checkExistingClient(e.target.value, 'remitente')}
                   required
                 />
               </div>
@@ -2279,7 +2267,11 @@ export default function NewShipment() {
                   <Input
                     id="destinatario_dni"
                     value={formData.destinatario_dni}
-                    onChange={(e) => handleChange('destinatario_dni', e.target.value)}
+                    onChange={(e) => {
+                      handleChange('destinatario_dni', e.target.value);
+                      setClientLoadedManually(prev => ({ ...prev, destinatario: false }));
+                    }}
+                    onBlur={(e) => checkExistingClient(e.target.value, 'destinatario')}
                   />
                 </div>
                 <div className="space-y-2">
@@ -2288,7 +2280,6 @@ export default function NewShipment() {
                     id="destinatario_telefono"
                     value={formData.destinatario_telefono}
                     onChange={(e) => handleChange('destinatario_telefono', e.target.value)}
-                    onBlur={(e) => checkExistingClient(e.target.value, 'destinatario')}
                     required
                   />
                 </div>
