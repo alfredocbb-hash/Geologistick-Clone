@@ -661,6 +661,8 @@ export default function NewShipment() {
   // Para sucursal-a-sucursal, combinar tarifas del origen y del destino (búsqueda bidireccional)
   const tarifasDisponibles = useMemo(() => {
     if (!tarifas) return [];
+    // Esperar a que carguen las asignaciones de sucursal antes de decidir
+    if (loadingSucursalTarifas) return [];
     
     // Combinar tarifas de origen + destino (sin duplicados)
     const allSucursalTarifas = [...sucursalTarifas];
