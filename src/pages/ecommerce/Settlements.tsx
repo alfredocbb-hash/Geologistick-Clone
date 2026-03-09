@@ -680,6 +680,7 @@ export default function Settlements() {
             estado: e.estado,
             created_at: e.created_at,
             tiene_visitas: tieneVisitas,
+            destinatario: e.destinatario || null,
           };
         });
       }

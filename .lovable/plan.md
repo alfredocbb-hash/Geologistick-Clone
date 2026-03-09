@@ -1,34 +1,28 @@
 
 
-# Fix: Nombre destinatario no aparece en envíos comunes de liquidaciones
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
 ## Problema
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
-La query trae correctamente el join `destinatario:clientes(nombre, apellido)`, y la UI lo usa como fallback (línea 1370). Pero al mapear los resultados a `CalculatedEnvio` (líneas 670-683), el campo `destinatario` no se incluye en el objeto mapeado, por lo que siempre es `undefined` en la tabla.
+## Solución
 
-## Cambio
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-### `src/pages/ecommerce/Settlements.tsx` — línea 682
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-Agregar `destinatario: e.destinatario` al objeto de retorno del mapeo (entre `tiene_visitas` y el cierre del objeto):
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-```typescript
-return {
-  id: e.id,
-  tracking_number: e.tracking_number,
-  nombre_destinatario: e.nombre_destinatario,
-  direccion_entrega: e.direccion_entrega,
-  ciudad_entrega: e.ciudad_entrega,
-  precio_total: precioFinal,
-  precio_original: e.precio_total || 0,
-  precio_calculado: precioCalculado,
-  zona_match: zonaMatch,
-  estado: e.estado,
-  created_at: e.created_at,
-  tiene_visitas: tieneVisitas,
-  destinatario: e.destinatario || null,  // ← línea faltante
-};
-```
-
-Es un cambio de una sola línea. La interfaz `CalculatedEnvio` ya tiene el campo y la UI ya lo usa como fallback.
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 
