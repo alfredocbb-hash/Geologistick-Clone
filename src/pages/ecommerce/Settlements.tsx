@@ -397,12 +397,14 @@ export default function Settlements() {
         allMovs = [...allMovs, ...(movs || [])];
       }
 
-      // 2. SIEMPRE buscar envíos de ecommerce_orders por seller_id (independiente de cliente_id)
+      // 2. Buscar envíos de ecommerce_orders filtrados por fecha_entrega_estimada (fecha de reparto)
       const { data: sellerOrdersWithSeller, error: ordersError } = await supabase
         .from('ecommerce_orders')
         .select('envio_id, seller_id')
         .in('seller_id', calcSellers)
-        .not('envio_id', 'is', null);
+        .not('envio_id', 'is', null)
+        .gte('fecha_entrega_estimada', fechaInicioStr)
+        .lte('fecha_entrega_estimada', fechaFinStr);
 
       if (ordersError) throw ordersError;
 
@@ -416,44 +418,28 @@ export default function Settlements() {
         if (o.envio_id) envioToSellerMap.set(o.envio_id, o.seller_id);
       });
 
-      // Cargar los envíos de ecommerce_orders
+      // Cargar los envíos de ecommerce_orders (ya filtrados por fecha de reparto)
       let ecommerceEnvios: any[] = [];
       if (sellerEnvioIds.length > 0) {
-        // Query 1: envíos e-commerce con fecha_entrega en el rango
         const { data: ecomEnvios, error: ecomError } = await (supabase
           .from('envios') as any)
           .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, estado, created_at, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
           .in('id', sellerEnvioIds)
-          .gte('fecha_entrega', fechaInicioStr)
-          .lte('fecha_entrega', fechaFinStr)
           .is('liquidacion_seller_id', null)
           .order('created_at', { ascending: true });
 
         if (ecomError) throw ecomError;
-
-        // Query 2: envíos e-commerce sin fecha_entrega, filtrados por created_at
-        const { data: ecomEnviosNoDate, error: ecomNoDateError } = await (supabase
-          .from('envios') as any)
-          .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, estado, created_at, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
-          .in('id', sellerEnvioIds)
-          .is('fecha_entrega', null)
-          .gte('created_at', fechaInicioStr)
-          .lte('created_at', fechaFinStr)
-          .is('liquidacion_seller_id', null)
-          .order('created_at', { ascending: true });
-
-        if (ecomNoDateError) throw ecomNoDateError;
-
-        // Combinar sin duplicados
-        const ecomIds = new Set((ecomEnvios || []).map((e: any) => e.id));
-        ecommerceEnvios = [
-          ...(ecomEnvios || []),
-          ...(ecomEnviosNoDate || []).filter((e: any) => !ecomIds.has(e.id))
-        ];
+        ecommerceEnvios = ecomEnvios || [];
       }
 
       // 3. Buscar TODOS los envio_ids de ecommerce_orders relacionados (para excluirlos de comunes)
-      const allOrderEnvioIds = new Set(sellerEnvioIds);
+      // Necesitamos ALL orders (no solo las del rango) para evitar que aparezcan como envíos comunes
+      const { data: allSellerOrders } = await supabase
+        .from('ecommerce_orders')
+        .select('envio_id')
+        .in('seller_id', calcSellers)
+        .not('envio_id', 'is', null);
+      const allOrderEnvioIds = new Set((allSellerOrders || []).map(o => o.envio_id).filter((id): id is string => id !== null));
 
       // 4. Envíos comunes (sin orden e-commerce) por remitente_id — SOLO si hay cliente_ids
       let filteredCommonEnvios: any[] = [];
