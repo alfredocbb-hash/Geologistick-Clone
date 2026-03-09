@@ -203,6 +203,7 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
       return data;
     },
     enabled: !!seller.user_id && open,
+    refetchOnWindowFocus: false,
   });
 
   // Fetch available users for linking
