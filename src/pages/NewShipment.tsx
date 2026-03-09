@@ -925,41 +925,7 @@ export default function NewShipment() {
       }
     }
     
-    // 2. Si no encontró por DNI, buscar por teléfono en la base de datos
-    if (data.telefono) {
-      const { data: clientByPhone, error: phoneError } = await supabase
-        .from('clientes')
-        .select('*')
-        .eq('telefono', data.telefono)
-        .limit(1)
-        .maybeSingle();
-      
-      if (phoneError) {
-        console.error('Error buscando cliente por teléfono:', phoneError);
-      }
-      
-      if (clientByPhone) {
-        // Actualizar datos del cliente existente
-        const { error: updateError } = await supabase
-          .from('clientes')
-          .update({
-            nombre: data.nombre,
-            apellido: data.apellido || clientByPhone.apellido,
-            email: data.email || clientByPhone.email,
-            direccion: data.direccion || clientByPhone.direccion,
-            ciudad: data.ciudad || clientByPhone.ciudad,
-            codigo_postal: data.codigo_postal || clientByPhone.codigo_postal,
-            dni_cuit: data.dni_cuit || clientByPhone.dni_cuit,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', clientByPhone.id);
-
-        if (updateError) throw updateError;
-        return clientByPhone.id;
-      }
-    }
-
-    // 3. Buscar por nombre+dirección (case-insensitive) para evitar duplicados por el índice único
+    // 2. Buscar por nombre+dirección (case-insensitive) para evitar duplicados por el índice único
     if (data.nombre && data.direccion) {
       const { data: clientByNameAddr, error: nameAddrError } = await supabase
         .from('clientes')
