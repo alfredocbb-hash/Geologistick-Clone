@@ -2367,8 +2367,18 @@ export default function NewShipment() {
                                 key={s.id}
                                 value={`${s.nombre} ${s.ciudad || ''} ${s.direccion || ''}`}
                                 onSelect={() => {
-                                  handleChange('sucursal_destino_id', s.id);
                                   setSucursalDestinoOpen(false);
+                                  requestAnimationFrame(() => {
+                                    handleChange('sucursal_destino_id', s.id);
+                                    if (s.lat && s.lng) {
+                                      setDestinoCoords({ lat: s.lat, lng: s.lng });
+                                    }
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      sucursal_destino_id: s.id,
+                                      destinatario_ciudad: s.ciudad || '',
+                                    }));
+                                  });
                                 }}
                               >
                                 <div className="flex flex-col">
