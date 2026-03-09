@@ -1700,9 +1700,9 @@ export default function NewShipment() {
       remitente_codigo_postal: details.postalCode || prev.remitente_codigo_postal,
     }));
     // Defer coords update to avoid cascading re-renders with distance calc (Chrome fix)
-    requestAnimationFrame(() => {
+    setTimeout(() => {
       setOrigenCoords({ lat: details.lat, lng: details.lng });
-    });
+    }, 0);
   };
 
   const handleDestinatarioAddressSelect = (details: AddressDetails) => {
@@ -1713,9 +1713,9 @@ export default function NewShipment() {
       destinatario_codigo_postal: details.postalCode || prev.destinatario_codigo_postal,
     }));
     // Defer coords update to avoid cascading re-renders with distance calc (Chrome fix)
-    requestAnimationFrame(() => {
+    setTimeout(() => {
       setDestinoCoords({ lat: details.lat, lng: details.lng });
-    });
+    }, 0);
   };
 
   // Update destination coords and city/postal when sucursal destino changes
@@ -2018,9 +2018,9 @@ export default function NewShipment() {
                       // Defer heavy client load to let Select portal unmount first (Chrome fix)
                       const selectedClient = clientesCtaCte.find(c => c.id === v);
                       if (selectedClient) {
-                        requestAnimationFrame(() => {
+                        setTimeout(() => {
                           handleLoadSenderClient(selectedClient);
-                        });
+                        }, 0);
                       }
                     }}
                   >
@@ -2380,7 +2380,7 @@ export default function NewShipment() {
                                 value={`${s.nombre} ${s.ciudad || ''} ${s.direccion || ''}`}
                                 onSelect={() => {
                                   setSucursalDestinoOpen(false);
-                                  requestAnimationFrame(() => {
+                                   setTimeout(() => {
                                     if (s.lat && s.lng) {
                                       setDestinoCoords({ lat: s.lat, lng: s.lng });
                                     }
@@ -2389,7 +2389,7 @@ export default function NewShipment() {
                                       sucursal_destino_id: s.id,
                                       destinatario_ciudad: s.ciudad || '',
                                     }));
-                                  });
+                                  }, 0);
                                 }}
                               >
                                 <div className="flex flex-col">
