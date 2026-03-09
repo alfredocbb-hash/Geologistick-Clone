@@ -1627,6 +1627,7 @@ export default function NewShipment() {
   };
 
   const handleLoadRecipientClient = (client: Client) => {
+    setClientLoadedManually(prev => ({ ...prev, destinatario: true }));
     setFormData(prev => ({
       ...prev,
       destinatario_nombre: client.nombre,
