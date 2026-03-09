@@ -1,51 +1,28 @@
 
 
-# Fix: Conceptos no cargan al configurar comisiones de sucursales (super admin)
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
 ## Problema
-
-Al abrir el diálogo de comisiones de BERAZATEGUI (o cualquier sucursal de Blackbox), aparece "No hay conceptos configurados", aunque el tenant tiene 6 conceptos activos (Flete, Seguro, Retiro, Entrega, Agencia, Traslado).
-
-## Causa raíz
-
-La query de conceptos (línea 189) filtra por `tenant_id = tenantId`, donde `tenantId` viene de `useTenant()`. Para super admins, `useTenant()` devuelve `null` (está deshabilitado para ellos), por lo que la query nunca se ejecuta (`enabled: !!tenantId`).
-
-Las sucursales que ya tienen comisiones las tuvieron configuradas previamente (probablemente por un admin de Blackbox, no por super admin).
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
 ## Solución
 
-En `src/pages/Branches.tsx`, derivar el `tenant_id` para la query de conceptos desde la sucursal seleccionada (que tiene `tenant_id` en sus datos) en lugar de depender exclusivamente del hook `useTenant()`.
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-### Cambios:
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-1. **Incluir `tenant_id` en la interfaz `Sucursal`** — la query ya hace `select('*')`, solo falta tiparlo.
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-2. **Derivar `effectiveTenantId`** — usar el `tenant_id` de la sucursal seleccionada para comisiones, con fallback al `tenantId` del usuario:
-```typescript
-const effectiveTenantId = selectedSucursalForCommissions?.tenant_id || tenantId;
-```
-
-3. **Actualizar la query de conceptos** — usar `effectiveTenantId` en lugar de `tenantId`:
-```typescript
-const { data: conceptos = [] } = useQuery({
-  queryKey: ['tarifa_conceptos', effectiveTenantId],
-  queryFn: async () => {
-    const { data, error } = await supabase
-      .from('tarifa_conceptos')
-      .select('*')
-      .eq('activo', true)
-      .eq('tenant_id', effectiveTenantId)
-      .order('orden');
-    if (error) throw error;
-    return data as TarifaConcepto[];
-  },
-  enabled: !!effectiveTenantId,
-});
-```
-
-Esto permite que un super admin vea los conceptos del tenant correspondiente a la sucursal que está configurando.
-
-| Archivo | Cambio |
-|---------|--------|
-| `src/pages/Branches.tsx` | Agregar `tenant_id` a interfaz Sucursal, derivar tenant desde sucursal seleccionada, actualizar query de conceptos |
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 
