@@ -1,28 +1,28 @@
 
 
-# Alerta de cliente existente al crear envío
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
-## Enfoque
+## Problema
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
-Agregar una verificación automática cuando el usuario llena el campo de **teléfono** (remitente o destinatario). Si se encuentra un cliente existente en la base de datos, mostrar un `AlertDialog` preguntando si desea cargar los datos guardados en el formulario.
+## Solución
 
-Esto también resuelve el bug de `.maybeSingle()` con duplicados agregando `.limit(1)`.
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-## Cambios
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-### `src/pages/NewShipment.tsx`
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-1. **Nuevo estado**: `pendingClientMatch` para guardar el cliente encontrado y el campo destino (remitente/destinatario).
-
-2. **Función `checkExistingClient`**: Se ejecuta en `onBlur` del campo teléfono (remitente y destinatario). Busca por teléfono con `.limit(1).maybeSingle()`. Si encuentra coincidencia, guarda en `pendingClientMatch` y abre el `AlertDialog`.
-
-3. **AlertDialog**: Muestra los datos del cliente encontrado (nombre, dirección, teléfono). Si el usuario acepta, autocompleta los campos del formulario (nombre, apellido, email, dirección, ciudad, CP, DNI). Si rechaza, no hace nada y permite continuar con los datos manuales.
-
-4. **Fix `.maybeSingle()`**: En `findOrCreateClient`, agregar `.limit(1)` antes de cada `.maybeSingle()` para evitar el error PGRST116 con clientes duplicados.
-
-## Archivos a modificar
-
-| Archivo | Cambio |
-|---------|--------|
-| `src/pages/NewShipment.tsx` | Agregar estado, función de verificación onBlur, AlertDialog, y fix `.limit(1)` en `findOrCreateClient` |
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 

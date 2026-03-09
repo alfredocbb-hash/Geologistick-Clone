@@ -20,6 +20,16 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import ContactAutocomplete from '@/components/shipments/ContactAutocomplete';
 import { AddressAutocomplete, type AddressDetails } from '@/components/maps';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -276,6 +286,12 @@ export default function NewShipment() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [createdEnvio, setCreatedEnvio] = useState<{ id: string; tracking_number: string; precio_total: number; remitente_id: string } | null>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+
+  // Client match alert state
+  const [pendingClientMatch, setPendingClientMatch] = useState<{
+    client: Client;
+    target: 'remitente' | 'destinatario';
+  } | null>(null);
   
   // Sucursal destino combobox state
   const [sucursalDestinoOpen, setSucursalDestinoOpen] = useState(false);
@@ -537,7 +553,52 @@ export default function NewShipment() {
     enabled: !!user && !!profile?.tenant_id,
   });
 
-  // Clientes con cuenta corriente (filtered from allClients)
+  // Check existing client on phone blur
+  const checkExistingClient = async (phone: string, target: 'remitente' | 'destinatario') => {
+    if (!phone || phone.trim().length < 6) return;
+    const { data: found } = await supabase
+      .from('clientes')
+      .select('*')
+      .eq('telefono', phone.trim())
+      .limit(1)
+      .maybeSingle();
+    if (found) {
+      setPendingClientMatch({ client: found as Client, target });
+    }
+  };
+
+  const applyClientMatch = () => {
+    if (!pendingClientMatch) return;
+    const { client, target } = pendingClientMatch;
+    if (target === 'remitente') {
+      setFormData(prev => ({
+        ...prev,
+        remitente_nombre: client.nombre,
+        remitente_apellido: client.apellido || '',
+        remitente_telefono: client.telefono,
+        remitente_email: client.email || '',
+        remitente_direccion: client.direccion,
+        remitente_ciudad: client.ciudad || '',
+        remitente_codigo_postal: client.codigo_postal || '',
+        remitente_dni: client.dni_cuit || '',
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        destinatario_nombre: client.nombre,
+        destinatario_apellido: client.apellido || '',
+        destinatario_telefono: client.telefono,
+        destinatario_email: client.email || '',
+        destinatario_direccion: client.direccion,
+        destinatario_ciudad: client.ciudad || '',
+        destinatario_codigo_postal: client.codigo_postal || '',
+        destinatario_dni: client.dni_cuit || '',
+      }));
+    }
+    setPendingClientMatch(null);
+  };
+
+
   const clientesCtaCte = useMemo(() => {
     return allClients.filter(c => c.tiene_cuenta_corriente);
   }, [allClients]);
@@ -819,6 +880,7 @@ export default function NewShipment() {
         .from('clientes')
         .select('*')
         .ilike('dni_cuit', data.dni_cuit.trim())
+        .limit(1)
         .maybeSingle();
       
       if (dniError) {
@@ -852,6 +914,7 @@ export default function NewShipment() {
         .from('clientes')
         .select('*')
         .eq('telefono', data.telefono)
+        .limit(1)
         .maybeSingle();
       
       if (phoneError) {
@@ -886,6 +949,7 @@ export default function NewShipment() {
         .select('*')
         .ilike('nombre', data.nombre.trim())
         .ilike('direccion', data.direccion.trim())
+        .limit(1)
         .maybeSingle();
       
       if (nameAddrError) {
@@ -949,6 +1013,7 @@ export default function NewShipment() {
             .select('id')
             .ilike('nombre', data.nombre.trim())
             .ilike('direccion', data.direccion.trim())
+            .limit(1)
             .maybeSingle();
           
           if (existingClient) {
@@ -961,6 +1026,7 @@ export default function NewShipment() {
               .from('clientes')
               .select('id')
               .ilike('dni_cuit', data.dni_cuit.trim())
+              .limit(1)
               .maybeSingle();
             if (existByDni) return existByDni.id;
           }
@@ -980,6 +1046,7 @@ export default function NewShipment() {
           .select('id')
           .ilike('nombre', data.nombre.trim())
           .ilike('direccion', data.direccion.trim())
+          .limit(1)
           .maybeSingle();
         if (fallbackClient) return fallbackClient.id;
       }
@@ -2057,6 +2124,7 @@ export default function NewShipment() {
                   id="remitente_telefono"
                   value={formData.remitente_telefono}
                   onChange={(e) => handleChange('remitente_telefono', e.target.value)}
+                  onBlur={(e) => checkExistingClient(e.target.value, 'remitente')}
                   required
                 />
               </div>
@@ -2220,6 +2288,7 @@ export default function NewShipment() {
                     id="destinatario_telefono"
                     value={formData.destinatario_telefono}
                     onChange={(e) => handleChange('destinatario_telefono', e.target.value)}
+                    onBlur={(e) => checkExistingClient(e.target.value, 'destinatario')}
                     required
                   />
                 </div>
@@ -2822,6 +2891,44 @@ export default function NewShipment() {
         onConfirm={handlePaymentConfirm}
         isLoading={isProcessingPayment}
       />
+
+      {/* Alert dialog for existing client match */}
+      <AlertDialog open={!!pendingClientMatch} onOpenChange={(open) => { if (!open) setPendingClientMatch(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cliente encontrado</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>Se encontró un cliente con este teléfono ya registrado en el sistema:</p>
+                <div className="p-3 bg-muted rounded-lg space-y-1 text-sm">
+                  <p className="font-medium text-foreground">
+                    {pendingClientMatch?.client.nombre} {pendingClientMatch?.client.apellido || ''}
+                  </p>
+                  {pendingClientMatch?.client.telefono && (
+                    <p>📞 {pendingClientMatch.client.telefono}</p>
+                  )}
+                  {pendingClientMatch?.client.direccion && (
+                    <p>📍 {pendingClientMatch.client.direccion}{pendingClientMatch.client.ciudad ? `, ${pendingClientMatch.client.ciudad}` : ''}</p>
+                  )}
+                  {pendingClientMatch?.client.dni_cuit && (
+                    <p>🪪 {pendingClientMatch.client.dni_cuit}</p>
+                  )}
+                  {pendingClientMatch?.client.email && (
+                    <p>✉️ {pendingClientMatch.client.email}</p>
+                  )}
+                </div>
+                <p>¿Deseas cargar los datos de este cliente en el formulario?</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No, continuar manual</AlertDialogCancel>
+            <AlertDialogAction onClick={applyClientMatch}>
+              Sí, cargar datos
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
