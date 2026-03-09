@@ -215,6 +215,31 @@ export default function Branches() {
     refetchOnWindowFocus: false,
   });
 
+  // Fetch names for orphan concept IDs (from other tenants) referenced in sucursal_comisiones
+  const orphanConceptIds = useMemo(() => {
+    if (!sucursalComisiones.length || !conceptos.length) return [];
+    const tenantConceptIds = new Set(conceptos.map(c => c.id));
+    const foreignIds = [...new Set(sucursalComisiones.map(c => c.concepto_id))].filter(id => !tenantConceptIds.has(id));
+    return foreignIds;
+  }, [sucursalComisiones, conceptos]);
+
+  const { data: orphanConceptNames = {} } = useQuery({
+    queryKey: ['orphan_concept_names', orphanConceptIds],
+    queryFn: async () => {
+      if (!orphanConceptIds.length) return {};
+      const { data, error } = await supabase
+        .from('tarifa_conceptos')
+        .select('id, nombre')
+        .in('id', orphanConceptIds);
+      if (error) throw error;
+      const map: Record<string, string> = {};
+      (data || []).forEach((c: { id: string; nombre: string }) => { map[c.id] = c.nombre; });
+      return map;
+    },
+    enabled: orphanConceptIds.length > 0,
+    refetchOnWindowFocus: false,
+  });
+
   // Conceptos a mostrar (excluir recepcion y cobros) - memoizado para evitar re-renders
   const conceptosFiltrados = useMemo(() => 
     conceptos.filter(c => !['recepcion', 'cobros'].includes(c.codigo)),
