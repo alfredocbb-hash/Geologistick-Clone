@@ -433,7 +433,13 @@ export default function Settlements() {
       }
 
       // 3. Buscar TODOS los envio_ids de ecommerce_orders relacionados (para excluirlos de comunes)
-      const allOrderEnvioIds = new Set(sellerEnvioIds);
+      // Necesitamos ALL orders (no solo las del rango) para evitar que aparezcan como envíos comunes
+      const { data: allSellerOrders } = await supabase
+        .from('ecommerce_orders')
+        .select('envio_id')
+        .in('seller_id', calcSellers)
+        .not('envio_id', 'is', null);
+      const allOrderEnvioIds = new Set((allSellerOrders || []).map(o => o.envio_id).filter((id): id is string => id !== null));
 
       // 4. Envíos comunes (sin orden e-commerce) por remitente_id — SOLO si hay cliente_ids
       let filteredCommonEnvios: any[] = [];
