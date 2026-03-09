@@ -204,6 +204,7 @@ export default function ThirdPartyShipmentsTab() {
       if (error) throw error;
       return data || [];
     },
+    refetchOnWindowFocus: false,
   });
 
   // Fetch all clients for autocomplete (filtered by tenant)
