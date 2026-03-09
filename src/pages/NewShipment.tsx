@@ -2380,7 +2380,7 @@ export default function NewShipment() {
                                 value={`${s.nombre} ${s.ciudad || ''} ${s.direccion || ''}`}
                                 onSelect={() => {
                                   setSucursalDestinoOpen(false);
-                                  requestAnimationFrame(() => {
+                                   setTimeout(() => {
                                     if (s.lat && s.lng) {
                                       setDestinoCoords({ lat: s.lat, lng: s.lng });
                                     }
@@ -2389,7 +2389,7 @@ export default function NewShipment() {
                                       sucursal_destino_id: s.id,
                                       destinatario_ciudad: s.ciudad || '',
                                     }));
-                                  });
+                                  }, 0);
                                 }}
                               >
                                 <div className="flex flex-col">

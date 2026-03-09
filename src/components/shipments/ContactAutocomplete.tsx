@@ -86,9 +86,9 @@ export default function ContactAutocomplete({
     setOpen(false);
     setSearch('');
     // Defer parent callback to let Popover portal unmount first (Chrome fix)
-    requestAnimationFrame(() => {
+    setTimeout(() => {
       onSelect(client);
-    });
+    }, 0);
   };
 
   const formatCurrency = (value: number) => {
