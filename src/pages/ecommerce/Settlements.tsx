@@ -83,6 +83,7 @@ interface CalculatedEnvio {
   estado: string | null;
   created_at: string;
   tiene_visitas?: boolean;
+  destinatario?: { nombre: string | null; apellido: string | null } | null;
 }
 
 const METODOS_PAGO = [
