@@ -62,7 +62,7 @@ export function SellerLiquidacionDetailDialog({
     queryFn: async () => {
       const { data, error } = await (supabase
         .from('envios') as any)
-        .select('id, tracking_number, nombre_destinatario, direccion_entrega, precio_total, estado, created_at')
+        .select('id, tracking_number, nombre_destinatario, direccion_entrega, precio_total, estado, created_at, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
         .eq('liquidacion_seller_id', liquidacion?.id)
         .neq('estado', 'pendiente')
         .order('created_at', { ascending: true });
