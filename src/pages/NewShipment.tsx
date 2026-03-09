@@ -1026,6 +1026,7 @@ export default function NewShipment() {
               .from('clientes')
               .select('id')
               .ilike('dni_cuit', data.dni_cuit.trim())
+              .limit(1)
               .maybeSingle();
             if (existByDni) return existByDni.id;
           }
