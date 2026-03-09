@@ -553,7 +553,52 @@ export default function NewShipment() {
     enabled: !!user && !!profile?.tenant_id,
   });
 
-  // Clientes con cuenta corriente (filtered from allClients)
+  // Check existing client on phone blur
+  const checkExistingClient = async (phone: string, target: 'remitente' | 'destinatario') => {
+    if (!phone || phone.trim().length < 6) return;
+    const { data: found } = await supabase
+      .from('clientes')
+      .select('*')
+      .eq('telefono', phone.trim())
+      .limit(1)
+      .maybeSingle();
+    if (found) {
+      setPendingClientMatch({ client: found as Client, target });
+    }
+  };
+
+  const applyClientMatch = () => {
+    if (!pendingClientMatch) return;
+    const { client, target } = pendingClientMatch;
+    if (target === 'remitente') {
+      setFormData(prev => ({
+        ...prev,
+        remitente_nombre: client.nombre,
+        remitente_apellido: client.apellido || '',
+        remitente_telefono: client.telefono,
+        remitente_email: client.email || '',
+        remitente_direccion: client.direccion,
+        remitente_ciudad: client.ciudad || '',
+        remitente_codigo_postal: client.codigo_postal || '',
+        remitente_dni: client.dni_cuit || '',
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        destinatario_nombre: client.nombre,
+        destinatario_apellido: client.apellido || '',
+        destinatario_telefono: client.telefono,
+        destinatario_email: client.email || '',
+        destinatario_direccion: client.direccion,
+        destinatario_ciudad: client.ciudad || '',
+        destinatario_codigo_postal: client.codigo_postal || '',
+        destinatario_dni: client.dni_cuit || '',
+      }));
+    }
+    setPendingClientMatch(null);
+  };
+
+
   const clientesCtaCte = useMemo(() => {
     return allClients.filter(c => c.tiene_cuenta_corriente);
   }, [allClients]);
