@@ -1717,10 +1717,11 @@ export default function NewShipment() {
         if (sucursalDestino.lat && sucursalDestino.lng) {
           setDestinoCoords({ lat: sucursalDestino.lat, lng: sucursalDestino.lng });
         }
-        setFormData(prev => ({
-          ...prev,
-          destinatario_ciudad: sucursalDestino.ciudad || '',
-        }));
+        const newCiudad = sucursalDestino.ciudad || '';
+        setFormData(prev => {
+          if (prev.destinatario_ciudad === newCiudad) return prev;
+          return { ...prev, destinatario_ciudad: newCiudad };
+        });
       }
     }
   }, [formData.sucursal_destino_id, sucursales, tieneEntrega]);
@@ -2367,8 +2368,17 @@ export default function NewShipment() {
                                 key={s.id}
                                 value={`${s.nombre} ${s.ciudad || ''} ${s.direccion || ''}`}
                                 onSelect={() => {
-                                  handleChange('sucursal_destino_id', s.id);
                                   setSucursalDestinoOpen(false);
+                                  requestAnimationFrame(() => {
+                                    if (s.lat && s.lng) {
+                                      setDestinoCoords({ lat: s.lat, lng: s.lng });
+                                    }
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      sucursal_destino_id: s.id,
+                                      destinatario_ciudad: s.ciudad || '',
+                                    }));
+                                  });
                                 }}
                               >
                                 <div className="flex flex-col">
