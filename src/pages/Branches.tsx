@@ -82,6 +82,7 @@ interface Sucursal {
   incluye_iva: boolean | null;
   porcentaje_iva: number | null;
   tipo_liquidacion: string | null;
+  tenant_id: string | null;
 }
 
 interface TarifaConcepto {
