@@ -132,6 +132,7 @@ export default function ThirdPartySettlements() {
       if (error) throw error;
       return (data || []) as EmpresaTerciarizada[];
     },
+    refetchOnWindowFocus: false,
   });
 
   const empresasCtaCte = empresas.filter((e) => e.tiene_cuenta_corriente);
