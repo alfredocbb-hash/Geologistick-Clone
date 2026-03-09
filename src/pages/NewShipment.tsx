@@ -2314,7 +2314,6 @@ export default function NewShipment() {
                     id="destinatario_telefono"
                     value={formData.destinatario_telefono}
                     onChange={(e) => handleChange('destinatario_telefono', e.target.value)}
-                    onBlur={(e) => checkExistingClient(e.target.value, 'destinatario')}
                     required
                   />
                 </div>
