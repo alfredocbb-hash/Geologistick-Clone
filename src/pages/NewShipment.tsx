@@ -286,6 +286,12 @@ export default function NewShipment() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [createdEnvio, setCreatedEnvio] = useState<{ id: string; tracking_number: string; precio_total: number; remitente_id: string } | null>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+
+  // Client match alert state
+  const [pendingClientMatch, setPendingClientMatch] = useState<{
+    client: Client;
+    target: 'remitente' | 'destinatario';
+  } | null>(null);
   
   // Sucursal destino combobox state
   const [sucursalDestinoOpen, setSucursalDestinoOpen] = useState(false);
