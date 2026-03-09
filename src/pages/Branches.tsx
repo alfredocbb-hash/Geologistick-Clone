@@ -384,6 +384,7 @@ export default function Branches() {
   };
 
   // Save commissions mutation - guarda ambos roles (emisión y recepción)
+  // Also cleans up orphan concept IDs from other tenants after saving
   const saveCommissionsMutation = useMutation({
     mutationFn: async () => {
       if (!selectedSucursalForCommissions) return;
@@ -401,9 +402,19 @@ export default function Branches() {
       });
 
       await Promise.all(operations);
+
+      // Clean up orphan records (old concept IDs from other tenants)
+      if (orphanConceptIds.length > 0) {
+        await supabase
+          .from('sucursal_comisiones')
+          .delete()
+          .eq('sucursal_id', selectedSucursalForCommissions.id)
+          .in('concepto_id', orphanConceptIds);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sucursal_comisiones'] });
+      queryClient.invalidateQueries({ queryKey: ['orphan_concept_names'] });
       toast.success('Comisiones guardadas');
       setIsCommissionsDialogOpen(false);
     },
