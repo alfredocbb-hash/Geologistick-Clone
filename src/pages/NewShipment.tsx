@@ -683,7 +683,17 @@ export default function NewShipment() {
     // Filtrar solo las tarifas habilitadas para estas sucursales
     const tarifaIdsHabilitados = new Set(allSucursalTarifas.map(st => st.tarifa_id));
     return tarifas.filter(t => tarifaIdsHabilitados.has(t.id));
-  }, [tarifas, sucursalTarifas, sucursalDestinoTarifas, necesitaBusquedaDestino]);
+  }, [tarifas, sucursalTarifas, sucursalDestinoTarifas, necesitaBusquedaDestino, loadingSucursalTarifas]);
+
+  // Limpiar tarifa seleccionada si ya no está en las disponibles (ej: cambio de sucursal, race condition)
+  useEffect(() => {
+    if (formData.tarifa_id && tarifasDisponibles.length > 0) {
+      if (!tarifasDisponibles.some(t => t.id === formData.tarifa_id)) {
+        setFormData(prev => ({ ...prev, tarifa_id: '' }));
+        setTarifaFueAutoDetectada(false);
+      }
+    }
+  }, [tarifasDisponibles, formData.tarifa_id]);
 
   // Auto-seleccionar tarifa si solo hay una disponible (solo cuando NO hay auto-selección por zona activa)
   useEffect(() => {
