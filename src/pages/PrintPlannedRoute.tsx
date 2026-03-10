@@ -48,6 +48,9 @@ export default function PrintPlannedRoute() {
           *,
         envio:envios(
             tracking_number,
+            tracking_externo,
+            es_terciarizado,
+            empresa_terciarizada,
             direccion_entrega,
             direccion_retiro,
             ciudad_entrega,
