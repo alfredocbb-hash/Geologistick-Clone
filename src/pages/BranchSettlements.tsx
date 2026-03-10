@@ -161,7 +161,7 @@ export default function BranchSettlements() {
       // Fetch sucursal configuration (for IVA settings)
       const { data: sucursalConfig, error: sucursalError } = await supabase
         .from('sucursales')
-        .select('incluye_iva, porcentaje_iva')
+        .select('incluye_iva, porcentaje_iva, tipo_liquidacion')
         .eq('id', selectedSucursal)
         .single();
 
