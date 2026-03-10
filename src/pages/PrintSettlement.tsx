@@ -458,7 +458,9 @@ export default function PrintSettlement() {
                           <TableCell className="text-right font-medium">
                             {type === 'branch'
                               ? formatCurrency(item.monto_envio || 0)
-                              : formatCurrency(envio?.precio_total || 0)}
+                              : type === 'third-party'
+                                ? formatCurrency(item.monto || 0)
+                                : formatCurrency(envio?.precio_total || 0)}
                           </TableCell>
                           {type === 'driver' && (
                             <TableCell className="text-right font-medium text-success">
