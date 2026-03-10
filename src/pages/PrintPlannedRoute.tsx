@@ -322,6 +322,23 @@ export default function PrintPlannedRoute() {
               );
             })}
           </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-black bg-gray-100 font-bold">
+              <td colSpan={6} className="p-2 text-right">TOTAL A COBRAR:</td>
+              <td className="p-2 text-center">
+                <span className="inline-block bg-yellow-200 text-yellow-800 text-sm font-bold px-2 py-0.5 rounded">
+                  ${ruta.paradas
+                    .filter((p: any) => {
+                      const e = p.envio;
+                      return (e?.pago_contra_entrega && e?.tipo_pago === 'contra_entrega') || e?.tipo_pago === 'destino';
+                    })
+                    .reduce((acc: number, p: any) => acc + (p.envio?.precio_total || 0), 0)
+                    .toFixed(2)}
+                </span>
+              </td>
+              <td></td>
+            </tr>
+          </tfoot>
         </table>
       </div>
 
