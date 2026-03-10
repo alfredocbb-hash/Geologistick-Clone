@@ -287,7 +287,7 @@ export default function PrintPlannedRoute() {
                         </span>
                       )}
                     </td>
-                    <td className="p-2 font-mono text-xs">{envio?.tracking_number}</td>
+                    <td className="p-2 font-mono text-xs">{trackingDisplay}</td>
                     <td className="p-2">
                       <div className="font-medium">{clienteName}</div>
                       {envio?.cantidad_bultos && (
