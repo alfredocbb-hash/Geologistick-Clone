@@ -344,6 +344,7 @@ export function ThirdPartySettlementDetailDialog({
                         <TableHeader>
                           <TableRow>
                             <TableHead>Tracking</TableHead>
+                            <TableHead>Operación</TableHead>
                             <TableHead>Destinatario</TableHead>
                             <TableHead>Fecha Entrega</TableHead>
                             <TableHead>Estado</TableHead>
