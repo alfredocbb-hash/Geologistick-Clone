@@ -362,10 +362,10 @@ export default function PrintPlannedRoute() {
               </div>
             )}
             <div className="flex justify-between border-t pt-1 mt-2">
-              <span>Cobros COD:</span>
+              <span>Total a Cobrar:</span>
               <span className="font-bold">
                 ${ruta.paradas
-                  .filter((p: any) => p.envio?.pago_contra_entrega && p.envio?.tipo_pago === 'contra_entrega')
+                  .filter((p: any) => (p.envio?.pago_contra_entrega && p.envio?.tipo_pago === 'contra_entrega') || p.envio?.tipo_pago === 'destino')
                   .reduce((acc: number, p: any) => acc + (p.envio?.precio_total || 0), 0)
                   .toFixed(2)}
               </span>
