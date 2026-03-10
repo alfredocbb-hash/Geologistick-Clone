@@ -266,7 +266,11 @@ export default function PrintPlannedRoute() {
                 ? (envio?.direccion_retiro || cliente?.direccion)
                 : (envio?.direccion_entrega || cliente?.direccion);
               const ciudad = isRetiro ? envio?.ciudad_retiro : envio?.ciudad_entrega;
-              const isCOD = envio?.pago_contra_entrega && envio?.tipo_pago === 'contra_entrega';
+              const trackingDisplay = envio?.es_terciarizado && envio?.tracking_externo
+                ? envio.tracking_externo
+                : envio?.tracking_number;
+              const showCobro = (envio?.pago_contra_entrega && envio?.tipo_pago === 'contra_entrega')
+                || envio?.tipo_pago === 'destino';
 
               return (
                 <React.Fragment key={parada.id}>
