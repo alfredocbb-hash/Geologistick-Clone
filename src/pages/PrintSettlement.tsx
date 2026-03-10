@@ -410,6 +410,7 @@ export default function PrintSettlement() {
                     ) : (
                       <>
                         <TableHead>Tracking</TableHead>
+                        {type === 'third-party' && <TableHead>Operación</TableHead>}
                         <TableHead>Fecha</TableHead>
                         <TableHead>Destinatario</TableHead>
                         <TableHead className="text-right">Monto</TableHead>
