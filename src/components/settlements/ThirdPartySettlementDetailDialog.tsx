@@ -62,7 +62,7 @@ export function ThirdPartySettlementDetailDialog({
         .from('liquidacion_terciarizado_detalles') as any)
         .select(`
           id, monto, created_at,
-          envio:envios(id, tracking_number, tracking_externo, nombre_destinatario, precio_total, estado, fecha_entrega,
+          envio:envios(id, tracking_number, tracking_externo, nombre_destinatario, precio_total, estado, fecha_entrega, requiere_retiro,
             clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
         `)
         .eq('liquidacion_id', liquidacion?.id)
