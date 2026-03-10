@@ -786,6 +786,11 @@ export default function BranchSettlements() {
                   ))}
                 </SelectContent>
               </Select>
+              {selectedSucursal && (
+                <Badge variant={tipoLiquidacion === 'inmediata' ? 'default' : 'secondary'} className="mt-1">
+                  {tipoLiquidacion === 'inmediata' ? 'Inmediata' : 'Diferida'}
+                </Badge>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Fecha Inicio</Label>
