@@ -633,15 +633,18 @@ export async function downloadThirdPartySettlementPDF(liquidacion: {
     .eq('liquidacion_id', liquidacion.id)
     .order('created_at', { ascending: true });
 
-  const items = (detalles || []).map((d: any) => ({
-    tracking: d.envio?.tracking_externo || d.envio?.tracking_number || '-',
-    tipo: d.envio?.requiere_retiro ? 'Retiro' : 'Entrega',
-    fecha: d.envio?.fecha_entrega ? format(new Date(d.envio.fecha_entrega), 'dd/MM/yy') : '-',
-    destinatario: d.envio?.clientes
+  const items = (detalles || []).map((d: any) => {
+    const operacion = d.envio?.requiere_retiro ? 'Retiro' : 'Entrega';
+    const destName = d.envio?.clientes
       ? `${d.envio.clientes.nombre || ''} ${d.envio.clientes.apellido || ''}`.trim()
-      : d.envio?.nombre_destinatario || '-',
-    monto: d.monto || 0,
-  }));
+      : d.envio?.nombre_destinatario || '-';
+    return {
+      tracking: d.envio?.tracking_externo || d.envio?.tracking_number || '-',
+      fecha: d.envio?.fecha_entrega ? format(new Date(d.envio.fecha_entrega), 'dd/MM/yy') : '-',
+      destinatario: `[${operacion}] ${destName}`,
+      monto: d.monto || 0,
+    };
+  });
 
   await generateSettlementPDF({
     type: 'branch', // reuse branch layout (has neto/iva/total structure)
