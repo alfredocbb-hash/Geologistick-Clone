@@ -391,6 +391,9 @@ export default function PrintSettlement() {
                   <p className="text-2xl font-bold text-primary">{formatCurrency((settlement as any).monto_total || 0)}</p>
                 </div>
               </div>
+            )}
+
+            {/* Detail Table */}
             <div className="border rounded-lg overflow-hidden">
               <Table>
                 <TableHeader>
