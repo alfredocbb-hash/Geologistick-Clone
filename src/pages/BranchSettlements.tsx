@@ -47,7 +47,7 @@ import {
 import { downloadBranchSettlementPDF } from '@/lib/generateSettlementPDF';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { parseDateString } from '@/lib/dateUtils';
+import { parseDateString, toLocalISOStart, toLocalISOEnd } from '@/lib/dateUtils';
 import { SettlementDetailDialog } from '@/components/settlements/SettlementDetailDialog';
 import { ConceptBreakdownTable, type ConceptoResumen, type ResumenPorTipoPago } from '@/components/settlements/ConceptBreakdownTable';
 import type { Database } from '@/integrations/supabase/types';
@@ -126,13 +126,17 @@ export default function BranchSettlements() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('sucursales')
-        .select('id, nombre')
+        .select('id, nombre, tipo_liquidacion')
         .eq('activa', true)
         .order('nombre');
       if (error) throw error;
-      return data as Sucursal[];
+      return data as (Sucursal & { tipo_liquidacion?: string })[];
     },
   });
+
+  const selectedSucursalData = sucursales.find(s => s.id === selectedSucursal);
+  const tipoLiquidacion = selectedSucursalData?.tipo_liquidacion || 'diferida';
+  const dateLabel = tipoLiquidacion === 'inmediata' ? 'Fecha Creación' : 'Fecha Entrega';
 
   // Fetch existing liquidaciones
   const { data: liquidaciones = [], isLoading: loadingLiquidaciones } = useQuery({
@@ -161,11 +165,14 @@ export default function BranchSettlements() {
       // Fetch sucursal configuration (for IVA settings)
       const { data: sucursalConfig, error: sucursalError } = await supabase
         .from('sucursales')
-        .select('incluye_iva, porcentaje_iva')
+        .select('incluye_iva, porcentaje_iva, tipo_liquidacion')
         .eq('id', selectedSucursal)
         .single();
 
       if (sucursalError) throw sucursalError;
+
+      // Determine date field based on settlement type
+      const dateField = sucursalConfig?.tipo_liquidacion === 'inmediata' ? 'created_at' : 'fecha_entrega';
 
       // Fetch envíos donde la sucursal es ORIGEN o DESTINO
       const { data: envios, error: enviosError } = await supabase
@@ -182,8 +189,8 @@ export default function BranchSettlements() {
           envio_detalles(concepto_id, monto, nombre_concepto)
         `)
         .or(`sucursal_origen_id.eq.${selectedSucursal},sucursal_destino_id.eq.${selectedSucursal}`)
-        .gte('created_at', fechaInicio)
-        .lte('created_at', fechaFin + 'T23:59:59')
+        .gte(dateField, toLocalISOStart(fechaInicio))
+        .lte(dateField, toLocalISOEnd(fechaFin))
         .in('estado', ['entregado', 'devuelto']);
 
       if (enviosError) throw enviosError;
@@ -779,9 +786,14 @@ export default function BranchSettlements() {
                   ))}
                 </SelectContent>
               </Select>
+              {selectedSucursal && (
+                <Badge variant={tipoLiquidacion === 'inmediata' ? 'default' : 'secondary'} className="mt-1">
+                  {tipoLiquidacion === 'inmediata' ? 'Inmediata' : 'Diferida'}
+                </Badge>
+              )}
             </div>
             <div className="space-y-2">
-              <Label>Fecha Inicio</Label>
+              <Label>{dateLabel} Inicio</Label>
               <Input
                 type="date"
                 value={fechaInicio}
@@ -789,7 +801,7 @@ export default function BranchSettlements() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Fecha Fin</Label>
+              <Label>{dateLabel} Fin</Label>
               <Input
                 type="date"
                 value={fechaFin}
