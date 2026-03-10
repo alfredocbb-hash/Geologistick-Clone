@@ -17,7 +17,7 @@ import { ArrowLeft, Loader2, FileText, Printer, Download, Building2, Truck, User
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { parseDateString } from '@/lib/dateUtils';
-import { downloadDriverSettlementPDF, downloadBranchSettlementPDF, downloadSellerSettlementPDF } from '@/lib/generateSettlementPDF';
+import { downloadDriverSettlementPDF, downloadBranchSettlementPDF, downloadSellerSettlementPDF, downloadThirdPartySettlementPDF } from '@/lib/generateSettlementPDF';
 import { toast } from 'sonner';
 
 function formatCurrency(amount: number): string {
