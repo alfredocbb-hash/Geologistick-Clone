@@ -115,6 +115,9 @@ export default function ThirdPartySettlements() {
   // Cancel liquidacion dialog
   const [cancelLiqDialog, setCancelLiqDialog] = useState<LiquidacionTerciarizado | null>(null);
 
+  // Detail dialog
+  const [detailDialog, setDetailDialog] = useState<LiquidacionTerciarizado | null>(null);
+
   // Cuenta Corriente tab state
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [paymentType, setPaymentType] = useState<"pago" | "ajuste">("pago");
