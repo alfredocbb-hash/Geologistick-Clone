@@ -190,6 +190,8 @@ export default function PrintSettlement() {
         await downloadBranchSettlementPDF(settlement as any, brandingData);
       } else if (type === 'seller') {
         await downloadSellerSettlementPDF(settlement as any, brandingData);
+      } else if (type === 'third-party') {
+        await downloadThirdPartySettlementPDF(settlement as any, brandingData);
       }
       toast.success('PDF descargado');
     } catch (e) {
