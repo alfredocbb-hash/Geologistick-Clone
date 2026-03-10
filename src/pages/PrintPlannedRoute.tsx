@@ -300,7 +300,7 @@ export default function PrintPlannedRoute() {
                     </td>
                     <td className="p-2 text-xs">{cliente?.telefono || '-'}</td>
                     <td className="p-2 text-center">
-                      {isCOD && (
+                      {showCobro && (
                         <span className="inline-block bg-yellow-200 text-yellow-800 text-xs font-bold px-1.5 py-0.5 rounded">
                           ${envio?.precio_total}
                         </span>
