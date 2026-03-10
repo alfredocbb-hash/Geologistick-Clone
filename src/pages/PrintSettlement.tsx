@@ -147,7 +147,7 @@ export default function PrintSettlement() {
           .from('liquidacion_terciarizado_detalles') as any)
           .select(`
             *,
-            envio:envios(tracking_number, tracking_externo, nombre_destinatario, created_at, estado, fecha_entrega, precio_total,
+            envio:envios(tracking_number, tracking_externo, nombre_destinatario, created_at, estado, fecha_entrega, precio_total, requiere_retiro,
               clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
           `)
           .eq('liquidacion_id', id)
