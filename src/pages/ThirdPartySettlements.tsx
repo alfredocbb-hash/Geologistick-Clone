@@ -668,7 +668,6 @@ export default function ThirdPartySettlements() {
                                 <Eye className="h-3 w-3" />
                               </Button>
                               <Button size="sm" variant="ghost" onClick={() => {
-                                const { downloadThirdPartySettlementPDF } = require('@/lib/generateSettlementPDF');
                                 downloadThirdPartySettlementPDF({ ...liq, empresa: empresas.find(e => e.id === liq.empresa_id) });
                               }}>
                                 <Download className="h-3 w-3" />
