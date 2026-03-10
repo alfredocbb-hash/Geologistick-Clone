@@ -1015,12 +1015,12 @@ serve(async (req) => {
     // ── FIN TEST DE CONEXIÓN ──────────────────────────────────────────────────
 
     const body: FacturaRequest = rawBody;
-    const { envio_id, liquidacion_seller_id, tipo_comprobante, receptor, importe_total } = body;
+    const { envio_id, liquidacion_seller_id, liquidacion_terciarizado_id, tipo_comprobante, receptor, importe_total } = body;
     const requestedEnv: 'sandbox' | 'production' = body.environment || 'production';
 
-    if (!envio_id && !liquidacion_seller_id) {
+    if (!envio_id && !liquidacion_seller_id && !liquidacion_terciarizado_id) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Se requiere envio_id o liquidacion_seller_id' }),
+        JSON.stringify({ success: false, error: 'Se requiere envio_id, liquidacion_seller_id o liquidacion_terciarizado_id' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
