@@ -372,7 +372,25 @@ export default function PrintSettlement() {
               </div>
             )}
 
-            {/* Detail Table */}
+            {type === 'third-party' && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="border rounded-lg p-4">
+                  <p className="text-xs text-muted-foreground mb-1">Envíos</p>
+                  <p className="text-2xl font-bold">{(settlement as any).cantidad_envios || items.length}</p>
+                </div>
+                <div className="border rounded-lg p-4 bg-muted/30">
+                  <p className="text-xs text-muted-foreground mb-1">Monto Neto</p>
+                  <p className="text-2xl font-bold">{formatCurrency((settlement as any).monto_neto || 0)}</p>
+                </div>
+                <div className="border rounded-lg p-4 bg-muted/30">
+                  <p className="text-xs text-muted-foreground mb-1">IVA</p>
+                  <p className="text-2xl font-bold text-muted-foreground">{formatCurrency((settlement as any).monto_iva || 0)}</p>
+                </div>
+                <div className="border rounded-lg p-4 bg-primary/5 border-primary/20">
+                  <p className="text-xs text-muted-foreground mb-1">Total</p>
+                  <p className="text-2xl font-bold text-primary">{formatCurrency((settlement as any).monto_total || 0)}</p>
+                </div>
+              </div>
             <div className="border rounded-lg overflow-hidden">
               <Table>
                 <TableHeader>
