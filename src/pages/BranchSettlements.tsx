@@ -801,7 +801,7 @@ export default function BranchSettlements() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Fecha Fin</Label>
+              <Label>{dateLabel} Fin</Label>
               <Input
                 type="date"
                 value={fechaFin}
