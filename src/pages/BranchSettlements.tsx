@@ -126,13 +126,17 @@ export default function BranchSettlements() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('sucursales')
-        .select('id, nombre')
+        .select('id, nombre, tipo_liquidacion')
         .eq('activa', true)
         .order('nombre');
       if (error) throw error;
-      return data as Sucursal[];
+      return data as (Sucursal & { tipo_liquidacion?: string })[];
     },
   });
+
+  const selectedSucursalData = sucursales.find(s => s.id === selectedSucursal);
+  const tipoLiquidacion = selectedSucursalData?.tipo_liquidacion || 'diferida';
+  const dateLabel = tipoLiquidacion === 'inmediata' ? 'Fecha Creación' : 'Fecha Entrega';
 
   // Fetch existing liquidaciones
   const { data: liquidaciones = [], isLoading: loadingLiquidaciones } = useQuery({
