@@ -659,23 +659,37 @@ export default function ThirdPartySettlements() {
                             {format(new Date(liq.created_at), "dd/MM/yy", { locale: es })}
                           </TableCell>
                           <TableCell className="text-right">
-                            {liq.estado === "generada" && (
-                              <div className="flex justify-end gap-1">
-                                <Button size="sm" variant="outline" onClick={() => { setPayLiqDialog(liq); setPayLiqForm({ metodo_pago: "transferencia", referencia_pago: "" }); }}>
-                                  <CreditCard className="mr-1 h-3 w-3" />
-                                  Pagar
-                                </Button>
-                                <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setCancelLiqDialog(liq)}>
-                                  <Ban className="mr-1 h-3 w-3" />
-                                  Cancelar
-                                </Button>
-                              </div>
-                            )}
-                            {liq.estado === "pagada" && liq.metodo_pago && (
-                              <span className="text-xs text-muted-foreground">
-                                {liq.metodo_pago} {liq.referencia_pago && `- ${liq.referencia_pago}`}
-                              </span>
-                            )}
+                            <div className="flex justify-end gap-1">
+                              <Button size="sm" variant="ghost" onClick={() => setDetailDialog(liq)}>
+                                <Eye className="h-3 w-3" />
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => {
+                                const { downloadThirdPartySettlementPDF } = require('@/lib/generateSettlementPDF');
+                                downloadThirdPartySettlementPDF({ ...liq, empresa: empresas.find(e => e.id === liq.empresa_id) });
+                              }}>
+                                <Download className="h-3 w-3" />
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => window.open(`/print-settlement?id=${liq.id}&type=third-party`, '_blank')}>
+                                <Printer className="h-3 w-3" />
+                              </Button>
+                              {liq.estado === "generada" && (
+                                <>
+                                  <Button size="sm" variant="outline" onClick={() => { setPayLiqDialog(liq); setPayLiqForm({ metodo_pago: "transferencia", referencia_pago: "" }); }}>
+                                    <CreditCard className="mr-1 h-3 w-3" />
+                                    Pagar
+                                  </Button>
+                                  <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setCancelLiqDialog(liq)}>
+                                    <Ban className="mr-1 h-3 w-3" />
+                                    Cancelar
+                                  </Button>
+                                </>
+                              )}
+                              {liq.estado === "pagada" && liq.metodo_pago && (
+                                <span className="text-xs text-muted-foreground">
+                                  {liq.metodo_pago} {liq.referencia_pago && `- ${liq.referencia_pago}`}
+                                </span>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
