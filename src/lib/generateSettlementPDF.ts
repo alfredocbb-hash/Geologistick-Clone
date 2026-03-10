@@ -597,3 +597,70 @@ export async function downloadSellerSettlementPDF(liquidacion: {
     shipments: shipmentItems,
   }, resolvedBranding ? { ...resolvedBranding, logo_light: logoBase64 || resolvedBranding.logo_light } : undefined);
 }
+
+// Quick download function for third-party settlements
+export async function downloadThirdPartySettlementPDF(liquidacion: {
+  id: string;
+  empresa_id: string;
+  periodo_inicio: string;
+  periodo_fin: string;
+  monto_neto: number;
+  monto_iva: number;
+  monto_total: number;
+  cantidad_envios: number;
+  estado: string;
+  notas: string | null;
+  fecha_pago: string | null;
+  metodo_pago: string | null;
+  referencia_pago: string | null;
+  empresa?: { nombre: string; cuit?: string | null };
+}, branding?: BrandingData): Promise<void> {
+  const resolvedBranding = branding || await fetchTenantBranding();
+
+  let logoBase64: string | null = null;
+  if (resolvedBranding?.logo_light) {
+    logoBase64 = await loadImageAsBase64(resolvedBranding.logo_light);
+  }
+
+  // Fetch detalles con envíos
+  const { data: detalles } = await (supabase
+    .from('liquidacion_terciarizado_detalles') as any)
+    .select(`
+      *,
+      envio:envios(tracking_number, tracking_externo, nombre_destinatario, precio_total, estado, fecha_entrega, created_at,
+        clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
+    `)
+    .eq('liquidacion_id', liquidacion.id)
+    .order('created_at', { ascending: true });
+
+  const items = (detalles || []).map((d: any) => ({
+    tracking: d.envio?.tracking_externo || d.envio?.tracking_number || '-',
+    fecha: d.envio?.fecha_entrega ? format(new Date(d.envio.fecha_entrega), 'dd/MM/yy') : '-',
+    destinatario: d.envio?.clientes
+      ? `${d.envio.clientes.nombre || ''} ${d.envio.clientes.apellido || ''}`.trim()
+      : d.envio?.nombre_destinatario || '-',
+    monto: d.monto || 0,
+  }));
+
+  await generateSettlementPDF({
+    type: 'branch', // reuse branch layout (has neto/iva/total structure)
+    settlement: {
+      id: liquidacion.id,
+      periodo_inicio: liquidacion.periodo_inicio,
+      periodo_fin: liquidacion.periodo_fin,
+      estado: liquidacion.estado,
+      fecha_pago: liquidacion.fecha_pago,
+      metodo_pago: liquidacion.metodo_pago,
+      referencia_pago: liquidacion.referencia_pago,
+      notas: liquidacion.notas,
+    },
+    entityName: liquidacion.empresa?.nombre || 'N-A',
+    totals: {
+      totalCobrado: liquidacion.monto_neto,
+      totalComisiones: liquidacion.monto_iva,
+      saldo: liquidacion.monto_total,
+      cantidadEnvios: liquidacion.cantidad_envios,
+    },
+    items,
+  }, resolvedBranding ? { ...resolvedBranding, logo_light: logoBase64 || resolvedBranding.logo_light } : undefined);
+}
