@@ -60,6 +60,7 @@ export function InvoiceDataDialog({
   onSuccess,
   envioId,
   liquidacionSellerId,
+  liquidacionTerciarizadoId,
   importeTotal,
 }: InvoiceDataDialogProps) {
   const [tipoComprobante, setTipoComprobante] = useState<'A' | 'B' | 'C'>('B');
