@@ -36,6 +36,7 @@ const INVOICE_CODES = {
 interface FacturaRequest {
   envio_id?: string;
   liquidacion_seller_id?: string;
+  liquidacion_terciarizado_id?: string;
   tipo_comprobante: 'A' | 'B' | 'C';
   environment?: 'sandbox' | 'production';
   receptor: {
