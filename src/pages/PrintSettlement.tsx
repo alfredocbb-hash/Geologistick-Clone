@@ -17,7 +17,7 @@ import { ArrowLeft, Loader2, FileText, Printer, Download, Building2, Truck, User
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { parseDateString } from '@/lib/dateUtils';
-import { downloadDriverSettlementPDF, downloadBranchSettlementPDF, downloadSellerSettlementPDF } from '@/lib/generateSettlementPDF';
+import { downloadDriverSettlementPDF, downloadBranchSettlementPDF, downloadSellerSettlementPDF, downloadThirdPartySettlementPDF } from '@/lib/generateSettlementPDF';
 import { toast } from 'sonner';
 
 function formatCurrency(amount: number): string {
@@ -40,7 +40,7 @@ const ESTADO_CONFIG: Record<string, { label: string; className: string }> = {
 export default function PrintSettlement() {
   const [searchParams] = useSearchParams();
   const id = searchParams.get('id');
-  const type = (searchParams.get('type') || 'driver') as 'branch' | 'driver' | 'seller';
+  const type = (searchParams.get('type') || 'driver') as 'branch' | 'driver' | 'seller' | 'third-party';
 
   // Fetch settlement based on type
   const { data: settlement, isLoading } = useQuery({
@@ -84,6 +84,16 @@ export default function PrintSettlement() {
           .single();
         if (error) throw error;
         return { ...data, _type: 'seller' as const };
+      }
+
+      if (type === 'third-party') {
+        const { data, error } = await supabase
+          .from('liquidaciones_terciarizado')
+          .select('*, empresa:empresas_terciarizadas(nombre, cuit)')
+          .eq('id', id)
+          .single();
+        if (error) throw error;
+        return { ...data, _type: 'third-party' as const };
       }
 
       return null;
@@ -132,6 +142,19 @@ export default function PrintSettlement() {
         return data || [];
       }
 
+      if (type === 'third-party') {
+        const { data } = await (supabase
+          .from('liquidacion_terciarizado_detalles') as any)
+          .select(`
+            *,
+            envio:envios(tracking_number, tracking_externo, nombre_destinatario, created_at, estado, fecha_entrega, precio_total,
+              clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
+          `)
+          .eq('liquidacion_id', id)
+          .order('created_at', { ascending: true });
+        return data || [];
+      }
+
       return [];
     },
     enabled: !!id,
@@ -167,6 +190,8 @@ export default function PrintSettlement() {
         await downloadBranchSettlementPDF(settlement as any, brandingData);
       } else if (type === 'seller') {
         await downloadSellerSettlementPDF(settlement as any, brandingData);
+      } else if (type === 'third-party') {
+        await downloadThirdPartySettlementPDF(settlement as any, brandingData);
       }
       toast.success('PDF descargado');
     } catch (e) {
@@ -201,10 +226,12 @@ export default function PrintSettlement() {
     ? `${(settlement as any).chofer?.nombre || ''} ${(settlement as any).chofer?.apellido || ''}`.trim()
     : type === 'branch'
       ? (settlement as any).sucursal?.nombre || 'N/A'
-      : (settlement as any).seller?.nombre || 'N/A';
+      : type === 'third-party'
+        ? (settlement as any).empresa?.nombre || 'N/A'
+        : (settlement as any).seller?.nombre || 'N/A';
 
-  const TypeIcon = type === 'driver' ? Truck : type === 'branch' ? Building2 : User;
-  const titleLabel = type === 'driver' ? 'LIQUIDACIÓN DE CHOFER' : type === 'branch' ? 'LIQUIDACIÓN DE SUCURSAL' : 'LIQUIDACIÓN DE SELLER';
+  const TypeIcon = type === 'driver' ? Truck : type === 'branch' ? Building2 : type === 'third-party' ? Building2 : User;
+  const titleLabel = type === 'driver' ? 'LIQUIDACIÓN DE CHOFER' : type === 'branch' ? 'LIQUIDACIÓN DE SUCURSAL' : type === 'third-party' ? 'LIQUIDACIÓN DE TERCIARIZADO' : 'LIQUIDACIÓN DE SELLER';
   const estado = settlement.estado || 'pendiente';
   const estadoConfig = ESTADO_CONFIG[estado] || ESTADO_CONFIG.pendiente;
 
@@ -214,7 +241,7 @@ export default function PrintSettlement() {
         {/* Header */}
         <div className="flex items-center justify-between mb-6 print:hidden">
           <Button asChild variant="ghost" size="sm">
-            <Link to={type === 'seller' ? '/ecommerce/settlements' : type === 'branch' ? '/settlements/branches' : '/settlements/drivers'}>
+            <Link to={type === 'seller' ? '/ecommerce/settlements' : type === 'branch' ? '/settlements/branches' : type === 'third-party' ? '/settlements/third-party' : '/settlements/drivers'}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Volver
             </Link>
@@ -347,6 +374,27 @@ export default function PrintSettlement() {
               </div>
             )}
 
+            {type === 'third-party' && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="border rounded-lg p-4">
+                  <p className="text-xs text-muted-foreground mb-1">Envíos</p>
+                  <p className="text-2xl font-bold">{(settlement as any).cantidad_envios || items.length}</p>
+                </div>
+                <div className="border rounded-lg p-4 bg-muted/30">
+                  <p className="text-xs text-muted-foreground mb-1">Monto Neto</p>
+                  <p className="text-2xl font-bold">{formatCurrency((settlement as any).monto_neto || 0)}</p>
+                </div>
+                <div className="border rounded-lg p-4 bg-muted/30">
+                  <p className="text-xs text-muted-foreground mb-1">IVA</p>
+                  <p className="text-2xl font-bold text-muted-foreground">{formatCurrency((settlement as any).monto_iva || 0)}</p>
+                </div>
+                <div className="border rounded-lg p-4 bg-primary/5 border-primary/20">
+                  <p className="text-xs text-muted-foreground mb-1">Total</p>
+                  <p className="text-2xl font-bold text-primary">{formatCurrency((settlement as any).monto_total || 0)}</p>
+                </div>
+              </div>
+            )}
+
             {/* Detail Table */}
             <div className="border rounded-lg overflow-hidden">
               <Table>
@@ -402,17 +450,19 @@ export default function PrintSettlement() {
                       const dest = envio?.clientes;
                       return (
                         <TableRow key={item.id}>
-                          <TableCell className="font-mono text-sm">{envio?.tracking_number || '-'}</TableCell>
+                          <TableCell className="font-mono text-sm">{envio?.tracking_externo || envio?.tracking_number || '-'}</TableCell>
                           <TableCell className="text-sm">
                             {envio?.created_at ? format(new Date(envio.created_at), 'dd/MM/yy') : '-'}
                           </TableCell>
                           <TableCell className="text-sm">
-                            {dest ? `${dest.nombre || ''} ${dest.apellido || ''}`.trim() : '-'}
+                            {dest ? `${dest.nombre || ''} ${dest.apellido || ''}`.trim() : envio?.nombre_destinatario || '-'}
                           </TableCell>
                           <TableCell className="text-right font-medium">
                             {type === 'branch'
                               ? formatCurrency(item.monto_envio || 0)
-                              : formatCurrency(envio?.precio_total || 0)}
+                              : type === 'third-party'
+                                ? formatCurrency(item.monto || 0)
+                                : formatCurrency(envio?.precio_total || 0)}
                           </TableCell>
                           {type === 'driver' && (
                             <TableCell className="text-right font-medium text-success">

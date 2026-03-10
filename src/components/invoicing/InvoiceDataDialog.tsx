@@ -32,6 +32,7 @@ interface InvoiceDataDialogProps {
   onSuccess: (facturaData: FacturaResult) => void;
   envioId?: string;
   liquidacionSellerId?: string;
+  liquidacionTerciarizadoId?: string;
   importeTotal: number;
 }
 
@@ -59,6 +60,7 @@ export function InvoiceDataDialog({
   onSuccess,
   envioId,
   liquidacionSellerId,
+  liquidacionTerciarizadoId,
   importeTotal,
 }: InvoiceDataDialogProps) {
   const [tipoComprobante, setTipoComprobante] = useState<'A' | 'B' | 'C'>('B');
@@ -117,6 +119,7 @@ export function InvoiceDataDialog({
         body: {
           envio_id: envioId || undefined,
           liquidacion_seller_id: liquidacionSellerId || undefined,
+          liquidacion_terciarizado_id: liquidacionTerciarizadoId || undefined,
           tipo_comprobante: tipoComprobante,
           environment: selectedEnvironment,
           receptor: {

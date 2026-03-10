@@ -36,6 +36,7 @@ const INVOICE_CODES = {
 interface FacturaRequest {
   envio_id?: string;
   liquidacion_seller_id?: string;
+  liquidacion_terciarizado_id?: string;
   tipo_comprobante: 'A' | 'B' | 'C';
   environment?: 'sandbox' | 'production';
   receptor: {
@@ -919,6 +920,7 @@ async function createFacturaRecord(
 
   if (envioId) insertData.envio_id = envioId;
   if (liquidacionSellerId) insertData.liquidacion_seller_id = liquidacionSellerId;
+  // liquidacion_terciarizado_id is linked after creation via update
 
   const { data, error } = await supabase.from('facturas').insert(insertData).select().single();
   if (error) throw error;
@@ -1014,12 +1016,12 @@ serve(async (req) => {
     // ── FIN TEST DE CONEXIÓN ──────────────────────────────────────────────────
 
     const body: FacturaRequest = rawBody;
-    const { envio_id, liquidacion_seller_id, tipo_comprobante, receptor, importe_total } = body;
+    const { envio_id, liquidacion_seller_id, liquidacion_terciarizado_id, tipo_comprobante, receptor, importe_total } = body;
     const requestedEnv: 'sandbox' | 'production' = body.environment || 'production';
 
-    if (!envio_id && !liquidacion_seller_id) {
+    if (!envio_id && !liquidacion_seller_id && !liquidacion_terciarizado_id) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Se requiere envio_id o liquidacion_seller_id' }),
+        JSON.stringify({ success: false, error: 'Se requiere envio_id, liquidacion_seller_id o liquidacion_terciarizado_id' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -1049,11 +1051,25 @@ serve(async (req) => {
 
       if (liqError || !liquidacion) {
         return new Response(
-          JSON.stringify({ success: false, error: 'Liquidación no encontrada' }),
+          JSON.stringify({ success: false, error: 'Liquidación de seller no encontrada' }),
           { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       total = importe_total ?? Math.abs(liquidacion.saldo_periodo || 0);
+    } else if (liquidacion_terciarizado_id) {
+      const { data: liquidacion, error: liqError } = await supabase
+        .from('liquidaciones_terciarizado')
+        .select('*')
+        .eq('id', liquidacion_terciarizado_id)
+        .single();
+
+      if (liqError || !liquidacion) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Liquidación de terciarizado no encontrada' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      total = importe_total ?? liquidacion.monto_total;
     } else {
       const { data: envio, error: envioError } = await supabase
         .from('envios')
@@ -1188,6 +1204,17 @@ serve(async (req) => {
           factura_id: factura.id,
           updated_at: new Date().toISOString(),
         }).eq('id', liquidacion_seller_id);
+      }
+
+      if (liquidacion_terciarizado_id) {
+        await supabase.from('liquidaciones_terciarizado').update({
+          factura_id: factura.id,
+        }).eq('id', liquidacion_terciarizado_id);
+
+        // Also link in facturas table
+        await supabase.from('facturas').update({
+          liquidacion_terciarizado_id: liquidacion_terciarizado_id,
+        }).eq('id', factura.id);
       }
 
       await updateInvoiceNumber(supabase, tenantId, tipo_comprobante, numeroComprobante);
