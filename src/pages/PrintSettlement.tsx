@@ -453,7 +453,7 @@ export default function PrintSettlement() {
                             {envio?.created_at ? format(new Date(envio.created_at), 'dd/MM/yy') : '-'}
                           </TableCell>
                           <TableCell className="text-sm">
-                            {dest ? `${dest.nombre || ''} ${dest.apellido || ''}`.trim() : '-'}
+                            {dest ? `${dest.nombre || ''} ${dest.apellido || ''}`.trim() : envio?.nombre_destinatario || '-'}
                           </TableCell>
                           <TableCell className="text-right font-medium">
                             {type === 'branch'
