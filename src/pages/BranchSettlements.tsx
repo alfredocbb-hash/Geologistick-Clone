@@ -182,8 +182,8 @@ export default function BranchSettlements() {
           envio_detalles(concepto_id, monto, nombre_concepto)
         `)
         .or(`sucursal_origen_id.eq.${selectedSucursal},sucursal_destino_id.eq.${selectedSucursal}`)
-        .gte('created_at', fechaInicio)
-        .lte('created_at', fechaFin + 'T23:59:59')
+        .gte(dateField, toLocalISOStart(fechaInicio))
+        .lte(dateField, toLocalISOEnd(fechaFin))
         .in('estado', ['entregado', 'devuelto']);
 
       if (enviosError) throw enviosError;
