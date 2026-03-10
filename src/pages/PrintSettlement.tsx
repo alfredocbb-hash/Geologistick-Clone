@@ -40,7 +40,7 @@ const ESTADO_CONFIG: Record<string, { label: string; className: string }> = {
 export default function PrintSettlement() {
   const [searchParams] = useSearchParams();
   const id = searchParams.get('id');
-  const type = (searchParams.get('type') || 'driver') as 'branch' | 'driver' | 'seller';
+  const type = (searchParams.get('type') || 'driver') as 'branch' | 'driver' | 'seller' | 'third-party';
 
   // Fetch settlement based on type
   const { data: settlement, isLoading } = useQuery({
