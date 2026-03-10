@@ -362,6 +362,11 @@ export function ThirdPartySettlementDetailDialog({
                                 <TableCell className="font-mono text-sm">
                                   {envio?.tracking_externo || envio?.tracking_number || '-'}
                                 </TableCell>
+                                <TableCell>
+                                  <Badge variant="outline" className="text-xs">
+                                    {envio?.requiere_retiro ? 'Retiro' : 'Entrega'}
+                                  </Badge>
+                                </TableCell>
                                 <TableCell className="text-sm">{destName}</TableCell>
                                 <TableCell className="text-sm">
                                   {envio?.fecha_entrega
