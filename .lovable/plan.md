@@ -1,28 +1,38 @@
 
 
-# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
+# Fix: Filtrado de envíos en liquidaciones de sucursal según tipo_liquidacion
 
 ## Problema
-Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
-## Solución
+Las liquidaciones de sucursal siempre filtran por `created_at`. La sucursal tiene un campo `tipo_liquidacion` que determina la lógica:
+- **Inmediata** → filtrar por `created_at` (fecha de creación)
+- **Diferida** → filtrar por `fecha_entrega` (fecha de entrega)
 
-### 1. Nueva función SQL: `reopen_ruta_planificada`
-- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
-- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
-- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
-- Inserta registro en `envio_historial` para cada envío reactivado
-- Retorna JSON con resultado y cantidad de envíos reactivados
+Actualmente este campo se ignora en el cálculo.
 
-### 2. Nuevo componente: `ReopenRouteDialog.tsx`
-- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
-- Muestra cuántos envíos serán reactivados
-- Botón "Reabrir Ruta" que invoca el RPC
+## Cambios
 
-### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
-- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
-- Al hacer click, abre `ReopenRouteDialog`
-- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
+**Archivo:** `src/pages/BranchSettlements.tsx`
 
-**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
+### 1. Obtener `tipo_liquidacion` de la sucursal
+En el query de configuración de sucursal (línea ~163), agregar `tipo_liquidacion` al select:
+```typescript
+.select('incluye_iva, porcentaje_iva, tipo_liquidacion')
+```
+
+### 2. Cambiar el filtro de fechas según el tipo
+Reemplazar las líneas 185-186 con lógica condicional:
+```typescript
+const dateField = sucursalConfig.tipo_liquidacion === 'inmediata' ? 'created_at' : 'fecha_entrega';
+
+// En el query de envíos:
+.gte(dateField, toLocalISOStart(fechaInicio))
+.lte(dateField, toLocalISOEnd(fechaFin))
+```
+
+### 3. Importar utilidades de fecha
+Agregar import de `toLocalISOStart` y `toLocalISOEnd` desde `@/lib/dateUtils`.
+
+### 4. Mostrar tipo de liquidación en la UI
+Agregar una indicación visual junto al selector de sucursal que muestre si la sucursal seleccionada es "Inmediata" o "Diferida", y actualizar los labels de fecha para que reflejen qué se está filtrando ("Fecha creación" vs "Fecha entrega").
 
