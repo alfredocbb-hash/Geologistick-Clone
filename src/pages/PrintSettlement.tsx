@@ -448,7 +448,7 @@ export default function PrintSettlement() {
                       const dest = envio?.clientes;
                       return (
                         <TableRow key={item.id}>
-                          <TableCell className="font-mono text-sm">{envio?.tracking_number || '-'}</TableCell>
+                          <TableCell className="font-mono text-sm">{envio?.tracking_externo || envio?.tracking_number || '-'}</TableCell>
                           <TableCell className="text-sm">
                             {envio?.created_at ? format(new Date(envio.created_at), 'dd/MM/yy') : '-'}
                           </TableCell>
