@@ -452,6 +452,13 @@ export default function PrintSettlement() {
                       return (
                         <TableRow key={item.id}>
                           <TableCell className="font-mono text-sm">{envio?.tracking_externo || envio?.tracking_number || '-'}</TableCell>
+                          {type === 'third-party' && (
+                            <TableCell>
+                              <Badge variant="outline" className="text-xs">
+                                {envio?.requiere_retiro ? 'Retiro' : 'Entrega'}
+                              </Badge>
+                            </TableCell>
+                          )}
                           <TableCell className="text-sm">
                             {envio?.created_at ? format(new Date(envio.created_at), 'dd/MM/yy') : '-'}
                           </TableCell>

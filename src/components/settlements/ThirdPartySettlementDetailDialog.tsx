@@ -391,7 +391,7 @@ export function ThirdPartySettlementDetailDialog({
                           )}
                           {detalles && detalles.length > 0 && (
                             <TableRow className="bg-muted/50 font-semibold">
-                              <TableCell colSpan={4} className="text-right">Total:</TableCell>
+                              <TableCell colSpan={5} className="text-right">Total:</TableCell>
                               <TableCell className="text-right text-primary">
                                 ${liquidacion.monto_total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                               </TableCell>

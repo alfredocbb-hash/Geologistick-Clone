@@ -635,6 +635,7 @@ export async function downloadThirdPartySettlementPDF(liquidacion: {
 
   const items = (detalles || []).map((d: any) => ({
     tracking: d.envio?.tracking_externo || d.envio?.tracking_number || '-',
+    tipo: d.envio?.requiere_retiro ? 'Retiro' : 'Entrega',
     fecha: d.envio?.fecha_entrega ? format(new Date(d.envio.fecha_entrega), 'dd/MM/yy') : '-',
     destinatario: d.envio?.clientes
       ? `${d.envio.clientes.nombre || ''} ${d.envio.clientes.apellido || ''}`.trim()
