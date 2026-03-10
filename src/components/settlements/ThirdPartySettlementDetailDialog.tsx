@@ -62,7 +62,7 @@ export function ThirdPartySettlementDetailDialog({
         .from('liquidacion_terciarizado_detalles') as any)
         .select(`
           id, monto, created_at,
-          envio:envios(id, tracking_number, tracking_externo, nombre_destinatario, precio_total, estado, fecha_entrega,
+          envio:envios(id, tracking_number, tracking_externo, nombre_destinatario, precio_total, estado, fecha_entrega, requiere_retiro,
             clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
         `)
         .eq('liquidacion_id', liquidacion?.id)
@@ -344,6 +344,7 @@ export function ThirdPartySettlementDetailDialog({
                         <TableHeader>
                           <TableRow>
                             <TableHead>Tracking</TableHead>
+                            <TableHead>Operación</TableHead>
                             <TableHead>Destinatario</TableHead>
                             <TableHead>Fecha Entrega</TableHead>
                             <TableHead>Estado</TableHead>
@@ -360,6 +361,11 @@ export function ThirdPartySettlementDetailDialog({
                               <TableRow key={det.id}>
                                 <TableCell className="font-mono text-sm">
                                   {envio?.tracking_externo || envio?.tracking_number || '-'}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant="outline" className="text-xs">
+                                    {envio?.requiere_retiro ? 'Retiro' : 'Entrega'}
+                                  </Badge>
                                 </TableCell>
                                 <TableCell className="text-sm">{destName}</TableCell>
                                 <TableCell className="text-sm">
@@ -378,14 +384,14 @@ export function ThirdPartySettlementDetailDialog({
                           })}
                           {(!detalles || detalles.length === 0) && (
                             <TableRow>
-                              <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                              <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                                 No hay envíos en esta liquidación
                               </TableCell>
                             </TableRow>
                           )}
                           {detalles && detalles.length > 0 && (
                             <TableRow className="bg-muted/50 font-semibold">
-                              <TableCell colSpan={4} className="text-right">Total:</TableCell>
+                              <TableCell colSpan={5} className="text-right">Total:</TableCell>
                               <TableCell className="text-right text-primary">
                                 ${liquidacion.monto_total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                               </TableCell>

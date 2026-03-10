@@ -627,20 +627,24 @@ export async function downloadThirdPartySettlementPDF(liquidacion: {
     .from('liquidacion_terciarizado_detalles') as any)
     .select(`
       *,
-      envio:envios(tracking_number, tracking_externo, nombre_destinatario, precio_total, estado, fecha_entrega, created_at,
+      envio:envios(tracking_number, tracking_externo, nombre_destinatario, precio_total, estado, fecha_entrega, created_at, requiere_retiro,
         clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
     `)
     .eq('liquidacion_id', liquidacion.id)
     .order('created_at', { ascending: true });
 
-  const items = (detalles || []).map((d: any) => ({
-    tracking: d.envio?.tracking_externo || d.envio?.tracking_number || '-',
-    fecha: d.envio?.fecha_entrega ? format(new Date(d.envio.fecha_entrega), 'dd/MM/yy') : '-',
-    destinatario: d.envio?.clientes
+  const items = (detalles || []).map((d: any) => {
+    const operacion = d.envio?.requiere_retiro ? 'Retiro' : 'Entrega';
+    const destName = d.envio?.clientes
       ? `${d.envio.clientes.nombre || ''} ${d.envio.clientes.apellido || ''}`.trim()
-      : d.envio?.nombre_destinatario || '-',
-    monto: d.monto || 0,
-  }));
+      : d.envio?.nombre_destinatario || '-';
+    return {
+      tracking: d.envio?.tracking_externo || d.envio?.tracking_number || '-',
+      fecha: d.envio?.fecha_entrega ? format(new Date(d.envio.fecha_entrega), 'dd/MM/yy') : '-',
+      destinatario: `[${operacion}] ${destName}`,
+      monto: d.monto || 0,
+    };
+  });
 
   await generateSettlementPDF({
     type: 'branch', // reuse branch layout (has neto/iva/total structure)

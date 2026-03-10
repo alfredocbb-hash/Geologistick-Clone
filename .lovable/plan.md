@@ -1,27 +1,28 @@
 
 
-# Agregar tipo de operación en detalle y print de liquidaciones terciarizados
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
-## Contexto
-Los envíos terciarizados no usan `tipo_servicio_detalle` como referencia. El campo relevante es `requiere_retiro` (boolean en tabla `envios`):
-- `requiere_retiro = true` → **Retiro**
-- `requiere_retiro = false/null` → **Entrega**
+## Problema
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
-Esto coincide con el `TIPO_OPERACION` usado en `ThirdPartyShipmentsTab`.
+## Solución
 
-## Cambios
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-### 1. `src/components/settlements/ThirdPartySettlementDetailDialog.tsx`
-- Agregar `requiere_retiro` al select de envíos (línea ~65, dentro del join a `envios`)
-- Agregar columna "Operación" en la tabla de envíos entre "Tracking" y "Destinatario"
-- Mostrar badge "Retiro" o "Entrega" según `requiere_retiro`
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-### 2. `src/pages/PrintSettlement.tsx`
-- Para `type=third-party`, agregar `requiere_retiro` al select de envíos
-- Agregar columna "Operación" en la tabla de impresión
-- Renderizar "Retiro" o "Entrega" según el valor
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-### 3. `src/lib/generateSettlementPDF.ts`
-- En `downloadThirdPartySettlementPDF`, agregar `requiere_retiro` al select
-- Agregar columna "Operación" en la tabla del PDF con el label correspondiente
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 
