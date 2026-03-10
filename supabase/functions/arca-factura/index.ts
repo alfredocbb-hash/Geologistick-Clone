@@ -1050,11 +1050,25 @@ serve(async (req) => {
 
       if (liqError || !liquidacion) {
         return new Response(
-          JSON.stringify({ success: false, error: 'Liquidación no encontrada' }),
+          JSON.stringify({ success: false, error: 'Liquidación de seller no encontrada' }),
           { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       total = importe_total ?? Math.abs(liquidacion.saldo_periodo || 0);
+    } else if (liquidacion_terciarizado_id) {
+      const { data: liquidacion, error: liqError } = await supabase
+        .from('liquidaciones_terciarizado')
+        .select('*')
+        .eq('id', liquidacion_terciarizado_id)
+        .single();
+
+      if (liqError || !liquidacion) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Liquidación de terciarizado no encontrada' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      total = importe_total ?? liquidacion.monto_total;
     } else {
       const { data: envio, error: envioError } = await supabase
         .from('envios')
