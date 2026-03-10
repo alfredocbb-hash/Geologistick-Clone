@@ -1377,6 +1377,7 @@ export type Database = {
           importe_neto: number
           importe_total: number
           liquidacion_seller_id: string | null
+          liquidacion_terciarizado_id: string | null
           numero_comprobante: number
           pdf_url: string | null
           punto_venta: number
@@ -1402,6 +1403,7 @@ export type Database = {
           importe_neto: number
           importe_total: number
           liquidacion_seller_id?: string | null
+          liquidacion_terciarizado_id?: string | null
           numero_comprobante: number
           pdf_url?: string | null
           punto_venta: number
@@ -1427,6 +1429,7 @@ export type Database = {
           importe_neto?: number
           importe_total?: number
           liquidacion_seller_id?: string | null
+          liquidacion_terciarizado_id?: string | null
           numero_comprobante?: number
           pdf_url?: string | null
           punto_venta?: number
@@ -1450,6 +1453,13 @@ export type Database = {
             columns: ["liquidacion_seller_id"]
             isOneToOne: false
             referencedRelation: "liquidaciones_seller"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "facturas_liquidacion_terciarizado_id_fkey"
+            columns: ["liquidacion_terciarizado_id"]
+            isOneToOne: false
+            referencedRelation: "liquidaciones_terciarizado"
             referencedColumns: ["id"]
           },
           {
@@ -2141,6 +2151,7 @@ export type Database = {
           created_at: string
           empresa_id: string
           estado: string
+          factura_id: string | null
           fecha_pago: string | null
           generado_por: string | null
           id: string
@@ -2159,6 +2170,7 @@ export type Database = {
           created_at?: string
           empresa_id: string
           estado?: string
+          factura_id?: string | null
           fecha_pago?: string | null
           generado_por?: string | null
           id?: string
@@ -2177,6 +2189,7 @@ export type Database = {
           created_at?: string
           empresa_id?: string
           estado?: string
+          factura_id?: string | null
           fecha_pago?: string | null
           generado_por?: string | null
           id?: string
@@ -2196,6 +2209,13 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas_terciarizadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "liquidaciones_terciarizado_factura_id_fkey"
+            columns: ["factura_id"]
+            isOneToOne: false
+            referencedRelation: "facturas"
             referencedColumns: ["id"]
           },
           {
