@@ -1,28 +1,38 @@
 
 
-# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
+# Fix: Hoja de ruta de reparto — tracking externo, importes destino, y total
 
-## Problema
-Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
+## Problemas
+
+1. **Envíos terciarizados muestran tracking interno**: La columna Tracking muestra `tracking_number` para todos. Los terciarizados deberían mostrar `tracking_externo`.
+2. **No se muestran importes de pago en destino**: La columna COD solo muestra monto cuando `pago_contra_entrega && tipo_pago === 'contra_entrega'`. Los envíos con `tipo_pago === 'destino'` no muestran importe.
+3. **Falta el total a cobrar**: No hay fila/sección con el total de importes a cobrar por el chofer.
 
 ## Solución
 
-### 1. Nueva función SQL: `reopen_ruta_planificada`
-- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
-- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
-- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
-- Inserta registro en `envio_historial` para cada envío reactivado
-- Retorna JSON con resultado y cantidad de envíos reactivados
+Un solo archivo: `src/pages/PrintPlannedRoute.tsx`
 
-### 2. Nuevo componente: `ReopenRouteDialog.tsx`
-- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
-- Muestra cuántos envíos serán reactivados
-- Botón "Reabrir Ruta" que invoca el RPC
+### 1. Agregar campos faltantes al query (línea ~49)
+Agregar `es_terciarizado`, `tracking_externo`, `empresa_terciarizada` al select de `envios`.
 
-### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
-- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
-- Al hacer click, abre `ReopenRouteDialog`
-- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
+### 2. Mostrar tracking externo para terciarizados (línea ~283)
+```typescript
+// En vez de solo envio?.tracking_number:
+{envio?.es_terciarizado && envio?.tracking_externo 
+  ? envio.tracking_externo 
+  : envio?.tracking_number}
+```
 
-**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
+### 3. Mostrar importes de pago destino (línea ~296)
+Ampliar la condición de COD para incluir `tipo_pago === 'destino'`:
+```typescript
+const showCobro = (envio?.pago_contra_entrega && envio?.tipo_pago === 'contra_entrega') 
+  || envio?.tipo_pago === 'destino';
+```
+
+### 4. Agregar fila de total al pie de la tabla
+Después del `tbody`, agregar un `tfoot` con el total de todos los importes a cobrar (COD + destino).
+
+### 5. Actualizar el resumen
+Ajustar la sección RESUMEN para que el cálculo de "Cobros COD" también incluya los envíos con `tipo_pago === 'destino'`, y renombrar a "Total a Cobrar".
 
