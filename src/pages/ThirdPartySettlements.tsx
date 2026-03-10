@@ -80,6 +80,7 @@ interface LiquidacionTerciarizado {
   metodo_pago: string | null;
   referencia_pago: string | null;
   fecha_pago: string | null;
+  factura_id: string | null;
   created_at: string;
 }
 
