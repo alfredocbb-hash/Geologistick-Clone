@@ -35,7 +35,7 @@ export function useFormDraft<T extends object>(
   const { debounceMs = DEFAULT_DEBOUNCE_MS, expirationDays = DEFAULT_EXPIRATION_DAYS } = options;
   
   const storageKey = `${DRAFT_PREFIX}${formKey}_${user?.id || 'anonymous'}`;
-  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitialized = useRef(false);
   
   const [formData, setFormData] = useState<T>(initialValues);
