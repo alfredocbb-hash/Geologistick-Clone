@@ -167,6 +167,9 @@ export default function BranchSettlements() {
 
       if (sucursalError) throw sucursalError;
 
+      // Determine date field based on settlement type
+      const dateField = sucursalConfig?.tipo_liquidacion === 'inmediata' ? 'created_at' : 'fecha_entrega';
+
       // Fetch envíos donde la sucursal es ORIGEN o DESTINO
       const { data: envios, error: enviosError } = await supabase
         .from('envios')
