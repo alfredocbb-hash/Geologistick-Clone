@@ -1206,6 +1206,17 @@ serve(async (req) => {
         }).eq('id', liquidacion_seller_id);
       }
 
+      if (liquidacion_terciarizado_id) {
+        await supabase.from('liquidaciones_terciarizado').update({
+          factura_id: factura.id,
+        }).eq('id', liquidacion_terciarizado_id);
+
+        // Also link in facturas table
+        await supabase.from('facturas').update({
+          liquidacion_terciarizado_id: liquidacion_terciarizado_id,
+        }).eq('id', factura.id);
+      }
+
       await updateInvoiceNumber(supabase, tenantId, tipo_comprobante, numeroComprobante);
 
       return new Response(
