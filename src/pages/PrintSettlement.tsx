@@ -142,6 +142,19 @@ export default function PrintSettlement() {
         return data || [];
       }
 
+      if (type === 'third-party') {
+        const { data } = await (supabase
+          .from('liquidacion_terciarizado_detalles') as any)
+          .select(`
+            *,
+            envio:envios(tracking_number, tracking_externo, nombre_destinatario, created_at, estado, fecha_entrega, precio_total,
+              clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
+          `)
+          .eq('liquidacion_id', id)
+          .order('created_at', { ascending: true });
+        return data || [];
+      }
+
       return [];
     },
     enabled: !!id,

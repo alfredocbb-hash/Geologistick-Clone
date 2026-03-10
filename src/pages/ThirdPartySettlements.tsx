@@ -1006,6 +1006,13 @@ export default function ThirdPartySettlements() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Third Party Settlement Detail Dialog */}
+      <ThirdPartySettlementDetailDialog
+        open={!!detailDialog}
+        onOpenChange={(open) => !open && setDetailDialog(null)}
+        liquidacion={detailDialog ? { ...detailDialog, empresa: empresas.find(e => e.id === detailDialog.empresa_id) } : null}
+      />
     </div>
   );
 }
