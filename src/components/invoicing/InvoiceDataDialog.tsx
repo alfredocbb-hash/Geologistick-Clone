@@ -32,6 +32,7 @@ interface InvoiceDataDialogProps {
   onSuccess: (facturaData: FacturaResult) => void;
   envioId?: string;
   liquidacionSellerId?: string;
+  liquidacionTerciarizadoId?: string;
   importeTotal: number;
 }
 
