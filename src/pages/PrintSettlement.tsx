@@ -224,10 +224,12 @@ export default function PrintSettlement() {
     ? `${(settlement as any).chofer?.nombre || ''} ${(settlement as any).chofer?.apellido || ''}`.trim()
     : type === 'branch'
       ? (settlement as any).sucursal?.nombre || 'N/A'
-      : (settlement as any).seller?.nombre || 'N/A';
+      : type === 'third-party'
+        ? (settlement as any).empresa?.nombre || 'N/A'
+        : (settlement as any).seller?.nombre || 'N/A';
 
-  const TypeIcon = type === 'driver' ? Truck : type === 'branch' ? Building2 : User;
-  const titleLabel = type === 'driver' ? 'LIQUIDACIÓN DE CHOFER' : type === 'branch' ? 'LIQUIDACIÓN DE SUCURSAL' : 'LIQUIDACIÓN DE SELLER';
+  const TypeIcon = type === 'driver' ? Truck : type === 'branch' ? Building2 : type === 'third-party' ? Building2 : User;
+  const titleLabel = type === 'driver' ? 'LIQUIDACIÓN DE CHOFER' : type === 'branch' ? 'LIQUIDACIÓN DE SUCURSAL' : type === 'third-party' ? 'LIQUIDACIÓN DE TERCIARIZADO' : 'LIQUIDACIÓN DE SELLER';
   const estado = settlement.estado || 'pendiente';
   const estadoConfig = ESTADO_CONFIG[estado] || ESTADO_CONFIG.pendiente;
 
