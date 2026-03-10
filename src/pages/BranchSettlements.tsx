@@ -793,7 +793,7 @@ export default function BranchSettlements() {
               )}
             </div>
             <div className="space-y-2">
-              <Label>Fecha Inicio</Label>
+              <Label>{dateLabel} Inicio</Label>
               <Input
                 type="date"
                 value={fechaInicio}
