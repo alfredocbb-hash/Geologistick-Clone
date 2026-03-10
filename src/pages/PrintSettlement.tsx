@@ -86,6 +86,16 @@ export default function PrintSettlement() {
         return { ...data, _type: 'seller' as const };
       }
 
+      if (type === 'third-party') {
+        const { data, error } = await supabase
+          .from('liquidaciones_terciarizado')
+          .select('*, empresa:empresas_terciarizadas(nombre, cuit)')
+          .eq('id', id)
+          .single();
+        if (error) throw error;
+        return { ...data, _type: 'third-party' as const };
+      }
+
       return null;
     },
     enabled: !!id,
