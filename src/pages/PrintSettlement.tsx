@@ -239,7 +239,7 @@ export default function PrintSettlement() {
         {/* Header */}
         <div className="flex items-center justify-between mb-6 print:hidden">
           <Button asChild variant="ghost" size="sm">
-            <Link to={type === 'seller' ? '/ecommerce/settlements' : type === 'branch' ? '/settlements/branches' : '/settlements/drivers'}>
+            <Link to={type === 'seller' ? '/ecommerce/settlements' : type === 'branch' ? '/settlements/branches' : type === 'third-party' ? '/settlements/third-party' : '/settlements/drivers'}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Volver
             </Link>
