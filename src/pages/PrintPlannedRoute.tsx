@@ -48,6 +48,9 @@ export default function PrintPlannedRoute() {
           *,
         envio:envios(
             tracking_number,
+            tracking_externo,
+            es_terciarizado,
+            empresa_terciarizada,
             direccion_entrega,
             direccion_retiro,
             ciudad_entrega,
@@ -263,7 +266,11 @@ export default function PrintPlannedRoute() {
                 ? (envio?.direccion_retiro || cliente?.direccion)
                 : (envio?.direccion_entrega || cliente?.direccion);
               const ciudad = isRetiro ? envio?.ciudad_retiro : envio?.ciudad_entrega;
-              const isCOD = envio?.pago_contra_entrega && envio?.tipo_pago === 'contra_entrega';
+              const trackingDisplay = envio?.es_terciarizado && envio?.tracking_externo
+                ? envio.tracking_externo
+                : envio?.tracking_number;
+              const showCobro = (envio?.pago_contra_entrega && envio?.tipo_pago === 'contra_entrega')
+                || envio?.tipo_pago === 'destino';
 
               return (
                 <React.Fragment key={parada.id}>
@@ -280,7 +287,7 @@ export default function PrintPlannedRoute() {
                         </span>
                       )}
                     </td>
-                    <td className="p-2 font-mono text-xs">{envio?.tracking_number}</td>
+                    <td className="p-2 font-mono text-xs">{trackingDisplay}</td>
                     <td className="p-2">
                       <div className="font-medium">{clienteName}</div>
                       {envio?.cantidad_bultos && (
@@ -293,7 +300,7 @@ export default function PrintPlannedRoute() {
                     </td>
                     <td className="p-2 text-xs">{cliente?.telefono || '-'}</td>
                     <td className="p-2 text-center">
-                      {isCOD && (
+                      {showCobro && (
                         <span className="inline-block bg-yellow-200 text-yellow-800 text-xs font-bold px-1.5 py-0.5 rounded">
                           ${envio?.precio_total}
                         </span>
@@ -315,6 +322,23 @@ export default function PrintPlannedRoute() {
               );
             })}
           </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-black bg-gray-100 font-bold">
+              <td colSpan={6} className="p-2 text-right">TOTAL A COBRAR:</td>
+              <td className="p-2 text-center">
+                <span className="inline-block bg-yellow-200 text-yellow-800 text-sm font-bold px-2 py-0.5 rounded">
+                  ${ruta.paradas
+                    .filter((p: any) => {
+                      const e = p.envio;
+                      return (e?.pago_contra_entrega && e?.tipo_pago === 'contra_entrega') || e?.tipo_pago === 'destino';
+                    })
+                    .reduce((acc: number, p: any) => acc + (p.envio?.precio_total || 0), 0)
+                    .toFixed(2)}
+                </span>
+              </td>
+              <td></td>
+            </tr>
+          </tfoot>
         </table>
       </div>
 
@@ -338,10 +362,10 @@ export default function PrintPlannedRoute() {
               </div>
             )}
             <div className="flex justify-between border-t pt-1 mt-2">
-              <span>Cobros COD:</span>
+              <span>Total a Cobrar:</span>
               <span className="font-bold">
                 ${ruta.paradas
-                  .filter((p: any) => p.envio?.pago_contra_entrega && p.envio?.tipo_pago === 'contra_entrega')
+                  .filter((p: any) => (p.envio?.pago_contra_entrega && p.envio?.tipo_pago === 'contra_entrega') || p.envio?.tipo_pago === 'destino')
                   .reduce((acc: number, p: any) => acc + (p.envio?.precio_total || 0), 0)
                   .toFixed(2)}
               </span>
