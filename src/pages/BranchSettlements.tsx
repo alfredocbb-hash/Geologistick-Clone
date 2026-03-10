@@ -47,7 +47,7 @@ import {
 import { downloadBranchSettlementPDF } from '@/lib/generateSettlementPDF';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { parseDateString } from '@/lib/dateUtils';
+import { parseDateString, toLocalISOStart, toLocalISOEnd } from '@/lib/dateUtils';
 import { SettlementDetailDialog } from '@/components/settlements/SettlementDetailDialog';
 import { ConceptBreakdownTable, type ConceptoResumen, type ResumenPorTipoPago } from '@/components/settlements/ConceptBreakdownTable';
 import type { Database } from '@/integrations/supabase/types';
