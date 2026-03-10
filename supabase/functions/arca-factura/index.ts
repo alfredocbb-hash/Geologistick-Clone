@@ -920,6 +920,7 @@ async function createFacturaRecord(
 
   if (envioId) insertData.envio_id = envioId;
   if (liquidacionSellerId) insertData.liquidacion_seller_id = liquidacionSellerId;
+  // liquidacion_terciarizado_id is linked after creation via update
 
   const { data, error } = await supabase.from('facturas').insert(insertData).select().single();
   if (error) throw error;
