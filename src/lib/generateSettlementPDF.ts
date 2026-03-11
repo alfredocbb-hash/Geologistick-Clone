@@ -292,6 +292,93 @@ export async function generateSettlementPDF(
 
   y += 14;
 
+  // --- Concept breakdown for branch settlements ---
+  if (isBranch && data.resumenConceptos) {
+    const { contado, destino, cta_cte } = data.resumenConceptos;
+    const allGroups: { label: string; conceptos: typeof contado }[] = [
+      { label: 'CONTADO', conceptos: contado },
+      { label: 'PAGO DESTINO', conceptos: destino },
+      { label: 'CUENTA CORRIENTE', conceptos: cta_cte },
+    ].filter(g => g.conceptos.length > 0);
+
+    if (allGroups.length > 0) {
+      doc.setTextColor(50, 50, 50);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.text('RESUMEN POR CONCEPTO', 10, y);
+      y += 6;
+
+      for (const group of allGroups) {
+        if (y > pageHeight - 50) {
+          doc.addPage();
+          drawHeader();
+          y = bodyStart;
+        }
+
+        // Group label
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+        doc.text(group.label, 12, y);
+        y += 5;
+
+        // Table header
+        doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+        doc.rect(10, y - 4, pageWidth - 20, 8, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.text('Concepto', 12, y);
+        doc.text('Ventas', 90, y, { align: 'right' });
+        doc.text('Comisión %', 130, y, { align: 'right' });
+        doc.text('Total Comisión', pageWidth - 12, y, { align: 'right' });
+        y += 7;
+
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(50, 50, 50);
+        let groupVentas = 0;
+        let groupComision = 0;
+
+        group.conceptos.forEach((c, idx) => {
+          if (y > pageHeight - 25) {
+            doc.addPage();
+            drawHeader();
+            y = bodyStart;
+          }
+          if (idx % 2 === 0) {
+            doc.setFillColor(247, 247, 250);
+            doc.rect(10, y - 4, pageWidth - 20, 7, 'F');
+          }
+          doc.setFontSize(7.5);
+          doc.text(c.nombre.substring(0, 35), 12, y);
+          doc.text(formatCurrency(c.ventas), 90, y, { align: 'right' });
+          const pctEfectivo = c.ventas > 0 ? (c.comision / c.ventas) * 100 : 0;
+          doc.text(c.sinConfiguracion ? 'sin config' : `${pctEfectivo.toFixed(2)}%`, 130, y, { align: 'right' });
+          doc.text(formatCurrency(c.comision), pageWidth - 12, y, { align: 'right' });
+          groupVentas += c.ventas;
+          groupComision += c.comision;
+          y += 7;
+        });
+
+        // Subtotal row
+        doc.setDrawColor(180, 180, 180);
+        doc.setLineWidth(0.3);
+        doc.line(10, y - 1, pageWidth - 10, y - 1);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.text('SUBTOTAL', 12, y + 3);
+        doc.text(formatCurrency(groupVentas), 90, y + 3, { align: 'right' });
+        doc.text('-', 130, y + 3, { align: 'right' });
+        doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+        doc.text(formatCurrency(groupComision), pageWidth - 12, y + 3, { align: 'right' });
+        doc.setTextColor(50, 50, 50);
+        y += 12;
+      }
+
+      y += 4;
+    }
+  }
+
   // --- Detail table ---
   const tableData = !isSeller ? items : [];
   const shipmentData = isSeller && shipments ? shipments : [];
