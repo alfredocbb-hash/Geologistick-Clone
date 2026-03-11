@@ -48,6 +48,7 @@ interface SettlementPDFData {
     descripcion?: string;
     monto: number;
     comision?: number;
+    rol?: string;
   }>;
   shipments?: Array<{
     tracking: string;
