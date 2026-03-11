@@ -176,7 +176,14 @@ export function NotificationPopover() {
         </PopoverContent>
       </Popover>
 
-      <Dialog open={!!selectedNotification} onOpenChange={(open) => !open && setSelectedNotification(null)}>
+      <Dialog open={!!selectedNotification} onOpenChange={(open) => {
+        if (!open && selectedNotification) {
+          if (!selectedNotification.read) {
+            dismissedIds.current.add(selectedNotification.id);
+          }
+          setSelectedNotification(null);
+        }
+      }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <div className="flex items-center gap-3">
