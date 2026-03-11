@@ -506,8 +506,8 @@ export function SettlementDetailDialog({
                 </TableHeader>
                 <TableBody>
                   {(isBranch ? branchDetalles : driverComisiones).length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={isBranch ? 6 : 5} className="text-center text-muted-foreground py-8">
+                     <TableRow>
+                       <TableCell colSpan={isBranch ? 7 : 5} className="text-center text-muted-foreground py-8">
                         No hay detalles disponibles
                       </TableCell>
                     </TableRow>
