@@ -3,6 +3,20 @@ import { format } from 'date-fns';
 import { parseDateString } from '@/lib/dateUtils';
 import { supabase } from '@/integrations/supabase/client';
 
+interface ConceptoResumenPDF {
+  nombre: string;
+  ventas: number;
+  porcentaje: number;
+  comision: number;
+  sinConfiguracion?: boolean;
+}
+
+interface ResumenConceptosPDF {
+  contado: ConceptoResumenPDF[];
+  destino: ConceptoResumenPDF[];
+  cta_cte: ConceptoResumenPDF[];
+}
+
 interface SettlementPDFData {
   type: 'branch' | 'driver' | 'seller';
   settlement: {
@@ -42,6 +56,7 @@ interface SettlementPDFData {
     localidad: string;
     precio: number;
   }>;
+  resumenConceptos?: ResumenConceptosPDF | null;
 }
 
 interface BrandingData {
