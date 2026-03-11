@@ -56,7 +56,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           </main>
         </div>
       </div>
-      {isAdmin() && <AdminAssistant />}
+      <AdminAssistant />
     </SidebarProvider>
   );
 }

@@ -1663,11 +1663,24 @@ export default function NewShipment() {
         monto: createdEnvio.precio_total,
         metodo: method,
         referencia: reference || null,
-        estado: 'pendiente',
+        estado: 'pagado',
         created_by: user?.id,
       });
 
       if (error) throw error;
+
+      // Register cash movement if there's an open cash session
+      if (cajaAbierta?.id) {
+        await supabase.from('movimientos_caja').insert({
+          sesion_caja_id: cajaAbierta.id,
+          tipo: 'ingreso',
+          concepto: `Cobro contado envío ${createdEnvio.tracking_number}`,
+          monto: createdEnvio.precio_total,
+          metodo_pago: method,
+          referencia: reference || `Envío ${createdEnvio.tracking_number}`,
+          created_by: user?.id,
+        });
+      }
 
       toast({
         title: '¡Pago registrado!',

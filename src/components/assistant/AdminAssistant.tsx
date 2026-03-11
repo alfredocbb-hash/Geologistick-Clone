@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { MessageCircle, Send, X, Headphones, Loader2 } from 'lucide-react';
+import { MessageCircle, Send, Headphones, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import ReactMarkdown from 'react-markdown';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/lib/auth';
 
 type Msg = { role: 'user' | 'assistant'; content: string };
 
@@ -23,7 +24,6 @@ async function streamChat({
   onDone: () => void;
   onError: (msg: string) => void;
 }) {
-  // Get session token
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.access_token) {
     onError('No autenticado');
@@ -114,6 +114,9 @@ export function AdminAssistant() {
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { isAdmin } = useAuth();
+
+  const isUserAdmin = isAdmin();
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => {
@@ -169,9 +172,12 @@ export function AdminAssistant() {
     }
   };
 
+  const welcomeMessage = isUserAdmin
+    ? 'Preguntame sobre configuración de sucursales, zonas de cobertura, tarifas, o cualquier duda sobre la plataforma.'
+    : 'Preguntame sobre cómo escanear paquetes, entregar envíos, estados de envío, o cualquier duda operativa.';
+
   return (
     <>
-      {/* Floating button */}
       <button
         onClick={() => setOpen(true)}
         className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 transition-colors"
@@ -184,20 +190,17 @@ export function AdminAssistant() {
         <SheetContent side="right" className="flex flex-col p-0 sm:max-w-md w-full">
           <SheetHeader className="px-4 py-3 border-b">
             <div className="flex items-center justify-between">
-              <SheetTitle className="text-base">Asistente de Soporte</SheetTitle>
+              <SheetTitle className="text-base">Asistente</SheetTitle>
             </div>
           </SheetHeader>
 
-          {/* Messages area */}
           <ScrollArea className="flex-1 px-4 py-3">
             <div className="space-y-4">
               {messages.length === 0 && (
                 <div className="text-center text-muted-foreground text-sm py-8">
                   <MessageCircle className="h-10 w-10 mx-auto mb-3 opacity-40" />
                   <p className="font-medium">¡Hola! Soy tu asistente.</p>
-                  <p className="mt-1">
-                    Preguntame sobre configuración de sucursales, zonas de cobertura, tarifas, o cualquier duda sobre la plataforma.
-                  </p>
+                  <p className="mt-1">{welcomeMessage}</p>
                 </div>
               )}
 
@@ -236,7 +239,6 @@ export function AdminAssistant() {
             </div>
           </ScrollArea>
 
-          {/* Escalation + Input */}
           <div className="border-t px-4 py-3 space-y-2">
             <div className="flex gap-2">
               <Textarea
