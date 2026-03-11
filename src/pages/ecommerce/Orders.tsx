@@ -265,10 +265,14 @@ export default function Orders() {
   const choferMap = ordersData?.choferMap || {};
 
   const filteredOrders = orders?.filter(o => {
+    const s = search.toLowerCase();
     const matchesSearch = 
-      o.buyer_name.toLowerCase().includes(search.toLowerCase()) ||
-      o.external_order_number?.toLowerCase().includes(search.toLowerCase()) ||
-      o.external_order_id.toLowerCase().includes(search.toLowerCase());
+      o.buyer_name.toLowerCase().includes(s) ||
+      o.external_order_number?.toLowerCase().includes(s) ||
+      o.external_order_id.toLowerCase().includes(s) ||
+      o.ml_shipment_id?.toString().includes(s) ||
+      (o as any).envio?.tracking_number?.toLowerCase().includes(s) ||
+      o.shipping_city?.toLowerCase().includes(s);
     
     const matchesStatus = statusFilter === 'all' || 
       (o.ml_shipping_status ? o.ml_shipping_status === statusFilter : o.order_status === statusFilter);
