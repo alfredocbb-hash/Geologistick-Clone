@@ -1,0 +1,1 @@
+ALTER TABLE public.liquidacion_sucursal_detalles ADD COLUMN rol text DEFAULT 'emision';

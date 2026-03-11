@@ -1764,6 +1764,7 @@ export type Database = {
           id: string
           liquidacion_id: string
           monto_envio: number
+          rol: string | null
           tipo_pago: string
         }
         Insert: {
@@ -1774,6 +1775,7 @@ export type Database = {
           id?: string
           liquidacion_id: string
           monto_envio: number
+          rol?: string | null
           tipo_pago: string
         }
         Update: {
@@ -1784,6 +1786,7 @@ export type Database = {
           id?: string
           liquidacion_id?: string
           monto_envio?: number
+          rol?: string | null
           tipo_pago?: string
         }
         Relationships: [
