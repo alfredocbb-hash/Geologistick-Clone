@@ -493,20 +493,21 @@ export function SettlementDetailDialog({
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Tracking</TableHead>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Destinatario</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead className="text-right">
-                      {isBranch ? 'Monto Envío' : 'Comisión'}
-                    </TableHead>
-                    {isBranch && <TableHead className="text-right">Comisión</TableHead>}
+                     <TableHead>Tracking</TableHead>
+                     <TableHead>Fecha</TableHead>
+                     <TableHead>Destinatario</TableHead>
+                     {isBranch && <TableHead>Rol</TableHead>}
+                     <TableHead>Estado</TableHead>
+                     <TableHead className="text-right">
+                       {isBranch ? 'Monto Envío' : 'Comisión'}
+                     </TableHead>
+                     {isBranch && <TableHead className="text-right">Comisión</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {(isBranch ? branchDetalles : driverComisiones).length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={isBranch ? 6 : 5} className="text-center text-muted-foreground py-8">
+                     <TableRow>
+                       <TableCell colSpan={isBranch ? 7 : 5} className="text-center text-muted-foreground py-8">
                         No hay detalles disponibles
                       </TableCell>
                     </TableRow>
@@ -523,9 +524,16 @@ export function SettlementDetailDialog({
                             {envio?.created_at ? format(new Date(envio.created_at), 'dd/MM/yy', { locale: es }) : '-'}
                           </TableCell>
                           <TableCell>
-                            {destinatario ? `${destinatario.nombre || ''} ${destinatario.apellido || ''}`.trim() : envio?.nombre_destinatario || '-'}
-                          </TableCell>
-                          <TableCell>
+                             {destinatario ? `${destinatario.nombre || ''} ${destinatario.apellido || ''}`.trim() : envio?.nombre_destinatario || '-'}
+                           </TableCell>
+                           {isBranch && (
+                             <TableCell>
+                               <Badge variant="outline" className={`text-xs ${item.rol === 'recepcion' ? 'bg-success/10 text-success border-success' : 'bg-primary/10 text-primary border-primary'}`}>
+                                 {item.rol === 'recepcion' ? 'Recepción' : 'Emisión'}
+                               </Badge>
+                             </TableCell>
+                           )}
+                           <TableCell>
                             <Badge variant="outline" className="text-xs">
                               {envio?.estado || '-'}
                             </Badge>

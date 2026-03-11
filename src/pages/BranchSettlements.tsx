@@ -66,6 +66,8 @@ interface EnvioResumen {
   tipo_pago: string;
   created_at: string;
   estado: string;
+  sucursal_origen_id?: string | null;
+  sucursal_destino_id?: string | null;
 }
 
 interface LiquidacionSucursal {
@@ -488,6 +490,8 @@ export default function BranchSettlements() {
           tipo_pago: tipoPago,
           created_at: envio.created_at,
           estado: envio.estado,
+          sucursal_origen_id: envio.sucursal_origen_id,
+          sucursal_destino_id: envio.sucursal_destino_id,
         };
       });
 
@@ -559,10 +563,15 @@ export default function BranchSettlements() {
       if (liquidacionError) throw liquidacionError;
 
       // Create detalles with desglose_conceptos
-      const detalles = calculatedData.envios.map((envio) => {
+       const detalles = calculatedData.envios.map((envio) => {
         // Get per-concept breakdown for this shipment
         const desglose = calculatedData.enviosDesglose[envio.id] || {};
         const totalComision = Object.values(desglose).reduce((sum, c) => sum + c.comision, 0);
+        
+        // Determine rol based on sucursal relationship
+        const esOrigen = envio.sucursal_origen_id === selectedSucursal;
+        const esDestino = envio.sucursal_destino_id === selectedSucursal;
+        const rol = esDestino && !esOrigen ? 'recepcion' : 'emision';
         
         return {
           liquidacion_id: liquidacion.id,
@@ -571,6 +580,7 @@ export default function BranchSettlements() {
           tipo_pago: envio.tipo_pago || 'contado',
           comision_aplicada: totalComision,
           desglose_conceptos: desglose,
+          rol,
         };
       });
 

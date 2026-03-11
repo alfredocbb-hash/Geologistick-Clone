@@ -48,6 +48,7 @@ interface SettlementPDFData {
     descripcion?: string;
     monto: number;
     comision?: number;
+    rol?: string;
   }>;
   shipments?: Array<{
     tracking: string;
@@ -391,11 +392,13 @@ export async function generateSettlementPDF(
   y += 6;
 
   // Column positions — redesigned to fit within 10–200mm (190mm usable)
-  // Seller: Tracking | Fecha | Destinatario | Estado | Monto
-  // Driver/Branch: Tracking | Fecha | Destinatario | Monto
+  // Seller: Tracking | Fecha | Destinatario | Localidad | Monto
+  // Branch: Tracking | Fecha | Destinatario | Rol | Monto
+  // Driver: Tracking | Fecha | Destinatario | Monto
   const colTracking = 12;
-  const colFecha = isSeller ? 62 : 68;
-  const colDest = isSeller ? 84 : 88;
+  const colFecha = isSeller ? 62 : 58;
+  const colDest = isSeller ? 84 : 78;
+  const colRol = isBranch ? 135 : null;
   const colEstado = isSeller ? 138 : null;
   const colMonto = pageWidth - 12; // right-aligned
 
@@ -408,6 +411,7 @@ export async function generateSettlementPDF(
     doc.text('Tracking', colTracking, y);
     doc.text('Fecha', colFecha, y);
     doc.text('Destinatario', colDest, y);
+    if (colRol) doc.text('Rol', colRol, y);
     if (colEstado) doc.text('Localidad', colEstado, y);
     doc.text('Monto', colMonto, y, { align: 'right' });
   };
@@ -446,6 +450,9 @@ export async function generateSettlementPDF(
     doc.text(tracking, colTracking, y);
     doc.text(fecha, colFecha, y);
     doc.text(dest, colDest, y);
+    if (colRol && isBranch) {
+      doc.text(row.rol === 'recepcion' ? 'Recepción' : 'Emisión', colRol, y);
+    }
     if (colEstado && isSeller) {
       doc.text((row.localidad || '-').substring(0, 14), colEstado, y);
     }
@@ -610,6 +617,7 @@ export async function downloadBranchSettlementPDF(liquidacion: {
       : d.envio?.nombre_destinatario || '-',
     monto: d.monto_envio || 0,
     comision: d.comision_aplicada || 0,
+    rol: d.rol || 'emision',
   }));
 
   await generateSettlementPDF({
