@@ -77,3 +77,5 @@ project_id = "uhlgimnmfifmrxraorrl"
     verify_jwt = false
   [functions.send-tenant-email]
     verify_jwt = false
+  [functions.admin-assistant]
+    verify_jwt = false

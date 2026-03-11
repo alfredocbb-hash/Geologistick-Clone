@@ -8,6 +8,7 @@ import { TrialBanner } from '@/components/trial/TrialBanner';
 import { Loader2 } from 'lucide-react';
 import { useSubscriptionBlock } from '@/hooks/useSubscriptionBlock';
 import { SubscriptionBlockScreen } from '@/components/subscription/SubscriptionBlockScreen';
+import { AdminAssistant } from '@/components/assistant/AdminAssistant';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -19,7 +20,7 @@ function getSidebarCookieState(): boolean {
 }
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
-  const { user, loading } = useAuth();
+  const { user, loading, isAdmin } = useAuth();
   const { isBlocked, reason } = useSubscriptionBlock();
 
   if (loading) {
@@ -55,6 +56,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           </main>
         </div>
       </div>
+      {isAdmin() && <AdminAssistant />}
     </SidebarProvider>
   );
 }
