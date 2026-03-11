@@ -20,7 +20,7 @@ function getSidebarCookieState(): boolean {
 }
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
-  const { user, loading } = useAuth();
+  const { user, loading, isAdmin } = useAuth();
   const { isBlocked, reason } = useSubscriptionBlock();
 
   if (loading) {
