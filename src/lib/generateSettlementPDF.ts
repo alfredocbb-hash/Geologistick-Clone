@@ -583,6 +583,7 @@ export async function downloadBranchSettlementPDF(liquidacion: {
   metodo_pago: string | null;
   referencia_pago: string | null;
   sucursal?: { nombre: string };
+  resumen_conceptos?: ResumenConceptosPDF | null;
 }, branding?: BrandingData): Promise<void> {
   const resolvedBranding = branding || await fetchTenantBranding();
 
