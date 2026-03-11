@@ -8,6 +8,7 @@ import { TrialBanner } from '@/components/trial/TrialBanner';
 import { Loader2 } from 'lucide-react';
 import { useSubscriptionBlock } from '@/hooks/useSubscriptionBlock';
 import { SubscriptionBlockScreen } from '@/components/subscription/SubscriptionBlockScreen';
+import { AdminAssistant } from '@/components/assistant/AdminAssistant';
 
 interface DashboardLayoutProps {
   children: ReactNode;
