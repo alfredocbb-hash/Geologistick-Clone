@@ -488,6 +488,8 @@ export default function BranchSettlements() {
           tipo_pago: tipoPago,
           created_at: envio.created_at,
           estado: envio.estado,
+          sucursal_origen_id: envio.sucursal_origen_id,
+          sucursal_destino_id: envio.sucursal_destino_id,
         };
       });
 
