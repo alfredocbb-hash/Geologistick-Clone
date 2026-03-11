@@ -543,14 +543,16 @@ export default function Cash() {
                   <Minus className="h-4 w-4 mr-2" />
                   Egreso
                 </Button>
-                <Button
-                  onClick={() => setIsRenditionDialogOpen(true)}
-                  variant="outline"
-                  className="border-primary text-primary hover:bg-primary/10"
-                >
-                  <Banknote className="h-4 w-4 mr-2" />
-                  Rendición COD
-                </Button>
+                {showRenditionButton && (
+                  <Button
+                    onClick={() => setIsRenditionDialogOpen(true)}
+                    variant="outline"
+                    className="border-primary text-primary hover:bg-primary/10"
+                  >
+                    <Banknote className="h-4 w-4 mr-2" />
+                    Rendición COD
+                  </Button>
+                )}
                 <div className="flex-1" />
                 <Button
                   onClick={() => setIsCloseDialogOpen(true)}
