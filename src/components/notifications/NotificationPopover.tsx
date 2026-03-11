@@ -42,6 +42,16 @@ export function NotificationPopover() {
   const navigate = useNavigate();
   const { notifications, unreadCount, isLoading, markAsRead, markAllAsRead, deleteNotification } = useNotifications();
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
+  const dismissedIds = useRef<Set<string>>(new Set());
+
+  // Auto-show first unread notification
+  useEffect(() => {
+    if (isLoading || selectedNotification) return;
+    const firstUnread = notifications.find(n => !n.read && !dismissedIds.current.has(n.id));
+    if (firstUnread) {
+      setSelectedNotification(firstUnread);
+    }
+  }, [notifications, isLoading, selectedNotification]);
 
   const handleNotificationClick = (notification: Notification) => {
     setSelectedNotification(notification);
