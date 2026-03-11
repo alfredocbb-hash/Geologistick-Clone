@@ -611,6 +611,7 @@ export async function downloadBranchSettlementPDF(liquidacion: {
       : d.envio?.nombre_destinatario || '-',
     monto: d.monto_envio || 0,
     comision: d.comision_aplicada || 0,
+    rol: d.rol || 'emision',
   }));
 
   await generateSettlementPDF({
