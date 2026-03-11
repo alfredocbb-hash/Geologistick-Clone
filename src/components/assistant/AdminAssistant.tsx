@@ -6,6 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import ReactMarkdown from 'react-markdown';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 type Msg = { role: 'user' | 'assistant'; content: string };
 
@@ -22,11 +23,19 @@ async function streamChat({
   onDone: () => void;
   onError: (msg: string) => void;
 }) {
+  // Get session token
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) {
+    onError('No autenticado');
+    return;
+  }
+
   const resp = await fetch(CHAT_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+      Authorization: `Bearer ${session.access_token}`,
+      apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
     },
     body: JSON.stringify({ messages }),
   });
