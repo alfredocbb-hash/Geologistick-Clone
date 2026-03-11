@@ -1,28 +1,25 @@
 
 
-# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
+# Visibilidad de envíos recibidos en liquidación de sucursal
 
-## Problema
-Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
+## Diagnóstico
 
-## Solución
+El motor de cálculo **ya incluye** los envíos recibidos por la sucursal (donde `sucursal_destino_id = sucursal`). Aplica comisiones de recepción cuando el envío está entregado. La consulta usa `.or(sucursal_origen_id.eq.X,sucursal_destino_id.eq.X)`.
 
-### 1. Nueva función SQL: `reopen_ruta_planificada`
-- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
-- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
-- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
-- Inserta registro en `envio_historial` para cada envío reactivado
-- Retorna JSON con resultado y cantidad de envíos reactivados
+Revisando los datos de Berazategui, la liquidación actual solo muestra envíos de emisión porque **no hay envíos entregados con destino a esa sucursal** en el período seleccionado (solo 2 en total histórico en la sucursal correcta).
 
-### 2. Nuevo componente: `ReopenRouteDialog.tsx`
-- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
-- Muestra cuántos envíos serán reactivados
-- Botón "Reabrir Ruta" que invoca el RPC
+**El problema real es de transparencia**: el operador de la sucursal no puede distinguir en el detalle cuáles envíos son de emisión y cuáles de recepción, ni verificar que ambos tipos están incluidos.
 
-### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
-- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
-- Al hacer click, abre `ReopenRouteDialog`
-- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
+## Plan de cambios
 
-**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
+### 1. Agregar columna `rol` a `liquidacion_sucursal_detalles`
+- Migración: `ALTER TABLE liquidacion_sucursal_detalles ADD COLUMN rol text DEFAULT 'emision'`
+- Valores posibles: `'emision'` o `'recepcion'`
 
+### 2. Guardar el rol al crear detalles (`BranchSettlements.tsx`)
+- En el `calculateMutation`, al construir `enviosData`, determinar y guardar si cada envío es origen o destino
+- Un envío puede generar DOS filas de detalle si es origen Y destino de la misma sucursal (caso intra-sucursal)
+- En el `saveMutation`, incluir el campo `rol` en cada detalle insertado
+
+### 3. Mostrar el rol en el detalle (`SettlementDetailDialog.tsx`)
+- Agr
