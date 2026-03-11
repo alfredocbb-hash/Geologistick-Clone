@@ -569,9 +569,8 @@ export default function BranchSettlements() {
         const totalComision = Object.values(desglose).reduce((sum, c) => sum + c.comision, 0);
         
         // Determine rol based on sucursal relationship
-        const envioOriginal = (envios || []).find((e: any) => e.id === envio.id);
-        const esOrigen = envioOriginal?.sucursal_origen_id === selectedSucursal;
-        const esDestino = envioOriginal?.sucursal_destino_id === selectedSucursal;
+        const esOrigen = envio.sucursal_origen_id === selectedSucursal;
+        const esDestino = envio.sucursal_destino_id === selectedSucursal;
         const rol = esDestino && !esOrigen ? 'recepcion' : 'emision';
         
         return {
