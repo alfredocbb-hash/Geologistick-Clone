@@ -493,14 +493,15 @@ export function SettlementDetailDialog({
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Tracking</TableHead>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Destinatario</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead className="text-right">
-                      {isBranch ? 'Monto Envío' : 'Comisión'}
-                    </TableHead>
-                    {isBranch && <TableHead className="text-right">Comisión</TableHead>}
+                     <TableHead>Tracking</TableHead>
+                     <TableHead>Fecha</TableHead>
+                     <TableHead>Destinatario</TableHead>
+                     {isBranch && <TableHead>Rol</TableHead>}
+                     <TableHead>Estado</TableHead>
+                     <TableHead className="text-right">
+                       {isBranch ? 'Monto Envío' : 'Comisión'}
+                     </TableHead>
+                     {isBranch && <TableHead className="text-right">Comisión</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
