@@ -1,28 +1,34 @@
 
 
-# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
+# Ampliar búsqueda en Pedidos e-Commerce
 
-## Problema
-Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
+## Cambio
 
-## Solución
+**Archivo: `src/pages/ecommerce/Orders.tsx`** (líneas 267-271)
 
-### 1. Nueva función SQL: `reopen_ruta_planificada`
-- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
-- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
-- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
-- Inserta registro en `envio_historial` para cada envío reactivado
-- Retorna JSON con resultado y cantidad de envíos reactivados
+Actualmente el filtro de búsqueda solo compara contra `buyer_name`, `external_order_number` y `external_order_id`. Se agregará:
 
-### 2. Nuevo componente: `ReopenRouteDialog.tsx`
-- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
-- Muestra cuántos envíos serán reactivados
-- Botón "Reabrir Ruta" que invoca el RPC
+- **ID ML** (`ml_shipment_id`): convertido a string para comparar
+- **Tracking interno** (`envio?.tracking_number`): el tracking del envío vinculado
+- **Localidad** (`shipping_city`): la ciudad/localidad de entrega
 
-### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
-- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
-- Al hacer click, abre `ReopenRouteDialog`
-- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
+```typescript
+// Antes
+const matchesSearch = 
+  o.buyer_name.toLowerCase().includes(search.toLowerCase()) ||
+  o.external_order_number?.toLowerCase().includes(search.toLowerCase()) ||
+  o.external_order_id.toLowerCase().includes(search.toLowerCase());
 
-**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
+// Después
+const s = search.toLowerCase();
+const matchesSearch = 
+  o.buyer_name.toLowerCase().includes(s) ||
+  o.external_order_number?.toLowerCase().includes(s) ||
+  o.external_order_id.toLowerCase().includes(s) ||
+  o.ml_shipment_id?.toString().includes(s) ||
+  o.envio?.tracking_number?.toLowerCase().includes(s) ||
+  o.shipping_city?.toLowerCase().includes(s);
+```
+
+Todos los campos ya existen en la interface `Order` y en la query (el `envio` se trae con join). Un solo archivo, sin cambios de base de datos.
 
