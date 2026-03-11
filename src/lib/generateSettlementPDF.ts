@@ -450,6 +450,9 @@ export async function generateSettlementPDF(
     doc.text(tracking, colTracking, y);
     doc.text(fecha, colFecha, y);
     doc.text(dest, colDest, y);
+    if (colRol && isBranch) {
+      doc.text(row.rol === 'recepcion' ? 'Recepción' : 'Emisión', colRol, y);
+    }
     if (colEstado && isSeller) {
       doc.text((row.localidad || '-').substring(0, 14), colEstado, y);
     }

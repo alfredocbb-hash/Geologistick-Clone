@@ -66,6 +66,8 @@ interface EnvioResumen {
   tipo_pago: string;
   created_at: string;
   estado: string;
+  sucursal_origen_id?: string | null;
+  sucursal_destino_id?: string | null;
 }
 
 interface LiquidacionSucursal {
