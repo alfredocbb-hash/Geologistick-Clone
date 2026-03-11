@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, Check, CheckCheck, Info, AlertTriangle, CheckCircle, XCircle, Trash2, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -42,6 +42,16 @@ export function NotificationPopover() {
   const navigate = useNavigate();
   const { notifications, unreadCount, isLoading, markAsRead, markAllAsRead, deleteNotification } = useNotifications();
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
+  const dismissedIds = useRef<Set<string>>(new Set());
+
+  // Auto-show first unread notification
+  useEffect(() => {
+    if (isLoading || selectedNotification) return;
+    const firstUnread = notifications.find(n => !n.read && !dismissedIds.current.has(n.id));
+    if (firstUnread) {
+      setSelectedNotification(firstUnread);
+    }
+  }, [notifications, isLoading, selectedNotification]);
 
   const handleNotificationClick = (notification: Notification) => {
     setSelectedNotification(notification);
@@ -166,7 +176,14 @@ export function NotificationPopover() {
         </PopoverContent>
       </Popover>
 
-      <Dialog open={!!selectedNotification} onOpenChange={(open) => !open && setSelectedNotification(null)}>
+      <Dialog open={!!selectedNotification} onOpenChange={(open) => {
+        if (!open && selectedNotification) {
+          if (!selectedNotification.read) {
+            dismissedIds.current.add(selectedNotification.id);
+          }
+          setSelectedNotification(null);
+        }
+      }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <div className="flex items-center gap-3">
