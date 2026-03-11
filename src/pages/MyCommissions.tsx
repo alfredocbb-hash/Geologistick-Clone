@@ -149,7 +149,7 @@ export default function MyCommissions() {
         .limit(20);
 
       if (error) throw error;
-      return (data || []) as LiquidacionSucursal[];
+      return (data || []) as unknown as LiquidacionSucursal[];
     },
     enabled: !!sucursalId,
   });
