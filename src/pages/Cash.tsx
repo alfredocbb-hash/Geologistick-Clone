@@ -138,6 +138,38 @@ export default function Cash() {
 
   const canManageCash = isAdmin() || hasRole('operador') || hasRole('sucursal');
 
+  const effectiveSucursalId = selectedSucursalId || profile?.sucursal_id;
+
+  // Check if the active branch has assigned drivers
+  const { data: branchHasDrivers } = useQuery({
+    queryKey: ['branch-has-drivers', effectiveSucursalId],
+    queryFn: async () => {
+      if (!effectiveSucursalId) return false;
+
+      // Get all user_ids with 'chofer' role
+      const { data: roles } = await supabase
+        .from('user_roles')
+        .select('user_id')
+        .eq('role', 'chofer');
+
+      const driverIds = roles?.map(r => r.user_id) || [];
+      if (!driverIds.length) return false;
+
+      // Check if any of them belong to this branch
+      const { count } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+        .eq('sucursal_id', effectiveSucursalId)
+        .in('user_id', driverIds);
+
+      return (count || 0) > 0;
+    },
+    enabled: !!effectiveSucursalId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const showRenditionButton = isAdmin() || branchHasDrivers === true;
+
   // Fetch sucursales
   const { data: sucursales = [] } = useQuery({
     queryKey: ['sucursales'],
