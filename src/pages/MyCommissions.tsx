@@ -67,6 +67,13 @@ interface LiquidacionSucursal {
   referencia_pago: string | null;
   created_at: string | null;
   sucursal?: { nombre: string };
+  resumen_conceptos?: {
+    contado: Array<{ concepto_id: string | null; nombre: string; ventas: number; porcentaje: number; comision: number; sinConfiguracion?: boolean }>;
+    destino: Array<{ concepto_id: string | null; nombre: string; ventas: number; porcentaje: number; comision: number; sinConfiguracion?: boolean }>;
+    cta_cte: Array<{ concepto_id: string | null; nombre: string; ventas: number; porcentaje: number; comision: number; sinConfiguracion?: boolean }>;
+  } | null;
+  remitos_cancelados?: { cantidad: number; totalCobrado: number } | null;
+  conceptos_sin_config?: Array<{ concepto: string; tipoPago: string; rol: string }> | null;
 }
 
 export default function MyCommissions() {
@@ -142,7 +149,7 @@ export default function MyCommissions() {
         .limit(20);
 
       if (error) throw error;
-      return (data || []) as LiquidacionSucursal[];
+      return (data || []) as unknown as LiquidacionSucursal[];
     },
     enabled: !!sucursalId,
   });
