@@ -632,6 +632,7 @@ export async function downloadBranchSettlementPDF(liquidacion: {
       cantidadEnvios: items.length,
     },
     items,
+    resumenConceptos: liquidacion.resumen_conceptos || null,
   }, resolvedBranding ? { ...resolvedBranding, logo_light: logoBase64 || resolvedBranding.logo_light } : undefined);
 }
 
