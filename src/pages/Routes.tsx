@@ -150,7 +150,7 @@ export default function Routes() {
       if (shipmentsError) throw shipmentsError;
 
       // Combine data
-      const driversData: DriverWithShipments[] = (profiles || []).map(profile => ({
+      const driversData: DriverWithShipments[] = filteredProfiles.map(profile => ({
         ...profile,
         shipments: (shipments || [])
           .filter(s => s.chofer_id === profile.user_id)
