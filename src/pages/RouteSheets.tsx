@@ -282,10 +282,10 @@ export default function RouteSheets() {
           *,
           destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)
         `)
-        .eq("sucursal_origen_id", profile.sucursal_id)
         .eq("sucursal_destino_id", selectedDestino)
         .in("estado", ["pendiente", "recogido", "en_sucursal"])
-        .is("chofer_id", null);
+        .is("chofer_id", null)
+        .or(`sucursal_origen_id.eq.${profile.sucursal_id},sucursal_entrega_id.eq.${profile.sucursal_id}`);
       
       if (error) throw error;
       return data;
