@@ -105,6 +105,36 @@ export function ShipmentHistoryDialog({
     enabled: open && !!envioId,
   });
 
+  const { data: envioActual } = useQuery({
+    queryKey: ['envio-ubicacion', envioId],
+    queryFn: async () => {
+      if (!envioId) return null;
+      const { data } = await supabase
+        .from('envios')
+        .select(`
+          estado,
+          chofer_id,
+          sucursal_entrega:sucursales!envios_sucursal_entrega_id_fkey(nombre),
+          sucursal_destino:sucursales!envios_sucursal_destino_id_fkey(nombre),
+          sucursal_origen:sucursales!envios_sucursal_origen_id_fkey(nombre),
+          ciudad_entrega
+        `)
+        .eq('id', envioId)
+        .single();
+      
+      if (data?.chofer_id) {
+        const { data: chofer } = await supabase
+          .from('profiles')
+          .select('nombre, apellido')
+          .eq('user_id', data.chofer_id)
+          .single();
+        return { ...data, chofer };
+      }
+      return { ...data, chofer: null };
+    },
+    enabled: open && !!envioId,
+  });
+
   const { data: routeInfo } = useQuery({
     queryKey: ['envio-rutas', envioId],
     queryFn: async () => {
@@ -125,7 +155,6 @@ export function ShipmentHistoryDialog({
         .map((h: any) => h.hojas_ruta)
         .filter(Boolean);
 
-      // Deduplicate rutas by numero
       const rutasMap = new Map<string, RutaInfo>();
       (rutasRes.data || []).forEach((r: any) => {
         if (r.rutas_planificadas?.numero) {
