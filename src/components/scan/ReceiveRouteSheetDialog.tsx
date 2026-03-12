@@ -98,7 +98,7 @@ export function ReceiveRouteSheetDialog({ hojaRutaId, onClose }: ReceiveRouteShe
       if (hreError) throw hreError;
 
       // Update envíos status and track physical location
-      const updateData: Record<string, any> = { estado: "en_sucursal" };
+      const updateData: Record<string, any> = { estado: "en_sucursal", chofer_id: null };
       if (profile?.sucursal_id) {
         updateData.sucursal_entrega_id = profile.sucursal_id;
       }
