@@ -189,9 +189,10 @@ export default function BranchSettlements() {
           estado,
           sucursal_origen_id,
           sucursal_destino_id,
+          sucursal_entrega_id,
           envio_detalles(concepto_id, monto, nombre_concepto)
         `)
-        .or(`sucursal_origen_id.eq.${selectedSucursal},sucursal_destino_id.eq.${selectedSucursal}`)
+        .or(`sucursal_origen_id.eq.${selectedSucursal},sucursal_destino_id.eq.${selectedSucursal},sucursal_entrega_id.eq.${selectedSucursal}`)
         .gte(dateField, toLocalISOStart(fechaInicio))
         .lte(dateField, toLocalISOEnd(fechaFin))
         .in('estado', ['entregado', 'devuelto']);
