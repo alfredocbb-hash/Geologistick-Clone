@@ -848,6 +848,38 @@ export default function RouteSheets() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Close Hoja AlertDialog */}
+      <AlertDialog open={!!closingHoja} onOpenChange={(open) => !open && setClosingHoja(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Cerrar hoja de ruta?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Vas a cerrar la hoja <strong>{closingHoja?.numero}</strong> 
+              {closingHoja?.sucursal_origen?.nombre && closingHoja?.sucursal_destino?.nombre && (
+                <> ({closingHoja.sucursal_origen.nombre} → {closingHoja.sucursal_destino.nombre})</>
+              )}
+              {closingHoja?.chofer && (
+                <> — Chofer: {closingHoja.chofer.nombre} {closingHoja.chofer.apellido}</>
+              )}
+              . Esta acción marcará la hoja como completada.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={closeMutation.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => closingHoja && closeMutation.mutate(closingHoja.id)}
+              disabled={closeMutation.isPending}
+            >
+              {closeMutation.isPending ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Cerrando...</>
+              ) : (
+                "Cerrar Hoja"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
