@@ -763,6 +763,17 @@ export default function RouteSheets() {
                       <Route className="h-4 w-4" />
                     </Button>
                   )}
+                  {isAdmin() && hr.estado === 'en_transito' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setClosingHoja(hr)}
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    >
+                      <CheckCircle className="mr-1 h-4 w-4" />
+                      Cerrar
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
