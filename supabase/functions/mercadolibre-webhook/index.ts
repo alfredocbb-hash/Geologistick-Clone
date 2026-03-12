@@ -228,6 +228,7 @@ Deno.serve(async (req) => {
           destinatario_lng: receiver.longitude || null,
           whatsapp_destinatario: receiverPhone,
           precio_total: 0, // Will be calculated based on tarifa
+          precio_tarifa_vigente: 0,
           tipo_servicio: 'express',
           tipo_servicio_detalle: 'ML Flex',
           sucursal_origen_id: seller.sucursal_pickup_id || null,
@@ -298,7 +299,7 @@ Deno.serve(async (req) => {
             // Update envio with calculated price
             await supabase
               .from('envios')
-              .update({ precio_total: precioCalculado })
+              .update({ precio_total: precioCalculado, precio_tarifa_vigente: precioCalculado })
               .eq('id', envio.id);
 
             console.log('[ML Webhook] Registered cargo:', precioCalculado, 'new balance:', saldoNuevo);

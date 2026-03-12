@@ -211,6 +211,7 @@ export function CreateShipmentFromOrderDialog({
           dni_destinatario: order.buyer_dni,
           cantidad_bultos: cantidadBultos,
           precio_total: precio,
+          precio_tarifa_vigente: precio,
           tipo_pago: seller?.tiene_cuenta_corriente ? 'cuenta_corriente' : 'contado',
           tipo_servicio: 'envio_completo',
           tipo_servicio_detalle: 'domicilio_domicilio',

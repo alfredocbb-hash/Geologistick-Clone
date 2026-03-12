@@ -487,6 +487,7 @@ Deno.serve(async (req) => {
             destinatario_lng: receiver.longitude || null,
             whatsapp_destinatario: receiverPhone,
             precio_total: precioCalculadoSync,
+            precio_tarifa_vigente: precioCalculadoSync,
             tarifa_id: tarifaIdSync,
             tarifa_metodo_aplicado: tarifaMetodoSync,
             precio_flete_ml: mlShippingCost,
@@ -531,7 +532,7 @@ Deno.serve(async (req) => {
             // Update envio with seller tarifa price
             await supabase
               .from('envios')
-              .update({ precio_total: precioFinalSync, tarifa_id: seller.tarifa_id, tarifa_metodo_aplicado: 'tarifa_seller' })
+              .update({ precio_total: precioFinalSync, precio_tarifa_vigente: precioFinalSync, tarifa_id: seller.tarifa_id, tarifa_metodo_aplicado: 'tarifa_seller' })
               .eq('id', envio.id);
           }
         }

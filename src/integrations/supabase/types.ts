@@ -1062,6 +1062,7 @@ export type Database = {
           parentesco_retira: string | null
           peso_kg: number | null
           precio_flete_ml: number | null
+          precio_tarifa_vigente: number | null
           precio_total: number
           provincia: string | null
           remitente_id: string | null
@@ -1160,6 +1161,7 @@ export type Database = {
           parentesco_retira?: string | null
           peso_kg?: number | null
           precio_flete_ml?: number | null
+          precio_tarifa_vigente?: number | null
           precio_total: number
           provincia?: string | null
           remitente_id?: string | null
@@ -1258,6 +1260,7 @@ export type Database = {
           parentesco_retira?: string | null
           peso_kg?: number | null
           precio_flete_ml?: number | null
+          precio_tarifa_vigente?: number | null
           precio_total?: number
           provincia?: string | null
           remitente_id?: string | null

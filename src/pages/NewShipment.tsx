@@ -1196,6 +1196,7 @@ export default function NewShipment() {
           dimensiones: formData.dimensiones,
           valor_declarado: parseFloat(formData.valor_declarado) || null,
           precio_total: precioTotal,
+          precio_tarifa_vigente: precioTotal,
           pago_contra_entrega: formData.tipo_pago === 'destino' ? true : formData.pago_contra_entrega,
           notas: formData.notas,
           created_by: user?.id,
