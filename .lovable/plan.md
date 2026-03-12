@@ -1,25 +1,28 @@
 
 
-# Mostrar sucursal destino en la tabla de envíos disponibles
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
-## Cambios
+## Problema
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
-### `src/pages/RouteSheets.tsx`
+## Solución
 
-**1. Ampliar la query** (línea 281-284) para incluir la sucursal destino del envío:
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-```typescript
-.select(`
-  *,
-  destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido),
-  sucursal_destino:sucursales!envios_sucursal_destino_id_fkey(nombre, ciudad)
-`)
-```
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-**2. Agregar columna "Destino"** en la tabla (líneas 484-509):
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-- Nuevo `<TableHead>Destino</TableHead>` después de "Destinatario"
-- Nuevo `<TableCell>` que muestre `envio.sucursal_destino?.nombre` o un badge "Sin destino" cuando sea null (envíos del modo mixto sin destino asignado)
-
-Esto permitirá al operador identificar rápidamente si cada envío ya tiene destino asignado o necesita que se le asigne al crear la hoja.
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 

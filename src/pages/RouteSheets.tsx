@@ -280,7 +280,8 @@ export default function RouteSheets() {
         .from("envios")
         .select(`
           *,
-          destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)
+          destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido),
+          sucursal_destino:sucursales!envios_sucursal_destino_id_fkey(nombre, ciudad)
         `)
         .in("estado", ["pendiente", "recogido", "en_sucursal"])
         .is("chofer_id", null)
@@ -486,6 +487,7 @@ export default function RouteSheets() {
                             <TableHead className="w-12"></TableHead>
                             <TableHead>Tracking</TableHead>
                             <TableHead>Destinatario</TableHead>
+                            <TableHead>Destino</TableHead>
                             <TableHead>Bultos</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -503,6 +505,13 @@ export default function RouteSheets() {
                               </TableCell>
                               <TableCell>
                                 {envio.destinatario?.nombre} {envio.destinatario?.apellido}
+                              </TableCell>
+                              <TableCell>
+                                {envio.sucursal_destino?.nombre ? (
+                                  <span className="text-sm">{envio.sucursal_destino.nombre}</span>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground italic">Sin destino</span>
+                                )}
                               </TableCell>
                               <TableCell>{envio.cantidad_bultos || 1}</TableCell>
                             </TableRow>
