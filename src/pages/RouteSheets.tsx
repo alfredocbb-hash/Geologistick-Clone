@@ -506,6 +506,13 @@ export default function RouteSheets() {
                               <TableCell>
                                 {envio.destinatario?.nombre} {envio.destinatario?.apellido}
                               </TableCell>
+                              <TableCell>
+                                {envio.sucursal_destino?.nombre ? (
+                                  <span className="text-sm">{envio.sucursal_destino.nombre}</span>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground italic">Sin destino</span>
+                                )}
+                              </TableCell>
                               <TableCell>{envio.cantidad_bultos || 1}</TableCell>
                             </TableRow>
                           ))}
