@@ -594,7 +594,7 @@ export default function BranchSettlements() {
         
         // Determine rol based on sucursal relationship
         const esOrigen = envio.sucursal_origen_id === selectedSucursal;
-        const esDestino = envio.sucursal_destino_id === selectedSucursal;
+        const esDestino = envio.sucursal_destino_id === selectedSucursal || envio.sucursal_entrega_id === selectedSucursal;
         const rol = esDestino && !esOrigen ? 'recepcion' : 'emision';
         
         return {
