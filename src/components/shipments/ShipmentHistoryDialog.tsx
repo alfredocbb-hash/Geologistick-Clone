@@ -169,6 +169,14 @@ export function ShipmentHistoryDialog({
                           {entry.created_at && format(new Date(entry.created_at), "d 'de' MMMM yyyy, HH:mm", { locale: es })}
                         </p>
                         
+                        {/* User who performed the action */}
+                        {entry.profile && (
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
+                            <User className="h-3 w-3" />
+                            <span>{entry.profile.nombre} {entry.profile.apellido || ''}</span>
+                          </div>
+                        )}
+
                         {/* Location */}
                         {entry.ubicacion && (
                           <div className="flex items-center gap-1 text-xs text-muted-foreground">
