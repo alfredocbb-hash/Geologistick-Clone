@@ -148,6 +148,8 @@ export function ReceiveRouteSheetDialog({ hojaRutaId, onClose }: ReceiveRouteShe
     },
   });
 
+  const getEnvioId = (item: any) => item.envio?.id || item.envio_id;
+
   const toggleEnvio = (envioId: string) => {
     setSelectedEnvios(prev =>
       prev.includes(envioId)
@@ -158,8 +160,8 @@ export function ReceiveRouteSheetDialog({ hojaRutaId, onClose }: ReceiveRouteShe
 
   const selectAllPending = () => {
     const pendingIds = hojaRuta?.envios
-      .filter(e => e.estado !== "recibido" && e.envio?.id)
-      .map(e => e.envio.id) || [];
+      .filter(e => e.estado !== "recibido" && getEnvioId(e))
+      .map(e => getEnvioId(e)) || [];
     setSelectedEnvios(pendingIds);
   };
 
@@ -230,12 +232,15 @@ export function ReceiveRouteSheetDialog({ hojaRutaId, onClose }: ReceiveRouteShe
                         <TableRow key={item.id}>
                           <TableCell>
                             <Checkbox
-                              checked={selectedEnvios.includes(item.envio?.id)}
-                              onCheckedChange={() => item.envio?.id && toggleEnvio(item.envio.id)}
+                              checked={selectedEnvios.includes(getEnvioId(item))}
+                              onCheckedChange={() => {
+                                const id = getEnvioId(item);
+                                if (id) toggleEnvio(id);
+                              }}
                             />
                           </TableCell>
                           <TableCell className="font-mono text-sm">
-                            {item.envio?.tracking_number}
+                            {item.envio?.tracking_number || '—'}
                           </TableCell>
                           <TableCell>
                             {item.envio?.nombre_destinatario || `${item.envio?.destinatario?.nombre || ''} ${item.envio?.destinatario?.apellido || ''}`.trim() || 'Sin destinatario'}
