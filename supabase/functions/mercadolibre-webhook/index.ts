@@ -228,6 +228,7 @@ Deno.serve(async (req) => {
           destinatario_lng: receiver.longitude || null,
           whatsapp_destinatario: receiverPhone,
           precio_total: 0, // Will be calculated based on tarifa
+          precio_tarifa_vigente: 0,
           tipo_servicio: 'express',
           tipo_servicio_detalle: 'ML Flex',
           sucursal_origen_id: seller.sucursal_pickup_id || null,
