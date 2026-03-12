@@ -1,34 +1,28 @@
 
 
-# Fix: Recalcular comisiones con configuración actual del chofer
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
 ## Problema
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
-En `DriverSettlements.tsx` línea 294, cuando ya existen registros en la tabla `comisiones` para un envío (de un cálculo previo), el sistema usa el monto viejo guardado en vez de recalcular con la configuración actual del chofer:
+## Solución
 
-```typescript
-comision_calculada: comision?.monto ?? comisionCalculada,
-```
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-Como Lucas Galarza ya tuvo cálculos previos con comisión fija, esos montos quedaron en la tabla `comisiones` y se siguen mostrando aunque ahora esté configurado con porcentaje.
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-## Cambio
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-### `src/pages/DriverSettlements.tsx` (línea 294)
-
-Solo usar el monto guardado si el envío **ya fue liquidado** (tiene `liquidacion_id`). Si está pendiente ("a liquidar"), siempre recalcular con la configuración actual:
-
-```typescript
-// Antes:
-comision_calculada: comision?.monto ?? comisionCalculada,
-
-// Después:
-comision_calculada: comision?.liquidacion_id ? (comision.monto ?? comisionCalculada) : comisionCalculada,
-```
-
-Esto asegura que:
-- Envíos **ya liquidados** → mantienen el monto original (no se modifica lo cerrado)
-- Envíos **pendientes** → siempre recalculan con la configuración actual del chofer
-
-Adicionalmente, invalidar el cache de choferes al calcular para asegurar que se lea la configuración más reciente.
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 
