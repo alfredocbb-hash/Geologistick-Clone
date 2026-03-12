@@ -1,25 +1,28 @@
 
 
-# Cerrar Hojas de Ruta desde la UI (admin/superadmin)
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
 ## Problema
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
-Las hojas de ruta en estado `en_transito` con fechas viejas no pueden cerrarse desde la interfaz de Hojas de Ruta. El RPC `close_hoja_ruta` ya permite que admins/superadmins las cierren (migración reciente), pero falta el botón en la UI.
+## Solución
 
-## Cambio
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-**Archivo: `src/pages/RouteSheets.tsx`**
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-1. Importar `AlertDialog` components y `useAuth` (ya importado)
-2. Agregar estado `closingHoja` para manejar el flujo de confirmación
-3. Agregar mutation que llame a `supabase.rpc('close_hoja_ruta', { p_hoja_id })`
-4. En la sección de acciones de cada card (línea ~707), agregar botón "Cerrar" visible solo para admins cuando `hr.estado === 'en_transito'`:
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-```text
-[Imprimir] [QR] [GPS?] [Cerrar] ← nuevo botón para admin en hojas en_transito
-```
-
-5. Agregar `AlertDialog` de confirmación al final del componente que muestre número de hoja y pida confirmar el cierre
-
-Solo un archivo modificado, sin migraciones SQL (el RPC ya soporta admins).
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 

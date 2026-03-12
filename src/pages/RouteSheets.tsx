@@ -5,6 +5,16 @@ import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -87,7 +97,7 @@ interface HojaRutaWithDetails {
 }
 
 export default function RouteSheets() {
-  const { profile } = useAuth();
+  const { profile, isAdmin } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -106,8 +116,30 @@ export default function RouteSheets() {
   const [showRouteDialog, setShowRouteDialog] = useState(false);
   const [selectedHojaRuta, setSelectedHojaRuta] = useState<HojaRutaWithDetails | null>(null);
   
+  // Close hoja state
+  const [closingHoja, setClosingHoja] = useState<HojaRutaWithDetails | null>(null);
+  
   // Use driver route hook for GPS visualization
   const driverRoute = useDriverRoute();
+
+  // Close hoja de ruta mutation
+  const closeMutation = useMutation({
+    mutationFn: async (hojaId: string) => {
+      const { data, error } = await supabase.rpc('close_hoja_ruta', { p_hoja_id: hojaId });
+      if (error) throw error;
+      const result = data as any;
+      if (!result?.success) throw new Error(result?.error || 'Error al cerrar hoja de ruta');
+      return result;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["hojas-ruta"] });
+      toast.success("Hoja de ruta cerrada correctamente");
+      setClosingHoja(null);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Error al cerrar hoja de ruta");
+    },
+  });
 
   // Fetch hojas de ruta with date filter
   const { data: hojasRuta = [], isLoading } = useQuery({
@@ -731,6 +763,17 @@ export default function RouteSheets() {
                       <Route className="h-4 w-4" />
                     </Button>
                   )}
+                  {isAdmin() && hr.estado === 'en_transito' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setClosingHoja(hr)}
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    >
+                      <CheckCircle className="mr-1 h-4 w-4" />
+                      Cerrar
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -805,6 +848,38 @@ export default function RouteSheets() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Close Hoja AlertDialog */}
+      <AlertDialog open={!!closingHoja} onOpenChange={(open) => !open && setClosingHoja(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Cerrar hoja de ruta?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Vas a cerrar la hoja <strong>{closingHoja?.numero}</strong> 
+              {closingHoja?.sucursal_origen?.nombre && closingHoja?.sucursal_destino?.nombre && (
+                <> ({closingHoja.sucursal_origen.nombre} → {closingHoja.sucursal_destino.nombre})</>
+              )}
+              {closingHoja?.chofer && (
+                <> — Chofer: {closingHoja.chofer.nombre} {closingHoja.chofer.apellido}</>
+              )}
+              . Esta acción marcará la hoja como completada.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={closeMutation.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => closingHoja && closeMutation.mutate(closingHoja.id)}
+              disabled={closeMutation.isPending}
+            >
+              {closeMutation.isPending ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Cerrando...</>
+              ) : (
+                "Cerrar Hoja"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
