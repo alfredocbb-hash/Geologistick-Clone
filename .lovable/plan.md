@@ -1,42 +1,28 @@
 
 
-# Permitir cerrar rutas confirmadas con fechas viejas
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
 ## Problema
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
-El botón "Cerrar Ruta" solo aparece para rutas con estado `en_curso` (línea 1998 de RoutePlanner.tsx). Las dos primeras rutas en la screenshot (RP-20260310-8401 y RP-20260311-0728) tienen estado `confirmada` con fechas 10/03 y 11/03 (anteriores a hoy 12/03), por eso no muestran el botón. Solo la tercera ruta (RP-20260312-5746) está `en_curso` y sí lo muestra.
+## Solución
 
-## Cambios
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-### 1. Migración SQL: actualizar `close_ruta_planificada`
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-Actualmente el RPC solo permite cerrar rutas `en_curso`. Hay que permitir también `confirmada`:
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-```sql
--- Antes:
-IF v_ruta.estado != 'en_curso' THEN ...
-
--- Después:
-IF v_ruta.estado NOT IN ('en_curso', 'confirmada') THEN ...
-```
-
-### 2. UI: ampliar condición del botón en `RoutePlanner.tsx` (línea 1998)
-
-Mostrar "Cerrar Ruta" para admins cuando:
-- Estado `en_curso` (cualquier fecha), **o**
-- Estado `confirmada` con fecha anterior a hoy
-
-```typescript
-// Antes:
-{ruta.estado === 'en_curso' && (roles.includes('admin') || roles.includes('super_admin')) && (
-
-// Después:
-{(roles.includes('admin') || roles.includes('super_admin')) && 
- (ruta.estado === 'en_curso' || 
-  (ruta.estado === 'confirmada' && new Date(ruta.fecha) < startOfDay(new Date()))) && (
-```
-
-**Archivos modificados:**
-- SQL migration (actualizar RPC `close_ruta_planificada`)
-- `src/pages/RoutePlanner.tsx` (una línea de condición)
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 
