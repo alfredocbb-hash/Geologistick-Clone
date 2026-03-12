@@ -494,6 +494,7 @@ export default function BranchSettlements() {
           estado: envio.estado,
           sucursal_origen_id: envio.sucursal_origen_id,
           sucursal_destino_id: envio.sucursal_destino_id,
+          sucursal_entrega_id: envio.sucursal_entrega_id,
         };
       });
 
