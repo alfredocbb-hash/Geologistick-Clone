@@ -148,6 +148,8 @@ export function ReceiveRouteSheetDialog({ hojaRutaId, onClose }: ReceiveRouteShe
     },
   });
 
+  const getEnvioId = (item: any) => item.envio?.id || item.envio_id;
+
   const toggleEnvio = (envioId: string) => {
     setSelectedEnvios(prev =>
       prev.includes(envioId)
@@ -158,8 +160,8 @@ export function ReceiveRouteSheetDialog({ hojaRutaId, onClose }: ReceiveRouteShe
 
   const selectAllPending = () => {
     const pendingIds = hojaRuta?.envios
-      .filter(e => e.estado !== "recibido" && e.envio?.id)
-      .map(e => e.envio.id) || [];
+      .filter(e => e.estado !== "recibido" && getEnvioId(e))
+      .map(e => getEnvioId(e)) || [];
     setSelectedEnvios(pendingIds);
   };
 
