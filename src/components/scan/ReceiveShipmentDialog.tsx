@@ -49,7 +49,7 @@ export default function ReceiveShipmentDialog({
   const [notas, setNotas] = useState('');
 
   const isCenter = type === 'center';
-  const newStatus = isCenter ? 'en_sucursal' : 'en_transito';
+  const newStatus = 'en_sucursal';
   const statusLabel = isCenter ? 'en centro logístico' : 'en sucursal';
 
   const receiveMutation = useMutation({

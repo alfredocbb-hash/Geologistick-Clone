@@ -1,32 +1,28 @@
 
 
-# Bug: ENV-UT6YE2 no cambia de estado al ser recibido en sucursal
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
-## Diagnóstico
+## Problema
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
-El envío viajó de **BAHIA BLANCA** → **LINIERS**. EZEQUIEL VOSA (sucursal LINIERS) intentó recibirlo **5 veces** y el estado nunca cambió: siempre quedó `en_transito → en_transito`.
+## Solución
 
-**Causa raíz en `ReceiveShipmentDialog.tsx`, línea 52:**
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-```typescript
-const newStatus = isCenter ? 'en_sucursal' : 'en_transito';
-```
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-La lógica está invertida: cuando una sucursal NO es centro logístico (`type === 'branch'`), el nuevo estado se setea como `en_transito` — pero el paquete **ya está** en `en_transito`. No hay cambio real de estado, solo se insertan entradas de historial duplicadas que dicen "Paquete recibido en sucursal" sin que el estado del envío cambie.
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-LINIERS no es centro logístico (`es_centro_logistico = false`), así que el sistema lo trata como `branch` y le asigna `en_transito` nuevamente.
-
-## Fix
-
-### `src/components/scan/ReceiveShipmentDialog.tsx`
-
-Cambiar la lógica para que **ambos tipos de recepción** (centro y sucursal) cambien el estado a `en_sucursal`:
-
-```typescript
-// Línea 52: Siempre que se recibe un paquete, el estado es "en_sucursal"
-const newStatus = 'en_sucursal';
-const statusLabel = isCenter ? 'en centro logístico' : 'en sucursal';
-```
-
-Esto es correcto semánticamente: recibir un paquete en cualquier sucursal significa que está **en sucursal**. El estado `en_transito` solo aplica cuando el paquete está viajando entre sucursales.
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 
