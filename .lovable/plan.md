@@ -1,28 +1,50 @@
 
 
-# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
+# Diagnóstico: Foto de entrega no guardada en ADMIN-ENV-20260302-FD4AD8
 
-## Problema
-Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
+## Hallazgo
 
-## Solución
+Consulté la base de datos y confirmé:
+- **`foto_entrega`**: `NULL` — la foto no se guardó
+- **`firma_destinatario`**: Sí existe (URL firmada válida)
+- **Incidentes**: No hay incidentes registrados para este envío
+- **GPS**: Sí tiene coordenadas de entrega
 
-### 1. Nueva función SQL: `reopen_ruta_planificada`
-- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
-- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
-- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
-- Inserta registro en `envio_historial` para cada envío reactivado
-- Retorna JSON con resultado y cantidad de envíos reactivados
+## Causa raíz
 
-### 2. Nuevo componente: `ReopenRouteDialog.tsx`
-- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
-- Muestra cuántos envíos serán reactivados
-- Botón "Reabrir Ruta" que invoca el RPC
+En `DeliveryConfirmation.tsx`, cuando la subida de la foto al storage falla, el error se loguea en consola pero **no se lanza una excepción**. La entrega se confirma igual sin la foto:
 
-### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
-- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
-- Al hacer click, abre `ReopenRouteDialog`
-- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
+```typescript
+// línea 170-184: uploadFile retorna null si falla
+if (error) {
+  console.error('Upload error:', error);
+  return null;  // fallo silencioso
+}
 
-**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
+// línea 228: si photoUrl es null, simplemente no se guarda
+if (photoUrl) updateData.foto_entrega = photoUrl;
+```
+
+La firma sí se subió correctamente, lo que sugiere que el bucket de storage funciona. Probablemente la foto falló por tamaño, timeout en conexión móvil, o un error transitorio.
+
+## Plan de fix
+
+### `src/components/delivery/DeliveryConfirmation.tsx`
+
+1. **Agregar retry automático** en `uploadFile`: si falla el primer intento, reintentar una vez más
+2. **Lanzar error si la foto falla y el usuario sacó foto**: Si el chofer tomó una foto y la subida falla, **no confirmar la entrega silenciosamente**. Mostrar un error claro y permitir reintentar, igual que ya hace `ReportIncidentDialog` (que sí lanza error en línea 100)
+3. **Mostrar toast de advertencia** si la foto no se pudo subir pero se decide continuar sin ella
+
+### Cambio específico (líneas 208-218):
+
+Después del `Promise.all`, verificar si había foto pero no se subió:
+
+```typescript
+// Si el chofer sacó foto pero falló la subida, informar
+if ((photo || photoPreview) && !photoUrl) {
+  throw new Error('No se pudo subir la foto de entrega. Verificá tu conexión e intentá nuevamente.');
+}
+```
+
+Esto alinea el comportamiento con `ReportIncidentDialog` que ya hace esta validación.
 
