@@ -1,55 +1,28 @@
 
 
-# Fix: Actualizar estado de ENV-RFVNU8 y prevenir fallos silenciosos
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
-## Diagnóstico
-
-La hoja de ruta `hoja_ruta_envios` se marcó como "recibido" correctamente, pero el `UPDATE` sobre `envios` falló silenciosamente porque la migración RLS aún no estaba aplicada en ese momento. El envío quedó en `en_transito` sin `sucursal_entrega_id`.
+## Problema
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
 ## Solución
 
-### 1. Migración SQL: Corregir datos de ENV-RFVNU8
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-Actualizar el envío manualmente y agregar entrada de historial:
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-```sql
-UPDATE envios 
-SET estado = 'en_sucursal', 
-    chofer_id = NULL,
-    sucursal_entrega_id = '53aa8cf8-660e-45f0-b4b8-3316520090cc'  -- Mar del Plata
-WHERE id = 'd567b5a1-1b55-484b-bc4a-4234fadf9bd7';
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-INSERT INTO envio_historial (envio_id, estado_anterior, estado_nuevo, notas, ubicacion)
-VALUES (
-  'd567b5a1-1b55-484b-bc4a-4234fadf9bd7',
-  'en_transito',
-  'en_sucursal',
-  'Corrección: recepción en sucursal Mar del Plata (hoja de ruta recibida)',
-  'Mar del Plata'
-);
-```
-
-### 2. `ReceiveRouteSheetDialog.tsx`: Detectar fallos silenciosos
-
-Agregar `.select('id')` al update de envíos y verificar que las filas se actualizaron realmente. Si no se actualizó ninguna fila, mostrar error claro en vez de silenciar.
-
-```tsx
-const { data: updatedRows, error: enviosError } = await supabase
-  .from("envios")
-  .update(updateData)
-  .in("id", selectedEnvios)
-  .select("id");
-
-if (enviosError) throw enviosError;
-if (!updatedRows || updatedRows.length === 0) {
-  throw new Error("No se pudieron actualizar los envíos. Verificá permisos.");
-}
-```
-
-### Archivos a modificar
-
-| Archivo | Cambio |
-|---------|--------|
-| Migración SQL | Corregir estado + historial de ENV-RFVNU8 |
-| `ReceiveRouteSheetDialog.tsx` | Agregar `.select('id')` y validar rows afectadas |
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 

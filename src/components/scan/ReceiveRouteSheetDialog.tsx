@@ -102,12 +102,16 @@ export function ReceiveRouteSheetDialog({ hojaRutaId, onClose }: ReceiveRouteShe
       if (profile?.sucursal_id) {
         updateData.sucursal_entrega_id = profile.sucursal_id;
       }
-      const { error: enviosError } = await supabase
+      const { data: updatedRows, error: enviosError } = await supabase
         .from("envios")
         .update(updateData)
-        .in("id", selectedEnvios);
+        .in("id", selectedEnvios)
+        .select("id");
 
       if (enviosError) throw enviosError;
+      if (!updatedRows || updatedRows.length === 0) {
+        throw new Error("No se pudieron actualizar los envíos. Verificá permisos de sucursal.");
+      }
 
       // Check if all envíos received
       const allReceived = hojaRuta.envios.every(e => 
