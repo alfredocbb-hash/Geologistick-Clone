@@ -291,7 +291,7 @@ export default function DriverSettlements() {
           comision_monto: comision?.monto ?? null,
           liquidacion_id: comision?.liquidacion_id || null,
           estado_liquidacion: comision?.liquidacion_id ? 'liquidado' : 'a_liquidar',
-          comision_calculada: comision?.monto ?? comisionCalculada,
+          comision_calculada: comision?.liquidacion_id ? (comision.monto ?? comisionCalculada) : comisionCalculada,
         };
       });
 
