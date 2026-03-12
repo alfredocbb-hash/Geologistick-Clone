@@ -487,6 +487,7 @@ export default function RouteSheets() {
                             <TableHead className="w-12"></TableHead>
                             <TableHead>Tracking</TableHead>
                             <TableHead>Destinatario</TableHead>
+                            <TableHead>Destino</TableHead>
                             <TableHead>Bultos</TableHead>
                           </TableRow>
                         </TableHeader>
