@@ -382,7 +382,7 @@ export default function BranchSettlements() {
       const enviosData = (envios || []).map(envio => {
         const detalles = (envio as any).envio_detalles || [];
         const esOrigen = envio.sucursal_origen_id === selectedSucursal;
-        const esDestino = envio.sucursal_destino_id === selectedSucursal;
+        const esDestino = envio.sucursal_destino_id === selectedSucursal || envio.sucursal_entrega_id === selectedSucursal;
         const tipoPago = envio.tipo_pago || 'contado';
         
         let envioComision = 0;
