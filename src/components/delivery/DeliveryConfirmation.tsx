@@ -228,6 +228,11 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
           : Promise.resolve(null),
       ]);
 
+      // If the driver took a photo but upload failed, block delivery
+      if ((photo || photoPreview) && !photoUrl) {
+        throw new Error('No se pudo subir la foto de entrega. Verificá tu conexión e intentá nuevamente.');
+      }
+
       // Update shipment with GPS coordinates
       const updateData: Record<string, unknown> = {
         estado: 'entregado',
