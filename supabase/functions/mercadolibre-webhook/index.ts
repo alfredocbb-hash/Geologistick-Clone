@@ -299,7 +299,7 @@ Deno.serve(async (req) => {
             // Update envio with calculated price
             await supabase
               .from('envios')
-              .update({ precio_total: precioCalculado })
+              .update({ precio_total: precioCalculado, precio_tarifa_vigente: precioCalculado })
               .eq('id', envio.id);
 
             console.log('[ML Webhook] Registered cargo:', precioCalculado, 'new balance:', saldoNuevo);
