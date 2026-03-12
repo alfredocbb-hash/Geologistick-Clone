@@ -174,30 +174,51 @@ export default function BranchSettlements() {
 
       if (sucursalError) throw sucursalError;
 
-      // Determine date field based on settlement type
-      const dateField = sucursalConfig?.tipo_liquidacion === 'inmediata' ? 'created_at' : 'fecha_entrega';
+      // Determine date field for ORIGIN shipments based on settlement type
+      const dateFieldOrigen = sucursalConfig?.tipo_liquidacion === 'inmediata' ? 'created_at' : 'fecha_entrega';
 
-      // Fetch envíos donde la sucursal es ORIGEN o DESTINO
-      const { data: envios, error: enviosError } = await supabase
+      const selectFields = `
+        id, 
+        tracking_number, 
+        precio_total, 
+        tipo_pago, 
+        created_at, 
+        estado,
+        sucursal_origen_id,
+        sucursal_destino_id,
+        sucursal_entrega_id,
+        envio_detalles(concepto_id, monto, nombre_concepto)
+      `;
+
+      // Query 1: Envíos donde la sucursal es ORIGEN (fecha según tipo_liquidacion)
+      const { data: enviosOrigen, error: origenError } = await supabase
         .from('envios')
-        .select(`
-          id, 
-          tracking_number, 
-          precio_total, 
-          tipo_pago, 
-          created_at, 
-          estado,
-          sucursal_origen_id,
-          sucursal_destino_id,
-          sucursal_entrega_id,
-          envio_detalles(concepto_id, monto, nombre_concepto)
-        `)
-        .or(`sucursal_origen_id.eq.${selectedSucursal},sucursal_destino_id.eq.${selectedSucursal},sucursal_entrega_id.eq.${selectedSucursal}`)
-        .gte(dateField, toLocalISOStart(fechaInicio))
-        .lte(dateField, toLocalISOEnd(fechaFin))
+        .select(selectFields)
+        .eq('sucursal_origen_id', selectedSucursal)
+        .gte(dateFieldOrigen, toLocalISOStart(fechaInicio))
+        .lte(dateFieldOrigen, toLocalISOEnd(fechaFin))
         .in('estado', ['entregado', 'devuelto']);
 
-      if (enviosError) throw enviosError;
+      if (origenError) throw origenError;
+
+      // Query 2: Envíos recibidos/entregados por la sucursal (siempre por fecha_entrega)
+      const { data: enviosRecepcion, error: recepcionErr } = await supabase
+        .from('envios')
+        .select(selectFields)
+        .or(`sucursal_destino_id.eq.${selectedSucursal},sucursal_entrega_id.eq.${selectedSucursal}`)
+        .neq('sucursal_origen_id', selectedSucursal)
+        .gte('fecha_entrega', toLocalISOStart(fechaInicio))
+        .lte('fecha_entrega', toLocalISOEnd(fechaFin))
+        .in('estado', ['entregado', 'devuelto']);
+
+      if (recepcionErr) throw recepcionErr;
+
+      // Deduplicar por ID
+      const enviosMap = new Map<string, typeof enviosOrigen[0]>();
+      [...(enviosOrigen || []), ...(enviosRecepcion || [])].forEach(e => {
+        if (!enviosMap.has(e.id)) enviosMap.set(e.id, e);
+      });
+      const envios = Array.from(enviosMap.values());
 
       // Fetch comisiones de la sucursal separadas por tipo_rol
       const { data: comisionesEmision, error: emisionError } = await supabase
