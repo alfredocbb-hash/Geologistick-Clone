@@ -205,7 +205,12 @@ export function ShipmentHistoryDialog({
                 <div>
                   <p className="text-sm font-medium">
                     {statusConfig[envioActual.estado as ShipmentStatus]?.label || envioActual.estado}
-                    {(envioActual.sucursal_entrega as any)?.nombre && ` — ${(envioActual.sucursal_entrega as any).nombre}`}
+                    {(() => {
+                      const sucursalNombre = 
+                        (envioActual.sucursal_entrega as any)?.nombre || 
+                        (envioActual.sucursal_origen as any)?.nombre;
+                      return sucursalNombre ? ` — ${sucursalNombre}` : '';
+                    })()}
                   </p>
                   {envioActual.chofer && (
                     <p className="text-xs text-muted-foreground">
