@@ -1,28 +1,46 @@
 
 
-# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
+# Fix: Envíos recibidos por sucursal incorrecta no aparecen para reenvío
 
 ## Problema
-Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
-## Solución
+Cuando una sucursal recibe por error envíos destinados a otra (ej: una hoja de ruta iba a Mar del Plata pero la recibe otra sucursal), esos envíos no aparecen disponibles para crear una nueva hoja de ruta hacia el destino correcto.
 
-### 1. Nueva función SQL: `reopen_ruta_planificada`
-- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
-- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
-- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
-- Inserta registro en `envio_historial` para cada envío reactivado
-- Retorna JSON con resultado y cantidad de envíos reactivados
+**Causa raíz en `src/pages/RouteSheets.tsx`, línea 285:**
 
-### 2. Nuevo componente: `ReopenRouteDialog.tsx`
-- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
-- Muestra cuántos envíos serán reactivados
-- Botón "Reabrir Ruta" que invoca el RPC
+```typescript
+.eq("sucursal_origen_id", profile.sucursal_id)
+```
 
-### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
-- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
-- Al hacer click, abre `ReopenRouteDialog`
-- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
+Este filtro solo muestra envíos cuya **sucursal de origen** sea la sucursal actual. Pero cuando una sucursal intermedia recibe los paquetes, el `sucursal_origen_id` sigue apuntando al remitente original (ej: Bahía Blanca), no a la sucursal que los tiene físicamente. Entonces la sucursal intermedia nunca los ve.
 
-**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
+## Fix
+
+### `src/pages/RouteSheets.tsx` (líneas 279-291)
+
+Ampliar el filtro de envíos pendientes para incluir **también** los envíos que están físicamente en la sucursal actual (`en_sucursal`) aunque no sean la sucursal de origen. El criterio debe ser:
+
+- Envíos con `sucursal_origen_id = mi sucursal` (flujo normal), **O**
+- Envíos con estado `en_sucursal` que fueron recibidos en mi sucursal (la última recepción los dejó acá)
+
+La forma más limpia es usar un filtro `.or()` que incluya ambos escenarios:
+
+```typescript
+const { data, error } = await supabase
+  .from("envios")
+  .select(`
+    *,
+    destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)
+  `)
+  .eq("sucursal_destino_id", selectedDestino)
+  .in("estado", ["pendiente", "recogido", "en_sucursal"])
+  .is("chofer_id", null)
+  .or(`sucursal_origen_id.eq.${profile.sucursal_id},sucursal_entrega_id.eq.${profile.sucursal_id}`);
+```
+
+**Lógica**: `sucursal_entrega_id` se setea en `ReceiveShipmentDialog` (línea 64) cuando una sucursal no-centro recibe un paquete. Esto identifica dónde está físicamente el paquete. Al incluir este campo en el filtro OR, la sucursal intermedia podrá ver los envíos que tiene en su poder y re-despacharlos.
+
+### Consideración adicional
+
+Si `sucursal_entrega_id` no se setea siempre (por ejemplo si se recibe via `ReceiveRouteSheetDialog` que no lo setea), agregar la misma lógica en `ReceiveRouteSheetDialog.tsx` línea 101-104 para que también guarde `sucursal_entrega_id` con la sucursal del usuario receptor.
 
