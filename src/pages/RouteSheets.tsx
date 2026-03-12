@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -65,7 +66,10 @@ import {
   CalendarIcon,
   X,
   Loader2,
-  Route
+  Route,
+  Inbox,
+  Send,
+  History
 } from "lucide-react";
 import { format, startOfDay, endOfDay } from "date-fns";
 import { es } from "date-fns/locale";
@@ -75,11 +79,13 @@ import { useDriverRoute } from "@/hooks/useDriverRoute";
 import { GoogleMapsProvider } from "@/components/maps/GoogleMapsProvider";
 import { MapView } from "@/components/maps/MapView";
 import { RouteStatsPanel } from "@/components/maps/RouteStatsPanel";
+import { ReceiveRouteSheetDialog } from "@/components/scan/ReceiveRouteSheetDialog";
 
 const ESTADO_CONFIG: Record<string, { label: string; color: string }> = {
   pendiente: { label: "Pendiente", color: "bg-yellow-100 text-yellow-800" },
   en_transito: { label: "En Tránsito", color: "bg-blue-100 text-blue-800" },
   recibida: { label: "Recibida", color: "bg-green-100 text-green-800" },
+  completada: { label: "Completada", color: "bg-green-100 text-green-800" },
   cancelada: { label: "Cancelada", color: "bg-red-100 text-red-800" },
 };
 
@@ -94,6 +100,124 @@ interface HojaRutaWithDetails {
   sucursal_destino: { id: string; nombre: string; ciudad: string | null } | null;
   chofer?: { nombre: string | null; apellido: string | null } | null;
   has_gps_history?: boolean;
+}
+
+// Card component for a single hoja de ruta
+function HojaRutaCard({ 
+  hr, 
+  isAdmin, 
+  navigate, 
+  onClose, 
+  onViewRoute, 
+  onReceive,
+  showReceiveButton = false 
+}: {
+  hr: HojaRutaWithDetails;
+  isAdmin: boolean;
+  navigate: (path: string) => void;
+  onClose: (hr: HojaRutaWithDetails) => void;
+  onViewRoute: (hr: HojaRutaWithDetails) => void;
+  onReceive?: (hr: HojaRutaWithDetails) => void;
+  showReceiveButton?: boolean;
+}) {
+  return (
+    <Card className="hover:shadow-md transition-shadow">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg font-mono">{hr.numero}</CardTitle>
+          <Badge className={ESTADO_CONFIG[hr.estado || "pendiente"]?.color}>
+            {ESTADO_CONFIG[hr.estado || "pendiente"]?.label}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center gap-2 text-sm">
+          <Building2 className="h-4 w-4 text-muted-foreground" />
+          <span>{hr.sucursal_origen?.nombre}</span>
+          <ArrowRight className="h-4 w-4 text-muted-foreground" />
+          <span>{hr.sucursal_destino?.nombre}</span>
+        </div>
+
+        {hr.chofer && (
+          <div className="flex items-center gap-2 text-sm">
+            <Truck className="h-4 w-4 text-muted-foreground" />
+            <span className="font-medium">
+              {hr.chofer.nombre} {hr.chofer.apellido}
+            </span>
+            {hr.has_gps_history && (
+              <Badge variant="outline" className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800">
+                <MapPin className="h-3 w-3 mr-1" />
+                GPS
+              </Badge>
+            )}
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground">
+          <div className="flex items-center gap-1">
+            <Package className="h-4 w-4" />
+            <span>{hr.cantidad_envios} envíos</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <Clock className="h-4 w-4" />
+            <span>
+              {hr.created_at && format(new Date(hr.created_at), "dd/MM HH:mm", { locale: es })}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex gap-2 pt-2">
+          {showReceiveButton && onReceive && (hr.estado === 'pendiente' || hr.estado === 'en_transito') && (
+            <Button
+              size="sm"
+              className="flex-1"
+              onClick={() => onReceive(hr)}
+            >
+              <Inbox className="mr-1 h-4 w-4" />
+              Recibir
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className={showReceiveButton ? "" : "flex-1"}
+            onClick={() => navigate(`/print-route-sheet?id=${hr.id}`)}
+          >
+            <Printer className="mr-1 h-4 w-4" />
+            {!showReceiveButton && "Imprimir"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate(`/print-route-sheet?id=${hr.id}`)}
+          >
+            <QrCode className="h-4 w-4" />
+          </Button>
+          {hr.has_gps_history && hr.chofer_id && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onViewRoute(hr)}
+              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20"
+            >
+              <Route className="h-4 w-4" />
+            </Button>
+          )}
+          {isAdmin && hr.estado === 'en_transito' && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onClose(hr)}
+              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+            >
+              <CheckCircle className="mr-1 h-4 w-4" />
+              Cerrar
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function RouteSheets() {
@@ -119,8 +243,16 @@ export default function RouteSheets() {
   // Close hoja state
   const [closingHoja, setClosingHoja] = useState<HojaRutaWithDetails | null>(null);
   
+  // Manual reception state
+  const [manualSearchNumber, setManualSearchNumber] = useState("");
+  const [isSearchingManual, setIsSearchingManual] = useState(false);
+  const [receivingHojaId, setReceivingHojaId] = useState<string | null>(null);
+  
   // Use driver route hook for GPS visualization
   const driverRoute = useDriverRoute();
+
+  const userSucursalId = profile?.sucursal_id;
+  const isAdminUser = isAdmin();
 
   // Close hoja de ruta mutation
   const closeMutation = useMutation({
@@ -154,7 +286,6 @@ export default function RouteSheets() {
         `)
         .order("created_at", { ascending: false });
       
-      // Apply date filters
       if (dateFrom) {
         query = query.gte("created_at", startOfDay(dateFrom).toISOString());
       }
@@ -163,10 +294,8 @@ export default function RouteSheets() {
       }
       
       const { data, error } = await query;
-      
       if (error) throw error;
       
-      // Get chofer profiles for each hoja that has a chofer_id
       const choferIds = [...new Set(data?.filter(hr => hr.chofer_id).map(hr => hr.chofer_id) || [])];
       let choferProfiles: Record<string, { nombre: string | null; apellido: string | null }> = {};
       
@@ -184,7 +313,6 @@ export default function RouteSheets() {
         }
       }
       
-      // Check which hojas have GPS history
       const hojaIds = data?.map(hr => hr.id) || [];
       let gpsHistoryMap: Record<string, boolean> = {};
       
@@ -203,7 +331,6 @@ export default function RouteSheets() {
         }
       }
       
-      // Combine data
       return data?.map(hr => ({
         ...hr,
         chofer: hr.chofer_id ? choferProfiles[hr.chofer_id] : null,
@@ -221,7 +348,6 @@ export default function RouteSheets() {
         .select("*")
         .eq("activa", true)
         .order("nombre");
-      
       if (error) throw error;
       return data;
     },
@@ -232,24 +358,19 @@ export default function RouteSheets() {
     queryKey: ["choferes-activos", profile?.tenant_id],
     queryFn: async () => {
       if (!profile?.tenant_id) return [];
-      
       const { data: roles, error: rolesError } = await supabase
         .from("user_roles")
         .select("user_id")
         .eq("role", "chofer");
-      
       if (rolesError) throw rolesError;
-      
       const choferIds = roles?.map(r => r.user_id) || [];
       if (choferIds.length === 0) return [];
-
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
         .in("user_id", choferIds)
         .eq("tenant_id", profile.tenant_id)
         .eq("activo", true);
-      
       if (error) throw error;
       return data;
     },
@@ -264,7 +385,6 @@ export default function RouteSheets() {
         .from("vehiculos")
         .select("*")
         .in("estado", ["disponible", "en_ruta"]);
-      
       if (error) throw error;
       return data;
     },
@@ -275,7 +395,6 @@ export default function RouteSheets() {
     queryKey: ["envios-pendientes-hr", profile?.sucursal_id, selectedDestino],
     queryFn: async () => {
       if (!profile?.sucursal_id || !selectedDestino) return [];
-
       const { data, error } = await supabase
         .from("envios")
         .select(`
@@ -287,7 +406,6 @@ export default function RouteSheets() {
         .is("chofer_id", null)
         .or(`sucursal_origen_id.eq.${profile.sucursal_id},sucursal_entrega_id.eq.${profile.sucursal_id}`)
         .or(`sucursal_destino_id.eq.${selectedDestino},sucursal_destino_id.is.null`);
-      
       if (error) throw error;
       return data;
     },
@@ -300,14 +418,10 @@ export default function RouteSheets() {
       if (!profile?.sucursal_id || !selectedDestino || selectedEnvios.length === 0) {
         throw new Error("Faltan datos requeridos");
       }
-
-      // Generar número de hoja de ruta
       const { data: numeroData, error: numeroError } = await supabase
         .rpc("generate_hoja_ruta_number");
-      
       if (numeroError) throw numeroError;
 
-      // Crear hoja de ruta
       const { data: hojaRuta, error: hrError } = await supabase
         .from("hojas_ruta")
         .insert({
@@ -323,28 +437,22 @@ export default function RouteSheets() {
         })
         .select()
         .single();
-
       if (hrError) throw hrError;
 
-      // Crear relaciones con envíos
       const enviosData = selectedEnvios.map((envioId, index) => ({
         hoja_ruta_id: hojaRuta.id,
         envio_id: envioId,
         orden: index + 1,
       }));
-
       const { error: enviosError } = await supabase
         .from("hoja_ruta_envios")
         .insert(enviosData);
-
       if (enviosError) throw enviosError;
 
-      // Actualizar estado de envíos
       const { error: updateError } = await supabase
         .from("envios")
         .update({ estado: "en_transito" })
         .in("id", selectedEnvios);
-
       if (updateError) throw updateError;
 
       return hojaRuta;
@@ -355,7 +463,6 @@ export default function RouteSheets() {
       toast.success(`Hoja de ruta ${hojaRuta.numero} creada exitosamente`);
       setIsCreateOpen(false);
       resetForm();
-      // Abrir página de impresión
       navigate(`/print-route-sheet?id=${hojaRuta.id}`);
     },
     onError: (error: Error) => {
@@ -387,12 +494,38 @@ export default function RouteSheets() {
     setSelectedEnvios([]);
   };
 
-  const filteredHojas = hojasRuta.filter(hr => 
-    hr.numero?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    hr.sucursal_origen?.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    hr.sucursal_destino?.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (hr.chofer?.nombre && hr.chofer.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (hr.chofer?.apellido && hr.chofer.apellido.toLowerCase().includes(searchTerm.toLowerCase()))
+  // Filter hojas by search term
+  const filterBySearch = (hojas: HojaRutaWithDetails[]) => 
+    hojas.filter(hr => 
+      hr.numero?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      hr.sucursal_origen?.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      hr.sucursal_destino?.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (hr.chofer?.nombre && hr.chofer.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (hr.chofer?.apellido && hr.chofer.apellido.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+
+  // Split hojas into tabs based on user's branch
+  const despachos = filterBySearch(
+    hojasRuta.filter(hr => {
+      if (isAdminUser) return true;
+      return hr.sucursal_origen?.id === userSucursalId;
+    })
+  );
+
+  const recepciones = filterBySearch(
+    hojasRuta.filter(hr => {
+      if (isAdminUser) return hr.estado === 'pendiente' || hr.estado === 'en_transito';
+      return hr.sucursal_destino?.id === userSucursalId && 
+        (hr.estado === 'pendiente' || hr.estado === 'en_transito');
+    })
+  );
+
+  const historial = filterBySearch(
+    hojasRuta.filter(hr => {
+      if (isAdminUser) return hr.estado === 'recibida' || hr.estado === 'completada' || hr.estado === 'cancelada';
+      return (hr.sucursal_origen?.id === userSucursalId || hr.sucursal_destino?.id === userSucursalId) &&
+        (hr.estado === 'recibida' || hr.estado === 'completada' || hr.estado === 'cancelada');
+    })
   );
 
   // Handle opening route dialog
@@ -401,12 +534,41 @@ export default function RouteSheets() {
       toast.error("Esta hoja de ruta no tiene chofer asignado");
       return;
     }
-    
     setSelectedHojaRuta(hr);
     setShowRouteDialog(true);
-    
-    // Load the route data
     await driverRoute.loadRouteByHojaRuta(hr.chofer_id, hr.id);
+  };
+
+  // Handle manual search for reception
+  const handleManualSearch = async () => {
+    if (!manualSearchNumber.trim()) {
+      toast.error("Ingresa un número de hoja de ruta");
+      return;
+    }
+    setIsSearchingManual(true);
+    try {
+      const { data, error } = await supabase
+        .from("hojas_ruta")
+        .select("id, numero, estado")
+        .eq("numero", manualSearchNumber.trim().toUpperCase())
+        .single();
+      
+      if (error || !data) {
+        toast.error("No se encontró una hoja de ruta con ese número");
+        return;
+      }
+
+      if (data.estado === 'recibida' || data.estado === 'completada') {
+        toast.error("Esta hoja de ruta ya fue recibida");
+        return;
+      }
+      
+      setReceivingHojaId(data.id);
+    } catch {
+      toast.error("Error al buscar la hoja de ruta");
+    } finally {
+      setIsSearchingManual(false);
+    }
   };
 
   // Clear date filters
@@ -415,13 +577,61 @@ export default function RouteSheets() {
     setDateTo(undefined);
   };
 
+  const renderHojaGrid = (hojas: HojaRutaWithDetails[], showReceive = false) => {
+    if (isLoading) {
+      return (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map(i => (
+            <Card key={i} className="animate-pulse">
+              <CardHeader className="h-20 bg-muted" />
+              <CardContent className="h-32 bg-muted/50" />
+            </Card>
+          ))}
+        </div>
+      );
+    }
+
+    if (hojas.length === 0) {
+      return (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <FileText className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="font-medium mb-2">No hay hojas de ruta</h3>
+            <p className="text-sm text-muted-foreground">
+              {showReceive 
+                ? "No hay hojas de ruta pendientes de recepción" 
+                : "No se encontraron hojas de ruta"}
+            </p>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return (
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {hojas.map(hr => (
+          <HojaRutaCard
+            key={hr.id}
+            hr={hr}
+            isAdmin={isAdminUser}
+            navigate={navigate}
+            onClose={setClosingHoja}
+            onViewRoute={handleViewRoute}
+            onReceive={(hr) => setReceivingHojaId(hr.id)}
+            showReceiveButton={showReceive}
+          />
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Hojas de Ruta</h1>
           <p className="text-muted-foreground">
-            Gestiona los despachos entre sucursales
+            Gestiona despachos y recepciones entre sucursales
           </p>
         </div>
         
@@ -441,7 +651,6 @@ export default function RouteSheets() {
             </DialogHeader>
 
             <div className="space-y-6 py-4">
-              {/* Sucursal Destino */}
               <div className="space-y-2">
                 <Label>Sucursal Destino *</Label>
                 <Select value={selectedDestino} onValueChange={setSelectedDestino}>
@@ -460,7 +669,6 @@ export default function RouteSheets() {
                 </Select>
               </div>
 
-              {/* Envíos Pendientes */}
               {selectedDestino && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
@@ -506,14 +714,14 @@ export default function RouteSheets() {
                               <TableCell>
                                 {envio.destinatario?.nombre} {envio.destinatario?.apellido}
                               </TableCell>
-                               <TableCell>
-                                 {envio.sucursal_destino?.nombre ? (
-                                   <span className="text-sm">{envio.sucursal_destino.nombre}</span>
-                                 ) : envio.ciudad_entrega ? (
-                                   <span className="text-sm">{envio.ciudad_entrega}</span>
-                                 ) : (
-                                   <span className="text-xs text-muted-foreground italic">Sin destino</span>
-                                 )}
+                              <TableCell>
+                                {envio.sucursal_destino?.nombre ? (
+                                  <span className="text-sm">{envio.sucursal_destino.nombre}</span>
+                                ) : envio.ciudad_entrega ? (
+                                  <span className="text-sm">{envio.ciudad_entrega}</span>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground italic">Sin destino</span>
+                                )}
                               </TableCell>
                               <TableCell>{envio.cantidad_bultos || 1}</TableCell>
                             </TableRow>
@@ -531,7 +739,6 @@ export default function RouteSheets() {
                 </div>
               )}
 
-              {/* Chofer y Vehículo (Opcionales) */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Chofer (Opcional)</Label>
@@ -574,7 +781,6 @@ export default function RouteSheets() {
                 </div>
               </div>
 
-              {/* Notas */}
               <div className="space-y-2">
                 <Label>Notas (Opcional)</Label>
                 <Textarea
@@ -585,7 +791,6 @@ export default function RouteSheets() {
                 />
               </div>
 
-              {/* Botón Crear */}
               <Button
                 className="w-full"
                 onClick={() => createMutation.mutate()}
@@ -617,7 +822,6 @@ export default function RouteSheets() {
           />
         </div>
         
-        {/* Date From */}
         <Popover>
           <PopoverTrigger asChild>
             <Button
@@ -642,7 +846,6 @@ export default function RouteSheets() {
           </PopoverContent>
         </Popover>
         
-        {/* Date To */}
         <Popover>
           <PopoverTrigger asChild>
             <Button
@@ -667,7 +870,6 @@ export default function RouteSheets() {
           </PopoverContent>
         </Popover>
         
-        {/* Clear Filters */}
         {(dateFrom || dateTo) && (
           <Button variant="ghost" size="icon" onClick={clearDateFilters}>
             <X className="h-4 w-4" />
@@ -675,122 +877,84 @@ export default function RouteSheets() {
         )}
       </div>
 
-      {/* Lista de Hojas de Ruta */}
-      {isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map(i => (
-            <Card key={i} className="animate-pulse">
-              <CardHeader className="h-20 bg-muted" />
-              <CardContent className="h-32 bg-muted/50" />
-            </Card>
-          ))}
-        </div>
-      ) : filteredHojas.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <FileText className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="font-medium mb-2">No hay hojas de ruta</h3>
-            <p className="text-sm text-muted-foreground">
-              Crea una nueva hoja de ruta para despachar envíos entre sucursales
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredHojas.map(hr => (
-            <Card key={hr.id} className="hover:shadow-md transition-shadow">
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg font-mono">{hr.numero}</CardTitle>
-                  <Badge className={ESTADO_CONFIG[hr.estado || "pendiente"]?.color}>
-                    {ESTADO_CONFIG[hr.estado || "pendiente"]?.label}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Origen -> Destino */}
-                <div className="flex items-center gap-2 text-sm">
-                  <Building2 className="h-4 w-4 text-muted-foreground" />
-                  <span>{hr.sucursal_origen?.nombre}</span>
-                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                  <span>{hr.sucursal_destino?.nombre}</span>
-                </div>
+      {/* Tabs */}
+      <Tabs defaultValue="despachos" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="despachos" className="flex items-center gap-2">
+            <Send className="h-4 w-4" />
+            Despachos
+            {despachos.length > 0 && (
+              <Badge variant="secondary" className="ml-1 text-xs">{despachos.length}</Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="recepcion" className="flex items-center gap-2">
+            <Inbox className="h-4 w-4" />
+            Recepción
+            {recepciones.length > 0 && (
+              <Badge variant="secondary" className="ml-1 text-xs">{recepciones.length}</Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="historial" className="flex items-center gap-2">
+            <History className="h-4 w-4" />
+            Historial
+          </TabsTrigger>
+        </TabsList>
 
-                {/* Chofer info */}
-                {hr.chofer && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Truck className="h-4 w-4 text-muted-foreground" />
-                    <span className="font-medium">
-                      {hr.chofer.nombre} {hr.chofer.apellido}
-                    </span>
-                    {hr.has_gps_history && (
-                      <Badge variant="outline" className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800">
-                        <MapPin className="h-3 w-3 mr-1" />
-                        GPS
-                      </Badge>
-                    )}
-                  </div>
-                )}
+        <TabsContent value="despachos">
+          {renderHojaGrid(despachos)}
+        </TabsContent>
 
-                {/* Info adicional */}
-                <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground">
-                  <div className="flex items-center gap-1">
-                    <Package className="h-4 w-4" />
-                    <span>{hr.cantidad_envios} envíos</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Clock className="h-4 w-4" />
-                    <span>
-                      {hr.created_at && format(new Date(hr.created_at), "dd/MM HH:mm", { locale: es })}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Acciones */}
-                <div className="flex gap-2 pt-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => navigate(`/print-route-sheet?id=${hr.id}`)}
-                  >
-                    <Printer className="mr-1 h-4 w-4" />
-                    Imprimir
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => navigate(`/print-route-sheet?id=${hr.id}`)}
-                  >
-                    <QrCode className="h-4 w-4" />
-                  </Button>
-                  {hr.has_gps_history && hr.chofer_id && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleViewRoute(hr)}
-                      className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20"
+        <TabsContent value="recepcion" className="space-y-4">
+          {/* Manual reception search */}
+          <Card>
+            <CardContent className="py-4">
+              <div className="flex flex-col sm:flex-row gap-3 items-end">
+                <div className="flex-1 space-y-1">
+                  <Label className="text-sm">Recepción manual</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Ingresá el número de hoja (ej: HR-20260312-0001)"
+                      value={manualSearchNumber}
+                      onChange={(e) => setManualSearchNumber(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleManualSearch()}
+                      className="font-mono"
+                    />
+                    <Button 
+                      onClick={handleManualSearch} 
+                      disabled={isSearchingManual || !manualSearchNumber.trim()}
                     >
-                      <Route className="h-4 w-4" />
+                      {isSearchingManual ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <>
+                          <Search className="mr-2 h-4 w-4" />
+                          Buscar
+                        </>
+                      )}
                     </Button>
-                  )}
-                  {isAdmin() && hr.estado === 'en_transito' && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setClosingHoja(hr)}
-                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                    >
-                      <CheckCircle className="mr-1 h-4 w-4" />
-                      Cerrar
-                    </Button>
-                  )}
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {renderHojaGrid(recepciones, true)}
+        </TabsContent>
+
+        <TabsContent value="historial">
+          {renderHojaGrid(historial)}
+        </TabsContent>
+      </Tabs>
+
+      {/* Receive Route Sheet Dialog */}
+      <ReceiveRouteSheetDialog
+        hojaRutaId={receivingHojaId}
+        onClose={() => {
+          setReceivingHojaId(null);
+          setManualSearchNumber("");
+          queryClient.invalidateQueries({ queryKey: ["hojas-ruta"] });
+        }}
+      />
 
       {/* Route Dialog */}
       <Dialog open={showRouteDialog} onOpenChange={(open) => {
@@ -812,7 +976,6 @@ export default function RouteSheets() {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            {/* Map */}
             <GoogleMapsProvider>
               {driverRoute.isLoading ? (
                 <div className="flex items-center justify-center h-[400px] bg-muted rounded-lg">
@@ -839,7 +1002,6 @@ export default function RouteSheets() {
               )}
             </GoogleMapsProvider>
 
-            {/* Route Stats */}
             {driverRoute.polylinePath.length > 0 && (
               <RouteStatsPanel
                 stats={driverRoute.routeStats}
@@ -850,7 +1012,6 @@ export default function RouteSheets() {
               />
             )}
 
-            {/* Error message */}
             {driverRoute.error && (
               <div className="text-sm text-red-500 text-center">
                 {driverRoute.error}

@@ -493,17 +493,6 @@ export default function ScanQR() {
               </Button>
             )}
 
-            {(isOperator || isBranchOperator) && (
-              <Button
-                onClick={() => handleQuickAction('receive_route_sheet')}
-                size="lg"
-                className="bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 h-24 flex flex-col gap-2"
-              >
-                <FileText className="h-6 w-6" />
-                <span className="font-bold">Recibir Hoja de Ruta</span>
-                <span className="text-xs opacity-80">Recepción masiva</span>
-              </Button>
-            )}
           </div>
 
           {/* Divider */}
