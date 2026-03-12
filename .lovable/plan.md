@@ -1,31 +1,28 @@
 
 
-# Mostrar destino correcto en tabla de envíos disponibles
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
 ## Problema
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
-La columna "Destino" muestra "Sin destino" para envíos con entrega a domicilio porque estos no tienen `sucursal_destino_id`. Sin embargo, sí tienen el campo `ciudad_entrega` con la ciudad de destino ingresada al crear el envío.
+## Solución
 
-## Cambio
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-### `src/pages/RouteSheets.tsx`
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-Modificar la celda de "Destino" (líneas 509-514) para usar `ciudad_entrega` como fallback cuando no hay `sucursal_destino_id`:
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-```tsx
-<TableCell>
-  {envio.sucursal_destino?.nombre ? (
-    <span className="text-sm">{envio.sucursal_destino.nombre}</span>
-  ) : envio.ciudad_entrega ? (
-    <span className="text-sm">{envio.ciudad_entrega}</span>
-  ) : (
-    <span className="text-xs text-muted-foreground italic">Sin destino</span>
-  )}
-</TableCell>
-```
-
-Esto mostrará:
-- Nombre de la sucursal destino si es envío sucursal-a-sucursal
-- Ciudad de entrega si es envío a domicilio
-- "Sin destino" solo si realmente no tiene ninguno de los dos
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 
