@@ -1995,7 +1995,7 @@ export default function RoutePlanner() {
                             <Edit className="h-4 w-4 mr-1" />
                             Editar
                           </Button>
-                          {ruta.estado === 'en_curso' && (roles.includes('admin') || roles.includes('super_admin')) && (
+                          {(roles.includes('admin') || roles.includes('super_admin')) && (ruta.estado === 'en_curso' || (ruta.estado === 'confirmada' && new Date(ruta.fecha) < startOfDay(new Date()))) && (
                             <Button 
                               variant="outline" 
                               size="sm"
