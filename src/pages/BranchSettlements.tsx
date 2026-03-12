@@ -68,6 +68,7 @@ interface EnvioResumen {
   estado: string;
   sucursal_origen_id?: string | null;
   sucursal_destino_id?: string | null;
+  sucursal_entrega_id?: string | null;
 }
 
 interface LiquidacionSucursal {
