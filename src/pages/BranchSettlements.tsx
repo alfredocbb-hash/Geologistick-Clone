@@ -68,6 +68,7 @@ interface EnvioResumen {
   estado: string;
   sucursal_origen_id?: string | null;
   sucursal_destino_id?: string | null;
+  sucursal_entrega_id?: string | null;
 }
 
 interface LiquidacionSucursal {
@@ -188,9 +189,10 @@ export default function BranchSettlements() {
           estado,
           sucursal_origen_id,
           sucursal_destino_id,
+          sucursal_entrega_id,
           envio_detalles(concepto_id, monto, nombre_concepto)
         `)
-        .or(`sucursal_origen_id.eq.${selectedSucursal},sucursal_destino_id.eq.${selectedSucursal}`)
+        .or(`sucursal_origen_id.eq.${selectedSucursal},sucursal_destino_id.eq.${selectedSucursal},sucursal_entrega_id.eq.${selectedSucursal}`)
         .gte(dateField, toLocalISOStart(fechaInicio))
         .lte(dateField, toLocalISOEnd(fechaFin))
         .in('estado', ['entregado', 'devuelto']);
@@ -380,7 +382,7 @@ export default function BranchSettlements() {
       const enviosData = (envios || []).map(envio => {
         const detalles = (envio as any).envio_detalles || [];
         const esOrigen = envio.sucursal_origen_id === selectedSucursal;
-        const esDestino = envio.sucursal_destino_id === selectedSucursal;
+        const esDestino = envio.sucursal_destino_id === selectedSucursal || envio.sucursal_entrega_id === selectedSucursal;
         const tipoPago = envio.tipo_pago || 'contado';
         
         let envioComision = 0;
@@ -492,6 +494,7 @@ export default function BranchSettlements() {
           estado: envio.estado,
           sucursal_origen_id: envio.sucursal_origen_id,
           sucursal_destino_id: envio.sucursal_destino_id,
+          sucursal_entrega_id: envio.sucursal_entrega_id,
         };
       });
 
