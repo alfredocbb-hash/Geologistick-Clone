@@ -1,28 +1,36 @@
 
 
-# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
+# Fix: Envíos ML pendientes aparecen en el Planificador
 
 ## Problema
-Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
+
+Los envíos de Mercado Libre en estado `pendiente` (listos para enviar, no recolectados) aparecen en el Planificador de Rutas cuando no deberían.
+
+**Causa raíz**: La consulta que obtiene los IDs de envíos de e-commerce (línea 259-262 de `RoutePlanner.tsx`) no tiene límite explícito, y Supabase aplica un máximo de 1000 filas por defecto. Como hay **1117 registros** en `ecommerce_orders` con `envio_id`, los envíos más recientes quedan fuera del Set y pasan el filtro como si no fueran de e-commerce.
 
 ## Solución
 
-### 1. Nueva función SQL: `reopen_ruta_planificada`
-- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
-- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
-- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
-- Inserta registro en `envio_historial` para cada envío reactivado
-- Retorna JSON con resultado y cantidad de envíos reactivados
+**Archivo: `src/pages/RoutePlanner.tsx`** (líneas ~259-266)
 
-### 2. Nuevo componente: `ReopenRouteDialog.tsx`
-- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
-- Muestra cuántos envíos serán reactivados
-- Botón "Reabrir Ruta" que invoca el RPC
+Cambiar la estrategia de filtrado: en vez de traer TODOS los `ecommerce_orders` (que ya superó el límite de 1000), invertir la lógica para que el filtro revise directamente si el envío tiene `ml_shipment_id` y está en estado `pendiente`, lo cual es más robusto y no depende de una segunda consulta.
 
-### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
-- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
-- Al hacer click, abre `ReopenRouteDialog`
-- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
+Reemplazar:
+1. Eliminar la consulta a `ecommerce_orders` (líneas 258-266)
+2. Simplificar el filtro (líneas 270-278): excluir envíos que tengan `ml_shipment_id` Y estén en estado `pendiente`, excepto si vienen del URL o tienen historial de reprogramación
 
-**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
+La nueva lógica sería:
+```
+const filtered = merged.filter(envio => {
+  // Si viene del URL, siempre mostrar
+  if (urlEnvioIds.has(envio.id)) return true;
+  // Si tiene reprogramaciones, mostrar
+  if ((envio.reprogramado_count && envio.reprogramado_count > 0) || envio.ultima_reprogramacion) return true;
+  // Si es ML y está pendiente, ocultar (aún no recolectado)
+  if (envio.ml_shipment_id && envio.estado === 'pendiente') return false;
+  // Resto: mostrar
+  return true;
+});
+```
+
+Esto es más simple, más eficiente (elimina una query), y no tiene el problema del límite de 1000 filas.
 
