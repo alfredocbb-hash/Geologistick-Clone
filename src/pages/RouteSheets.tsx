@@ -280,7 +280,8 @@ export default function RouteSheets() {
         .from("envios")
         .select(`
           *,
-          destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)
+          destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido),
+          sucursal_destino:sucursales!envios_sucursal_destino_id_fkey(nombre, ciudad)
         `)
         .in("estado", ["pendiente", "recogido", "en_sucursal"])
         .is("chofer_id", null)
