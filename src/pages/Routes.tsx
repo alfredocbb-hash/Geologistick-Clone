@@ -53,17 +53,22 @@ interface DriverWithShipments extends Driver {
 
 export default function Routes() {
   const queryClient = useQueryClient();
+  const { profile, isSuperAdmin, isAdmin } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedShipments, setSelectedShipments] = useState<string[]>([]);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [selectedDriver, setSelectedDriver] = useState<string | null>(null);
 
+  // Admins without branch see everything
+  const isGlobalView = (isSuperAdmin() || isAdmin?.()) && !profile?.sucursal_id;
+  const userBranchId = profile?.sucursal_id;
+
   // Fetch unassigned shipments (no chofer_id or pending status)
   const { data: unassignedShipments = [], isLoading: loadingShipments } = useQuery({
-    queryKey: ['unassigned-shipments'],
+    queryKey: ['unassigned-shipments', userBranchId, isGlobalView],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('envios')
         .select(`
           id,
@@ -72,6 +77,7 @@ export default function Routes() {
           precio_total,
           created_at,
           nombre_destinatario,
+          tipo_servicio_detalle,
           sucursal_destino:sucursales!envios_sucursal_destino_id_fkey(nombre),
           destinatario:clientes!envios_destinatario_id_fkey(nombre, direccion, ciudad)
         `)
@@ -79,6 +85,14 @@ export default function Routes() {
         .in('estado', ['pendiente', 'recogido', 'en_sucursal'])
         .order('created_at', { ascending: true });
 
+      // Branch users: only shipments physically at their branch + home delivery types
+      if (!isGlobalView && userBranchId) {
+        query = query
+          .or(`sucursal_entrega_id.eq.${userBranchId},sucursal_destino_id.eq.${userBranchId}`)
+          .in('tipo_servicio_detalle', ['sucursal_puerta', 'puerta_puerta', 'domicilio_domicilio']);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return data as UnassignedShipment[];
     },
