@@ -147,7 +147,7 @@ export function ChangeStatusDialog({
   currentStatus,
   trackingNumber,
 }: ChangeStatusDialogProps) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const queryClient = useQueryClient();
   const [newStatus, setNewStatus] = useState<ShipmentStatus | null>(null);
   const [notes, setNotes] = useState('');
@@ -156,10 +156,13 @@ export function ChangeStatusDialog({
     mutationFn: async () => {
       if (!envioId || !newStatus) throw new Error('Datos incompletos');
 
-      // Si vuelve a pendiente, limpiar chofer_id para que aparezca en planificador
-      const updateData: { estado: ShipmentStatus; chofer_id?: null } = { estado: newStatus };
+      // Build update payload
+      const updateData: Record<string, any> = { estado: newStatus };
       if (newStatus === 'pendiente') {
         updateData.chofer_id = null;
+      }
+      if ((newStatus === 'en_sucursal' || newStatus === 'en_bodega') && profile?.sucursal_id) {
+        updateData.sucursal_entrega_id = profile.sucursal_id;
       }
 
       const { data: updatedRows, error: updateError } = await supabase
@@ -173,17 +176,21 @@ export function ChangeStatusDialog({
         throw new Error('No se pudo actualizar el envío. Verificá que tenés permisos para modificar envíos de esta sucursal.');
       }
 
-      const { error: historyError } = await supabase
-        .from('envio_historial')
-        .insert({
-          envio_id: envioId,
-          estado_anterior: currentStatus,
-          estado_nuevo: newStatus,
-          notas: notes || `Estado cambiado manualmente a ${statusConfig[newStatus].label}`,
-          created_by: user?.id
-        });
-      
-      if (historyError) throw historyError;
+      // Only insert manual history if user wrote custom notes
+      // (the DB trigger log_envio_estado_change already creates an entry with branch name)
+      if (notes && notes.trim()) {
+        const { error: historyError } = await supabase
+          .from('envio_historial')
+          .insert({
+            envio_id: envioId,
+            estado_anterior: currentStatus,
+            estado_nuevo: newStatus,
+            notas: notes,
+            created_by: user?.id
+          });
+        
+        if (historyError) throw historyError;
+      }
 
       // Si se cancela, anular pagos y compensar caja
       if (newStatus === 'cancelado') {
