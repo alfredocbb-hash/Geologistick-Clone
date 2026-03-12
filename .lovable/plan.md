@@ -1,37 +1,28 @@
 
 
-# Fix: Liquidaciones no respetan tarifa histórica congelada
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
 ## Problema
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
-El campo `precio_tarifa_vigente` (tarifa congelada al momento de crear el envío) **no se incluye en las queries** que cargan los envíos para el cálculo de liquidaciones. Hay 3 queries en `Settlements.tsx` que seleccionan envíos pero ninguna incluye este campo:
+## Solución
 
-- **Línea 429** (envíos e-commerce)
-- **Línea 464** (envíos comunes con fecha_entrega)
-- **Línea 476** (envíos comunes sin fecha_entrega)
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-Aunque la lógica de priorización en línea 570 (`if (e.precio_tarifa_vigente != null && e.precio_tarifa_vigente > 0)`) está correcta, `e.precio_tarifa_vigente` siempre es `undefined` porque nunca se pidió en el SELECT. El sistema cae siempre al fallback de recalcular con la tarifa actual.
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-## Cambio
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-### `src/pages/ecommerce/Settlements.tsx`
-
-Agregar `precio_tarifa_vigente` al SELECT de las 3 queries de envíos:
-
-1. **Línea 429** — query de envíos e-commerce:
-```
-.select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, ...')
-```
-
-2. **Línea 464** — query de envíos comunes (con fecha_entrega):
-```
-.select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, ...')
-```
-
-3. **Línea 476** — query de envíos comunes (sin fecha_entrega):
-```
-.select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, ...')
-```
-
-Con esto, los envíos que ya tienen `precio_tarifa_vigente` guardado usarán ese valor (tarifa vieja), y solo los envíos nuevos sin precio congelado recalcularán con la tarifa actual.
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 
