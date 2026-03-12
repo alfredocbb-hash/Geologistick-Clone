@@ -194,6 +194,34 @@ export function ShipmentHistoryDialog({
         </DialogHeader>
 
         <ScrollArea className="max-h-[60vh] pr-4">
+          {/* Current location card */}
+          {envioActual && (
+            <div className="mb-4 bg-primary/5 border border-primary/20 rounded-lg p-3 space-y-1">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Ubicación actual
+              </p>
+              <div className="flex items-center gap-2">
+                <StatusIcon status={envioActual.estado as ShipmentStatus} />
+                <div>
+                  <p className="text-sm font-medium">
+                    {statusConfig[envioActual.estado as ShipmentStatus]?.label || envioActual.estado}
+                    {(envioActual.sucursal_entrega as any)?.nombre && ` — ${(envioActual.sucursal_entrega as any).nombre}`}
+                  </p>
+                  {envioActual.chofer && (
+                    <p className="text-xs text-muted-foreground">
+                      Chofer: {(envioActual.chofer as any).nombre} {(envioActual.chofer as any).apellido || ''}
+                    </p>
+                  )}
+                  {(envioActual.sucursal_destino as any)?.nombre && (
+                    <p className="text-xs text-muted-foreground">
+                      Destino: {(envioActual.sucursal_destino as any).nombre}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Associated routes section */}
           {(hojas.length > 0 || rutas.length > 0) && (
             <div className="mb-4 space-y-2">
