@@ -1,72 +1,28 @@
 
 
-# Fix: Envíos no se actualizan al recibir Hoja de Ruta
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
 ## Problema
-
-La política RLS de **UPDATE** en `envios` solo permite actualizar si `sucursal_origen_id`, `sucursal_destino_id` o `sucursal_entrega_id` coincide con la sucursal del usuario. Cuando Mar del Plata recibe una hoja de ruta de Rosario, ninguno de esos campos apunta a Mar del Plata (el campo `sucursal_destino_id` del envío es el destino final del paquete, no necesariamente Mar del Plata).
-
-Resultado: la tabla `hoja_ruta_envios` se actualiza correctamente a "recibido", pero el `UPDATE` sobre `envios` falla silenciosamente (0 rows). El estado queda en `en_transito` y no se dispara el trigger de historial.
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
 ## Solución
 
-### 1. Migración SQL: Actualizar política UPDATE de `envios`
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-Agregar la misma cláusula `EXISTS` que ya agregamos a SELECT, para que usuarios de sucursal puedan actualizar envíos vinculados a hojas de ruta donde su sucursal es origen o destino:
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-```sql
-DROP POLICY "Actualizar envíos de su tenant" ON public.envios;
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-CREATE POLICY "Actualizar envíos de su tenant" ON public.envios
-FOR UPDATE TO public
-USING (
-  (
-    (tenant_id = current_user_tenant()) AND (
-      is_admin(auth.uid())
-      OR (chofer_id = auth.uid())
-      OR (current_user_has_role('sucursal'::app_role) AND (
-        sucursal_origen_id = current_user_sucursal()
-        OR sucursal_destino_id = current_user_sucursal()
-        OR sucursal_entrega_id = current_user_sucursal()
-      ))
-      OR (current_user_has_role('operador'::app_role) AND (
-        sucursal_origen_id = current_user_sucursal()
-        OR sucursal_destino_id = current_user_sucursal()
-        OR sucursal_entrega_id = current_user_sucursal()
-      ))
-      OR (current_user_has_role('despachador'::app_role) AND (
-        sucursal_origen_id = current_user_sucursal()
-        OR sucursal_destino_id = current_user_sucursal()
-        OR sucursal_entrega_id = current_user_sucursal()
-      ))
-      OR EXISTS (
-        SELECT 1 FROM hoja_ruta_envios hre
-        JOIN hojas_ruta hr ON hr.id = hre.hoja_ruta_id
-        WHERE hre.envio_id = envios.id
-        AND (hr.sucursal_destino_id = current_user_sucursal()
-          OR hr.sucursal_origen_id = current_user_sucursal())
-      )
-    )
-  )
-  OR is_super_admin(auth.uid())
-);
-```
-
-### 2. `ReceiveRouteSheetDialog.tsx`: Limpiar `chofer_id` al recibir
-
-Al recibir envíos, además de cambiar estado y `sucursal_entrega_id`, limpiar `chofer_id` para que el envío quede disponible para re-despacho:
-
-```tsx
-const updateData: Record<string, any> = { 
-  estado: "en_sucursal",
-  chofer_id: null 
-};
-```
-
-### Archivos a modificar
-
-| Archivo | Cambio |
-|---------|--------|
-| Migración SQL | Agregar cláusula EXISTS a política UPDATE de envíos |
-| `src/components/scan/ReceiveRouteSheetDialog.tsx` | Limpiar `chofer_id` al recibir |
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 
