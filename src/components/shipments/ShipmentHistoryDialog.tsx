@@ -20,6 +20,7 @@ import {
   MapPin,
   ArrowRight,
   CalendarClock,
+  Route,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -51,6 +52,18 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; icon:
   reprogramado: { label: 'Reprogramado', color: 'bg-indigo-500', icon: CalendarClock },
 };
 
+interface HojaRutaInfo {
+  numero: string;
+  estado: string | null;
+  sucursal_origen: { nombre: string } | null;
+  sucursal_destino: { nombre: string } | null;
+}
+
+interface RutaInfo {
+  numero: string;
+  estado: string | null;
+}
+
 export function ShipmentHistoryDialog({ 
   open, 
   onOpenChange, 
@@ -62,7 +75,6 @@ export function ShipmentHistoryDialog({
     queryFn: async () => {
       if (!envioId) return [];
       
-      // Fetch history
       const { data, error } = await supabase
         .from('envio_historial')
         .select('*')
@@ -71,7 +83,6 @@ export function ShipmentHistoryDialog({
       
       if (error) throw error;
       
-      // Fetch profiles for created_by
       const userIds = [...new Set(data?.map(h => h.created_by).filter(Boolean))];
       let profiles: Record<string, { nombre: string; apellido: string | null }> = {};
       
@@ -94,6 +105,39 @@ export function ShipmentHistoryDialog({
     enabled: open && !!envioId,
   });
 
+  const { data: routeInfo } = useQuery({
+    queryKey: ['envio-rutas', envioId],
+    queryFn: async () => {
+      if (!envioId) return { hojas: [], rutas: [] };
+
+      const [hojasRes, rutasRes] = await Promise.all([
+        supabase
+          .from('hoja_ruta_envios')
+          .select('hoja_ruta_id, hojas_ruta:hojas_ruta!hoja_ruta_envios_hoja_ruta_id_fkey(numero, estado, sucursal_origen:sucursales!hojas_ruta_sucursal_origen_id_fkey(nombre), sucursal_destino:sucursales!hojas_ruta_sucursal_destino_id_fkey(nombre))')
+          .eq('envio_id', envioId),
+        supabase
+          .from('ruta_paradas')
+          .select('ruta_id, rutas_planificadas:rutas_planificadas!ruta_paradas_ruta_id_fkey(numero, estado)')
+          .eq('envio_id', envioId),
+      ]);
+
+      const hojas: HojaRutaInfo[] = (hojasRes.data || [])
+        .map((h: any) => h.hojas_ruta)
+        .filter(Boolean);
+
+      // Deduplicate rutas by numero
+      const rutasMap = new Map<string, RutaInfo>();
+      (rutasRes.data || []).forEach((r: any) => {
+        if (r.rutas_planificadas?.numero) {
+          rutasMap.set(r.rutas_planificadas.numero, r.rutas_planificadas);
+        }
+      });
+
+      return { hojas, rutas: Array.from(rutasMap.values()) };
+    },
+    enabled: open && !!envioId,
+  });
+
   const StatusIcon = ({ status }: { status: ShipmentStatus }) => {
     const config = statusConfig[status];
     const Icon = config?.icon || Clock;
@@ -103,6 +147,9 @@ export function ShipmentHistoryDialog({
       </div>
     );
   };
+
+  const hojas = routeInfo?.hojas || [];
+  const rutas = routeInfo?.rutas || [];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -118,27 +165,51 @@ export function ShipmentHistoryDialog({
         </DialogHeader>
 
         <ScrollArea className="max-h-[60vh] pr-4">
+          {/* Associated routes section */}
+          {(hojas.length > 0 || rutas.length > 0) && (
+            <div className="mb-4 space-y-2">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Rutas asociadas
+              </p>
+              {hojas.map((h, i) => (
+                <div key={`hoja-${i}`} className="flex items-center gap-2 text-sm bg-muted/30 rounded-lg px-3 py-2">
+                  <Truck className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="font-mono text-xs font-medium">{h.numero}</span>
+                  <span className="text-muted-foreground text-xs truncate">
+                    {h.sucursal_origen?.nombre || '?'} → {h.sucursal_destino?.nombre || '?'}
+                  </span>
+                  <Badge variant="outline" className="text-xs ml-auto shrink-0">{h.estado}</Badge>
+                </div>
+              ))}
+              {rutas.map((r, i) => (
+                <div key={`ruta-${i}`} className="flex items-center gap-2 text-sm bg-muted/30 rounded-lg px-3 py-2">
+                  <Route className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="font-mono text-xs font-medium">{r.numero}</span>
+                  <span className="text-muted-foreground text-xs">Ruta de reparto</span>
+                  <Badge variant="outline" className="text-xs ml-auto shrink-0">{r.estado}</Badge>
+                </div>
+              ))}
+              <Separator />
+            </div>
+          )}
+
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             </div>
           ) : historial && historial.length > 0 ? (
             <div className="relative">
-              {/* Timeline line */}
               <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-border" />
               
               <div className="space-y-6">
-                {historial.map((entry, index) => (
+                {historial.map((entry) => (
                   <div key={entry.id} className="relative flex gap-4">
-                    {/* Status Icon */}
                     <div className="z-10">
                       <StatusIcon status={entry.estado_nuevo as ShipmentStatus} />
                     </div>
                     
-                    {/* Content */}
                     <div className="flex-1 pb-6">
                       <div className="bg-muted/50 rounded-lg p-4">
-                        {/* Descriptive Note (primary) or Status Badge (fallback) */}
                         {entry.notas ? (
                           <p className="font-medium text-sm mb-2">{entry.notas}</p>
                         ) : (
@@ -157,19 +228,16 @@ export function ShipmentHistoryDialog({
                           </div>
                         )}
                         
-                        {/* Status badge (secondary when notes exist) */}
                         {entry.notas && (
                           <Badge variant="outline" className="text-xs mb-2">
                             {statusConfig[entry.estado_nuevo as ShipmentStatus]?.label || entry.estado_nuevo}
                           </Badge>
                         )}
                         
-                        {/* Date & Time */}
                         <p className="text-xs text-muted-foreground mb-2">
                           {entry.created_at && format(new Date(entry.created_at), "d 'de' MMMM yyyy, HH:mm", { locale: es })}
                         </p>
                         
-                        {/* User who performed the action */}
                         {entry.profile && (
                           <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
                             <User className="h-3 w-3" />
@@ -177,7 +245,6 @@ export function ShipmentHistoryDialog({
                           </div>
                         )}
 
-                        {/* Location */}
                         {entry.ubicacion && (
                           <div className="flex items-center gap-1 text-xs text-muted-foreground">
                             <MapPin className="h-3 w-3" />
