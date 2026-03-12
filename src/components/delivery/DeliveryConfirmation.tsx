@@ -563,10 +563,11 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
           {/* Photo capture - OPCIONAL */}
           <div className="space-y-2">
             <Label className="text-muted-foreground">📸 Foto de Entrega (Opcional)</Label>
-            <input
+             <input
               ref={fileInputRef}
               type="file"
               accept="image/*"
+              capture="environment"
               onChange={handlePhotoSelect}
               className="hidden"
             />

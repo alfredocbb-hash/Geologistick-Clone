@@ -1,26 +1,28 @@
 
 
-# Abrir cámara directamente desde la APK para fotos
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
 ## Problema
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
-En `DeliveryConfirmation.tsx`, el input de archivo usa `accept="image/*"` pero le falta el atributo `capture="environment"`, lo que hace que Android muestre un selector de archivos en vez de abrir la cámara directamente. El componente `ReportIncidentDialog.tsx` ya lo tiene correctamente.
+## Solución
 
-## Cambio
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-**Archivo: `src/components/delivery/DeliveryConfirmation.tsx`** (línea 569)
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-Agregar `capture="environment"` al `<input type="file">` existente:
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-```html
-<!-- Antes -->
-<input type="file" accept="image/*" ... />
-
-<!-- Después -->
-<input type="file" accept="image/*" capture="environment" ... />
-```
-
-El atributo `capture="environment"` le indica al WebView de Android que abra directamente la cámara trasera del dispositivo, sin pasar por el selector de archivos.
-
-Un solo cambio de una línea en un archivo.
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 
