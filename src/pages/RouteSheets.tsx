@@ -97,7 +97,7 @@ interface HojaRutaWithDetails {
 }
 
 export default function RouteSheets() {
-  const { profile } = useAuth();
+  const { profile, isAdmin } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
