@@ -532,7 +532,7 @@ Deno.serve(async (req) => {
             // Update envio with seller tarifa price
             await supabase
               .from('envios')
-              .update({ precio_total: precioFinalSync, tarifa_id: seller.tarifa_id, tarifa_metodo_aplicado: 'tarifa_seller' })
+              .update({ precio_total: precioFinalSync, precio_tarifa_vigente: precioFinalSync, tarifa_id: seller.tarifa_id, tarifa_metodo_aplicado: 'tarifa_seller' })
               .eq('id', envio.id);
           }
         }

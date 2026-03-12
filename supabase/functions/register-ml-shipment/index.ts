@@ -388,6 +388,7 @@ serve(async (req) => {
         entrega_lat: receiver.latitude,
         entrega_lng: receiver.longitude,
           precio_total: precioTotal,
+          precio_tarifa_vigente: precioTotal,
           tarifa_id: tarifaIdMatch || seller.tarifa_id,
           tarifa_metodo_aplicado: tarifaMetodo,
           tipo_servicio: 'express',
