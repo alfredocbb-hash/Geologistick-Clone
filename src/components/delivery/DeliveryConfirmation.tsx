@@ -168,20 +168,31 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
 
   // Upload file to Supabase Storage
   const uploadFile = async (file: File | Blob, path: string): Promise<string | null> => {
-    const { data, error } = await supabase.storage
-      .from('delivery-photos')
-      .upload(path, file, { upsert: true });
+    // Try upload with one automatic retry
+    let lastError: any = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const { data, error } = await supabase.storage
+        .from('delivery-photos')
+        .upload(path, file, { upsert: true });
 
-    if (error) {
-      console.error('Upload error:', error);
-      return null;
+      if (error) {
+        console.error(`Upload error (attempt ${attempt + 1}):`, error);
+        lastError = error;
+        if (attempt === 0) {
+          await new Promise(r => setTimeout(r, 1500)); // wait before retry
+          continue;
+        }
+        return null;
+      }
+
+      const { data: urlData } = await supabase.storage
+        .from('delivery-photos')
+        .createSignedUrl(data.path, 60 * 60 * 24 * 365); // 1 year
+
+      return urlData?.signedUrl || null;
     }
-
-    const { data: urlData } = await supabase.storage
-      .from('delivery-photos')
-      .createSignedUrl(data.path, 60 * 60 * 24 * 365); // 1 year
-
-    return urlData?.signedUrl || null;
+    console.error('Upload failed after 2 attempts:', lastError);
+    return null;
   };
 
   // Convert data URL to Blob
