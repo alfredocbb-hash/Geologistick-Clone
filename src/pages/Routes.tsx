@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -52,17 +53,22 @@ interface DriverWithShipments extends Driver {
 
 export default function Routes() {
   const queryClient = useQueryClient();
+  const { profile, isSuperAdmin, isAdmin } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedShipments, setSelectedShipments] = useState<string[]>([]);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [selectedDriver, setSelectedDriver] = useState<string | null>(null);
 
+  // Admins without branch see everything
+  const isGlobalView = (isSuperAdmin() || isAdmin?.()) && !profile?.sucursal_id;
+  const userBranchId = profile?.sucursal_id;
+
   // Fetch unassigned shipments (no chofer_id or pending status)
   const { data: unassignedShipments = [], isLoading: loadingShipments } = useQuery({
-    queryKey: ['unassigned-shipments'],
+    queryKey: ['unassigned-shipments', userBranchId, isGlobalView],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('envios')
         .select(`
           id,
@@ -71,6 +77,7 @@ export default function Routes() {
           precio_total,
           created_at,
           nombre_destinatario,
+          tipo_servicio_detalle,
           sucursal_destino:sucursales!envios_sucursal_destino_id_fkey(nombre),
           destinatario:clientes!envios_destinatario_id_fkey(nombre, direccion, ciudad)
         `)
@@ -78,6 +85,14 @@ export default function Routes() {
         .in('estado', ['pendiente', 'recogido', 'en_sucursal'])
         .order('created_at', { ascending: true });
 
+      // Branch users: only shipments physically at their branch + home delivery types
+      if (!isGlobalView && userBranchId) {
+        query = query
+          .or(`sucursal_entrega_id.eq.${userBranchId},sucursal_destino_id.eq.${userBranchId}`)
+          .in('tipo_servicio_detalle', ['sucursal_puerta', 'puerta_puerta', 'domicilio_domicilio']);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return data as UnassignedShipment[];
     },
@@ -85,7 +100,7 @@ export default function Routes() {
 
   // Fetch drivers with their current shipments
   const { data: driversWithShipments = [], isLoading: loadingDrivers } = useQuery({
-    queryKey: ['drivers-with-shipments'],
+    queryKey: ['drivers-with-shipments', userBranchId, isGlobalView],
     queryFn: async () => {
       // Get drivers
       const { data: userRoles, error: rolesError } = await supabase
@@ -106,12 +121,18 @@ export default function Routes() {
           nombre,
           apellido,
           avatar_url,
+          sucursal_id,
           sucursal:sucursales(nombre)
         `)
         .in('user_id', userIds)
         .eq('activo', true);
 
       if (profilesError) throw profilesError;
+
+      // Filter drivers by branch if user has a branch
+      const filteredProfiles = (!isGlobalView && userBranchId)
+        ? (profiles || []).filter(p => p.sucursal_id === userBranchId)
+        : (profiles || []);
 
       // Get current shipments for each driver
       const { data: shipments, error: shipmentsError } = await supabase
@@ -129,7 +150,7 @@ export default function Routes() {
       if (shipmentsError) throw shipmentsError;
 
       // Combine data
-      const driversData: DriverWithShipments[] = (profiles || []).map(profile => ({
+      const driversData: DriverWithShipments[] = filteredProfiles.map(profile => ({
         ...profile,
         shipments: (shipments || [])
           .filter(s => s.chofer_id === profile.user_id)

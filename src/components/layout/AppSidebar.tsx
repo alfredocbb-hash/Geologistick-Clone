@@ -110,7 +110,8 @@ const navigation: NavGroup[] = [{
     title: 'Rutas de Entrega',
     url: '/routes',
     icon: MapPin,
-    permissionKey: 'my_routes.view'
+    permissionKey: 'my_routes.view',
+    requiresBranchDelivery: true
   }],
   permissionKeys: ['shipments.scan', 'routes.plan', 'route_sheets.view', 'live_map.view', 'drivers.manage', 'vehicles.manage', 'my_routes.view']
 }, {

@@ -1,45 +1,28 @@
 
 
-# Habilitar "Rutas de Entrega" para sucursales con servicio de última milla
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
-## Situación actual
+## Problema
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
-- El menú "Rutas de Entrega" (`/routes`) ya existe en el sidebar (línea 110) pero **no tiene** `requiresBranchDelivery: true`, por lo que aparece para todos.
-- La página `Routes.tsx` muestra **todos** los envíos sin asignar del sistema, sin filtrar por sucursal ni tipo de servicio.
-- Las sucursales que "Realizan Entregas" necesitan ver solo los envíos que están físicamente en su sucursal y que requieren entrega a domicilio.
+## Solución
 
-## Cambios propuestos
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-### 1. `src/components/layout/AppSidebar.tsx` — Condicionar visibilidad
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-Agregar `requiresBranchDelivery: true` al item "Rutas de Entrega" (línea 110-114) para que solo aparezca cuando la sucursal tiene "Realiza Entregas" habilitado (o para super admin).
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-### 2. `src/pages/Routes.tsx` — Filtrar envíos por sucursal y tipo de servicio
-
-Modificar la query de envíos sin asignar para que, cuando el usuario tiene una sucursal asignada:
-
-- Filtre por `sucursal_entrega_id = sucursal_id` del usuario (envíos físicamente en su sucursal).
-- Filtre por `tipo_servicio_detalle` que implique entrega a domicilio: `sucursal_puerta`, `puerta_puerta`, `domicilio_domicilio`.
-- Mantenga el comportamiento global para super admin / admin sin sucursal.
-
-```typescript
-// Para usuarios con sucursal: solo envíos en su sucursal + tipo domicilio
-const query = supabase.from('envios').select(...)
-  .is('chofer_id', null)
-  .in('estado', ['pendiente', 'recogido', 'en_sucursal'])
-  .in('tipo_servicio_detalle', ['sucursal_puerta', 'puerta_puerta', 'domicilio_domicilio']);
-
-if (profile?.sucursal_id) {
-  query.or(`sucursal_entrega_id.eq.${profile.sucursal_id},sucursal_destino_id.eq.${profile.sucursal_id}`);
-}
-```
-
-También filtrar los choferes mostrados a los de la misma sucursal del usuario (cuando aplique).
-
-### Archivos a modificar
-
-| Archivo | Cambio |
-|---------|--------|
-| `src/components/layout/AppSidebar.tsx` | Agregar `requiresBranchDelivery: true` al item "Rutas de Entrega" |
-| `src/pages/Routes.tsx` | Filtrar envíos por sucursal del usuario + tipo servicio a domicilio, y choferes por sucursal |
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 
