@@ -1995,6 +1995,16 @@ export default function RoutePlanner() {
                             <Edit className="h-4 w-4 mr-1" />
                             Editar
                           </Button>
+                          {ruta.estado === 'en_curso' && (roles.includes('admin') || roles.includes('super_admin')) && (
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => setClosingRoute(ruta)}
+                            >
+                              <CheckCircle className="h-4 w-4 mr-1" />
+                              Cerrar Ruta
+                            </Button>
+                          )}
                           <Button 
                             variant="destructive" 
                             size="sm"
