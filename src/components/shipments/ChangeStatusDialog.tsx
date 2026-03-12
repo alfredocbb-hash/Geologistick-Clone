@@ -147,7 +147,7 @@ export function ChangeStatusDialog({
   currentStatus,
   trackingNumber,
 }: ChangeStatusDialogProps) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const queryClient = useQueryClient();
   const [newStatus, setNewStatus] = useState<ShipmentStatus | null>(null);
   const [notes, setNotes] = useState('');
