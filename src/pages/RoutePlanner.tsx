@@ -158,6 +158,8 @@ export default function RoutePlanner() {
   const [groupByCity, setGroupByCity] = useState(false);
   const [selectedSucursales, setSelectedSucursales] = usePersistedState<string[]>('planner-selected-sucursales', []);
   const [reopeningRoute, setReopeningRoute] = useState<any | null>(null);
+  const [closingRoute, setClosingRoute] = useState<any | null>(null);
+  const [isClosingRoute, setIsClosingRoute] = useState(false);
   
   // History tab state
   const [historyDateFrom, setHistoryDateFrom] = useState<Date | undefined>(undefined);
