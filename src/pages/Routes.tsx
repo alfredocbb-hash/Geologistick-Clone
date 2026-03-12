@@ -100,7 +100,7 @@ export default function Routes() {
 
   // Fetch drivers with their current shipments
   const { data: driversWithShipments = [], isLoading: loadingDrivers } = useQuery({
-    queryKey: ['drivers-with-shipments'],
+    queryKey: ['drivers-with-shipments', userBranchId, isGlobalView],
     queryFn: async () => {
       // Get drivers
       const { data: userRoles, error: rolesError } = await supabase
