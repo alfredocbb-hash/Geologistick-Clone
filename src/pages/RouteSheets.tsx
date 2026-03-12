@@ -116,8 +116,30 @@ export default function RouteSheets() {
   const [showRouteDialog, setShowRouteDialog] = useState(false);
   const [selectedHojaRuta, setSelectedHojaRuta] = useState<HojaRutaWithDetails | null>(null);
   
+  // Close hoja state
+  const [closingHoja, setClosingHoja] = useState<HojaRutaWithDetails | null>(null);
+  
   // Use driver route hook for GPS visualization
   const driverRoute = useDriverRoute();
+
+  // Close hoja de ruta mutation
+  const closeMutation = useMutation({
+    mutationFn: async (hojaId: string) => {
+      const { data, error } = await supabase.rpc('close_hoja_ruta', { p_hoja_id: hojaId });
+      if (error) throw error;
+      const result = data as any;
+      if (!result?.success) throw new Error(result?.error || 'Error al cerrar hoja de ruta');
+      return result;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["hojas-ruta"] });
+      toast.success("Hoja de ruta cerrada correctamente");
+      setClosingHoja(null);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Error al cerrar hoja de ruta");
+    },
+  });
 
   // Fetch hojas de ruta with date filter
   const { data: hojasRuta = [], isLoading } = useQuery({
