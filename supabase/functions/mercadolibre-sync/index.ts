@@ -487,6 +487,7 @@ Deno.serve(async (req) => {
             destinatario_lng: receiver.longitude || null,
             whatsapp_destinatario: receiverPhone,
             precio_total: precioCalculadoSync,
+            precio_tarifa_vigente: precioCalculadoSync,
             tarifa_id: tarifaIdSync,
             tarifa_metodo_aplicado: tarifaMetodoSync,
             precio_flete_ml: mlShippingCost,
