@@ -380,7 +380,11 @@ export default function ScanQR() {
     } else if (isOperator && ['recogido', 'pendiente'].includes(shipment.estado)) {
       setReceiveType('center');
       setShowReceiveDialog(true);
-    } else if (isBranchOperator && ['en_sucursal', 'en_transito'].includes(shipment.estado)) {
+    } else if (isBranchOperator && shipment.estado === 'en_sucursal') {
+      // Ya recepcionado → ir directo a entrega al cliente
+      setShowBranchDeliveryDialog(true);
+    } else if (isBranchOperator && shipment.estado === 'en_transito') {
+      // Todavía en tránsito → recepción
       setReceiveType('branch');
       setShowReceiveDialog(true);
     } else if (isDriver) {
