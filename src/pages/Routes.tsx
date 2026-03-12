@@ -121,12 +121,18 @@ export default function Routes() {
           nombre,
           apellido,
           avatar_url,
+          sucursal_id,
           sucursal:sucursales(nombre)
         `)
         .in('user_id', userIds)
         .eq('activo', true);
 
       if (profilesError) throw profilesError;
+
+      // Filter drivers by branch if user has a branch
+      const filteredProfiles = (!isGlobalView && userBranchId)
+        ? (profiles || []).filter(p => p.sucursal_id === userBranchId)
+        : (profiles || []);
 
       // Get current shipments for each driver
       const { data: shipments, error: shipmentsError } = await supabase
