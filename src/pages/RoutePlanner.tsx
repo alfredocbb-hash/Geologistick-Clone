@@ -41,6 +41,16 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import {
   Route,
@@ -148,6 +158,8 @@ export default function RoutePlanner() {
   const [groupByCity, setGroupByCity] = useState(false);
   const [selectedSucursales, setSelectedSucursales] = usePersistedState<string[]>('planner-selected-sucursales', []);
   const [reopeningRoute, setReopeningRoute] = useState<any | null>(null);
+  const [closingRoute, setClosingRoute] = useState<any | null>(null);
+  const [isClosingRoute, setIsClosingRoute] = useState(false);
   
   // History tab state
   const [historyDateFrom, setHistoryDateFrom] = useState<Date | undefined>(undefined);
@@ -1983,6 +1995,16 @@ export default function RoutePlanner() {
                             <Edit className="h-4 w-4 mr-1" />
                             Editar
                           </Button>
+                          {ruta.estado === 'en_curso' && (roles.includes('admin') || roles.includes('super_admin')) && (
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => setClosingRoute(ruta)}
+                            >
+                              <CheckCircle className="h-4 w-4 mr-1" />
+                              Cerrar Ruta
+                            </Button>
+                          )}
                           <Button 
                             variant="destructive" 
                             size="sm"
@@ -2312,6 +2334,45 @@ export default function RoutePlanner() {
           envios={selectedEnviosData}
         />
       )}
+      {/* Close Route AlertDialog */}
+      <AlertDialog open={!!closingRoute} onOpenChange={(open) => !open && setClosingRoute(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cerrar Ruta {closingRoute?.numero}</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estás seguro de que querés cerrar esta ruta? Los envíos no entregados quedarán sin asignar.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isClosingRoute}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isClosingRoute}
+              onClick={async (e) => {
+                e.preventDefault();
+                if (!closingRoute) return;
+                setIsClosingRoute(true);
+                try {
+                  const { data, error } = await supabase.rpc('close_ruta_planificada', { p_ruta_id: closingRoute.id });
+                  if (error) throw error;
+                  const result = data as any;
+                  if (!result.success) throw new Error(result.error);
+                  toast.success('Ruta cerrada correctamente');
+                  queryClient.invalidateQueries({ queryKey: ['rutas-activas'] });
+                  queryClient.invalidateQueries({ queryKey: ['rutas-historial'] });
+                  setClosingRoute(null);
+                } catch (err: any) {
+                  toast.error(err.message || 'Error al cerrar la ruta');
+                } finally {
+                  setIsClosingRoute(false);
+                }
+              }}
+            >
+              {isClosingRoute ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Cerrar Ruta
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

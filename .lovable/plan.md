@@ -1,33 +1,28 @@
 
 
-# Permitir a admin/superadmin cerrar rutas planificadas y hojas de ruta
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
 ## Problema
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
-Las funciones RPC `close_ruta_planificada` y `close_hoja_ruta` solo permiten al chofer asignado cerrar la ruta (`chofer_id = auth.uid()`). Un administrador no puede cerrar rutas desde el Planificador.
+## Solución
 
-## Cambios
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-### 1. Migración SQL: actualizar ambas funciones RPC
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-Modificar `close_ruta_planificada` y `close_hoja_ruta` para que, además del chofer asignado, permitan el cierre a usuarios con rol `admin` o `super_admin` (usando `public.is_admin(auth.uid())`).
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-Lógica actualizada del check de permisos:
-```sql
-IF v_ruta.chofer_id != auth.uid() AND NOT public.is_admin(auth.uid()) THEN
-  RETURN jsonb_build_object('success', false, 'error', 'No tienes permiso...');
-END IF;
-```
-
-Aplicar lo mismo en ambas funciones.
-
-### 2. UI: agregar botón "Cerrar Ruta" en pestaña Rutas Activas (`src/pages/RoutePlanner.tsx`)
-
-En la tarjeta de cada ruta activa (línea ~1966), agregar un botón "Cerrar Ruta" (con icono `CheckCircle`) que:
-- Muestre un `AlertDialog` de confirmación
-- Llame a `supabase.rpc('close_ruta_planificada', { p_ruta_id })`
-- Invalide las queries `rutas-activas` y `rutas-historial` al completar
-- Muestre toast de éxito/error
-
-Solo mostrar el botón para rutas en estado `en_curso`.
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 
