@@ -255,27 +255,17 @@ export default function RoutePlanner() {
         ...urlShipments.filter(e => !existingIds.has(e.id)),
       ];
 
-      // Get ecommerce-linked envio IDs to exclude them
-      const { data: ecommerceOrders } = await supabase
-        .from("ecommerce_orders")
-        .select("envio_id")
-        .not("envio_id", "is", null);
-
-      const ecommerceEnvioIds = new Set(
-        (ecommerceOrders || []).map(o => o.envio_id).filter(Boolean)
-      );
-
-      // Exclude ecommerce shipments only if they are in 'pendiente' state (not yet collected)
-      // Once collected (recogido, en_sucursal, en_reparto), they should appear in the planner
-      const filtered = merged.filter(envio =>
-        !ecommerceEnvioIds.has(envio.id) || 
-        urlEnvioIds.has(envio.id) || 
-        ['recogido', 'en_sucursal', 'en_reparto'].includes(envio.estado || '') ||
-        (envio.reprogramado_count && envio.reprogramado_count > 0) ||
-        (envio.ultima_reprogramacion != null) ||
-        
-        !envio.ml_shipment_id
-      );
+      // Filter out ML shipments still in 'pendiente' (not yet collected)
+      const filtered = merged.filter(envio => {
+        // URL-specified shipments always visible
+        if (urlEnvioIds.has(envio.id)) return true;
+        // Rescheduled shipments always visible
+        if ((envio.reprogramado_count && envio.reprogramado_count > 0) || envio.ultima_reprogramacion) return true;
+        // Hide ML shipments that are still pendiente (not yet collected)
+        if (envio.ml_shipment_id && envio.estado === 'pendiente') return false;
+        // Everything else visible
+        return true;
+      });
 
       // Map to include type (retiro/entrega)
       return filtered.map(envio => ({
