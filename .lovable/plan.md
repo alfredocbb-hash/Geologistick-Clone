@@ -1,28 +1,33 @@
 
 
-# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
+# Fix: Rol "Emisión" incorrecto para envíos recepcionados en liquidación de sucursal
 
 ## Problema
-Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
+
+En `BranchSettlements.tsx` línea 598, la determinación del rol solo considera `sucursal_destino_id`:
+
+```typescript
+const esDestino = envio.sucursal_destino_id === selectedSucursal;
+const rol = esDestino && !esOrigen ? 'recepcion' : 'emision';
+```
+
+El envío ENV-RFVNU8 tiene `sucursal_destino_id = NULL` y `sucursal_entrega_id = Mar del Plata`. Como `esDestino` es `false`, el rol queda como `'emision'` cuando debería ser `'recepcion'`.
 
 ## Solución
 
-### 1. Nueva función SQL: `reopen_ruta_planificada`
-- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
-- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
-- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
-- Inserta registro en `envio_historial` para cada envío reactivado
-- Retorna JSON con resultado y cantidad de envíos reactivados
+### `src/pages/BranchSettlements.tsx` (línea 597-598)
 
-### 2. Nuevo componente: `ReopenRouteDialog.tsx`
-- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
-- Muestra cuántos envíos serán reactivados
-- Botón "Reabrir Ruta" que invoca el RPC
+Incluir `sucursal_entrega_id` en la evaluación:
 
-### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
-- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
-- Al hacer click, abre `ReopenRouteDialog`
-- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
+```typescript
+const esDestino = envio.sucursal_destino_id === selectedSucursal 
+  || envio.sucursal_entrega_id === selectedSucursal;
+const rol = esDestino && !esOrigen ? 'recepcion' : 'emision';
+```
 
-**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
+Esto asegura que cualquier envío donde la sucursal es el punto de entrega físico se marque correctamente como "Recepción".
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/pages/BranchSettlements.tsx` | Agregar check de `sucursal_entrega_id` en determinación de rol |
 
