@@ -1,28 +1,51 @@
 
 
-# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
+# Fix: Sucursal con envío ya recepcionado muestra diálogo de recepción en vez de entrega
 
 ## Problema
-Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
+
+En `ScanQR.tsx` línea 383, la lógica de auto-detección para roles de sucursal (`isBranchOperator`) es:
+
+```typescript
+} else if (isBranchOperator && ['en_sucursal', 'en_transito'].includes(shipment.estado)) {
+  setReceiveType('branch');
+  setShowReceiveDialog(true);  // ← Siempre muestra "Recibir en Sucursal"
+}
+```
+
+Cuando el envío ya está `en_sucursal` (ya fue recepcionado), debería ir directo a la entrega al cliente (`BranchDeliveryDialog`) en lugar de mostrar nuevamente el diálogo de recepción.
 
 ## Solución
 
-### 1. Nueva función SQL: `reopen_ruta_planificada`
-- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
-- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
-- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
-- Inserta registro en `envio_historial` para cada envío reactivado
-- Retorna JSON con resultado y cantidad de envíos reactivados
+Modificar la lógica de auto-detección en `handleShipmentAction` para que:
 
-### 2. Nuevo componente: `ReopenRouteDialog.tsx`
-- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
-- Muestra cuántos envíos serán reactivados
-- Botón "Reabrir Ruta" que invoca el RPC
+1. Si el envío está **`en_sucursal`** → abrir `BranchDeliveryDialog` (entrega al cliente con pago y datos)
+2. Si el envío está **`en_transito`** → abrir `ReceiveShipmentDialog` (recepción pendiente)
 
-### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
-- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
-- Al hacer click, abre `ReopenRouteDialog`
-- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
+### `src/pages/ScanQR.tsx`
 
-**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
+Cambiar líneas 383-385:
+
+```typescript
+// ANTES
+} else if (isBranchOperator && ['en_sucursal', 'en_transito'].includes(shipment.estado)) {
+  setReceiveType('branch');
+  setShowReceiveDialog(true);
+
+// DESPUÉS  
+} else if (isBranchOperator && shipment.estado === 'en_sucursal') {
+  // Ya recepcionado → ir directo a entrega al cliente
+  setShowBranchDeliveryDialog(true);
+} else if (isBranchOperator && shipment.estado === 'en_transito') {
+  // Todavía en tránsito → recepción
+  setReceiveType('branch');
+  setShowReceiveDialog(true);
+}
+```
+
+### Archivo a modificar
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/pages/ScanQR.tsx` | Separar lógica `en_sucursal` (entrega) de `en_transito` (recepción) en auto-detect |
 
