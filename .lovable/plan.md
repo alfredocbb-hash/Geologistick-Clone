@@ -1,55 +1,28 @@
 
 
-# Fix: Dashboard limitado a 1000 registros
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
 ## Problema
-
-La query de **Ingresos del Día** (línea 46-51) obtiene filas reales (`precio_total`) y suma en el cliente. Supabase tiene un límite por defecto de 1000 filas, así que si hay más de 1000 envíos hoy, el total de ingresos se trunca.
-
-Las queries de conteo (`count: 'exact', head: true`) no tienen este problema — devuelven el conteo correcto sin traer filas.
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
 ## Solución
 
-Reemplazar la query de ingresos que trae filas y suma en el cliente por una **database function** que haga el `SUM` directamente en PostgreSQL, evitando el límite de 1000 filas.
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-### 1. Migración SQL — función `get_daily_revenue`
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-```sql
-CREATE OR REPLACE FUNCTION public.get_daily_revenue(p_tenant_id uuid, p_date text)
-RETURNS numeric
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
-  SELECT COALESCE(SUM(precio_total), 0)
-  FROM envios
-  WHERE tenant_id = p_tenant_id
-    AND created_at >= p_date::timestamptz
-    AND estado NOT IN ('cancelado', 'devuelto');
-$$;
-```
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-### 2. `src/pages/Dashboard.tsx`
-
-Reemplazar la query de ingresos (líneas 46-53):
-
-```typescript
-// Antes: traía filas y sumaba en cliente (límite 1000)
-const { data: todayRevenue } = await supabase
-  .from('envios')
-  .select('precio_total')
-  ...
-
-// Después: suma en la base de datos
-const { data: revenueResult } = await supabase
-  .rpc('get_daily_revenue', { p_tenant_id: tenantId, p_date: today });
-
-const revenue = Number(revenueResult) || 0;
-```
-
-| Archivo | Cambio |
-|---------|--------|
-| Migración SQL | Crear función `get_daily_revenue` |
-| `src/pages/Dashboard.tsx` | Usar RPC en vez de fetch + reduce |
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 

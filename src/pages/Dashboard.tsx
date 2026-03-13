@@ -42,15 +42,11 @@ export default function Dashboard() {
         .eq('tenant_id', tenantId)
         .in('estado', ['en_transito', 'en_reparto']);
 
-      // Ingresos del día (excluir cancelados/devueltos)
-      const { data: todayRevenue } = await supabase
-        .from('envios')
-        .select('precio_total')
-        .eq('tenant_id', tenantId)
-        .gte('created_at', today)
-        .not('estado', 'in', '(cancelado,devuelto)');
+      // Ingresos del día (SUM en base de datos, sin límite de 1000 filas)
+      const { data: revenueResult } = await (supabase
+        .rpc as any)('get_daily_revenue', { p_tenant_id: tenantId, p_date: today });
       
-      const revenue = todayRevenue?.reduce((sum, e) => sum + (e.precio_total || 0), 0) || 0;
+      const revenue = Number(revenueResult) || 0;
 
       // Choferes activos (con rutas hoy)
       const { data: activeDrivers } = await supabase
