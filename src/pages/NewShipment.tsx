@@ -879,6 +879,19 @@ export default function NewShipment() {
       }
     }
     
+    // Sumar monto del concepto "Flete" si existe (para unificar en una sola línea)
+    const conceptoFlete = conceptosBasicos.find(cp => {
+      const codigo = cp.concepto?.codigo?.toLowerCase();
+      const nombre = cp.concepto?.nombre?.toLowerCase();
+      return codigo === 'flete' || nombre === 'flete';
+    });
+    if (conceptoFlete) {
+      const montoConceptoFlete = Number(conceptoFlete.monto) || 0;
+      if (montoConceptoFlete > 0) {
+        flete += montoConceptoFlete;
+      }
+    }
+    
     // Aplicar multiplicación por bultos si está configurado
     const debeMultiplicar = multiplicarPorBultos && cantidadBultos > 1;
     const fleteTotal = debeMultiplicar ? flete * cantidadBultos : flete;
