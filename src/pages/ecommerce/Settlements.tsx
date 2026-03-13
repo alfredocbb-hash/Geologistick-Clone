@@ -208,7 +208,7 @@ export default function Settlements() {
           const chunk = allEnvioIds.slice(i, i + 500);
           const { data: enviosData } = await supabase
             .from('envios')
-            .select('id, ciudad_entrega, precio_total, estado')
+            .select('id, ciudad_entrega, precio_total, precio_tarifa_vigente, estado')
             .in('id', chunk);
           (enviosData || []).forEach(e => enviosMap.set(e.id, e));
         }
