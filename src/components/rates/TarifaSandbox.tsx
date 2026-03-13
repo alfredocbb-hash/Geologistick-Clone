@@ -29,6 +29,7 @@ interface TarifaSandboxProps {
     express_surcharge: string;
     rangos_kg: WeightRange[];
     umbral_volumen_cm: number;
+    porcentaje_flete_bulto: string;
     conceptos: Record<string, ConceptoPrice>;
   };
   conceptos: Array<{ id: string; nombre: string; codigo: string; activo: boolean; es_basico: boolean }>;
