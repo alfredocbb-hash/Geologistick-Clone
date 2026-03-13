@@ -1385,9 +1385,26 @@ export default function Settlements() {
                                   </TableCell>
                                   <TableCell className="text-right">
                                     <div className="flex items-center justify-end gap-1">
-                                      <span className={`font-medium ${envio.precio_total > 0 ? 'text-orange-600' : 'text-destructive'}`}>
-                                        {envio.precio_total > 0 ? `+$${envio.precio_total.toLocaleString()}` : '$0'}
-                                      </span>
+                                      <Input
+                                        type="number"
+                                        value={envio.precio_total}
+                                        onChange={(e) => {
+                                          const nuevoPrecio = parseFloat(e.target.value) || 0;
+                                          const updated = calculatedEnvios.map(ev =>
+                                            ev.id === envio.id ? { ...ev, precio_total: nuevoPrecio } : ev
+                                          );
+                                          setCalculatedEnvios(updated);
+                                          if (calculatedTotals) {
+                                            const totalEnvios = updated.reduce((sum, ev) => sum + ev.precio_total, 0);
+                                            setCalculatedTotals({
+                                              ...calculatedTotals,
+                                              totalEnvios,
+                                              saldoPeriodo: calculatedTotals.totalCargos + totalEnvios - calculatedTotals.totalPagos,
+                                            });
+                                          }
+                                        }}
+                                        className="w-24 h-7 text-right text-sm font-medium px-2"
+                                      />
                                       {envio.precio_calculado && (
                                         <Badge variant="secondary" className="text-[10px] px-1 py-0">
                                           Zona
