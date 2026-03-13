@@ -742,6 +742,11 @@ export default function NewShipment() {
     const cantidadBultos = parseInt(formData.cantidad_bultos) || 1;
     
     return conceptosBasicos.reduce((sum, cp) => {
+      // Skip flete concept - already included in fleteCalculado
+      const codigo = cp.concepto?.codigo?.toLowerCase();
+      const nombre = cp.concepto?.nombre?.toLowerCase();
+      if (codigo === 'flete' || nombre === 'flete') return sum;
+      
       let montoConcepto = 0;
       if (cp.es_porcentaje && cp.porcentaje) {
         montoConcepto = valorDeclarado * Number(cp.porcentaje) / 100;
