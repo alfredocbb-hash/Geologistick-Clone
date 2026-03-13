@@ -892,10 +892,22 @@ export default function NewShipment() {
       }
     }
     
-    // Aplicar multiplicación por bultos si está configurado
+    // Aplicar multiplicación por bultos o porcentaje por bulto extra
+    let fleteTotal = flete;
+    let descripcionFinal = descripcion;
     const debeMultiplicar = multiplicarPorBultos && cantidadBultos > 1;
-    const fleteTotal = debeMultiplicar ? flete * cantidadBultos : flete;
-    const descripcionFinal = debeMultiplicar ? `${descripcion} × ${cantidadBultos} bultos` : descripcion;
+    
+    if (debeMultiplicar) {
+      fleteTotal = flete * cantidadBultos;
+      descripcionFinal = `${descripcion} × ${cantidadBultos} bultos`;
+    } else if (!multiplicarPorBultos && cantidadBultos > 1) {
+      const pctBulto = Number((selectedTarifa as any).porcentaje_flete_bulto) || 0;
+      if (pctBulto > 0) {
+        const recargo = flete * (pctBulto / 100) * (cantidadBultos - 1);
+        fleteTotal = flete + recargo;
+        descripcionFinal = `${descripcion} + ${pctBulto}% × ${cantidadBultos - 1} bulto(s)`;
+      }
+    }
     
     return { 
       fleteCalculado: fleteTotal, 

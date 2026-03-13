@@ -680,6 +680,7 @@ export default function Rates() {
       rangos_kg: rangosKg,
       umbral_volumen_cm: tarifa.umbral_volumen_cm || 50,
       multiplicar_flete_por_bultos: tarifa.multiplicar_flete_por_bultos ?? false,
+      porcentaje_flete_bulto: (tarifa as any).porcentaje_flete_bulto?.toString() || '0',
       conceptos: conceptosMap,
       express_surcharge: (tarifa as any).express_surcharge?.toString() || '',
     });
