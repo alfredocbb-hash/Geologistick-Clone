@@ -53,6 +53,7 @@ interface FormData {
   rangos_kg: WeightRange[];
   umbral_volumen_cm: number;
   multiplicar_flete_por_bultos: boolean;
+  porcentaje_flete_bulto: string;
   conceptos: Record<string, ConceptoPrice>;
   express_surcharge: string;
 }
