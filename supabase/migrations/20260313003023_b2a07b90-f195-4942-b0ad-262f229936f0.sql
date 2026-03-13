@@ -1,0 +1,1 @@
+ALTER TABLE tarifas ADD COLUMN porcentaje_flete_bulto numeric DEFAULT 0;
