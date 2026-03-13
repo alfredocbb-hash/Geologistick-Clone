@@ -4508,6 +4508,10 @@ export type Database = {
       generate_tracking_number:
         | { Args: never; Returns: string }
         | { Args: { p_sucursal_id?: string }; Returns: string }
+      get_daily_revenue: {
+        Args: { p_date: string; p_tenant_id: string }
+        Returns: number
+      }
       get_or_create_tenant_usage: {
         Args: { p_tenant_id: string }
         Returns: {
