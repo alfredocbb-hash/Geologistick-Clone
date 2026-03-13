@@ -163,6 +163,7 @@ export default function Rates() {
     rangos_kg: [] as WeightRange[],
     umbral_volumen_cm: 50,
     multiplicar_flete_por_bultos: false,
+    porcentaje_flete_bulto: '0',
     // Conceptos inline
     conceptos: {} as Record<string, { monto: string; es_porcentaje: boolean; porcentaje: string; multiplicar_por_bultos: boolean }>,
     express_surcharge: '',
