@@ -43,8 +43,8 @@ export default function Dashboard() {
         .in('estado', ['en_transito', 'en_reparto']);
 
       // Ingresos del día (SUM en base de datos, sin límite de 1000 filas)
-      const { data: revenueResult } = await supabase
-        .rpc('get_daily_revenue', { p_tenant_id: tenantId, p_date: today });
+      const { data: revenueResult } = await (supabase
+        .rpc as any)('get_daily_revenue', { p_tenant_id: tenantId, p_date: today });
       
       const revenue = Number(revenueResult) || 0;
 
