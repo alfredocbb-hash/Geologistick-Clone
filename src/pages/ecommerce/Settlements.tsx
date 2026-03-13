@@ -575,8 +575,12 @@ export default function Settlements() {
             precioFinal = e.precio_tarifa_vigente;
             precioCalculado = true;
             zonaMatch = 'Precio congelado';
+          } else if (precioFinal > 0) {
+            // precio_total was calculated with the tariff at creation time — use it as historical fallback
+            precioCalculado = false;
+            zonaMatch = null;
           } else {
-            // Determine which seller owns this envio
+            // precio_total is 0 or null — try zone/tarifa lookup as last resort
             const ownerSellerId = envioToSellerMap.get(e.id) || calcSellers[0];
             const sellerTarifaId = sellerTarifaMap.get(ownerSellerId);
 

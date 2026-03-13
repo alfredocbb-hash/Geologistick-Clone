@@ -264,7 +264,46 @@ export default function DriverSettlements() {
         return [];
       }
 
-      // 2. Fetch existing comisiones for these envíos
+      // 2. Fetch zone tarifas for commission fallback (when envio has no tarifa_id)
+      const { data: zoneTarifasData } = await supabase
+        .from('tarifas')
+        .select('id, zona_destino, comision_chofer_porcentaje, comision_chofer_fija')
+        .eq('tenant_id', profile?.tenant_id)
+        .eq('tipo_tarifa', 'zona')
+        .eq('activa', true);
+      const allZoneTarifas = zoneTarifasData || [];
+
+      const normalize = (str: string) => str.toLowerCase().trim()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+      // Helper: find zone tarifa commission config by ciudad_entrega
+      const findZoneTarifaComision = (ciudad: string | null): { comision_chofer_porcentaje: number | null; comision_chofer_fija: number | null } | null => {
+        if (!ciudad || allZoneTarifas.length === 0) return null;
+        const ciudadNorm = normalize(ciudad);
+        // Exact match first
+        for (const zt of allZoneTarifas) {
+          if (!zt.zona_destino) continue;
+          const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+          if (zonas.some((z: string) => z === ciudadNorm)) {
+            return { comision_chofer_porcentaje: zt.comision_chofer_porcentaje, comision_chofer_fija: zt.comision_chofer_fija };
+          }
+        }
+        // Substring match
+        for (const zt of allZoneTarifas) {
+          if (!zt.zona_destino) continue;
+          const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+          if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) {
+            return { comision_chofer_porcentaje: zt.comision_chofer_porcentaje, comision_chofer_fija: zt.comision_chofer_fija };
+          }
+        }
+        // Fallback: largest zone
+        const fallback = allZoneTarifas
+          .filter(t => t.zona_destino && t.zona_destino.split(',').length > 3)
+          .sort((a: any, b: any) => (b.zona_destino?.split(',').length || 0) - (a.zona_destino?.split(',').length || 0))[0];
+        return fallback ? { comision_chofer_porcentaje: fallback.comision_chofer_porcentaje, comision_chofer_fija: fallback.comision_chofer_fija } : null;
+      };
+
+      // 3. Fetch existing comisiones for these envíos
       const envioIds = envios.map(e => e.id);
       const { data: comisiones } = await supabase
         .from('comisiones')
@@ -274,10 +313,16 @@ export default function DriverSettlements() {
 
       const comisionesMap = new Map(comisiones?.map(c => [c.envio_id, c]) || []);
 
-      // 3. Build results
+      // 4. Build results
       const results: EnvioParaLiquidar[] = envios.map((envio) => {
         const comision = comisionesMap.get(envio.id);
-        const tarifa = envio.tarifas as { comision_chofer_porcentaje: number | null; comision_chofer_fija: number | null } | null;
+        let tarifa = envio.tarifas as { comision_chofer_porcentaje: number | null; comision_chofer_fija: number | null } | null;
+        
+        // If no tarifa from envio join and driver uses 'tarifa' commission type, try zone fallback
+        if (!tarifa && (chofer.comision_tipo === 'tarifa' || !chofer.comision_tipo)) {
+          tarifa = findZoneTarifaComision((envio as any).ciudad_entrega);
+        }
+        
         const comisionCalculada = calcularComision(envio.precio_total, chofer, tarifa);
 
         return {
