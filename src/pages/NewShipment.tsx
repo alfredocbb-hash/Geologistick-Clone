@@ -2803,7 +2803,11 @@ export default function NewShipment() {
                 </div>
                 
                 {/* Conceptos Básicos */}
-                {conceptosBasicos.map((cp) => {
+                {conceptosBasicos.filter(cp => {
+                  const codigo = cp.concepto?.codigo?.toLowerCase();
+                  const nombre = cp.concepto?.nombre?.toLowerCase();
+                  return codigo !== 'flete' && nombre !== 'flete';
+                }).map((cp) => {
                   const valorDeclarado = parseFloat(formData.valor_declarado) || (configSeguro?.valor_minimo_declarado || 0);
                    const cantidadBultos = parseInt(formData.cantidad_bultos) || 1;
                    const isPercentage = cp.es_porcentaje && cp.porcentaje;
