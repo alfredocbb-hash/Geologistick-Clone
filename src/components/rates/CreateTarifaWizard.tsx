@@ -53,6 +53,7 @@ interface FormData {
   rangos_kg: WeightRange[];
   umbral_volumen_cm: number;
   multiplicar_flete_por_bultos: boolean;
+  porcentaje_flete_bulto: string;
   conceptos: Record<string, ConceptoPrice>;
   express_surcharge: string;
 }
@@ -334,13 +335,36 @@ export function CreateTarifaWizard({
               El precio base se cobra por cada paquete
             </p>
           </div>
-          <Switch
+           <Switch
             checked={formData.multiplicar_flete_por_bultos}
             onCheckedChange={(checked) =>
-              setFormData({ ...formData, multiplicar_flete_por_bultos: checked })
+              setFormData({ ...formData, multiplicar_flete_por_bultos: checked, porcentaje_flete_bulto: '0' })
             }
           />
         </div>
+
+        {/* Porcentaje por bulto extra (cuando NO multiplica) */}
+        {!formData.multiplicar_flete_por_bultos && (
+          <div className="space-y-1 pl-1">
+            <FormTooltip
+              label="Porcentaje por bulto extra (%)"
+              tooltip="Si hay más de 1 bulto, se cobra este porcentaje del flete por cada bulto adicional. Ej: 50% con 3 bultos = flete + 50% × 2"
+            />
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              step={1}
+              value={formData.porcentaje_flete_bulto}
+              onChange={(e) => setFormData({ ...formData, porcentaje_flete_bulto: e.target.value })}
+              placeholder="0"
+              className="h-8 text-sm w-32"
+            />
+            <p className="text-xs text-muted-foreground">
+              0 = sin recargo por bultos extra
+            </p>
+          </div>
+        )}
 
         {/* Section 4: Cargos Adicionales (Conceptos) */}
         {activeConceptos.length > 0 && (

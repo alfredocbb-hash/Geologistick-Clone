@@ -3734,6 +3734,7 @@ export type Database = {
           id: string
           multiplicar_flete_por_bultos: boolean | null
           nombre: string
+          porcentaje_flete_bulto: number | null
           precio_base: number
           precio_minimo_flete: number | null
           precio_por_kg: number | null
@@ -3758,6 +3759,7 @@ export type Database = {
           id?: string
           multiplicar_flete_por_bultos?: boolean | null
           nombre: string
+          porcentaje_flete_bulto?: number | null
           precio_base: number
           precio_minimo_flete?: number | null
           precio_por_kg?: number | null
@@ -3782,6 +3784,7 @@ export type Database = {
           id?: string
           multiplicar_flete_por_bultos?: boolean | null
           nombre?: string
+          porcentaje_flete_bulto?: number | null
           precio_base?: number
           precio_minimo_flete?: number | null
           precio_por_kg?: number | null

@@ -29,6 +29,7 @@ interface TarifaSandboxProps {
     express_surcharge: string;
     rangos_kg: WeightRange[];
     umbral_volumen_cm: number;
+    porcentaje_flete_bulto: string;
     conceptos: Record<string, ConceptoPrice>;
   };
   conceptos: Array<{ id: string; nombre: string; codigo: string; activo: boolean; es_basico: boolean }>;
@@ -167,15 +168,28 @@ function simulateRate(
     }
   }
 
-  // STEP 3: Multiply by packages
-  if (formData.multiplicar_flete_por_bultos && cantidadBultos > 1) {
-    const fleteOriginal = flete;
-    flete = flete * cantidadBultos;
-    desglose.push({
-      label: `× ${cantidadBultos} bultos`,
-      detail: `$${fleteOriginal.toLocaleString("es-AR")} × ${cantidadBultos}`,
-      amount: flete - fleteOriginal,
-    });
+  // STEP 3: Multiply by packages or apply percentage per extra package
+  if (cantidadBultos > 1) {
+    if (formData.multiplicar_flete_por_bultos) {
+      const fleteOriginal = flete;
+      flete = flete * cantidadBultos;
+      desglose.push({
+        label: `× ${cantidadBultos} bultos`,
+        detail: `$${fleteOriginal.toLocaleString("es-AR")} × ${cantidadBultos}`,
+        amount: flete - fleteOriginal,
+      });
+    } else {
+      const pctBulto = parseFloat(formData.porcentaje_flete_bulto) || 0;
+      if (pctBulto > 0) {
+        const recargo = flete * (pctBulto / 100) * (cantidadBultos - 1);
+        flete += recargo;
+        desglose.push({
+          label: `Recargo bultos extra`,
+          detail: `${pctBulto}% × ${cantidadBultos - 1} bulto(s) extra`,
+          amount: recargo,
+        });
+      }
+    }
   }
 
   let total = flete;
