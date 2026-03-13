@@ -284,45 +284,49 @@ export default function Settlements() {
           if (envio.precio_tarifa_vigente != null && envio.precio_tarifa_vigente > 0) {
             precio = envio.precio_tarifa_vigente;
           } else {
+            // Use precio_total as historical fallback (was calculated with the tariff at creation time)
             precio = envio.precio_total || 0;
 
-            // Helper to match city against zone tarifas
-            const matchZone = (ciudad: string): number | null => {
-              if (!ciudad || allZoneTarifas.length === 0) return null;
-              const ciudadNorm = normalize(ciudad);
-              for (const zt of allZoneTarifas) {
-                if (!zt.zona_destino) continue;
-                const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-                if (zonas.some((z: string) => z === ciudadNorm)) {
-                  return zt.precio_base || 0;
+            // Only do zone/tarifa lookup if precio_total is 0 or null (truly missing price)
+            if (precio === 0) {
+              // Helper to match city against zone tarifas
+              const matchZone = (ciudad: string): number | null => {
+                if (!ciudad || allZoneTarifas.length === 0) return null;
+                const ciudadNorm = normalize(ciudad);
+                for (const zt of allZoneTarifas) {
+                  if (!zt.zona_destino) continue;
+                  const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+                  if (zonas.some((z: string) => z === ciudadNorm)) {
+                    return zt.precio_base || 0;
+                  }
                 }
-              }
-              for (const zt of allZoneTarifas) {
-                if (!zt.zona_destino) continue;
-                const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-                if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) {
-                  return zt.precio_base || 0;
+                for (const zt of allZoneTarifas) {
+                  if (!zt.zona_destino) continue;
+                  const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+                  if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) {
+                    return zt.precio_base || 0;
+                  }
                 }
-              }
-              const fallback = allZoneTarifas
-                .filter(t => t.zona_destino && t.zona_destino.split(',').length > 3)
-                .sort((a: any, b: any) => (b.zona_destino?.split(',').length || 0) - (a.zona_destino?.split(',').length || 0))[0];
-              return fallback ? (fallback.precio_base || 0) : null;
-            };
+                const fallback = allZoneTarifas
+                  .filter(t => t.zona_destino && t.zona_destino.split(',').length > 3)
+                  .sort((a: any, b: any) => (b.zona_destino?.split(',').length || 0) - (a.zona_destino?.split(',').length || 0))[0];
+                return fallback ? (fallback.precio_base || 0) : null;
+              };
 
-            if (seller.tarifa_id) {
-              const tarifa = tarifasMap.get(seller.tarifa_id);
-              if (tarifa) {
-                if (tarifa.tipo_tarifa === 'zona' && envio.ciudad_entrega) {
-                  const zonePrice = matchZone(envio.ciudad_entrega);
-                  if (zonePrice !== null) precio = zonePrice;
-                } else {
-                  precio = tarifa.precio_base || 0;
+              if (seller.tarifa_id) {
+                const tarifa = tarifasMap.get(seller.tarifa_id);
+                if (tarifa) {
+                  if (tarifa.tipo_tarifa === 'zona' && envio.ciudad_entrega) {
+                    const zonePrice = matchZone(envio.ciudad_entrega);
+                    if (zonePrice !== null) precio = zonePrice;
+                  } else {
+                    precio = tarifa.precio_base || 0;
+                  }
                 }
+              } else if (allZoneTarifas.length > 0 && envio.ciudad_entrega) {
+                const zonePrice = matchZone(envio.ciudad_entrega);
+                if (zonePrice !== null) precio = zonePrice;
               }
-            } else if (allZoneTarifas.length > 0 && envio.ciudad_entrega) {
-              const zonePrice = matchZone(envio.ciudad_entrega);
-              if (zonePrice !== null) precio = zonePrice;
             }
           }
           totalEnvios += precio;
