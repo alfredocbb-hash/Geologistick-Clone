@@ -903,7 +903,7 @@ export default function NewShipment() {
       metodoAplicado: metodo,
       multiplicadoPorBultos: debeMultiplicar
     };
-  }, [selectedTarifa, formData.peso_kg, formData.dimensiones, formData.cantidad_bultos, distanciaKm]);
+  }, [selectedTarifa, formData.peso_kg, formData.dimensiones, formData.cantidad_bultos, distanciaKm, conceptosBasicos]);
 
   // Memoizar precio total calculado
   const precioCalculado = useMemo(() => {
