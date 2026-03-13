@@ -619,6 +619,7 @@ export default function Rates() {
       rangos_kg: [],
       umbral_volumen_cm: 50,
       multiplicar_flete_por_bultos: false,
+      porcentaje_flete_bulto: '0',
       conceptos: {},
       express_surcharge: '',
     });
