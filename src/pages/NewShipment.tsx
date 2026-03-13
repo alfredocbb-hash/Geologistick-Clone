@@ -742,6 +742,11 @@ export default function NewShipment() {
     const cantidadBultos = parseInt(formData.cantidad_bultos) || 1;
     
     return conceptosBasicos.reduce((sum, cp) => {
+      // Skip flete concept - already included in fleteCalculado
+      const codigo = cp.concepto?.codigo?.toLowerCase();
+      const nombre = cp.concepto?.nombre?.toLowerCase();
+      if (codigo === 'flete' || nombre === 'flete') return sum;
+      
       let montoConcepto = 0;
       if (cp.es_porcentaje && cp.porcentaje) {
         montoConcepto = valorDeclarado * Number(cp.porcentaje) / 100;
@@ -874,6 +879,19 @@ export default function NewShipment() {
       }
     }
     
+    // Sumar monto del concepto "Flete" si existe (para unificar en una sola línea)
+    const conceptoFlete = conceptosBasicos.find(cp => {
+      const codigo = cp.concepto?.codigo?.toLowerCase();
+      const nombre = cp.concepto?.nombre?.toLowerCase();
+      return codigo === 'flete' || nombre === 'flete';
+    });
+    if (conceptoFlete) {
+      const montoConceptoFlete = Number(conceptoFlete.monto) || 0;
+      if (montoConceptoFlete > 0) {
+        flete += montoConceptoFlete;
+      }
+    }
+    
     // Aplicar multiplicación por bultos si está configurado
     const debeMultiplicar = multiplicarPorBultos && cantidadBultos > 1;
     const fleteTotal = debeMultiplicar ? flete * cantidadBultos : flete;
@@ -885,7 +903,7 @@ export default function NewShipment() {
       metodoAplicado: metodo,
       multiplicadoPorBultos: debeMultiplicar
     };
-  }, [selectedTarifa, formData.peso_kg, formData.dimensiones, formData.cantidad_bultos, distanciaKm]);
+  }, [selectedTarifa, formData.peso_kg, formData.dimensiones, formData.cantidad_bultos, distanciaKm, conceptosBasicos]);
 
   // Memoizar precio total calculado
   const precioCalculado = useMemo(() => {
@@ -2785,7 +2803,11 @@ export default function NewShipment() {
                 </div>
                 
                 {/* Conceptos Básicos */}
-                {conceptosBasicos.map((cp) => {
+                {conceptosBasicos.filter(cp => {
+                  const codigo = cp.concepto?.codigo?.toLowerCase();
+                  const nombre = cp.concepto?.nombre?.toLowerCase();
+                  return codigo !== 'flete' && nombre !== 'flete';
+                }).map((cp) => {
                   const valorDeclarado = parseFloat(formData.valor_declarado) || (configSeguro?.valor_minimo_declarado || 0);
                    const cantidadBultos = parseInt(formData.cantidad_bultos) || 1;
                    const isPercentage = cp.es_porcentaje && cp.porcentaje;
