@@ -1,28 +1,48 @@
 
 
-# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
+# Porcentaje de flete por bulto extra (cuando no se multiplica)
 
-## Problema
-Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
+## Resumen
 
-## Solución
+Agregar un campo de porcentaje que se muestra cuando "Multiplicar flete por bultos" está deshabilitado. Por cada bulto adicional se cobra ese % del flete. Ejemplo: flete $14.000, 2 bultos, 50% → $14.000 + $7.000 = $21.000.
 
-### 1. Nueva función SQL: `reopen_ruta_planificada`
-- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
-- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
-- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
-- Inserta registro en `envio_historial` para cada envío reactivado
-- Retorna JSON con resultado y cantidad de envíos reactivados
+## Cambios
 
-### 2. Nuevo componente: `ReopenRouteDialog.tsx`
-- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
-- Muestra cuántos envíos serán reactivados
-- Botón "Reabrir Ruta" que invoca el RPC
+### 1. Migración SQL — nueva columna `porcentaje_flete_bulto`
+```sql
+ALTER TABLE tarifas ADD COLUMN porcentaje_flete_bulto numeric DEFAULT 0;
+```
 
-### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
-- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
-- Al hacer click, abre `ReopenRouteDialog`
-- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
+### 2. `CreateTarifaWizard.tsx`
+- Agregar `porcentaje_flete_bulto: string` al `FormData`
+- Debajo del switch "Multiplicar flete por bultos", cuando está **OFF**, mostrar un input de porcentaje:
+  ```
+  [Switch OFF] → Input: "Porcentaje por bulto extra (%)" [____]
+  ```
 
-**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
+### 3. `TarifaSandbox.tsx`
+- Agregar `porcentaje_flete_bulto: string` a props
+- En STEP 3, si `multiplicar_flete_por_bultos` es false y `porcentaje_flete_bulto > 0` y `cantidadBultos > 1`:
+  ```
+  recargo = flete × (porcentaje / 100) × (cantidadBultos - 1)
+  ```
+
+### 4. `NewShipment.tsx`
+- Leer `porcentaje_flete_bulto` de la tarifa seleccionada
+- Si no multiplica por bultos pero tiene porcentaje y bultos > 1:
+  ```
+  fleteTotal = flete + flete × (porcentaje / 100) × (cantidadBultos - 1)
+  ```
+
+### 5. `Rates.tsx`
+- Incluir `porcentaje_flete_bulto` en el save/load de la tarifa
+- Inicializar en `'0'` por defecto
+
+| Archivo | Cambio |
+|---------|--------|
+| Migración SQL | Columna `porcentaje_flete_bulto` |
+| `CreateTarifaWizard.tsx` | Input porcentaje condicional |
+| `TarifaSandbox.tsx` | Cálculo con porcentaje por bulto |
+| `NewShipment.tsx` | Aplicar porcentaje en flete real |
+| `Rates.tsx` | Guardar/cargar nuevo campo |
 
