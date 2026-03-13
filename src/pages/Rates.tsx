@@ -306,6 +306,7 @@ export default function Rates() {
         rangos_kg: data.rangos_kg.length > 0 ? data.rangos_kg : null,
         umbral_volumen_cm: data.umbral_volumen_cm || 50,
         multiplicar_flete_por_bultos: data.multiplicar_flete_por_bultos,
+        porcentaje_flete_bulto: parseFloat(data.porcentaje_flete_bulto || '0') || 0,
         comision_chofer_porcentaje: data.comision_chofer_porcentaje
           ? parseFloat(data.comision_chofer_porcentaje)
           : null,
