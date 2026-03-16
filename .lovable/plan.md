@@ -1,34 +1,28 @@
 
 
-# Recorrido real por calles en LiveMap de choferes
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
-## Verificación del Planificador
-Ambos mapas del planificador (paso 3 y panel lateral del paso 4) ya usan `realRoutePolyline` con la API de Directions — están correctos.
+## Problema
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
-## Problema en el Mapa en Vivo
-Cuando se selecciona un chofer y se muestra su ruta en el LiveMap, actualmente se muestra solo el **historial GPS** (snap-to-roads). Pero las paradas pendientes no están conectadas con un trazado por calles. Se necesita agregar un polyline de **ruta planificada** usando la API de Directions entre las paradas pendientes del chofer.
+## Solución
 
-## Cambios en `src/pages/LiveMap.tsx`
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-### 1. Nuevo estado para el polyline planificado
-Agregar `plannedRoutePolyline` state que almacene el trazado por calles entre las paradas pendientes.
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-### 2. Efecto para calcular ruta planificada
-Cuando se cargan las `pendingStopsMarkers` para un chofer seleccionado, usar `google.maps.DirectionsService` para obtener el trazado real por calles:
-- **Origin**: posición actual del chofer (de `driverLocations`)
-- **Destination**: última parada pendiente
-- **Waypoints**: paradas intermedias (ordenadas por `order`)
-- Chunking si hay más de 23 waypoints (mismo patrón que RoutePlanner)
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-### 3. Mostrar ambos polylines en el mapa
-- **Ruta recorrida** (GPS history/snapped): `driverRoute.polylinePath` — ya existe, se mantiene con gradiente
-- **Ruta planificada** (Directions API): `plannedRoutePolyline` — nueva, se muestra con línea punteada o color distinto (azul claro) para diferenciar lo recorrido de lo pendiente
-
-### 4. Limpiar al deseleccionar
-Al hacer toggle off del chofer o al cambiar de chofer, limpiar `plannedRoutePolyline`.
-
-| Archivo | Cambio |
-|---------|--------|
-| `LiveMap.tsx` | Estado `plannedRoutePolyline`, efecto con DirectionsService sobre pendingStops, renderizar polyline planificado en MapView |
-| `MapView.tsx` | Agregar prop opcional `secondaryPolylinePath` para mostrar una segunda ruta con estilo diferente (línea punteada azul claro) |
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 

@@ -32,6 +32,7 @@ interface MapViewProps {
   origin?: { lat: number; lng: number };
   destination?: { lat: number; lng: number };
   polylinePath?: { lat: number; lng: number }[];
+  secondaryPolylinePath?: { lat: number; lng: number }[];
   useGradient?: boolean;
   deliveryStops?: DeliveryStop[];
   height?: string;
@@ -81,6 +82,7 @@ function MapViewComponent({
   origin,
   destination,
   polylinePath = [],
+  secondaryPolylinePath = [],
   useGradient = false,
   deliveryStops = [],
   height = '300px',
@@ -296,6 +298,32 @@ function MapViewComponent({
             order={stop.order}
           />
         ))}
+
+        {/* Render secondary polyline (planned route) - dashed style */}
+        {secondaryPolylinePath.length > 1 && (
+          <>
+            <Polyline
+              path={secondaryPolylinePath}
+              options={{
+                strokeColor: '#42A5F5',
+                strokeWeight: 4,
+                strokeOpacity: 0,
+                geodesic: true,
+                icons: [{
+                  icon: {
+                    path: 'M 0,-1 0,1',
+                    strokeOpacity: 0.7,
+                    strokeColor: '#42A5F5',
+                    strokeWeight: 4,
+                    scale: 3,
+                  },
+                  offset: '0',
+                  repeat: '20px',
+                }],
+              }}
+            />
+          </>
+        )}
       </GoogleMap>
     </div>
   );
