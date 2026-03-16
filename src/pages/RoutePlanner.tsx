@@ -878,6 +878,7 @@ export default function RoutePlanner() {
       time: stop.tipo === 'sucursal' ? '🏢' : stop.tipo === 'retiro' ? '🏠' : '📦',
       trackingNumber: stop.tracking || stop.cliente_nombre,
       order: index + 1,
+      type: (stop.tipo === 'retiro' || stop.tipo === 'sucursal') ? stop.tipo : 'entrega' as 'retiro' | 'entrega' | 'sucursal',
     }));
   }, [selectedOption]);
 

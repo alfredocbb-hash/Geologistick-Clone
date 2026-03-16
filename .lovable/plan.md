@@ -1,36 +1,28 @@
 
 
-# Fix: Todas las paradas visibles + diferenciación retiro/entrega por color
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
-## Problemas identificados
+## Problema
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
-### 1. Segundo mapa no muestra todas las paradas
-El `GoogleMap` recibe `zoom={zoom}` (default 12) como prop controlado. Cada re-render de React puede resetear el zoom a 12, deshaciendo el `fitBounds`. Esto causa que paradas lejanas queden fuera de vista.
+## Solución
 
-### 2. No hay diferenciación visual retiro vs entrega
-`DeliveryStopMarker` usa siempre verde (`#10B981`) para todos los marcadores. No recibe información de tipo (retiro/entrega/sucursal).
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-## Cambios
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-### `src/components/maps/DeliveryStopMarker.tsx`
-- Agregar prop `type?: 'retiro' | 'entrega' | 'sucursal'`
-- Cambiar color del marcador según tipo:
-  - **Entrega**: verde `#10B981`
-  - **Retiro**: naranja `#F59E0B`
-  - **Sucursal**: azul `#3B82F6`
-- Actualizar el título del InfoWindow para mostrar "Retiro" o "Entrega"
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-### `src/components/maps/MapView.tsx`
-- Agregar `type` a la interfaz `DeliveryStop`
-- Pasar `type` al componente `DeliveryStopMarker`
-- Cambiar `zoom` en `GoogleMap` para que sea controlado solo al inicio: usar un estado `initialZoom` que se setea en `onLoad` y no compita con `fitBounds`. Alternativa más simple: no pasar `zoom` como prop controlado cuando hay datos para fitBounds (usar `undefined`).
-
-### `src/pages/RoutePlanner.tsx`
-- En `routeDeliveryStops`, agregar el campo `type` desde `stop.tipo`
-
-| Archivo | Cambio |
-|---------|--------|
-| `DeliveryStopMarker.tsx` | Prop `type`, colores por tipo |
-| `MapView.tsx` | Pasar `type` a DeliveryStopMarker, evitar que `zoom` compita con `fitBounds` |
-| `RoutePlanner.tsx` | Incluir `type` en `routeDeliveryStops` |
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 

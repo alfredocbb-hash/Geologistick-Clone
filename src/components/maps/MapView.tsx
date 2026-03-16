@@ -22,6 +22,7 @@ export interface DeliveryStop {
   time: string;
   trackingNumber: string;
   order: number;
+  type?: 'retiro' | 'entrega' | 'sucursal';
 }
 
 interface MapViewProps {
@@ -196,7 +197,11 @@ function MapViewComponent({
       <GoogleMap
         mapContainerStyle={containerStyle}
         center={center || (markers[0]?.position) || defaultCenter}
-        zoom={zoom}
+        zoom={
+          (markers.length + polylinePath.length + secondaryPolylinePath.length + deliveryStops.length) > 1
+            ? undefined
+            : zoom
+        }
         options={mapOptions}
         onLoad={onLoad}
         onUnmount={onUnmount}
@@ -297,12 +302,13 @@ function MapViewComponent({
 
         {/* Render delivery stop markers */}
         {deliveryStops.map((stop) => (
-          <DeliveryStopMarker
+            <DeliveryStopMarker
             key={`stop-${stop.order}-${stop.trackingNumber}`}
             position={stop.position}
             time={stop.time}
             trackingNumber={stop.trackingNumber}
             order={stop.order}
+            type={stop.type}
           />
         ))}
 
