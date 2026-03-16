@@ -159,6 +159,7 @@ export default function RoutePlanner() {
   const [selectedSucursales, setSelectedSucursales] = usePersistedState<string[]>('planner-selected-sucursales', []);
   const [reopeningRoute, setReopeningRoute] = useState<any | null>(null);
   const [closingRoute, setClosingRoute] = useState<any | null>(null);
+  const [realRoutePolyline, setRealRoutePolyline] = useState<{ lat: number; lng: number }[]>([]);
   const [isClosingRoute, setIsClosingRoute] = useState(false);
   
   // History tab state
@@ -763,6 +764,111 @@ export default function RoutePlanner() {
     
     return path;
   }, [selectedOption, sucursalOrigen]);
+
+  // Fetch real road polyline from Google Directions API
+  useEffect(() => {
+    if (!selectedOption || !window.google?.maps) {
+      setRealRoutePolyline([]);
+      return;
+    }
+
+    const stops = selectedOption.stops.filter(s => s.lat && s.lng);
+    if (stops.length === 0) {
+      setRealRoutePolyline([]);
+      return;
+    }
+
+    const originLatLng = sucursalOrigen?.lat && sucursalOrigen?.lng
+      ? { lat: Number(sucursalOrigen.lat), lng: Number(sucursalOrigen.lng) }
+      : null;
+
+    const allPoints = [
+      ...(originLatLng ? [originLatLng] : []),
+      ...stops.map(s => ({ lat: s.lat, lng: s.lng })),
+    ];
+
+    if (allPoints.length < 2) {
+      setRealRoutePolyline([]);
+      return;
+    }
+
+    const directionsService = new google.maps.DirectionsService();
+    const MAX_WAYPOINTS = 23;
+
+    const fetchDirections = async () => {
+      try {
+        const fullPath: google.maps.LatLng[] = [];
+        let totalDistMeters = 0;
+        let totalDurSeconds = 0;
+
+        let startIdx = 0;
+        while (startIdx < allPoints.length - 1) {
+          const chunkOrigin = allPoints[startIdx];
+          const endIdx = Math.min(startIdx + MAX_WAYPOINTS + 1, allPoints.length - 1);
+          const chunkDest = allPoints[endIdx];
+          const waypointPoints = allPoints.slice(startIdx + 1, endIdx);
+
+          const waypoints = waypointPoints.map(p => ({
+            location: new google.maps.LatLng(p.lat, p.lng),
+            stopover: true,
+          }));
+
+          const result = await new Promise<google.maps.DirectionsResult | null>((resolve) => {
+            directionsService.route(
+              {
+                origin: new google.maps.LatLng(chunkOrigin.lat, chunkOrigin.lng),
+                destination: new google.maps.LatLng(chunkDest.lat, chunkDest.lng),
+                waypoints,
+                optimizeWaypoints: false,
+                travelMode: google.maps.TravelMode.DRIVING,
+              },
+              (res, status) => {
+                resolve(status === google.maps.DirectionsStatus.OK && res ? res : null);
+              }
+            );
+          });
+
+          if (result?.routes?.[0]) {
+            const route = result.routes[0];
+            const path = route.overview_path;
+            if (fullPath.length > 0) {
+              fullPath.push(...path.slice(1));
+            } else {
+              fullPath.push(...path);
+            }
+            if (route.legs) {
+              route.legs.forEach(leg => {
+                totalDistMeters += leg.distance?.value || 0;
+                totalDurSeconds += leg.duration?.value || 0;
+              });
+            }
+          } else {
+            for (let i = startIdx; i <= endIdx; i++) {
+              fullPath.push(new google.maps.LatLng(allPoints[i].lat, allPoints[i].lng));
+            }
+          }
+
+          startIdx = endIdx;
+        }
+
+        setRealRoutePolyline(fullPath.map(p => ({ lat: p.lat(), lng: p.lng() })));
+
+        if (totalDistMeters > 0) {
+          setSelectedOption(prev => prev ? {
+            ...prev,
+            totalDistance: Math.round(totalDistMeters / 100) / 10,
+            estimatedTime: Math.round(totalDurSeconds / 360) / 10,
+          } : prev);
+        }
+      } catch (err) {
+        console.error('Error fetching real route polyline:', err);
+        setRealRoutePolyline([]);
+      }
+    };
+
+    fetchDirections();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedOption?.stops, sucursalOrigen]);
 
   // Delivery stop markers for route traceability
   const routeDeliveryStops = useMemo(() => {
@@ -1595,7 +1701,7 @@ export default function RoutePlanner() {
                 <div className="h-80 rounded-lg overflow-hidden">
                   <MapView
                     markers={mapMarkers}
-                    polylinePath={routePolyline}
+                    polylinePath={realRoutePolyline.length > 0 ? realRoutePolyline : routePolyline}
                     useGradient={!!selectedOption}
                     deliveryStops={routeDeliveryStops}
                     center={
@@ -1789,7 +1895,7 @@ export default function RoutePlanner() {
                     <div className="h-[500px] rounded-lg overflow-hidden border">
                       <MapView
                         markers={mapMarkers}
-                        polylinePath={routePolyline}
+                        polylinePath={realRoutePolyline.length > 0 ? realRoutePolyline : routePolyline}
                         useGradient={!!selectedOption}
                         deliveryStops={routeDeliveryStops}
                         center={
