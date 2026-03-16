@@ -76,7 +76,7 @@ function DeliveryStopMarkerComponent({
           onCloseClick={() => setShowInfo(false)}
         >
           <div className="p-2 min-w-[120px]">
-            <p className="font-semibold text-sm text-gray-900">Entrega #{order}</p>
+            <p className="font-semibold text-sm text-gray-900">{label} #{order}</p>
             <p className="text-xs text-gray-600 mt-1">{trackingNumber}</p>
             {formattedTime && (
               <p className="text-xs text-gray-500 mt-1">🕐 {formattedTime}</p>

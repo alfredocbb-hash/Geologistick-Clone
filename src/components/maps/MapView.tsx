@@ -302,12 +302,13 @@ function MapViewComponent({
 
         {/* Render delivery stop markers */}
         {deliveryStops.map((stop) => (
-          <DeliveryStopMarker
+            <DeliveryStopMarker
             key={`stop-${stop.order}-${stop.trackingNumber}`}
             position={stop.position}
             time={stop.time}
             trackingNumber={stop.trackingNumber}
             order={stop.order}
+            type={stop.type}
           />
         ))}
 
