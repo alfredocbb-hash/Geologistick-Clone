@@ -1,41 +1,28 @@
 
 
-# Fix: Incluir todas las paradas en los límites del mapa (segundo mapa del planificador)
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
 ## Problema
-En el segundo mapa del planificador (paso 4 - Orden de Paradas), no todas las paradas son visibles porque el cálculo de `fitBounds` en `MapView` solo considera `markers` y `polylinePath`, pero NO incluye las posiciones de `deliveryStops`. Esto hace que el mapa no ajuste su zoom/encuadre para mostrar todas las paradas numeradas.
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
 ## Solución
-Modificar el `useEffect` de `fitBounds` en `MapView.tsx` para incluir también las posiciones de `deliveryStops` en el cálculo de límites del mapa.
 
-## Cambio en `src/components/maps/MapView.tsx`
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-En el `useEffect` de fit bounds (líneas ~130-162):
-- Agregar `deliveryStops` a las dependencias del efecto
-- Incluir cada posición de `deliveryStops` en el `LatLngBounds`
-- Considerar `deliveryStops.length > 0` como condición para ejecutar el ajuste
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-```typescript
-// Fit bounds to markers, polyline AND delivery stops
-useEffect(() => {
-  if (!map) return;
-  const hasMarkers = markers.length > 0;
-  const hasPolyline = polylinePath.length > 0;
-  const hasDeliveryStops = deliveryStops.length > 0;
-  
-  if (!hasMarkers && !hasPolyline && !hasDeliveryStops) return;
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-  const bounds = new google.maps.LatLngBounds();
-  markers.forEach(m => bounds.extend(m.position));
-  polylinePath.forEach(p => bounds.extend(p));
-  deliveryStops.forEach(s => bounds.extend(s.position)); // ← nuevo
-
-  const totalPoints = markers.length + polylinePath.length + deliveryStops.length;
-  if (totalPoints <= 1) { ... } else { map.fitBounds(bounds, 50); }
-}, [map, markers, polylinePath, deliveryStops, zoom]);
-```
-
-| Archivo | Cambio |
-|---------|--------|
-| `MapView.tsx` | Incluir `deliveryStops` en el cálculo de `fitBounds` |
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 
