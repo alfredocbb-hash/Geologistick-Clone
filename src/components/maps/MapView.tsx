@@ -32,6 +32,7 @@ interface MapViewProps {
   origin?: { lat: number; lng: number };
   destination?: { lat: number; lng: number };
   polylinePath?: { lat: number; lng: number }[];
+  secondaryPolylinePath?: { lat: number; lng: number }[];
   useGradient?: boolean;
   deliveryStops?: DeliveryStop[];
   height?: string;
