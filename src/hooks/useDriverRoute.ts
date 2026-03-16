@@ -1,5 +1,6 @@
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchDirectionsPath } from '@/lib/fetchDirectionsPath';
 
 interface LocationHistoryPoint {
   lat: number;
@@ -127,6 +128,7 @@ const snappedRouteCache = new Map<string, SnappedPoint[]>();
 export function useDriverRoute(): UseDriverRouteReturn {
   const [rawHistory, setRawHistory] = useState<LocationHistoryPoint[]>([]);
   const [snappedRoute, setSnappedRoute] = useState<SnappedPoint[]>([]);
+  const [directionsRoute, setDirectionsRoute] = useState<SnappedPoint[]>([]);
   const [deliveryStops, setDeliveryStops] = useState<DeliveryStop[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSnapping, setIsSnapping] = useState(false);
@@ -139,6 +141,7 @@ export function useDriverRoute(): UseDriverRouteReturn {
     setIsSnapping(false);
     setError(null);
     setSnappedRoute([]);
+    setDirectionsRoute([]);
     setRawHistory([]);
     setDeliveryStops([]);
     setSignalGaps([]);
@@ -347,6 +350,7 @@ export function useDriverRoute(): UseDriverRouteReturn {
   const clearRoute = useCallback(() => {
     setRawHistory([]);
     setSnappedRoute([]);
+    setDirectionsRoute([]);
     setDeliveryStops([]);
     setSignalGaps([]);
     setError(null);
@@ -354,11 +358,39 @@ export function useDriverRoute(): UseDriverRouteReturn {
     setIsSnapping(false);
   }, []);
 
-  // Use snapped route if available, otherwise raw points
+  // After snap/raw data is ready, generate street-level path via Directions API
+  const basePoints = useMemo(() => {
+    if (snappedRoute.length > 0) return snappedRoute;
+    if (rawHistory.length >= 2) return rawHistory.map(p => ({ lat: p.lat, lng: p.lng }));
+    return [];
+  }, [snappedRoute, rawHistory]);
+
+  // Trigger Directions API when base points change
+  useEffect(() => {
+    if (basePoints.length < 2 || !window.google?.maps) {
+      setDirectionsRoute([]);
+      return;
+    }
+    
+    let cancelled = false;
+    fetchDirectionsPath(basePoints).then(path => {
+      if (!cancelled && path.length > 0) {
+        setDirectionsRoute(path);
+        console.log(`Directions route: ${basePoints.length} → ${path.length} points`);
+      }
+    }).catch(err => {
+      console.warn('Directions API failed, falling back to snapped/raw:', err);
+    });
+    
+    return () => { cancelled = true; };
+  }, [basePoints]);
+
+  // Priority: directionsRoute > snappedRoute > rawHistory
   const polylinePath = useMemo(() => {
+    if (directionsRoute.length > 0) return directionsRoute;
     if (snappedRoute.length > 0) return snappedRoute;
     return rawHistory.map(point => ({ lat: point.lat, lng: point.lng }));
-  }, [rawHistory, snappedRoute]);
+  }, [rawHistory, snappedRoute, directionsRoute]);
 
   const hasSignalGaps = signalGaps.length > 0;
 
