@@ -394,6 +394,71 @@ export default function LiveMap() {
     }
   }, []);
 
+  // Compute planned route polyline via Directions API when pending stops change
+  useEffect(() => {
+    if (!selectedDriverForMap || pendingStopsMarkers.length === 0 || !window.google?.maps) {
+      setPlannedRoutePolyline([]);
+      return;
+    }
+
+    const driver = driverLocations.find(d => d.chofer_id === selectedDriverForMap);
+    if (!driver) {
+      setPlannedRoutePolyline([]);
+      return;
+    }
+
+    const sortedStops = [...pendingStopsMarkers].sort((a, b) => a.order - b.order);
+    const driverPos = { lat: Number(driver.lat), lng: Number(driver.lng) };
+
+    const fetchPlannedRoute = async () => {
+      try {
+        const directionsService = new google.maps.DirectionsService();
+        const allPoints = [driverPos, ...sortedStops.map(s => s.position)];
+        const MAX_WAYPOINTS = 23;
+        const fullPath: { lat: number; lng: number }[] = [];
+
+        for (let i = 0; i < allPoints.length - 1; i += MAX_WAYPOINTS + 1) {
+          const chunkStart = allPoints[i];
+          const chunkEnd = allPoints[Math.min(i + MAX_WAYPOINTS + 1, allPoints.length - 1)];
+          const waypoints = allPoints
+            .slice(i + 1, Math.min(i + MAX_WAYPOINTS + 1, allPoints.length - 1))
+            .map(p => ({ location: new google.maps.LatLng(p.lat, p.lng), stopover: true }));
+
+          const result = await new Promise<google.maps.DirectionsResult | null>((resolve) => {
+            directionsService.route(
+              {
+                origin: new google.maps.LatLng(chunkStart.lat, chunkStart.lng),
+                destination: new google.maps.LatLng(chunkEnd.lat, chunkEnd.lng),
+                waypoints,
+                travelMode: google.maps.TravelMode.DRIVING,
+                optimizeWaypoints: false,
+              },
+              (res, status) => {
+                resolve(status === google.maps.DirectionsStatus.OK ? res : null);
+              }
+            );
+          });
+
+          if (result?.routes?.[0]?.overview_path) {
+            const pathPoints = result.routes[0].overview_path.map(p => ({
+              lat: p.lat(),
+              lng: p.lng(),
+            }));
+            if (fullPath.length > 0) pathPoints.shift();
+            fullPath.push(...pathPoints);
+          }
+        }
+
+        setPlannedRoutePolyline(fullPath);
+      } catch (err) {
+        console.error('Error fetching planned route:', err);
+        setPlannedRoutePolyline([]);
+      }
+    };
+
+    fetchPlannedRoute();
+  }, [selectedDriverForMap, pendingStopsMarkers, driverLocations]);
+
   // Toggle route visualization on main map
   const toggleRouteOnMap = useCallback((driverId: string, rutaId: string) => {
     if (selectedDriverForMap === driverId) {
@@ -401,6 +466,7 @@ export default function LiveMap() {
       setSelectedDriverForMap(null);
       setSelectedRouteForMap(null);
       setPendingStopsMarkers([]);
+      setPlannedRoutePolyline([]);
       driverRoute.clearRoute();
     } else {
       // Show route
