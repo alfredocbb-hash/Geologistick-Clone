@@ -366,20 +366,23 @@ export function useDriverRoute(): UseDriverRouteReturn {
   }, [snappedRoute, rawHistory]);
 
   // Trigger Directions API when base points change
-  useMemo(() => {
+  useEffect(() => {
     if (basePoints.length < 2 || !window.google?.maps) {
       setDirectionsRoute([]);
       return;
     }
     
+    let cancelled = false;
     fetchDirectionsPath(basePoints).then(path => {
-      if (path.length > 0) {
+      if (!cancelled && path.length > 0) {
         setDirectionsRoute(path);
         console.log(`Directions route: ${basePoints.length} → ${path.length} points`);
       }
     }).catch(err => {
       console.warn('Directions API failed, falling back to snapped/raw:', err);
     });
+    
+    return () => { cancelled = true; };
   }, [basePoints]);
 
   // Priority: directionsRoute > snappedRoute > rawHistory
