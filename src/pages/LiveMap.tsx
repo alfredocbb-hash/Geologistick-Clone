@@ -484,6 +484,7 @@ export default function LiveMap() {
     setLoadingDialogHistory(true);
     setIsDialogSnapping(false);
     setDialogSnappedRoute([]);
+    setDialogDirectionsRoute([]);
     setDialogDriverId(driverId);
     setShowRouteDialog(true);
 
