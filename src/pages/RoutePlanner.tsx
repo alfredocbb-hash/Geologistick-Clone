@@ -1701,7 +1701,7 @@ export default function RoutePlanner() {
                 <div className="h-80 rounded-lg overflow-hidden">
                   <MapView
                     markers={mapMarkers}
-                    polylinePath={routePolyline}
+                    polylinePath={realRoutePolyline.length > 0 ? realRoutePolyline : routePolyline}
                     useGradient={!!selectedOption}
                     deliveryStops={routeDeliveryStops}
                     center={
