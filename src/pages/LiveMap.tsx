@@ -1079,6 +1079,7 @@ export default function LiveMap() {
                               onClick={() => {
                                 setSelectedDriverForMap(null);
                                 setSelectedRouteForMap(null);
+                                setPlannedRoutePolyline([]);
                                 driverRoute.clearRoute();
                               }}
                             >
