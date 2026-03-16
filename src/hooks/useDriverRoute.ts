@@ -128,6 +128,7 @@ const snappedRouteCache = new Map<string, SnappedPoint[]>();
 export function useDriverRoute(): UseDriverRouteReturn {
   const [rawHistory, setRawHistory] = useState<LocationHistoryPoint[]>([]);
   const [snappedRoute, setSnappedRoute] = useState<SnappedPoint[]>([]);
+  const [directionsRoute, setDirectionsRoute] = useState<SnappedPoint[]>([]);
   const [deliveryStops, setDeliveryStops] = useState<DeliveryStop[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSnapping, setIsSnapping] = useState(false);
