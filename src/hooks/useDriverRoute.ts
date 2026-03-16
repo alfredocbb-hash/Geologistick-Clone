@@ -350,6 +350,7 @@ export function useDriverRoute(): UseDriverRouteReturn {
   const clearRoute = useCallback(() => {
     setRawHistory([]);
     setSnappedRoute([]);
+    setDirectionsRoute([]);
     setDeliveryStops([]);
     setSignalGaps([]);
     setError(null);
@@ -357,11 +358,36 @@ export function useDriverRoute(): UseDriverRouteReturn {
     setIsSnapping(false);
   }, []);
 
-  // Use snapped route if available, otherwise raw points
+  // After snap/raw data is ready, generate street-level path via Directions API
+  const basePoints = useMemo(() => {
+    if (snappedRoute.length > 0) return snappedRoute;
+    if (rawHistory.length >= 2) return rawHistory.map(p => ({ lat: p.lat, lng: p.lng }));
+    return [];
+  }, [snappedRoute, rawHistory]);
+
+  // Trigger Directions API when base points change
+  useMemo(() => {
+    if (basePoints.length < 2 || !window.google?.maps) {
+      setDirectionsRoute([]);
+      return;
+    }
+    
+    fetchDirectionsPath(basePoints).then(path => {
+      if (path.length > 0) {
+        setDirectionsRoute(path);
+        console.log(`Directions route: ${basePoints.length} → ${path.length} points`);
+      }
+    }).catch(err => {
+      console.warn('Directions API failed, falling back to snapped/raw:', err);
+    });
+  }, [basePoints]);
+
+  // Priority: directionsRoute > snappedRoute > rawHistory
   const polylinePath = useMemo(() => {
+    if (directionsRoute.length > 0) return directionsRoute;
     if (snappedRoute.length > 0) return snappedRoute;
     return rawHistory.map(point => ({ lat: point.lat, lng: point.lng }));
-  }, [rawHistory, snappedRoute]);
+  }, [rawHistory, snappedRoute, directionsRoute]);
 
   const hasSignalGaps = signalGaps.length > 0;
 
