@@ -105,6 +105,7 @@ export default function LiveMap() {
   const [dialogRouteHistory, setDialogRouteHistory] = useState<LocationHistoryPoint[]>([]);
   const [loadingDialogHistory, setLoadingDialogHistory] = useState(false);
   const [dialogSnappedRoute, setDialogSnappedRoute] = useState<{ lat: number; lng: number }[]>([]);
+  const [dialogDirectionsRoute, setDialogDirectionsRoute] = useState<{ lat: number; lng: number }[]>([]);
   const [isDialogSnapping, setIsDialogSnapping] = useState(false);
 
   // AI Analysis state
