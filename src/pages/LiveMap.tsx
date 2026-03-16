@@ -1137,10 +1137,18 @@ export default function LiveMap() {
                         <span>Sin señal (+15 min)</span>
                       </div>
                       {selectedDriverForMap && (
-                        <div className="flex items-center gap-2 ml-auto">
-                          <div className="w-3 h-1 rounded bg-primary" />
-                          <span>Recorrido activo</span>
-                        </div>
+                        <>
+                          <div className="flex items-center gap-2 ml-auto">
+                            <div className="w-3 h-1 rounded bg-primary" />
+                            <span>Recorrido activo</span>
+                          </div>
+                          {plannedRoutePolyline.length > 0 && (
+                            <div className="flex items-center gap-2">
+                              <div className="w-3 h-0 border-t-2 border-dashed border-blue-400" />
+                              <span>Ruta planificada</span>
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   </>
