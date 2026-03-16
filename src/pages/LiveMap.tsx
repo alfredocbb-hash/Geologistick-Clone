@@ -1041,6 +1041,7 @@ export default function LiveMap() {
                         }
                         zoom={12}
                         polylinePath={selectedDriverForMap ? driverRoute.polylinePath : []}
+                        secondaryPolylinePath={selectedDriverForMap ? plannedRoutePolyline : []}
                         useGradient={selectedDriverForMap !== null && driverRoute.snappedRoute.length > 0}
                         deliveryStops={selectedDriverForMap ? driverRoute.deliveryStops : []}
                       />
