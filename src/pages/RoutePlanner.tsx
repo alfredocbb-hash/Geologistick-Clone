@@ -1705,13 +1705,12 @@ export default function RoutePlanner() {
                     useGradient={!!selectedOption}
                     deliveryStops={routeDeliveryStops}
                     center={
-                      sucursalOrigen?.lat && sucursalOrigen?.lng 
-                        ? { lat: Number(sucursalOrigen.lat), lng: Number(sucursalOrigen.lng) }
-                        : mapMarkers.length > 0 
-                          ? undefined 
-                          : { lat: -34.6037, lng: -58.3816 }
+                      mapMarkers.length === 0 && routeDeliveryStops.length === 0
+                        ? (sucursalOrigen?.lat && sucursalOrigen?.lng 
+                            ? { lat: Number(sucursalOrigen.lat), lng: Number(sucursalOrigen.lng) }
+                            : { lat: -34.6037, lng: -58.3816 })
+                        : undefined
                     }
-                    zoom={12}
                     onMarkerClick={handleMarkerClick}
                   />
                 </div>
