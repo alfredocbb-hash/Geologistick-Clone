@@ -82,6 +82,7 @@ function MapViewComponent({
   origin,
   destination,
   polylinePath = [],
+  secondaryPolylinePath = [],
   useGradient = false,
   deliveryStops = [],
   height = '300px',
