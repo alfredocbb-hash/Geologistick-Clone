@@ -141,6 +141,7 @@ export function useDriverRoute(): UseDriverRouteReturn {
     setIsSnapping(false);
     setError(null);
     setSnappedRoute([]);
+    setDirectionsRoute([]);
     setRawHistory([]);
     setDeliveryStops([]);
     setSignalGaps([]);
