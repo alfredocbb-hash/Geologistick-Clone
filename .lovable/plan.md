@@ -1,28 +1,38 @@
 
 
-# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
+# Fix: Mostrar recorrido real por calles en el Planificador de Rutas
 
 ## Problema
-Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
+Actualmente `routePolyline` simplemente conecta las coordenadas de las paradas con líneas rectas (punto a punto). Esto no refleja el recorrido real por calles, como se ve en la imagen donde las líneas cortan entre puntos sin seguir las vías.
 
 ## Solución
+Usar la API de Google Maps Directions para obtener el trazado real por calles entre cada par de paradas consecutivas, y reemplazar las líneas rectas con el path decodificado de la ruta vial.
 
-### 1. Nueva función SQL: `reopen_ruta_planificada`
-- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
-- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
-- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
-- Inserta registro en `envio_historial` para cada envío reactivado
-- Retorna JSON con resultado y cantidad de envíos reactivados
+## Cambios en `src/pages/RoutePlanner.tsx`
 
-### 2. Nuevo componente: `ReopenRouteDialog.tsx`
-- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
-- Muestra cuántos envíos serán reactivados
-- Botón "Reabrir Ruta" que invoca el RPC
+### 1. Agregar estado para el polyline real
+Nuevo state `realRoutePolyline` que almacena el path por calles, calculado cuando se selecciona una opción de ruta.
 
-### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
-- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
-- Al hacer click, abre `ReopenRouteDialog`
-- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
+### 2. Función para obtener ruta por calles
+Cuando `selectedOption` cambia, usar `google.maps.DirectionsService` con waypoints intermedios para obtener el trazado real. Google Directions soporta hasta 25 waypoints por request — si hay más paradas, dividir en tramos.
 
-**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
+```
+useEffect: selectedOption cambia →
+  DirectionsService.route({
+    origin: sucursalOrigen,
+    destination: última parada,
+    waypoints: paradas intermedias (optimizeWaypoints: false),
+    travelMode: DRIVING
+  }) → decodificar overview_path → setRealRoutePolyline
+```
+
+### 3. Pasar el polyline real al MapView
+Cambiar `polylinePath={routePolyline}` por `polylinePath={realRoutePolyline.length > 0 ? realRoutePolyline : routePolyline}`, manteniendo las líneas rectas como fallback mientras se carga la ruta real.
+
+### 4. Actualizar distancia y tiempo con datos reales
+Opcionalmente actualizar `totalDistance` y `estimatedTime` del `selectedOption` con los valores reales de la Directions API (legs distance/duration), para que los datos mostrados sean más precisos.
+
+| Archivo | Cambio |
+|---------|--------|
+| `RoutePlanner.tsx` | Estado `realRoutePolyline`, efecto con DirectionsService, fallback en MapView, datos reales de distancia/tiempo |
 
