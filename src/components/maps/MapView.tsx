@@ -197,7 +197,11 @@ function MapViewComponent({
       <GoogleMap
         mapContainerStyle={containerStyle}
         center={center || (markers[0]?.position) || defaultCenter}
-        zoom={zoom}
+        zoom={
+          (markers.length + polylinePath.length + secondaryPolylinePath.length + deliveryStops.length) > 1
+            ? undefined
+            : zoom
+        }
         options={mapOptions}
         onLoad={onLoad}
         onUnmount={onUnmount}
