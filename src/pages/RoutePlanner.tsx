@@ -1898,11 +1898,12 @@ export default function RoutePlanner() {
                         useGradient={!!selectedOption}
                         deliveryStops={routeDeliveryStops}
                         center={
-                          sucursalOrigen?.lat && sucursalOrigen?.lng 
-                            ? { lat: Number(sucursalOrigen.lat), lng: Number(sucursalOrigen.lng) }
+                          mapMarkers.length === 0 && routeDeliveryStops.length === 0
+                            ? (sucursalOrigen?.lat && sucursalOrigen?.lng 
+                                ? { lat: Number(sucursalOrigen.lat), lng: Number(sucursalOrigen.lng) }
+                                : undefined)
                             : undefined
                         }
-                        zoom={12}
                         height="100%"
                         onMarkerClick={handleMarkerClick}
                       />
