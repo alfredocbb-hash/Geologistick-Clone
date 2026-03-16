@@ -694,13 +694,35 @@ export default function LiveMap() {
     }
   };
 
-  // Generate polyline path from dialog history - use snapped if available
-  const dialogPolylinePath = useMemo(() => {
-    if (dialogSnappedRoute.length > 0) {
-      return dialogSnappedRoute;
-    }
+  // Generate polyline path from dialog history - priority: directions > snapped > raw
+  const dialogBasePoints = useMemo(() => {
+    if (dialogSnappedRoute.length > 0) return dialogSnappedRoute;
     return dialogRouteHistory.map(point => ({ lat: point.lat, lng: point.lng }));
   }, [dialogRouteHistory, dialogSnappedRoute]);
+
+  // Generate street-level path for dialog via Directions API
+  useEffect(() => {
+    if (dialogBasePoints.length < 2 || !window.google?.maps) {
+      setDialogDirectionsRoute([]);
+      return;
+    }
+    let cancelled = false;
+    fetchDirectionsPath(dialogBasePoints).then(path => {
+      if (!cancelled && path.length > 0) {
+        setDialogDirectionsRoute(path);
+        console.log(`Dialog directions route: ${dialogBasePoints.length} → ${path.length} points`);
+      }
+    }).catch(err => {
+      console.warn('Dialog Directions API failed:', err);
+    });
+    return () => { cancelled = true; };
+  }, [dialogBasePoints]);
+
+  const dialogPolylinePath = useMemo(() => {
+    if (dialogDirectionsRoute.length > 0) return dialogDirectionsRoute;
+    if (dialogSnappedRoute.length > 0) return dialogSnappedRoute;
+    return dialogRouteHistory.map(point => ({ lat: point.lat, lng: point.lng }));
+  }, [dialogRouteHistory, dialogSnappedRoute, dialogDirectionsRoute]);
 
   // Get selected driver info for dialog
   const dialogSelectedDriver = useMemo(() => {
