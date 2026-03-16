@@ -22,6 +22,7 @@ export interface DeliveryStop {
   time: string;
   trackingNumber: string;
   order: number;
+  type?: 'retiro' | 'entrega' | 'sucursal';
 }
 
 interface MapViewProps {
