@@ -1,27 +1,28 @@
 
 
-# Fix: Mapa del Planificador — Origen como partida y ajuste de zoom
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
-## Problemas identificados
-
-### 1. Primer mapa no centra en la sucursal origen
-El `center` prop se pasa siempre con las coordenadas de la sucursal origen + `zoom={12}` fijo. Esto hace que `GoogleMap` fuerce el centro al origen en vez de dejar que `fitBounds` ajuste la vista para mostrar TODA la ruta incluyendo origen y destinos.
-
-### 2. Segundo mapa no muestra todas las paradas
-Mismo problema: el `center` prop forzado compite con `fitBounds`. Además, cuando `realRoutePolyline` se carga asincrónicamente (vía Directions API), la ruta real puede extenderse más allá de los bounds calculados inicialmente.
+## Problema
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
 ## Solución
 
-### Cambio en `MapView.tsx`
-- Cuando hay datos suficientes para `fitBounds` (markers + polyline + stops > 1), **ignorar** el `center` prop y dejar que `fitBounds` controle la vista
-- Incluir `secondaryPolylinePath` en el cálculo de bounds para cubrir todos los trazados visibles
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-### Cambio en `RoutePlanner.tsx`  
-- Pasar `center` solo como fallback (cuando no hay datos para fitBounds)
-- No pasar `zoom={12}` fijo — dejar que `fitBounds` calcule el zoom óptimo
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-| Archivo | Cambio |
-|---------|--------|
-| `MapView.tsx` | `fitBounds` ignora `center` cuando hay datos, incluir `secondaryPolylinePath` en bounds |
-| `RoutePlanner.tsx` | No forzar `center`/`zoom` cuando hay ruta seleccionada |
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
+
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 

@@ -127,15 +127,16 @@ function MapViewComponent({
     );
   }, [showRoute, origin, destination]);
 
-  // Fit bounds to markers, polyline AND delivery stops
+  // Fit bounds to markers, polyline, secondary polyline AND delivery stops
   useEffect(() => {
     if (!map) return;
     
     const hasMarkers = markers.length > 0;
     const hasPolyline = polylinePath.length > 0;
+    const hasSecondaryPolyline = secondaryPolylinePath.length > 0;
     const hasDeliveryStops = deliveryStops.length > 0;
     
-    if (!hasMarkers && !hasPolyline && !hasDeliveryStops) return;
+    if (!hasMarkers && !hasPolyline && !hasSecondaryPolyline && !hasDeliveryStops) return;
 
     const bounds = new google.maps.LatLngBounds();
     
@@ -147,11 +148,15 @@ function MapViewComponent({
       bounds.extend(point);
     });
 
+    secondaryPolylinePath.forEach((point) => {
+      bounds.extend(point);
+    });
+
     deliveryStops.forEach((stop) => {
       bounds.extend(stop.position);
     });
 
-    const totalPoints = markers.length + polylinePath.length + deliveryStops.length;
+    const totalPoints = markers.length + polylinePath.length + secondaryPolylinePath.length + deliveryStops.length;
     if (totalPoints <= 1) {
       const singlePoint = markers[0]?.position || polylinePath[0] || deliveryStops[0]?.position;
       if (singlePoint) {
@@ -161,7 +166,7 @@ function MapViewComponent({
     } else {
       map.fitBounds(bounds, 50);
     }
-  }, [map, markers, polylinePath, deliveryStops, zoom]);
+  }, [map, markers, polylinePath, secondaryPolylinePath, deliveryStops, zoom]);
 
   if (loadError) {
     return (
