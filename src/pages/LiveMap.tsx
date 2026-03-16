@@ -90,6 +90,7 @@ export default function LiveMap() {
   // State for main map route visualization (street-level traceability)
   const [selectedDriverForMap, setSelectedDriverForMap] = useState<string | null>(null);
   const [selectedRouteForMap, setSelectedRouteForMap] = useState<string | null>(null);
+  const [plannedRoutePolyline, setPlannedRoutePolyline] = useState<{ lat: number; lng: number }[]>([]);
   const [pendingStopsMarkers, setPendingStopsMarkers] = useState<Array<{
     position: { lat: number; lng: number };
     trackingNumber: string;
