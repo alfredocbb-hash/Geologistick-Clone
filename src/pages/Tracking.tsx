@@ -72,6 +72,8 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; bgCol
   primera_visita: { label: '1a Visita', color: 'text-amber-700', bgColor: 'bg-amber-100', icon: AlertCircle },
   segunda_visita: { label: '2a Visita', color: 'text-red-500', bgColor: 'bg-red-100', icon: AlertCircle },
   reprogramado: { label: 'Reprogramado', color: 'text-indigo-600', bgColor: 'bg-indigo-100', icon: CalendarClock },
+  incidencia: { label: 'Incidencia', color: 'text-orange-700', bgColor: 'bg-orange-100', icon: AlertCircle },
+  no_entregado: { label: 'No Entregado', color: 'text-red-600', bgColor: 'bg-red-100', icon: AlertCircle },
 };
 
 const statusOrder: ShipmentStatus[] = ['pendiente', 'recogido', 'en_sucursal', 'en_transito', 'en_reparto', 'entregado'];
