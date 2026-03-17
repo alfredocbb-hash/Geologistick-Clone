@@ -1,28 +1,31 @@
 
 
-# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
+# Plan: Corregir tracking y foto del chofer
 
-## Problema
-Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
+## 1. Tracking: agregar estados faltantes
 
-## Solución
+**Problema**: Los estados `incidencia` y `no_entregado` existen en la DB pero no están en el type `ShipmentStatus` ni en `statusConfig` de `Tracking.tsx` y `TrackingEmbed.tsx`. Si el envío tiene uno de esos estados, el badge no se renderiza correctamente y el progress bar queda vacío (index = -1).
 
-### 1. Nueva función SQL: `reopen_ruta_planificada`
-- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
-- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
-- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
-- Inserta registro en `envio_historial` para cada envío reactivado
-- Retorna JSON con resultado y cantidad de envíos reactivados
+**Solución en `src/pages/Tracking.tsx` y `src/pages/TrackingEmbed.tsx`**:
+- Agregar `'incidencia' | 'no_entregado'` al type `ShipmentStatus`
+- Agregar entradas en `statusConfig` para ambos estados
+- Para el progress bar: cuando el estado no está en `statusOrder` (es un estado alternativo), calcular `currentStatusIndex` basado en el último estado "lineal" conocido del historial, o mostrar el progreso hasta el punto donde se desvió
 
-### 2. Nuevo componente: `ReopenRouteDialog.tsx`
-- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
-- Muestra cuántos envíos serán reactivados
-- Botón "Reabrir Ruta" que invoca el RPC
+## 2. Foto del chofer no carga (Android WebView)
 
-### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
-- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
-- Al hacer click, abre `ReopenRouteDialog`
-- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
+**Problema**: En Android, `capture="environment"` abre la cámara nativa, lo cual puede causar que el WebView se recargue. Al volver, el `onChange` del input nunca se dispara y la foto se pierde.
 
-**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
+**Solución en `src/components/delivery/DeliveryConfirmation.tsx` y `src/components/incidents/ReportIncidentDialog.tsx`**:
+- Remover `capture="environment"` del input file. Con solo `accept="image/*"`, Android muestra un selector que incluye cámara Y galería, y es más estable porque no fuerza una app externa
+- Agregar un segundo botón "Elegir de Galería" sin capture, para dar alternativa si la cámara falla
+- Mantener el flujo de sessionStorage como fallback
+
+## Archivos afectados
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/pages/Tracking.tsx` | Agregar `incidencia`, `no_entregado` al type y statusConfig; fix progress para estados alternativos |
+| `src/pages/TrackingEmbed.tsx` | Mismo cambio |
+| `src/components/delivery/DeliveryConfirmation.tsx` | Remover `capture="environment"`, agregar opción galería |
+| `src/components/incidents/ReportIncidentDialog.tsx` | Remover `capture="environment"`, agregar opción galería |
 
