@@ -593,7 +593,15 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
           <div className="space-y-2">
             <Label className="text-muted-foreground">📸 Foto de Entrega (Opcional)</Label>
              <input
-              ref={fileInputRef}
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handlePhotoSelect}
+              className="hidden"
+            />
+            <input
+              ref={galleryInputRef}
               type="file"
               accept="image/*"
               onChange={handlePhotoSelect}
@@ -618,15 +626,26 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
                 </Button>
               </div>
             ) : (
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full h-24 flex flex-col items-center justify-center gap-2 border-muted-foreground"
-                onClick={handleOpenCamera}
-              >
-                <Camera className="h-8 w-8 text-muted-foreground" />
-                <span className="text-muted-foreground">Tomar Foto</span>
-              </Button>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-24 flex flex-col items-center justify-center gap-2 border-muted-foreground"
+                  onClick={handleOpenCamera}
+                >
+                  <Camera className="h-8 w-8 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">📷 Tomar Foto</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-24 flex flex-col items-center justify-center gap-2 border-muted-foreground"
+                  onClick={handleOpenGallery}
+                >
+                  <Camera className="h-8 w-8 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">🖼 Galería</span>
+                </Button>
+              </div>
             )}
           </div>
 
