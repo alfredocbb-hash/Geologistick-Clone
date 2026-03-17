@@ -55,7 +55,8 @@ interface MpPaymentData {
 export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: DeliveryConfirmationProps) {
   const { user, profile } = useAuth();
   const queryClient = useQueryClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const STORAGE_KEY = `delivery-state-${shipment.id}`;
   
   const [photo, setPhoto] = useState<File | null>(null);
