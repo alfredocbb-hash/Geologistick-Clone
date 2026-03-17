@@ -559,6 +559,88 @@ const SystemSettings = () => {
           </Card>
         )}
 
+        {/* Commercial Brochure - Super Admin only */}
+        {isSuperAdmin() && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Briefcase className="h-5 w-5" />
+                Brochure Comercial
+              </CardTitle>
+              <CardDescription>
+                PDF para presentar a nuevos clientes
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-start gap-4 p-4 rounded-lg border bg-card">
+                <div className="p-3 rounded-lg bg-[hsl(var(--geo-teal)/0.1)]">
+                  <Briefcase className="h-6 w-6 text-[hsl(var(--geo-teal))]" />
+                </div>
+                <div className="flex-1 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold">Presentación Comercial</h3>
+                    <Badge variant="secondary">PDF</Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Brochure profesional con funcionalidades, planes y precios para enviar a prospectos.
+                  </p>
+                  <ul className="text-xs text-muted-foreground space-y-1 mt-2">
+                    <li>• Descripción de la plataforma</li>
+                    <li>• 9 funcionalidades principales</li>
+                    <li>• Planes y precios actualizados</li>
+                    <li>• Contacto y CTA de prueba gratis</li>
+                  </ul>
+                </div>
+              </div>
+              
+              <Button 
+                onClick={async () => {
+                  setIsGeneratingCommercialPDF(true);
+                  try {
+                    // Fetch plans dynamically
+                    const { supabase } = await import("@/integrations/supabase/client");
+                    const { data } = await supabase
+                      .from("subscription_plans")
+                      .select("name, description, price_monthly, max_users, max_branches, max_shipments_month, features")
+                      .eq("is_active", true)
+                      .order("display_order");
+                    const plans = (data || []).map(p => ({
+                      ...p,
+                      features: Array.isArray(p.features) ? p.features as string[] : JSON.parse(p.features as string || "[]"),
+                    }));
+                    await generateCommercialPDF(plans);
+                    toast({
+                      title: "PDF generado",
+                      description: "El brochure comercial se ha descargado correctamente.",
+                    });
+                  } catch (error) {
+                    toast({
+                      title: "Error",
+                      description: "No se pudo generar el PDF. Intente nuevamente.",
+                      variant: "destructive",
+                    });
+                  } finally {
+                    setIsGeneratingCommercialPDF(false);
+                  }
+                }}
+                className="w-full"
+                disabled={isGeneratingCommercialPDF}
+              >
+                {isGeneratingCommercialPDF ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Generando PDF...
+                  </>
+                ) : (
+                  <>
+                    <Download className="mr-2 h-4 w-4" />
+                    Descargar Brochure Comercial
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+
         {/* System Info */}
         <Card>
           <CardHeader>
