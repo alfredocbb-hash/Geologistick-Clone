@@ -521,7 +521,7 @@ export default function Shipments() {
                        {envio.sucursal_origen?.nombre || '-'}
                      </TableCell>
                      <TableCell className="text-muted-foreground">
-                       {envio.sucursal_destino?.nombre || '-'}
+                       {envio.sucursal_destino?.nombre || envio.ciudad_entrega || envio.direccion_entrega || '-'}
                      </TableCell>
                      <TableCell>
                        <span className="text-xs text-muted-foreground">
