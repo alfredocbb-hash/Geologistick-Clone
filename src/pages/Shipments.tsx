@@ -22,7 +22,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Package, PackagePlus, Search, Filter, RefreshCw, Truck, Clock, CheckCircle, AlertCircle, Printer, XCircle, Eye, History, Shield, CalendarIcon, AlertTriangle, Handshake, CalendarClock } from 'lucide-react';
+import { Package, PackagePlus, Search, Filter, RefreshCw, Truck, Clock, CheckCircle, AlertCircle, Printer, XCircle, Eye, History, Shield, CalendarIcon, AlertTriangle, Handshake, CalendarClock, Trash2 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { format, startOfDay, endOfDay } from 'date-fns';
@@ -55,7 +55,7 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; icon:
 };
 
 export default function Shipments() {
-  const { isAdmin, hasRole, user, profile } = useAuth();
+  const { isAdmin, isSuperAdmin, hasRole, user, profile } = useAuth();
   const queryClient = useQueryClient();
   const [search, setSearch] = usePersistedState('shipments-search', '');
   const [statusFilter, setStatusFilter] = usePersistedState('shipments-status-filter', 'all');
@@ -81,6 +81,8 @@ export default function Shipments() {
   // Check if user can change status (admin, supervisor, or centro logístico)
   const [isCentroLogistico, setIsCentroLogistico] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [envioToDelete, setEnvioToDelete] = useState<any>(null);
   
   useQuery({
     queryKey: ['user-sucursal-check', profile?.sucursal_id],
@@ -212,6 +214,35 @@ export default function Shipments() {
       toast.error('Error al cancelar el envío');
       console.error(error);
     }
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (envioId: string) => {
+      // Delete related records in order
+      await supabase.from('envio_historial').delete().eq('envio_id', envioId);
+      await supabase.from('envio_detalles').delete().eq('envio_id', envioId);
+      await supabase.from('comisiones').delete().eq('envio_id', envioId);
+      await supabase.from('pagos').delete().eq('envio_id', envioId);
+      await supabase.from('movimientos_caja').delete().eq('envio_id', envioId);
+      await supabase.from('ruta_paradas').delete().eq('envio_id', envioId);
+      await supabase.from('hoja_ruta_envios').delete().eq('envio_id', envioId);
+      // Unlink ecommerce orders
+      await supabase.from('ecommerce_orders').update({ envio_id: null }).eq('envio_id', envioId);
+      // Delete the shipment
+      const { error } = await supabase.from('envios').delete().eq('id', envioId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Envío eliminado permanentemente');
+      queryClient.invalidateQueries({ queryKey: ['envios'] });
+      queryClient.invalidateQueries({ queryKey: ['envios-stats'] });
+      setDeleteDialogOpen(false);
+      setEnvioToDelete(null);
+    },
+    onError: (error) => {
+      toast.error('Error al eliminar el envío');
+      console.error(error);
+    },
   });
 
   const { data: enviosData, isLoading, refetch } = useQuery({
@@ -635,6 +666,21 @@ export default function Shipments() {
                             <XCircle className="h-4 w-4" />
                           </Button>
                         )}
+                        {isSuperAdmin() && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Eliminar envío permanentemente"
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEnvioToDelete(envio);
+                              setDeleteDialogOpen(true);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -694,6 +740,44 @@ export default function Shipments() {
               disabled={cancelMutation.isPending}
             >
               {cancelMutation.isPending ? 'Cancelando...' : 'Sí, cancelar envío'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Dialog (Super Admin only) */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Eliminar envío permanentemente
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  Estás a punto de eliminar permanentemente el envío{' '}
+                  <strong>{envioToDelete?.tracking_number}</strong>.
+                </p>
+                <p className="font-medium text-destructive">
+                  Se eliminarán todos los registros asociados: historial, pagos, movimientos de caja, paradas de ruta y comisiones.
+                </p>
+                <p className="text-sm font-semibold text-foreground">
+                  Esta acción es irreversible.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setEnvioToDelete(null)}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteMutation.mutate(envioToDelete?.id)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? 'Eliminando...' : 'Eliminar permanentemente'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
