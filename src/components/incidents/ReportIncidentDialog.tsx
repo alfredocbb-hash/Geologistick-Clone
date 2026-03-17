@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -42,6 +42,7 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
   const { user, profile } = useAuth();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const STORAGE_KEY = `incident-state-${shipment.id}`;
   
   const [incidentType, setIncidentType] = useState<string>('');
   const [description, setDescription] = useState('');
@@ -49,17 +50,60 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Handle photo selection
+  // Restore state from sessionStorage (survives WebView reloads on Android)
+  useEffect(() => {
+    const saved = sessionStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.photoPreview) setPhotoPreview(parsed.photoPreview);
+        if (parsed.incidentType) setIncidentType(parsed.incidentType);
+        if (parsed.description) setDescription(parsed.description);
+      } catch (e) {
+        console.error('Error restoring incident state:', e);
+      }
+      sessionStorage.removeItem(STORAGE_KEY);
+    }
+  }, []);
+
+  // Handle photo selection - persist to sessionStorage
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setPhoto(file);
       const reader = new FileReader();
       reader.onloadend = () => {
-        setPhotoPreview(reader.result as string);
+        const preview = reader.result as string;
+        setPhotoPreview(preview);
+        // Persist to survive WebView reload
+        try {
+          sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
+            photoPreview: preview,
+            incidentType,
+            description,
+          }));
+        } catch (e) {
+          console.warn('Could not persist photo to sessionStorage:', e);
+        }
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  // Save state before opening file picker (Android WebView may reload)
+  const handleOpenCamera = () => {
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
+        photoPreview,
+        incidentType,
+        description,
+      }));
+    } catch (e) {}
+    // Reset input value so onChange fires even if user picks the same file
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    fileInputRef.current?.click();
   };
 
   // Remove photo
@@ -71,8 +115,8 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
     }
   };
 
-  // Upload file to Supabase Storage
-  const uploadFile = async (file: File, path: string): Promise<string | null> => {
+  // Upload file to storage - accepts File or Blob
+  const uploadFile = async (file: File | Blob, path: string): Promise<string | null> => {
     const { data, error } = await supabase.storage
       .from('delivery-photos')
       .upload(path, file, { upsert: true });
@@ -89,6 +133,18 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
     return urlData?.signedUrl || null;
   };
 
+  // Convert base64 data URL to Blob (fallback when File is lost after WebView reload)
+  const dataURLtoBlob = (dataURL: string): Blob => {
+    const parts = dataURL.split(',');
+    const mime = parts[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+    const bstr = atob(parts[1]);
+    const u8arr = new Uint8Array(bstr.length);
+    for (let i = 0; i < bstr.length; i++) {
+      u8arr[i] = bstr.charCodeAt(i);
+    }
+    return new Blob([u8arr], { type: mime });
+  };
+
   const reportMutation = useMutation({
     mutationFn: async () => {
       if (!user?.id) throw new Error('Usuario no autenticado');
@@ -96,10 +152,11 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
 
       let photoUrl: string | null = null;
 
-      // Upload photo if provided - throw error if upload fails
-      if (photo) {
+      // Upload photo if provided - use File if available, fallback to base64 Blob
+      const fileToUpload = photo || (photoPreview ? dataURLtoBlob(photoPreview) : null);
+      if (fileToUpload) {
         const photoPath = `incidents/${shipment.id}/evidence_${Date.now()}.jpg`;
-        photoUrl = await uploadFile(photo, photoPath);
+        photoUrl = await uploadFile(fileToUpload, photoPath);
         
         if (!photoUrl) {
           throw new Error('Error al subir la foto de evidencia. Por favor intenta nuevamente.');
@@ -121,7 +178,7 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
 
       if (incidentError) throw incidentError;
 
-      // Update shipment status to 'incidencia' - requires admin resolution
+      // Update shipment status to 'incidencia'
       const { error: updateError } = await supabase
         .from('envios')
         .update({ estado: 'incidencia' })
@@ -171,6 +228,9 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
       return { previousParadas, previousEnviosHoja };
     },
     onSuccess: () => {
+      // Clean up sessionStorage on success
+      try { sessionStorage.removeItem(STORAGE_KEY); } catch (e) {}
+
       // Play warning sound
       const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1f');
       audio.play().catch(() => {});
@@ -184,7 +244,6 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
       onClose();
     },
     onError: (error, _, context) => {
-      // Reset submitting state to allow retry
       setIsSubmitting(false);
       
       if (context?.previousParadas) {
@@ -290,7 +349,7 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
                 type="button"
                 variant="outline"
                 className="w-full h-20 flex flex-col items-center justify-center gap-2"
-                onClick={() => fileInputRef.current?.click()}
+                onClick={handleOpenCamera}
               >
                 <Camera className="h-6 w-6 text-muted-foreground" />
                 <span className="text-sm">Agregar foto de evidencia</span>
