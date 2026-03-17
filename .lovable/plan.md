@@ -1,28 +1,58 @@
 
 
-# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
+# Plan: Dos correcciones
 
-## Problema
-Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
+## 1. Suscripción: mostrar conteo real de usuarios y sucursales
 
-## Solución
+**Problema**: `tenant_usage` tiene `users_count` y `branches_count` siempre en 0. Las edge functions devuelven ese valor estático.
 
-### 1. Nueva función SQL: `reopen_ruta_planificada`
-- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
-- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
-- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
-- Inserta registro en `envio_historial` para cada envío reactivado
-- Retorna JSON con resultado y cantidad de envíos reactivados
+**Solución**: En ambas edge functions, después de leer `tenant_usage`, hacer queries de conteo real a `profiles` y `sucursales`.
 
-### 2. Nuevo componente: `ReopenRouteDialog.tsx`
-- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
-- Muestra cuántos envíos serán reactivados
-- Botón "Reabrir Ruta" que invoca el RPC
+### Archivos a modificar
 
-### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
-- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
-- Al hacer click, abre `ReopenRouteDialog`
-- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
+**`supabase/functions/check-subscription/index.ts`** — En los 3 puntos donde se construye `usage` (líneas ~110-129, ~147-165, ~231-251), agregar antes del return:
 
-**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
+```typescript
+const { count: usersCount } = await supabaseClient
+  .from("profiles")
+  .select("*", { count: "exact", head: true })
+  .eq("tenant_id", tenantId);
+
+const { count: branchesCount } = await supabaseClient
+  .from("sucursales")
+  .select("*", { count: "exact", head: true })
+  .eq("tenant_id", tenantId)
+  .eq("activa", true);
+```
+
+Y reemplazar el campo `usage` en cada respuesta por:
+```typescript
+usage: {
+  shipments_count: usage?.shipments_count || 0,
+  users_count: usersCount || 0,
+  branches_count: branchesCount || 0,
+},
+```
+
+**`supabase/functions/mp-check-subscription/index.ts`** — Mismo patrón en los 3 puntos de retorno (líneas ~97-115, ~136-154, ~172-190).
+
+---
+
+## 2. Etiquetas: eliminar selector de tamaño, usar solo Compacta
+
+**Problema**: El usuario quiere que al imprimir etiquetas salga directamente en formato compacto (10×15 cm) sin opciones de tamaño.
+
+**Solución en `src/pages/PrintLabel.tsx`**:
+- Eliminar el tipo `LabelSize`, las constantes `LABEL_SIZES` (standard/large), y el state `labelSize`
+- Hardcodear el tamaño compact: `widthMm: 100, heightMm: 150, orientation: 'portrait', qrSize: 30`
+- Eliminar el `Select` de tamaño del header (líneas 594-607)
+- En `handlePrint`, usar directamente los valores compact sin referencia a `LABEL_SIZES`
+
+### Archivos afectados
+
+| Archivo | Cambio |
+|---------|--------|
+| `supabase/functions/check-subscription/index.ts` | Conteo dinámico de usuarios/sucursales |
+| `supabase/functions/mp-check-subscription/index.ts` | Conteo dinámico de usuarios/sucursales |
+| `src/pages/PrintLabel.tsx` | Eliminar selector de tamaño, forzar compacta |
 
