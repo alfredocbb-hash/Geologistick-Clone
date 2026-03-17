@@ -41,7 +41,8 @@ interface ReportIncidentDialogProps {
 export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: ReportIncidentDialogProps) {
   const { user, profile } = useAuth();
   const queryClient = useQueryClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const STORAGE_KEY = `incident-state-${shipment.id}`;
   
   const [incidentType, setIncidentType] = useState<string>('');
