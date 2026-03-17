@@ -22,6 +22,7 @@ const SystemSettings = () => {
   const [isGeneratingFlexPDF, setIsGeneratingFlexPDF] = useState(false);
   const [isGeneratingFlexTermsPDF, setIsGeneratingFlexTermsPDF] = useState(false);
   const [isGeneratingSuperAdminPDF, setIsGeneratingSuperAdminPDF] = useState(false);
+  const [isGeneratingCommercialPDF, setIsGeneratingCommercialPDF] = useState(false);
   const { tenant, branding } = useTenantContext();
   const { toast } = useToast();
   const { isAdmin, isSuperAdmin } = useAuth();
