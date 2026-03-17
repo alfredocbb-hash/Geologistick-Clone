@@ -465,7 +465,7 @@ export default function PrintLabel() {
       };
 
       const deliveryInfo = getDeliveryAddress();
-      const size = LABEL_SIZES[labelSize];
+      const size = LABEL_SIZE;
       const bultos = envio.cantidad_bultos || 1;
 
       // Load logo as PNG base64 via canvas (handles SVG + raster formats)
