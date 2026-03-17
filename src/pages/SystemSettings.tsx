@@ -640,6 +640,7 @@ const SystemSettings = () => {
               </Button>
             </CardContent>
           </Card>
+        )}
 
         {/* System Info */}
         <Card>
