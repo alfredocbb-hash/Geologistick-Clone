@@ -81,6 +81,8 @@ export default function Shipments() {
   // Check if user can change status (admin, supervisor, or centro logístico)
   const [isCentroLogistico, setIsCentroLogistico] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [envioToDelete, setEnvioToDelete] = useState<any>(null);
   
   useQuery({
     queryKey: ['user-sucursal-check', profile?.sucursal_id],
