@@ -9,7 +9,7 @@ import { Package, Search, MapPin, Clock, CheckCircle, Truck, AlertCircle, Loader
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-type ShipmentStatus = 'pendiente' | 'recogido' | 'en_sucursal' | 'en_transito' | 'en_reparto' | 'entregado' | 'devuelto' | 'cancelado' | 'primera_visita' | 'segunda_visita' | 'reprogramado';
+type ShipmentStatus = 'pendiente' | 'recogido' | 'en_sucursal' | 'en_transito' | 'en_reparto' | 'entregado' | 'devuelto' | 'cancelado' | 'primera_visita' | 'segunda_visita' | 'reprogramado' | 'incidencia' | 'no_entregado';
 
 interface TrackingResponse {
   tracking_number: string;
