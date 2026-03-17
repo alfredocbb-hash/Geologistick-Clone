@@ -573,19 +573,6 @@ export default function PrintLabel() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Tamaño:</span>
-            <Select value={labelSize} onValueChange={(v) => setLabelSize(v as LabelSize)}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(LABEL_SIZES).map(([key, size]) => (
-                  <SelectItem key={key} value={key}>{size.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
           <Button onClick={handlePrint} className="gradient-primary" disabled={isPrinting}>
             {isPrinting ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
