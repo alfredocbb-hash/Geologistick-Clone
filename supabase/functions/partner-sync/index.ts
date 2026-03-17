@@ -13,7 +13,6 @@ async function notifyTenantAdmins(
   tipo: string = 'partnership'
 ) {
   try {
-    // Get admin user_ids for this tenant
     const { data: admins } = await serviceClient
       .from('profiles')
       .select('user_id, user_roles!inner(role)')
@@ -74,7 +73,6 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     )
 
-    // Get user's tenant
     const { data: profile } = await serviceClient
       .from('profiles')
       .select('tenant_id')
@@ -106,8 +104,6 @@ Deno.serve(async (req) => {
 
       case 'request_partnership': {
         const { target_tenant_id, permisos, notas } = body
-
-        // Ensure alphabetical order for unique constraint
         const [tA, tB] = [tenantId, target_tenant_id].sort()
 
         const { data, error } = await serviceClient
@@ -125,7 +121,6 @@ Deno.serve(async (req) => {
 
         if (error) throw error
 
-        // Log event
         await serviceClient.from('partner_events').insert({
           partnership_id: data.id,
           evento: 'solicitud_enviada',
@@ -134,7 +129,6 @@ Deno.serve(async (req) => {
           tenant_id: tenantId,
         })
 
-        // Notify target tenant admins
         const senderName = await getTenantName(serviceClient, tenantId)
         await notifyTenantAdmins(
           serviceClient,
@@ -169,7 +163,6 @@ Deno.serve(async (req) => {
           tenant_id: tenantId,
         })
 
-        // Notify the other tenant
         const otherTenantId = data.tenant_a_id === tenantId ? data.tenant_b_id : data.tenant_a_id
         const responderName = await getTenantName(serviceClient, tenantId)
         await notifyTenantAdmins(
@@ -212,7 +205,7 @@ Deno.serve(async (req) => {
           return new Response(JSON.stringify({ error: 'Envío no encontrado' }), { status: 404, headers: corsHeaders })
         }
 
-        // Create partner_shipment with metadata
+        // Build metadata with ALL relevant fields including payment info
         const metadata = {
           tracking_origen: envio.tracking_number,
           nombre_destinatario: envio.nombre_destinatario,
@@ -223,8 +216,14 @@ Deno.serve(async (req) => {
           whatsapp_destinatario: envio.whatsapp_destinatario,
           peso_kg: envio.peso_kg,
           descripcion: envio.descripcion,
+          dni_destinatario: envio.dni_destinatario,
+          email_destinatario: envio.email_destinatario,
+          pago_contra_entrega: envio.pago_contra_entrega,
+          tipo_pago: envio.tipo_pago,
           precio_total: partnership.permisos?.puede_ver_precio ? envio.precio_total : null,
           nombre_remitente: partnership.permisos?.puede_ver_cliente ? envio.nombre_remitente : null,
+          cantidad_bultos: envio.cantidad_bultos,
+          valor_declarado: envio.valor_declarado,
         }
 
         const { data: partnerShipment, error: psError } = await serviceClient
@@ -242,7 +241,23 @@ Deno.serve(async (req) => {
 
         if (psError) throw psError
 
-        // Log event
+        // Update origin shipment status to en_transito
+        await serviceClient
+          .from('envios')
+          .update({ estado: 'en_transito', updated_at: new Date().toISOString() })
+          .eq('id', envio_id)
+
+        // Log history on origin shipment
+        const targetName = await getTenantName(serviceClient, target_tenant_id)
+        await serviceClient.from('envio_historial').insert({
+          envio_id: envio_id,
+          estado_anterior: envio.estado,
+          estado_nuevo: 'en_transito',
+          notas: `Envío derivado a partner: ${targetName}`,
+          created_by: userId,
+        })
+
+        // Log partner event
         await serviceClient.from('partner_events').insert({
           partnership_id,
           partner_shipment_id: partnerShipment.id,
@@ -268,7 +283,6 @@ Deno.serve(async (req) => {
       case 'accept_shipment': {
         const { partner_shipment_id, sucursal_destino_id } = body
 
-        // Get partner shipment
         const { data: ps } = await serviceClient
           .from('partner_shipments')
           .select('*, partnership:tenant_partners(*)')
@@ -295,12 +309,16 @@ Deno.serve(async (req) => {
           branchId = branches?.[0]?.id
         }
 
-        // Create a new shipment in the destination tenant
+        // Generate proper tracking number via RPC
+        const { data: trackingNumber } = await serviceClient.rpc('generate_tracking_number')
+        const finalTracking = trackingNumber || `ENV-PRT-${Date.now()}`
+
+        // Create new shipment with ALL transferred data
         const { data: newEnvio, error: envioError } = await serviceClient
           .from('envios')
           .insert({
             tenant_id: tenantId,
-            tracking_number: `PRT-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+            tracking_number: finalTracking,
             tracking_externo: meta.tracking_origen,
             nombre_destinatario: meta.nombre_destinatario,
             direccion_entrega: meta.direccion_entrega,
@@ -310,9 +328,18 @@ Deno.serve(async (req) => {
             whatsapp_destinatario: meta.whatsapp_destinatario,
             peso_kg: meta.peso_kg,
             descripcion: meta.descripcion || 'Envío derivado de partner',
-            precio_total: 0,
+            dni_destinatario: meta.dni_destinatario || null,
+            email_destinatario: meta.email_destinatario || null,
+            nombre_remitente: meta.nombre_remitente || null,
+            // Payment fields - critical for COD
+            pago_contra_entrega: meta.pago_contra_entrega || false,
+            tipo_pago: meta.tipo_pago || 'contado',
+            precio_total: meta.precio_total || 0,
+            cantidad_bultos: meta.cantidad_bultos || 1,
+            valor_declarado: meta.valor_declarado || null,
             estado: 'pendiente',
             sucursal_destino_id: branchId,
+            sucursal_origen_id: branchId,
             notas: `Derivado de partner. Tracking origen: ${meta.tracking_origen}`,
           })
           .select()
@@ -355,7 +382,6 @@ Deno.serve(async (req) => {
       case 'reject_shipment': {
         const { partner_shipment_id } = body
 
-        // Get data before updating
         const { data: ps } = await serviceClient
           .from('partner_shipments')
           .select('partnership_id, tenant_origen_id, metadata')
@@ -381,7 +407,6 @@ Deno.serve(async (req) => {
             tenant_id: tenantId,
           })
 
-          // Notify origin tenant
           const rejecterName = await getTenantName(serviceClient, tenantId)
           const meta = ps.metadata as any
           await notifyTenantAdmins(
