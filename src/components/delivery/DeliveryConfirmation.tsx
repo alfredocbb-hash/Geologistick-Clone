@@ -150,7 +150,15 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
     } catch (e) {}
   };
 
-  const handleOpenCamera = () => {
+  const handleOpenCamera = async () => {
+    if (isNativeCamera) {
+      const result = await nativeTakePhoto();
+      if (result) {
+        setPhoto(null);
+        setPhotoPreview(result.dataUrl);
+      }
+      return;
+    }
     persistState();
     if (cameraInputRef.current) {
       cameraInputRef.current.value = '';
@@ -158,7 +166,15 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
     cameraInputRef.current?.click();
   };
 
-  const handleOpenGallery = () => {
+  const handleOpenGallery = async () => {
+    if (isNativeCamera) {
+      const result = await nativePickFromGallery();
+      if (result) {
+        setPhoto(null);
+        setPhotoPreview(result.dataUrl);
+      }
+      return;
+    }
     persistState();
     if (galleryInputRef.current) {
       galleryInputRef.current.value = '';

@@ -102,13 +102,29 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
     } catch (e) {}
   };
 
-  const handleOpenCamera = () => {
+  const handleOpenCamera = async () => {
+    if (isNativeCamera) {
+      const result = await nativeTakePhoto();
+      if (result) {
+        setPhoto(null);
+        setPhotoPreview(result.dataUrl);
+      }
+      return;
+    }
     persistState();
     if (cameraInputRef.current) cameraInputRef.current.value = '';
     cameraInputRef.current?.click();
   };
 
-  const handleOpenGallery = () => {
+  const handleOpenGallery = async () => {
+    if (isNativeCamera) {
+      const result = await nativePickFromGallery();
+      if (result) {
+        setPhoto(null);
+        setPhotoPreview(result.dataUrl);
+      }
+      return;
+    }
     persistState();
     if (galleryInputRef.current) galleryInputRef.current.value = '';
     galleryInputRef.current?.click();
