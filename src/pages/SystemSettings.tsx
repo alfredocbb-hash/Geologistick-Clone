@@ -10,6 +10,7 @@ import { generateRatesGuidePDF } from "@/lib/generateRatesGuidePDF";
 import { generateFlexGuidePDF } from "@/lib/generateFlexGuidePDF";
 import { generateFlexTermsPDF } from "@/lib/generateFlexTermsPDF";
 import { generateSuperAdminGuidePDF } from "@/lib/generateSuperAdminGuidePDF";
+import { generateCommercialPDF } from "@/lib/generateCommercialPDF";
 import { useTenantContext } from "@/components/providers/TenantProvider";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
