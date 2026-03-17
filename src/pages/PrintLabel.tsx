@@ -16,30 +16,11 @@ import { toast } from 'sonner';
 import { jsPDF } from 'jspdf';
 import geologistickLogo from '@/assets/geologistick-logo.png';
 
-type LabelSize = 'compact' | 'standard' | 'large';
-
-const LABEL_SIZES = {
-  compact: {
-    name: "Compacta (10×15 cm)",
-    widthMm: 100,
-    heightMm: 150,
-    orientation: 'portrait' as const,
-    qrSize: 30,
-  },
-  standard: {
-    name: "Estándar (15×10 cm)",
-    widthMm: 150,
-    heightMm: 100,
-    orientation: 'landscape' as const,
-    qrSize: 35,
-  },
-  large: {
-    name: "Grande (20×10 cm)",
-    widthMm: 200,
-    heightMm: 100,
-    orientation: 'landscape' as const,
-    qrSize: 40,
-  },
+const LABEL_SIZE = {
+  widthMm: 100,
+  heightMm: 150,
+  orientation: 'portrait' as const,
+  qrSize: 30,
 };
 
 const TIPO_SERVICIO_CONFIG = {

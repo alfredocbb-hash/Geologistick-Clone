@@ -11,6 +11,25 @@ const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[MP-CHECK-SUBSCRIPTION] ${step}${detailsStr}`);
 };
 
+async function getRealUsage(supabaseClient: any, tenantId: string, shipmentUsage: any) {
+  const { count: usersCount } = await supabaseClient
+    .from("profiles")
+    .select("*", { count: "exact", head: true })
+    .eq("tenant_id", tenantId);
+
+  const { count: branchesCount } = await supabaseClient
+    .from("sucursales")
+    .select("*", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("activa", true);
+
+  return {
+    shipments_count: shipmentUsage?.shipments_count || 0,
+    users_count: usersCount || 0,
+    branches_count: branchesCount || 0,
+  };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -41,7 +60,6 @@ serve(async (req) => {
     if (!user?.email) throw new Error("User not authenticated or email not available");
     logStep("User authenticated", { userId: user.id, email: user.email });
 
-    // Get user's tenant
     const { data: profile } = await supabaseClient
       .from("profiles")
       .select("tenant_id")
@@ -54,36 +72,42 @@ serve(async (req) => {
         status: 200,
       });
     }
-    logStep("Found tenant", { tenantId: profile.tenant_id });
+    const tenantId = profile.tenant_id;
+    logStep("Found tenant", { tenantId });
 
-    // Check for existing subscription in DB
     const { data: existingSub } = await supabaseClient
       .from("tenant_subscriptions")
       .select(`*, subscription_plans (*)`)
-      .eq("tenant_id", profile.tenant_id)
+      .eq("tenant_id", tenantId)
       .single();
+
+    // Helper to get monthly usage with real counts
+    const getMonthlyUsage = async () => {
+      const monthYear = new Date().toISOString().slice(0, 7);
+      const { data: usage } = await supabaseClient
+        .from("tenant_usage")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .eq("month_year", monthYear)
+        .single();
+      return await getRealUsage(supabaseClient, tenantId, usage);
+    };
 
     // If we have a Mercado Pago subscription, verify it
     if (existingSub?.mercadopago_subscription_id) {
-      // Use platform-level MP access token
       const accessToken = Deno.env.get("MP_SUBSCRIPTION_ACCESS_TOKEN");
       
       if (accessToken) {
         try {
           const mpResponse = await fetch(
             `https://api.mercadopago.com/preapproval/${existingSub.mercadopago_subscription_id}`,
-            {
-              headers: {
-                "Authorization": `Bearer ${accessToken}`,
-              },
-            }
+            { headers: { "Authorization": `Bearer ${accessToken}` } }
           );
 
           if (mpResponse.ok) {
             const mpData = await mpResponse.json();
             logStep("MP subscription status", { status: mpData.status });
 
-            // Update local status
             const isActive = mpData.status === "authorized";
             await supabaseClient
               .from("tenant_subscriptions")
@@ -93,14 +117,7 @@ serve(async (req) => {
               })
               .eq("id", existingSub.id);
 
-            // Get current month usage
-            const monthYear = new Date().toISOString().slice(0, 7);
-            const { data: usage } = await supabaseClient
-              .from("tenant_usage")
-              .select("*")
-              .eq("tenant_id", profile.tenant_id)
-              .eq("month_year", monthYear)
-              .single();
+            const realUsage = await getMonthlyUsage();
 
             return new Response(JSON.stringify({
               subscribed: isActive,
@@ -112,7 +129,7 @@ serve(async (req) => {
                 max_branches: existingSub.subscription_plans?.max_branches,
                 max_shipments_month: existingSub.subscription_plans?.max_shipments_month,
               },
-              usage: usage || { shipments_count: 0, users_count: 0, branches_count: 0 },
+              usage: realUsage,
               payment_method: "mercadopago",
             }), {
               headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -125,7 +142,7 @@ serve(async (req) => {
       }
     }
 
-    // Fallback: manual subscription (assigned by Super Admin, no payment gateway)
+    // Fallback: manual subscription
     if (existingSub && existingSub.status === 'active' && !existingSub.mercadopago_subscription_id && !existingSub.stripe_subscription_id) {
       logStep("Found manual subscription (no gateway)", { subId: existingSub.id });
 
@@ -133,13 +150,7 @@ serve(async (req) => {
         ? new Date(existingSub.current_period_end) > new Date()
         : true;
 
-      const monthYear = new Date().toISOString().slice(0, 7);
-      const { data: usage } = await supabaseClient
-        .from("tenant_usage")
-        .select("*")
-        .eq("tenant_id", profile.tenant_id)
-        .eq("month_year", monthYear)
-        .single();
+      const realUsage = await getMonthlyUsage();
 
       return new Response(JSON.stringify({
         subscribed: isActive,
@@ -151,7 +162,7 @@ serve(async (req) => {
           max_branches: existingSub.subscription_plans?.max_branches,
           max_shipments_month: existingSub.subscription_plans?.max_shipments_month,
         },
-        usage: usage || { shipments_count: 0, users_count: 0, branches_count: 0 },
+        usage: realUsage,
         payment_method: "manual",
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -168,14 +179,7 @@ serve(async (req) => {
       try {
         const subscription = await stripe.subscriptions.retrieve(existingSub.stripe_subscription_id);
         const isActive = ["active", "trialing"].includes(subscription.status);
-
-        const monthYear = new Date().toISOString().slice(0, 7);
-        const { data: usage } = await supabaseClient
-          .from("tenant_usage")
-          .select("*")
-          .eq("tenant_id", profile.tenant_id)
-          .eq("month_year", monthYear)
-          .single();
+        const realUsage = await getMonthlyUsage();
 
         return new Response(JSON.stringify({
           subscribed: isActive,
@@ -187,7 +191,7 @@ serve(async (req) => {
             max_branches: existingSub.subscription_plans?.max_branches,
             max_shipments_month: existingSub.subscription_plans?.max_shipments_month,
           },
-          usage: usage || { shipments_count: 0, users_count: 0, branches_count: 0 },
+          usage: realUsage,
           payment_method: "stripe",
         }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -198,7 +202,6 @@ serve(async (req) => {
       }
     }
 
-    // No active subscription found
     logStep("No active subscription found");
     return new Response(JSON.stringify({ subscribed: false }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

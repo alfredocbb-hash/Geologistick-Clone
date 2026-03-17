@@ -12,6 +12,25 @@ const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[CHECK-SUBSCRIPTION] ${step}${detailsStr}`);
 };
 
+async function getRealUsage(supabaseClient: any, tenantId: string, shipmentUsage: any) {
+  const { count: usersCount } = await supabaseClient
+    .from("profiles")
+    .select("*", { count: "exact", head: true })
+    .eq("tenant_id", tenantId);
+
+  const { count: branchesCount } = await supabaseClient
+    .from("sucursales")
+    .select("*", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("activa", true);
+
+  return {
+    shipments_count: shipmentUsage?.shipments_count || 0,
+    users_count: usersCount || 0,
+    branches_count: branchesCount || 0,
+  };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -29,15 +48,12 @@ serve(async (req) => {
 
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
     if (!stripeKey) throw new Error("STRIPE_SECRET_KEY is not set");
-    logStep("Stripe key verified");
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) throw new Error("No authorization header provided");
-    logStep("Authorization header found");
 
     const token = authHeader.replace("Bearer ", "");
     
-    // Use anon key client with user's auth header for token validation
     const supabaseAuth = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY") ?? "", {
       global: { headers: { Authorization: authHeader } },
       auth: { persistSession: false },
@@ -55,7 +71,6 @@ serve(async (req) => {
     if (!user?.email) throw new Error("User not authenticated or email not available");
     logStep("User authenticated", { userId: user.id, email: user.email });
 
-    // Get tenant_id from profile
     const { data: profile, error: profileError } = await supabaseClient
       .from("profiles")
       .select("tenant_id")
@@ -73,17 +88,25 @@ serve(async (req) => {
     const tenantId = profile.tenant_id;
     logStep("Found tenant", { tenantId });
 
-    // Get existing subscription from DB
     const { data: existingSub } = await supabaseClient
       .from("tenant_subscriptions")
-      .select(`
-        *,
-        subscription_plans (*)
-      `)
+      .select(`*, subscription_plans (*)`)
       .eq("tenant_id", tenantId)
       .single();
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
+
+    // Helper to get monthly usage
+    const getMonthlyUsage = async () => {
+      const monthYear = new Date().toISOString().slice(0, 7);
+      const { data: usage } = await supabaseClient
+        .from("tenant_usage")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .eq("month_year", monthYear)
+        .single();
+      return await getRealUsage(supabaseClient, tenantId, usage);
+    };
 
     // If we have a stripe subscription ID, check its status
     if (existingSub?.stripe_subscription_id) {
@@ -91,7 +114,6 @@ serve(async (req) => {
         const subscription = await stripe.subscriptions.retrieve(existingSub.stripe_subscription_id);
         logStep("Retrieved Stripe subscription", { status: subscription.status });
 
-        // Update local subscription status
         await supabaseClient
           .from("tenant_subscriptions")
           .update({
@@ -104,15 +126,7 @@ serve(async (req) => {
           .eq("id", existingSub.id);
 
         const isActive = ["active", "trialing"].includes(subscription.status);
-        
-        // Get current month usage
-        const monthYear = new Date().toISOString().slice(0, 7);
-        const { data: usage } = await supabaseClient
-          .from("tenant_usage")
-          .select("*")
-          .eq("tenant_id", tenantId)
-          .eq("month_year", monthYear)
-          .single();
+        const realUsage = await getMonthlyUsage();
 
         return new Response(JSON.stringify({
           subscribed: isActive,
@@ -126,7 +140,7 @@ serve(async (req) => {
             max_branches: existingSub.subscription_plans?.max_branches,
             max_shipments_month: existingSub.subscription_plans?.max_shipments_month,
           },
-          usage: usage || { shipments_count: 0, users_count: 0, branches_count: 0 },
+          usage: realUsage,
         }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
           status: 200,
@@ -136,7 +150,7 @@ serve(async (req) => {
       }
     }
 
-    // Fallback: manual subscription (assigned by Super Admin, no payment gateway)
+    // Fallback: manual subscription
     if (existingSub && existingSub.status === 'active' && !existingSub.stripe_subscription_id && !existingSub.mercadopago_subscription_id) {
       logStep("Found manual subscription (no gateway)", { subId: existingSub.id });
 
@@ -144,13 +158,7 @@ serve(async (req) => {
         ? new Date(existingSub.current_period_end) > new Date()
         : true;
 
-      const monthYear = new Date().toISOString().slice(0, 7);
-      const { data: usage } = await supabaseClient
-        .from("tenant_usage")
-        .select("*")
-        .eq("tenant_id", tenantId)
-        .eq("month_year", monthYear)
-        .single();
+      const realUsage = await getMonthlyUsage();
 
       return new Response(JSON.stringify({
         subscribed: isActive,
@@ -162,7 +170,7 @@ serve(async (req) => {
           max_branches: existingSub.subscription_plans?.max_branches,
           max_shipments_month: existingSub.subscription_plans?.max_shipments_month,
         },
-        usage: usage || { shipments_count: 0, users_count: 0, branches_count: 0 },
+        usage: realUsage,
         payment_method: "manual",
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -203,7 +211,6 @@ serve(async (req) => {
     const priceId = subscription.items.data[0].price.id;
     logStep("Found active subscription", { subscriptionId: subscription.id, productId });
 
-    // Find matching plan in DB
     const { data: plan } = await supabaseClient
       .from("subscription_plans")
       .select("*")
@@ -211,7 +218,6 @@ serve(async (req) => {
       .single();
 
     if (plan) {
-      // Create or update tenant subscription
       await supabaseClient
         .from("tenant_subscriptions")
         .upsert({
@@ -227,14 +233,7 @@ serve(async (req) => {
       logStep("Synced subscription to DB");
     }
 
-    // Get current month usage
-    const monthYear = new Date().toISOString().slice(0, 7);
-    const { data: usage } = await supabaseClient
-      .from("tenant_usage")
-      .select("*")
-      .eq("tenant_id", tenantId)
-      .eq("month_year", monthYear)
-      .single();
+    const realUsage = await getMonthlyUsage();
 
     return new Response(JSON.stringify({
       subscribed: true,
@@ -248,7 +247,7 @@ serve(async (req) => {
         max_branches: plan.max_branches,
         max_shipments_month: plan.max_shipments_month,
       } : null,
-      usage: usage || { shipments_count: 0, users_count: 0, branches_count: 0 },
+      usage: realUsage,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
