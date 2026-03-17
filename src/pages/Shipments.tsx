@@ -55,7 +55,7 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; icon:
 };
 
 export default function Shipments() {
-  const { isAdmin, hasRole, user, profile } = useAuth();
+  const { isAdmin, isSuperAdmin, hasRole, user, profile } = useAuth();
   const queryClient = useQueryClient();
   const [search, setSearch] = usePersistedState('shipments-search', '');
   const [statusFilter, setStatusFilter] = usePersistedState('shipments-status-filter', 'all');
