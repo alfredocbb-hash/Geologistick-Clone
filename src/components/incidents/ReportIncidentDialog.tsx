@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
+import { useNativeCamera } from '@/hooks/useNativeCamera';
 import {
   Dialog,
   DialogContent,
@@ -41,6 +42,7 @@ interface ReportIncidentDialogProps {
 export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: ReportIncidentDialogProps) {
   const { user, profile } = useAuth();
   const queryClient = useQueryClient();
+  const { isNative: isNativeCamera, takePhoto: nativeTakePhoto, pickFromGallery: nativePickFromGallery } = useNativeCamera();
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const STORAGE_KEY = `incident-state-${shipment.id}`;
@@ -100,13 +102,29 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
     } catch (e) {}
   };
 
-  const handleOpenCamera = () => {
+  const handleOpenCamera = async () => {
+    if (isNativeCamera) {
+      const result = await nativeTakePhoto();
+      if (result) {
+        setPhoto(null);
+        setPhotoPreview(result.dataUrl);
+      }
+      return;
+    }
     persistState();
     if (cameraInputRef.current) cameraInputRef.current.value = '';
     cameraInputRef.current?.click();
   };
 
-  const handleOpenGallery = () => {
+  const handleOpenGallery = async () => {
+    if (isNativeCamera) {
+      const result = await nativePickFromGallery();
+      if (result) {
+        setPhoto(null);
+        setPhotoPreview(result.dataUrl);
+      }
+      return;
+    }
     persistState();
     if (galleryInputRef.current) galleryInputRef.current.value = '';
     galleryInputRef.current?.click();

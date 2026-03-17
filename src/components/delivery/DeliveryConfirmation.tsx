@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
+import { useNativeCamera } from '@/hooks/useNativeCamera';
 import {
   Dialog,
   DialogContent,
@@ -55,6 +56,7 @@ interface MpPaymentData {
 export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: DeliveryConfirmationProps) {
   const { user, profile } = useAuth();
   const queryClient = useQueryClient();
+  const { isNative: isNativeCamera, takePhoto: nativeTakePhoto, pickFromGallery: nativePickFromGallery } = useNativeCamera();
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const STORAGE_KEY = `delivery-state-${shipment.id}`;
@@ -148,7 +150,15 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
     } catch (e) {}
   };
 
-  const handleOpenCamera = () => {
+  const handleOpenCamera = async () => {
+    if (isNativeCamera) {
+      const result = await nativeTakePhoto();
+      if (result) {
+        setPhoto(null);
+        setPhotoPreview(result.dataUrl);
+      }
+      return;
+    }
     persistState();
     if (cameraInputRef.current) {
       cameraInputRef.current.value = '';
@@ -156,7 +166,15 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
     cameraInputRef.current?.click();
   };
 
-  const handleOpenGallery = () => {
+  const handleOpenGallery = async () => {
+    if (isNativeCamera) {
+      const result = await nativePickFromGallery();
+      if (result) {
+        setPhoto(null);
+        setPhotoPreview(result.dataUrl);
+      }
+      return;
+    }
     persistState();
     if (galleryInputRef.current) {
       galleryInputRef.current.value = '';
