@@ -1,28 +1,45 @@
 
 
-# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
+# Plan: Permitir al super_admin eliminar envíos
 
-## Problema
-Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
+## Qué se hará
+Agregar un botón "Eliminar" visible solo para super_admin en la tabla de envíos. Al confirmar, se eliminan el envío y todos sus registros relacionados (historial, pagos, movimientos de caja, paradas de ruta, etc.) con un dialog de confirmación con doble verificación.
 
-## Solución
+## Cambios
 
-### 1. Nueva función SQL: `reopen_ruta_planificada`
-- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
-- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
-- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
-- Inserta registro en `envio_historial` para cada envío reactivado
-- Retorna JSON con resultado y cantidad de envíos reactivados
+### 1. `src/pages/Shipments.tsx`
+- Importar `useAuth` → extraer `isSuperAdmin` (ya tiene `isAdmin`).
+- Importar `Trash2` de lucide-react.
+- Agregar estado `deleteDialogOpen` + `envioToDelete`.
+- Crear `deleteMutation` que elimina en cascada:
+  1. `envio_historial` donde `envio_id`
+  2. `pagos` donde `envio_id`
+  3. `movimientos_caja` donde `envio_id`
+  4. `ruta_paradas` donde `envio_id`
+  5. `hoja_ruta_envios` donde `envio_id`
+  6. `partner_shipments` donde `envio_origen_id` o `envio_destino_id`
+  7. `ecommerce_orders` → set `envio_id = null` donde `envio_id`
+  8. `envios` → delete por `id`
+- Agregar botón Trash2 en la columna de acciones, visible solo cuando `isSuperAdmin()`.
+- Agregar AlertDialog de confirmación con warning destructivo que muestra el tracking number.
 
-### 2. Nuevo componente: `ReopenRouteDialog.tsx`
-- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
-- Muestra cuántos envíos serán reactivados
-- Botón "Reabrir Ruta" que invoca el RPC
+### 2. Migración SQL — Policy DELETE para super_admin
+Crear una RLS policy que permita DELETE en `envios` solo a super_admins:
 
-### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
-- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
-- Al hacer click, abre `ReopenRouteDialog`
-- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
+```sql
+CREATE POLICY "Super admins can delete envios"
+ON public.envios
+FOR DELETE
+TO authenticated
+USING (public.current_user_is_super_admin());
+```
 
-**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
+Y policies similares para las tablas relacionadas (`envio_historial`, `pagos`, `movimientos_caja`, `ruta_paradas`, `hoja_ruta_envios`) para que el DELETE en cascada funcione.
+
+## Archivos afectados
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/pages/Shipments.tsx` | Botón eliminar + mutation + dialog |
+| Nueva migración SQL | Policies DELETE para super_admin |
 
