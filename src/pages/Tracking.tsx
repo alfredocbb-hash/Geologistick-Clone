@@ -9,7 +9,7 @@ import { Package, Search, MapPin, Clock, CheckCircle, Truck, AlertCircle, Loader
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-type ShipmentStatus = 'pendiente' | 'recogido' | 'en_sucursal' | 'en_transito' | 'en_reparto' | 'entregado' | 'devuelto' | 'cancelado' | 'primera_visita' | 'segunda_visita' | 'reprogramado';
+type ShipmentStatus = 'pendiente' | 'recogido' | 'en_sucursal' | 'en_transito' | 'en_reparto' | 'entregado' | 'devuelto' | 'cancelado' | 'primera_visita' | 'segunda_visita' | 'reprogramado' | 'incidencia' | 'no_entregado';
 
 interface TrackingResponse {
   tracking_number: string;
@@ -72,6 +72,8 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; bgCol
   primera_visita: { label: '1a Visita', color: 'text-amber-700', bgColor: 'bg-amber-100', icon: AlertCircle },
   segunda_visita: { label: '2a Visita', color: 'text-red-500', bgColor: 'bg-red-100', icon: AlertCircle },
   reprogramado: { label: 'Reprogramado', color: 'text-indigo-600', bgColor: 'bg-indigo-100', icon: CalendarClock },
+  incidencia: { label: 'Incidencia', color: 'text-orange-700', bgColor: 'bg-orange-100', icon: AlertCircle },
+  no_entregado: { label: 'No Entregado', color: 'text-red-600', bgColor: 'bg-red-100', icon: AlertCircle },
 };
 
 const statusOrder: ShipmentStatus[] = ['pendiente', 'recogido', 'en_sucursal', 'en_transito', 'en_reparto', 'entregado'];
@@ -122,11 +124,20 @@ export default function Tracking() {
     setSearchedTracking(trackingNumber.trim().toUpperCase());
   };
 
-  const getStatusIndex = (status: ShipmentStatus) => {
-    return statusOrder.indexOf(status);
+  const getStatusIndex = (status: ShipmentStatus, historial?: TrackingResponse['historial']) => {
+    const directIndex = statusOrder.indexOf(status);
+    if (directIndex !== -1) return directIndex;
+    // For alternative states (incidencia, no_entregado, etc.), find the last linear status from history
+    if (historial && historial.length > 0) {
+      for (const entry of historial) {
+        const idx = statusOrder.indexOf(entry.estado_nuevo as ShipmentStatus);
+        if (idx !== -1) return idx;
+      }
+    }
+    return -1;
   };
 
-  const currentStatusIndex = envio?.estado ? getStatusIndex(envio.estado) : -1;
+  const currentStatusIndex = envio?.estado ? getStatusIndex(envio.estado, envio.historial) : -1;
 
   // Dynamic branding styles
   const primaryColor = envio?.branding?.color_primario;
