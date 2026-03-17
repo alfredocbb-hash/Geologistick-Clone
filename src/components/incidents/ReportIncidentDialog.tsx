@@ -76,7 +76,6 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
       reader.onloadend = () => {
         const preview = reader.result as string;
         setPhotoPreview(preview);
-        // Persist to survive WebView reload
         try {
           sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
             photoPreview: preview,
@@ -91,8 +90,7 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
     }
   };
 
-  // Save state before opening file picker (Android WebView may reload)
-  const handleOpenCamera = () => {
+  const persistState = () => {
     try {
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
         photoPreview,
@@ -100,20 +98,25 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
         description,
       }));
     } catch (e) {}
-    // Reset input value so onChange fires even if user picks the same file
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-    fileInputRef.current?.click();
   };
 
-  // Remove photo
+  const handleOpenCamera = () => {
+    persistState();
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
+    cameraInputRef.current?.click();
+  };
+
+  const handleOpenGallery = () => {
+    persistState();
+    if (galleryInputRef.current) galleryInputRef.current.value = '';
+    galleryInputRef.current?.click();
+  };
+
   const removePhoto = () => {
     setPhoto(null);
     setPhotoPreview(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
+    if (galleryInputRef.current) galleryInputRef.current.value = '';
   };
 
   // Upload file to storage - accepts File or Blob
