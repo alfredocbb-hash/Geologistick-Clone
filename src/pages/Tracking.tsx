@@ -124,11 +124,20 @@ export default function Tracking() {
     setSearchedTracking(trackingNumber.trim().toUpperCase());
   };
 
-  const getStatusIndex = (status: ShipmentStatus) => {
-    return statusOrder.indexOf(status);
+  const getStatusIndex = (status: ShipmentStatus, historial?: TrackingResponse['historial']) => {
+    const directIndex = statusOrder.indexOf(status);
+    if (directIndex !== -1) return directIndex;
+    // For alternative states (incidencia, no_entregado, etc.), find the last linear status from history
+    if (historial && historial.length > 0) {
+      for (const entry of historial) {
+        const idx = statusOrder.indexOf(entry.estado_nuevo as ShipmentStatus);
+        if (idx !== -1) return idx;
+      }
+    }
+    return -1;
   };
 
-  const currentStatusIndex = envio?.estado ? getStatusIndex(envio.estado) : -1;
+  const currentStatusIndex = envio?.estado ? getStatusIndex(envio.estado, envio.historial) : -1;
 
   // Dynamic branding styles
   const primaryColor = envio?.branding?.color_primario;

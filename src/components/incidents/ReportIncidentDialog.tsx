@@ -264,7 +264,6 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
               ref={fileInputRef}
               type="file"
               accept="image/*"
-              capture="environment"
               onChange={handlePhotoSelect}
               className="hidden"
             />
