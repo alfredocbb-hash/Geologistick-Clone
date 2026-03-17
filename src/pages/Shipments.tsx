@@ -666,6 +666,21 @@ export default function Shipments() {
                             <XCircle className="h-4 w-4" />
                           </Button>
                         )}
+                        {isSuperAdmin() && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Eliminar envío permanentemente"
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEnvioToDelete(envio);
+                              setDeleteDialogOpen(true);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
