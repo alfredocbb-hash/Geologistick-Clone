@@ -136,20 +136,32 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
   };
 
   // Save state before opening camera (Android WebView may reload)
-  const handleOpenCamera = () => {
+  const persistState = () => {
     try {
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
         photoPreview,
         signature,
-        notes,
         amountCollected,
+        notes,
+        paymentMethod,
       }));
     } catch (e) {}
-    // Reset input value so onChange fires even if user picks the same file
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+  };
+
+  const handleOpenCamera = () => {
+    persistState();
+    if (cameraInputRef.current) {
+      cameraInputRef.current.value = '';
     }
-    fileInputRef.current?.click();
+    cameraInputRef.current?.click();
+  };
+
+  const handleOpenGallery = () => {
+    persistState();
+    if (galleryInputRef.current) {
+      galleryInputRef.current.value = '';
+    }
+    galleryInputRef.current?.click();
   };
 
   // Remove photo
