@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { DollarSign, Download, FileText, Info, Loader2, MessageCircle, Scale, Settings, Shield, ShoppingCart, Truck } from "lucide-react";
+import { Briefcase, DollarSign, Download, FileText, Info, Loader2, MessageCircle, Scale, Settings, Shield, ShoppingCart, Truck } from "lucide-react";
 import { generateUserGuidePDF } from "@/lib/generateUserGuidePDF";
 import { generateEcommerceGuidePDF } from "@/lib/generateEcommerceGuidePDF";
 import { generateRatesGuidePDF } from "@/lib/generateRatesGuidePDF";
