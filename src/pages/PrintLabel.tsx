@@ -3,12 +3,12 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   ArrowLeft, 
   FileText, 
   Package,
   Loader2,
+  Printer,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -139,7 +139,7 @@ async function loadImageAsPngBase64(url: string): Promise<string | null> {
   });
 }
 
-// Draw a single label page on the PDF
+// Draw a single label on the PDF at a given offset
 function drawLabel(
   doc: jsPDF,
   envio: Envio,
@@ -152,13 +152,15 @@ function drawLabel(
   widthMm: number,
   heightMm: number,
   qrSizeMm: number,
+  offsetX: number = 0,
+  offsetY: number = 0,
 ) {
   const W = widthMm;
   const H = heightMm;
   const m = 2; // margin mm
   const cw = W - m * 2; // content width
-  let y = m;
-  const lx = m; // left x
+  let y = m + offsetY;
+  const lx = m + offsetX; // left x
 
   const isCompact = heightMm > widthMm; // portrait = compact
   const fontBase = isCompact ? 7 : 8;
@@ -166,7 +168,10 @@ function drawLabel(
   // Border around entire label
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.5);
-  doc.rect(m, m, cw, H - m * 2);
+  doc.rect(lx, y - offsetY + m + offsetY, cw, H - m * 2);
+
+  // Reset y to proper start
+  y = m + offsetY;
 
   // ── Row 1: Logo + Tracking ──
   const row1H = isCompact ? 18 : 14;
@@ -177,9 +182,9 @@ function drawLabel(
   doc.rect(lx, y, logoW, row1H);
   if (logoBase64) {
     try {
-      const logoMaxW = logoW - 4;
-      const logoMaxH = row1H - 4;
-      doc.addImage(logoBase64, 'PNG', lx + 2, y + 2, logoMaxW, logoMaxH);
+      const logoMaxW = logoW - 2;
+      const logoMaxH = row1H - 2;
+      doc.addImage(logoBase64, 'PNG', lx + 1, y + 1, logoMaxW, logoMaxH);
     } catch {}
   }
 
@@ -398,6 +403,97 @@ function drawLabel(
   doc.text(remStr, lx + cw / 2, y + row8DataH / 2 + 1, { align: 'center', maxWidth: cw - 4 });
 }
 
+// Shared logic to prepare PDF data
+async function preparePdfData(envio: Envio) {
+  const tipoServicio = envio.tipo_servicio_detalle || 'sucursal_sucursal';
+  const tipoConfig = TIPO_SERVICIO_CONFIG[tipoServicio as keyof typeof TIPO_SERVICIO_CONFIG] 
+    || TIPO_SERVICIO_CONFIG.sucursal_sucursal;
+
+  const getDeliveryAddress = () => {
+    if (['sucursal_puerta', 'puerta_puerta', 'domicilio_domicilio'].includes(tipoServicio)) {
+      if (envio.direccion_entrega) {
+        return { type: 'domicilio', direccion: envio.direccion_entrega, ciudad: envio.ciudad_entrega, cp: envio.cp_entrega };
+      }
+      if (envio.destinatario) {
+        return { type: 'domicilio', direccion: envio.destinatario.direccion, ciudad: null, cp: null };
+      }
+    }
+    if (envio.sucursal_destino) {
+      return { type: 'sucursal', nombre: envio.sucursal_destino.nombre, direccion: envio.sucursal_destino.direccion, ciudad: envio.sucursal_destino.ciudad };
+    }
+    return null;
+  };
+
+  const deliveryInfo = getDeliveryAddress();
+  const bultos = envio.cantidad_bultos || 1;
+
+  let logoBase64 = envio.logoUrl ? await loadImageAsPngBase64(envio.logoUrl) : null;
+  if (!logoBase64) {
+    logoBase64 = await loadImageAsPngBase64(geologistickLogo);
+  }
+
+  const baseUrl = window.location.origin;
+  const qrImages: (string | null)[] = [];
+  for (let i = 0; i < bultos; i++) {
+    const trackingCode = `${envio.tracking_number}-${String(i + 1).padStart(2, '0')}`;
+    const qrUrl = getQRCodeUrl(`${baseUrl}/tracking?q=${trackingCode}`, 200);
+    const qrB64 = await loadImageAsBase64(qrUrl);
+    qrImages.push(qrB64);
+  }
+
+  return { tipoConfig, deliveryInfo, bultos, logoBase64, qrImages };
+}
+
+// Generate PDF document with all labels
+function generateLabelPdf(
+  envio: Envio,
+  tipoConfig: { label: string },
+  deliveryInfo: ReturnType<typeof Object>,
+  bultos: number,
+  logoBase64: string | null,
+  qrImages: (string | null)[],
+) {
+  const size = LABEL_SIZE;
+
+  if (bultos <= 1) {
+    // Single label: 100x150mm page
+    const doc = new jsPDF({
+      orientation: size.orientation,
+      unit: 'mm',
+      format: [size.widthMm, size.heightMm],
+    });
+    drawLabel(doc, envio, 1, bultos, tipoConfig, deliveryInfo as any, logoBase64, qrImages[0], size.widthMm, size.heightMm, size.qrSize);
+    return doc;
+  }
+
+  // Multiple labels: A4 with 4 labels per page (2x2 grid)
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const positions = [
+    { x: 5, y: 0.5 },
+    { x: 107.5, y: 0.5 },
+    { x: 5, y: 148.5 },
+    { x: 107.5, y: 148.5 },
+  ];
+
+  for (let i = 0; i < bultos; i++) {
+    if (i > 0 && i % 4 === 0) doc.addPage();
+    const pos = positions[i % 4];
+    drawLabel(
+      doc, envio, i + 1, bultos, tipoConfig, deliveryInfo as any,
+      logoBase64, qrImages[i],
+      size.widthMm, size.heightMm, size.qrSize,
+      pos.x, pos.y,
+    );
+  }
+
+  return doc;
+}
+
 export default function PrintLabel() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -440,68 +536,33 @@ export default function PrintLabel() {
 
   const handlePrint = async () => {
     if (!envio) return;
-    
     setIsPrinting(true);
-    
     try {
-      const tipoServicio = envio.tipo_servicio_detalle || 'sucursal_sucursal';
-      const tipoConfig = TIPO_SERVICIO_CONFIG[tipoServicio as keyof typeof TIPO_SERVICIO_CONFIG] 
-        || TIPO_SERVICIO_CONFIG.sucursal_sucursal;
-
-      const getDeliveryAddress = () => {
-        if (['sucursal_puerta', 'puerta_puerta', 'domicilio_domicilio'].includes(tipoServicio)) {
-          if (envio.direccion_entrega) {
-            return { type: 'domicilio', direccion: envio.direccion_entrega, ciudad: envio.ciudad_entrega, cp: envio.cp_entrega };
-          }
-          if (envio.destinatario) {
-            return { type: 'domicilio', direccion: envio.destinatario.direccion, ciudad: null, cp: null };
-          }
-        }
-        if (envio.sucursal_destino) {
-          return { type: 'sucursal', nombre: envio.sucursal_destino.nombre, direccion: envio.sucursal_destino.direccion, ciudad: envio.sucursal_destino.ciudad };
-        }
-        return null;
-      };
-
-      const deliveryInfo = getDeliveryAddress();
-      const size = LABEL_SIZE;
-      const bultos = envio.cantidad_bultos || 1;
-
-      // Load logo as PNG base64 via canvas (handles SVG + raster formats)
-      let logoBase64 = envio.logoUrl ? await loadImageAsPngBase64(envio.logoUrl) : null;
-      if (!logoBase64) {
-        logoBase64 = await loadImageAsPngBase64(geologistickLogo);
-      }
-
-      // Load QR images as base64 for each bulto
-      const baseUrl = window.location.origin;
-      const qrImages: (string | null)[] = [];
-      for (let i = 0; i < bultos; i++) {
-        const trackingCode = `${envio.tracking_number}-${String(i + 1).padStart(2, '0')}`;
-        const qrUrl = getQRCodeUrl(`${baseUrl}/tracking?q=${trackingCode}`, 200);
-        const qrB64 = await loadImageAsBase64(qrUrl);
-        qrImages.push(qrB64);
-      }
-
-      // Create PDF with exact label dimensions
-      const doc = new jsPDF({
-        orientation: size.orientation,
-        unit: 'mm',
-        format: [size.widthMm, size.heightMm],
-      });
-
-      // Draw each bulto as a page
-      for (let i = 0; i < bultos; i++) {
-        if (i > 0) doc.addPage([size.widthMm, size.heightMm], size.orientation);
-        drawLabel(doc, envio, i + 1, bultos, tipoConfig, deliveryInfo, logoBase64, qrImages[i], size.widthMm, size.heightMm, size.qrSize);
-      }
-
-      // Download PDF directly using jsPDF's save (more reliable in iframes)
+      const { tipoConfig, deliveryInfo, bultos, logoBase64, qrImages } = await preparePdfData(envio);
+      const doc = generateLabelPdf(envio, tipoConfig, deliveryInfo, bultos, logoBase64, qrImages);
       doc.save(`etiqueta-${envio.tracking_number}.pdf`);
-      toast.success('PDF descargado. Abra el archivo para imprimir.');
+      toast.success('PDF descargado.');
     } catch (e) {
       console.error('Error generating PDF:', e);
       toast.error('Error al generar el PDF de etiquetas');
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
+  const handleDirectPrint = async () => {
+    if (!envio) return;
+    setIsPrinting(true);
+    try {
+      const { tipoConfig, deliveryInfo, bultos, logoBase64, qrImages } = await preparePdfData(envio);
+      const doc = generateLabelPdf(envio, tipoConfig, deliveryInfo, bultos, logoBase64, qrImages);
+      doc.autoPrint();
+      const blobUrl = doc.output('bloburl');
+      window.open(blobUrl, '_blank');
+      toast.success('Abriendo diálogo de impresión...');
+    } catch (e) {
+      console.error('Error printing:', e);
+      toast.error('Error al imprimir las etiquetas');
     } finally {
       setIsPrinting(false);
     }
@@ -568,10 +629,19 @@ export default function PrintLabel() {
             <h1 className="text-2xl font-bold">Imprimir Etiquetas</h1>
             <p className="text-muted-foreground">
               {envio.tracking_number} • {bultos} {bultos === 1 ? 'bulto' : 'bultos'}
+              {bultos > 1 && ' • 4 por hoja A4'}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <Button onClick={handleDirectPrint} variant="outline" disabled={isPrinting}>
+            {isPrinting ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Printer className="h-4 w-4 mr-2" />
+            )}
+            Imprimir
+          </Button>
           <Button onClick={handlePrint} className="gradient-primary" disabled={isPrinting}>
             {isPrinting ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -586,7 +656,7 @@ export default function PrintLabel() {
       {/* Preview */}
       <div className="p-4">
         <p className="text-sm text-muted-foreground mb-4">
-          Vista previa de las etiquetas. Al generar el PDF se abrirá en una pestaña nueva donde podrá imprimir.
+          Vista previa de las etiquetas. {bultos > 1 ? 'Se imprimirán 4 etiquetas por hoja A4.' : 'Al generar el PDF se descargará el archivo.'}
         </p>
         
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -614,11 +684,11 @@ export default function PrintLabel() {
               <div key={bultoNum} className="bg-white border-2 border-black overflow-hidden">
                 {/* Fila 1: Header - Logo + Tracking */}
                 <div className="grid grid-cols-[30%_1fr] border-b border-black">
-                  <div className="border-r border-black p-2 flex items-center justify-center">
+                  <div className="border-r border-black p-1 flex items-center justify-center aspect-[2/1]">
                     <img 
                       src={envio.logoUrl || geologistickLogo} 
                       alt="" 
-                      className="max-w-[80px] max-h-[40px] object-contain"
+                      className="w-full h-full object-contain"
                       onError={(e) => { (e.target as HTMLImageElement).src = geologistickLogo; }}
                     />
                   </div>
