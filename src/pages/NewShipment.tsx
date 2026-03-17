@@ -429,25 +429,6 @@ export default function NewShipment() {
     refetchOnWindowFocus: false,
   });
 
-  // Query para tarifas habilitadas por sucursal destino (bidireccional para sucursal-a-sucursal)
-  const sucursalDestinoId = formData.sucursal_destino_id;
-  const necesitaBusquedaDestino = (tipoServicioDetalle === 'sucursal_sucursal' || tipoServicioDetalle === 'puerta_sucursal') && !!sucursalDestinoId;
-  
-  const { data: sucursalDestinoTarifas = [] } = useQuery({
-    queryKey: ['sucursal-tarifas-destino', sucursalDestinoId],
-    queryFn: async () => {
-      if (!sucursalDestinoId) return [];
-      const { data, error } = await supabase
-        .from('sucursal_tarifas')
-        .select('tarifa_id')
-        .eq('sucursal_id', sucursalDestinoId)
-        .eq('habilitada', true);
-      if (error) throw error;
-      return data;
-    },
-    enabled: necesitaBusquedaDestino,
-    refetchOnWindowFocus: false,
-  });
 
   // Query para configuración de seguro
   const { data: configSeguro } = useQuery({
