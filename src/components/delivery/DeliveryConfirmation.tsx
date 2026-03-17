@@ -168,9 +168,8 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
   const removePhoto = () => {
     setPhoto(null);
     setPhotoPreview(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
+    if (galleryInputRef.current) galleryInputRef.current.value = '';
   };
 
   // Clean up and close
