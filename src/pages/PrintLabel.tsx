@@ -402,7 +402,6 @@ export default function PrintLabel() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [isPrinting, setIsPrinting] = useState(false);
-  const [isPrinting, setIsPrinting] = useState(false);
   const envioId = searchParams.get('id');
 
   const { data: envio, isLoading, error } = useQuery({
