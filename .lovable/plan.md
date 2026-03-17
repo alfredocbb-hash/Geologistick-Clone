@@ -1,28 +1,33 @@
 
 
-# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
+# Fix: Nombre del partner no aparece en Empresas Asociadas
 
-## Problema
-Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
+## Causa raíz
+La tabla `tenants` tiene RLS que solo permite ver **el propio tenant** del usuario (`id = current_user_tenant()`). Cuando el hook `usePartners` intenta obtener el nombre del tenant asociado con `supabase.from('tenants').select('id, nombre').in('id', [...])`, la query devuelve vacío para el otro tenant porque RLS lo bloquea. Por eso se muestra "Empresa" (el fallback).
 
 ## Solución
+Agregar una política RLS en `tenants` que permita ver tenants con los que se tiene una partnership activa o pendiente.
 
-### 1. Nueva función SQL: `reopen_ruta_planificada`
-- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
-- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
-- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
-- Inserta registro en `envio_historial` para cada envío reactivado
-- Retorna JSON con resultado y cantidad de envíos reactivados
+### 1. Migración SQL — nueva política RLS en `tenants`
 
-### 2. Nuevo componente: `ReopenRouteDialog.tsx`
-- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
-- Muestra cuántos envíos serán reactivados
-- Botón "Reabrir Ruta" que invoca el RPC
+```sql
+CREATE POLICY "Users can view partner tenants"
+ON public.tenants FOR SELECT TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.tenant_partners tp
+    WHERE (tp.tenant_a_id = id OR tp.tenant_b_id = id)
+    AND public.current_user_tenant() IN (tp.tenant_a_id, tp.tenant_b_id)
+  )
+);
+```
 
-### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
-- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
-- Al hacer click, abre `ReopenRouteDialog`
-- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
+Esto permite que un usuario vea los datos básicos de cualquier tenant con el que tenga una partnership (en cualquier estado), sin exponer tenants no relacionados.
 
-**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
+### Archivos
+| Cambio | Archivo |
+|--------|---------|
+| Nueva política RLS | Migración SQL |
+
+No se necesitan cambios en el código frontend — el hook ya intenta leer los nombres, solo falla por RLS.
 
