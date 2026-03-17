@@ -55,7 +55,8 @@ interface MpPaymentData {
 export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: DeliveryConfirmationProps) {
   const { user, profile } = useAuth();
   const queryClient = useQueryClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const STORAGE_KEY = `delivery-state-${shipment.id}`;
   
   const [photo, setPhoto] = useState<File | null>(null);
@@ -135,29 +136,40 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
   };
 
   // Save state before opening camera (Android WebView may reload)
-  const handleOpenCamera = () => {
+  const persistState = () => {
     try {
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
         photoPreview,
         signature,
-        notes,
         amountCollected,
+        notes,
+        paymentMethod,
       }));
     } catch (e) {}
-    // Reset input value so onChange fires even if user picks the same file
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+  };
+
+  const handleOpenCamera = () => {
+    persistState();
+    if (cameraInputRef.current) {
+      cameraInputRef.current.value = '';
     }
-    fileInputRef.current?.click();
+    cameraInputRef.current?.click();
+  };
+
+  const handleOpenGallery = () => {
+    persistState();
+    if (galleryInputRef.current) {
+      galleryInputRef.current.value = '';
+    }
+    galleryInputRef.current?.click();
   };
 
   // Remove photo
   const removePhoto = () => {
     setPhoto(null);
     setPhotoPreview(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
+    if (galleryInputRef.current) galleryInputRef.current.value = '';
   };
 
   // Clean up and close
@@ -581,7 +593,15 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
           <div className="space-y-2">
             <Label className="text-muted-foreground">📸 Foto de Entrega (Opcional)</Label>
              <input
-              ref={fileInputRef}
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handlePhotoSelect}
+              className="hidden"
+            />
+            <input
+              ref={galleryInputRef}
               type="file"
               accept="image/*"
               onChange={handlePhotoSelect}
@@ -606,15 +626,26 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
                 </Button>
               </div>
             ) : (
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full h-24 flex flex-col items-center justify-center gap-2 border-muted-foreground"
-                onClick={handleOpenCamera}
-              >
-                <Camera className="h-8 w-8 text-muted-foreground" />
-                <span className="text-muted-foreground">Tomar Foto</span>
-              </Button>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-24 flex flex-col items-center justify-center gap-2 border-muted-foreground"
+                  onClick={handleOpenCamera}
+                >
+                  <Camera className="h-8 w-8 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">📷 Tomar Foto</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-24 flex flex-col items-center justify-center gap-2 border-muted-foreground"
+                  onClick={handleOpenGallery}
+                >
+                  <Camera className="h-8 w-8 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">🖼 Galería</span>
+                </Button>
+              </div>
             )}
           </div>
 

@@ -41,7 +41,8 @@ interface ReportIncidentDialogProps {
 export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: ReportIncidentDialogProps) {
   const { user, profile } = useAuth();
   const queryClient = useQueryClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const STORAGE_KEY = `incident-state-${shipment.id}`;
   
   const [incidentType, setIncidentType] = useState<string>('');
@@ -75,7 +76,6 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
       reader.onloadend = () => {
         const preview = reader.result as string;
         setPhotoPreview(preview);
-        // Persist to survive WebView reload
         try {
           sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
             photoPreview: preview,
@@ -90,8 +90,7 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
     }
   };
 
-  // Save state before opening file picker (Android WebView may reload)
-  const handleOpenCamera = () => {
+  const persistState = () => {
     try {
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
         photoPreview,
@@ -99,20 +98,25 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
         description,
       }));
     } catch (e) {}
-    // Reset input value so onChange fires even if user picks the same file
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-    fileInputRef.current?.click();
   };
 
-  // Remove photo
+  const handleOpenCamera = () => {
+    persistState();
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
+    cameraInputRef.current?.click();
+  };
+
+  const handleOpenGallery = () => {
+    persistState();
+    if (galleryInputRef.current) galleryInputRef.current.value = '';
+    galleryInputRef.current?.click();
+  };
+
   const removePhoto = () => {
     setPhoto(null);
     setPhotoPreview(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
+    if (galleryInputRef.current) galleryInputRef.current.value = '';
   };
 
   // Upload file to storage - accepts File or Blob
@@ -320,7 +324,15 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
           <div className="space-y-2">
             <Label>📸 Foto de Evidencia (opcional)</Label>
             <input
-              ref={fileInputRef}
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handlePhotoSelect}
+              className="hidden"
+            />
+            <input
+              ref={galleryInputRef}
               type="file"
               accept="image/*"
               onChange={handlePhotoSelect}
@@ -345,15 +357,26 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
                 </Button>
               </div>
             ) : (
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full h-20 flex flex-col items-center justify-center gap-2"
-                onClick={handleOpenCamera}
-              >
-                <Camera className="h-6 w-6 text-muted-foreground" />
-                <span className="text-sm">Agregar foto de evidencia</span>
-              </Button>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-20 flex flex-col items-center justify-center gap-2"
+                  onClick={handleOpenCamera}
+                >
+                  <Camera className="h-6 w-6 text-muted-foreground" />
+                  <span className="text-sm">📷 Tomar Foto</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-20 flex flex-col items-center justify-center gap-2"
+                  onClick={handleOpenGallery}
+                >
+                  <Camera className="h-6 w-6 text-muted-foreground" />
+                  <span className="text-sm">🖼 Galería</span>
+                </Button>
+              </div>
             )}
           </div>
         </div>
