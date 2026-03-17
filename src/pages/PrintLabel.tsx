@@ -401,7 +401,7 @@ function drawLabel(
 export default function PrintLabel() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const [labelSize, setLabelSize] = useState<LabelSize>('standard');
+  const [isPrinting, setIsPrinting] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
   const envioId = searchParams.get('id');
 
