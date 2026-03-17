@@ -239,6 +239,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
         fecha_entrega: new Date().toISOString(),
         entrega_lat: deliveryLocation?.lat || null,
         entrega_lng: deliveryLocation?.lng || null,
+        sucursal_entrega_id: profile?.sucursal_id || null,
       };
 
       if (photoUrl) updateData.foto_entrega = photoUrl;

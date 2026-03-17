@@ -164,6 +164,7 @@ export function BranchDeliveryDialog({
           retira_firma: signature,
           entregado_en_sucursal: true,
           entregado_por: user.id,
+          sucursal_entrega_id: profile?.sucursal_id || null,
           requiere_factura: requiereFactura,
           factura_tipo: requiereFactura ? facturaTipo : null,
         })

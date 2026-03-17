@@ -1,28 +1,28 @@
 
 
-# Fix: Setear `sucursal_entrega_id` al confirmar entrega
+# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
 
 ## Problema
-Cuando se entrega un envío, ninguno de los dos flujos de entrega establece `sucursal_entrega_id`:
-- **BranchDeliveryDialog** (entrega en sucursal): marca `entregado_en_sucursal: true` pero no setea `sucursal_entrega_id`
-- **DeliveryConfirmation** (entrega por chofer): no setea `sucursal_entrega_id` en absoluto
+Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
 
-Esto provoca que envíos entregados no aparezcan en la liquidación de la sucursal correspondiente, porque el motor de liquidación filtra por `sucursal_destino_id` o `sucursal_entrega_id`.
+## Solución
 
-## Cambios
+### 1. Nueva función SQL: `reopen_ruta_planificada`
+- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
+- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
+- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
+- Inserta registro en `envio_historial` para cada envío reactivado
+- Retorna JSON con resultado y cantidad de envíos reactivados
 
-### `src/components/scan/BranchDeliveryDialog.tsx`
-- En `handleConfirmDelivery`, agregar `sucursal_entrega_id: profile?.sucursal_id` al update del envío (la sucursal del usuario que entrega)
+### 2. Nuevo componente: `ReopenRouteDialog.tsx`
+- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
+- Muestra cuántos envíos serán reactivados
+- Botón "Reabrir Ruta" que invoca el RPC
 
-### `src/components/delivery/DeliveryConfirmation.tsx`
-- En la mutación de confirmación, agregar `sucursal_entrega_id: profile?.sucursal_id` al `updateData` cuando el chofer tiene sucursal asignada
+### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
+- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
+- Al hacer click, abre `ReopenRouteDialog`
+- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
 
-### Data fix para ENV-AH24NW
-- Actualizar el envío existente para que `sucursal_entrega_id` apunte a la sucursal de Mar del Plata, corrigiendo el dato histórico
-
-| Archivo | Cambio |
-|---------|--------|
-| `BranchDeliveryDialog.tsx` | Agregar `sucursal_entrega_id` en el update de entrega |
-| `DeliveryConfirmation.tsx` | Agregar `sucursal_entrega_id` en el update de entrega |
-| Data fix | UPDATE envío ENV-AH24NW con `sucursal_entrega_id` correcto |
+**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
 
