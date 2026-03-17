@@ -16,30 +16,11 @@ import { toast } from 'sonner';
 import { jsPDF } from 'jspdf';
 import geologistickLogo from '@/assets/geologistick-logo.png';
 
-type LabelSize = 'compact' | 'standard' | 'large';
-
-const LABEL_SIZES = {
-  compact: {
-    name: "Compacta (10×15 cm)",
-    widthMm: 100,
-    heightMm: 150,
-    orientation: 'portrait' as const,
-    qrSize: 30,
-  },
-  standard: {
-    name: "Estándar (15×10 cm)",
-    widthMm: 150,
-    heightMm: 100,
-    orientation: 'landscape' as const,
-    qrSize: 35,
-  },
-  large: {
-    name: "Grande (20×10 cm)",
-    widthMm: 200,
-    heightMm: 100,
-    orientation: 'landscape' as const,
-    qrSize: 40,
-  },
+const LABEL_SIZE = {
+  widthMm: 100,
+  heightMm: 150,
+  orientation: 'portrait' as const,
+  qrSize: 30,
 };
 
 const TIPO_SERVICIO_CONFIG = {
@@ -420,7 +401,6 @@ function drawLabel(
 export default function PrintLabel() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const [labelSize, setLabelSize] = useState<LabelSize>('standard');
   const [isPrinting, setIsPrinting] = useState(false);
   const envioId = searchParams.get('id');
 
@@ -484,7 +464,7 @@ export default function PrintLabel() {
       };
 
       const deliveryInfo = getDeliveryAddress();
-      const size = LABEL_SIZES[labelSize];
+      const size = LABEL_SIZE;
       const bultos = envio.cantidad_bultos || 1;
 
       // Load logo as PNG base64 via canvas (handles SVG + raster formats)
@@ -592,19 +572,6 @@ export default function PrintLabel() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Tamaño:</span>
-            <Select value={labelSize} onValueChange={(v) => setLabelSize(v as LabelSize)}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(LABEL_SIZES).map(([key, size]) => (
-                  <SelectItem key={key} value={key}>{size.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
           <Button onClick={handlePrint} className="gradient-primary" disabled={isPrinting}>
             {isPrinting ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
