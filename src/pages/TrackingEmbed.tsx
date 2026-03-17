@@ -73,6 +73,8 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; icon:
   primera_visita: { label: "1a Visita", color: "bg-amber-600", icon: AlertCircle },
   segunda_visita: { label: "2a Visita", color: "bg-red-400", icon: AlertCircle },
   reprogramado: { label: "Reprogramado", color: "bg-indigo-500", icon: CalendarClock },
+  incidencia: { label: "Incidencia", color: "bg-orange-600", icon: AlertCircle },
+  no_entregado: { label: "No Entregado", color: "bg-red-600", icon: AlertCircle },
 };
 
 const statusOrder: ShipmentStatus[] = [
