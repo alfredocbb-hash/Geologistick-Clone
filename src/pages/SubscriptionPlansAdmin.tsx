@@ -247,9 +247,14 @@ const SubscriptionPlansAdmin = () => {
                       </code>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={plan.is_active ? "default" : "secondary"}>
-                        {plan.is_active ? "Activo" : "Inactivo"}
-                      </Badge>
+                      <div className="flex flex-col gap-1">
+                        <Badge variant={plan.is_active ? "default" : "secondary"}>
+                          {plan.is_active ? "Activo" : "Inactivo"}
+                        </Badge>
+                        <Badge variant={plan.visible_in_landing ? "outline" : "secondary"} className="text-xs">
+                          {plan.visible_in_landing ? "Público" : "Oculto"}
+                        </Badge>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Button variant="ghost" size="sm" onClick={() => handleEdit(plan)}>
