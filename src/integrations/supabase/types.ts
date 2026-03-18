@@ -1758,6 +1758,67 @@ export type Database = {
         }
         Relationships: []
       }
+      liquidacion_partner_detalles: {
+        Row: {
+          concepto_id: string | null
+          created_at: string | null
+          envio_id: string | null
+          id: string
+          liquidacion_id: string
+          monto_comision: number | null
+          monto_envio: number | null
+          nombre_concepto: string | null
+          porcentaje_comision: number | null
+          tipo_pago: string | null
+        }
+        Insert: {
+          concepto_id?: string | null
+          created_at?: string | null
+          envio_id?: string | null
+          id?: string
+          liquidacion_id: string
+          monto_comision?: number | null
+          monto_envio?: number | null
+          nombre_concepto?: string | null
+          porcentaje_comision?: number | null
+          tipo_pago?: string | null
+        }
+        Update: {
+          concepto_id?: string | null
+          created_at?: string | null
+          envio_id?: string | null
+          id?: string
+          liquidacion_id?: string
+          monto_comision?: number | null
+          monto_envio?: number | null
+          nombre_concepto?: string | null
+          porcentaje_comision?: number | null
+          tipo_pago?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "liquidacion_partner_detalles_concepto_id_fkey"
+            columns: ["concepto_id"]
+            isOneToOne: false
+            referencedRelation: "tarifa_conceptos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "liquidacion_partner_detalles_envio_id_fkey"
+            columns: ["envio_id"]
+            isOneToOne: false
+            referencedRelation: "envios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "liquidacion_partner_detalles_liquidacion_id_fkey"
+            columns: ["liquidacion_id"]
+            isOneToOne: false
+            referencedRelation: "liquidaciones_partner"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       liquidacion_sucursal_detalles: {
         Row: {
           comision_aplicada: number
@@ -1972,6 +2033,85 @@ export type Database = {
           },
           {
             foreignKeyName: "liquidaciones_cliente_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      liquidaciones_partner: {
+        Row: {
+          cantidad_envios: number | null
+          created_at: string | null
+          estado: string | null
+          fecha_pago: string | null
+          generado_por: string | null
+          id: string
+          metodo_pago: string | null
+          monto_comision: number | null
+          monto_total: number | null
+          notas: string | null
+          partner_tenant_id: string
+          partnership_id: string
+          periodo_fin: string
+          periodo_inicio: string
+          referencia_pago: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          cantidad_envios?: number | null
+          created_at?: string | null
+          estado?: string | null
+          fecha_pago?: string | null
+          generado_por?: string | null
+          id?: string
+          metodo_pago?: string | null
+          monto_comision?: number | null
+          monto_total?: number | null
+          notas?: string | null
+          partner_tenant_id: string
+          partnership_id: string
+          periodo_fin: string
+          periodo_inicio: string
+          referencia_pago?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          cantidad_envios?: number | null
+          created_at?: string | null
+          estado?: string | null
+          fecha_pago?: string | null
+          generado_por?: string | null
+          id?: string
+          metodo_pago?: string | null
+          monto_comision?: number | null
+          monto_total?: number | null
+          notas?: string | null
+          partner_tenant_id?: string
+          partnership_id?: string
+          periodo_fin?: string
+          periodo_inicio?: string
+          referencia_pago?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "liquidaciones_partner_partner_tenant_id_fkey"
+            columns: ["partner_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "liquidaciones_partner_partnership_id_fkey"
+            columns: ["partnership_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "liquidaciones_partner_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
