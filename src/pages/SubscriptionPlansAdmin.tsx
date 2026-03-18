@@ -12,7 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Loader2, Pencil, Plus, Package, Users, Building2, Truck, DollarSign, CreditCard } from "lucide-react";
+import { Loader2, Pencil, Plus, Package, Users, Building2, Truck, DollarSign, CreditCard, FileDown } from "lucide-react";
+import { generateAcuerdoComercialPDF } from "@/lib/generateAcuerdoComercialPDF";
 
 interface SubscriptionPlan {
   id: string;
