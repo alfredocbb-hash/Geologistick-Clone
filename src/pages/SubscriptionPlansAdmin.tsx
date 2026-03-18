@@ -118,6 +118,7 @@ const SubscriptionPlansAdmin = () => {
       price_monthly: 0,
       features: [],
       is_active: true,
+      visible_in_landing: true,
       display_order: (plans?.length || 0) + 1,
     });
     setIsDialogOpen(true);
