@@ -415,7 +415,28 @@ const SubscriptionPlansAdmin = () => {
               </div>
             </div>
 
-            <DialogFooter>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              {editingPlan && (
+                <Button
+                  variant="secondary"
+                  className="mr-auto"
+                  onClick={() => {
+                    generateAcuerdoComercialPDF({
+                      tenantName: '',
+                      planName: formData.name || '',
+                      planDescription: formData.description || undefined,
+                      priceMonthly: formData.price_monthly || 0,
+                      maxUsers: formData.max_users || 0,
+                      maxBranches: formData.max_branches || 0,
+                      maxShipmentsMonth: formData.max_shipments_month || 0,
+                      features: formData.features || [],
+                    });
+                  }}
+                >
+                  <FileDown className="h-4 w-4 mr-2" />
+                  Descargar Acuerdo
+                </Button>
+              )}
               <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                 Cancelar
               </Button>

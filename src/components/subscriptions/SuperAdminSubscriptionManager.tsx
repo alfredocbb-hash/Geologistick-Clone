@@ -484,6 +484,27 @@ export default function SuperAdminSubscriptionManager() {
                           <Button size="sm" variant="outline" onClick={() => openNotify(tenant)}>
                             <Bell className="h-3 w-3 mr-1" /> Notificar
                           </Button>
+                          {sub?.subscription_plans && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                const plan = plans?.find(p => p.id === sub.plan_id);
+                                generateAcuerdoComercialPDF({
+                                  tenantName: tenant.nombre,
+                                  planName: sub.subscription_plans?.name || '',
+                                  planDescription: plan?.description || undefined,
+                                  priceMonthly: sub.subscription_plans?.price_monthly || 0,
+                                  maxUsers: plan?.max_users || 0,
+                                  maxBranches: plan?.max_branches || 0,
+                                  maxShipmentsMonth: plan?.max_shipments_month || 0,
+                                  features: Array.isArray(plan?.features) ? plan.features as string[] : [],
+                                });
+                              }}
+                            >
+                              <FileDown className="h-3 w-3 mr-1" /> Acuerdo
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     );
