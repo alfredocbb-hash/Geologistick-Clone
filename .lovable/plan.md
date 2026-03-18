@@ -1,28 +1,29 @@
 
 
-# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
+## Plan: Agregar campo "Visible en página principal" a los planes de suscripción
 
-## Problema
-Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
+### Cambios necesarios
 
-## Solución
+**1. Migración de base de datos**
+Agregar columna `visible_in_landing` (boolean, default `true`) a la tabla `subscription_plans`.
 
-### 1. Nueva función SQL: `reopen_ruta_planificada`
-- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
-- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
-- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
-- Inserta registro en `envio_historial` para cada envío reactivado
-- Retorna JSON con resultado y cantidad de envíos reactivados
+```sql
+ALTER TABLE subscription_plans ADD COLUMN visible_in_landing boolean NOT NULL DEFAULT true;
+```
 
-### 2. Nuevo componente: `ReopenRouteDialog.tsx`
-- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
-- Muestra cuántos envíos serán reactivados
-- Botón "Reabrir Ruta" que invoca el RPC
+**2. Formulario de crear/editar plan** (`src/pages/SubscriptionPlansAdmin.tsx`)
+- Agregar un nuevo Switch debajo del switch "Plan activo" con label "Visible en página principal"
+- Incluir `visible_in_landing` en `formData` y en la lógica de insert/update
 
-### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
-- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
-- Al hacer click, abre `ReopenRouteDialog`
-- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
+**3. Tabla de planes** (`src/pages/SubscriptionPlansAdmin.tsx`)
+- Agregar columna "Visibilidad" en la tabla mostrando un badge (Público / Oculto)
 
-**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
+**4. Landing page - Pricing** (`src/components/landing/Pricing.tsx`)
+- Filtrar por `.eq("visible_in_landing", true)` además de `is_active`
+
+**5. Otros consumidores** (`src/hooks/useSubscription.ts`, `src/pages/SystemSettings.tsx`)
+- Estos muestran planes activos para asignación interna, NO necesitan filtrar por `visible_in_landing` (el plan oculto debe seguir siendo asignable)
+
+### Resultado
+- Podrás crear planes que no aparezcan en la landing pero sí estén disponibles para asignar manualmente a tenants desde el panel de super admin.
 
