@@ -87,7 +87,7 @@ export async function generateAcuerdoComercialPDF(params: AcuerdoComercialParams
   sectionTitle('2. Plan Contratado');
   labelValue('Plan', planName);
   if (planDescription) labelValue('Descripción', planDescription);
-  labelValue('Precio Mensual', `$ ${priceMonthly.toLocaleString('es-AR')}`);
+  labelValue('Precio Mensual', `US$ ${priceMonthly.toLocaleString('es-AR')}`);
   labelValue('Máx. Usuarios', maxUsers === -1 ? 'Ilimitado' : String(maxUsers));
   labelValue('Máx. Sucursales', maxBranches === -1 ? 'Ilimitado' : String(maxBranches));
   labelValue('Máx. Envíos/Mes', maxShipmentsMonth === -1 ? 'Ilimitado' : String(maxShipmentsMonth));
