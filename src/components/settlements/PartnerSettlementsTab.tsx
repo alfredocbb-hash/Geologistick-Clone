@@ -38,7 +38,7 @@ const METODOS_PAGO: { value: PaymentMethod; label: string }[] = [
 ];
 
 interface PartnerSettlementsTabProps {
-  profile: { user_id: string; tenant_id: string } | null;
+  profile: { user_id: string; tenant_id?: string } | null;
 }
 
 interface CalculatedShipment {
