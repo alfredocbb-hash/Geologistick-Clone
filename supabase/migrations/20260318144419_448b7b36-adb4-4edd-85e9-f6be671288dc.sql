@@ -1,0 +1,1 @@
+ALTER TABLE subscription_plans ADD COLUMN visible_in_landing boolean NOT NULL DEFAULT true;

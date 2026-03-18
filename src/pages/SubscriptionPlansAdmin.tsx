@@ -26,6 +26,7 @@ interface SubscriptionPlan {
   price_monthly: number;
   features: string[];
   is_active: boolean;
+  visible_in_landing: boolean;
   display_order: number;
 }
 
@@ -77,6 +78,7 @@ const SubscriptionPlansAdmin = () => {
           description: rest.description,
           display_order: rest.display_order || 1,
           is_active: rest.is_active ?? true,
+          visible_in_landing: (rest as any).visible_in_landing ?? true,
           features: features || [],
         };
         const { error } = await supabase
@@ -116,6 +118,7 @@ const SubscriptionPlansAdmin = () => {
       price_monthly: 0,
       features: [],
       is_active: true,
+      visible_in_landing: true,
       display_order: (plans?.length || 0) + 1,
     });
     setIsDialogOpen(true);
@@ -244,9 +247,14 @@ const SubscriptionPlansAdmin = () => {
                       </code>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={plan.is_active ? "default" : "secondary"}>
-                        {plan.is_active ? "Activo" : "Inactivo"}
-                      </Badge>
+                      <div className="flex flex-col gap-1">
+                        <Badge variant={plan.is_active ? "default" : "secondary"}>
+                          {plan.is_active ? "Activo" : "Inactivo"}
+                        </Badge>
+                        <Badge variant={plan.visible_in_landing ? "outline" : "secondary"} className="text-xs">
+                          {plan.visible_in_landing ? "Público" : "Oculto"}
+                        </Badge>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Button variant="ghost" size="sm" onClick={() => handleEdit(plan)}>
@@ -391,6 +399,18 @@ const SubscriptionPlansAdmin = () => {
                   onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
                 />
                 <Label htmlFor="is_active">Plan activo</Label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="visible_in_landing"
+                  checked={(formData as any).visible_in_landing ?? true}
+                  onCheckedChange={(checked) => setFormData({ ...formData, visible_in_landing: checked } as any)}
+                />
+                <Label htmlFor="visible_in_landing">Visible en página principal</Label>
+                <p className="text-xs text-muted-foreground ml-2">
+                  Si se desactiva, el plan no aparecerá en la landing pero sí podrá asignarse manualmente.
+                </p>
               </div>
             </div>
 
