@@ -58,9 +58,9 @@ export function usePartners() {
   });
 
   const requestPartnership = useMutation({
-    mutationFn: async ({ targetTenantId, notas }: { targetTenantId: string; notas?: string }) => {
+    mutationFn: async ({ targetTenantId, notas, comisiones }: { targetTenantId: string; notas?: string; comisiones?: any[] }) => {
       const { data, error } = await supabase.functions.invoke('partner-sync', {
-        body: { action: 'request_partnership', target_tenant_id: targetTenantId, notas },
+        body: { action: 'request_partnership', target_tenant_id: targetTenantId, notas, comisiones },
       });
       if (error) throw error;
       return data.partnership;

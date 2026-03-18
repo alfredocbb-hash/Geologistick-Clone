@@ -103,7 +103,7 @@ Deno.serve(async (req) => {
       }
 
       case 'request_partnership': {
-        const { target_tenant_id, permisos, notas } = body
+        const { target_tenant_id, permisos, notas, comisiones } = body
         const [tA, tB] = [tenantId, target_tenant_id].sort()
 
         const { data, error } = await serviceClient
@@ -120,6 +120,18 @@ Deno.serve(async (req) => {
           .single()
 
         if (error) throw error
+
+        // Insert partner commissions if provided
+        if (comisiones && Array.isArray(comisiones) && comisiones.length > 0) {
+          const comisionRows = comisiones.map((c: any) => ({
+            partnership_id: data.id,
+            concepto_id: c.concepto_id,
+            porcentaje_contado: c.porcentaje_contado || 0,
+            porcentaje_destino: c.porcentaje_destino || 0,
+            porcentaje_cta_cte: c.porcentaje_cta_cte || 0,
+          }))
+          await serviceClient.from('partner_comisiones').insert(comisionRows)
+        }
 
         await serviceClient.from('partner_events').insert({
           partnership_id: data.id,
