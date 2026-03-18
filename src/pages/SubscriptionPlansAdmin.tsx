@@ -78,6 +78,7 @@ const SubscriptionPlansAdmin = () => {
           description: rest.description,
           display_order: rest.display_order || 1,
           is_active: rest.is_active ?? true,
+          visible_in_landing: (rest as any).visible_in_landing ?? true,
           features: features || [],
         };
         const { error } = await supabase
