@@ -902,6 +902,11 @@ export default function ThirdPartySettlements() {
             </Card>
           )}
         </TabsContent>
+
+        {/* ========== TAB EMPRESAS ASOCIADAS ========== */}
+        <TabsContent value="partners" className="space-y-6">
+          <PartnerSettlementsTab profile={profile} />
+        </TabsContent>
       </Tabs>
 
       {/* ========== DIALOGS ========== */}
