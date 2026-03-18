@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { PartnerSettlementsTab } from "@/components/settlements/PartnerSettlementsTab";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
@@ -23,7 +24,7 @@ import { toast } from "sonner";
 import {
   Building2, DollarSign, Plus, Loader2, ArrowDownCircle, ArrowUpCircle,
   RefreshCw, Package, AlertCircle, Calculator, FileText, Ban, CreditCard,
-  Eye, Download, Printer,
+  Eye, Download, Printer, Handshake,
 } from "lucide-react";
 import { ThirdPartySettlementDetailDialog } from "@/components/settlements/ThirdPartySettlementDetailDialog";
 import { downloadThirdPartySettlementPDF } from "@/lib/generateSettlementPDF";
@@ -485,6 +486,10 @@ export default function ThirdPartySettlements() {
             <DollarSign className="mr-2 h-4 w-4" />
             Cuenta Corriente
           </TabsTrigger>
+          <TabsTrigger value="partners">
+            <Handshake className="mr-2 h-4 w-4" />
+            Empresas Asociadas
+          </TabsTrigger>
         </TabsList>
 
         {/* ========== TAB LIQUIDACIONES ========== */}
@@ -896,6 +901,11 @@ export default function ThirdPartySettlements() {
               </CardContent>
             </Card>
           )}
+        </TabsContent>
+
+        {/* ========== TAB EMPRESAS ASOCIADAS ========== */}
+        <TabsContent value="partners" className="space-y-6">
+          <PartnerSettlementsTab profile={profile} />
         </TabsContent>
       </Tabs>
 
