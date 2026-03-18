@@ -33,6 +33,7 @@ const Pricing = () => {
         .from("subscription_plans")
         .select("*")
         .eq("is_active", true)
+        .eq("visible_in_landing", true)
         .order("display_order");
       
       if (error) throw error;

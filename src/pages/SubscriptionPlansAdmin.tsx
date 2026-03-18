@@ -26,6 +26,7 @@ interface SubscriptionPlan {
   price_monthly: number;
   features: string[];
   is_active: boolean;
+  visible_in_landing: boolean;
   display_order: number;
 }
 
