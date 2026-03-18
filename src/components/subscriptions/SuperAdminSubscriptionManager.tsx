@@ -7,8 +7,9 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import {
   Building2, Users, CreditCard, Bell, Crown, Zap, CheckCircle,
-  XCircle, Clock, DollarSign, Plus, Send, Loader2, AlertCircle
+  XCircle, Clock, DollarSign, Plus, Send, Loader2, AlertCircle, FileDown
 } from "lucide-react";
+import { generateAcuerdoComercialPDF } from "@/lib/generateAcuerdoComercialPDF";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
