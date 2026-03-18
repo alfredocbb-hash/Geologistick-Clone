@@ -400,6 +400,18 @@ const SubscriptionPlansAdmin = () => {
                 />
                 <Label htmlFor="is_active">Plan activo</Label>
               </div>
+
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="visible_in_landing"
+                  checked={(formData as any).visible_in_landing ?? true}
+                  onCheckedChange={(checked) => setFormData({ ...formData, visible_in_landing: checked } as any)}
+                />
+                <Label htmlFor="visible_in_landing">Visible en página principal</Label>
+                <p className="text-xs text-muted-foreground ml-2">
+                  Si se desactiva, el plan no aparecerá en la landing pero sí podrá asignarse manualmente.
+                </p>
+              </div>
             </div>
 
             <DialogFooter>
