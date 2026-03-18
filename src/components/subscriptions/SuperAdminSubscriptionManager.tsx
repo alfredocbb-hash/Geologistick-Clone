@@ -7,8 +7,9 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import {
   Building2, Users, CreditCard, Bell, Crown, Zap, CheckCircle,
-  XCircle, Clock, DollarSign, Plus, Send, Loader2, AlertCircle
+  XCircle, Clock, DollarSign, Plus, Send, Loader2, AlertCircle, FileDown
 } from "lucide-react";
+import { generateAcuerdoComercialPDF } from "@/lib/generateAcuerdoComercialPDF";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -483,6 +484,27 @@ export default function SuperAdminSubscriptionManager() {
                           <Button size="sm" variant="outline" onClick={() => openNotify(tenant)}>
                             <Bell className="h-3 w-3 mr-1" /> Notificar
                           </Button>
+                          {sub?.subscription_plans && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                const plan = plans?.find(p => p.id === sub.plan_id);
+                                generateAcuerdoComercialPDF({
+                                  tenantName: tenant.nombre,
+                                  planName: sub.subscription_plans?.name || '',
+                                  planDescription: plan?.description || undefined,
+                                  priceMonthly: sub.subscription_plans?.price_monthly || 0,
+                                  maxUsers: plan?.max_users || 0,
+                                  maxBranches: plan?.max_branches || 0,
+                                  maxShipmentsMonth: plan?.max_shipments_month || 0,
+                                  features: Array.isArray(plan?.features) ? plan.features as string[] : [],
+                                });
+                              }}
+                            >
+                              <FileDown className="h-3 w-3 mr-1" /> Acuerdo
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     );

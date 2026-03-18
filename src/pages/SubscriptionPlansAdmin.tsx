@@ -12,7 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Loader2, Pencil, Plus, Package, Users, Building2, Truck, DollarSign, CreditCard } from "lucide-react";
+import { Loader2, Pencil, Plus, Package, Users, Building2, Truck, DollarSign, CreditCard, FileDown } from "lucide-react";
+import { generateAcuerdoComercialPDF } from "@/lib/generateAcuerdoComercialPDF";
 
 interface SubscriptionPlan {
   id: string;
@@ -414,7 +415,28 @@ const SubscriptionPlansAdmin = () => {
               </div>
             </div>
 
-            <DialogFooter>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              {editingPlan && (
+                <Button
+                  variant="secondary"
+                  className="mr-auto"
+                  onClick={() => {
+                    generateAcuerdoComercialPDF({
+                      tenantName: '',
+                      planName: formData.name || '',
+                      planDescription: formData.description || undefined,
+                      priceMonthly: formData.price_monthly || 0,
+                      maxUsers: formData.max_users || 0,
+                      maxBranches: formData.max_branches || 0,
+                      maxShipmentsMonth: formData.max_shipments_month || 0,
+                      features: formData.features || [],
+                    });
+                  }}
+                >
+                  <FileDown className="h-4 w-4 mr-2" />
+                  Descargar Acuerdo
+                </Button>
+              )}
               <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                 Cancelar
               </Button>
