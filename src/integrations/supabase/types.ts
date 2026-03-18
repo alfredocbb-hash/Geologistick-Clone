@@ -2441,6 +2441,54 @@ export type Database = {
           },
         ]
       }
+      partner_comisiones: {
+        Row: {
+          concepto_id: string
+          created_at: string | null
+          id: string
+          partnership_id: string
+          porcentaje_contado: number | null
+          porcentaje_cta_cte: number | null
+          porcentaje_destino: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          concepto_id: string
+          created_at?: string | null
+          id?: string
+          partnership_id: string
+          porcentaje_contado?: number | null
+          porcentaje_cta_cte?: number | null
+          porcentaje_destino?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          concepto_id?: string
+          created_at?: string | null
+          id?: string
+          partnership_id?: string
+          porcentaje_contado?: number | null
+          porcentaje_cta_cte?: number | null
+          porcentaje_destino?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partner_comisiones_concepto_id_fkey"
+            columns: ["concepto_id"]
+            isOneToOne: false
+            referencedRelation: "tarifa_conceptos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partner_comisiones_partnership_id_fkey"
+            columns: ["partnership_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_partners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       partner_events: {
         Row: {
           created_at: string
