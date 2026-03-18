@@ -780,3 +780,66 @@ export async function downloadThirdPartySettlementPDF(liquidacion: {
     items,
   }, resolvedBranding ? { ...resolvedBranding, logo_light: logoBase64 || resolvedBranding.logo_light } : undefined);
 }
+
+// Quick download function for partner settlements
+export async function downloadPartnerSettlementPDF(liquidacion: {
+  id: string;
+  partnership_id: string;
+  partner_tenant_id: string;
+  periodo_inicio: string;
+  periodo_fin: string;
+  monto_total: number;
+  monto_comision: number;
+  cantidad_envios: number;
+  estado: string;
+  notas: string | null;
+  fecha_pago: string | null;
+  metodo_pago: string | null;
+  referencia_pago: string | null;
+  partner_name?: string;
+}, branding?: BrandingData): Promise<void> {
+  const resolvedBranding = branding || await fetchTenantBranding();
+
+  let logoBase64: string | null = null;
+  if (resolvedBranding?.logo_light) {
+    logoBase64 = await loadImageAsBase64(resolvedBranding.logo_light);
+  }
+
+  // Fetch detalles
+  const { data: detalles } = await (supabase
+    .from('liquidacion_partner_detalles') as any)
+    .select(`
+      *,
+      envio:envios(tracking_number, nombre_destinatario, fecha_entrega, created_at)
+    `)
+    .eq('liquidacion_id', liquidacion.id)
+    .order('created_at', { ascending: true });
+
+  const items = (detalles || []).map((d: any) => ({
+    tracking: d.envio?.tracking_number || '-',
+    fecha: d.envio?.fecha_entrega ? format(new Date(d.envio.fecha_entrega), 'dd/MM/yy') : '-',
+    destinatario: d.envio?.nombre_destinatario || '-',
+    descripcion: `${d.nombre_concepto || 'Concepto'} (${Number(d.porcentaje_comision || 0).toFixed(1)}%)`,
+    monto: Number(d.monto_comision) || 0,
+  }));
+
+  await generateSettlementPDF({
+    type: 'driver',
+    settlement: {
+      id: liquidacion.id,
+      periodo_inicio: liquidacion.periodo_inicio,
+      periodo_fin: liquidacion.periodo_fin,
+      estado: liquidacion.estado,
+      fecha_pago: liquidacion.fecha_pago,
+      metodo_pago: liquidacion.metodo_pago,
+      referencia_pago: liquidacion.referencia_pago,
+      notas: liquidacion.notas,
+    },
+    entityName: liquidacion.partner_name || 'Partner',
+    totals: {
+      montoTotal: liquidacion.monto_comision,
+      cantidadEnvios: liquidacion.cantidad_envios,
+    },
+    items,
+  }, resolvedBranding ? { ...resolvedBranding, logo_light: logoBase64 || resolvedBranding.logo_light } : undefined);
+}

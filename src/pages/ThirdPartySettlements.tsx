@@ -486,6 +486,10 @@ export default function ThirdPartySettlements() {
             <DollarSign className="mr-2 h-4 w-4" />
             Cuenta Corriente
           </TabsTrigger>
+          <TabsTrigger value="partners">
+            <Handshake className="mr-2 h-4 w-4" />
+            Empresas Asociadas
+          </TabsTrigger>
         </TabsList>
 
         {/* ========== TAB LIQUIDACIONES ========== */}
