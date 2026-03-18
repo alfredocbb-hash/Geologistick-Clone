@@ -24,7 +24,7 @@ import { toast } from "sonner";
 import {
   Building2, DollarSign, Plus, Loader2, ArrowDownCircle, ArrowUpCircle,
   RefreshCw, Package, AlertCircle, Calculator, FileText, Ban, CreditCard,
-  Eye, Download, Printer,
+  Eye, Download, Printer, Handshake,
 } from "lucide-react";
 import { ThirdPartySettlementDetailDialog } from "@/components/settlements/ThirdPartySettlementDetailDialog";
 import { downloadThirdPartySettlementPDF } from "@/lib/generateSettlementPDF";
