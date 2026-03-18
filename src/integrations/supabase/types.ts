@@ -3234,6 +3234,7 @@ export type Database = {
           stripe_price_id: string
           stripe_product_id: string
           updated_at: string | null
+          visible_in_landing: boolean
         }
         Insert: {
           created_at?: string | null
@@ -3251,6 +3252,7 @@ export type Database = {
           stripe_price_id: string
           stripe_product_id: string
           updated_at?: string | null
+          visible_in_landing?: boolean
         }
         Update: {
           created_at?: string | null
@@ -3268,6 +3270,7 @@ export type Database = {
           stripe_price_id?: string
           stripe_product_id?: string
           updated_at?: string | null
+          visible_in_landing?: boolean
         }
         Relationships: []
       }
