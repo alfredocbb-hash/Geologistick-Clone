@@ -44,6 +44,18 @@ const STATUS_LABELS: Record<string, string> = {
   incidencia: 'Incidencia',
 };
 
+// Trend badge component
+function TrendBadge({ value, suffix = '%' }: { value: number; suffix?: string }) {
+  if (value === 0) return null;
+  const isPositive = value > 0;
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-xs font-medium ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
+      {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+      {isPositive ? '+' : ''}{value}{suffix} vs anterior
+    </span>
+  );
+}
+
 export default function Reports() {
   const [datePreset, setDatePreset] = useState('Último Mes');
   const [sucursalId, setSucursalId] = useState<string>('all');
