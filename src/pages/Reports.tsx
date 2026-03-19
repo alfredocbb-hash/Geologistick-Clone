@@ -259,7 +259,24 @@ export default function Reports() {
 
         {/* Tab 2: Destinos */}
         <TabsContent value="destinos" className="space-y-4">
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => exportToExcel({
+                filename: `destinos-${dateRange}`,
+                columns: [
+                  { header: 'Ciudad', key: 'ciudad' },
+                  { header: 'Provincia', key: 'provincia' },
+                  { header: 'Cantidad', key: 'cantidad', format: 'number' },
+                  { header: 'Ingresos', key: 'ingresos', format: 'currency' },
+                ],
+                data: destinos.data || [],
+              })}
+            >
+              <FileSpreadsheet className="h-4 w-4 mr-2" />
+              Excel
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -267,7 +284,7 @@ export default function Reports() {
               onClick={() => handleExportPDF('destinos', 'Destinos mas frecuentes', [destinosChartRef], destinos.data || [])}
             >
               {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
-              Exportar PDF
+              PDF
             </Button>
           </div>
 
