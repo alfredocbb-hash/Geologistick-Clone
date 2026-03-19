@@ -2079,7 +2079,9 @@ export default function NewShipment() {
           </CardContent>
         </Card>
 
-        {/* Remitente */}
+        </div>
+
+        {/* Columna 2: Remitente */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
