@@ -2869,41 +2869,53 @@ export default function NewShipment() {
             </CardContent>
           </Card>
         )}
-
-        {/* Submit Button */}
-        <div className="flex gap-4">
-          <Button
-            type="button"
-            variant="outline"
-            className="flex-1"
-            onClick={() => navigate(-1)}
-          >
-            Cancelar
-          </Button>
-          <Button
-            type="submit"
-            className="flex-1 bg-envios hover:bg-envios/90"
-            disabled={createShipmentMutation.isPending || !sucursalOrigenId}
-          >
-            {createShipmentMutation.isPending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Creando...
-              </>
-            ) : esRetiroAlmacenaje ? (
-              <>
-                <Package className="mr-2 h-4 w-4" />
-                Crear Retiro para Almacenaje
-              </>
-            ) : (
-              <>
-                <PackagePlus className="mr-2 h-4 w-4" />
-                Crear Envío
-              </>
-            )}
-          </Button>
-        </div>
+        </div>{/* end full-width section */}
       </form>
+
+      {/* Sticky Footer */}
+      <div className="fixed bottom-0 left-0 right-0 z-50 bg-background border-t shadow-lg">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            {selectedTarifa && (
+              <span className="text-lg font-bold text-envios">
+                {formatCurrency(precioCalculado)}
+              </span>
+            )}
+          </div>
+          <div className="flex gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => navigate(-1)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              form="new-shipment-form"
+              className="bg-envios hover:bg-envios/90"
+              disabled={createShipmentMutation.isPending || !sucursalOrigenId}
+            >
+              {createShipmentMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creando...
+                </>
+              ) : esRetiroAlmacenaje ? (
+                <>
+                  <Package className="mr-2 h-4 w-4" />
+                  Crear Retiro
+                </>
+              ) : (
+                <>
+                  <PackagePlus className="mr-2 h-4 w-4" />
+                  Crear Envío
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
 
       {/* Payment Method Dialog */}
       <PaymentMethodDialog
