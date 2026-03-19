@@ -1,12 +1,19 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
-import { startOfDay, endOfDay } from 'date-fns';
+import { startOfDay, endOfDay, differenceInMilliseconds } from 'date-fns';
 
 export interface ReportsFilters {
   dateFrom: Date;
   dateTo: Date;
   sucursalId?: string;
+}
+
+export interface ResumenPeriodoAnterior {
+  totalEnvios: number;
+  tasaEntrega: number;
+  tiempoPromedio: number | null;
+  ingresosTotales: number;
 }
 
 interface EnvioPorSucursal {
