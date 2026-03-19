@@ -2505,8 +2505,11 @@ export default function NewShipment() {
             </CardContent>
           </Card>
         )}
+        </div>
+        </div>{/* end grid 3 cols */}
 
-        {/* Detalles del Paquete */}
+        {/* Detalles del Paquete — full width */}
+        <div className="space-y-4 mt-4">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
