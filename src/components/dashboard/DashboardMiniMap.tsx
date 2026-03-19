@@ -1,22 +1,16 @@
-import { useCallback, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { MapPin } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useGoogleMaps } from '@/components/maps/GoogleMapsProvider';
-import { GoogleMap, Marker } from '@react-google-maps/api';
 
 interface Props {
   tenantId: string | null;
 }
 
-const mapContainerStyle = { width: '100%', height: '250px' };
-const defaultCenter = { lat: -34.6037, lng: -58.3816 }; // Buenos Aires
-
 export default function DashboardMiniMap({ tenantId }: Props) {
-  const { isLoaded } = useGoogleMaps();
-  const mapRef = useRef<google.maps.Map | null>(null);
+  const { apiKey } = useGoogleMaps();
 
   const { data: sucursales, isLoading } = useQuery({
     queryKey: ['dashboard-map-sucursales', tenantId],
@@ -32,26 +26,16 @@ export default function DashboardMiniMap({ tenantId }: Props) {
     enabled: !!tenantId,
   });
 
-  const activeSucursales = sucursales?.filter(s => s.lat && s.lng) || [];
-
-  const onLoad = useCallback((map: google.maps.Map) => {
-    mapRef.current = map;
-  }, []);
-
-  useEffect(() => {
-    if (!mapRef.current || activeSucursales.length === 0) return;
-    const bounds = new google.maps.LatLngBounds();
-    activeSucursales.forEach(s => bounds.extend({ lat: s.lat!, lng: s.lng! }));
-    mapRef.current.fitBounds(bounds);
-    if (activeSucursales.length === 1) {
-      mapRef.current.setZoom(14);
-    }
-  }, [activeSucursales]);
-
   if (isLoading) return <Skeleton className="h-[300px]" />;
 
   const displaySucursales = sucursales?.filter(s => s.direccion && s.direccion !== 'Por configurar') || [];
   if (displaySucursales.length === 0) return null;
+
+  const first = displaySucursales[0];
+  const query = encodeURIComponent(`${first.direccion}, ${first.ciudad || ''}`);
+  const embedSrc = apiKey
+    ? `https://www.google.com/maps/embed/v1/place?key=${apiKey}&q=${query}&zoom=12`
+    : null;
 
   return (
     <Card className="overflow-hidden">
@@ -63,18 +47,17 @@ export default function DashboardMiniMap({ tenantId }: Props) {
       </CardHeader>
       <CardContent className="p-0">
         <div className="relative">
-          {isLoaded ? (
-            <GoogleMap
-              mapContainerStyle={mapContainerStyle}
-              center={activeSucursales.length > 0 ? { lat: activeSucursales[0].lat!, lng: activeSucursales[0].lng! } : defaultCenter}
-              zoom={12}
-              onLoad={onLoad}
-              options={{ disableDefaultUI: true, zoomControl: true }}
-            >
-              {activeSucursales.map(s => (
-                <Marker key={s.id} position={{ lat: s.lat!, lng: s.lng! }} title={s.nombre} />
-              ))}
-            </GoogleMap>
+          {embedSrc ? (
+            <iframe
+              title="Mapa de sucursales"
+              src={embedSrc}
+              width="100%"
+              height="250"
+              style={{ border: 0 }}
+              allowFullScreen
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+            />
           ) : (
             <div className="h-[250px] flex items-center justify-center bg-muted text-muted-foreground text-sm">
               Cargando mapa...
