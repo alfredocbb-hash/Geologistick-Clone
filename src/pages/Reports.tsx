@@ -439,7 +439,26 @@ export default function Reports() {
 
         {/* Tab 4: Resumen General */}
         <TabsContent value="resumen" className="space-y-4">
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const data = resumenGeneral.data;
+                if (!data) return;
+                exportToExcel({
+                  filename: `resumen-general-${dateRange}`,
+                  columns: [
+                    { header: 'Fecha', key: 'fecha' },
+                    { header: 'Cantidad Envíos', key: 'cantidad', format: 'number' },
+                  ],
+                  data: data.evolucionDiaria || [],
+                });
+              }}
+            >
+              <FileSpreadsheet className="h-4 w-4 mr-2" />
+              Excel
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -447,7 +466,7 @@ export default function Reports() {
               onClick={() => handleExportPDF('resumen', 'Resumen General', [evolucionChartRef, estadosChartRef], resumenGeneral.data)}
             >
               {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
-              Exportar PDF
+              PDF
             </Button>
           </div>
 
