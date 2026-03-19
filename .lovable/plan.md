@@ -1,33 +1,22 @@
 
 
-## Plan: Componente inteligente de teléfono con auto-formato WhatsApp
+## Plan: Incorporar PhoneInput en el resto del proyecto
 
 ### Resumen
-Crear un componente `PhoneInput` reutilizable que automáticamente normalice números argentinos para WhatsApp. Unificar los campos "Teléfono" y "WhatsApp" en uno solo en el formulario de nuevo envío.
+Reemplazar todos los campos de teléfono que usan `<Input type="tel">` o `<Input>` plano por el nuevo componente `PhoneInput` con auto-formato WhatsApp.
 
-### Cambios
+### Archivos a modificar
 
-**1. Nuevo componente `src/components/ui/phone-input.tsx`**
-- Input con ícono de WhatsApp integrado
-- On blur: auto-formatea el número usando la lógica existente de `cleanPhoneNumber` (csvParser.ts)
-  - `11 1234-5678` → `+5411 1234-5678`
-  - `011 1234-5678` → `+5411 1234-5678`
-  - `15 1234-5678` → `+54911 1234-5678`
-  - `+54...` → se deja como está
-- Muestra badge visual verde "✓ WhatsApp" cuando el número está bien formateado
-- Prefijo `+54` mostrado como addon visual fijo a la izquierda (el usuario solo tipea el número local)
-- Props compatibles con Input estándar (`value`, `onChange`, `className`, etc.)
+**1. `src/components/profile/PersonalInfoCard.tsx`**
+- Reemplazar `<Input id="telefono" type="tel">` por `<PhoneInput>`
+- Adaptar onChange: de `(e) => setFormData({...formData, telefono: e.target.value})` a `(v) => setFormData({...formData, telefono: v})`
 
-**2. Modificar `src/pages/NewShipment.tsx`**
-- Eliminar campo separado `destinatario_whatsapp` del form
-- Reemplazar el input de `destinatario_telefono` por `PhoneInput`
-- Al guardar, usar el teléfono formateado como `whatsapp_destinatario` también
-- Hacer lo mismo con `remitente_telefono`
+**2. `src/components/ecommerce/CreateSellerDialog.tsx`**
+- En el FormField `name="telefono"`, reemplazar `<Input {...field} />` por `<PhoneInput value={field.value} onChange={field.onChange} />`
 
-**3. Reutilizar en otros formularios**
-- El componente queda disponible globalmente para uso en Users, Onboarding, Profile, etc.
+**3. `src/components/ecommerce/EditSellerDialog.tsx`**
+- Mismo cambio que CreateSellerDialog: reemplazar Input por PhoneInput en el campo telefono
 
-### Archivos
-- **Crear**: `src/components/ui/phone-input.tsx`
-- **Modificar**: `src/pages/NewShipment.tsx` (unificar campos, usar PhoneInput)
+### Sin cambios en backend
+Solo cambios de componente UI. La lógica de formularios y guardado permanece igual.
 
