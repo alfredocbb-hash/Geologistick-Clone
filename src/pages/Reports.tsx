@@ -6,14 +6,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar, Download, Package, TrendingUp, TrendingDown, Clock, DollarSign, BarChart3, Users, MapPin, FileText, Loader2, FileSpreadsheet, Award, ShieldCheck } from 'lucide-react';
+import { Calendar, Download, Package, TrendingUp, TrendingDown, Clock, DollarSign, BarChart3, Users, MapPin, FileText, Loader2, FileSpreadsheet, Award, ShieldCheck, Zap, Fuel } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import { useReportsData, type ReportsFilters } from '@/hooks/useReportsData';
+import { useProductividadData } from '@/hooks/useProductividadData';
+import { useCostosData } from '@/hooks/useCostosData';
 import { subDays, subMonths, format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { exportReportPDF } from '@/lib/exportReportPDF';
 import { exportToExcel } from '@/lib/exportExcel';
 import { toast } from 'sonner';
+import ProductividadTab from '@/components/reports/ProductividadTab';
+import CostosTab from '@/components/reports/CostosTab';
 
 const DATE_PRESETS = [
   { label: 'Hoy', getValue: () => ({ from: new Date(), to: new Date() }) },
@@ -79,6 +83,8 @@ export default function Reports() {
   };
 
   const { enviosPorSucursal, destinos, rendimientoChoferes, resumenGeneral, resumenPeriodoAnterior, slaData, sucursales } = useReportsData(filters);
+  const productividad = useProductividadData(filters);
+  const costos = useCostosData(filters);
 
   // Trend calculation helper
   const calcTrend = (curr: number, prev: number) => {
@@ -166,7 +172,7 @@ export default function Reports() {
 
       {/* Tabs */}
       <Tabs defaultValue="sucursales" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-4 md:grid-cols-8">
           <TabsTrigger value="sucursales" className="gap-1.5">
             <BarChart3 className="h-4 w-4 hidden sm:block" /> Sucursales
           </TabsTrigger>
@@ -178,6 +184,12 @@ export default function Reports() {
           </TabsTrigger>
           <TabsTrigger value="choferes" className="gap-1.5">
             <Users className="h-4 w-4 hidden sm:block" /> Choferes
+          </TabsTrigger>
+          <TabsTrigger value="productividad" className="gap-1.5">
+            <Zap className="h-4 w-4 hidden sm:block" /> Productividad
+          </TabsTrigger>
+          <TabsTrigger value="costos" className="gap-1.5">
+            <Fuel className="h-4 w-4 hidden sm:block" /> Costos
           </TabsTrigger>
           <TabsTrigger value="sla" className="gap-1.5">
             <ShieldCheck className="h-4 w-4 hidden sm:block" /> SLA
@@ -521,6 +533,16 @@ export default function Reports() {
               )}
             </>
           )}
+        </TabsContent>
+
+        {/* Tab: Productividad */}
+        <TabsContent value="productividad" className="space-y-4">
+          <ProductividadTab data={productividad.data} isLoading={productividad.isLoading} />
+        </TabsContent>
+
+        {/* Tab: Costos */}
+        <TabsContent value="costos" className="space-y-4">
+          <CostosTab data={costos.data} isLoading={costos.isLoading} />
         </TabsContent>
 
         {/* Tab: SLA */}
