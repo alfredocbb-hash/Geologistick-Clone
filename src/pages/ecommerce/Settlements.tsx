@@ -232,6 +232,37 @@ export default function Settlements() {
         }
       }
 
+      // Fetch envio_ids from seller_cuenta_corriente (tipo cargo) — terciarizados/planificador
+      const { data: ctaCteCargoMovs } = await supabase
+        .from('seller_cuenta_corriente')
+        .select('envio_id, seller_id')
+        .in('seller_id', sellerIds)
+        .eq('tipo', 'cargo')
+        .not('envio_id', 'is', null);
+
+      const ctaCteBySeller = new Map<string, string[]>();
+      const allCtaCteEnvioIds: string[] = [];
+      (ctaCteCargoMovs || []).forEach(m => {
+        if (!m.envio_id) return;
+        const list = ctaCteBySeller.get(m.seller_id) || [];
+        list.push(m.envio_id);
+        ctaCteBySeller.set(m.seller_id, list);
+        allCtaCteEnvioIds.push(m.envio_id);
+      });
+
+      // Fetch cta cte envios not already in enviosMap
+      const missingCtaCteIds = [...new Set(allCtaCteEnvioIds)].filter(id => !enviosMap.has(id));
+      if (missingCtaCteIds.length > 0) {
+        for (let i = 0; i < missingCtaCteIds.length; i += 500) {
+          const chunk = missingCtaCteIds.slice(i, i + 500);
+          const { data: ctaCteEnviosData } = await supabase
+            .from('envios')
+            .select('id, ciudad_entrega, precio_total, precio_tarifa_vigente, estado')
+            .in('id', chunk);
+          (ctaCteEnviosData || []).forEach(e => enviosMap.set(e.id, e));
+        }
+      }
+
       // Fetch all payments at once
       const { data: allPayments } = await supabase
         .from('seller_cuenta_corriente')
@@ -263,7 +294,8 @@ export default function Settlements() {
       for (const seller of sellers) {
         const ecomEnvioIds = envioIdsBySeller.get(seller.id) || [];
         const commonIds = commonEnviosBySeller.get(seller.id) || [];
-        const allSellerEnvioIds = [...new Set([...ecomEnvioIds, ...commonIds])];
+        const ctaCteIds = ctaCteBySeller.get(seller.id) || [];
+        const allSellerEnvioIds = [...new Set([...ecomEnvioIds, ...commonIds, ...ctaCteIds])];
 
         let totalEnvios = 0;
         for (const envioId of allSellerEnvioIds) {
@@ -513,11 +545,61 @@ export default function Settlements() {
         }
       }
 
+      // 4b. Tercera fuente: envíos referenciados en seller_cuenta_corriente (tipo cargo) — cargados desde planificador/terciarizados
+      let ctaCteEnvios: any[] = [];
       {
-        // 5: Combinar ambos conjuntos sin duplicados
+        const { data: ctaCteMovs } = await supabase
+          .from('seller_cuenta_corriente')
+          .select('envio_id, seller_id')
+          .in('seller_id', calcSellers)
+          .eq('tipo', 'cargo')
+          .not('envio_id', 'is', null)
+          .gte('created_at', fechaInicioStr)
+          .lte('created_at', fechaFinStr);
+
+        const alreadyIncluded = new Set([
+          ...sellerEnvioIds,
+          ...filteredCommonEnvios.map(e => e.id),
+        ]);
+
+        const ctaCteEnvioIds = [...new Set(
+          (ctaCteMovs || [])
+            .map(m => m.envio_id)
+            .filter((id): id is string => !!id && !alreadyIncluded.has(id))
+        )];
+
+        if (ctaCteEnvioIds.length > 0) {
+          const { data: fetchedEnvios } = await (supabase
+            .from('envios') as any)
+            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
+            .in('id', ctaCteEnvioIds)
+            .is('liquidacion_seller_id', null)
+            .order('created_at', { ascending: true });
+
+          ctaCteEnvios = fetchedEnvios || [];
+
+          // Map to seller
+          const ctaCteSellerMap = new Map<string, string>();
+          (ctaCteMovs || []).forEach(m => {
+            if (m.envio_id && !ctaCteSellerMap.has(m.envio_id)) {
+              ctaCteSellerMap.set(m.envio_id, m.seller_id);
+            }
+          });
+          ctaCteEnvios.forEach(e => {
+            if (!envioToSellerMap.has(e.id)) {
+              envioToSellerMap.set(e.id, ctaCteSellerMap.get(e.id) || calcSellers[0]);
+            }
+          });
+        }
+      }
+
+      {
+        // 5: Combinar los tres conjuntos sin duplicados
         const ecommerceIds = new Set(ecommerceEnvios.map(e => e.id));
+        const commonIds = new Set(filteredCommonEnvios.map(e => e.id));
         const uniqueCommon = filteredCommonEnvios.filter(e => !ecommerceIds.has(e.id));
-        const allEnviosData = [...ecommerceEnvios, ...uniqueCommon]
+        const uniqueCtaCte = ctaCteEnvios.filter(e => !ecommerceIds.has(e.id) && !commonIds.has(e.id));
+        const allEnviosData = [...ecommerceEnvios, ...uniqueCommon, ...uniqueCtaCte]
           .filter(e => e.estado !== 'pendiente');
 
         // 5b: Batch query visitas for cancelled shipments
