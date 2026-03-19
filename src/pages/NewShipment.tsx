@@ -1848,85 +1848,57 @@ export default function NewShipment() {
         )}
       </div>
 
-      {/* Draft recovered indicator */}
-      {isDraftRecovered && (
-        <DraftIndicator
-          lastSaved={lastSaved}
-          onDiscard={discardDraft}
-          onDismiss={() => setIsDraftRecovered(false)}
-        />
-      )}
+      {/* Alerts compactados */}
+      <div className="space-y-2 mb-4">
+        {isDraftRecovered && (
+          <DraftIndicator
+            lastSaved={lastSaved}
+            onDiscard={discardDraft}
+            onDismiss={() => setIsDraftRecovered(false)}
+          />
+        )}
 
-      {/* Card de Sucursal Asignada */}
-      <Card className="border-primary/30 bg-primary/5">
-        <CardContent className="py-4">
-          <div className="flex items-center gap-3">
-            <Building2 className="h-5 w-5 text-primary" />
-            <div className="flex-1">
-              <p className="text-sm text-muted-foreground">Sucursal de Origen</p>
-              <p className="font-semibold">
-                {loadingSucursalUsuario ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : sucursalUsuario ? (
-                  <>
-                    {sucursalUsuario.codigo && `${sucursalUsuario.codigo} - `}
-                    {sucursalUsuario.nombre}
-                    {sucursalUsuario.ciudad && ` (${sucursalUsuario.ciudad})`}
-                  </>
-                ) : (
-                  'Sin asignar'
+        {!cajaAbierta && !loadingCaja && sucursalOrigenId && (
+          <Alert variant="destructive" className="py-2">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="flex items-center justify-between text-sm">
+              <span>No hay caja abierta. Debes abrir una sesión de caja.</span>
+              <Button variant="link" className="p-0 h-auto text-destructive-foreground underline text-sm" onClick={() => navigate('/cash')}>
+                Ir a Caja
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {remitenteConCtaCte && formData.tipo_pago !== 'cuenta_corriente' && (
+          <Alert className="border-primary bg-primary/5 py-2">
+            <Wallet className="h-4 w-4" />
+            <AlertDescription className="flex items-center justify-between text-sm">
+              <span>
+                <span className="font-medium">✨ Cta. Cte. disponible:</span> {remitenteConCtaCte.nombre}
+                {remitenteConCtaCte.saldo_cuenta_corriente !== null && (
+                  <span className="ml-1">| Saldo: {formatCurrency(Number(remitenteConCtaCte.saldo_cuenta_corriente) || 0)}</span>
                 )}
-              </p>
-            </div>
-            <Badge variant="outline" className="bg-primary/10 text-primary border-primary">
-              Tu sucursal
-            </Badge>
-          </div>
-        </CardContent>
-      </Card>
+              </span>
+              <Button 
+                variant="outline" 
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => {
+                  handleChange('tipo_pago', 'cuenta_corriente');
+                  handleChange('cliente_cta_cte_id', remitenteConCtaCte.id);
+                }}
+              >
+                Usar Cta Cte
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+      </div>
 
-      {/* Alert de caja no abierta */}
-      {!cajaAbierta && !loadingCaja && sucursalOrigenId && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription className="flex items-center justify-between">
-            <span>No hay caja abierta en tu sucursal. Debes abrir una sesión de caja antes de crear envíos.</span>
-            <Button variant="link" className="p-0 h-auto text-destructive-foreground underline" onClick={() => navigate('/cash')}>
-              Ir a Control de Caja
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Alert de cuenta corriente detectada */}
-      {remitenteConCtaCte && formData.tipo_pago !== 'cuenta_corriente' && (
-        <Alert className="border-primary bg-primary/5">
-          <Wallet className="h-4 w-4" />
-          <AlertDescription className="flex items-center justify-between">
-            <div>
-              <span className="font-medium">✨ Cuenta Corriente Disponible:</span> {remitenteConCtaCte.nombre} tiene cuenta corriente activa.
-              {remitenteConCtaCte.saldo_cuenta_corriente !== null && (
-                <span className="ml-2">Saldo: {formatCurrency(Number(remitenteConCtaCte.saldo_cuenta_corriente) || 0)}</span>
-              )}
-              {remitenteConCtaCte.limite_credito && (
-                <span className="ml-2">Límite: {formatCurrency(remitenteConCtaCte.limite_credito)}</span>
-              )}
-            </div>
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => {
-                handleChange('tipo_pago', 'cuenta_corriente');
-                handleChange('cliente_cta_cte_id', remitenteConCtaCte.id);
-              }}
-            >
-              Usar Cta Cte
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit}>
+        {/* Grid de 3 columnas */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
         {/* Tipo de Servicio - 4 opciones */}
         <Card>
           <CardHeader>
