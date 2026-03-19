@@ -11,10 +11,19 @@ Fases 1-4 completadas previamente.
 
 ---
 
-## Posible Fase 6: Automatización avanzada
+## Fase 6: Predicción de demanda por zona con IA ✅ COMPLETADA
+
+### Implementado:
+1. ✅ **Edge Function `predict-demand`** - Consulta envíos de últimos 90 días, agrupa por zona/ciudad y día de semana, envía a Gemini AI vía Lovable AI Gateway con tool calling para obtener predicción estructurada
+2. ✅ **DemandPredictionTab** - Nueva pestaña "Demanda" en Reports con tabla de predicciones, gráfico de barras comparativo, badges de tendencia, resumen ejecutivo de IA
+3. ✅ **Hook useDemandPrediction** - Invoca edge function, maneja loading/error/rate limiting (429/402)
+
+---
+
+## Posible Fase 7: Automatización avanzada
 
 Ideas para próximas mejoras:
 - Auto-asignación inteligente de rutas con IA
-- Predicción de demanda por zona (IA)
 - Integración con WhatsApp Business API
-- Reportes de productividad con IA generativa
+- Reportes con IA generativa (resumen ejecutivo automático)
+- Alertas predictivas de incidencias
