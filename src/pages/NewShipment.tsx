@@ -10,6 +10,7 @@ import { useTenant } from '@/hooks/useTenant';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PhoneInput, formatArgentinaPhone } from '@/components/ui/phone-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -245,7 +246,7 @@ export default function NewShipment() {
     destinatario_ciudad: '',
     destinatario_codigo_postal: '',
     destinatario_dni: '',
-    destinatario_whatsapp: '',
+    destinatario_whatsapp: '', // auto-filled from destinatario_telefono
     // Envío
     sucursal_destino_id: '',
     tarifa_id: '',
@@ -1230,7 +1231,7 @@ export default function NewShipment() {
           codigo_postal_destino: destinatarioCp || null,
           dni_remitente: formData.remitente_dni || null,
           dni_destinatario: formData.destinatario_dni || null,
-          whatsapp_destinatario: formData.destinatario_whatsapp || null,
+          whatsapp_destinatario: formData.destinatario_telefono ? formatArgentinaPhone(formData.destinatario_telefono) : null,
           email_destinatario: formData.destinatario_email || null,
           nombre_destinatario: [formData.destinatario_nombre, formData.destinatario_apellido].filter(Boolean).join(' ') || null,
           nombre_remitente: [formData.remitente_nombre, formData.remitente_apellido].filter(Boolean).join(' ') || null,
@@ -2083,8 +2084,8 @@ export default function NewShipment() {
                     placeholder="12345678" />
                 </div>
                 <div>
-                  <Label className="text-[10px] text-muted-foreground">Teléfono *</Label>
-                  <Input className="h-8 text-xs" value={formData.remitente_telefono} onChange={(e) => handleChange('remitente_telefono', e.target.value)} required />
+                  <Label className="text-[10px] text-muted-foreground">Teléfono / WhatsApp *</Label>
+                  <PhoneInput value={formData.remitente_telefono} onChange={(v) => handleChange('remitente_telefono', v)} required />
                 </div>
                 <div className="col-span-2">
                   <Label className="text-[10px] text-muted-foreground">Email</Label>
@@ -2171,12 +2172,8 @@ export default function NewShipment() {
                         onBlur={(e) => checkExistingClient(e.target.value, 'destinatario')} />
                     </div>
                     <div>
-                      <Label className="text-[10px] text-muted-foreground">Teléfono *</Label>
-                      <Input className="h-8 text-xs" value={formData.destinatario_telefono} onChange={(e) => handleChange('destinatario_telefono', e.target.value)} required />
-                    </div>
-                    <div>
-                      <Label className="text-[10px] text-muted-foreground">WhatsApp</Label>
-                      <Input className="h-8 text-xs" value={formData.destinatario_whatsapp} onChange={(e) => handleChange('destinatario_whatsapp', e.target.value)} placeholder="+54..." />
+                      <Label className="text-[10px] text-muted-foreground">Teléfono / WhatsApp *</Label>
+                      <PhoneInput value={formData.destinatario_telefono} onChange={(v) => handleChange('destinatario_telefono', v)} required />
                     </div>
                     <div>
                       <Label className="text-[10px] text-muted-foreground">Email</Label>
