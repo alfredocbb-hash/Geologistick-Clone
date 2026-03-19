@@ -6,14 +6,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar, Download, Package, TrendingUp, TrendingDown, Clock, DollarSign, BarChart3, Users, MapPin, FileText, Loader2, FileSpreadsheet, Award, ShieldCheck } from 'lucide-react';
+import { Calendar, Download, Package, TrendingUp, TrendingDown, Clock, DollarSign, BarChart3, Users, MapPin, FileText, Loader2, FileSpreadsheet, Award, ShieldCheck, Zap, Fuel } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import { useReportsData, type ReportsFilters } from '@/hooks/useReportsData';
+import { useProductividadData } from '@/hooks/useProductividadData';
+import { useCostosData } from '@/hooks/useCostosData';
 import { subDays, subMonths, format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { exportReportPDF } from '@/lib/exportReportPDF';
 import { exportToExcel } from '@/lib/exportExcel';
 import { toast } from 'sonner';
+import ProductividadTab from '@/components/reports/ProductividadTab';
+import CostosTab from '@/components/reports/CostosTab';
 
 const DATE_PRESETS = [
   { label: 'Hoy', getValue: () => ({ from: new Date(), to: new Date() }) },
