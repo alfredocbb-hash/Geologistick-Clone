@@ -2084,8 +2084,8 @@ export default function NewShipment() {
                     placeholder="12345678" />
                 </div>
                 <div>
-                  <Label className="text-[10px] text-muted-foreground">Teléfono *</Label>
-                  <Input className="h-8 text-xs" value={formData.remitente_telefono} onChange={(e) => handleChange('remitente_telefono', e.target.value)} required />
+                  <Label className="text-[10px] text-muted-foreground">Teléfono / WhatsApp *</Label>
+                  <PhoneInput value={formData.remitente_telefono} onChange={(v) => handleChange('remitente_telefono', v)} required />
                 </div>
                 <div className="col-span-2">
                   <Label className="text-[10px] text-muted-foreground">Email</Label>
