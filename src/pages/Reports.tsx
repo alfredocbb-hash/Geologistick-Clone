@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar, Download, Package, TrendingUp, Clock, DollarSign, BarChart3, Users, MapPin, FileText, Loader2, FileSpreadsheet } from 'lucide-react';
+import { Calendar, Download, Package, TrendingUp, TrendingDown, Clock, DollarSign, BarChart3, Users, MapPin, FileText, Loader2, FileSpreadsheet } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import { useReportsData, type ReportsFilters } from '@/hooks/useReportsData';
 import { subDays, subMonths, format } from 'date-fns';
