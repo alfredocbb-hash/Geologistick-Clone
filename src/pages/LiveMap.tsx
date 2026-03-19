@@ -442,7 +442,57 @@ export default function LiveMap() {
     setDriverLocations(driversData);
   }, [driversData]);
 
-  // Filter sucursales with coordinates
+  // Enhanced driver data (progress, speed, contact)
+  const activeRoutesMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const d of driverLocations) {
+      if (d.ruta_activa) map[d.chofer_id] = d.ruta_activa.id;
+    }
+    return map;
+  }, [driverLocations]);
+
+  const driverIdsForProgress = useMemo(() => driverLocations.map(d => d.chofer_id), [driverLocations]);
+  const { data: enhancedDriverData = {} } = useDriverRouteProgress(driverIdsForProgress, activeRoutesMap);
+
+  // Filtered and sorted drivers
+  const filteredDrivers = useMemo(() => {
+    let list = [...driverLocations];
+
+    // Filter by status
+    if (filterStatus !== 'all') {
+      list = list.filter(d => {
+        const diff = (Date.now() - new Date(d.updated_at).getTime()) / (1000 * 60);
+        if (filterStatus === 'active') return diff < 5;
+        if (filterStatus === 'recent') return diff >= 5 && diff < 15;
+        if (filterStatus === 'no_signal') return diff >= 15;
+        return true;
+      });
+    }
+
+    // Filter by route
+    if (filterRoute === 'with_route') list = list.filter(d => !!d.ruta_activa);
+    else if (filterRoute === 'without_route') list = list.filter(d => !d.ruta_activa);
+
+    // Sort
+    list.sort((a, b) => {
+      if (sortBy === 'name') return `${a.nombre} ${a.apellido}`.localeCompare(`${b.nombre} ${b.apellido}`);
+      if (sortBy === 'progress') {
+        const pa = enhancedDriverData[a.chofer_id]?.routeProgress?.percentage ?? -1;
+        const pb = enhancedDriverData[b.chofer_id]?.routeProgress?.percentage ?? -1;
+        return pb - pa;
+      }
+      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+    });
+
+    return list;
+  }, [driverLocations, filterStatus, filterRoute, sortBy, enhancedDriverData]);
+
+  // Detail panel driver info
+  const detailPanelDriver = useMemo(() => {
+    return driverLocations.find(d => d.chofer_id === detailPanelDriverId);
+  }, [driverLocations, detailPanelDriverId]);
+
+
   const sucursalesConCoords = useMemo(() => {
     return sucursalesData.filter(s => s.lat && s.lng);
   }, [sucursalesData]);
