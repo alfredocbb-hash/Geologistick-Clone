@@ -454,8 +454,10 @@ export default function ThirdPartyShipmentsTab() {
         throw new Error(`Error al generar tracking: ${trackingError.message}`);
       }
 
-      if (!trackingData) {
-        throw new Error("No se pudo generar el número de tracking");
+      // Find selected seller (if any)
+      const selectedSeller = shipment.seller_id 
+        ? sellers.find((s) => s.id === shipment.seller_id) 
+        : null;
       }
 
       const { data, error } = await supabase
