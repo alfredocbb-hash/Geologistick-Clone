@@ -1,12 +1,19 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
-import { startOfDay, endOfDay } from 'date-fns';
+import { startOfDay, endOfDay, differenceInMilliseconds } from 'date-fns';
 
 export interface ReportsFilters {
   dateFrom: Date;
   dateTo: Date;
   sucursalId?: string;
+}
+
+export interface ResumenPeriodoAnterior {
+  totalEnvios: number;
+  tasaEntrega: number;
+  tiempoPromedio: number | null;
+  ingresosTotales: number;
 }
 
 interface EnvioPorSucursal {
@@ -309,6 +316,41 @@ export function useReportsData(filters: ReportsFilters) {
     enabled: !!tenantId,
   });
 
+  // Previous period comparison
+  const periodMs = differenceInMilliseconds(filters.dateTo, filters.dateFrom);
+  const prevFrom = startOfDay(new Date(filters.dateFrom.getTime() - periodMs)).toISOString();
+  const prevTo = endOfDay(new Date(filters.dateFrom.getTime() - 1)).toISOString();
+
+  const resumenPeriodoAnterior = useQuery({
+    queryKey: ['reports-resumen-prev', tenantId, prevFrom, prevTo, filters.sucursalId],
+    queryFn: async (): Promise<ResumenPeriodoAnterior> => {
+      let query = supabase
+        .from('envios')
+        .select('id, estado, precio_total')
+        .eq('tenant_id', tenantId!)
+        .gte('created_at', prevFrom)
+        .lte('created_at', prevTo);
+
+      if (filters.sucursalId) {
+        query = query.eq('sucursal_origen_id', filters.sucursalId);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      const envios = data || [];
+      const totalEnvios = envios.length;
+      const entregados = envios.filter(e => e.estado === 'entregado').length;
+      const tasaEntrega = totalEnvios > 0 ? Math.round((entregados / totalEnvios) * 100) : 0;
+      const ingresosTotales = envios
+        .filter(e => e.estado !== 'cancelado' && e.estado !== 'devuelto')
+        .reduce((sum, e) => sum + (e.precio_total || 0), 0);
+
+      return { totalEnvios, tasaEntrega, tiempoPromedio: null, ingresosTotales };
+    },
+    enabled: !!tenantId,
+  });
+
   // Fetch sucursales for the filter dropdown
   const sucursales = useQuery({
     queryKey: ['reports-sucursales-list', tenantId],
@@ -330,6 +372,7 @@ export function useReportsData(filters: ReportsFilters) {
     destinos,
     rendimientoChoferes,
     resumenGeneral,
+    resumenPeriodoAnterior,
     sucursales,
   };
 }
