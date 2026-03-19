@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar, Download, Package, TrendingUp, TrendingDown, Clock, DollarSign, BarChart3, Users, MapPin, FileText, Loader2, FileSpreadsheet, Award, ShieldCheck, Zap, Fuel } from 'lucide-react';
+import { Calendar, Download, Package, TrendingUp, TrendingDown, Clock, DollarSign, BarChart3, Users, MapPin, FileText, Loader2, FileSpreadsheet, Award, ShieldCheck, Zap, Fuel, Brain } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import { useReportsData, type ReportsFilters } from '@/hooks/useReportsData';
 import { useProductividadData } from '@/hooks/useProductividadData';
@@ -18,6 +18,7 @@ import { exportToExcel } from '@/lib/exportExcel';
 import { toast } from 'sonner';
 import ProductividadTab from '@/components/reports/ProductividadTab';
 import CostosTab from '@/components/reports/CostosTab';
+import DemandPredictionTab from '@/components/reports/DemandPredictionTab';
 
 const DATE_PRESETS = [
   { label: 'Hoy', getValue: () => ({ from: new Date(), to: new Date() }) },
@@ -172,7 +173,7 @@ export default function Reports() {
 
       {/* Tabs */}
       <Tabs defaultValue="sucursales" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4 md:grid-cols-8">
+        <TabsList className="grid w-full grid-cols-4 md:grid-cols-9">
           <TabsTrigger value="sucursales" className="gap-1.5">
             <BarChart3 className="h-4 w-4 hidden sm:block" /> Sucursales
           </TabsTrigger>
@@ -190,6 +191,9 @@ export default function Reports() {
           </TabsTrigger>
           <TabsTrigger value="costos" className="gap-1.5">
             <Fuel className="h-4 w-4 hidden sm:block" /> Costos
+          </TabsTrigger>
+          <TabsTrigger value="demanda" className="gap-1.5">
+            <Brain className="h-4 w-4 hidden sm:block" /> Demanda
           </TabsTrigger>
           <TabsTrigger value="sla" className="gap-1.5">
             <ShieldCheck className="h-4 w-4 hidden sm:block" /> SLA
@@ -818,6 +822,10 @@ export default function Reports() {
               </div>
             </>
           )}
+        </TabsContent>
+        {/* Tab: Demanda IA */}
+        <TabsContent value="demanda">
+          <DemandPredictionTab />
         </TabsContent>
       </Tabs>
     </div>
