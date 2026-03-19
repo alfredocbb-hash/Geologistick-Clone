@@ -458,7 +458,6 @@ export default function ThirdPartyShipmentsTab() {
       const selectedSeller = shipment.seller_id 
         ? sellers.find((s) => s.id === shipment.seller_id) 
         : null;
-      }
 
       const { data, error } = await supabase
         .from("envios")
@@ -480,6 +479,7 @@ export default function ThirdPartyShipmentsTab() {
           entrega_lat: shipment.entrega_lat,
           entrega_lng: shipment.entrega_lng,
           destinatario_id: destinatarioId,
+          remitente_id: selectedSeller?.cliente_id || null,
           tipo_servicio: "puerta_puerta",
           tipo_servicio_detalle: shipment.tipo_operacion === "retiro" ? "puerta_sucursal" : "sucursal_puerta",
           duracion_estimada_minutos: shipment.duracion_estimada_minutos,
@@ -490,7 +490,7 @@ export default function ThirdPartyShipmentsTab() {
           sucursal_origen_id: profile?.sucursal_id,
           requiere_retiro: shipment.tipo_operacion === "retiro",
           // Datos del remitente (empresa terciarizada)
-          nombre_remitente: selectedEmpresa?.nombre || null,
+          nombre_remitente: selectedSeller ? selectedSeller.nombre : (selectedEmpresa?.nombre || null),
           direccion_retiro: selectedEmpresa?.direccion || null,
           ciudad_retiro: selectedEmpresa?.ciudad || null,
         })
