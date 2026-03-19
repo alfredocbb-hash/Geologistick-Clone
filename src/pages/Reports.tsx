@@ -483,8 +483,9 @@ export default function Reports() {
             </div>
           ) : (
             <>
-              {/* KPI Cards */}
+              {/* KPI Cards with period comparison */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {/* Total Envíos */}
                 <Card>
                   <CardContent className="pt-6">
                     <div className="flex items-center gap-3">
@@ -494,23 +495,38 @@ export default function Reports() {
                       <div>
                         <p className="text-sm text-muted-foreground">Total Envíos</p>
                         <p className="text-2xl font-bold">{resumenGeneral.data?.totalEnvios || 0}</p>
+                        {prev && (
+                          <TrendBadge value={calcTrend(resumenGeneral.data?.totalEnvios || 0, prev.totalEnvios)} />
+                        )}
                       </div>
                     </div>
                   </CardContent>
                 </Card>
+                {/* Tasa Entrega with radial progress */}
                 <Card>
                   <CardContent className="pt-6">
                     <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <TrendingUp className="h-5 w-5 text-primary" />
+                      <div className="relative h-12 w-12">
+                        <svg viewBox="0 0 36 36" className="h-12 w-12 -rotate-90">
+                          <circle cx="18" cy="18" r="15.5" fill="none" stroke="hsl(var(--muted))" strokeWidth="3" />
+                          <circle cx="18" cy="18" r="15.5" fill="none" stroke="hsl(var(--primary))" strokeWidth="3"
+                            strokeDasharray={`${(resumenGeneral.data?.tasaEntrega || 0) * 0.974} 97.4`}
+                            strokeLinecap="round" />
+                        </svg>
+                        <span className="absolute inset-0 flex items-center justify-center text-xs font-bold">
+                          {resumenGeneral.data?.tasaEntrega || 0}%
+                        </span>
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">Tasa Entrega</p>
-                        <p className="text-2xl font-bold">{resumenGeneral.data?.tasaEntrega || 0}%</p>
+                        {prev && (
+                          <TrendBadge value={calcTrend(resumenGeneral.data?.tasaEntrega || 0, prev.tasaEntrega)} suffix="pp" />
+                        )}
                       </div>
                     </div>
                   </CardContent>
                 </Card>
+                {/* T. Promedio */}
                 <Card>
                   <CardContent className="pt-6">
                     <div className="flex items-center gap-3">
@@ -524,6 +540,7 @@ export default function Reports() {
                     </div>
                   </CardContent>
                 </Card>
+                {/* Ingresos */}
                 <Card>
                   <CardContent className="pt-6">
                     <div className="flex items-center gap-3">
@@ -533,11 +550,30 @@ export default function Reports() {
                       <div>
                         <p className="text-sm text-muted-foreground">Ingresos</p>
                         <p className="text-2xl font-bold">${(resumenGeneral.data?.ingresosTotales || 0).toLocaleString()}</p>
+                        {prev && (
+                          <TrendBadge value={calcTrend(resumenGeneral.data?.ingresosTotales || 0, prev.ingresosTotales)} />
+                        )}
                       </div>
                     </div>
                   </CardContent>
                 </Card>
               </div>
+
+              {/* Mini sparkline for daily evolution */}
+              {resumenGeneral.data?.evolucionDiaria && resumenGeneral.data.evolucionDiaria.length > 1 && (
+                <Card>
+                  <CardContent className="pt-4 pb-2">
+                    <p className="text-xs text-muted-foreground mb-2">Evolución rápida del período</p>
+                    <div className="h-10">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={resumenGeneral.data.evolucionDiaria}>
+                          <Line type="monotone" dataKey="cantidad" stroke="hsl(var(--primary))" strokeWidth={1.5} dot={false} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Charts */}
               <div className="grid md:grid-cols-2 gap-4">
