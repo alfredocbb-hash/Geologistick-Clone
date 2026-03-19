@@ -245,6 +245,13 @@ export default function LiveMap() {
   // Hook for main map route visualization
   const driverRoute = useDriverRoute();
 
+  // Driver filters and detail panel state
+  const [filterStatus, setFilterStatus] = usePersistedState<DriverFilterStatus>('driver-filter-status', 'all');
+  const [filterRoute, setFilterRoute] = usePersistedState<DriverFilterRoute>('driver-filter-route', 'all');
+  const [sortBy, setSortBy] = usePersistedState<DriverSortBy>('driver-sort-by', 'last_update');
+  const [detailPanelDriverId, setDetailPanelDriverId] = useState<string | null>(null);
+  const IDLE_ALERT_MINUTES = 15;
+
   // Query para sucursales
   const { data: sucursalesData = [], isLoading, refetch } = useQuery({
     queryKey: ["sucursales-live-map"],
