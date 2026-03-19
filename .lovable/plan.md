@@ -1,21 +1,20 @@
 
 
-## Fase 4: Inteligencia y automatización ✅ COMPLETADA
+## Fase 5: Optimización avanzada ✅ COMPLETADA
 
-Fases 1, 2, 3 y 4 completadas.
+Fases 1-4 completadas previamente.
 
 ### Implementado:
-1. ✅ **Heatmap de entregas por zona** - Nueva pestaña "Heatmap" en LiveMap con Google Maps HeatmapLayer, filtro por período (7/30/90 días)
-2. ✅ **Alertas automáticas de SLA en riesgo** - Edge function `check-sla-alerts` que detecta envíos >20h sin entregar y notifica admins y choferes
-3. ✅ **Notificaciones push para choferes** - Edge function `notify-driver-route` + integración automática al crear rutas en RoutePlanner
+1. ✅ **ETA dinámico por parada** - Cálculo Haversine en ActiveRouteNavigation con velocidad promedio 25km/h, tiempo de gestión 5min/parada, hora estimada de llegada
+2. ✅ **Dashboard de Productividad por Chofer** - Nueva pestaña "Productividad" en Reports con entregas/hora, tasa de éxito, ranking visual, KPIs globales
+3. ✅ **Dashboard de Costos Operativos** - Nueva pestaña "Costos" en Reports con combustible estimado (12L/100km), costo por entrega, comparativa por chofer
 
 ---
 
-## Posible Fase 5: Optimización avanzada
+## Posible Fase 6: Automatización avanzada
 
 Ideas para próximas mejoras:
+- Auto-asignación inteligente de rutas con IA
 - Predicción de demanda por zona (IA)
-- Dashboard de costos operativos por ruta
 - Integración con WhatsApp Business API
-- Reportes de productividad por chofer con IA
-- Auto-asignación inteligente de rutas
+- Reportes de productividad con IA generativa
