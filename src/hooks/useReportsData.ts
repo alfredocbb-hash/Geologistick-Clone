@@ -365,7 +365,7 @@ export function useReportsData(filters: ReportsFilters) {
     queryFn: async (): Promise<SLAData> => {
       let query = supabase
         .from('envios')
-        .select('id, estado, created_at, fecha_entrega, fecha_entrega_estimada')
+        .select('id, estado, created_at, fecha_entrega')
         .eq('tenant_id', tenantId!)
         .eq('estado', 'entregado')
         .gte('created_at', from)
