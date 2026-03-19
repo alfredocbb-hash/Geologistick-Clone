@@ -1,37 +1,31 @@
 
 
-## Mejoras propuestas para la pestaña Choferes
+## Plan: Selector de rutas históricas en el panel lateral del chofer
 
-Basándome en el código actual, estas son las mejoras más impactantes que se podrían implementar:
+### Problema
+Actualmente el panel lateral (`DriverDetailPanel`) solo muestra la ruta activa del chofer. Si completó múltiples rutas, no hay forma de ver las anteriores ni cargar su recorrido en el mapa.
 
----
+### Solución
+Agregar un query de rutas históricas y un `Select` en el panel lateral para navegar entre ellas. Al seleccionar una ruta, se actualizan las paradas en el panel y se carga el recorrido GPS en el mapa.
 
-### 1. Progreso de ruta en tiempo real
-Agregar una barra de progreso y contadores (entregados/pendientes/fallidos) en cada tarjeta de chofer con ruta activa. Actualmente solo se muestra el nombre de la ruta, pero no cuántas paradas completó.
+### Cambios
 
-### 2. Velocidad actual y estado de movimiento
-Mostrar si el chofer está detenido, en movimiento lento o a velocidad normal, usando el campo `speed` que ya se registra en `driver_location_history`. Un badge como "🚛 45 km/h" o "⏸ Detenido 8 min" da contexto inmediato.
+**1. `src/components/livemap/DriverDetailPanel.tsx`**
+- Agregar query a `rutas_planificadas` y `hojas_ruta` filtrado por `chofer_id`, ordenado por fecha descendente (últimas 10).
+- Agregar estado local `selectedRouteId` que por defecto es la ruta activa.
+- Mostrar un `Select` debajo del perfil con las rutas disponibles (número, fecha, estado).
+- El query de paradas (`ruta_paradas`) usa `selectedRouteId` en vez del `activeRouteId` fijo.
+- Agregar prop `onSelectRoute?: (driverId: string, rutaId: string) => void` para notificar al mapa.
 
-### 3. Filtros y ordenamiento
-Permitir filtrar choferes por estado (activo/reciente/sin señal) y por si tienen ruta activa o no. Ordenar por última actualización o por progreso de ruta.
+**2. `src/pages/LiveMap.tsx`**
+- Pasar callback `onSelectRoute` al `DriverDetailPanel` que llame a `toggleRouteOnMap(driverId, rutaId)` para cargar el recorrido GPS de la ruta seleccionada en el mapa.
 
-### 4. Notificación de chofer detenido demasiado tiempo
-Alerta visual automática cuando un chofer con ruta activa lleva más de X minutos sin moverse (configurable). Sin necesidad de pedir análisis IA — detección local comparando posiciones.
+### Detalle técnico
 
-### 5. Panel lateral expandible del chofer
-Al hacer clic en un chofer, mostrar un panel con: foto/avatar, teléfono (click-to-call), progreso detallado de paradas, tiempo estimado de finalización, y acceso rápido a WhatsApp.
+| Archivo | Cambio |
+|---------|--------|
+| `DriverDetailPanel.tsx` | Query rutas históricas, Select de ruta, paradas dinámicas, callback |
+| `LiveMap.tsx` | Pasar `onSelectRoute` conectado a `toggleRouteOnMap` |
 
----
-
-### Resumen técnico
-
-| Mejora | Datos necesarios | Complejidad |
-|--------|-----------------|-------------|
-| Progreso de ruta | Query `ruta_paradas`/`hoja_ruta_envios` + estados envíos | Media |
-| Velocidad/movimiento | Campo `speed` de `driver_locations` (ya existe) | Baja |
-| Filtros/ordenamiento | Solo UI, datos ya disponibles | Baja |
-| Alerta detenido | Comparar posiciones en realtime subscription | Baja |
-| Panel lateral expandible | Query adicional perfil + paradas | Media |
-
-Todas las mejoras usan datos que ya existen en la base de datos. No requieren nuevas tablas ni edge functions.
+No requiere cambios en la base de datos. Se reutilizan queries y hooks existentes.
 
