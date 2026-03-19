@@ -1271,6 +1271,22 @@ export default function RoutePlanner() {
         if (updateError) throw updateError;
       }
 
+      // Notify driver about new route assignment
+      try {
+        await supabase.functions.invoke("notify-driver-route", {
+          body: {
+            type: "route_assigned",
+            driver_id: selectedChofer,
+            route_id: ruta.id,
+            route_number: ruta.numero,
+            tenant_id: profile?.tenant_id,
+            shipment_count: selectedOption.stops.filter(s => s.tipo === "entrega").length,
+          },
+        });
+      } catch (notifErr) {
+        console.warn("Failed to notify driver:", notifErr);
+      }
+
       return ruta;
     },
     onSuccess: (ruta) => {
@@ -1787,6 +1803,43 @@ export default function RoutePlanner() {
                 <CardTitle className="text-lg">Opciones de Ruta</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Optimization savings panel */}
+                {routeOptions.length >= 2 && (
+                  <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
+                    <h4 className="text-sm font-semibold text-primary mb-2 flex items-center gap-2">
+                      <Zap className="h-4 w-4" />
+                      Impacto de la optimización
+                    </h4>
+                    {(() => {
+                      const worst = Math.max(...routeOptions.map(o => o.totalDistance));
+                      const best = Math.min(...routeOptions.map(o => o.totalDistance));
+                      const savedKm = Math.round((worst - best) * 10) / 10;
+                      const savedPct = worst > 0 ? Math.round((savedKm / worst) * 100) : 0;
+                      const worstTime = Math.max(...routeOptions.map(o => o.estimatedTime));
+                      const bestTime = Math.min(...routeOptions.map(o => o.estimatedTime));
+                      const savedTime = Math.round((worstTime - bestTime) * 10) / 10;
+                      const fuelSaved = Math.round(savedKm * 0.08 * 10) / 10; // ~0.08 L/km estimate
+                      return (
+                        <div className="grid grid-cols-3 gap-3 text-center">
+                          <div>
+                            <p className="text-xl font-bold text-foreground">{savedKm} km</p>
+                            <p className="text-xs text-muted-foreground">menos distancia</p>
+                            <Badge variant="secondary" className="mt-1 text-xs">-{savedPct}%</Badge>
+                          </div>
+                          <div>
+                            <p className="text-xl font-bold text-foreground">{savedTime} hs</p>
+                            <p className="text-xs text-muted-foreground">tiempo ahorrado</p>
+                          </div>
+                          <div>
+                            <p className="text-xl font-bold text-foreground">~{fuelSaved} L</p>
+                            <p className="text-xs text-muted-foreground">combustible est.</p>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {routeOptions.map((option, index) => (
                     <div

@@ -2,7 +2,7 @@ import { useJsApiLoader } from '@react-google-maps/api';
 import { ReactNode, createContext, useContext, useMemo } from 'react';
 import { useMapsApiKey } from '@/hooks/useMapsApiKey';
 
-const libraries: ("places" | "geometry" | "drawing")[] = ['places', 'geometry'];
+const libraries: ("places" | "geometry" | "drawing" | "visualization")[] = ['places', 'geometry', 'visualization'];
 
 interface GoogleMapsContextType {
   isLoaded: boolean;

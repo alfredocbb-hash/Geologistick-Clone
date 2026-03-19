@@ -1,69 +1,62 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useTenant } from '@/hooks/useTenant';
-import { subDays, format, startOfDay, endOfDay } from 'date-fns';
+import { toast } from 'sonner';
 
-export interface DemandPoint {
-  fecha: string;
-  cantidad: number;
-  es_prediccion: boolean;
+export interface DemandPrediction {
+  zona: string;
+  promedio_historico: number;
+  dia1: number;
+  dia2: number;
+  dia3: number;
+  tendencia: 'creciendo' | 'estable' | 'bajando';
+  confianza: number;
+}
+
+export interface DemandPredictionResult {
+  predicciones: DemandPrediction[];
+  resumen: string;
+  dias: { name: string; date: string }[];
+  generado_at: string;
 }
 
 export function useDemandPrediction() {
-  const { tenantId } = useTenant();
+  const [data, setData] = useState<DemandPredictionResult | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  return useQuery({
-    queryKey: ['demand-prediction', tenantId],
-    queryFn: async (): Promise<DemandPoint[]> => {
-      // Get last 30 days of data
-      const from = startOfDay(subDays(new Date(), 30)).toISOString();
-      const to = endOfDay(new Date()).toISOString();
+  const fetchPrediction = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
 
-      const { data, error } = await supabase
-        .from('envios')
-        .select('created_at')
-        .eq('tenant_id', tenantId!)
-        .gte('created_at', from)
-        .lte('created_at', to);
+    try {
+      const { data: result, error: fnError } = await supabase.functions.invoke('predict-demand');
 
-      if (error) throw error;
-
-      // Group by day
-      const byDay = new Map<string, number>();
-      for (const envio of data || []) {
-        const day = format(new Date(envio.created_at!), 'yyyy-MM-dd');
-        byDay.set(day, (byDay.get(day) || 0) + 1);
+      if (fnError) {
+        throw new Error(fnError.message || 'Error al obtener predicción');
       }
 
-      // Fill missing days
-      const points: DemandPoint[] = [];
-      for (let i = 30; i >= 0; i--) {
-        const d = format(subDays(new Date(), i), 'yyyy-MM-dd');
-        points.push({
-          fecha: d,
-          cantidad: byDay.get(d) || 0,
-          es_prediccion: false,
-        });
+      if (result?.error) {
+        if (result.error.includes('Límite')) {
+          toast.error('Límite de solicitudes excedido. Intenta en unos minutos.');
+        } else if (result.error.includes('Créditos')) {
+          toast.error('Créditos de IA agotados.');
+        } else {
+          toast.error(result.error);
+        }
+        setError(result.error);
+        return;
       }
 
-      // Simple 7-day moving average prediction
-      const last7 = points.slice(-7);
-      const avg = Math.round(last7.reduce((s, p) => s + p.cantidad, 0) / 7);
+      setData(result as DemandPredictionResult);
+      toast.success('Predicción generada correctamente');
+    } catch (e: any) {
+      const msg = e?.message || 'Error desconocido';
+      setError(msg);
+      toast.error('Error al generar predicción: ' + msg);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
-      // Project 7 days ahead
-      for (let i = 1; i <= 7; i++) {
-        const d = format(subDays(new Date(), -i), 'yyyy-MM-dd');
-        // Add slight variation for realistic look
-        const variation = Math.round((Math.random() - 0.5) * avg * 0.3);
-        points.push({
-          fecha: d,
-          cantidad: Math.max(0, avg + variation),
-          es_prediccion: true,
-        });
-      }
-
-      return points;
-    },
-    enabled: !!tenantId,
-  });
+  return { data, isLoading, error, fetchPrediction };
 }

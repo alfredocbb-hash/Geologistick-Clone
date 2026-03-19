@@ -1,10 +1,10 @@
 import { useState } from 'react';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { User, Phone, Building2, Loader2, Check } from 'lucide-react';
-import { PhoneInput } from '@/components/ui/phone-input';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { Profile } from '@/lib/auth';
@@ -127,8 +127,7 @@ export function PersonalInfoCard({ profile, sucursalName, onProfileUpdate }: Per
               <PhoneInput
                 id="telefono"
                 value={formData.telefono}
-                onChange={(value) => setFormData({ ...formData, telefono: value })}
-                placeholder="Tu número de teléfono"
+                onChange={(v) => setFormData({ ...formData, telefono: v })}
               />
             ) : (
               <p className="text-sm py-2 px-3 bg-muted rounded-md">{profile.telefono || '-'}</p>

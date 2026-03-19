@@ -56,7 +56,7 @@ export function AppHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-50 flex h-16 items-center gap-4 bg-card/80 backdrop-blur-xl gradient-border px-4 md:px-6">
+    <header className="sticky top-0 z-50 flex h-16 items-center gap-4 bg-card/80 backdrop-blur-xl px-4 md:px-6 gradient-border">
       <SidebarTrigger className="md:hidden" />
 
       {/* Spacer */}

@@ -1,28 +1,22 @@
 
 
-## Plan: Mejoras visuales en AppHeader y AppSidebar
+## Plan: Incorporar PhoneInput en el resto del proyecto
 
-Cambios puramente cosméticos en 2 archivos. DashboardLayout no necesita cambios (es idéntico).
+### Resumen
+Reemplazar todos los campos de teléfono que usan `<Input type="tel">` o `<Input>` plano por el nuevo componente `PhoneInput` con auto-formato WhatsApp.
 
-### 1. AppHeader.tsx
+### Archivos a modificar
 
-- **Header border**: Cambiar `border-b bg-card/80 backdrop-blur-md` por `bg-card/80 backdrop-blur-xl gradient-border`
-- **Avatar gradient ring**: Envolver el `Avatar` en un div con `rounded-full p-[2px] bg-gradient-to-br from-[hsl(var(--geo-teal))] to-[hsl(var(--primary))]` y agregar `border-2 border-card` al Avatar
+**1. `src/components/profile/PersonalInfoCard.tsx`**
+- Reemplazar `<Input id="telefono" type="tel">` por `<PhoneInput>`
+- Adaptar onChange: de `(e) => setFormData({...formData, telefono: e.target.value})` a `(v) => setFormData({...formData, telefono: v})`
 
-### 2. AppSidebar.tsx (líneas 409-418)
+**2. `src/components/ecommerce/CreateSellerDialog.tsx`**
+- En el FormField `name="telefono"`, reemplazar `<Input {...field} />` por `<PhoneInput value={field.value} onChange={field.onChange} />`
 
-Actualizar el renderizado de items de navegación:
-- Envolver el ícono en un div de 7x7 con fondo degradado cuando está activo
-- Agregar clase `sidebar-active-indicator` al NavLink activo
-- Agregar transiciones `duration-200` a items y contenedor de ícono
-- Cambiar estilos hover a `hover:bg-sidebar-accent/60`
+**3. `src/components/ecommerce/EditSellerDialog.tsx`**
+- Mismo cambio que CreateSellerDialog: reemplazar Input por PhoneInput en el campo telefono
 
-### Archivos
-
-| Archivo | Cambio |
-|---------|--------|
-| `src/components/layout/AppHeader.tsx` | Gradient border + avatar ring |
-| `src/components/layout/AppSidebar.tsx` | Nav items con ícono degradado activo |
-
-Sin cambios de backend ni lógica. Solo estilos CSS/Tailwind.
+### Sin cambios en backend
+Solo cambios de componente UI. La lógica de formularios y guardado permanece igual.
 

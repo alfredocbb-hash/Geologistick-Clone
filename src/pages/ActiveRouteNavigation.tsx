@@ -295,6 +295,59 @@ export default function ActiveRouteNavigation() {
     return { total, completed, failed, pending, progress };
   }, [envios]);
 
+  // Haversine distance calculation (km)
+  const haversineKm = useCallback((lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }, []);
+
+  // Calculate ETA for each stop
+  const etaByStopId = useMemo(() => {
+    const AVG_SPEED_KMH = 25;
+    const STOP_TIME_MIN = 5;
+    const result = new Map<string, { distKm: number; etaMin: number; arrivalTime: Date }>();
+
+    const pendingStops = envios.filter(e => {
+      if ((e as any)._isSucursalStop) return e.estado !== 'completada';
+      const env = e.envio;
+      if (!env) return false;
+      if (env.estado === 'entregado' || env.estado === 'devuelto' || env.estado === 'incidencia') return false;
+      if (env.requiere_retiro && (env.estado_retiro === 'retirado' || env.estado_retiro === 'fallido')) return false;
+      return true;
+    });
+
+    let prevLat = location?.lat;
+    let prevLng = location?.lng;
+    let accumulatedMin = 0;
+    const now = new Date();
+
+    for (const stop of pendingStops) {
+      const env = stop.envio;
+      const isPickupStop = env?.requiere_retiro;
+      const lat = isPickupStop ? (env as any)?.remitente_lat : (env as any)?.entrega_lat || (stop as any).lat;
+      const lng = isPickupStop ? (env as any)?.remitente_lng : (env as any)?.entrega_lng || (stop as any).lng;
+
+      if (lat && lng && prevLat && prevLng) {
+        const dist = haversineKm(prevLat, prevLng, lat, lng);
+        const travelMin = (dist / AVG_SPEED_KMH) * 60;
+        accumulatedMin += travelMin;
+        const arrivalTime = new Date(now.getTime() + accumulatedMin * 60000);
+        result.set(stop.id, { distKm: Math.round(dist * 10) / 10, etaMin: Math.round(accumulatedMin), arrivalTime });
+        accumulatedMin += STOP_TIME_MIN;
+        prevLat = lat;
+        prevLng = lng;
+      } else if (prevLat && prevLng) {
+        // No coordinates for this stop, skip but keep accumulating
+        accumulatedMin += STOP_TIME_MIN;
+      }
+    }
+
+    return result;
+  }, [envios, location, haversineKm]);
+
   // Get next stop - skip shipments with incident (no further driver action)
   const nextStop = useMemo(() => {
     return envios.find(e => {
@@ -502,10 +555,13 @@ export default function ActiveRouteNavigation() {
     window.open(`tel:${phone}`, '_self');
   }, []);
 
-  // WhatsApp customer
-  const whatsAppCustomer = useCallback((phone: string, name: string) => {
+  // WhatsApp customer with live tracking link
+  const whatsAppCustomer = useCallback((phone: string, name: string, trackingNum?: string) => {
     const cleanPhone = phone.replace(/\D/g, '');
-    const message = encodeURIComponent(`Hola ${name}, soy el repartidor. Estoy llegando con su envío.`);
+    const trackingLink = trackingNum 
+      ? `\n\nSeguí mi ubicación en vivo: ${window.location.origin}/tracking/${trackingNum}`
+      : '';
+    const message = encodeURIComponent(`Hola ${name}, soy el repartidor. Estoy llegando con su envío.${trackingLink}`);
     window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank');
   }, []);
 
@@ -671,9 +727,17 @@ export default function ActiveRouteNavigation() {
               {/* ETA */}
               <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
                 <Clock className="h-4 w-4" />
-                <span>ETA: ~10 min</span>
-                <span>•</span>
-                <span>2.5 km</span>
+                {nextStop && etaByStopId.has(nextStop.id) ? (
+                  <>
+                    <span>ETA: ~{etaByStopId.get(nextStop.id)!.etaMin} min</span>
+                    <span>•</span>
+                    <span>{etaByStopId.get(nextStop.id)!.distKm} km</span>
+                    <span>•</span>
+                    <span>{format(etaByStopId.get(nextStop.id)!.arrivalTime, 'HH:mm')}</span>
+                  </>
+                ) : (
+                  <span className="text-muted-foreground italic">ETA no disponible</span>
+                )}
               </div>
 
               {/* Customer Info */}
@@ -750,7 +814,7 @@ export default function ActiveRouteNavigation() {
                     <Button 
                       variant="outline"
                       className="bg-green-500/10 border-green-500/30 text-green-600"
-                      onClick={() => phone && whatsAppCustomer(phone, clienteName)}
+                      onClick={() => phone && whatsAppCustomer(phone, clienteName, nextEnvio?.tracking_number)}
                       disabled={!phone}
                     >
                       <MessageCircle className="h-4 w-4 mr-1" />
@@ -860,6 +924,12 @@ export default function ActiveRouteNavigation() {
                       `, ${isItemPickup ? envio.ciudad_retiro : envio.ciudad_entrega}`
                     }
                   </p>
+                  {!isCompleted && etaByStopId.has(item.id) && (
+                    <p className="text-xs text-primary flex items-center gap-1 mt-0.5">
+                      <Clock className="h-3 w-3 shrink-0" />
+                      {format(etaByStopId.get(item.id)!.arrivalTime, 'HH:mm')} · ~{etaByStopId.get(item.id)!.etaMin} min · {etaByStopId.get(item.id)!.distKm} km
+                    </p>
+                  )}
                   {envio.pago_contra_entrega && !isCompleted && (
                     <Badge variant="outline" className="text-xs mt-1 border-warning text-warning">
                       COD: ${envio.precio_total}
