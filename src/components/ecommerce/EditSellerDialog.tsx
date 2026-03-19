@@ -8,6 +8,7 @@ import { useTenant } from '@/hooks/useTenant';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -470,7 +471,7 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
                   <FormItem>
                     <FormLabel>Teléfono</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <PhoneInput value={field.value || ''} onChange={field.onChange} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
