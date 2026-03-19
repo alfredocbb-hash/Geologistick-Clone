@@ -12,7 +12,9 @@ import { useReportsData, type ReportsFilters } from '@/hooks/useReportsData';
 import { subDays, subMonths, format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { exportReportPDF } from '@/lib/exportReportPDF';
+import { exportToExcel } from '@/lib/exportExcel';
 import { toast } from 'sonner';
+import { FileSpreadsheet } from 'lucide-react';
 
 const DATE_PRESETS = [
   { label: 'Hoy', getValue: () => ({ from: new Date(), to: new Date() }) },
