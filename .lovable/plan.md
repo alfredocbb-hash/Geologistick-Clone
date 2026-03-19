@@ -1,21 +1,39 @@
 
 
-## Plan: Restaurar mini-mapa con iframe embed usando API key dinámica
+## Plan: Remove straight-line polyline overlay on Live Map
 
-### Problema
-El componente actual usa `GoogleMap` + `Marker` de `@react-google-maps/api`, que requiere coordenadas (`lat/lng`). Si las sucursales no tienen coordenadas, no se muestra nada. La idea original era un iframe embed simple centrado en la **dirección** de la primera sucursal.
+### Problem
+When viewing a driver's route on the Choferes tab, two polylines render simultaneously:
+1. The driver's actual route (`polylinePath`) — which can fall back to snapped/raw GPS points, creating **straight-line segments** between points
+2. The planned route (`secondaryPolylinePath`) — follows streets via Directions API
 
-### Solución
-**Archivo:** `src/components/dashboard/DashboardMiniMap.tsx`
+When `polylinePath` falls back to snapped or raw GPS data (if Directions API is slow or fails), it draws straight lines between GPS points that overlap the street-level planned route.
 
-Volver al diseño original con iframe de Google Maps Embed API, pero usando la API key del `useGoogleMaps()` hook en lugar de una key hardcodeada.
+### Solution
+**File:** `src/hooks/useDriverRoute.ts`
 
-Cambios:
-1. Usar `useGoogleMaps()` para obtener `apiKey`
-2. Reemplazar `<GoogleMap>` + `<Marker>` por un `<iframe>` que usa Google Maps Embed API con la dirección de la primera sucursal como query (`?q=direccion+ciudad`)
-3. Eliminar imports de `@react-google-maps/api`, `useCallback`, `useEffect`, `useRef` y toda la lógica de bounds/markers
-4. Mantener el listado de hasta 4 sucursales debajo del mapa y el "+X más"
-5. Si no hay `apiKey` aún, mostrar fallback "Cargando mapa..."
+Change the `polylinePath` computation to only return data when the Directions API result is available. Remove the fallback to snapped/raw points, which is what creates the ugly straight lines:
 
-Resultado: mapa embed simple, funcional sin coordenadas, usando la key autorizada del tenant.
+```typescript
+// Before (falls back to straight lines):
+const polylinePath = useMemo(() => {
+  if (directionsRoute.length > 0) return directionsRoute;
+  if (snappedRoute.length > 0) return snappedRoute;
+  return rawHistory.map(point => ({ lat: point.lat, lng: point.lng }));
+}, [rawHistory, snappedRoute, directionsRoute]);
+
+// After (only street-level or nothing):
+const polylinePath = useMemo(() => {
+  if (directionsRoute.length > 0) return directionsRoute;
+  return [];
+}, [directionsRoute]);
+```
+
+This means: if the Directions API hasn't returned yet or fails, no polyline renders — avoiding the overlapping straight lines entirely. The planned route (dashed blue) still shows the street-level path.
+
+### Files to modify
+
+| File | Change |
+|------|--------|
+| `src/hooks/useDriverRoute.ts` | Remove snapped/raw fallback from `polylinePath` — only use directionsRoute |
 
