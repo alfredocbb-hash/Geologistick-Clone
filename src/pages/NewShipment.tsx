@@ -2249,6 +2249,8 @@ export default function NewShipment() {
         </Card>
 
         {/* Destinatario - No mostrar para retiro_almacenaje */}
+        {/* Columna 3: Destinatario */}
+        <div className="space-y-4">
         {!esRetiroAlmacenaje && (
           <Card>
             <CardHeader>
