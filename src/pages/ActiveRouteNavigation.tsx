@@ -295,6 +295,59 @@ export default function ActiveRouteNavigation() {
     return { total, completed, failed, pending, progress };
   }, [envios]);
 
+  // Haversine distance calculation (km)
+  const haversineKm = useCallback((lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }, []);
+
+  // Calculate ETA for each stop
+  const etaByStopId = useMemo(() => {
+    const AVG_SPEED_KMH = 25;
+    const STOP_TIME_MIN = 5;
+    const result = new Map<string, { distKm: number; etaMin: number; arrivalTime: Date }>();
+
+    const pendingStops = envios.filter(e => {
+      if ((e as any)._isSucursalStop) return e.estado !== 'completada';
+      const env = e.envio;
+      if (!env) return false;
+      if (env.estado === 'entregado' || env.estado === 'devuelto' || env.estado === 'incidencia') return false;
+      if (env.requiere_retiro && (env.estado_retiro === 'retirado' || env.estado_retiro === 'fallido')) return false;
+      return true;
+    });
+
+    let prevLat = location?.lat;
+    let prevLng = location?.lng;
+    let accumulatedMin = 0;
+    const now = new Date();
+
+    for (const stop of pendingStops) {
+      const env = stop.envio;
+      const isPickupStop = env?.requiere_retiro;
+      const lat = isPickupStop ? (env as any)?.remitente_lat : (env as any)?.entrega_lat || (stop as any).lat;
+      const lng = isPickupStop ? (env as any)?.remitente_lng : (env as any)?.entrega_lng || (stop as any).lng;
+
+      if (lat && lng && prevLat && prevLng) {
+        const dist = haversineKm(prevLat, prevLng, lat, lng);
+        const travelMin = (dist / AVG_SPEED_KMH) * 60;
+        accumulatedMin += travelMin;
+        const arrivalTime = new Date(now.getTime() + accumulatedMin * 60000);
+        result.set(stop.id, { distKm: Math.round(dist * 10) / 10, etaMin: Math.round(accumulatedMin), arrivalTime });
+        accumulatedMin += STOP_TIME_MIN;
+        prevLat = lat;
+        prevLng = lng;
+      } else if (prevLat && prevLng) {
+        // No coordinates for this stop, skip but keep accumulating
+        accumulatedMin += STOP_TIME_MIN;
+      }
+    }
+
+    return result;
+  }, [envios, location, haversineKm]);
+
   // Get next stop - skip shipments with incident (no further driver action)
   const nextStop = useMemo(() => {
     return envios.find(e => {
