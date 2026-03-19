@@ -1483,6 +1483,7 @@ export default function LiveMap() {
         activeRouteId={detailPanelDriver?.ruta_activa?.id || null}
         activeRouteNumber={detailPanelDriver?.ruta_activa?.numero || null}
         enhancedData={detailPanelDriverId ? enhancedDriverData[detailPanelDriverId] : undefined}
+        onSelectRoute={toggleRouteOnMap}
       />
 
       {/* Route History Dialog */}
