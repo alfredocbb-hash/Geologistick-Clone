@@ -232,6 +232,37 @@ export default function Settlements() {
         }
       }
 
+      // Fetch envio_ids from seller_cuenta_corriente (tipo cargo) — terciarizados/planificador
+      const { data: ctaCteCargoMovs } = await supabase
+        .from('seller_cuenta_corriente')
+        .select('envio_id, seller_id')
+        .in('seller_id', sellerIds)
+        .eq('tipo', 'cargo')
+        .not('envio_id', 'is', null);
+
+      const ctaCteBySeller = new Map<string, string[]>();
+      const allCtaCteEnvioIds: string[] = [];
+      (ctaCteCargoMovs || []).forEach(m => {
+        if (!m.envio_id) return;
+        const list = ctaCteBySeller.get(m.seller_id) || [];
+        list.push(m.envio_id);
+        ctaCteBySeller.set(m.seller_id, list);
+        allCtaCteEnvioIds.push(m.envio_id);
+      });
+
+      // Fetch cta cte envios not already in enviosMap
+      const missingCtaCteIds = [...new Set(allCtaCteEnvioIds)].filter(id => !enviosMap.has(id));
+      if (missingCtaCteIds.length > 0) {
+        for (let i = 0; i < missingCtaCteIds.length; i += 500) {
+          const chunk = missingCtaCteIds.slice(i, i + 500);
+          const { data: ctaCteEnviosData } = await supabase
+            .from('envios')
+            .select('id, ciudad_entrega, precio_total, precio_tarifa_vigente, estado')
+            .in('id', chunk);
+          (ctaCteEnviosData || []).forEach(e => enviosMap.set(e.id, e));
+        }
+      }
+
       // Fetch all payments at once
       const { data: allPayments } = await supabase
         .from('seller_cuenta_corriente')
@@ -263,7 +294,8 @@ export default function Settlements() {
       for (const seller of sellers) {
         const ecomEnvioIds = envioIdsBySeller.get(seller.id) || [];
         const commonIds = commonEnviosBySeller.get(seller.id) || [];
-        const allSellerEnvioIds = [...new Set([...ecomEnvioIds, ...commonIds])];
+        const ctaCteIds = ctaCteBySeller.get(seller.id) || [];
+        const allSellerEnvioIds = [...new Set([...ecomEnvioIds, ...commonIds, ...ctaCteIds])];
 
         let totalEnvios = 0;
         for (const envioId of allSellerEnvioIds) {
