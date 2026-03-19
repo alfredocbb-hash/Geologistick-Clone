@@ -10,6 +10,7 @@ import DashboardWeeklyChart from '@/components/dashboard/DashboardWeeklyChart';
 import DashboardRecentShipments from '@/components/dashboard/DashboardRecentShipments';
 import DashboardDaySummary from '@/components/dashboard/DashboardDaySummary';
 import DashboardTopDrivers from '@/components/dashboard/DashboardTopDrivers';
+import DashboardMiniMap from '@/components/dashboard/DashboardMiniMap';
 
 export default function Dashboard() {
   const { profile, roles } = useAuth();
@@ -57,10 +58,11 @@ export default function Dashboard() {
         <DashboardTopDrivers tenantId={tenantId} />
       </div>
 
-      {/* Recent Shipments + Day Summary */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      {/* Recent Shipments + Day Summary + Mini Map */}
+      <div className="grid gap-6 lg:grid-cols-3">
         <DashboardRecentShipments tenantId={tenantId} />
         <DashboardDaySummary tenantId={tenantId} />
+        <DashboardMiniMap tenantId={tenantId} />
       </div>
     </div>
   );

@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar, Download, Package, TrendingUp, TrendingDown, Clock, DollarSign, BarChart3, Users, MapPin, FileText, Loader2, FileSpreadsheet } from 'lucide-react';
+import { Calendar, Download, Package, TrendingUp, TrendingDown, Clock, DollarSign, BarChart3, Users, MapPin, FileText, Loader2, FileSpreadsheet, Award, ShieldCheck } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import { useReportsData, type ReportsFilters } from '@/hooks/useReportsData';
 import { subDays, subMonths, format } from 'date-fns';
@@ -78,7 +78,7 @@ export default function Reports() {
     sucursalId: sucursalId !== 'all' ? sucursalId : undefined,
   };
 
-  const { enviosPorSucursal, destinos, rendimientoChoferes, resumenGeneral, resumenPeriodoAnterior, sucursales } = useReportsData(filters);
+  const { enviosPorSucursal, destinos, rendimientoChoferes, resumenGeneral, resumenPeriodoAnterior, slaData, sucursales } = useReportsData(filters);
 
   // Trend calculation helper
   const calcTrend = (curr: number, prev: number) => {
@@ -166,15 +166,21 @@ export default function Reports() {
 
       {/* Tabs */}
       <Tabs defaultValue="sucursales" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="sucursales" className="gap-1.5">
             <BarChart3 className="h-4 w-4 hidden sm:block" /> Sucursales
+          </TabsTrigger>
+          <TabsTrigger value="ranking" className="gap-1.5">
+            <Award className="h-4 w-4 hidden sm:block" /> Ranking
           </TabsTrigger>
           <TabsTrigger value="destinos" className="gap-1.5">
             <MapPin className="h-4 w-4 hidden sm:block" /> Destinos
           </TabsTrigger>
           <TabsTrigger value="choferes" className="gap-1.5">
             <Users className="h-4 w-4 hidden sm:block" /> Choferes
+          </TabsTrigger>
+          <TabsTrigger value="sla" className="gap-1.5">
+            <ShieldCheck className="h-4 w-4 hidden sm:block" /> SLA
           </TabsTrigger>
           <TabsTrigger value="resumen" className="gap-1.5">
             <FileText className="h-4 w-4 hidden sm:block" /> Resumen
@@ -452,6 +458,161 @@ export default function Reports() {
                   </Table>
                 </CardContent>
               </Card>
+            </>
+          )}
+        </TabsContent>
+
+        {/* Tab: Ranking Sucursales */}
+        <TabsContent value="ranking" className="space-y-4">
+          {enviosPorSucursal.isLoading ? (
+            <Skeleton className="h-64 w-full" />
+          ) : (
+            <>
+              <Card>
+                <CardHeader><CardTitle className="text-base">Ranking de Sucursales por Efectividad</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {(enviosPorSucursal.data || []).map((row, i) => (
+                      <div key={row.sucursal_id} className="flex items-center gap-3">
+                        <span className={`text-lg font-bold w-8 text-center ${i === 0 ? 'text-yellow-500' : i === 1 ? 'text-gray-400' : i === 2 ? 'text-amber-700' : 'text-muted-foreground'}`}>
+                          {i + 1}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-medium text-sm truncate">{row.sucursal_nombre}</span>
+                            <span className="text-sm text-muted-foreground">{row.total} envíos</span>
+                          </div>
+                          <div className="h-2 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all ${row.efectividad >= 80 ? 'bg-green-500' : row.efectividad >= 50 ? 'bg-yellow-500' : 'bg-destructive'}`}
+                              style={{ width: `${row.efectividad}%` }}
+                            />
+                          </div>
+                        </div>
+                        <Badge variant={row.efectividad >= 80 ? 'default' : row.efectividad >= 50 ? 'secondary' : 'destructive'} className="w-14 justify-center">
+                          {row.efectividad}%
+                        </Badge>
+                      </div>
+                    ))}
+                    {(enviosPorSucursal.data || []).length === 0 && (
+                      <p className="text-center text-muted-foreground py-8">No hay datos para el período seleccionado</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Comparative bar chart */}
+              {(enviosPorSucursal.data || []).length > 0 && (
+                <Card>
+                  <CardHeader><CardTitle className="text-base">Comparativa: Entregados vs Pendientes</CardTitle></CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={Math.max(200, (enviosPorSucursal.data?.length || 0) * 50)}>
+                      <BarChart data={enviosPorSucursal.data} layout="vertical" margin={{ left: 100 }}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis type="number" />
+                        <YAxis type="category" dataKey="sucursal_nombre" width={90} tick={{ fontSize: 12 }} />
+                        <Tooltip />
+                        <Bar dataKey="entregados" fill="hsl(var(--primary))" name="Entregados" radius={[0, 4, 4, 0]} />
+                        <Bar dataKey="pendientes" fill="hsl(var(--chart-2, 160 60% 45%))" name="Pendientes" radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          )}
+        </TabsContent>
+
+        {/* Tab: SLA */}
+        <TabsContent value="sla" className="space-y-4">
+          {slaData.isLoading ? (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {[1, 2, 3].map(i => <Skeleton key={i} className="h-28" />)}
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {/* SLA Gauge */}
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex flex-col items-center">
+                      <div className="relative h-20 w-20 mb-2">
+                        <svg viewBox="0 0 36 36" className="h-20 w-20 -rotate-90">
+                          <circle cx="18" cy="18" r="15.5" fill="none" stroke="hsl(var(--muted))" strokeWidth="3" />
+                          <circle cx="18" cy="18" r="15.5" fill="none"
+                            stroke={(slaData.data?.porcentajeATiempo || 0) >= 80 ? 'hsl(var(--primary))' : (slaData.data?.porcentajeATiempo || 0) >= 50 ? 'hsl(var(--chart-3, 30 80% 55%))' : 'hsl(var(--destructive))'}
+                            strokeWidth="3"
+                            strokeDasharray={`${(slaData.data?.porcentajeATiempo || 0) * 0.974} 97.4`}
+                            strokeLinecap="round" />
+                        </svg>
+                        <span className="absolute inset-0 flex items-center justify-center text-lg font-bold">
+                          {slaData.data?.porcentajeATiempo || 0}%
+                        </span>
+                      </div>
+                      <p className="text-sm font-medium">Entregas a Tiempo</p>
+                      <p className="text-xs text-muted-foreground">SLA &le; 24h</p>
+                    </div>
+                  </CardContent>
+                </Card>
+                {/* A tiempo */}
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-lg bg-green-500/10 flex items-center justify-center">
+                        <ShieldCheck className="h-5 w-5 text-green-500" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">A Tiempo</p>
+                        <p className="text-2xl font-bold text-green-600">{slaData.data?.aTiempo || 0}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                {/* Con demora */}
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-lg bg-destructive/10 flex items-center justify-center">
+                        <Clock className="h-5 w-5 text-destructive" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Con Demora</p>
+                        <p className="text-2xl font-bold text-destructive">{slaData.data?.conDemora || 0}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Histogram */}
+              {slaData.data && slaData.data.totalEntregados > 0 && (
+                <Card>
+                  <CardHeader><CardTitle className="text-base">Distribución de Tiempos de Entrega</CardTitle></CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={slaData.data.distribucionHoras}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="rango" tick={{ fontSize: 12 }} />
+                        <YAxis />
+                        <Tooltip />
+                        <Bar dataKey="cantidad" name="Envíos" radius={[4, 4, 0, 0]}>
+                          {slaData.data.distribucionHoras.map((entry, i) => (
+                            <Cell key={i} fill={i < 3 ? 'hsl(var(--primary))' : i < 5 ? 'hsl(var(--chart-3, 30 80% 55%))' : 'hsl(var(--destructive))'} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              )}
+
+              {slaData.data && slaData.data.totalEntregados === 0 && (
+                <Card>
+                  <CardContent className="py-12 text-center text-muted-foreground">
+                    No hay entregas completadas en el período seleccionado
+                  </CardContent>
+                </Card>
+              )}
             </>
           )}
         </TabsContent>
