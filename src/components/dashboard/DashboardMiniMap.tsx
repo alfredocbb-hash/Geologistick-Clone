@@ -14,7 +14,7 @@ export default function DashboardMiniMap({ tenantId }: Props) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('sucursales')
-        .select('id, nombre, direccion, ciudad, provincia, lat, lng')
+        .select('id, nombre, direccion, ciudad, lat, lng')
         .eq('tenant_id', tenantId!)
         .eq('activa', true);
       if (error) throw error;
