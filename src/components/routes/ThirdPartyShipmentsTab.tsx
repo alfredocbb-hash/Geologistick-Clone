@@ -138,6 +138,7 @@ interface TempShipment extends ThirdPartyFormData {
 
 const emptyForm: ThirdPartyFormData = {
   empresa_terciarizada: "",
+  seller_id: "",
   tracking_externo: "",
   whatsapp_destinatario: "",
   tipo_pago: "destino",
