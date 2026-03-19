@@ -1818,28 +1818,28 @@ export default function NewShipment() {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto pb-8">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
+    <div className="pb-24">
+      {/* Header compacto */}
+      <div className="flex items-center justify-between gap-4 mb-4">
+        <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-              <PackagePlus className="h-8 w-8 text-envios" />
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+              <PackagePlus className="h-6 w-6 text-envios" />
               Nuevo Envío
             </h1>
-            <div className="flex items-center gap-3 mt-1">
-              <p className="text-muted-foreground">
-                Completa los datos para crear un nuevo envío
-              </p>
-              <DraftSavingIndicator hasDraft={hasDraft} lastSaved={lastSaved} />
-            </div>
+            {sucursalUsuario && (
+              <Badge variant="outline" className="bg-primary/10 text-primary border-primary hidden sm:flex">
+                <Building2 className="h-3 w-3 mr-1" />
+                {sucursalUsuario.codigo ? `${sucursalUsuario.codigo} - ` : ''}{sucursalUsuario.nombre}
+              </Badge>
+            )}
+            <DraftSavingIndicator hasDraft={hasDraft} lastSaved={lastSaved} />
           </div>
         </div>
         
-        {/* Badge de precio */}
         {selectedTarifa && (
           <Badge className="text-lg px-4 py-2 bg-envios hover:bg-envios">
             <DollarSign className="h-4 w-4 mr-1" />
