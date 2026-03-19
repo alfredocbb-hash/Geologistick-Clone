@@ -388,9 +388,8 @@ export function useDriverRoute(): UseDriverRouteReturn {
   // Priority: directionsRoute > snappedRoute > rawHistory
   const polylinePath = useMemo(() => {
     if (directionsRoute.length > 0) return directionsRoute;
-    if (snappedRoute.length > 0) return snappedRoute;
-    return rawHistory.map(point => ({ lat: point.lat, lng: point.lng }));
-  }, [rawHistory, snappedRoute, directionsRoute]);
+    return [];
+  }, [directionsRoute]);
 
   const hasSignalGaps = signalGaps.length > 0;
 
