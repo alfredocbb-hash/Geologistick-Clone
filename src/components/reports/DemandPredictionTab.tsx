@@ -31,7 +31,10 @@ export function DemandPredictionTab({ data }: Props) {
   }));
 
   // Add bridge point: last historic = first prediction
-  const lastHistIdx = chartData.findLastIndex(d => d.historico !== undefined);
+  let lastHistIdx = -1;
+  for (let i = chartData.length - 1; i >= 0; i--) {
+    if (chartData[i].historico !== undefined) { lastHistIdx = i; break; }
+  }
   if (lastHistIdx >= 0 && lastHistIdx + 1 < chartData.length) {
     chartData[lastHistIdx + 1].prediccion = chartData[lastHistIdx].historico;
   }
