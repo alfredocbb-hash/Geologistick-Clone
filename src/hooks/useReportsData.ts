@@ -52,6 +52,14 @@ interface ResumenGeneral {
   distribucionEstados: { estado: string; cantidad: number }[];
 }
 
+export interface SLAData {
+  totalEntregados: number;
+  aTiempo: number;
+  conDemora: number;
+  porcentajeATiempo: number;
+  distribucionHoras: { rango: string; cantidad: number }[];
+}
+
 export function useReportsData(filters: ReportsFilters) {
   const { tenantId } = useTenant();
   const from = startOfDay(filters.dateFrom).toISOString();
