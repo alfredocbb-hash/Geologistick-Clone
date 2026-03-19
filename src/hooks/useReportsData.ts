@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
-import { startOfDay, endOfDay, differenceInMilliseconds } from 'date-fns';
+import { startOfDay, endOfDay, differenceInMilliseconds, parseISO, differenceInHours } from 'date-fns';
 
 export interface ReportsFilters {
   dateFrom: Date;
