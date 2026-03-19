@@ -921,6 +921,12 @@ export default function ActiveRouteNavigation() {
                       `, ${isItemPickup ? envio.ciudad_retiro : envio.ciudad_entrega}`
                     }
                   </p>
+                  {!isCompleted && etaByStopId.has(item.id) && (
+                    <p className="text-xs text-primary flex items-center gap-1 mt-0.5">
+                      <Clock className="h-3 w-3 shrink-0" />
+                      {format(etaByStopId.get(item.id)!.arrivalTime, 'HH:mm')} · ~{etaByStopId.get(item.id)!.etaMin} min · {etaByStopId.get(item.id)!.distKm} km
+                    </p>
+                  )}
                   {envio.pago_contra_entrega && !isCompleted && (
                     <Badge variant="outline" className="text-xs mt-1 border-warning text-warning">
                       COD: ${envio.precio_total}
