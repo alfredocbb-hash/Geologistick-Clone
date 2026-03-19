@@ -30,7 +30,7 @@ export default function DashboardMiniMap({ tenantId }: Props) {
 
   // Build a query for the map showing all branches
   const locations = activeSucursales
-    .map(s => [s.direccion, s.ciudad, s.provincia, 'Argentina'].filter(Boolean).join(', '))
+    .map(s => [s.direccion, s.ciudad, 'Argentina'].filter(Boolean).join(', '))
     .slice(0, 5); // Limit to 5 for the embed
 
   const query = encodeURIComponent(locations[0] || 'Argentina');
