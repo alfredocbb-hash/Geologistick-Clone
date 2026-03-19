@@ -823,6 +823,10 @@ export default function Reports() {
             </>
           )}
         </TabsContent>
+        {/* Tab: Demanda IA */}
+        <TabsContent value="demanda">
+          <DemandPredictionTab />
+        </TabsContent>
       </Tabs>
     </div>
   );
