@@ -56,7 +56,7 @@ export function AppHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-50 flex h-16 items-center gap-4 border-b bg-card/80 backdrop-blur-md px-4 md:px-6">
+    <header className="sticky top-0 z-50 flex h-16 items-center gap-4 bg-card/80 backdrop-blur-xl px-4 md:px-6 gradient-border">
       <SidebarTrigger className="md:hidden" />
 
       {/* Spacer */}
@@ -72,12 +72,14 @@ export function AppHeader() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="flex items-center gap-2 px-2">
-            <Avatar className="h-8 w-8">
-              <AvatarImage src={profile?.avatar_url || undefined} alt="Avatar" />
-              <AvatarFallback className="bg-primary text-primary-foreground text-sm font-semibold">
-                {getInitials()}
-              </AvatarFallback>
-            </Avatar>
+            <div className="rounded-full p-[2px] bg-gradient-to-br from-[hsl(var(--geo-teal))] to-[hsl(var(--primary))]">
+              <Avatar className="h-8 w-8 border-2 border-card">
+                <AvatarImage src={profile?.avatar_url || undefined} alt="Avatar" />
+                <AvatarFallback className="bg-primary text-primary-foreground text-sm font-semibold">
+                  {getInitials()}
+                </AvatarFallback>
+              </Avatar>
+            </div>
             <div className="hidden md:flex flex-col items-start text-left">
               <span className="text-sm font-medium">{profile?.nombre || 'Usuario'}</span>
               <div className="flex gap-1">

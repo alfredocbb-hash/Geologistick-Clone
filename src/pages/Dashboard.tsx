@@ -20,14 +20,17 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8">
+      {/* Decorative background blob */}
+      <div className="absolute top-0 right-0 w-[500px] h-[500px] rounded-full bg-gradient-to-br from-[hsl(var(--primary)/0.05)] to-[hsl(var(--accent)/0.05)] blur-3xl -z-10 pointer-events-none" />
+
       {/* Welcome Section */}
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2 animate-slide-up">
         <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold tracking-tight">
+          <h1 className="text-3xl font-bold tracking-tight gradient-text">
             ¡Hola, {profile?.nombre || 'Usuario'}! 👋
           </h1>
           {isAdmin && (
-            <Button variant="outline" size="sm" onClick={() => setNotifDialogOpen(true)}>
+            <Button variant="outline" size="sm" onClick={() => setNotifDialogOpen(true)} className="glow-hover">
               <Bell className="h-4 w-4 mr-2" />
               Enviar Notificación
             </Button>
