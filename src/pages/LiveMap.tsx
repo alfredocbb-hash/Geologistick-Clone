@@ -1401,6 +1401,11 @@ export default function LiveMap() {
             </div>
           </div>
         </TabsContent>
+
+        {/* Tab: Heatmap */}
+        <TabsContent value="heatmap" className="mt-6">
+          <HeatmapTab />
+        </TabsContent>
       </Tabs>
 
       {/* Route History Dialog */}
