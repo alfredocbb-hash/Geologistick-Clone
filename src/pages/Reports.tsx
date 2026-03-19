@@ -525,6 +525,41 @@ export default function Reports() {
             </>
           )}
         </TabsContent>
+
+        {/* Tab 5: Productividad */}
+        <TabsContent value="productividad" className="space-y-4">
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={() => {
+              if (productividad.data) {
+                exportToExcel(productividad.data, 'productividad-conductores', 'Productividad');
+                toast.success('Excel exportado');
+              }
+            }}>
+              <Download className="h-4 w-4 mr-2" /> Exportar Excel
+            </Button>
+          </div>
+          <ProductividadTab data={productividad} />
+        </TabsContent>
+
+        {/* Tab 6: Costos */}
+        <TabsContent value="costos" className="space-y-4">
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={() => {
+              if (costos.rutas.data) {
+                exportToExcel(costos.rutas.data, 'costos-operativos', 'Costos');
+                toast.success('Excel exportado');
+              }
+            }}>
+              <Download className="h-4 w-4 mr-2" /> Exportar Excel
+            </Button>
+          </div>
+          <CostosTab rutas={costos.rutas} resumen={costos.resumen} />
+        </TabsContent>
+
+        {/* Tab 7: Predicción de Demanda */}
+        <TabsContent value="prediccion" className="space-y-4">
+          <DemandPredictionTab data={demandPrediction} />
+        </TabsContent>
       </Tabs>
     </div>
   );
