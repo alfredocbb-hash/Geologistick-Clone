@@ -155,7 +155,7 @@ export default function Reports() {
 
       {/* Tabs */}
       <Tabs defaultValue="sucursales" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-4 lg:grid-cols-7">
           <TabsTrigger value="sucursales" className="gap-1.5">
             <BarChart3 className="h-4 w-4 hidden sm:block" /> Sucursales
           </TabsTrigger>
@@ -167,6 +167,15 @@ export default function Reports() {
           </TabsTrigger>
           <TabsTrigger value="resumen" className="gap-1.5">
             <FileText className="h-4 w-4 hidden sm:block" /> Resumen
+          </TabsTrigger>
+          <TabsTrigger value="productividad" className="gap-1.5">
+            <Activity className="h-4 w-4 hidden sm:block" /> Productividad
+          </TabsTrigger>
+          <TabsTrigger value="costos" className="gap-1.5">
+            <Wallet className="h-4 w-4 hidden sm:block" /> Costos
+          </TabsTrigger>
+          <TabsTrigger value="prediccion" className="gap-1.5">
+            <Brain className="h-4 w-4 hidden sm:block" /> Predicción
           </TabsTrigger>
         </TabsList>
 
