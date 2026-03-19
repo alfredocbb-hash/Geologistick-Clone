@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
-import { Package, TrendingUp, MapPin, Clock, ChevronRight, Truck, Navigation, Zap } from 'lucide-react';
+import { Package, TrendingUp, MapPin, Clock, ChevronRight, Truck, Navigation, Zap, ExternalLink } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
