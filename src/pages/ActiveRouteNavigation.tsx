@@ -555,10 +555,13 @@ export default function ActiveRouteNavigation() {
     window.open(`tel:${phone}`, '_self');
   }, []);
 
-  // WhatsApp customer
-  const whatsAppCustomer = useCallback((phone: string, name: string) => {
+  // WhatsApp customer with live tracking link
+  const whatsAppCustomer = useCallback((phone: string, name: string, trackingNum?: string) => {
     const cleanPhone = phone.replace(/\D/g, '');
-    const message = encodeURIComponent(`Hola ${name}, soy el repartidor. Estoy llegando con su envío.`);
+    const trackingLink = trackingNum 
+      ? `\n\nSeguí mi ubicación en vivo: ${window.location.origin}/tracking/${trackingNum}`
+      : '';
+    const message = encodeURIComponent(`Hola ${name}, soy el repartidor. Estoy llegando con su envío.${trackingLink}`);
     window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank');
   }, []);
 
