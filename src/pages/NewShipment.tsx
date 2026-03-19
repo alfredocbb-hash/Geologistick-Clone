@@ -1817,1115 +1817,604 @@ export default function NewShipment() {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto pb-8">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
-            <ArrowLeft className="h-5 w-5" />
+    <div className="max-w-[1400px] mx-auto pb-24">
+      {/* Compact Header */}
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(-1)}>
+            <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-              <PackagePlus className="h-8 w-8 text-envios" />
-              Nuevo Envío
-            </h1>
-            <div className="flex items-center gap-3 mt-1">
-              <p className="text-muted-foreground">
-                Completa los datos para crear un nuevo envío
-              </p>
-              <DraftSavingIndicator hasDraft={hasDraft} lastSaved={lastSaved} />
-            </div>
-          </div>
+          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+            <PackagePlus className="h-5 w-5 text-envios" />
+            Nuevo Envío
+          </h1>
+          {sucursalUsuario && (
+            <Badge variant="outline" className="bg-primary/10 text-primary border-primary text-xs">
+              <Building2 className="h-3 w-3 mr-1" />
+              {sucursalUsuario.codigo && `${sucursalUsuario.codigo} - `}{sucursalUsuario.nombre}
+            </Badge>
+          )}
+          <DraftSavingIndicator hasDraft={hasDraft} lastSaved={lastSaved} />
         </div>
-        
-        {/* Badge de precio */}
         {selectedTarifa && (
-          <Badge className="text-lg px-4 py-2 bg-envios hover:bg-envios">
-            <DollarSign className="h-4 w-4 mr-1" />
+          <Badge className="text-base px-3 py-1.5 bg-envios hover:bg-envios">
+            <DollarSign className="h-3.5 w-3.5 mr-1" />
             {formatCurrency(precioCalculado)}
           </Badge>
         )}
       </div>
 
-      {/* Draft recovered indicator */}
-      {isDraftRecovered && (
-        <DraftIndicator
-          lastSaved={lastSaved}
-          onDiscard={discardDraft}
-          onDismiss={() => setIsDraftRecovered(false)}
-        />
-      )}
-
-      {/* Card de Sucursal Asignada */}
-      <Card className="border-primary/30 bg-primary/5">
-        <CardContent className="py-4">
-          <div className="flex items-center gap-3">
-            <Building2 className="h-5 w-5 text-primary" />
-            <div className="flex-1">
-              <p className="text-sm text-muted-foreground">Sucursal de Origen</p>
-              <p className="font-semibold">
-                {loadingSucursalUsuario ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : sucursalUsuario ? (
-                  <>
-                    {sucursalUsuario.codigo && `${sucursalUsuario.codigo} - `}
-                    {sucursalUsuario.nombre}
-                    {sucursalUsuario.ciudad && ` (${sucursalUsuario.ciudad})`}
-                  </>
-                ) : (
-                  'Sin asignar'
-                )}
-              </p>
-            </div>
-            <Badge variant="outline" className="bg-primary/10 text-primary border-primary">
-              Tu sucursal
-            </Badge>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Alert de caja no abierta */}
-      {!cajaAbierta && !loadingCaja && sucursalOrigenId && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription className="flex items-center justify-between">
-            <span>No hay caja abierta en tu sucursal. Debes abrir una sesión de caja antes de crear envíos.</span>
-            <Button variant="link" className="p-0 h-auto text-destructive-foreground underline" onClick={() => navigate('/cash')}>
-              Ir a Control de Caja
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Alert de cuenta corriente detectada */}
-      {remitenteConCtaCte && formData.tipo_pago !== 'cuenta_corriente' && (
-        <Alert className="border-primary bg-primary/5">
-          <Wallet className="h-4 w-4" />
-          <AlertDescription className="flex items-center justify-between">
-            <div>
-              <span className="font-medium">✨ Cuenta Corriente Disponible:</span> {remitenteConCtaCte.nombre} tiene cuenta corriente activa.
-              {remitenteConCtaCte.saldo_cuenta_corriente !== null && (
-                <span className="ml-2">Saldo: {formatCurrency(Number(remitenteConCtaCte.saldo_cuenta_corriente) || 0)}</span>
-              )}
-              {remitenteConCtaCte.limite_credito && (
-                <span className="ml-2">Límite: {formatCurrency(remitenteConCtaCte.limite_credito)}</span>
-              )}
-            </div>
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => {
-                handleChange('tipo_pago', 'cuenta_corriente');
-                handleChange('cliente_cta_cte_id', remitenteConCtaCte.id);
-              }}
-            >
-              Usar Cta Cte
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Tipo de Servicio - 4 opciones */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Truck className="h-5 w-5 text-envios" />
-              Tipo de Servicio
-            </CardTitle>
-            <CardDescription>Selecciona el tipo de servicio que necesitas</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <RadioGroup 
-              value={tipoServicioDetalle} 
-              onValueChange={(v) => {
-                const newValue = v as TipoServicioDetalle;
-                setTipoServicioDetalle(newValue);
-                // Si selecciona retiro_almacenaje, forzar cuenta corriente
-                if (newValue === 'retiro_almacenaje') {
+      {/* Alerts row */}
+      <div className="space-y-2 mb-3">
+        {isDraftRecovered && (
+          <DraftIndicator
+            lastSaved={lastSaved}
+            onDiscard={discardDraft}
+            onDismiss={() => setIsDraftRecovered(false)}
+          />
+        )}
+        {!cajaAbierta && !loadingCaja && sucursalOrigenId && (
+          <Alert variant="destructive" className="py-2">
+            <AlertCircle className="h-3.5 w-3.5" />
+            <AlertDescription className="flex items-center justify-between text-xs">
+              <span>No hay caja abierta. Debes abrir una sesión de caja antes de crear envíos.</span>
+              <Button variant="link" className="p-0 h-auto text-destructive-foreground underline text-xs" onClick={() => navigate('/cash')}>
+                Ir a Caja
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+        {remitenteConCtaCte && formData.tipo_pago !== 'cuenta_corriente' && (
+          <Alert className="border-primary bg-primary/5 py-2">
+            <Wallet className="h-3.5 w-3.5" />
+            <AlertDescription className="flex items-center justify-between text-xs">
+              <span>
+                <span className="font-medium">✨ Cta. Cte.:</span> {remitenteConCtaCte.nombre}
+                {remitenteConCtaCte.saldo_cuenta_corriente !== null && ` — Saldo: ${formatCurrency(Number(remitenteConCtaCte.saldo_cuenta_corriente) || 0)}`}
+              </span>
+              <Button variant="outline" size="sm" className="h-6 text-xs px-2"
+                onClick={() => {
                   handleChange('tipo_pago', 'cuenta_corriente');
-                }
-              }}
-              className="grid grid-cols-2 lg:grid-cols-3 gap-4"
-            >
-              {TIPO_SERVICIO_OPTIONS.map((option) => (
-                <div key={option.value}>
-                  <RadioGroupItem 
-                    value={option.value} 
-                    id={option.value}
-                    className="peer sr-only"
-                  />
-                  <Label
-                    htmlFor={option.value}
-                    className={`flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-envios [&:has([data-state=checked])]:border-envios cursor-pointer ${option.requiresCtaCte ? 'ring-1 ring-primary/30' : ''}`}
-                  >
-                    <span className="text-2xl mb-2">{option.icon}</span>
-                    <span className="font-semibold text-center">{option.label}</span>
-                    <span className="text-xs text-muted-foreground text-center mt-1">
-                      {option.description}
-                    </span>
-                    {option.requiresCtaCte && (
-                      <Badge variant="outline" className="mt-2 bg-primary/10 text-primary border-primary text-[10px]">
-                        Solo Cta. Cte.
-                      </Badge>
-                    )}
-                  </Label>
-                </div>
-              ))}
-            </RadioGroup>
+                  handleChange('cliente_cta_cte_id', remitenteConCtaCte.id);
+                }}
+              >
+                Usar Cta Cte
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+      </div>
 
-            {/* Visual indicator of what's included */}
-            <div className="mt-4 p-3 rounded-lg bg-muted/50 flex items-center justify-center gap-4">
-              <div className={`flex items-center gap-2 ${tieneRetiro ? 'text-warning font-medium' : 'text-muted-foreground'}`}>
-                <Home className="h-4 w-4" />
-                <span>Retiro</span>
-                {tieneRetiro && <Badge variant="outline" className="bg-warning/10 text-warning border-warning">Incluido</Badge>}
+      <form onSubmit={handleSubmit}>
+        {/* Main 3-column grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          
+          {/* ═══ COLUMN 1: Service Type + Payment ═══ */}
+          <div className="space-y-3">
+            {/* Tipo de Servicio */}
+            <div className="border rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Truck className="h-4 w-4 text-envios" />
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tipo de Servicio</span>
               </div>
-              <ArrowRight className="h-4 w-4 text-muted-foreground" />
-              {esRetiroAlmacenaje ? (
-                <div className="flex items-center gap-2 text-primary font-medium">
-                  <Package className="h-4 w-4" />
-                  <span>Almacenaje</span>
-                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary">En bodega</Badge>
-                </div>
-              ) : (
-                <div className={`flex items-center gap-2 ${tieneEntrega ? 'text-success font-medium' : 'text-muted-foreground'}`}>
-                  <MapPin className="h-4 w-4" />
-                  <span>Entrega</span>
-                  {tieneEntrega && <Badge variant="outline" className="bg-success/10 text-success border-success">Incluido</Badge>}
-                </div>
-              )}
+              <RadioGroup 
+                value={tipoServicioDetalle} 
+                onValueChange={(v) => {
+                  const newValue = v as TipoServicioDetalle;
+                  setTipoServicioDetalle(newValue);
+                  if (newValue === 'retiro_almacenaje') {
+                    handleChange('tipo_pago', 'cuenta_corriente');
+                  }
+                }}
+                className="grid grid-cols-1 gap-1.5"
+              >
+                {TIPO_SERVICIO_OPTIONS.map((option) => (
+                  <div key={option.value}>
+                    <RadioGroupItem value={option.value} id={option.value} className="peer sr-only" />
+                    <Label
+                      htmlFor={option.value}
+                      className={`flex items-center gap-2 rounded-md border border-muted bg-popover px-3 py-2 text-xs hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-envios peer-data-[state=checked]:bg-envios/5 [&:has([data-state=checked])]:border-envios [&:has([data-state=checked])]:bg-envios/5 cursor-pointer ${option.requiresCtaCte ? 'ring-1 ring-primary/30' : ''}`}
+                    >
+                      <span className="text-base">{option.icon}</span>
+                      <span className="font-medium truncate">{option.label}</span>
+                      {option.requiresCtaCte && (
+                        <Badge variant="outline" className="ml-auto bg-primary/10 text-primary border-primary text-[9px] px-1 py-0">
+                          Cta.Cte.
+                        </Badge>
+                      )}
+                    </Label>
+                  </div>
+                ))}
+              </RadioGroup>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Tipo de Pago */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5 text-primary" />
-              Tipo de Pago
-            </CardTitle>
-            <CardDescription>
-              {esRetiroAlmacenaje 
-                ? 'Para retiros de almacenaje se requiere cuenta corriente'
-                : 'Selecciona cómo se realizará el pago'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {esRetiroAlmacenaje ? (
-              // Para retiro almacenaje, solo mostrar selección de cliente con Cta Cte
-              <div className="space-y-4">
-                <Alert className="border-primary bg-primary/5">
-                  <Wallet className="h-4 w-4" />
-                  <AlertDescription>
-                    El retiro para almacenaje requiere un cliente con cuenta corriente activa.
-                  </AlertDescription>
-                </Alert>
+            {/* Tipo de Pago */}
+            <div className="border rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <CreditCard className="h-4 w-4 text-primary" />
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tipo de Pago</span>
+              </div>
+              {esRetiroAlmacenaje ? (
                 <div className="space-y-2">
-                  <Label>Cliente con Cuenta Corriente *</Label>
+                  <p className="text-xs text-muted-foreground">Requiere cuenta corriente</p>
                   <Select
                     value={formData.cliente_cta_cte_id}
                     onValueChange={(v) => {
                       handleChange('cliente_cta_cte_id', v);
-                      // Defer heavy client load to let Select portal unmount first (Chrome fix)
                       const selectedClient = clientesCtaCte.find(c => c.id === v);
                       if (selectedClient) {
-                        setTimeout(() => {
-                          handleLoadSenderClient(selectedClient);
-                        }, 0);
+                        setTimeout(() => handleLoadSenderClient(selectedClient), 0);
                       }
                     }}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="h-8 text-xs">
                       <SelectValue placeholder="Seleccionar cliente" />
                     </SelectTrigger>
                     <SelectContent>
                       {clientesCtaCte?.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.nombre} {c.apellido} - Saldo: {formatCurrency(Number(c.saldo_cuenta_corriente) || 0)}
+                        <SelectItem key={c.id} value={c.id} className="text-xs">
+                          {c.nombre} {c.apellido} - {formatCurrency(Number(c.saldo_cuenta_corriente) || 0)}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-3 gap-4">
-                  <Button
-                    type="button"
-                    variant={formData.tipo_pago === 'contado' ? 'default' : 'outline'}
-                    className={formData.tipo_pago === 'contado' ? 'bg-success hover:bg-success/90' : ''}
-                    onClick={() => handleChange('tipo_pago', 'contado')}
-                  >
-                    Contado
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={formData.tipo_pago === 'destino' ? 'default' : 'outline'}
-                    className={formData.tipo_pago === 'destino' ? 'bg-warning hover:bg-warning/90' : ''}
-                    onClick={() => handleChange('tipo_pago', 'destino')}
-                  >
-                    Pago en Destino
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={formData.tipo_pago === 'cuenta_corriente' ? 'default' : 'outline'}
-                    className={formData.tipo_pago === 'cuenta_corriente' ? 'bg-primary hover:bg-primary/90' : ''}
-                    onClick={() => handleChange('tipo_pago', 'cuenta_corriente')}
-                  >
-                    Cuenta Corriente
-                  </Button>
-                </div>
-
-                {formData.tipo_pago === 'cuenta_corriente' && (
-                  <div className="mt-4 space-y-2">
-                    <Label>Cliente con Cuenta Corriente *</Label>
-                    <Select
-                      value={formData.cliente_cta_cte_id}
-                      onValueChange={(v) => handleChange('cliente_cta_cte_id', v)}
-                    >
-                      <SelectTrigger>
+              ) : (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <Button type="button" variant={formData.tipo_pago === 'contado' ? 'default' : 'outline'}
+                      className={`h-8 text-xs px-2 ${formData.tipo_pago === 'contado' ? 'bg-success hover:bg-success/90' : ''}`}
+                      onClick={() => handleChange('tipo_pago', 'contado')}>
+                      Contado
+                    </Button>
+                    <Button type="button" variant={formData.tipo_pago === 'destino' ? 'default' : 'outline'}
+                      className={`h-8 text-xs px-2 ${formData.tipo_pago === 'destino' ? 'bg-warning hover:bg-warning/90' : ''}`}
+                      onClick={() => handleChange('tipo_pago', 'destino')}>
+                      Destino
+                    </Button>
+                    <Button type="button" variant={formData.tipo_pago === 'cuenta_corriente' ? 'default' : 'outline'}
+                      className={`h-8 text-xs px-2 ${formData.tipo_pago === 'cuenta_corriente' ? 'bg-primary hover:bg-primary/90' : ''}`}
+                      onClick={() => handleChange('tipo_pago', 'cuenta_corriente')}>
+                      Cta. Cte.
+                    </Button>
+                  </div>
+                  {formData.tipo_pago === 'cuenta_corriente' && (
+                    <Select value={formData.cliente_cta_cte_id} onValueChange={(v) => handleChange('cliente_cta_cte_id', v)}>
+                      <SelectTrigger className="h-8 text-xs">
                         <SelectValue placeholder="Seleccionar cliente" />
                       </SelectTrigger>
                       <SelectContent>
                         {clientesCtaCte?.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {c.nombre} {c.apellido} - Saldo: {formatCurrency(Number(c.saldo_cuenta_corriente) || 0)}
+                          <SelectItem key={c.id} value={c.id} className="text-xs">
+                            {c.nombre} {c.apellido} - {formatCurrency(Number(c.saldo_cuenta_corriente) || 0)}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                  </div>
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Remitente */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="h-5 w-5 text-primary" />
-              Datos del Remitente
-            </CardTitle>
-            <CardDescription>
-              {tieneRetiro 
-                ? 'Información de quien envía el paquete - Se retirará en su domicilio'
-                : 'Información de quien envía el paquete'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Autocomplete */}
-            <ContactAutocomplete 
-              clients={allClients}
-              onSelect={handleLoadSenderClient}
-              label="Cargar cliente existente"
-              placeholder="Buscar por nombre, DNI o teléfono..."
-            />
-            
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="remitente_nombre">Nombre *</Label>
-                <Input
-                  id="remitente_nombre"
-                  value={formData.remitente_nombre}
-                  onChange={(e) => handleChange('remitente_nombre', e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="remitente_apellido">Apellido</Label>
-                <Input
-                  id="remitente_apellido"
-                  value={formData.remitente_apellido}
-                  onChange={(e) => handleChange('remitente_apellido', e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="remitente_dni">DNI / CUIT</Label>
-                <Input
-                  id="remitente_dni"
-                  value={formData.remitente_dni}
-                  onChange={(e) => {
-                    handleChange('remitente_dni', e.target.value);
-                    setClientLoadedManually(prev => ({ ...prev, remitente: false }));
-                  }}
-                  onBlur={(e) => checkExistingClient(e.target.value, 'remitente')}
-                  placeholder="Ej: 12345678 o 20-12345678-9"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="remitente_telefono">Teléfono *</Label>
-                <Input
-                  id="remitente_telefono"
-                  value={formData.remitente_telefono}
-                  onChange={(e) => handleChange('remitente_telefono', e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="remitente_email">Email</Label>
-                <Input
-                  id="remitente_email"
-                  type="email"
-                  value={formData.remitente_email}
-                  onChange={(e) => handleChange('remitente_email', e.target.value)}
-                />
-              </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* Dirección del remitente - Solo si tiene retiro */}
-            {tieneRetiro && (
-              <>
-                <Separator className="my-4" />
-                <div className="p-4 rounded-lg bg-warning/5 border border-warning/20 space-y-4">
-                  <div className="flex items-center gap-2">
-                    <Home className="h-4 w-4 text-warning" />
-                    <Label className="text-warning font-medium">Dirección para Retiro</Label>
+            {/* Tarifa selector (moved here for visibility) */}
+            <div className="border rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <DollarSign className="h-4 w-4 text-envios" />
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tarifa</span>
+              </div>
+              {autoSeleccionPorZona ? (
+                tarifaFueAutoDetectada && selectedTarifa ? (
+                  <div className="p-2 bg-primary/5 border border-primary/20 rounded-md space-y-1">
+                    <p className="text-[10px] font-medium text-primary uppercase tracking-wide flex items-center gap-1">
+                      <span>✓</span> Auto-detectada
+                    </p>
+                    <p className="text-xs font-semibold">{selectedTarifa.nombre}</p>
+                    {fleteCalculado > 0 && (
+                      <p className="text-[10px] text-muted-foreground">
+                        Flete{fleteDescripcion ? ` (${fleteDescripcion})` : ''}: <span className="font-medium text-foreground">${fleteCalculado.toLocaleString('es-AR', { minimumFractionDigits: 0 })}</span>
+                      </p>
+                    )}
                   </div>
-                  
-                  <div className="space-y-2">
-                    <AddressAutocomplete
-                      id="remitente_direccion"
-                      value={formData.remitente_direccion}
-                      onChange={(value) => handleChange('remitente_direccion', value)}
-                      onSelect={handleRemitenteAddressSelect}
-                      label="Dirección *"
-                      placeholder="Ingrese la dirección del remitente..."
-                      required
-                    />
-                  </div>
-                  
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="remitente_ciudad">Ciudad</Label>
-                      <Input
-                        id="remitente_ciudad"
-                        value={formData.remitente_ciudad}
-                        onChange={(e) => handleChange('remitente_ciudad', e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="remitente_codigo_postal">Código Postal</Label>
-                      <Input
-                        id="remitente_codigo_postal"
-                        value={formData.remitente_codigo_postal}
-                        onChange={(e) => handleChange('remitente_codigo_postal', e.target.value)}
-                      />
+                ) : (
+                  <div className="p-2 bg-destructive/10 border border-destructive/20 rounded-md flex items-start gap-1.5">
+                    <AlertCircle className="h-3.5 w-3.5 text-destructive mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-xs font-medium text-destructive">Ingresá ciudad destino</p>
+                      <p className="text-[10px] text-muted-foreground">Precio automático por zona</p>
                     </div>
                   </div>
+                )
+              ) : tarifasDisponibles.length > 1 ? (
+                <Select value={formData.tarifa_id} onValueChange={(v) => handleChange('tarifa_id', v)} disabled={loadingTarifas}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder={loadingTarifas ? "Cargando..." : "Seleccionar tarifa"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tarifasDisponibles.map((t) => (
+                      <SelectItem key={t.id} value={t.id} className="text-xs">
+                        {t.nombre} - ${Number(t.precio_base).toLocaleString('es-AR')}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : tarifasDisponibles.length === 1 ? (
+                <div className="p-2 bg-muted/50 rounded-md">
+                  <p className="text-xs font-medium">{tarifasDisponibles[0].nombre} - ${Number(tarifasDisponibles[0].precio_base).toLocaleString('es-AR')}</p>
+                </div>
+              ) : (
+                <div className="text-xs text-muted-foreground p-2 border rounded-md">
+                  {loadingTarifas ? (
+                    <span className="flex items-center"><Loader2 className="h-3 w-3 animate-spin mr-1" />Cargando...</span>
+                  ) : (
+                    <>No hay tarifas disponibles<Button variant="outline" size="sm" onClick={() => refetchTarifas()} className="ml-2 h-6 text-[10px]" type="button">Reintentar</Button></>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
 
-                  <Separator />
+          {/* ═══ COLUMN 2: Remitente ═══ */}
+          <div className="border rounded-lg p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <User className="h-4 w-4 text-primary" />
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Remitente</span>
+            </div>
+            <div className="space-y-2">
+              <ContactAutocomplete 
+                clients={allClients}
+                onSelect={handleLoadSenderClient}
+                label=""
+                placeholder="Buscar cliente..."
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-[10px] text-muted-foreground">Nombre *</Label>
+                  <Input className="h-8 text-xs" value={formData.remitente_nombre} onChange={(e) => handleChange('remitente_nombre', e.target.value)} required />
+                </div>
+                <div>
+                  <Label className="text-[10px] text-muted-foreground">Apellido</Label>
+                  <Input className="h-8 text-xs" value={formData.remitente_apellido} onChange={(e) => handleChange('remitente_apellido', e.target.value)} />
+                </div>
+                <div>
+                  <Label className="text-[10px] text-muted-foreground">DNI/CUIT</Label>
+                  <Input className="h-8 text-xs" value={formData.remitente_dni}
+                    onChange={(e) => { handleChange('remitente_dni', e.target.value); setClientLoadedManually(prev => ({ ...prev, remitente: false })); }}
+                    onBlur={(e) => checkExistingClient(e.target.value, 'remitente')}
+                    placeholder="12345678" />
+                </div>
+                <div>
+                  <Label className="text-[10px] text-muted-foreground">Teléfono *</Label>
+                  <Input className="h-8 text-xs" value={formData.remitente_telefono} onChange={(e) => handleChange('remitente_telefono', e.target.value)} required />
+                </div>
+                <div className="col-span-2">
+                  <Label className="text-[10px] text-muted-foreground">Email</Label>
+                  <Input className="h-8 text-xs" type="email" value={formData.remitente_email} onChange={(e) => handleChange('remitente_email', e.target.value)} />
+                </div>
+              </div>
 
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="fecha_retiro" className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4" />
-                        Fecha de Retiro *
-                      </Label>
-                      <Input
-                        id="fecha_retiro"
-                        type="date"
-                        min={today}
-                        value={formData.fecha_retiro}
-                        onChange={(e) => handleChange('fecha_retiro', e.target.value)}
-                        required
-                      />
+              {/* Retiro info */}
+              {tieneRetiro && (
+                <div className="mt-2 p-2 rounded-md bg-warning/5 border border-warning/20 space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <Home className="h-3.5 w-3.5 text-warning" />
+                    <span className="text-[10px] font-semibold text-warning uppercase">Dirección Retiro</span>
+                  </div>
+                  <AddressAutocomplete
+                    id="remitente_direccion"
+                    value={formData.remitente_direccion}
+                    onChange={(value) => handleChange('remitente_direccion', value)}
+                    onSelect={handleRemitenteAddressSelect}
+                    label=""
+                    placeholder="Dirección del remitente..."
+                    required
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">Ciudad</Label>
+                      <Input className="h-8 text-xs" value={formData.remitente_ciudad} onChange={(e) => handleChange('remitente_ciudad', e.target.value)} />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="horario_retiro" className="flex items-center gap-2">
-                        <Clock className="h-4 w-4" />
-                        Horario Preferido
-                      </Label>
-                      <Select
-                        value={formData.horario_retiro}
-                        onValueChange={(v) => handleChange('horario_retiro', v)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar horario" />
-                        </SelectTrigger>
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">CP</Label>
+                      <Input className="h-8 text-xs" value={formData.remitente_codigo_postal} onChange={(e) => handleChange('remitente_codigo_postal', e.target.value)} />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground flex items-center gap-1"><Calendar className="h-3 w-3" />Fecha Retiro *</Label>
+                      <Input className="h-8 text-xs" type="date" min={today} value={formData.fecha_retiro} onChange={(e) => handleChange('fecha_retiro', e.target.value)} required />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground flex items-center gap-1"><Clock className="h-3 w-3" />Horario</Label>
+                      <Select value={formData.horario_retiro} onValueChange={(v) => handleChange('horario_retiro', v)}>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Horario" /></SelectTrigger>
                         <SelectContent>
-                          {HORARIOS_RETIRO.map((h) => (
-                            <SelectItem key={h.value} value={h.value}>{h.label}</SelectItem>
-                          ))}
+                          {HORARIOS_RETIRO.map((h) => (<SelectItem key={h.value} value={h.value} className="text-xs">{h.label}</SelectItem>))}
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="notas_retiro">Notas para el retiro</Label>
-                    <Textarea
-                      id="notas_retiro"
-                      value={formData.notas_retiro}
-                      onChange={(e) => handleChange('notas_retiro', e.target.value)}
-                      placeholder="Instrucciones especiales para el retiro..."
-                    />
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Notas retiro</Label>
+                    <Textarea className="min-h-[40px] text-xs" value={formData.notas_retiro} onChange={(e) => handleChange('notas_retiro', e.target.value)} placeholder="Instrucciones..." />
                   </div>
                 </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Destinatario - No mostrar para retiro_almacenaje */}
-        {!esRetiroAlmacenaje && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MapPin className="h-5 w-5 text-success" />
-                Datos del Destinatario
-              </CardTitle>
-              <CardDescription>
-                {tieneEntrega 
-                  ? 'Información de quien recibe el paquete - Se entregará a domicilio'
-                  : 'Información de quien recibe el paquete - Retirará en sucursal'}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Autocomplete */}
-              <ContactAutocomplete 
-                clients={allClients}
-                onSelect={handleLoadRecipientClient}
-                label="Cargar cliente existente"
-                placeholder="Buscar por nombre, DNI o teléfono..."
-              />
-              
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="destinatario_nombre">Nombre *</Label>
-                  <Input
-                    id="destinatario_nombre"
-                    value={formData.destinatario_nombre}
-                    onChange={(e) => handleChange('destinatario_nombre', e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="destinatario_apellido">Apellido</Label>
-                  <Input
-                    id="destinatario_apellido"
-                    value={formData.destinatario_apellido}
-                    onChange={(e) => handleChange('destinatario_apellido', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="destinatario_dni">DNI / CUIT</Label>
-                  <Input
-                    id="destinatario_dni"
-                    value={formData.destinatario_dni}
-                    onChange={(e) => {
-                      handleChange('destinatario_dni', e.target.value);
-                      setClientLoadedManually(prev => ({ ...prev, destinatario: false }));
-                    }}
-                    onBlur={(e) => checkExistingClient(e.target.value, 'destinatario')}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="destinatario_telefono">Teléfono *</Label>
-                  <Input
-                    id="destinatario_telefono"
-                    value={formData.destinatario_telefono}
-                    onChange={(e) => handleChange('destinatario_telefono', e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="destinatario_whatsapp">WhatsApp</Label>
-                  <Input
-                    id="destinatario_whatsapp"
-                    value={formData.destinatario_whatsapp}
-                    onChange={(e) => handleChange('destinatario_whatsapp', e.target.value)}
-                    placeholder="Ej: +54 11 1234-5678"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="destinatario_email">Email</Label>
-                  <Input
-                    id="destinatario_email"
-                    type="email"
-                    value={formData.destinatario_email}
-                    onChange={(e) => handleChange('destinatario_email', e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* Sucursal Destino - Solo si NO tiene entrega (sucursal_sucursal o puerta_sucursal) */}
-              {!tieneEntrega && (
-                <>
-                  <Separator className="my-4" />
-                  <div className="p-4 rounded-lg bg-muted/50 space-y-4">
-                    <div className="flex items-center gap-2">
-                      <Building2 className="h-4 w-4 text-primary" />
-                      <Label className="font-medium">Sucursal de Destino</Label>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      El destinatario retirará el paquete en esta sucursal
-                    </p>
-                    <Popover open={sucursalDestinoOpen} onOpenChange={setSucursalDestinoOpen}>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          role="combobox"
-                          aria-expanded={sucursalDestinoOpen}
-                          className="w-full justify-between font-normal"
-                        >
-                          {formData.sucursal_destino_id
-                            ? (() => {
-                                const sel = sucursalesDestino.find(s => s.id === formData.sucursal_destino_id);
-                                return sel ? `${sel.nombre}${sel.ciudad ? ` - ${sel.ciudad}` : ''}` : 'Seleccionar sucursal';
-                              })()
-                            : 'Seleccionar sucursal de destino'}
-                          <MapPin className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-                        <Command>
-                          <CommandInput placeholder="Buscar sucursal..." />
-                          <CommandList>
-                            <CommandEmpty>No se encontraron sucursales</CommandEmpty>
-                            {sucursalesDestino.map((s) => (
-                              <CommandItem
-                                key={s.id}
-                                value={`${s.nombre} ${s.ciudad || ''} ${s.direccion || ''}`}
-                                onSelect={() => {
-                                  setSucursalDestinoOpen(false);
-                                   setTimeout(() => {
-                                    if (s.lat && s.lng) {
-                                      setDestinoCoords({ lat: s.lat, lng: s.lng });
-                                    }
-                                    setFormData(prev => ({
-                                      ...prev,
-                                      sucursal_destino_id: s.id,
-                                      destinatario_ciudad: s.ciudad || '',
-                                    }));
-                                  }, 0);
-                                }}
-                              >
-                                <div className="flex flex-col">
-                                  <span className="font-medium">{s.nombre}</span>
-                                  <span className="text-xs text-muted-foreground">
-                                    {[s.direccion, s.ciudad].filter(Boolean).join(', ')}
-                                  </span>
-                                </div>
-                              </CommandItem>
-                            ))}
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                </>
               )}
+            </div>
+          </div>
 
-              {/* Dirección de entrega - Solo si tiene entrega (sucursal_puerta o puerta_puerta) */}
-              {tieneEntrega && (
-                <>
-                  <Separator className="my-4" />
-                  <div className="p-4 rounded-lg bg-success/5 border border-success/20 space-y-4">
-                    <div className="flex items-center gap-2">
-                      <MapPin className="h-4 w-4 text-success" />
-                      <Label className="text-success font-medium">Dirección de Entrega</Label>
+          {/* ═══ COLUMN 3: Destinatario ═══ */}
+          <div className="border rounded-lg p-3">
+            {!esRetiroAlmacenaje ? (
+              <>
+                <div className="flex items-center gap-2 mb-2">
+                  <MapPin className="h-4 w-4 text-success" />
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Destinatario</span>
+                </div>
+                <div className="space-y-2">
+                  <ContactAutocomplete 
+                    clients={allClients}
+                    onSelect={handleLoadRecipientClient}
+                    label=""
+                    placeholder="Buscar cliente..."
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">Nombre *</Label>
+                      <Input className="h-8 text-xs" value={formData.destinatario_nombre} onChange={(e) => handleChange('destinatario_nombre', e.target.value)} required />
                     </div>
-                    
-                    <div className="space-y-2">
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">Apellido</Label>
+                      <Input className="h-8 text-xs" value={formData.destinatario_apellido} onChange={(e) => handleChange('destinatario_apellido', e.target.value)} />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">DNI/CUIT</Label>
+                      <Input className="h-8 text-xs" value={formData.destinatario_dni}
+                        onChange={(e) => { handleChange('destinatario_dni', e.target.value); setClientLoadedManually(prev => ({ ...prev, destinatario: false })); }}
+                        onBlur={(e) => checkExistingClient(e.target.value, 'destinatario')} />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">Teléfono *</Label>
+                      <Input className="h-8 text-xs" value={formData.destinatario_telefono} onChange={(e) => handleChange('destinatario_telefono', e.target.value)} required />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">WhatsApp</Label>
+                      <Input className="h-8 text-xs" value={formData.destinatario_whatsapp} onChange={(e) => handleChange('destinatario_whatsapp', e.target.value)} placeholder="+54..." />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">Email</Label>
+                      <Input className="h-8 text-xs" type="email" value={formData.destinatario_email} onChange={(e) => handleChange('destinatario_email', e.target.value)} />
+                    </div>
+                  </div>
+
+                  {/* Sucursal destino OR Dirección entrega */}
+                  {!tieneEntrega ? (
+                    <div className="mt-2 p-2 rounded-md bg-muted/50 space-y-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <Building2 className="h-3.5 w-3.5 text-primary" />
+                        <span className="text-[10px] font-semibold uppercase text-muted-foreground">Suc. Destino</span>
+                      </div>
+                      <Popover open={sucursalDestinoOpen} onOpenChange={setSucursalDestinoOpen}>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" role="combobox" aria-expanded={sucursalDestinoOpen} className="w-full justify-between font-normal h-8 text-xs">
+                            {formData.sucursal_destino_id
+                              ? (() => {
+                                  const sel = sucursalesDestino.find(s => s.id === formData.sucursal_destino_id);
+                                  return sel ? `${sel.nombre}${sel.ciudad ? ` - ${sel.ciudad}` : ''}` : 'Seleccionar';
+                                })()
+                              : 'Seleccionar sucursal'}
+                            <MapPin className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                          <Command>
+                            <CommandInput placeholder="Buscar sucursal..." className="text-xs" />
+                            <CommandList>
+                              <CommandEmpty>No encontrada</CommandEmpty>
+                              {sucursalesDestino.map((s) => (
+                                <CommandItem
+                                  key={s.id}
+                                  value={`${s.nombre} ${s.ciudad || ''} ${s.codigo || ''}`}
+                                  onSelect={() => {
+                                    handleChange('sucursal_destino_id', s.id);
+                                    setSucursalDestinoOpen(false);
+                                  }}
+                                  className="text-xs"
+                                >
+                                  <Building2 className="h-3 w-3 mr-1.5" />
+                                  {s.codigo && <span className="font-mono mr-1">{s.codigo}</span>}
+                                  {s.nombre}
+                                  {s.ciudad && <span className="text-muted-foreground ml-1">({s.ciudad})</span>}
+                                </CommandItem>
+                              ))}
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  ) : (
+                    <div className="mt-2 p-2 rounded-md bg-success/5 border border-success/20 space-y-2">
+                      <div className="flex items-center gap-1.5">
+                        <Home className="h-3.5 w-3.5 text-success" />
+                        <span className="text-[10px] font-semibold text-success uppercase">Dirección Entrega</span>
+                      </div>
                       <AddressAutocomplete
                         id="destinatario_direccion"
                         value={formData.destinatario_direccion}
                         onChange={(value) => handleChange('destinatario_direccion', value)}
                         onSelect={handleDestinatarioAddressSelect}
-                        label="Dirección *"
-                        placeholder="Ingrese la dirección de entrega..."
+                        label=""
+                        placeholder="Dirección de entrega..."
                         required
                       />
-                    </div>
-                    
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="destinatario_ciudad">Ciudad</Label>
-                        <Input
-                          id="destinatario_ciudad"
-                          value={formData.destinatario_ciudad}
-                          onChange={(e) => handleChange('destinatario_ciudad', e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="destinatario_codigo_postal">Código Postal</Label>
-                        <Input
-                          id="destinatario_codigo_postal"
-                          value={formData.destinatario_codigo_postal}
-                          onChange={(e) => handleChange('destinatario_codigo_postal', e.target.value)}
-                        />
-                      </div>
-                    </div>
-
-                    <Separator />
-
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label>Días preferidos (opcional)</Label>
-                        <div className="flex flex-wrap gap-2">
-                          {DIAS_SEMANA.map((dia) => (
-                            <Button
-                              key={dia.key}
-                              type="button"
-                              variant={diasPreferidos.includes(dia.key) ? 'default' : 'outline'}
-                              size="sm"
-                              onClick={() => toggleDiaPreferido(dia.key)}
-                            >
-                              {dia.label}
-                            </Button>
-                          ))}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-[10px] text-muted-foreground">Ciudad</Label>
+                          <Input className="h-8 text-xs" value={formData.destinatario_ciudad} onChange={(e) => handleChange('destinatario_ciudad', e.target.value)} />
+                        </div>
+                        <div>
+                          <Label className="text-[10px] text-muted-foreground">CP</Label>
+                          <Input className="h-8 text-xs" value={formData.destinatario_codigo_postal} onChange={(e) => handleChange('destinatario_codigo_postal', e.target.value)} />
                         </div>
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="horario_preferido_entrega">Horario preferido</Label>
-                        <Select
-                          value={formData.horario_preferido_entrega}
-                          onValueChange={(v) => handleChange('horario_preferido_entrega', v)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Seleccionar horario" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {HORARIOS_ENTREGA.map((h) => (
-                              <SelectItem key={h.value} value={h.value}>{h.label}</SelectItem>
+                      {/* Delivery preferences */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-[10px] text-muted-foreground">Horario entrega</Label>
+                          <Select value={formData.horario_preferido_entrega} onValueChange={(v) => handleChange('horario_preferido_entrega', v)}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {HORARIOS_ENTREGA.map((h) => (<SelectItem key={h.value} value={h.value} className="text-xs">{h.label}</SelectItem>))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-[10px] text-muted-foreground">Días preferidos</Label>
+                          <div className="flex flex-wrap gap-1 mt-0.5">
+                            {DIAS_SEMANA.map((dia) => (
+                              <Button key={dia.key} type="button" variant={diasPreferidos.includes(dia.key) ? 'default' : 'outline'}
+                                className="h-6 px-1.5 text-[10px]" size="sm"
+                                onClick={() => toggleDiaPreferido(dia.key)}>
+                                {dia.label}
+                              </Button>
                             ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Card informativa para retiro almacenaje */}
-        {esRetiroAlmacenaje && (
-          <Card className="border-primary/30 bg-primary/5">
-            <CardContent className="py-4">
-              <div className="flex items-center gap-3">
-                <Package className="h-5 w-5 text-primary" />
-                <div className="flex-1">
-                  <p className="text-sm text-muted-foreground">Destino del retiro</p>
-                  <p className="font-semibold">
-                    {sucursalUsuario ? (
-                      <>
-                        📦 Bodega de {sucursalUsuario.codigo && `${sucursalUsuario.codigo} - `}
-                        {sucursalUsuario.nombre}
-                        {sucursalUsuario.ciudad && ` (${sucursalUsuario.ciudad})`}
-                      </>
-                    ) : (
-                      'Bodega de tu sucursal'
-                    )}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    La mercadería quedará en almacenaje hasta que el cliente defina el destino
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Detalles del Paquete */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Package className="h-5 w-5 text-warning" />
-              Detalles del Paquete
-            </CardTitle>
-            <CardDescription>Información sobre el envío</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="cantidad_bultos">Cantidad de Bultos</Label>
-              <Input
-                id="cantidad_bultos"
-                type="number"
-                min="1"
-                value={formData.cantidad_bultos}
-                onChange={(e) => handleChange('cantidad_bultos', e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="peso_kg">Peso (kg)</Label>
-              <Input
-                id="peso_kg"
-                type="number"
-                step="0.1"
-                min="0"
-                value={formData.peso_kg}
-                onChange={(e) => handleChange('peso_kg', e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="dimensiones">Dimensiones (cm)</Label>
-              <Input
-                id="dimensiones"
-                value={formData.dimensiones}
-                onChange={(e) => handleChange('dimensiones', e.target.value)}
-                placeholder="Ej: 30x20x15"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="valor_declarado">Valor Declarado ($)</Label>
-              <Input
-                id="valor_declarado"
-                type="number"
-                min="0"
-                value={formData.valor_declarado}
-                onChange={(e) => handleChange('valor_declarado', e.target.value)}
-                placeholder={configSeguro?.valor_minimo_declarado ? `Mínimo: $${configSeguro.valor_minimo_declarado}` : ''}
-              />
-              {configSeguro?.valor_minimo_declarado && !formData.valor_declarado && (
-                <p className="text-xs text-muted-foreground">
-                  Si se deja vacío, se usará el mínimo de ${configSeguro.valor_minimo_declarado} para el cálculo del seguro
-                </p>
-              )}
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="descripcion">Descripción del contenido</Label>
-              <Textarea
-                id="descripcion"
-                value={formData.descripcion}
-                onChange={(e) => handleChange('descripcion', e.target.value)}
-                placeholder="Ej: Documentos, ropa, electrónicos..."
-              />
-            </div>
-            {/* Selector / Panel de Tarifa */}
-            {autoSeleccionPorZona ? (
-              /* Modo auto-selección: panel de solo lectura, sin opción de cambio manual */
-              tarifaFueAutoDetectada && selectedTarifa ? (
-                <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg space-y-1">
-                  <p className="text-xs font-medium text-primary uppercase tracking-wide flex items-center gap-1">
-                    <span>✓</span> Tarifa detectada automáticamente
-                  </p>
-                  <p className="font-semibold">{selectedTarifa.nombre}</p>
-                  {fleteCalculado > 0 && (
-                    <p className="text-sm text-muted-foreground">
-                      Flete calculado{fleteDescripcion ? ` (${fleteDescripcion})` : ''}: <span className="font-medium text-foreground">${fleteCalculado.toLocaleString('es-AR', { minimumFractionDigits: 0 })}</span>
-                    </p>
-                  )}
-                  {!formData.peso_kg && (
-                    <p className="text-xs text-muted-foreground">Ingresá el peso para calcular el precio del flete</p>
-                  )}
-                </div>
-              ) : (
-                <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg flex items-start gap-2">
-                  <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
-                  <div>
-                    <p className="text-sm font-medium text-destructive">Ingresá la ciudad del destinatario</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">El precio se calculará automáticamente según la zona de destino</p>
-                  </div>
-                </div>
-              )
-            ) : (
-              /* Modo normal: selector manual de tarifa */
-              tarifasDisponibles.length > 1 ? (
-                <div className="space-y-2">
-                  <Label htmlFor="tarifa_id">Tarifa</Label>
-                  <Select
-                    value={formData.tarifa_id}
-                    onValueChange={(v) => handleChange('tarifa_id', v)}
-                    disabled={loadingTarifas}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={loadingTarifas ? "Cargando tarifas..." : "Seleccionar tarifa"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {loadingTarifas ? (
-                        <div className="flex items-center justify-center py-4">
-                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                          <span>Cargando...</span>
+                          </div>
                         </div>
-                      ) : (
-                        tarifasDisponibles.map((t) => (
-                          <SelectItem key={t.id} value={t.id}>
-                            {t.nombre} - ${Number(t.precio_base).toLocaleString('es-AR')}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : tarifasDisponibles.length === 1 ? (
-                <div className="p-3 bg-muted/50 rounded-lg">
-                  <p className="text-sm text-muted-foreground mb-1">Tarifa</p>
-                  <p className="font-medium">
-                    {tarifasDisponibles[0].nombre} - ${Number(tarifasDisponibles[0].precio_base).toLocaleString('es-AR')}
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <Label htmlFor="tarifa_id">Tarifa</Label>
-                  <div className="text-sm text-muted-foreground p-3 border rounded-lg">
-                    {loadingTarifas ? (
-                      <div className="flex items-center">
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        <span>Cargando tarifas...</span>
                       </div>
-                    ) : (
-                      <>
-                        No hay tarifas disponibles para esta sucursal
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={() => refetchTarifas()}
-                          className="mt-2"
-                          type="button"
-                        >
-                          <Loader2 className="h-4 w-4 mr-2" />
-                          Reintentar
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              )
-            )}
-            {/* Note: pago_contra_entrega is now automatically set based on tipo_pago */}
-            
-            {/* Conceptos Adicionales */}
-            {conceptosAdicionales.length > 0 && formData.tarifa_id && (
-              <div className="space-y-3 md:col-span-2">
-                <Label className="flex items-center gap-2">
-                  <Plus className="h-4 w-4" />
-                  Conceptos Adicionales
-                </Label>
-                <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
-                  <p className="text-sm text-muted-foreground mb-3">
-                    Selecciona los servicios adicionales que deseas incluir:
-                  </p>
-                  {conceptosAdicionales.map((cp) => (
-                    <div 
-                      key={cp.id} 
-                      className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Checkbox
-                          id={`concepto-${cp.id}`}
-                          checked={conceptosSeleccionados.has(cp.concepto_id)}
-                          onCheckedChange={() => toggleConceptoAdicional(cp.concepto_id)}
-                        />
-                        <Label 
-                          htmlFor={`concepto-${cp.id}`} 
-                          className="cursor-pointer font-normal"
-                        >
-                          {cp.concepto?.nombre}
-                        </Label>
-                      </div>
-                      {cp.concepto?.monto_editable ? (
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="Importe"
-                          className="w-28 h-8 text-sm"
-                          value={montosEditables[cp.concepto_id] || ''}
-                          onChange={(e) => setMontosEditables(prev => ({
-                            ...prev,
-                            [cp.concepto_id]: e.target.value,
-                          }))}
-                          disabled={!conceptosSeleccionados.has(cp.concepto_id)}
-                        />
-                      ) : (
-                        <Badge variant="outline" className="bg-background">
-                          {cp.es_porcentaje && cp.porcentaje 
-                            ? `${cp.porcentaje}%` 
-                            : formatCurrency(cp.monto)}
-                        </Badge>
-                      )}
                     </div>
-                  ))}
+                  )}
+                </div>
+              </>
+            ) : (
+              /* Retiro almacenaje info */
+              <div className="flex items-center gap-3 h-full">
+                <Package className="h-5 w-5 text-primary" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Destino del retiro</p>
+                  <p className="text-sm font-semibold">
+                    📦 Bodega {sucursalUsuario?.nombre || 'tu sucursal'}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    Mercadería en almacenaje hasta definir destino
+                  </p>
                 </div>
               </div>
             )}
-            
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="notas">Notas adicionales</Label>
-              <Textarea
-                id="notas"
-                value={formData.notas}
-                onChange={(e) => handleChange('notas', e.target.value)}
-                placeholder="Instrucciones especiales..."
-              />
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        {/* Resumen de Precio */}
-        {selectedTarifa && (
-          <Card className="bg-muted/50">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <DollarSign className="h-5 w-5 text-envios" />
-                Resumen de Precio
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {/* Flete (calculado según método aplicado) */}
-                <div className="flex justify-between text-sm font-medium">
-                  <div className="flex flex-col">
-                    <span>Flete ({selectedTarifa.nombre})</span>
-                    {fleteDescripcion && (
-                      <span className="text-xs text-muted-foreground font-normal">
-                        {fleteDescripcion}
+        {/* ═══ BOTTOM ROW: Package + Concepts + Notes ═══ */}
+        <div className="mt-3 border rounded-lg p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <Package className="h-4 w-4 text-warning" />
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Paquete y Detalles</span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+            <div>
+              <Label className="text-[10px] text-muted-foreground">Bultos</Label>
+              <Input className="h-8 text-xs" type="number" min="1" value={formData.cantidad_bultos} onChange={(e) => handleChange('cantidad_bultos', e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-[10px] text-muted-foreground">Peso (kg)</Label>
+              <Input className="h-8 text-xs" type="number" step="0.1" min="0" value={formData.peso_kg} onChange={(e) => handleChange('peso_kg', e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-[10px] text-muted-foreground">Dimensiones (cm)</Label>
+              <Input className="h-8 text-xs" value={formData.dimensiones} onChange={(e) => handleChange('dimensiones', e.target.value)} placeholder="30x20x15" />
+            </div>
+            <div>
+              <Label className="text-[10px] text-muted-foreground">V. Declarado ($)</Label>
+              <Input className="h-8 text-xs" type="number" min="0" value={formData.valor_declarado} onChange={(e) => handleChange('valor_declarado', e.target.value)}
+                placeholder={configSeguro?.valor_minimo_declarado ? `Mín $${configSeguro.valor_minimo_declarado}` : ''} />
+            </div>
+            <div className="col-span-2 md:col-span-2">
+              <Label className="text-[10px] text-muted-foreground">Descripción contenido</Label>
+              <Input className="h-8 text-xs" value={formData.descripcion} onChange={(e) => handleChange('descripcion', e.target.value)} placeholder="Documentos, ropa, etc..." />
+            </div>
+          </div>
+          
+          {/* Conceptos adicionales inline */}
+          {conceptosAdicionales.length > 0 && formData.tarifa_id && (
+            <div className="mt-2 pt-2 border-t">
+              <Label className="text-[10px] text-muted-foreground flex items-center gap-1 mb-1.5">
+                <Plus className="h-3 w-3" /> Conceptos Adicionales
+              </Label>
+              <div className="flex flex-wrap gap-2">
+                {conceptosAdicionales.map((cp) => (
+                  <div key={cp.id} className="flex items-center gap-1.5 border rounded-md px-2 py-1 bg-muted/30">
+                    <Checkbox id={`concepto-${cp.id}`} className="h-3.5 w-3.5"
+                      checked={conceptosSeleccionados.has(cp.concepto_id)}
+                      onCheckedChange={() => toggleConceptoAdicional(cp.concepto_id)} />
+                    <Label htmlFor={`concepto-${cp.id}`} className="text-[10px] cursor-pointer">{cp.concepto?.nombre}</Label>
+                    {cp.concepto?.monto_editable ? (
+                      <Input type="number" step="0.01" min="0" placeholder="$" className="w-16 h-6 text-[10px]"
+                        value={montosEditables[cp.concepto_id] || ''}
+                        onChange={(e) => setMontosEditables(prev => ({ ...prev, [cp.concepto_id]: e.target.value }))}
+                        disabled={!conceptosSeleccionados.has(cp.concepto_id)} />
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground">
+                        {cp.es_porcentaje && cp.porcentaje ? `${cp.porcentaje}%` : formatCurrency(cp.monto)}
                       </span>
                     )}
                   </div>
-                  <span>{formatCurrency(fleteCalculado)}</span>
-                </div>
-                
-                {/* Conceptos Básicos */}
-                {conceptosBasicos.filter(cp => {
-                  const codigo = cp.concepto?.codigo?.toLowerCase();
-                  const nombre = cp.concepto?.nombre?.toLowerCase();
-                  return codigo !== 'flete' && nombre !== 'flete';
-                }).map((cp) => {
-                  const valorDeclarado = parseFloat(formData.valor_declarado) || (configSeguro?.valor_minimo_declarado || 0);
-                   const cantidadBultos = parseInt(formData.cantidad_bultos) || 1;
-                   const isPercentage = cp.es_porcentaje && cp.porcentaje;
-                   
-                   let calculatedAmount = isPercentage 
-                     ? valorDeclarado * Number(cp.porcentaje) / 100 
-                     : Number(cp.monto);
-                   
-                   // Multiplicar por cantidad de bultos si aplica
-                   if (cp.multiplicar_por_bultos) {
-                     calculatedAmount *= cantidadBultos;
-                   }
-                   
-                   return (
-                     <div key={cp.id} className="flex justify-between text-sm">
-                       <span>
-                         {cp.concepto?.nombre || 'Concepto'}
-                         {cp.multiplicar_por_bultos && cantidadBultos > 1 && (
-                           <span className="text-xs text-muted-foreground ml-1">
-                             (x{cantidadBultos} bultos)
-                           </span>
-                         )}
-                         {isPercentage && valorDeclarado > 0 && (
-                           <span className="text-xs text-muted-foreground ml-1">
-                             ({cp.porcentaje}% de {formatCurrency(valorDeclarado)})
-                           </span>
-                         )}
-                       </span>
-                      <span>{formatCurrency(calculatedAmount)}</span>
-                    </div>
-                  );
-                })}
-                
-                {/* Conceptos Adicionales Seleccionados */}
-                {conceptosAdicionales
-                  .filter(cp => conceptosSeleccionados.has(cp.concepto_id))
-                  .map((cp) => {
-                    const valorDeclarado = parseFloat(formData.valor_declarado) || (configSeguro?.valor_minimo_declarado || 0);
-                    const cantidadBultos = parseInt(formData.cantidad_bultos) || 1;
-                    const isPercentage = cp.es_porcentaje && cp.porcentaje;
-                    
-                    let calculatedAmount = 0;
-                    if (cp.concepto?.monto_editable && montosEditables[cp.concepto_id]) {
-                      calculatedAmount = parseFloat(montosEditables[cp.concepto_id]) || 0;
-                    } else if (isPercentage) {
-                      calculatedAmount = valorDeclarado * Number(cp.porcentaje) / 100;
-                    } else {
-                      calculatedAmount = Number(cp.monto);
-                    }
-                    
-                    // Multiplicar por cantidad de bultos si aplica
-                    if (cp.multiplicar_por_bultos) {
-                      calculatedAmount *= cantidadBultos;
-                    }
-                    
-                    return (
-                      <div key={cp.id} className="flex justify-between text-sm text-primary">
-                        <span className="flex items-center gap-1">
-                          <Plus className="h-3 w-3" />
-                          {cp.concepto?.nombre}
-                          {cp.multiplicar_por_bultos && cantidadBultos > 1 && (
-                            <span className="text-xs text-muted-foreground">
-                              (x{cantidadBultos} bultos)
-                            </span>
-                          )}
-                          {isPercentage && valorDeclarado > 0 && (
-                            <span className="text-xs text-muted-foreground">
-                              ({cp.porcentaje}% de {formatCurrency(valorDeclarado)})
-                            </span>
-                          )}
-                        </span>
-                        <span>{formatCurrency(calculatedAmount)}</span>
-                      </div>
-                    );
-                  })}
-                
-                {distanciaKm && selectedTarifa.tipo_tarifa === 'distancia' && (
-                  <div className="flex justify-between text-sm">
-                    <span className="flex items-center gap-1">
-                      <Navigation className="h-3 w-3" />
-                      Distancia ({distanciaKm.toFixed(1)} km x {formatCurrency(Number(selectedTarifa.precio_por_km) || 0)})
-                    </span>
-                    <span>{formatCurrency(distanciaKm * (Number(selectedTarifa.precio_por_km) || 0))}</span>
-                  </div>
-                )}
-                
-                {distanciaKm && selectedTarifa.tipo_tarifa !== 'distancia' && (
-                  <div className="flex justify-between text-sm text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Navigation className="h-3 w-3" />
-                      Distancia estimada
-                    </span>
-                    <span>{distanciaKm.toFixed(1)} km</span>
-                  </div>
-                )}
-                <Separator />
-                <div className="flex justify-between font-bold text-lg">
-                  <span>Total</span>
-                  <span className="text-envios">{formatCurrency(precioCalculado)}</span>
-                </div>
+                ))}
               </div>
-            </CardContent>
-          </Card>
-        )}
+            </div>
+          )}
 
-        {/* Submit Button */}
-        <div className="flex gap-4">
-          <Button
-            type="button"
-            variant="outline"
-            className="flex-1"
-            onClick={() => navigate(-1)}
-          >
-            Cancelar
-          </Button>
-          <Button
-            type="submit"
-            className="flex-1 bg-envios hover:bg-envios/90"
-            disabled={createShipmentMutation.isPending || !sucursalOrigenId}
-          >
-            {createShipmentMutation.isPending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Creando...
-              </>
-            ) : esRetiroAlmacenaje ? (
-              <>
-                <Package className="mr-2 h-4 w-4" />
-                Crear Retiro para Almacenaje
-              </>
-            ) : (
-              <>
-                <PackagePlus className="mr-2 h-4 w-4" />
-                Crear Envío
-              </>
-            )}
-          </Button>
+          {/* Notas */}
+          <div className="mt-2 pt-2 border-t">
+            <Label className="text-[10px] text-muted-foreground">Notas adicionales</Label>
+            <Input className="h-8 text-xs" value={formData.notas} onChange={(e) => handleChange('notas', e.target.value)} placeholder="Instrucciones especiales..." />
+          </div>
+        </div>
+
+        {/* ═══ STICKY FOOTER: Price Summary + Buttons ═══ */}
+        <div className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-sm border-t shadow-lg z-40">
+          <div className="max-w-[1400px] mx-auto px-4 py-3 flex items-center justify-between gap-4">
+            {/* Price breakdown (compact) */}
+            <div className="flex items-center gap-4 text-xs overflow-x-auto">
+              {selectedTarifa && (
+                <>
+                  <span className="whitespace-nowrap">
+                    <span className="text-muted-foreground">Flete:</span> <span className="font-medium">{formatCurrency(fleteCalculado)}</span>
+                    {fleteDescripcion && <span className="text-muted-foreground ml-1">({fleteDescripcion})</span>}
+                  </span>
+                  {totalConceptosBasicos > 0 && (
+                    <span className="whitespace-nowrap">
+                      <span className="text-muted-foreground">Conceptos:</span> <span className="font-medium">{formatCurrency(totalConceptosBasicos)}</span>
+                    </span>
+                  )}
+                  {totalConceptosAdicionales > 0 && (
+                    <span className="whitespace-nowrap text-primary">
+                      <span>+ Adic.:</span> <span className="font-medium">{formatCurrency(totalConceptosAdicionales)}</span>
+                    </span>
+                  )}
+                  {distanciaKm && (
+                    <span className="whitespace-nowrap text-muted-foreground">
+                      <Navigation className="h-3 w-3 inline mr-0.5" />{distanciaKm.toFixed(1)} km
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Total + buttons */}
+            <div className="flex items-center gap-3 shrink-0">
+              {selectedTarifa && (
+                <span className="text-lg font-bold text-envios">{formatCurrency(precioCalculado)}</span>
+              )}
+              <Button type="button" variant="outline" className="h-9" onClick={() => navigate(-1)}>
+                Cancelar
+              </Button>
+              <Button type="submit" className="h-9 bg-envios hover:bg-envios/90" disabled={createShipmentMutation.isPending || !sucursalOrigenId}>
+                {createShipmentMutation.isPending ? (
+                  <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />Creando...</>
+                ) : esRetiroAlmacenaje ? (
+                  <><Package className="mr-1.5 h-4 w-4" />Crear Retiro</>
+                ) : (
+                  <><PackagePlus className="mr-1.5 h-4 w-4" />Crear Envío</>
+                )}
+              </Button>
+            </div>
+          </div>
         </div>
       </form>
 
@@ -2934,7 +2423,6 @@ export default function NewShipment() {
         open={showPaymentModal}
         onOpenChange={(open) => {
           if (!open && createdEnvio) {
-            // Si cierra el modal sin pagar, igual redirige a la etiqueta
             navigate(`/print-label?id=${createdEnvio.id}`);
           }
           setShowPaymentModal(open);
@@ -2953,33 +2441,22 @@ export default function NewShipment() {
             <AlertDialogTitle>Cliente encontrado</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-3">
-                <p>Se encontró un cliente con este teléfono ya registrado en el sistema:</p>
+                <p>Se encontró un cliente ya registrado en el sistema:</p>
                 <div className="p-3 bg-muted rounded-lg space-y-1 text-sm">
                   <p className="font-medium text-foreground">
                     {pendingClientMatch?.client.nombre} {pendingClientMatch?.client.apellido || ''}
                   </p>
-                  {pendingClientMatch?.client.telefono && (
-                    <p>📞 {pendingClientMatch.client.telefono}</p>
-                  )}
-                  {pendingClientMatch?.client.direccion && (
-                    <p>📍 {pendingClientMatch.client.direccion}{pendingClientMatch.client.ciudad ? `, ${pendingClientMatch.client.ciudad}` : ''}</p>
-                  )}
-                  {pendingClientMatch?.client.dni_cuit && (
-                    <p>🪪 {pendingClientMatch.client.dni_cuit}</p>
-                  )}
-                  {pendingClientMatch?.client.email && (
-                    <p>✉️ {pendingClientMatch.client.email}</p>
-                  )}
+                  {pendingClientMatch?.client.telefono && <p>📞 {pendingClientMatch.client.telefono}</p>}
+                  {pendingClientMatch?.client.direccion && <p>📍 {pendingClientMatch.client.direccion}{pendingClientMatch.client.ciudad ? `, ${pendingClientMatch.client.ciudad}` : ''}</p>}
+                  {pendingClientMatch?.client.dni_cuit && <p>🪪 {pendingClientMatch.client.dni_cuit}</p>}
                 </div>
-                <p>¿Deseas cargar los datos de este cliente en el formulario?</p>
+                <p>¿Deseas cargar los datos de este cliente?</p>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>No, continuar manual</AlertDialogCancel>
-            <AlertDialogAction onClick={applyClientMatch}>
-              Sí, cargar datos
-            </AlertDialogAction>
+            <AlertDialogAction onClick={applyClientMatch}>Sí, cargar datos</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
