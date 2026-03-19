@@ -150,15 +150,18 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
     } catch (e) {}
   };
 
-  const handleOpenCamera = async () => {
-    if (isNativeCamera) {
-      const result = await nativeTakePhoto();
-      if (result) {
-        setPhoto(null);
-        setPhotoPreview(result.dataUrl);
-      }
+  const handleOpenCamera = (e: React.MouseEvent) => {
+    if (cameraAvailable) {
+      // Native path - async is OK because Capacitor handles gesture internally
+      nativeTakePhoto().then((result) => {
+        if (result) {
+          setPhoto(null);
+          setPhotoPreview(result.dataUrl);
+        }
+      });
       return;
     }
+    // CRITICAL: trigger file input synchronously to preserve user gesture context
     persistState();
     if (cameraInputRef.current) {
       cameraInputRef.current.value = '';
@@ -166,15 +169,17 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
     cameraInputRef.current?.click();
   };
 
-  const handleOpenGallery = async () => {
-    if (isNativeCamera) {
-      const result = await nativePickFromGallery();
-      if (result) {
-        setPhoto(null);
-        setPhotoPreview(result.dataUrl);
-      }
+  const handleOpenGallery = (e: React.MouseEvent) => {
+    if (cameraAvailable) {
+      nativePickFromGallery().then((result) => {
+        if (result) {
+          setPhoto(null);
+          setPhotoPreview(result.dataUrl);
+        }
+      });
       return;
     }
+    // CRITICAL: trigger file input synchronously to preserve user gesture context
     persistState();
     if (galleryInputRef.current) {
       galleryInputRef.current.value = '';
