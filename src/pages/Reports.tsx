@@ -535,6 +535,16 @@ export default function Reports() {
           )}
         </TabsContent>
 
+        {/* Tab: Productividad */}
+        <TabsContent value="productividad" className="space-y-4">
+          <ProductividadTab data={productividad.data} isLoading={productividad.isLoading} />
+        </TabsContent>
+
+        {/* Tab: Costos */}
+        <TabsContent value="costos" className="space-y-4">
+          <CostosTab data={costos.data} isLoading={costos.isLoading} />
+        </TabsContent>
+
         {/* Tab: SLA */}
         <TabsContent value="sla" className="space-y-4">
           {slaData.isLoading ? (
