@@ -1,28 +1,35 @@
 
 
-# Botón "Reabrir Ruta" para rutas cerradas accidentalmente
+## Plan: Incluir envíos de terciarizados en liquidaciones de sellers
 
-## Problema
-Un chofer puede cerrar una ruta por error (`close_ruta_planificada` cambia estado a `completada`). Actualmente no hay forma de revertirlo desde la UI.
+### Problema
+Cuando un envío se carga desde el planificador con cuenta corriente de un seller (ej: Correo Argentino), se registra un cargo en `seller_cuenta_corriente` con `envio_id`, pero el envío no aparece en la liquidación porque:
+1. No tiene registro en `ecommerce_orders`
+2. Puede no tener `remitente_id` = `cliente_id` del seller
 
-## Solución
+### Solución
+Agregar una **tercera fuente de envíos** en el cálculo de liquidaciones: buscar envíos referenciados en `seller_cuenta_corriente` (tipo `cargo`, con `envio_id` no nulo) que no estén ya incluidos desde las otras dos fuentes.
 
-### 1. Nueva función SQL: `reopen_ruta_planificada`
-- Solo admins/super_admins pueden ejecutarla (validación con `is_admin(auth.uid())`)
-- Cambia `rutas_planificadas.estado` de `completada` → `en_curso`
-- Re-asigna los envíos pendientes (no entregados/devueltos/cancelados) al chofer, estado → `en_reparto`
-- Inserta registro en `envio_historial` para cada envío reactivado
-- Retorna JSON con resultado y cantidad de envíos reactivados
+### Cambios en `src/pages/ecommerce/Settlements.tsx`
 
-### 2. Nuevo componente: `ReopenRouteDialog.tsx`
-- Dialog de confirmación con resumen de la ruta (número, chofer, fecha, paradas)
-- Muestra cuántos envíos serán reactivados
-- Botón "Reabrir Ruta" que invoca el RPC
+**En `calculateMutation` (~línea 514, después del bloque de envíos comunes):**
 
-### 3. Modificar `RoutePlanner.tsx` - pestaña "Historial"
-- Agregar botón "Reabrir" en cada ruta completada del historial (solo visible para admins)
-- Al hacer click, abre `ReopenRouteDialog`
-- Al confirmar, la ruta vuelve a aparecer en "Rutas Activas"
+1. Consultar `seller_cuenta_corriente` para obtener `envio_id` de registros tipo `cargo` de los sellers seleccionados, filtrados por fecha y sin liquidación previa
+2. Excluir los `envio_id` ya encontrados por ecommerce_orders y envíos comunes
+3. Fetch los envíos restantes desde `envios` donde `liquidacion_seller_id IS NULL`
+4. Agregar al mapa `envioToSellerMap` usando el `seller_id` del movimiento
+5. Combinar con los otros envíos en el merge final (bloque 5)
 
-**3 cambios: 1 migración SQL + 1 componente nuevo + 1 archivo modificado.**
+**En la query de balances (`sellerBalances`, ~línea 153):**
+
+1. Agregar una consulta similar: obtener `envio_id` de `seller_cuenta_corriente` tipo `cargo` por seller
+2. Incluir esos envíos en el cálculo de saldo cuando no estén ya cubiertos por ecommerce_orders o remitente_id
+
+### Resumen de archivos
+
+| Archivo | Acción |
+|---------|--------|
+| `src/pages/ecommerce/Settlements.tsx` | Agregar tercera fuente de envíos en `calculateMutation` y en `sellerBalances` |
+
+No se requieren cambios de base de datos ni nuevas tablas.
 
