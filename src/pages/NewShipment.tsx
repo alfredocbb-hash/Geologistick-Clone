@@ -2172,12 +2172,8 @@ export default function NewShipment() {
                         onBlur={(e) => checkExistingClient(e.target.value, 'destinatario')} />
                     </div>
                     <div>
-                      <Label className="text-[10px] text-muted-foreground">Teléfono *</Label>
-                      <Input className="h-8 text-xs" value={formData.destinatario_telefono} onChange={(e) => handleChange('destinatario_telefono', e.target.value)} required />
-                    </div>
-                    <div>
-                      <Label className="text-[10px] text-muted-foreground">WhatsApp</Label>
-                      <Input className="h-8 text-xs" value={formData.destinatario_whatsapp} onChange={(e) => handleChange('destinatario_whatsapp', e.target.value)} placeholder="+54..." />
+                      <Label className="text-[10px] text-muted-foreground">Teléfono / WhatsApp *</Label>
+                      <PhoneInput value={formData.destinatario_telefono} onChange={(v) => handleChange('destinatario_telefono', v)} required />
                     </div>
                     <div>
                       <Label className="text-[10px] text-muted-foreground">Email</Label>
