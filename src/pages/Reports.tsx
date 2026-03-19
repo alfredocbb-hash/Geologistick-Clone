@@ -6,12 +6,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar, Download, Package, TrendingUp, Clock, DollarSign, BarChart3, Users, MapPin, FileText, Loader2 } from 'lucide-react';
+import { Calendar, Download, Package, TrendingUp, Clock, DollarSign, BarChart3, Users, MapPin, FileText, Loader2, Activity, Wallet, Brain } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import { useReportsData, type ReportsFilters } from '@/hooks/useReportsData';
+import { useProductividadData } from '@/hooks/useProductividadData';
+import { useCostosData } from '@/hooks/useCostosData';
+import { useDemandPrediction } from '@/hooks/useDemandPrediction';
+import { ProductividadTab } from '@/components/reports/ProductividadTab';
+import { CostosTab } from '@/components/reports/CostosTab';
+import { DemandPredictionTab } from '@/components/reports/DemandPredictionTab';
 import { subDays, subMonths, format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { exportReportPDF } from '@/lib/exportReportPDF';
+import { exportToExcel } from '@/lib/exportExcel';
 import { toast } from 'sonner';
 
 const DATE_PRESETS = [
