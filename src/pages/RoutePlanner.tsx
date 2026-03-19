@@ -697,32 +697,10 @@ export default function RoutePlanner() {
       });
     }
     
-    // 3. If optimized route, show ordered stops
+    // 3. If optimized route, delivery stops are shown via routeDeliveryStops (DeliveryStopMarker with order numbers)
+    // Do NOT add standard markers here to avoid overlapping/hiding the numbered stops
     if (selectedOption) {
-      selectedOption.stops.forEach((stop, index) => {
-        const stopId = stop.sucursal_id || stop.envio_id;
-        if (stop.tipo === 'sucursal') {
-          const sucData = sucursalesConEnvios.find(s => s.id === stop.sucursal_id);
-          markers.push({
-            id: stopId,
-            position: { lat: stop.lat, lng: stop.lng },
-            title: `${index + 1}. 🏢 ${stop.cliente_nombre}`,
-            icon: 'branch',
-            type: 'sucursal',
-            data: sucData,
-          });
-        } else {
-          const envio = selectedEnviosData.find(e => e.id === stop.envio_id);
-          markers.push({
-            id: stopId,
-            position: { lat: stop.lat, lng: stop.lng },
-            title: `${index + 1}. ${stop.tracking} - ${stop.cliente_nombre}`,
-            icon: stop.tipo === 'retiro' ? 'current' : 'destination',
-            type: 'envio',
-            data: envio,
-          });
-        }
-      });
+      // Only routeDeliveryStops will render the numbered markers
     } else {
       // 4. Show all selected shipments (with and without coords)
       selectedEnviosData.forEach((envio, index) => {
