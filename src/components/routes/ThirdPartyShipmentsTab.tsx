@@ -113,6 +113,7 @@ const METODOS_PAGO = [
 
 interface ThirdPartyFormData {
   empresa_terciarizada: string;
+  seller_id: string;
   tracking_externo: string;
   whatsapp_destinatario: string;
   tipo_pago: string;
