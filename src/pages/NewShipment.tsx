@@ -2326,21 +2326,15 @@ export default function NewShipment() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="destinatario_telefono">Teléfono *</Label>
-                  <Input
+                  <Label htmlFor="destinatario_telefono">Teléfono / WhatsApp *</Label>
+                  <PhoneInput
                     id="destinatario_telefono"
                     value={formData.destinatario_telefono}
-                    onChange={(e) => handleChange('destinatario_telefono', e.target.value)}
+                    onChange={(value) => {
+                      handleChange('destinatario_telefono', value);
+                      handleChange('destinatario_whatsapp', value);
+                    }}
                     required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="destinatario_whatsapp">WhatsApp</Label>
-                  <Input
-                    id="destinatario_whatsapp"
-                    value={formData.destinatario_whatsapp}
-                    onChange={(e) => handleChange('destinatario_whatsapp', e.target.value)}
-                    placeholder="Ej: +54 11 1234-5678"
                   />
                 </div>
                 <div className="space-y-2">
