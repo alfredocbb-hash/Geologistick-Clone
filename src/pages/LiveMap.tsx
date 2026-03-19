@@ -17,6 +17,10 @@ import { es } from "date-fns/locale";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useDriverRoute } from "@/hooks/useDriverRoute";
 import { toast } from "sonner";
+import { useDriverRouteProgress } from "@/hooks/useDriverRouteProgress";
+import { DriverCardEnhanced } from "@/components/livemap/DriverCardEnhanced";
+import { DriverFilters, type DriverFilterStatus, type DriverFilterRoute, type DriverSortBy } from "@/components/livemap/DriverFilters";
+import { DriverDetailPanel } from "@/components/livemap/DriverDetailPanel";
 
 interface SucursalConEnvios {
   id: string;
@@ -241,6 +245,13 @@ export default function LiveMap() {
   // Hook for main map route visualization
   const driverRoute = useDriverRoute();
 
+  // Driver filters and detail panel state
+  const [filterStatus, setFilterStatus] = usePersistedState<DriverFilterStatus>('driver-filter-status', 'all');
+  const [filterRoute, setFilterRoute] = usePersistedState<DriverFilterRoute>('driver-filter-route', 'all');
+  const [sortBy, setSortBy] = usePersistedState<DriverSortBy>('driver-sort-by', 'last_update');
+  const [detailPanelDriverId, setDetailPanelDriverId] = useState<string | null>(null);
+  const IDLE_ALERT_MINUTES = 15;
+
   // Query para sucursales
   const { data: sucursalesData = [], isLoading, refetch } = useQuery({
     queryKey: ["sucursales-live-map"],
@@ -431,7 +442,57 @@ export default function LiveMap() {
     setDriverLocations(driversData);
   }, [driversData]);
 
-  // Filter sucursales with coordinates
+  // Enhanced driver data (progress, speed, contact)
+  const activeRoutesMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const d of driverLocations) {
+      if (d.ruta_activa) map[d.chofer_id] = d.ruta_activa.id;
+    }
+    return map;
+  }, [driverLocations]);
+
+  const driverIdsForProgress = useMemo(() => driverLocations.map(d => d.chofer_id), [driverLocations]);
+  const { data: enhancedDriverData = {} } = useDriverRouteProgress(driverIdsForProgress, activeRoutesMap);
+
+  // Filtered and sorted drivers
+  const filteredDrivers = useMemo(() => {
+    let list = [...driverLocations];
+
+    // Filter by status
+    if (filterStatus !== 'all') {
+      list = list.filter(d => {
+        const diff = (Date.now() - new Date(d.updated_at).getTime()) / (1000 * 60);
+        if (filterStatus === 'active') return diff < 5;
+        if (filterStatus === 'recent') return diff >= 5 && diff < 15;
+        if (filterStatus === 'no_signal') return diff >= 15;
+        return true;
+      });
+    }
+
+    // Filter by route
+    if (filterRoute === 'with_route') list = list.filter(d => !!d.ruta_activa);
+    else if (filterRoute === 'without_route') list = list.filter(d => !d.ruta_activa);
+
+    // Sort
+    list.sort((a, b) => {
+      if (sortBy === 'name') return `${a.nombre} ${a.apellido}`.localeCompare(`${b.nombre} ${b.apellido}`);
+      if (sortBy === 'progress') {
+        const pa = enhancedDriverData[a.chofer_id]?.routeProgress?.percentage ?? -1;
+        const pb = enhancedDriverData[b.chofer_id]?.routeProgress?.percentage ?? -1;
+        return pb - pa;
+      }
+      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+    });
+
+    return list;
+  }, [driverLocations, filterStatus, filterRoute, sortBy, enhancedDriverData]);
+
+  // Detail panel driver info
+  const detailPanelDriver = useMemo(() => {
+    return driverLocations.find(d => d.chofer_id === detailPanelDriverId);
+  }, [driverLocations, detailPanelDriverId]);
+
+
   const sucursalesConCoords = useMemo(() => {
     return sucursalesData.filter(s => s.lat && s.lng);
   }, [sucursalesData]);
@@ -1309,176 +1370,49 @@ export default function LiveMap() {
               </CardContent>
             </Card>
 
-            <div className="space-y-6">
+             <div className="space-y-6">
               {/* Driver List */}
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <User className="h-5 w-5" />
-                    Choferes ({driverLocations.length})
-                  </CardTitle>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <User className="h-5 w-5" />
+                      Choferes ({filteredDrivers.length}/{driverLocations.length})
+                    </CardTitle>
+                  </div>
+                  <DriverFilters
+                    filterStatus={filterStatus}
+                    filterRoute={filterRoute}
+                    sortBy={sortBy}
+                    onFilterStatusChange={setFilterStatus}
+                    onFilterRouteChange={setFilterRoute}
+                    onSortByChange={setSortBy}
+                  />
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3 max-h-[500px] overflow-y-auto">
-                    {driverLocations.length === 0 ? (
+                    {filteredDrivers.length === 0 ? (
                       <p className="text-sm text-muted-foreground text-center py-4">
-                        No hay choferes activos
+                        {driverLocations.length === 0 ? 'No hay choferes activos' : 'Sin resultados con estos filtros'}
                       </p>
                     ) : (
-                      driverLocations.map((driver) => {
-                        const status = getDriverStatus(driver.updated_at);
-                        const hasActiveRoute = !!driver.ruta_activa;
-                        const hasHistoricalRoute = !hasActiveRoute && !!driver.ultima_ruta;
-                        const analysis = aiAnalysis[driver.chofer_id];
-                        const isAnalyzing = loadingAiAnalysis[driver.chofer_id];
-                        
-                        return (
-                          <div
-                            key={driver.id}
-                            className="rounded-lg bg-muted/50 border overflow-hidden"
-                          >
-                            <div className="flex items-center justify-between p-3">
-                              <div className="flex items-center gap-3">
-                                <div className={`w-3 h-3 rounded-full ${status.color}`} />
-                                <div>
-                                  <p className="text-sm font-medium">
-                                    {driver.nombre} {driver.apellido}
-                                  </p>
-                                  {hasActiveRoute && (
-                                    <p className="text-xs text-muted-foreground">
-                                      Ruta: {driver.ruta_activa!.numero}
-                                    </p>
-                                  )}
-                                  {hasHistoricalRoute && (
-                                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                                      <Clock className="h-3 w-3" />
-                                      Última: {formatDistanceToNow(new Date(driver.ultima_ruta!.fecha), { addSuffix: true, locale: es })}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="text-right flex flex-col items-end gap-1">
-                                <Badge variant="outline" className="text-xs">
-                                  {status.label}
-                                </Badge>
-                                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                                  <Clock className="h-3 w-3" />
-                                  {formatDistanceToNow(new Date(driver.updated_at), { 
-                                    addSuffix: true, 
-                                    locale: es 
-                                  })}
-                                </p>
-                                {/* Route buttons */}
-                                {hasActiveRoute && (
-                                  <div className="flex gap-1 flex-wrap justify-end">
-                                    <Button
-                                      size="sm"
-                                      variant={selectedDriverForMap === driver.chofer_id ? "default" : "ghost"}
-                                      className="h-6 text-xs px-2"
-                                      onClick={() => toggleRouteOnMap(driver.chofer_id, driver.ruta_activa!.id)}
-                                    >
-                                      {selectedDriverForMap === driver.chofer_id ? (
-                                        <><EyeOff className="h-3 w-3 mr-1" />Ocultar</>
-                                      ) : (
-                                        <><Eye className="h-3 w-3 mr-1" />Ver en mapa</>
-                                      )}
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-6 text-xs px-2"
-                                      onClick={() => loadRouteHistoryForDialog(driver.chofer_id, driver.ruta_activa!.id)}
-                                    >
-                                      <Route className="h-3 w-3 mr-1" />
-                                      Detalles
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-6 text-xs px-2"
-                                      onClick={() => analyzeDriver(driver)}
-                                      disabled={isAnalyzing}
-                                    >
-                                      {isAnalyzing ? (
-                                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                                      ) : (
-                                        <Bot className="h-3 w-3 mr-1" />
-                                      )}
-                                      IA
-                                    </Button>
-                                  </div>
-                                )}
-                                {hasHistoricalRoute && (
-                                  <div className="flex gap-1">
-                                    <Button
-                                      size="sm"
-                                      variant={selectedDriverForMap === driver.chofer_id ? "default" : "outline"}
-                                      className="h-6 text-xs px-2"
-                                      onClick={() => toggleRouteOnMap(driver.chofer_id, driver.ultima_ruta!.id)}
-                                    >
-                                      {selectedDriverForMap === driver.chofer_id ? (
-                                        <><EyeOff className="h-3 w-3 mr-1" />Ocultar</>
-                                      ) : (
-                                        <><Route className="h-3 w-3 mr-1" />Ver último recorrido</>
-                                      )}
-                                    </Button>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* AI Analysis result inline */}
-                            {analysis && (
-                              <div className="border-t px-3 py-2 bg-muted/30 space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <Bot className="h-3.5 w-3.5 text-primary" />
-                                    <span className="text-xs font-medium">Análisis IA</span>
-                                  </div>
-                                  {getRiskBadge(analysis.riesgo_demora)}
-                                </div>
-                                <div className="grid grid-cols-2 gap-2 text-xs">
-                                  <div className="bg-background/60 rounded p-1.5">
-                                    <span className="text-muted-foreground">ETA próxima:</span>
-                                    <span className="font-medium ml-1">{analysis.eta_proxima_parada}</span>
-                                  </div>
-                                  <div className="bg-background/60 rounded p-1.5">
-                                    <span className="text-muted-foreground">Fin ruta:</span>
-                                    <span className="font-medium ml-1">{analysis.eta_fin_ruta}</span>
-                                  </div>
-                                </div>
-                                {analysis.anomalias.length > 0 && (
-                                  <div className="space-y-1">
-                                    {analysis.anomalias.map((a, idx) => (
-                                      <div key={idx} className={`text-xs rounded px-2 py-1 ${
-                                        a.severidad === "critical" ? "bg-red-500/10 text-red-700 dark:text-red-400" :
-                                        a.severidad === "warning" ? "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400" :
-                                        "bg-blue-500/10 text-blue-700 dark:text-blue-400"
-                                      }`}>
-                                        {a.severidad === "critical" ? "🔴" : a.severidad === "warning" ? "⚠️" : "ℹ️"} {a.mensaje}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                                <p className="text-xs text-muted-foreground italic">{analysis.resumen}</p>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-5 text-xs px-1"
-                                  onClick={() => setAiAnalysis(prev => {
-                                    const next = { ...prev };
-                                    delete next[driver.chofer_id];
-                                    return next;
-                                  })}
-                                >
-                                  <X className="h-3 w-3 mr-1" />
-                                  Cerrar
-                                </Button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })
+                      filteredDrivers.map((driver) => (
+                        <DriverCardEnhanced
+                          key={driver.id}
+                          driver={driver}
+                          enhancedData={enhancedDriverData[driver.chofer_id]}
+                          isSelected={selectedDriverForMap === driver.chofer_id}
+                          isAnalyzing={!!loadingAiAnalysis[driver.chofer_id]}
+                          analysis={aiAnalysis[driver.chofer_id]}
+                          onToggleRoute={toggleRouteOnMap}
+                          onViewDetails={loadRouteHistoryForDialog}
+                          onAnalyze={analyzeDriver}
+                          onOpenPanel={(id) => setDetailPanelDriverId(id)}
+                          onCloseAnalysis={(id) => setAiAnalysis(prev => { const next = { ...prev }; delete next[id]; return next; })}
+                          getRiskBadge={getRiskBadge}
+                          idleAlertMinutes={IDLE_ALERT_MINUTES}
+                        />
+                      ))
                     )}
                   </div>
                 </CardContent>
@@ -1518,6 +1452,14 @@ export default function LiveMap() {
                       }).length}
                     </span>
                   </div>
+                  {Object.values(enhancedDriverData).some(d => d.idleMinutes >= IDLE_ALERT_MINUTES && (d.speed ?? 0) < 2 && activeRoutesMap[d.choferId]) && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-orange-600 dark:text-orange-400 font-medium">⚠ Detenidos</span>
+                      <span className="font-medium text-orange-600 dark:text-orange-400">
+                        {Object.values(enhancedDriverData).filter(d => d.idleMinutes >= IDLE_ALERT_MINUTES && (d.speed ?? 0) < 2 && activeRoutesMap[d.choferId]).length}
+                      </span>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -1529,6 +1471,19 @@ export default function LiveMap() {
           <HeatmapTab />
         </TabsContent>
       </Tabs>
+
+      {/* Driver Detail Panel */}
+      <DriverDetailPanel
+        open={!!detailPanelDriverId}
+        onClose={() => setDetailPanelDriverId(null)}
+        driverId={detailPanelDriverId}
+        driverName={detailPanelDriver?.nombre || ''}
+        driverLastName={detailPanelDriver?.apellido || ''}
+        updatedAt={detailPanelDriver?.updated_at || new Date().toISOString()}
+        activeRouteId={detailPanelDriver?.ruta_activa?.id || null}
+        activeRouteNumber={detailPanelDriver?.ruta_activa?.numero || null}
+        enhancedData={detailPanelDriverId ? enhancedDriverData[detailPanelDriverId] : undefined}
+      />
 
       {/* Route History Dialog */}
       <Dialog open={showRouteDialog} onOpenChange={setShowRouteDialog}>
