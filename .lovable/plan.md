@@ -1,35 +1,50 @@
 
 
-## Plan: Incluir envíos de terciarizados en liquidaciones de sellers
+## Plan: Vincular envíos terciarizados con sellers en la creación
 
-### Problema
-Cuando un envío se carga desde el planificador con cuenta corriente de un seller (ej: Correo Argentino), se registra un cargo en `seller_cuenta_corriente` con `envio_id`, pero el envío no aparece en la liquidación porque:
-1. No tiene registro en `ecommerce_orders`
-2. Puede no tener `remitente_id` = `cliente_id` del seller
+### Problema raíz
+Cuando se crea un envío terciarizado desde el planificador, el cargo se registra solo en `terciarizado_cuenta_corriente`. No hay vínculo con el seller, por lo que el envío no aparece en la liquidación del seller.
+
+ENV-8E8YLT tiene:
+- `remitente_id`: NULL
+- Sin entrada en `seller_cuenta_corriente`
+- Sin `ecommerce_order` vinculada
+- Cargo solo en `terciarizado_cuenta_corriente` (Correo Argentino)
 
 ### Solución
-Agregar una **tercera fuente de envíos** en el cálculo de liquidaciones: buscar envíos referenciados en `seller_cuenta_corriente` (tipo `cargo`, con `envio_id` no nulo) que no estén ya incluidos desde las otras dos fuentes.
 
-### Cambios en `src/pages/ecommerce/Settlements.tsx`
+#### 1. Agregar selector de Seller en ThirdPartyShipmentsTab
 
-**En `calculateMutation` (~línea 514, después del bloque de envíos comunes):**
+En `src/components/routes/ThirdPartyShipmentsTab.tsx`:
+- Agregar campo opcional **"Seller / Remitente"** al formulario (select con sellers activos que tengan cuenta corriente)
+- Al crear el envío, si se seleccionó un seller:
+  - Setear `remitente_id` = `seller.cliente_id` en el envío
+  - Crear entrada en `seller_cuenta_corriente` con tipo `cargo`, el `envio_id`, y actualizar saldo del seller
+- El cargo al terciarizado se mantiene igual (ambos registros coexisten)
 
-1. Consultar `seller_cuenta_corriente` para obtener `envio_id` de registros tipo `cargo` de los sellers seleccionados, filtrados por fecha y sin liquidación previa
-2. Excluir los `envio_id` ya encontrados por ecommerce_orders y envíos comunes
-3. Fetch los envíos restantes desde `envios` donde `liquidacion_seller_id IS NULL`
-4. Agregar al mapa `envioToSellerMap` usando el `seller_id` del movimiento
-5. Combinar con los otros envíos en el merge final (bloque 5)
+#### 2. Datos necesarios
 
-**En la query de balances (`sellerBalances`, ~línea 153):**
+- Query adicional: `ecommerce_sellers` activos con `tiene_cuenta_corriente = true` del tenant
+- En la mutación de creación, después de insertar el envío:
+  ```
+  if (selectedSeller && selectedSeller.tiene_cuenta_corriente) {
+    // Insert seller_cuenta_corriente cargo
+    // Update seller saldo_cuenta_corriente
+  }
+  ```
 
-1. Agregar una consulta similar: obtener `envio_id` de `seller_cuenta_corriente` tipo `cargo` por seller
-2. Incluir esos envíos en el cálculo de saldo cuando no estén ya cubiertos por ecommerce_orders o remitente_id
+#### 3. Para el envío existente (ENV-8E8YLT)
 
-### Resumen de archivos
+Se puede vincular retroactivamente de dos formas:
+- **Opción A**: Insertar manualmente un registro en `seller_cuenta_corriente` para ese envío (migración o script)
+- **Opción B**: Agregar un botón en la UI para vincular envíos terciarizados existentes a un seller
 
-| Archivo | Acción |
+Recomiendo **Opción A** como fix inmediato + el cambio en el formulario para futuros envíos.
+
+### Archivos a modificar
+
+| Archivo | Cambio |
 |---------|--------|
-| `src/pages/ecommerce/Settlements.tsx` | Agregar tercera fuente de envíos en `calculateMutation` y en `sellerBalances` |
-
-No se requieren cambios de base de datos ni nuevas tablas.
+| `src/components/routes/ThirdPartyShipmentsTab.tsx` | Agregar selector de seller, registrar cargo en seller_cuenta_corriente al crear |
+| Migración SQL | Insertar `seller_cuenta_corriente` para ENV-8E8YLT vinculándolo a PABLO GAUNA |
 
