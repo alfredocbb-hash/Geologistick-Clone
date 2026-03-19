@@ -113,6 +113,7 @@ const METODOS_PAGO = [
 
 interface ThirdPartyFormData {
   empresa_terciarizada: string;
+  seller_id: string;
   tracking_externo: string;
   whatsapp_destinatario: string;
   tipo_pago: string;
@@ -137,6 +138,7 @@ interface TempShipment extends ThirdPartyFormData {
 
 const emptyForm: ThirdPartyFormData = {
   empresa_terciarizada: "",
+  seller_id: "",
   tracking_externo: "",
   whatsapp_destinatario: "",
   tipo_pago: "destino",
@@ -186,6 +188,25 @@ export default function ThirdPartyShipmentsTab() {
       if (error) throw error;
       return data as EmpresaTerciarizada[];
     },
+    refetchOnWindowFocus: false,
+  });
+
+  // Fetch sellers with active current accounts
+  const { data: sellers = [] } = useQuery({
+    queryKey: ["ecommerce-sellers-cta-cte", profile?.tenant_id],
+    queryFn: async () => {
+      if (!profile?.tenant_id) return [];
+      const { data, error } = await supabase
+        .from("ecommerce_sellers")
+        .select("id, nombre, cliente_id, saldo_cuenta_corriente, tiene_cuenta_corriente")
+        .eq("tenant_id", profile.tenant_id)
+        .eq("activo", true)
+        .eq("tiene_cuenta_corriente", true)
+        .order("nombre");
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!profile?.tenant_id,
     refetchOnWindowFocus: false,
   });
 
@@ -433,9 +454,10 @@ export default function ThirdPartyShipmentsTab() {
         throw new Error(`Error al generar tracking: ${trackingError.message}`);
       }
 
-      if (!trackingData) {
-        throw new Error("No se pudo generar el número de tracking");
-      }
+      // Find selected seller (if any)
+      const selectedSeller = shipment.seller_id 
+        ? sellers.find((s) => s.id === shipment.seller_id) 
+        : null;
 
       const { data, error } = await supabase
         .from("envios")
@@ -457,6 +479,7 @@ export default function ThirdPartyShipmentsTab() {
           entrega_lat: shipment.entrega_lat,
           entrega_lng: shipment.entrega_lng,
           destinatario_id: destinatarioId,
+          remitente_id: selectedSeller?.cliente_id || null,
           tipo_servicio: "puerta_puerta",
           tipo_servicio_detalle: shipment.tipo_operacion === "retiro" ? "puerta_sucursal" : "sucursal_puerta",
           duracion_estimada_minutos: shipment.duracion_estimada_minutos,
@@ -467,7 +490,7 @@ export default function ThirdPartyShipmentsTab() {
           sucursal_origen_id: profile?.sucursal_id,
           requiere_retiro: shipment.tipo_operacion === "retiro",
           // Datos del remitente (empresa terciarizada)
-          nombre_remitente: selectedEmpresa?.nombre || null,
+          nombre_remitente: selectedSeller ? selectedSeller.nombre : (selectedEmpresa?.nombre || null),
           direccion_retiro: selectedEmpresa?.direccion || null,
           ciudad_retiro: selectedEmpresa?.ciudad || null,
         })
@@ -498,6 +521,23 @@ export default function ThirdPartyShipmentsTab() {
           .eq("id", selectedEmpresa.id);
       }
 
+      // If a seller was selected with current account, register charge in seller_cuenta_corriente
+      if (selectedSeller?.tiene_cuenta_corriente && data) {
+        const sellerSaldoAnterior = selectedSeller.saldo_cuenta_corriente || 0;
+        const sellerNuevoSaldo = sellerSaldoAnterior + (data.precio_total || 0);
+
+        await supabase.from("seller_cuenta_corriente").insert({
+          seller_id: selectedSeller.id,
+          envio_id: data.id,
+          tipo: "cargo",
+          monto: data.precio_total || 0,
+          saldo_anterior: sellerSaldoAnterior,
+          saldo_nuevo: sellerNuevoSaldo,
+          descripcion: `Envío terciarizado ${shipment.tracking_externo} - ${shipment.nombre_destinatario}`,
+          created_by: profile?.user_id,
+        });
+      }
+
       return data;
     },
     onSuccess: () => {
@@ -505,6 +545,7 @@ export default function ThirdPartyShipmentsTab() {
       queryClient.invalidateQueries({ queryKey: ["envios-planificador"] });
       queryClient.invalidateQueries({ queryKey: ["empresas-terciarizadas-activas"] });
       queryClient.invalidateQueries({ queryKey: ["terciarizado-cuenta-corriente"] });
+      queryClient.invalidateQueries({ queryKey: ["ecommerce-sellers-cta-cte"] });
       queryClient.invalidateQueries({ queryKey: ["all_clients"] });
     },
     onError: (error: Error) => {
@@ -617,6 +658,29 @@ export default function ThirdPartyShipmentsTab() {
               />
             </div>
           </div>
+
+          {/* Seller / Remitente (optional) */}
+          {sellers.length > 0 && (
+            <div className="space-y-2">
+              <Label>Seller / Remitente (opcional)</Label>
+              <Select
+                value={formData.seller_id || "none"}
+                onValueChange={(value) => handleInputChange("seller_id", value === "none" ? "" : value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Sin seller vinculado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin seller vinculado</SelectItem>
+                  {sellers.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.nombre} (Saldo: ${s.saldo_cuenta_corriente?.toLocaleString() || '0'})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Phone, Payment Method, Amount and Packages */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
