@@ -359,6 +359,74 @@ export function useReportsData(filters: ReportsFilters) {
     enabled: !!tenantId,
   });
 
+  // SLA data query
+  const slaData = useQuery({
+    queryKey: ['reports-sla', tenantId, from, to, filters.sucursalId],
+    queryFn: async (): Promise<SLAData> => {
+      let query = supabase
+        .from('envios')
+        .select('id, estado, created_at, fecha_entrega, fecha_entrega_estimada')
+        .eq('tenant_id', tenantId!)
+        .eq('estado', 'entregado')
+        .gte('created_at', from)
+        .lte('created_at', to);
+
+      if (filters.sucursalId) {
+        query = query.eq('sucursal_origen_id', filters.sucursalId);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      const envios = data || [];
+      let aTiempo = 0;
+      let conDemora = 0;
+      const horasMap = new Map<string, number>();
+      const rangos = ['0-2h', '2-4h', '4-8h', '8-12h', '12-24h', '24-48h', '>48h'];
+      rangos.forEach(r => horasMap.set(r, 0));
+
+      for (const envio of envios) {
+        if (envio.fecha_entrega && envio.created_at) {
+          const horasEntrega = differenceInHours(
+            new Date(envio.fecha_entrega),
+            new Date(envio.created_at)
+          );
+
+          // SLA check
+          if (envio.fecha_entrega_estimada) {
+            const estimada = new Date(envio.fecha_entrega_estimada);
+            const real = new Date(envio.fecha_entrega);
+            if (real <= estimada) aTiempo++;
+            else conDemora++;
+          } else {
+            // Without estimate, consider < 48h as on time
+            if (horasEntrega <= 48) aTiempo++;
+            else conDemora++;
+          }
+
+          // Histogram
+          if (horasEntrega <= 2) horasMap.set('0-2h', (horasMap.get('0-2h') || 0) + 1);
+          else if (horasEntrega <= 4) horasMap.set('2-4h', (horasMap.get('2-4h') || 0) + 1);
+          else if (horasEntrega <= 8) horasMap.set('4-8h', (horasMap.get('4-8h') || 0) + 1);
+          else if (horasEntrega <= 12) horasMap.set('8-12h', (horasMap.get('8-12h') || 0) + 1);
+          else if (horasEntrega <= 24) horasMap.set('12-24h', (horasMap.get('12-24h') || 0) + 1);
+          else if (horasEntrega <= 48) horasMap.set('24-48h', (horasMap.get('24-48h') || 0) + 1);
+          else horasMap.set('>48h', (horasMap.get('>48h') || 0) + 1);
+        }
+      }
+
+      const totalEntregados = aTiempo + conDemora;
+      return {
+        totalEntregados,
+        aTiempo,
+        conDemora,
+        porcentajeATiempo: totalEntregados > 0 ? Math.round((aTiempo / totalEntregados) * 100) : 0,
+        distribucionHoras: rangos.map(rango => ({ rango, cantidad: horasMap.get(rango) || 0 })),
+      };
+    },
+    enabled: !!tenantId,
+  });
+
   // Fetch sucursales for the filter dropdown
   const sucursales = useQuery({
     queryKey: ['reports-sucursales-list', tenantId],
@@ -381,6 +449,7 @@ export function useReportsData(filters: ReportsFilters) {
     rendimientoChoferes,
     resumenGeneral,
     resumenPeriodoAnterior,
+    slaData,
     sucursales,
   };
 }
