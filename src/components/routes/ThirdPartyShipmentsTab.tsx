@@ -191,6 +191,25 @@ export default function ThirdPartyShipmentsTab() {
     refetchOnWindowFocus: false,
   });
 
+  // Fetch sellers with active current accounts
+  const { data: sellers = [] } = useQuery({
+    queryKey: ["ecommerce-sellers-cta-cte", profile?.tenant_id],
+    queryFn: async () => {
+      if (!profile?.tenant_id) return [];
+      const { data, error } = await supabase
+        .from("ecommerce_sellers")
+        .select("id, nombre, cliente_id, saldo_cuenta_corriente, tiene_cuenta_corriente")
+        .eq("tenant_id", profile.tenant_id)
+        .eq("activo", true)
+        .eq("tiene_cuenta_corriente", true)
+        .order("nombre");
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!profile?.tenant_id,
+    refetchOnWindowFocus: false,
+  });
+
   // Fetch pending third-party shipments
   const { data: terciarizadosPendientes = [], isLoading } = useQuery({
     queryKey: ["envios-terciarizados-pendientes"],
