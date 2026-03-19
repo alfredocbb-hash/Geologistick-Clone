@@ -392,17 +392,9 @@ export function useReportsData(filters: ReportsFilters) {
             new Date(envio.created_at)
           );
 
-          // SLA check
-          if (envio.fecha_entrega_estimada) {
-            const estimada = new Date(envio.fecha_entrega_estimada);
-            const real = new Date(envio.fecha_entrega);
-            if (real <= estimada) aTiempo++;
-            else conDemora++;
-          } else {
-            // Without estimate, consider < 48h as on time
-            if (horasEntrega <= 48) aTiempo++;
-            else conDemora++;
-          }
+          // Without fecha_entrega_estimada column, use 24h as SLA threshold
+          if (horasEntrega <= 24) aTiempo++;
+          else conDemora++;
 
           // Histogram
           if (horasEntrega <= 2) horasMap.set('0-2h', (horasMap.get('0-2h') || 0) + 1);
