@@ -521,6 +521,23 @@ export default function ThirdPartyShipmentsTab() {
           .eq("id", selectedEmpresa.id);
       }
 
+      // If a seller was selected with current account, register charge in seller_cuenta_corriente
+      if (selectedSeller?.tiene_cuenta_corriente && data) {
+        const sellerSaldoAnterior = selectedSeller.saldo_cuenta_corriente || 0;
+        const sellerNuevoSaldo = sellerSaldoAnterior + (data.precio_total || 0);
+
+        await supabase.from("seller_cuenta_corriente").insert({
+          seller_id: selectedSeller.id,
+          envio_id: data.id,
+          tipo: "cargo",
+          monto: data.precio_total || 0,
+          saldo_anterior: sellerSaldoAnterior,
+          saldo_nuevo: sellerNuevoSaldo,
+          descripcion: `Envío terciarizado ${shipment.tracking_externo} - ${shipment.nombre_destinatario}`,
+          created_by: profile?.user_id,
+        });
+      }
+
       return data;
     },
     onSuccess: () => {
@@ -528,6 +545,7 @@ export default function ThirdPartyShipmentsTab() {
       queryClient.invalidateQueries({ queryKey: ["envios-planificador"] });
       queryClient.invalidateQueries({ queryKey: ["empresas-terciarizadas-activas"] });
       queryClient.invalidateQueries({ queryKey: ["terciarizado-cuenta-corriente"] });
+      queryClient.invalidateQueries({ queryKey: ["ecommerce-sellers-cta-cte"] });
       queryClient.invalidateQueries({ queryKey: ["all_clients"] });
     },
     onError: (error: Error) => {
