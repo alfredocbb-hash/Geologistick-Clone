@@ -45,8 +45,7 @@ export function useProductividadData(filters: { dateFrom: Date; dateTo: Date; su
 
       for (const envio of data || []) {
         const cid = envio.chofer_id!;
-        const p = envio.profiles as any;
-        const nombre = p ? `${p.nombre || ''} ${p.apellido || ''}`.trim() : 'Sin nombre';
+        const nombre = cid.substring(0, 8);
 
         if (!grouped.has(cid)) {
           grouped.set(cid, { nombre, total: 0, entregados: 0, tiempos: [] });
