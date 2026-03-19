@@ -6,12 +6,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar, Download, Package, TrendingUp, Clock, DollarSign, BarChart3, Users, MapPin, FileText, Loader2 } from 'lucide-react';
+import { Calendar, Download, Package, TrendingUp, Clock, DollarSign, BarChart3, Users, MapPin, FileText, Loader2, FileSpreadsheet } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import { useReportsData, type ReportsFilters } from '@/hooks/useReportsData';
 import { subDays, subMonths, format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { exportReportPDF } from '@/lib/exportReportPDF';
+import { exportToExcel } from '@/lib/exportExcel';
 import { toast } from 'sonner';
 
 const DATE_PRESETS = [
@@ -162,7 +163,26 @@ export default function Reports() {
 
         {/* Tab 1: Envíos por Sucursal */}
         <TabsContent value="sucursales" className="space-y-4">
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => exportToExcel({
+                filename: `envios-por-sucursal-${dateRange}`,
+                columns: [
+                  { header: 'Sucursal', key: 'sucursal_nombre' },
+                  { header: 'Total', key: 'total', format: 'number' },
+                  { header: 'Entregados', key: 'entregados', format: 'number' },
+                  { header: 'Pendientes', key: 'pendientes', format: 'number' },
+                  { header: 'Cancelados', key: 'cancelados', format: 'number' },
+                  { header: 'Efectividad %', key: 'efectividad', format: 'percent' },
+                ],
+                data: enviosPorSucursal.data || [],
+              })}
+            >
+              <FileSpreadsheet className="h-4 w-4 mr-2" />
+              Excel
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -170,7 +190,7 @@ export default function Reports() {
               onClick={() => handleExportPDF('sucursales', 'Envios por Sucursal', [sucursalesChartRef], enviosPorSucursal.data || [])}
             >
               {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
-              Exportar PDF
+              PDF
             </Button>
           </div>
 
@@ -238,7 +258,24 @@ export default function Reports() {
 
         {/* Tab 2: Destinos */}
         <TabsContent value="destinos" className="space-y-4">
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => exportToExcel({
+                filename: `destinos-${dateRange}`,
+                columns: [
+                  { header: 'Ciudad', key: 'ciudad' },
+                  { header: 'Provincia', key: 'provincia' },
+                  { header: 'Cantidad', key: 'cantidad', format: 'number' },
+                  { header: 'Ingresos', key: 'ingresos', format: 'currency' },
+                ],
+                data: destinos.data || [],
+              })}
+            >
+              <FileSpreadsheet className="h-4 w-4 mr-2" />
+              Excel
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -246,7 +283,7 @@ export default function Reports() {
               onClick={() => handleExportPDF('destinos', 'Destinos mas frecuentes', [destinosChartRef], destinos.data || [])}
             >
               {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
-              Exportar PDF
+              PDF
             </Button>
           </div>
 
@@ -304,7 +341,25 @@ export default function Reports() {
 
         {/* Tab 3: Rendimiento de Choferes */}
         <TabsContent value="choferes" className="space-y-4">
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => exportToExcel({
+                filename: `rendimiento-choferes-${dateRange}`,
+                columns: [
+                  { header: 'Chofer', key: 'chofer_nombre' },
+                  { header: 'Total', key: 'total', format: 'number' },
+                  { header: 'Entregados', key: 'entregados', format: 'number' },
+                  { header: 'No Entregados', key: 'no_entregados', format: 'number' },
+                  { header: 'Efectividad %', key: 'efectividad', format: 'percent' },
+                ],
+                data: rendimientoChoferes.data || [],
+              })}
+            >
+              <FileSpreadsheet className="h-4 w-4 mr-2" />
+              Excel
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -312,7 +367,7 @@ export default function Reports() {
               onClick={() => handleExportPDF('choferes', 'Rendimiento de Choferes', [choferesChartRef], rendimientoChoferes.data || [])}
             >
               {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
-              Exportar PDF
+              PDF
             </Button>
           </div>
 
@@ -383,7 +438,26 @@ export default function Reports() {
 
         {/* Tab 4: Resumen General */}
         <TabsContent value="resumen" className="space-y-4">
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const data = resumenGeneral.data;
+                if (!data) return;
+                exportToExcel({
+                  filename: `resumen-general-${dateRange}`,
+                  columns: [
+                    { header: 'Fecha', key: 'fecha' },
+                    { header: 'Cantidad Envíos', key: 'cantidad', format: 'number' },
+                  ],
+                  data: data.evolucionDiaria || [],
+                });
+              }}
+            >
+              <FileSpreadsheet className="h-4 w-4 mr-2" />
+              Excel
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -391,7 +465,7 @@ export default function Reports() {
               onClick={() => handleExportPDF('resumen', 'Resumen General', [evolucionChartRef, estadosChartRef], resumenGeneral.data)}
             >
               {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
-              Exportar PDF
+              PDF
             </Button>
           </div>
 
