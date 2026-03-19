@@ -246,7 +246,7 @@ export default function NewShipment() {
     destinatario_ciudad: '',
     destinatario_codigo_postal: '',
     destinatario_dni: '',
-    destinatario_whatsapp: '',
+    destinatario_whatsapp: '', // auto-filled from destinatario_telefono
     // Envío
     sucursal_destino_id: '',
     tarifa_id: '',
