@@ -471,7 +471,7 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
                   <FormItem>
                     <FormLabel>Teléfono</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <PhoneInput value={field.value || ''} onChange={field.onChange} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

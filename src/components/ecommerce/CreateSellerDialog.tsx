@@ -408,7 +408,7 @@ export function CreateSellerDialog({ open, onOpenChange, onSuccess }: CreateSell
                   <FormItem>
                     <FormLabel>Teléfono</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <PhoneInput value={field.value || ''} onChange={field.onChange} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

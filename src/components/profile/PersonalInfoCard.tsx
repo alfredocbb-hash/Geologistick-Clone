@@ -124,12 +124,10 @@ export function PersonalInfoCard({ profile, sucursalName, onProfileUpdate }: Per
               Teléfono
             </Label>
             {isEditing ? (
-              <Input
+              <PhoneInput
                 id="telefono"
-                type="tel"
                 value={formData.telefono}
-                onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
-                placeholder="Tu número de teléfono"
+                onChange={(v) => setFormData({ ...formData, telefono: v })}
               />
             ) : (
               <p className="text-sm py-2 px-3 bg-muted rounded-md">{profile.telefono || '-'}</p>
