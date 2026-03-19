@@ -1,18 +1,55 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNativePlatform } from './useNativePlatform';
 
 interface CameraResult {
   dataUrl: string;
 }
 
+// Cache the module at module level so we only try once
+let cameraModulePromise: Promise<any> | null = null;
+let cameraModule: any = null;
+let cameraImportFailed = false;
+
+function getCameraModule() {
+  if (cameraModule) return Promise.resolve(cameraModule);
+  if (cameraImportFailed) return Promise.resolve(null);
+  if (!cameraModulePromise) {
+    cameraModulePromise = import('@capacitor/camera')
+      .then((mod) => {
+        cameraModule = mod;
+        console.log('[useNativeCamera] @capacitor/camera loaded successfully');
+        return mod;
+      })
+      .catch((err) => {
+        cameraImportFailed = true;
+        console.warn('[useNativeCamera] @capacitor/camera import failed (expected in remote WebView):', err?.message || err);
+        return null;
+      });
+  }
+  return cameraModulePromise;
+}
+
 export function useNativeCamera() {
   const { isNative } = useNativePlatform();
+  const [cameraAvailable, setCameraAvailable] = useState<boolean | null>(null);
+
+  // Try to load the module on mount
+  useEffect(() => {
+    if (!isNative) {
+      setCameraAvailable(false);
+      return;
+    }
+    getCameraModule().then((mod) => {
+      setCameraAvailable(!!mod);
+    });
+  }, [isNative]);
 
   const takePhoto = useCallback(async (): Promise<CameraResult | null> => {
-    if (!isNative) return null; // Caller should fallback to file input
+    const mod = await getCameraModule();
+    if (!mod) return null;
 
     try {
-      const { Camera, CameraResultType, CameraSource, CameraDirection } = await import('@capacitor/camera');
+      const { Camera, CameraResultType, CameraSource, CameraDirection } = mod;
       const result = await Camera.getPhoto({
         quality: 85,
         allowEditing: false,
@@ -28,21 +65,21 @@ export function useNativeCamera() {
       }
       return null;
     } catch (error: any) {
-      // User cancelled or permission denied
       if (error?.message?.includes('cancelled') || error?.message?.includes('denied')) {
-        console.log('Camera cancelled or denied:', error.message);
+        console.log('[useNativeCamera] Camera cancelled or denied:', error.message);
         return null;
       }
-      console.error('Native camera error:', error);
+      console.error('[useNativeCamera] Native camera error:', error);
       return null;
     }
-  }, [isNative]);
+  }, []);
 
   const pickFromGallery = useCallback(async (): Promise<CameraResult | null> => {
-    if (!isNative) return null;
+    const mod = await getCameraModule();
+    if (!mod) return null;
 
     try {
-      const { Camera, CameraResultType, CameraSource } = await import('@capacitor/camera');
+      const { Camera, CameraResultType, CameraSource } = mod;
       const result = await Camera.getPhoto({
         quality: 85,
         allowEditing: false,
@@ -58,13 +95,13 @@ export function useNativeCamera() {
       return null;
     } catch (error: any) {
       if (error?.message?.includes('cancelled') || error?.message?.includes('denied')) {
-        console.log('Gallery cancelled or denied:', error.message);
+        console.log('[useNativeCamera] Gallery cancelled or denied:', error.message);
         return null;
       }
-      console.error('Native gallery error:', error);
+      console.error('[useNativeCamera] Native gallery error:', error);
       return null;
     }
-  }, [isNative]);
+  }, []);
 
-  return { isNative, takePhoto, pickFromGallery };
+  return { isNative, cameraAvailable: cameraAvailable === true, takePhoto, pickFromGallery };
 }

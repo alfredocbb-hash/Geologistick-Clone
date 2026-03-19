@@ -3,8 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   User, Mail, Phone, MapPin, Car, LogOut, 
-  ChevronRight, Shield, Bell, Moon, HelpCircle,
-  Package, TrendingUp, Clock, RefreshCw
+  ChevronRight, Shield, Bell, Moon, Sun, HelpCircle,
+  Package, TrendingUp, Clock, RefreshCw, Camera
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -12,13 +12,19 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import { useNativeCamera } from '@/hooks/useNativeCamera';
+import { useTheme } from 'next-themes';
 
 export function MobileProfileTab() {
   const { user, profile, signOut } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const { cameraAvailable, takePhoto } = useNativeCamera();
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const { theme, setTheme } = useTheme();
 
   // Fetch stats
   const { data: stats } = useQuery({
@@ -79,7 +85,6 @@ export function MobileProfileTab() {
   const handleRefreshApp = async () => {
     setIsRefreshing(true);
     try {
-      // Invalidate all cached data including permissions
       await queryClient.invalidateQueries({ queryKey: ['user-permissions'] });
       await queryClient.invalidateQueries({ queryKey: ['user-roles'] });
       await queryClient.invalidateQueries();
@@ -93,18 +98,77 @@ export function MobileProfileTab() {
     }
   };
 
+  // Avatar upload logic
+  const uploadAvatar = async (dataUrl: string) => {
+    if (!user?.id) return;
+    setIsUploadingAvatar(true);
+    try {
+      // Convert dataUrl to blob
+      const parts = dataUrl.split(',');
+      const mime = parts[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+      const bstr = atob(parts[1]);
+      const u8arr = new Uint8Array(bstr.length);
+      for (let i = 0; i < bstr.length; i++) u8arr[i] = bstr.charCodeAt(i);
+      const blob = new Blob([u8arr], { type: mime });
+
+      const path = `avatars/${user.id}/avatar_${Date.now()}.jpg`;
+      const { data, error } = await supabase.storage
+        .from('delivery-photos')
+        .upload(path, blob, { upsert: true });
+      if (error) throw error;
+
+      const { data: urlData } = await supabase.storage
+        .from('delivery-photos')
+        .createSignedUrl(data.path, 60 * 60 * 24 * 365);
+
+      if (urlData?.signedUrl) {
+        await supabase.from('profiles').update({ avatar_url: urlData.signedUrl }).eq('user_id', user.id);
+        queryClient.invalidateQueries({ queryKey: ['profile'] });
+        toast.success('Avatar actualizado');
+      }
+    } catch (err) {
+      console.error('Avatar upload error:', err);
+      toast.error('Error al subir avatar');
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
+
+  const handleAvatarClick = () => {
+    if (cameraAvailable) {
+      takePhoto().then((result) => {
+        if (result) uploadAvatar(result.dataUrl);
+      });
+      return;
+    }
+    // Fallback: synchronous file input click
+    avatarInputRef.current?.click();
+  };
+
+  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      uploadAvatar(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const MenuItem = ({ 
     icon: Icon, 
     label, 
     value, 
     onClick,
-    danger = false 
+    danger = false,
+    rightElement,
   }: { 
     icon: any; 
     label: string; 
     value?: string; 
     onClick?: () => void;
     danger?: boolean;
+    rightElement?: React.ReactNode;
   }) => (
     <button 
       onClick={onClick}
@@ -116,7 +180,7 @@ export function MobileProfileTab() {
         <Icon className={`h-5 w-5 ${danger ? 'text-red-400' : 'text-slate-400'}`} />
         <span>{label}</span>
       </div>
-      {value ? (
+      {rightElement ? rightElement : value ? (
         <span className="text-slate-400 text-sm">{value}</span>
       ) : (
         <ChevronRight className="h-5 w-5 text-slate-500" />
@@ -126,14 +190,33 @@ export function MobileProfileTab() {
 
   return (
     <div className="space-y-6 pb-8">
+      {/* Hidden file input for avatar fallback */}
+      <input
+        ref={avatarInputRef}
+        type="file"
+        accept="image/*"
+        capture="user"
+        onChange={handleAvatarFileChange}
+        className="hidden"
+      />
+
       {/* Profile Header */}
       <div className="flex items-center gap-4">
-        <Avatar className="h-20 w-20 ring-4 ring-primary/20">
-          <AvatarImage src={profile?.avatar_url || undefined} />
-          <AvatarFallback className="bg-gradient-to-br from-primary to-primary/60 text-primary-foreground text-2xl font-bold">
-            {getInitials()}
-          </AvatarFallback>
-        </Avatar>
+        <div className="relative">
+          <Avatar className="h-20 w-20 ring-4 ring-primary/20">
+            <AvatarImage src={profile?.avatar_url || undefined} />
+            <AvatarFallback className="bg-gradient-to-br from-primary to-primary/60 text-primary-foreground text-2xl font-bold">
+              {getInitials()}
+            </AvatarFallback>
+          </Avatar>
+          <button
+            onClick={handleAvatarClick}
+            disabled={isUploadingAvatar}
+            className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-primary flex items-center justify-center border-2 border-slate-950 active:scale-90 transition-transform"
+          >
+            <Camera className="h-4 w-4 text-primary-foreground" />
+          </button>
+        </div>
         <div>
           <h1 className="text-xl font-bold text-white">
             {profile?.nombre} {profile?.apellido}
@@ -209,6 +292,18 @@ export function MobileProfileTab() {
           icon={Shield} 
           label="Seguridad" 
           onClick={() => navigate('/profile')}
+        />
+        <Separator className="bg-slate-700/50" />
+        <MenuItem
+          icon={theme === 'dark' ? Moon : Sun}
+          label="Tema oscuro"
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          rightElement={
+            <Switch
+              checked={theme === 'dark'}
+              onCheckedChange={(checked) => setTheme(checked ? 'dark' : 'light')}
+            />
+          }
         />
       </Card>
 

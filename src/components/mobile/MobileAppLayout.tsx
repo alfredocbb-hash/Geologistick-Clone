@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Loader2, WifiOff } from 'lucide-react';
 import geologistickLogo from '@/assets/geologistick-logo.png';
 import { useQueryClient } from '@tanstack/react-query';
 import { MobileHeader } from './MobileHeader';
@@ -30,6 +30,9 @@ export function MobileAppLayout() {
   const [activeTab, setActiveTab] = useState<MobileTab>('home');
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isPulling, setIsPulling] = useState(false);
+  const [pullDistance, setPullDistance] = useState(0);
   const { unreadCount } = useNotifications();
   const { hasRole, profile } = useAuth();
   const { hasPermission, isLoading: permissionsLoading } = usePermissions();
@@ -38,30 +41,70 @@ export function MobileAppLayout() {
   const { checkedIn, isLoading: checkInLoading, invalidate: invalidateCheckIn } = useCheckIn();
   const { isBlocked, reason: blockReason } = useSubscriptionBlock();
 
+  const mainRef = useRef<HTMLDivElement>(null);
+  const touchStartY = useRef(0);
+  const isRefreshing = useRef(false);
+
+  // Online/Offline detection
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Pull-to-refresh handlers
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    const el = mainRef.current;
+    if (el && el.scrollTop <= 0) {
+      touchStartY.current = e.touches[0].clientY;
+    }
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (isRefreshing.current) return;
+    const el = mainRef.current;
+    if (!el || el.scrollTop > 0) return;
+    const diff = e.touches[0].clientY - touchStartY.current;
+    if (diff > 0 && diff < 150) {
+      setPullDistance(diff);
+      setIsPulling(true);
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback(async () => {
+    if (!isPulling) return;
+    if (pullDistance > 80 && !isRefreshing.current) {
+      isRefreshing.current = true;
+      setPullDistance(80);
+      await queryClient.invalidateQueries();
+      isRefreshing.current = false;
+    }
+    setPullDistance(0);
+    setIsPulling(false);
+  }, [isPulling, pullDistance, queryClient]);
+
   // Show splash screen briefly on first load
   useEffect(() => {
     const timer = setTimeout(() => setShowSplash(false), 1500);
     return () => clearTimeout(timer);
   }, []);
 
-  // Refresh permissions when app resumes - using refetch instead of invalidate
-  // to prevent flash while loading (keeps old data visible)
+  // Refresh permissions when app resumes
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        // Soft refetch - doesn't clear cache while loading
         queryClient.refetchQueries({ queryKey: ['user-permissions'], type: 'active' });
       }
     };
-
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [queryClient]);
 
-  // Determine user's mobile role
   const getUserMobileRole = (): UserMobileRole => {
     if (hasRole('chofer')) return 'chofer';
     if (hasRole('operador') || hasRole('bodega')) return 'centro_logistico';
@@ -74,7 +117,6 @@ export function MobileAppLayout() {
     setActiveTab(tab);
   };
 
-  // Show splash screen
   if (showSplash) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center">
@@ -93,7 +135,6 @@ export function MobileAppLayout() {
     );
   }
 
-  // Show loading while permissions are being fetched
   if (permissionsLoading) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center">
@@ -103,12 +144,10 @@ export function MobileAppLayout() {
     );
   }
 
-  // Subscription/trial block
   if (isBlocked) {
     return <SubscriptionBlockScreen reason={blockReason} />;
   }
 
-  // Check-in guard for drivers
   if (userRole === 'chofer' && !checkInLoading && !checkedIn) {
     return <CheckInScreen onCheckInComplete={invalidateCheckIn} />;
   }
@@ -117,29 +156,20 @@ export function MobileAppLayout() {
     switch (activeTab) {
       case 'home':
         return <MobileHomeTab onNavigateToRoutes={() => setActiveTab('routes')} />;
-      
-      // Chofer tabs
       case 'routes':
         return <MobileRoutesTab />;
       case 'earnings':
         return <MobileEarningsTab />;
-      
-      // Centro logístico tabs
       case 'reception':
         return <MobileReceptionTab />;
-      
-      // Sucursal tabs
       case 'deliveries':
         return <MobileDeliveriesTab />;
-      
-      // Common tabs - Modo Flex replaces standard scan
       case 'scan':
         return tenant?.modo_flex && userRole === 'chofer' ? <FlexScanScreen /> : <MobileScanTab />;
       case 'history':
         return <MobileHistoryTab />;
       case 'profile':
         return <MobileProfileTab />;
-      
       default:
         return <MobileHomeTab onNavigateToRoutes={() => setActiveTab('routes')} />;
     }
@@ -147,21 +177,49 @@ export function MobileAppLayout() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
+      {/* Offline indicator */}
+      {!isOnline && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-red-600 text-white text-center py-1.5 text-xs font-medium flex items-center justify-center gap-1.5"
+          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.375rem)' }}
+        >
+          <WifiOff className="h-3.5 w-3.5" />
+          Sin conexión a internet
+        </div>
+      )}
+
       {/* Header */}
       <MobileHeader 
         onNotificationsClick={() => setShowNotifications(true)}
         onProfileClick={() => setActiveTab('profile')}
       />
 
-      {/* Main Content - adjusted for safe areas */}
+      {/* Pull-to-refresh indicator */}
+      {isPulling && (
+        <div 
+          className="flex justify-center items-center transition-all"
+          style={{ 
+            height: `${Math.min(pullDistance, 80)}px`,
+            paddingTop: 'calc(3.5rem + env(safe-area-inset-top, 0px))',
+          }}
+        >
+          <Loader2 className={`h-5 w-5 text-primary ${pullDistance > 80 ? 'animate-spin' : ''}`} 
+            style={{ opacity: Math.min(pullDistance / 80, 1) }}
+          />
+        </div>
+      )}
+
+      {/* Main Content */}
       <main 
+        ref={mainRef}
         className="px-4 min-h-screen"
         style={{ 
-          paddingTop: 'calc(3.5rem + env(safe-area-inset-top, 0px) + 1rem)',
+          paddingTop: isPulling ? '0' : 'calc(3.5rem + env(safe-area-inset-top, 0px) + 1rem)',
           paddingBottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))'
         }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       >
-        {/* Debug: Domain indicator - helps diagnose APK URL issues */}
         {import.meta.env.DEV && (
           <p className="text-xs text-slate-500 text-center mb-2 font-mono">
             {window.location.hostname}

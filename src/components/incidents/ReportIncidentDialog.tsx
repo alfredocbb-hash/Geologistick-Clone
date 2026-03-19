@@ -42,7 +42,7 @@ interface ReportIncidentDialogProps {
 export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: ReportIncidentDialogProps) {
   const { user, profile } = useAuth();
   const queryClient = useQueryClient();
-  const { isNative: isNativeCamera, takePhoto: nativeTakePhoto, pickFromGallery: nativePickFromGallery } = useNativeCamera();
+  const { cameraAvailable, takePhoto: nativeTakePhoto, pickFromGallery: nativePickFromGallery } = useNativeCamera();
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const STORAGE_KEY = `incident-state-${shipment.id}`;
@@ -102,29 +102,33 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
     } catch (e) {}
   };
 
-  const handleOpenCamera = async () => {
-    if (isNativeCamera) {
-      const result = await nativeTakePhoto();
-      if (result) {
-        setPhoto(null);
-        setPhotoPreview(result.dataUrl);
-      }
+  const handleOpenCamera = (e: React.MouseEvent) => {
+    if (cameraAvailable) {
+      nativeTakePhoto().then((result) => {
+        if (result) {
+          setPhoto(null);
+          setPhotoPreview(result.dataUrl);
+        }
+      });
       return;
     }
+    // CRITICAL: synchronous click to preserve user gesture context
     persistState();
     if (cameraInputRef.current) cameraInputRef.current.value = '';
     cameraInputRef.current?.click();
   };
 
-  const handleOpenGallery = async () => {
-    if (isNativeCamera) {
-      const result = await nativePickFromGallery();
-      if (result) {
-        setPhoto(null);
-        setPhotoPreview(result.dataUrl);
-      }
+  const handleOpenGallery = (e: React.MouseEvent) => {
+    if (cameraAvailable) {
+      nativePickFromGallery().then((result) => {
+        if (result) {
+          setPhoto(null);
+          setPhotoPreview(result.dataUrl);
+        }
+      });
       return;
     }
+    // CRITICAL: synchronous click to preserve user gesture context
     persistState();
     if (galleryInputRef.current) galleryInputRef.current.value = '';
     galleryInputRef.current?.click();

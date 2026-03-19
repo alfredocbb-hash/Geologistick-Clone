@@ -1,13 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
-import { Package, TrendingUp, MapPin, Clock, ChevronRight, Truck, Navigation, Zap } from 'lucide-react';
+import { Package, TrendingUp, MapPin, Clock, ChevronRight, Truck, Navigation, Zap, ExternalLink } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { getTodayString } from '@/lib/dateUtils';
 
 interface MobileHomeTabProps {
@@ -247,6 +248,29 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
           </CardContent>
         </Card>
       </div>
+
+      {/* Navigate to Next Stop Button */}
+      {activeRoute && (
+        <button
+          onClick={() => {
+            // Try to get the address from the active route context
+            const address = 'sucursal_destino' in activeRoute
+              ? (activeRoute as any).sucursal_destino?.ciudad || ''
+              : (activeRoute as any).direccion_inicio || '';
+            if (address) {
+              const encodedAddr = encodeURIComponent(address);
+              // Try Google Maps first (works on both Android & iOS)
+              window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodedAddr}`, '_blank');
+            } else {
+              toast('No hay dirección de destino disponible', { description: 'Abrí la ruta para ver las paradas' });
+            }
+          }}
+          className="w-full flex items-center justify-center gap-3 py-4 bg-gradient-to-r from-blue-600/30 to-blue-500/20 border border-blue-500/30 rounded-2xl hover:from-blue-600/40 transition-all active:scale-[0.98]"
+        >
+          <ExternalLink className="h-5 w-5 text-blue-400" />
+          <span className="text-blue-300 font-semibold">Navegar con Google Maps</span>
+        </button>
+      )}
 
       {/* Quick Actions */}
       <div className="grid grid-cols-3 gap-3">
