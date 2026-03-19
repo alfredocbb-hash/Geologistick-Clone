@@ -1825,7 +1825,7 @@ export default function NewShipment() {
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <PackagePlus className="h-5 w-5 text-envios" />
             Nuevo Envío
           </h1>
