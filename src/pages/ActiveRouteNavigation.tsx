@@ -555,10 +555,13 @@ export default function ActiveRouteNavigation() {
     window.open(`tel:${phone}`, '_self');
   }, []);
 
-  // WhatsApp customer
-  const whatsAppCustomer = useCallback((phone: string, name: string) => {
+  // WhatsApp customer with live tracking link
+  const whatsAppCustomer = useCallback((phone: string, name: string, trackingNum?: string) => {
     const cleanPhone = phone.replace(/\D/g, '');
-    const message = encodeURIComponent(`Hola ${name}, soy el repartidor. Estoy llegando con su envío.`);
+    const trackingLink = trackingNum 
+      ? `\n\nSeguí mi ubicación en vivo: ${window.location.origin}/tracking/${trackingNum}`
+      : '';
+    const message = encodeURIComponent(`Hola ${name}, soy el repartidor. Estoy llegando con su envío.${trackingLink}`);
     window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank');
   }, []);
 
@@ -811,7 +814,7 @@ export default function ActiveRouteNavigation() {
                     <Button 
                       variant="outline"
                       className="bg-green-500/10 border-green-500/30 text-green-600"
-                      onClick={() => phone && whatsAppCustomer(phone, clienteName)}
+                      onClick={() => phone && whatsAppCustomer(phone, clienteName, nextEnvio?.tracking_number)}
                       disabled={!phone}
                     >
                       <MessageCircle className="h-4 w-4 mr-1" />
