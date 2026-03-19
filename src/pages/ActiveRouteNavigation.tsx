@@ -724,9 +724,17 @@ export default function ActiveRouteNavigation() {
               {/* ETA */}
               <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
                 <Clock className="h-4 w-4" />
-                <span>ETA: ~10 min</span>
-                <span>•</span>
-                <span>2.5 km</span>
+                {nextStop && etaByStopId.has(nextStop.id) ? (
+                  <>
+                    <span>ETA: ~{etaByStopId.get(nextStop.id)!.etaMin} min</span>
+                    <span>•</span>
+                    <span>{etaByStopId.get(nextStop.id)!.distKm} km</span>
+                    <span>•</span>
+                    <span>{format(etaByStopId.get(nextStop.id)!.arrivalTime, 'HH:mm')}</span>
+                  </>
+                ) : (
+                  <span className="text-muted-foreground italic">ETA no disponible</span>
+                )}
               </div>
 
               {/* Customer Info */}
