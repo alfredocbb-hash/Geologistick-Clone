@@ -1,5 +1,6 @@
 
 
+
 ## Fase 5: Optimización avanzada ✅ COMPLETADA
 
 Fases 1-4 completadas previamente.
@@ -20,7 +21,17 @@ Fases 1-4 completadas previamente.
 
 ---
 
-## Posible Fase 7: Automatización avanzada
+## Fase 7: Tracking en vivo para destinatarios ✅ COMPLETADA
+
+### Implementado:
+1. ✅ **Edge Function `public-tracking-live`** - Endpoint público que retorna lat/lng del chofer cuando el envío está en_reparto, con rate limiting por IP
+2. ✅ **Componente `LiveDriverMap`** - Mapa embebido con ruta chofer→destino, indicador "En vivo" pulsante, polling cada 10s, última actualización
+3. ✅ **Integración en Tracking.tsx** - Muestra mapa en vivo cuando estado=en_reparto, mapa estático para otros estados
+4. ✅ **WhatsApp con link de tracking** - El mensaje del chofer ahora incluye link de seguimiento en vivo
+
+---
+
+## Posible Fase 8: Automatización avanzada
 
 Ideas para próximas mejoras:
 - Auto-asignación inteligente de rutas con IA
