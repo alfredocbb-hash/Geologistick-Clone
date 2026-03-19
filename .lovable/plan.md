@@ -1,22 +1,21 @@
 
 
-## Fase 3: Features avanzados ✅ COMPLETADA
+## Fase 4: Inteligencia y automatización ✅ COMPLETADA
 
-Fases 1, 2 y 3 completadas.
+Fases 1, 2, 3 y 4 completadas.
 
 ### Implementado:
-1. ✅ **Ranking de sucursales** - Nueva pestaña "Ranking" en Reports con barras de progreso y comparativa visual
-2. ✅ **Dashboard SLA** - Nueva pestaña "SLA" con gauge circular, KPIs a tiempo/demora, histograma de distribución
-3. ✅ **Empty states ilustrados** - Componente `EmptyState.tsx` reutilizable con animaciones y CTAs
-4. ✅ **Mini-mapa en Dashboard** - Widget con mapa de sucursales integrado al dashboard principal
+1. ✅ **Heatmap de entregas por zona** - Nueva pestaña "Heatmap" en LiveMap con Google Maps HeatmapLayer, filtro por período (7/30/90 días)
+2. ✅ **Alertas automáticas de SLA en riesgo** - Edge function `check-sla-alerts` que detecta envíos >20h sin entregar y notifica admins y choferes
+3. ✅ **Notificaciones push para choferes** - Edge function `notify-driver-route` + integración automática al crear rutas en RoutePlanner
 
 ---
 
-## Posible Fase 4: Inteligencia y automatización
+## Posible Fase 5: Optimización avanzada
 
 Ideas para próximas mejoras:
 - Predicción de demanda por zona (IA)
-- Alertas automáticas de SLA en riesgo
-- Heatmap de entregas por zona
-- Notificaciones push para choferes
+- Dashboard de costos operativos por ruta
 - Integración con WhatsApp Business API
+- Reportes de productividad por chofer con IA
+- Auto-asignación inteligente de rutas
