@@ -1825,7 +1825,7 @@ export default function NewShipment() {
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <PackagePlus className="h-5 w-5 text-envios" />
             Nuevo Envío
           </h1>
@@ -1896,7 +1896,7 @@ export default function NewShipment() {
             <div className="border rounded-lg p-3">
               <div className="flex items-center gap-2 mb-2">
                 <Truck className="h-4 w-4 text-envios" />
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tipo de Servicio</span>
+                <span className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Tipo de Servicio</span>
               </div>
               <RadioGroup 
                 value={tipoServicioDetalle} 
@@ -1933,7 +1933,7 @@ export default function NewShipment() {
             <div className="border rounded-lg p-3">
               <div className="flex items-center gap-2 mb-2">
                 <CreditCard className="h-4 w-4 text-primary" />
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tipo de Pago</span>
+                <span className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Tipo de Pago</span>
               </div>
               {esRetiroAlmacenaje ? (
                 <div className="space-y-2">
@@ -1948,7 +1948,7 @@ export default function NewShipment() {
                       }
                     }}
                   >
-                    <SelectTrigger className="h-8 text-xs">
+                    <SelectTrigger className="h-8 text-sm">
                       <SelectValue placeholder="Seleccionar cliente" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1981,7 +1981,7 @@ export default function NewShipment() {
                   </div>
                   {formData.tipo_pago === 'cuenta_corriente' && (
                     <Select value={formData.cliente_cta_cte_id} onValueChange={(v) => handleChange('cliente_cta_cte_id', v)}>
-                      <SelectTrigger className="h-8 text-xs">
+                      <SelectTrigger className="h-8 text-sm">
                         <SelectValue placeholder="Seleccionar cliente" />
                       </SelectTrigger>
                       <SelectContent>
@@ -2001,17 +2001,17 @@ export default function NewShipment() {
             <div className="border rounded-lg p-3">
               <div className="flex items-center gap-2 mb-2">
                 <DollarSign className="h-4 w-4 text-envios" />
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tarifa</span>
+                <span className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Tarifa</span>
               </div>
               {autoSeleccionPorZona ? (
                 tarifaFueAutoDetectada && selectedTarifa ? (
                   <div className="p-2 bg-primary/5 border border-primary/20 rounded-md space-y-1">
-                    <p className="text-[10px] font-medium text-primary uppercase tracking-wide flex items-center gap-1">
+                    <p className="text-xs font-medium text-primary uppercase tracking-wide flex items-center gap-1">
                       <span>✓</span> Auto-detectada
                     </p>
                     <p className="text-xs font-semibold">{selectedTarifa.nombre}</p>
                     {fleteCalculado > 0 && (
-                      <p className="text-[10px] text-muted-foreground">
+                      <p className="text-xs text-muted-foreground">
                         Flete{fleteDescripcion ? ` (${fleteDescripcion})` : ''}: <span className="font-medium text-foreground">${fleteCalculado.toLocaleString('es-AR', { minimumFractionDigits: 0 })}</span>
                       </p>
                     )}
@@ -2021,13 +2021,13 @@ export default function NewShipment() {
                     <AlertCircle className="h-3.5 w-3.5 text-destructive mt-0.5 shrink-0" />
                     <div>
                       <p className="text-xs font-medium text-destructive">Ingresá ciudad destino</p>
-                      <p className="text-[10px] text-muted-foreground">Precio automático por zona</p>
+                      <p className="text-xs text-muted-foreground">Precio automático por zona</p>
                     </div>
                   </div>
                 )
               ) : tarifasDisponibles.length > 1 ? (
                 <Select value={formData.tarifa_id} onValueChange={(v) => handleChange('tarifa_id', v)} disabled={loadingTarifas}>
-                  <SelectTrigger className="h-8 text-xs">
+                  <SelectTrigger className="h-8 text-sm">
                     <SelectValue placeholder={loadingTarifas ? "Cargando..." : "Seleccionar tarifa"} />
                   </SelectTrigger>
                   <SelectContent>
@@ -2047,7 +2047,7 @@ export default function NewShipment() {
                   {loadingTarifas ? (
                     <span className="flex items-center"><Loader2 className="h-3 w-3 animate-spin mr-1" />Cargando...</span>
                   ) : (
-                    <>No hay tarifas disponibles<Button variant="outline" size="sm" onClick={() => refetchTarifas()} className="ml-2 h-6 text-[10px]" type="button">Reintentar</Button></>
+                    <>No hay tarifas disponibles<Button variant="outline" size="sm" onClick={() => refetchTarifas()} className="ml-2 h-6 text-xs" type="button">Reintentar</Button></>
                   )}
                 </div>
               )}
@@ -2058,7 +2058,7 @@ export default function NewShipment() {
           <div className="border rounded-lg p-3">
             <div className="flex items-center gap-2 mb-2">
               <User className="h-4 w-4 text-primary" />
-              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Remitente</span>
+              <span className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Remitente</span>
             </div>
             <div className="space-y-2">
               <ContactAutocomplete 
@@ -2069,27 +2069,27 @@ export default function NewShipment() {
               />
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <Label className="text-[10px] text-muted-foreground">Nombre *</Label>
-                  <Input className="h-8 text-xs" value={formData.remitente_nombre} onChange={(e) => handleChange('remitente_nombre', e.target.value)} required />
+                  <Label className="text-xs text-muted-foreground">Nombre *</Label>
+                  <Input className="h-8 text-sm" value={formData.remitente_nombre} onChange={(e) => handleChange('remitente_nombre', e.target.value)} required />
                 </div>
                 <div>
-                  <Label className="text-[10px] text-muted-foreground">Apellido</Label>
-                  <Input className="h-8 text-xs" value={formData.remitente_apellido} onChange={(e) => handleChange('remitente_apellido', e.target.value)} />
+                  <Label className="text-xs text-muted-foreground">Apellido</Label>
+                  <Input className="h-8 text-sm" value={formData.remitente_apellido} onChange={(e) => handleChange('remitente_apellido', e.target.value)} />
                 </div>
                 <div>
-                  <Label className="text-[10px] text-muted-foreground">DNI/CUIT</Label>
-                  <Input className="h-8 text-xs" value={formData.remitente_dni}
+                  <Label className="text-xs text-muted-foreground">DNI/CUIT</Label>
+                  <Input className="h-8 text-sm" value={formData.remitente_dni}
                     onChange={(e) => { handleChange('remitente_dni', e.target.value); setClientLoadedManually(prev => ({ ...prev, remitente: false })); }}
                     onBlur={(e) => checkExistingClient(e.target.value, 'remitente')}
                     placeholder="12345678" />
                 </div>
                 <div>
-                  <Label className="text-[10px] text-muted-foreground">Teléfono / WhatsApp *</Label>
+                  <Label className="text-xs text-muted-foreground">Teléfono / WhatsApp *</Label>
                   <PhoneInput value={formData.remitente_telefono} onChange={(v) => handleChange('remitente_telefono', v)} required />
                 </div>
                 <div className="col-span-2">
-                  <Label className="text-[10px] text-muted-foreground">Email</Label>
-                  <Input className="h-8 text-xs" type="email" value={formData.remitente_email} onChange={(e) => handleChange('remitente_email', e.target.value)} />
+                  <Label className="text-xs text-muted-foreground">Email</Label>
+                  <Input className="h-8 text-sm" type="email" value={formData.remitente_email} onChange={(e) => handleChange('remitente_email', e.target.value)} />
                 </div>
               </div>
 
@@ -2098,7 +2098,7 @@ export default function NewShipment() {
                 <div className="mt-2 p-2 rounded-md bg-warning/5 border border-warning/20 space-y-2">
                   <div className="flex items-center gap-1.5">
                     <Home className="h-3.5 w-3.5 text-warning" />
-                    <span className="text-[10px] font-semibold text-warning uppercase">Dirección Retiro</span>
+                    <span className="text-xs font-semibold text-warning uppercase">Dirección Retiro</span>
                   </div>
                   <AddressAutocomplete
                     id="remitente_direccion"
@@ -2111,21 +2111,21 @@ export default function NewShipment() {
                   />
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <Label className="text-[10px] text-muted-foreground">Ciudad</Label>
-                      <Input className="h-8 text-xs" value={formData.remitente_ciudad} onChange={(e) => handleChange('remitente_ciudad', e.target.value)} />
+                      <Label className="text-xs text-muted-foreground">Ciudad</Label>
+                      <Input className="h-8 text-sm" value={formData.remitente_ciudad} onChange={(e) => handleChange('remitente_ciudad', e.target.value)} />
                     </div>
                     <div>
-                      <Label className="text-[10px] text-muted-foreground">CP</Label>
-                      <Input className="h-8 text-xs" value={formData.remitente_codigo_postal} onChange={(e) => handleChange('remitente_codigo_postal', e.target.value)} />
+                      <Label className="text-xs text-muted-foreground">CP</Label>
+                      <Input className="h-8 text-sm" value={formData.remitente_codigo_postal} onChange={(e) => handleChange('remitente_codigo_postal', e.target.value)} />
                     </div>
                     <div>
-                      <Label className="text-[10px] text-muted-foreground flex items-center gap-1"><Calendar className="h-3 w-3" />Fecha Retiro *</Label>
-                      <Input className="h-8 text-xs" type="date" min={today} value={formData.fecha_retiro} onChange={(e) => handleChange('fecha_retiro', e.target.value)} required />
+                      <Label className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="h-3 w-3" />Fecha Retiro *</Label>
+                      <Input className="h-8 text-sm" type="date" min={today} value={formData.fecha_retiro} onChange={(e) => handleChange('fecha_retiro', e.target.value)} required />
                     </div>
                     <div>
-                      <Label className="text-[10px] text-muted-foreground flex items-center gap-1"><Clock className="h-3 w-3" />Horario</Label>
+                      <Label className="text-xs text-muted-foreground flex items-center gap-1"><Clock className="h-3 w-3" />Horario</Label>
                       <Select value={formData.horario_retiro} onValueChange={(v) => handleChange('horario_retiro', v)}>
-                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Horario" /></SelectTrigger>
+                        <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Horario" /></SelectTrigger>
                         <SelectContent>
                           {HORARIOS_RETIRO.map((h) => (<SelectItem key={h.value} value={h.value} className="text-xs">{h.label}</SelectItem>))}
                         </SelectContent>
@@ -2133,7 +2133,7 @@ export default function NewShipment() {
                     </div>
                   </div>
                   <div>
-                    <Label className="text-[10px] text-muted-foreground">Notas retiro</Label>
+                    <Label className="text-xs text-muted-foreground">Notas retiro</Label>
                     <Textarea className="min-h-[40px] text-xs" value={formData.notas_retiro} onChange={(e) => handleChange('notas_retiro', e.target.value)} placeholder="Instrucciones..." />
                   </div>
                 </div>
@@ -2147,7 +2147,7 @@ export default function NewShipment() {
               <>
                 <div className="flex items-center gap-2 mb-2">
                   <MapPin className="h-4 w-4 text-success" />
-                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Destinatario</span>
+                  <span className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Destinatario</span>
                 </div>
                 <div className="space-y-2">
                   <ContactAutocomplete 
@@ -2158,26 +2158,26 @@ export default function NewShipment() {
                   />
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <Label className="text-[10px] text-muted-foreground">Nombre *</Label>
-                      <Input className="h-8 text-xs" value={formData.destinatario_nombre} onChange={(e) => handleChange('destinatario_nombre', e.target.value)} required />
+                      <Label className="text-xs text-muted-foreground">Nombre *</Label>
+                      <Input className="h-8 text-sm" value={formData.destinatario_nombre} onChange={(e) => handleChange('destinatario_nombre', e.target.value)} required />
                     </div>
                     <div>
-                      <Label className="text-[10px] text-muted-foreground">Apellido</Label>
-                      <Input className="h-8 text-xs" value={formData.destinatario_apellido} onChange={(e) => handleChange('destinatario_apellido', e.target.value)} />
+                      <Label className="text-xs text-muted-foreground">Apellido</Label>
+                      <Input className="h-8 text-sm" value={formData.destinatario_apellido} onChange={(e) => handleChange('destinatario_apellido', e.target.value)} />
                     </div>
                     <div>
-                      <Label className="text-[10px] text-muted-foreground">DNI/CUIT</Label>
-                      <Input className="h-8 text-xs" value={formData.destinatario_dni}
+                      <Label className="text-xs text-muted-foreground">DNI/CUIT</Label>
+                      <Input className="h-8 text-sm" value={formData.destinatario_dni}
                         onChange={(e) => { handleChange('destinatario_dni', e.target.value); setClientLoadedManually(prev => ({ ...prev, destinatario: false })); }}
                         onBlur={(e) => checkExistingClient(e.target.value, 'destinatario')} />
                     </div>
                     <div>
-                      <Label className="text-[10px] text-muted-foreground">Teléfono / WhatsApp *</Label>
+                      <Label className="text-xs text-muted-foreground">Teléfono / WhatsApp *</Label>
                       <PhoneInput value={formData.destinatario_telefono} onChange={(v) => handleChange('destinatario_telefono', v)} required />
                     </div>
                     <div>
-                      <Label className="text-[10px] text-muted-foreground">Email</Label>
-                      <Input className="h-8 text-xs" type="email" value={formData.destinatario_email} onChange={(e) => handleChange('destinatario_email', e.target.value)} />
+                      <Label className="text-xs text-muted-foreground">Email</Label>
+                      <Input className="h-8 text-sm" type="email" value={formData.destinatario_email} onChange={(e) => handleChange('destinatario_email', e.target.value)} />
                     </div>
                   </div>
 
@@ -2186,7 +2186,7 @@ export default function NewShipment() {
                     <div className="mt-2 p-2 rounded-md bg-muted/50 space-y-1.5">
                       <div className="flex items-center gap-1.5">
                         <Building2 className="h-3.5 w-3.5 text-primary" />
-                        <span className="text-[10px] font-semibold uppercase text-muted-foreground">Suc. Destino</span>
+                        <span className="text-sm font-semibold uppercase text-muted-foreground">Suc. Destino</span>
                       </div>
                       <Popover open={sucursalDestinoOpen} onOpenChange={setSucursalDestinoOpen}>
                         <PopoverTrigger asChild>
@@ -2230,7 +2230,7 @@ export default function NewShipment() {
                     <div className="mt-2 p-2 rounded-md bg-success/5 border border-success/20 space-y-2">
                       <div className="flex items-center gap-1.5">
                         <Home className="h-3.5 w-3.5 text-success" />
-                        <span className="text-[10px] font-semibold text-success uppercase">Dirección Entrega</span>
+                        <span className="text-xs font-semibold text-success uppercase">Dirección Entrega</span>
                       </div>
                       <AddressAutocomplete
                         id="destinatario_direccion"
@@ -2243,31 +2243,31 @@ export default function NewShipment() {
                       />
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <Label className="text-[10px] text-muted-foreground">Ciudad</Label>
-                          <Input className="h-8 text-xs" value={formData.destinatario_ciudad} onChange={(e) => handleChange('destinatario_ciudad', e.target.value)} />
+                          <Label className="text-xs text-muted-foreground">Ciudad</Label>
+                          <Input className="h-8 text-sm" value={formData.destinatario_ciudad} onChange={(e) => handleChange('destinatario_ciudad', e.target.value)} />
                         </div>
                         <div>
-                          <Label className="text-[10px] text-muted-foreground">CP</Label>
-                          <Input className="h-8 text-xs" value={formData.destinatario_codigo_postal} onChange={(e) => handleChange('destinatario_codigo_postal', e.target.value)} />
+                          <Label className="text-xs text-muted-foreground">CP</Label>
+                          <Input className="h-8 text-sm" value={formData.destinatario_codigo_postal} onChange={(e) => handleChange('destinatario_codigo_postal', e.target.value)} />
                         </div>
                       </div>
                       {/* Delivery preferences */}
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <Label className="text-[10px] text-muted-foreground">Horario entrega</Label>
+                          <Label className="text-xs text-muted-foreground">Horario entrega</Label>
                           <Select value={formData.horario_preferido_entrega} onValueChange={(v) => handleChange('horario_preferido_entrega', v)}>
-                            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                            <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                             <SelectContent>
                               {HORARIOS_ENTREGA.map((h) => (<SelectItem key={h.value} value={h.value} className="text-xs">{h.label}</SelectItem>))}
                             </SelectContent>
                           </Select>
                         </div>
                         <div>
-                          <Label className="text-[10px] text-muted-foreground">Días preferidos</Label>
+                          <Label className="text-xs text-muted-foreground">Días preferidos</Label>
                           <div className="flex flex-wrap gap-1 mt-0.5">
                             {DIAS_SEMANA.map((dia) => (
                               <Button key={dia.key} type="button" variant={diasPreferidos.includes(dia.key) ? 'default' : 'outline'}
-                                className="h-6 px-1.5 text-[10px]" size="sm"
+                                className="h-6 px-1.5 text-xs" size="sm"
                                 onClick={() => toggleDiaPreferido(dia.key)}>
                                 {dia.label}
                               </Button>
@@ -2288,7 +2288,7 @@ export default function NewShipment() {
                   <p className="text-sm font-semibold">
                     📦 Bodega {sucursalUsuario?.nombre || 'tu sucursal'}
                   </p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                  <p className="text-xs text-muted-foreground mt-0.5">
                     Mercadería en almacenaje hasta definir destino
                   </p>
                 </div>
@@ -2301,36 +2301,36 @@ export default function NewShipment() {
         <div className="mt-3 border rounded-lg p-3">
           <div className="flex items-center gap-2 mb-2">
             <Package className="h-4 w-4 text-warning" />
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Paquete y Detalles</span>
+            <span className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Paquete y Detalles</span>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
             <div>
-              <Label className="text-[10px] text-muted-foreground">Bultos</Label>
-              <Input className="h-8 text-xs" type="number" min="1" value={formData.cantidad_bultos} onChange={(e) => handleChange('cantidad_bultos', e.target.value)} />
+              <Label className="text-xs text-muted-foreground">Bultos</Label>
+              <Input className="h-8 text-sm" type="number" min="1" value={formData.cantidad_bultos} onChange={(e) => handleChange('cantidad_bultos', e.target.value)} />
             </div>
             <div>
-              <Label className="text-[10px] text-muted-foreground">Peso (kg)</Label>
-              <Input className="h-8 text-xs" type="number" step="0.1" min="0" value={formData.peso_kg} onChange={(e) => handleChange('peso_kg', e.target.value)} />
+              <Label className="text-xs text-muted-foreground">Peso (kg)</Label>
+              <Input className="h-8 text-sm" type="number" step="0.1" min="0" value={formData.peso_kg} onChange={(e) => handleChange('peso_kg', e.target.value)} />
             </div>
             <div>
-              <Label className="text-[10px] text-muted-foreground">Dimensiones (cm)</Label>
-              <Input className="h-8 text-xs" value={formData.dimensiones} onChange={(e) => handleChange('dimensiones', e.target.value)} placeholder="30x20x15" />
+              <Label className="text-xs text-muted-foreground">Dimensiones (cm)</Label>
+              <Input className="h-8 text-sm" value={formData.dimensiones} onChange={(e) => handleChange('dimensiones', e.target.value)} placeholder="30x20x15" />
             </div>
             <div>
-              <Label className="text-[10px] text-muted-foreground">V. Declarado ($)</Label>
-              <Input className="h-8 text-xs" type="number" min="0" value={formData.valor_declarado} onChange={(e) => handleChange('valor_declarado', e.target.value)}
+              <Label className="text-xs text-muted-foreground">V. Declarado ($)</Label>
+              <Input className="h-8 text-sm" type="number" min="0" value={formData.valor_declarado} onChange={(e) => handleChange('valor_declarado', e.target.value)}
                 placeholder={configSeguro?.valor_minimo_declarado ? `Mín $${configSeguro.valor_minimo_declarado}` : ''} />
             </div>
             <div className="col-span-2 md:col-span-2">
-              <Label className="text-[10px] text-muted-foreground">Descripción contenido</Label>
-              <Input className="h-8 text-xs" value={formData.descripcion} onChange={(e) => handleChange('descripcion', e.target.value)} placeholder="Documentos, ropa, etc..." />
+              <Label className="text-xs text-muted-foreground">Descripción contenido</Label>
+              <Input className="h-8 text-sm" value={formData.descripcion} onChange={(e) => handleChange('descripcion', e.target.value)} placeholder="Documentos, ropa, etc..." />
             </div>
           </div>
           
           {/* Conceptos adicionales inline */}
           {conceptosAdicionales.length > 0 && formData.tarifa_id && (
             <div className="mt-2 pt-2 border-t">
-              <Label className="text-[10px] text-muted-foreground flex items-center gap-1 mb-1.5">
+              <Label className="text-xs text-muted-foreground flex items-center gap-1 mb-1.5">
                 <Plus className="h-3 w-3" /> Conceptos Adicionales
               </Label>
               <div className="flex flex-wrap gap-2">
@@ -2339,14 +2339,14 @@ export default function NewShipment() {
                     <Checkbox id={`concepto-${cp.id}`} className="h-3.5 w-3.5"
                       checked={conceptosSeleccionados.has(cp.concepto_id)}
                       onCheckedChange={() => toggleConceptoAdicional(cp.concepto_id)} />
-                    <Label htmlFor={`concepto-${cp.id}`} className="text-[10px] cursor-pointer">{cp.concepto?.nombre}</Label>
+                    <Label htmlFor={`concepto-${cp.id}`} className="text-xs cursor-pointer">{cp.concepto?.nombre}</Label>
                     {cp.concepto?.monto_editable ? (
-                      <Input type="number" step="0.01" min="0" placeholder="$" className="w-16 h-6 text-[10px]"
+                      <Input type="number" step="0.01" min="0" placeholder="$" className="w-16 h-6 text-xs"
                         value={montosEditables[cp.concepto_id] || ''}
                         onChange={(e) => setMontosEditables(prev => ({ ...prev, [cp.concepto_id]: e.target.value }))}
                         disabled={!conceptosSeleccionados.has(cp.concepto_id)} />
                     ) : (
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="text-xs text-muted-foreground">
                         {cp.es_porcentaje && cp.porcentaje ? `${cp.porcentaje}%` : formatCurrency(cp.monto)}
                       </span>
                     )}
@@ -2358,8 +2358,8 @@ export default function NewShipment() {
 
           {/* Notas */}
           <div className="mt-2 pt-2 border-t">
-            <Label className="text-[10px] text-muted-foreground">Notas adicionales</Label>
-            <Input className="h-8 text-xs" value={formData.notas} onChange={(e) => handleChange('notas', e.target.value)} placeholder="Instrucciones especiales..." />
+            <Label className="text-xs text-muted-foreground">Notas adicionales</Label>
+            <Input className="h-8 text-sm" value={formData.notas} onChange={(e) => handleChange('notas', e.target.value)} placeholder="Instrucciones especiales..." />
           </div>
         </div>
 
