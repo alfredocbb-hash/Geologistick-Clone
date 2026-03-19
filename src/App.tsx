@@ -72,6 +72,7 @@ import Incidents from "./pages/Incidents";
 import Partners from "./pages/Partners";
 import PrintInvoice from "./pages/PrintInvoice";
 import PrintSettlement from "./pages/PrintSettlement";
+import MarketingAssets from "./pages/MarketingAssets";
 import TiendanubeOAuthResult from "./pages/TiendanubeOAuthResult";
 import TiendanubeDocsPublic from "./pages/TiendanubeDocsPublic";
 import MercadoLibreOAuthResult from "./pages/MercadoLibreOAuthResult";
@@ -242,6 +243,7 @@ function AppRoutes() {
       <Route path="/admin/trial-requests" element={<TrialRequests />} />
       <Route path="/admin/status-guide" element={<DashboardLayout><ShipmentStatusGuide /></DashboardLayout>} />
       <Route path="/admin/partners" element={<DashboardLayout><Partners /></DashboardLayout>} />
+      <Route path="/marketing-assets" element={<DashboardLayout><MarketingAssets /></DashboardLayout>} />
       
       {/* Profile */}
       <Route path="/profile" element={<DashboardLayout><Profile /></DashboardLayout>} />
