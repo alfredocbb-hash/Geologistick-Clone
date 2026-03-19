@@ -1,1 +1,4 @@
 project_id = "ajmpibomrxvrsdmrxpci"
+
+[functions.public-tracking-live]
+verify_jwt = false

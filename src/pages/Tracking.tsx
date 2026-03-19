@@ -308,12 +308,19 @@ export default function Tracking() {
               </CardContent>
             </Card>
 
-            {/* Map */}
-            <TrackingMap
-              direccion={envio.destino?.direccion}
-              ciudad={envio.destino?.ciudad}
-              estado={envio.estado}
-            />
+            {/* Live Driver Map (only when en_reparto) */}
+            {envio.estado === 'en_reparto' && (
+              <LiveDriverMap trackingNumber={envio.tracking_number} />
+            )}
+
+            {/* Static Map (hidden when live map is showing) */}
+            {envio.estado !== 'en_reparto' && (
+              <TrackingMap
+                direccion={envio.destino?.direccion}
+                ciudad={envio.destino?.ciudad}
+                estado={envio.estado}
+              />
+            )}
 
             {/* Details */}
             <div className="grid gap-6 md:grid-cols-2">

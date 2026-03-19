@@ -814,7 +814,7 @@ export default function ActiveRouteNavigation() {
                     <Button 
                       variant="outline"
                       className="bg-green-500/10 border-green-500/30 text-green-600"
-                      onClick={() => phone && whatsAppCustomer(phone, clienteName)}
+                      onClick={() => phone && whatsAppCustomer(phone, clienteName, nextEnvio?.tracking_number)}
                       disabled={!phone}
                     >
                       <MessageCircle className="h-4 w-4 mr-1" />
