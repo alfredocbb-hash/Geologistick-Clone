@@ -66,7 +66,15 @@ export default function Reports() {
     sucursalId: sucursalId !== 'all' ? sucursalId : undefined,
   };
 
-  const { enviosPorSucursal, destinos, rendimientoChoferes, resumenGeneral, sucursales } = useReportsData(filters);
+  const { enviosPorSucursal, destinos, rendimientoChoferes, resumenGeneral, resumenPeriodoAnterior, sucursales } = useReportsData(filters);
+
+  // Trend calculation helper
+  const calcTrend = (curr: number, prev: number) => {
+    if (prev === 0) return curr > 0 ? 100 : 0;
+    return Math.round(((curr - prev) / prev) * 100);
+  };
+
+  const prev = resumenPeriodoAnterior.data;
 
   const handleExportPDF = async (
     tab: 'sucursales' | 'destinos' | 'choferes' | 'resumen',
