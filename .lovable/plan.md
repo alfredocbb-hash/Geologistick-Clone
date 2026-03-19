@@ -1,40 +1,78 @@
 
 
+## Plan: Mejora Visual del Dashboard y Componentes Globales
 
-## Fase 5: Optimización avanzada ✅ COMPLETADA
+### Resumen
+Rediseño visual del dashboard interno y los componentes globales (cards, sidebar, header) para lograr una estética moderna e innovadora, con micro-animaciones, glassmorphism, gradientes sutiles y mejor jerarquía visual.
 
-Fases 1-4 completadas previamente.
+### Cambios
 
-### Implementado:
-1. ✅ **ETA dinámico por parada** - Cálculo Haversine en ActiveRouteNavigation con velocidad promedio 25km/h, tiempo de gestión 5min/parada, hora estimada de llegada
-2. ✅ **Dashboard de Productividad por Chofer** - Nueva pestaña "Productividad" en Reports con entregas/hora, tasa de éxito, ranking visual, KPIs globales
-3. ✅ **Dashboard de Costos Operativos** - Nueva pestaña "Costos" en Reports con combustible estimado (12L/100km), costo por entrega, comparativa por chofer
+**1. Stats Cards con glassmorphism y animaciones (`DashboardStatsCards.tsx`)**
+- Cards con fondo glass (backdrop-blur) y borde sutil semitransparente
+- Icono con gradiente radial de fondo en vez de color sólido
+- Animación de entrada escalonada (staggered fade-in)
+- Hover con efecto de elevación + borde brillante
+- Número animado con transición suave
 
----
+**2. Header mejorado (`AppHeader.tsx`)**
+- Línea inferior con gradiente sutil (teal → cyan → blue) en vez de borde gris
+- Avatar con anillo de gradiente animado
+- Transición suave en scroll (opacity del blur)
 
-## Fase 6: Predicción de demanda por zona con IA ✅ COMPLETADA
+**3. Cards globales (`card.tsx`)**
+- Añadir variante `glass` con backdrop-blur y fondo semitransparente
+- Hover sutil con transición de sombra y borde
 
-### Implementado:
-1. ✅ **Edge Function `predict-demand`** - Consulta envíos de últimos 90 días, agrupa por zona/ciudad y día de semana, envía a Gemini AI vía Lovable AI Gateway con tool calling para obtener predicción estructurada
-2. ✅ **DemandPredictionTab** - Nueva pestaña "Demanda" en Reports con tabla de predicciones, gráfico de barras comparativo, badges de tendencia, resumen ejecutivo de IA
-3. ✅ **Hook useDemandPrediction** - Invoca edge function, maneja loading/error/rate limiting (429/402)
+**4. Sidebar modernizado (`AppSidebar.tsx`)**
+- Items activos con indicador lateral (barra vertical con gradiente) en vez de background sólido
+- Transición suave en hover con glow sutil
+- Logo header con efecto glass
 
----
+**5. Dashboard layout mejorado (`Dashboard.tsx`)**
+- Greeting con gradiente de texto animado
+- Sección de stats con fondo decorativo (subtle gradient blob)
+- Cards de resumen del día con iconos que pulsan sutilmente
 
-## Fase 7: Tracking en vivo para destinatarios ✅ COMPLETADA
+**6. Weekly Chart mejorado (`DashboardWeeklyChart.tsx`)**
+- Card con borde degradado sutil
+- Gradientes más vibrantes en el area chart
+- Tooltip con glassmorphism
 
-### Implementado:
-1. ✅ **Edge Function `public-tracking-live`** - Endpoint público que retorna lat/lng del chofer cuando el envío está en_reparto, con rate limiting por IP
-2. ✅ **Componente `LiveDriverMap`** - Mapa embebido con ruta chofer→destino, indicador "En vivo" pulsante, polling cada 10s, última actualización
-3. ✅ **Integración en Tracking.tsx** - Muestra mapa en vivo cuando estado=en_reparto, mapa estático para otros estados
-4. ✅ **WhatsApp con link de tracking** - El mensaje del chofer ahora incluye link de seguimiento en vivo
+**7. CSS global (`index.css`)**
+- Nueva clase `.glass-card` con backdrop-blur + borde luminoso
+- Clase `.gradient-border` para bordes con gradiente
+- Clase `.animate-number` para transiciones numéricas
+- Clase `.glow-hover` para efecto de resplandor al hover
+- Nuevas animaciones: `slide-up`, `count-up`, `shimmer`
 
----
+### Archivos a modificar
+- `src/index.css` - nuevas utilidades CSS
+- `src/components/ui/card.tsx` - variante glass
+- `src/components/layout/AppHeader.tsx` - gradiente inferior + avatar mejorado
+- `src/components/layout/AppSidebar.tsx` - indicador activo lateral
+- `src/pages/Dashboard.tsx` - greeting con gradiente
+- `src/components/dashboard/DashboardStatsCards.tsx` - glassmorphism + animaciones
+- `src/components/dashboard/DashboardWeeklyChart.tsx` - tooltip glass
+- `src/components/dashboard/DashboardDaySummary.tsx` - iconos animados
+- `src/components/dashboard/DashboardRecentShipments.tsx` - hover mejorado
+- `src/components/dashboard/DashboardTopDrivers.tsx` - barras con gradiente
 
-## Posible Fase 8: Automatización avanzada
+### Detalles visuales clave
 
-Ideas para próximas mejoras:
-- Auto-asignación inteligente de rutas con IA
-- Integración con WhatsApp Business API
-- Reportes con IA generativa (resumen ejecutivo automático)
-- Alertas predictivas de incidencias
+```text
+Antes:                          Después:
+┌─────────────────┐             ┌─────────────────┐
+│ ■ Envíos Hoy    │             │ ◉ Envíos Hoy    │  ← icono con glow
+│   42            │             │   42  ↑12%       │  ← número + trend badge
+│                 │             │ ░░░░░░░░░░░      │  ← sparkline mini
+└─────────────────┘             └─────────────────┘
+  borde gris sólido               borde glass + hover glow
+
+Sidebar activo:                 Sidebar activo:
+  [█ Dashboard    ]               [▎ Dashboard    ]  ← barra lateral gradiente
+                                     efecto glow sutil
+```
+
+### Sin cambios en backend
+Solo cambios visuales en frontend. Sin migraciones ni edge functions.
+
