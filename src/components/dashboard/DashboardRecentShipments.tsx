@@ -39,10 +39,12 @@ export default function DashboardRecentShipments({ tenantId }: Props) {
   });
 
   return (
-    <Card>
+    <Card variant="glass" className="glow-hover">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Package className="h-5 w-5 text-envios" />
+          <div className="p-1.5 rounded-lg bg-gradient-to-br from-[hsl(var(--envios))] to-[hsl(var(--geo-cyan))]">
+            <Package className="h-4 w-4 text-white" />
+          </div>
           Envíos Recientes
         </CardTitle>
         <CardDescription>Los últimos movimientos del sistema</CardDescription>
@@ -55,11 +57,11 @@ export default function DashboardRecentShipments({ tenantId }: Props) {
             ))}
           </div>
         ) : recentShipments && recentShipments.length > 0 ? (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {recentShipments.map((shipment) => (
               <div
                 key={shipment.tracking_number}
-                className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                className="flex items-center justify-between p-3 rounded-xl bg-muted/30 hover:bg-muted/60 border border-transparent hover:border-border/50 transition-all duration-200"
               >
                 <div className="flex flex-col gap-1">
                   <span className="font-mono text-sm font-medium">{shipment.tracking_number}</span>

@@ -3,7 +3,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Progress } from '@/components/ui/progress';
 import { Users } from 'lucide-react';
 import { getTodayString } from '@/lib/dateUtils';
 import { subDays } from 'date-fns';
@@ -28,7 +27,6 @@ export default function DashboardTopDrivers({ tenantId }: Props) {
 
       const weekAgo = formatDateString(subDays(new Date(), 7));
 
-      // Get shipments from last 7 days with assigned drivers
       const { data: shipments } = await supabase
         .from('envios')
         .select('chofer_id, estado')
@@ -39,7 +37,6 @@ export default function DashboardTopDrivers({ tenantId }: Props) {
 
       if (!shipments || shipments.length === 0) return [];
 
-      // Group by driver
       const driverMap = new Map<string, { entregados: number; total: number }>();
       for (const s of shipments) {
         if (!s.chofer_id) continue;
@@ -49,7 +46,6 @@ export default function DashboardTopDrivers({ tenantId }: Props) {
         driverMap.set(s.chofer_id, existing);
       }
 
-      // Get driver names
       const driverIds = Array.from(driverMap.keys());
       const { data: profiles } = await supabase
         .from('profiles')
@@ -61,7 +57,6 @@ export default function DashboardTopDrivers({ tenantId }: Props) {
         nameMap.set(p.user_id, [p.nombre, p.apellido].filter(Boolean).join(' ') || 'Sin nombre');
       });
 
-      // Sort by delivered count
       return Array.from(driverMap.entries())
         .map(([id, stats]) => ({
           nombre: nameMap.get(id) || 'Chofer',
@@ -76,10 +71,12 @@ export default function DashboardTopDrivers({ tenantId }: Props) {
   });
 
   return (
-    <Card>
+    <Card variant="glass" className="glow-hover">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Users className="h-5 w-5 text-comisiones" />
+          <div className="p-1.5 rounded-lg bg-gradient-to-br from-[hsl(var(--comisiones))] to-[hsl(var(--pagos))]">
+            <Users className="h-4 w-4 text-white" />
+          </div>
           Top Choferes
         </CardTitle>
         <CardDescription>Rendimiento últimos 7 días</CardDescription>
@@ -92,22 +89,27 @@ export default function DashboardTopDrivers({ tenantId }: Props) {
             ))}
           </div>
         ) : drivers && drivers.length > 0 ? (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {drivers.map((driver, idx) => (
-              <div key={idx} className="flex items-center gap-3">
+              <div key={idx} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/40 transition-colors">
                 <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
+                  <AvatarFallback className="bg-gradient-to-br from-[hsl(var(--primary)/0.2)] to-[hsl(var(--accent)/0.2)] text-primary text-xs font-bold">
                     {driver.nombre.charAt(0).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center justify-between mb-1.5">
                     <span className="text-sm font-medium truncate">{driver.nombre}</span>
                     <span className="text-xs text-muted-foreground ml-2">
                       {driver.entregados}/{driver.total}
                     </span>
                   </div>
-                  <Progress value={driver.porcentaje} className="h-1.5" />
+                  <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                    <div 
+                      className="h-full rounded-full bg-gradient-to-r from-[hsl(var(--primary))] to-[hsl(var(--success))] transition-all duration-500"
+                      style={{ width: `${driver.porcentaje}%` }}
+                    />
+                  </div>
                 </div>
                 <span className="text-sm font-bold text-success w-12 text-right">
                   {driver.porcentaje}%

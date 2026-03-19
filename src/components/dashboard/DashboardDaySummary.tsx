@@ -49,43 +49,47 @@ export default function DashboardDaySummary({ tenantId }: Props) {
       label: 'Entregas Completadas',
       sublabel: 'Completadas hoy',
       value: dailySummary?.delivered ?? 0,
-      colorClass: 'text-success',
-      bgClass: 'bg-success/10 border-success/20',
+      gradient: 'from-[hsl(var(--success))] to-[hsl(160,84%,39%)]',
+      bgClass: 'bg-success/5 border-success/20 hover:bg-success/10',
     },
     {
       icon: Clock,
       label: 'Envíos Pendientes',
       sublabel: 'Esperando asignación',
       value: dailySummary?.pending ?? 0,
-      colorClass: 'text-warning',
-      bgClass: 'bg-warning/10 border-warning/20',
+      gradient: 'from-[hsl(var(--warning))] to-[hsl(var(--tarifas))]',
+      bgClass: 'bg-warning/5 border-warning/20 hover:bg-warning/10',
     },
     {
       icon: AlertCircle,
       label: 'Incidencias',
       sublabel: 'Requieren atención',
       value: dailySummary?.incidents ?? 0,
-      colorClass: 'text-destructive',
-      bgClass: 'bg-destructive/10 border-destructive/20',
+      gradient: 'from-[hsl(var(--destructive))] to-[hsl(var(--pagos))]',
+      bgClass: 'bg-destructive/5 border-destructive/20 hover:bg-destructive/10',
     },
   ];
 
   return (
-    <Card>
+    <Card variant="glass" className="glow-hover">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <TrendingUp className="h-5 w-5 text-success" />
+          <div className="p-1.5 rounded-lg bg-gradient-to-br from-[hsl(var(--success))] to-[hsl(160,84%,39%)]">
+            <TrendingUp className="h-4 w-4 text-white" />
+          </div>
           Resumen del Día
         </CardTitle>
         <CardDescription>Estado general de la operación</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="space-y-4">
+        <div className="space-y-3">
           {items.map((item) => (
-            <div key={item.label} className={`flex items-center gap-4 p-4 rounded-lg border ${item.bgClass}`}>
-              <item.icon className={`h-8 w-8 ${item.colorClass}`} />
-              <div>
-                <p className={`font-semibold ${item.colorClass}`}>
+            <div key={item.label} className={`flex items-center gap-4 p-4 rounded-xl border transition-all duration-200 ${item.bgClass}`}>
+              <div className={`p-2 rounded-lg bg-gradient-to-br ${item.gradient}`}>
+                <item.icon className="h-5 w-5 text-white" />
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-foreground">
                   {item.value} {item.label}
                 </p>
                 <p className="text-sm text-muted-foreground">{item.sublabel}</p>

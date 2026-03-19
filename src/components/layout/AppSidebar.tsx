@@ -410,8 +410,19 @@ export function AppSidebar() {
                 const isActive = location.pathname === item.url;
                 return <SidebarMenuItem key={item.url}>
                         <SidebarMenuButton asChild>
-                          <NavLink to={item.url} className={cn('flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all', 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground', isActive && 'bg-sidebar-primary text-sidebar-primary-foreground shadow-md')}>
-                            <item.icon className={cn('h-5 w-5 shrink-0', isActive && 'text-sidebar-primary-foreground')} />
+                          <NavLink to={item.url} className={cn(
+                            'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
+                            'text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
+                            isActive && 'sidebar-active-indicator bg-sidebar-accent text-sidebar-primary-foreground font-semibold'
+                          )}>
+                            <div className={cn(
+                              'flex h-7 w-7 items-center justify-center rounded-md transition-all duration-200 shrink-0',
+                              isActive 
+                                ? 'bg-gradient-to-br from-[hsl(var(--geo-teal))] to-[hsl(var(--primary))] text-white shadow-sm' 
+                                : 'text-sidebar-foreground/70'
+                            )}>
+                              <item.icon className="h-4 w-4" />
+                            </div>
                             {!collapsed && <span>{item.title}</span>}
                           </NavLink>
                         </SidebarMenuButton>
