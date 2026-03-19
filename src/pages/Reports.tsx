@@ -73,6 +73,9 @@ export default function Reports() {
   };
 
   const { enviosPorSucursal, destinos, rendimientoChoferes, resumenGeneral, sucursales } = useReportsData(filters);
+  const productividad = useProductividadData(filters);
+  const costos = useCostosData(filters);
+  const demandPrediction = useDemandPrediction();
 
   const handleExportPDF = async (
     tab: 'sucursales' | 'destinos' | 'choferes' | 'resumen',
