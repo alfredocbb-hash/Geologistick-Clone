@@ -5,7 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Building2, Package, Truck, RefreshCw, AlertCircle, Navigation, User, Clock, MapPin, Route, Eye, EyeOff, X, WifiOff, Bot, Sparkles, Loader2 } from "lucide-react";
+import { Building2, Package, Truck, RefreshCw, AlertCircle, Navigation, User, Clock, MapPin, Route, Eye, EyeOff, X, WifiOff, Bot, Sparkles, Loader2, Flame } from "lucide-react";
+import HeatmapMapView from "@/components/maps/HeatmapMapView";
 import { Button } from "@/components/ui/button";
 import MapView from "@/components/maps/MapView";
 import { RouteStatsPanel } from "@/components/maps/RouteStatsPanel";
@@ -82,6 +83,128 @@ interface OperationsSummary {
     mensaje: string;
   }>;
   sugerencias: string[];
+}
+
+// Heatmap tab component
+function HeatmapTab() {
+  const [period, setPeriod] = useState<'7d' | '30d' | '90d'>('30d');
+
+  const { data: heatmapPoints = [], isLoading: heatmapLoading } = useQuery({
+    queryKey: ["heatmap-deliveries", period],
+    queryFn: async () => {
+      const daysMap = { '7d': 7, '30d': 30, '90d': 90 };
+      const since = new Date();
+      since.setDate(since.getDate() - daysMap[period]);
+
+      const { data, error } = await supabase
+        .from("envios")
+        .select("entrega_lat, entrega_lng")
+        .eq("estado", "entregado")
+        .not("entrega_lat", "is", null)
+        .not("entrega_lng", "is", null)
+        .gte("fecha_entrega", since.toISOString());
+
+      if (error) throw error;
+
+      return (data || []).map(e => ({
+        lat: Number(e.entrega_lat),
+        lng: Number(e.entrega_lng),
+        weight: 1,
+      }));
+    },
+  });
+
+  return (
+    <div className="grid lg:grid-cols-3 gap-6">
+      <Card className="lg:col-span-2">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Flame className="h-5 w-5 text-orange-500" />
+                Mapa de Calor - Entregas
+              </CardTitle>
+              <CardDescription>
+                Densidad de entregas por zona
+              </CardDescription>
+            </div>
+            <div className="flex gap-1">
+              {(['7d', '30d', '90d'] as const).map(p => (
+                <Button
+                  key={p}
+                  size="sm"
+                  variant={period === p ? "default" : "outline"}
+                  onClick={() => setPeriod(p)}
+                >
+                  {p === '7d' ? '7 días' : p === '30d' ? '30 días' : '90 días'}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {heatmapLoading ? (
+            <div className="h-[500px] flex items-center justify-center">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : heatmapPoints.length === 0 ? (
+            <div className="h-[500px] rounded-lg border-2 border-dashed border-muted flex flex-col items-center justify-center gap-4 bg-muted/20">
+              <Flame className="h-12 w-12 text-muted-foreground" />
+              <div className="text-center">
+                <h3 className="font-semibold text-lg mb-2">Sin datos de entregas</h3>
+                <p className="text-muted-foreground">No hay entregas con coordenadas en el período seleccionado</p>
+              </div>
+            </div>
+          ) : (
+            <HeatmapMapView
+              points={heatmapPoints}
+              height="500px"
+              radius={25}
+            />
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg">Estadísticas</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="bg-muted/50 rounded-lg p-4">
+            <p className="text-3xl font-bold">{heatmapPoints.length}</p>
+            <p className="text-sm text-muted-foreground">Entregas con coordenadas</p>
+          </div>
+          <div className="bg-muted/50 rounded-lg p-4">
+            <p className="text-sm text-muted-foreground mb-2">Leyenda del mapa</p>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-green-500" />
+                <span className="text-sm">Baja densidad</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-yellow-500" />
+                <span className="text-sm">Media densidad</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-orange-500" />
+                <span className="text-sm">Alta densidad</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-red-500" />
+                <span className="text-sm">Muy alta densidad</span>
+              </div>
+            </div>
+          </div>
+          <div className="bg-muted/50 rounded-lg p-4">
+            <p className="text-sm text-muted-foreground mb-1">Período</p>
+            <p className="font-medium">
+              {period === '7d' ? 'Últimos 7 días' : period === '30d' ? 'Últimos 30 días' : 'Últimos 90 días'}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
 
 export default function LiveMap() {
@@ -869,14 +992,18 @@ export default function LiveMap() {
 
       {/* Tabs for Sucursales and Choferes */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 max-w-md">
+        <TabsList className="grid w-full grid-cols-3 max-w-lg">
           <TabsTrigger value="sucursales" className="flex items-center gap-2">
             <Building2 className="h-4 w-4" />
             Sucursales
           </TabsTrigger>
           <TabsTrigger value="choferes" className="flex items-center gap-2">
             <Truck className="h-4 w-4" />
-            Choferes en Ruta
+            Choferes
+          </TabsTrigger>
+          <TabsTrigger value="heatmap" className="flex items-center gap-2">
+            <Flame className="h-4 w-4" />
+            Heatmap
           </TabsTrigger>
         </TabsList>
 
@@ -1395,6 +1522,11 @@ export default function LiveMap() {
               </Card>
             </div>
           </div>
+        </TabsContent>
+
+        {/* Tab: Heatmap */}
+        <TabsContent value="heatmap" className="mt-6">
+          <HeatmapTab />
         </TabsContent>
       </Tabs>
 
