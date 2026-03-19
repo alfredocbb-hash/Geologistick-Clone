@@ -870,14 +870,18 @@ export default function LiveMap() {
 
       {/* Tabs for Sucursales and Choferes */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 max-w-md">
+        <TabsList className="grid w-full grid-cols-3 max-w-lg">
           <TabsTrigger value="sucursales" className="flex items-center gap-2">
             <Building2 className="h-4 w-4" />
             Sucursales
           </TabsTrigger>
           <TabsTrigger value="choferes" className="flex items-center gap-2">
             <Truck className="h-4 w-4" />
-            Choferes en Ruta
+            Choferes
+          </TabsTrigger>
+          <TabsTrigger value="heatmap" className="flex items-center gap-2">
+            <Flame className="h-4 w-4" />
+            Heatmap
           </TabsTrigger>
         </TabsList>
 
