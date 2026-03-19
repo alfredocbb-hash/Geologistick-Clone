@@ -659,6 +659,29 @@ export default function ThirdPartyShipmentsTab() {
             </div>
           </div>
 
+          {/* Seller / Remitente (optional) */}
+          {sellers.length > 0 && (
+            <div className="space-y-2">
+              <Label>Seller / Remitente (opcional)</Label>
+              <Select
+                value={formData.seller_id || "none"}
+                onValueChange={(value) => handleInputChange("seller_id", value === "none" ? "" : value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Sin seller vinculado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin seller vinculado</SelectItem>
+                  {sellers.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.nombre} (Saldo: ${s.saldo_cuenta_corriente?.toLocaleString() || '0'})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           {/* Phone, Payment Method, Amount and Packages */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="space-y-2">
