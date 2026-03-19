@@ -23,7 +23,7 @@ export function useProductividadData(filters: { dateFrom: Date; dateTo: Date; su
     queryFn: async (): Promise<ProductividadChofer[]> => {
       let query = supabase
         .from('envios')
-        .select('id, estado, chofer_id, created_at, fecha_entrega, profiles!envios_chofer_id_fkey(nombre, apellido)')
+        .select('id, estado, chofer_id, created_at, fecha_entrega')
         .eq('tenant_id', tenantId!)
         .not('chofer_id', 'is', null)
         .gte('created_at', from)
