@@ -58,10 +58,11 @@ export default function Dashboard() {
         <DashboardTopDrivers tenantId={tenantId} />
       </div>
 
-      {/* Recent Shipments + Day Summary */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      {/* Recent Shipments + Day Summary + Mini Map */}
+      <div className="grid gap-6 lg:grid-cols-3">
         <DashboardRecentShipments tenantId={tenantId} />
         <DashboardDaySummary tenantId={tenantId} />
+        <DashboardMiniMap tenantId={tenantId} />
       </div>
     </div>
   );
