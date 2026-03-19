@@ -307,6 +307,13 @@ export default function Tracking() {
               </CardContent>
             </Card>
 
+            {/* Map */}
+            <TrackingMap
+              direccion={envio.destino?.direccion}
+              ciudad={envio.destino?.ciudad}
+              estado={envio.estado}
+            />
+
             {/* Details */}
             <div className="grid gap-6 md:grid-cols-2">
               {/* Origin */}
