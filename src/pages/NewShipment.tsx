@@ -2160,10 +2160,10 @@ export default function NewShipment() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="remitente_telefono">Teléfono *</Label>
-                <Input
+                <PhoneInput
                   id="remitente_telefono"
                   value={formData.remitente_telefono}
-                  onChange={(e) => handleChange('remitente_telefono', e.target.value)}
+                  onChange={(value) => handleChange('remitente_telefono', value)}
                   required
                 />
               </div>
