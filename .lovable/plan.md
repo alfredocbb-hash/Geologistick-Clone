@@ -1,22 +1,35 @@
 
 
-## Plan: Incorporar PhoneInput en el resto del proyecto
+## Plan: Centrar sidebar colapsado + agrandar texto en Nuevo Envío
 
-### Resumen
-Reemplazar todos los campos de teléfono que usan `<Input type="tel">` o `<Input>` plano por el nuevo componente `PhoneInput` con auto-formato WhatsApp.
+### 1. Sidebar colapsado — centrar iconos
+
+**Archivo:** `src/components/layout/AppSidebar.tsx`
+
+Cuando el sidebar está colapsado (`collapsed = true`), los items de navegación no quedan centrados porque tienen `px-3` y `gap-3` fijos. Cambios:
+
+- En el NavLink de items (línea ~414): agregar `justify-center` cuando `collapsed`
+- En el header del sidebar (línea ~366): agregar `justify-center` cuando `collapsed`
+- Aumentar `SIDEBAR_WIDTH_ICON` de `3rem` a `3.5rem` en `src/components/ui/sidebar.tsx` para dar más espacio al ícono centrado
+
+### 2. Texto más grande en NewShipment
+
+**Archivo:** `src/pages/NewShipment.tsx`
+
+Aumentar tamaños de texto en toda la pantalla:
+
+- Título "Nuevo Envío": `text-xl` → `text-2xl` (línea 1828)
+- Headers de sección ("TIPO DE SERVICIO", "REMITENTE", "DESTINATARIO"): `text-xs` → `text-sm` (líneas ~1899, 1936, y equivalentes en cols 2/3)
+- Labels de campos (Nombre, Apellido, etc.): `text-xs` → `text-sm`
+- Inputs: agregar clase para font-size más grande donde usen `text-xs` → `text-sm`
+- Opciones de tipo servicio: `text-xs` → `text-sm` (línea 1917)
+- Botones de pago: `text-xs` → `text-sm`
 
 ### Archivos a modificar
 
-**1. `src/components/profile/PersonalInfoCard.tsx`**
-- Reemplazar `<Input id="telefono" type="tel">` por `<PhoneInput>`
-- Adaptar onChange: de `(e) => setFormData({...formData, telefono: e.target.value})` a `(v) => setFormData({...formData, telefono: v})`
-
-**2. `src/components/ecommerce/CreateSellerDialog.tsx`**
-- En el FormField `name="telefono"`, reemplazar `<Input {...field} />` por `<PhoneInput value={field.value} onChange={field.onChange} />`
-
-**3. `src/components/ecommerce/EditSellerDialog.tsx`**
-- Mismo cambio que CreateSellerDialog: reemplazar Input por PhoneInput en el campo telefono
-
-### Sin cambios en backend
-Solo cambios de componente UI. La lógica de formularios y guardado permanece igual.
+| Archivo | Cambio |
+|---------|--------|
+| `src/components/ui/sidebar.tsx` | `SIDEBAR_WIDTH_ICON` de `3rem` → `3.5rem` |
+| `src/components/layout/AppSidebar.tsx` | Centrar items cuando colapsado |
+| `src/pages/NewShipment.tsx` | Escalar textos de `xs` a `sm` en todo el formulario |
 
