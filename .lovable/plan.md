@@ -1,60 +1,56 @@
 
 
-## Fase 2: Mejoras funcionales de valor
+## Fase 3: Features avanzados
 
-Ya se completó la Fase 1 (sparklines en dashboard, exportación Excel en reportes). Ahora toca la **Fase 2** con estas mejoras concretas:
-
----
-
-### 1. Comparativa de períodos en Reportes
-Agregar a la pestaña "Resumen General" una comparación automática con el período anterior (si selecciono "Último Mes", comparar con el mes previo).
-
-- Mostrar en cada KPI card un indicador de cambio porcentual vs período anterior (flecha verde/roja + porcentaje)
-- Modificar `useReportsData.ts` para hacer una segunda query con el rango anterior
-- Actualizar las 4 KPI cards del resumen para mostrar la tendencia
-
-**Archivos**: `src/hooks/useReportsData.ts`, `src/pages/Reports.tsx`
+Fases 1 y 2 ya completadas. Ahora toca la **Fase 3** con funcionalidades avanzadas:
 
 ---
 
-### 2. Mapa embebido en Tracking público
-Cuando un envío está "en_reparto" o tiene coordenadas de destino, mostrar un mini-mapa entre la card de estado y los detalles de origen/destino.
+### 1. Comparativa de rendimiento entre sucursales
+Nueva sección en Reports con una tabla/gráfico comparativo que muestre por sucursal:
+- Total envíos, tasa de entrega, tiempo promedio de entrega
+- Ranking visual de sucursales (barras horizontales)
+- Query agrupando `envios` por `sucursal_origen_id` y `sucursal_destino_id`
 
-- Usar Google Maps embed (ya existe `GOOGLE_MAPS_API_KEY` configurada)
-- Mostrar marker en la dirección de destino (usando la dirección en texto con geocoding del embed)
-- Si el envío tiene coordenadas del chofer (estado "en_reparto"), mostrar posición estimada
-- Componente liviano con iframe de Google Maps Static API para no depender de JS SDK en página pública
-
-**Archivos**: `src/pages/Tracking.tsx` (agregar sección de mapa), nuevo componente `src/components/tracking/TrackingMap.tsx`
+**Archivos**: `src/pages/Reports.tsx` (nueva pestaña "Sucursales"), `src/hooks/useReportsData.ts`
 
 ---
 
-### 3. Indicadores de ahorro en Optimización de Rutas
-Después de optimizar una ruta en RoutePlanner, mostrar un panel comparativo "antes vs después":
+### 2. Dashboard de SLA (cumplimiento de tiempos)
+Medir el tiempo entre creación del envío y entrega vs. la fecha estimada (`fecha_entrega_estimada`):
+- Porcentaje de envíos entregados a tiempo vs. con demora
+- Gráfico de distribución de tiempos de entrega (histograma)
+- Card resumen: "85% de entregas a tiempo" con gauge circular
+- Integrar como nueva pestaña "SLA" en Reports
 
-- Distancia total original vs optimizada
-- Tiempo estimado original vs optimizado  
-- Porcentaje de ahorro
-- El edge function `optimize-route` ya devuelve distancia/duración; hay que guardar el valor pre-optimización y comparar
-
-**Archivos**: `src/pages/RoutePlanner.tsx` (agregar panel de ahorro post-optimización)
+**Archivos**: `src/pages/Reports.tsx` (nueva pestaña), `src/hooks/useReportsData.ts` (nueva query)
 
 ---
 
-### 4. Dashboard de KPIs con indicadores visuales mejorados
-Mejorar las KPI cards del resumen general en Reports con:
+### 3. Empty states ilustrados en páginas principales
+Reemplazar los estados vacíos genéricos con ilustraciones y CTAs contextuales:
+- Shipments: "Aún no tenés envíos. Creá tu primer envío →"
+- Routes: "Planificá tu primera ruta optimizada →"
+- Drivers: "Agregá choferes a tu equipo →"
+- Usar SVG inline o íconos animados (sin depender de imágenes externas del bucket)
 
-- Indicadores circulares (radial progress) para la tasa de entrega
-- Usar el componente `Progress` existente estilizado como gauge
-- Mini-sparkline en la card de "Total Envíos" mostrando la evolución diaria
+**Archivos**: Nuevo componente `src/components/EmptyState.tsx`, modificaciones en `src/pages/Shipments.tsx`, `src/pages/Routes.tsx`, `src/pages/Drivers.tsx`
 
-**Archivos**: `src/pages/Reports.tsx` (sección resumen)
+---
+
+### 4. Mini-mapa de actividad en Dashboard
+Widget embebido en el Dashboard principal mostrando las sucursales del tenant en un mapa estático:
+- Markers por sucursal con badge de envíos pendientes
+- Usa Google Maps Embed API (misma API key del tracking)
+- Card compacta con altura fija de 250px
+
+**Archivos**: Nuevo componente `src/components/dashboard/DashboardMiniMap.tsx`, `src/pages/Dashboard.tsx`
 
 ---
 
 ### Orden de implementación
-1. Comparativa de períodos en Reports (más impacto inmediato, el usuario está en /reports)
-2. KPI cards mejoradas en Reports
-3. Mapa en Tracking público
-4. Panel de ahorro en RoutePlanner
+1. Comparativa entre sucursales (extiende Reports que ya se mejoró)
+2. Dashboard de SLA (nueva pestaña en Reports)
+3. Empty states ilustrados (mejora visual rápida)
+4. Mini-mapa en Dashboard
 
