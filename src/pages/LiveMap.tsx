@@ -17,6 +17,10 @@ import { es } from "date-fns/locale";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useDriverRoute } from "@/hooks/useDriverRoute";
 import { toast } from "sonner";
+import { useDriverRouteProgress } from "@/hooks/useDriverRouteProgress";
+import { DriverCardEnhanced } from "@/components/livemap/DriverCardEnhanced";
+import { DriverFilters, type DriverFilterStatus, type DriverFilterRoute, type DriverSortBy } from "@/components/livemap/DriverFilters";
+import { DriverDetailPanel } from "@/components/livemap/DriverDetailPanel";
 
 interface SucursalConEnvios {
   id: string;
