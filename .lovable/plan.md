@@ -1,50 +1,51 @@
 
 
-## Plan: Vincular envíos terciarizados con sellers en la creación
+## Plan: Imágenes Promocionales Geologistick + Página de Marketing
 
-### Problema raíz
-Cuando se crea un envío terciarizado desde el planificador, el cargo se registra solo en `terciarizado_cuenta_corriente`. No hay vínculo con el seller, por lo que el envío no aparece en la liquidación del seller.
+### Objetivo
+Generar 6 imágenes promocionales en 3 formatos (Post 1080x1080, Story 1080x1920, Banner WhatsApp 1200x630) y crear una página en la app para verlas y descargarlas.
 
-ENV-8E8YLT tiene:
-- `remitente_id`: NULL
-- Sin entrada en `seller_cuenta_corriente`
-- Sin `ecommerce_order` vinculada
-- Cargo solo en `terciarizado_cuenta_corriente` (Correo Argentino)
+### Paleta de marca detectada
+- **geo-dark**: `hsl(210, 60%, 15%)` → `#0F2942`
+- **geo-teal**: `hsl(174, 50%, 50%)` → `#40BFA6`  
+- **geo-blue**: `hsl(207, 50%, 35%)` → `#2D6A8F`
+- **geo-cyan**: `hsl(187, 70%, 45%)` → `#22A3B3`
+- Logo: pin con paquete sobre fondo oscuro
 
-### Solución
+### Temas de las 6 imágenes
+1. **Hero/General** — "Logística inteligente para tu empresa" (logo central, gradiente de marca)
+2. **Tracking en tiempo real** — "Rastreá tus envíos en tiempo real" (icono mapa/pin)
+3. **App móvil** — "Tu operación desde el celular" (mockup mobile)
+4. **Ecommerce** — "Conectá tu tienda online" (iconos integración)
+5. **Optimización de rutas** — "Rutas optimizadas con IA" (iconos rutas)
+6. **Reportes y liquidaciones** — "Métricas y liquidaciones automáticas" (iconos gráficos)
 
-#### 1. Agregar selector de Seller en ThirdPartyShipmentsTab
+### Paso 1: Generar imágenes con AI (script)
+- Usar el AI image generation gateway (`google/gemini-3-pro-image-preview`) para generar las 6 imágenes en formato Post (1080x1080)
+- Luego generar versiones Story y Banner adaptando composición
+- Guardar todo en `/mnt/documents/geologistick-promo/`
 
-En `src/components/routes/ThirdPartyShipmentsTab.tsx`:
-- Agregar campo opcional **"Seller / Remitente"** al formulario (select con sellers activos que tengan cuenta corriente)
-- Al crear el envío, si se seleccionó un seller:
-  - Setear `remitente_id` = `seller.cliente_id` en el envío
-  - Crear entrada en `seller_cuenta_corriente` con tipo `cargo`, el `envio_id`, y actualizar saldo del seller
-- El cargo al terciarizado se mantiene igual (ambos registros coexisten)
+### Paso 2: Nueva página `/marketing-assets`
+Crear `src/pages/MarketingAssets.tsx`:
+- Grid con las 6 imágenes en preview
+- Selector de formato (Post / Story / Banner)
+- Botón de descarga individual y descarga masiva
+- Accesible desde SystemSettings o como ruta directa
 
-#### 2. Datos necesarios
+### Paso 3: Almacenamiento
+- Subir las imágenes generadas a un bucket de storage (`marketing-assets`, público)
+- La página las carga desde el bucket
 
-- Query adicional: `ecommerce_sellers` activos con `tiene_cuenta_corriente = true` del tenant
-- En la mutación de creación, después de insertar el envío:
-  ```
-  if (selectedSeller && selectedSeller.tiene_cuenta_corriente) {
-    // Insert seller_cuenta_corriente cargo
-    // Update seller saldo_cuenta_corriente
-  }
-  ```
+### Archivos a crear/modificar
 
-#### 3. Para el envío existente (ENV-8E8YLT)
-
-Se puede vincular retroactivamente de dos formas:
-- **Opción A**: Insertar manualmente un registro en `seller_cuenta_corriente` para ese envío (migración o script)
-- **Opción B**: Agregar un botón en la UI para vincular envíos terciarizados existentes a un seller
-
-Recomiendo **Opción A** como fix inmediato + el cambio en el formulario para futuros envíos.
-
-### Archivos a modificar
-
-| Archivo | Cambio |
+| Archivo | Acción |
 |---------|--------|
-| `src/components/routes/ThirdPartyShipmentsTab.tsx` | Agregar selector de seller, registrar cargo en seller_cuenta_corriente al crear |
-| Migración SQL | Insertar `seller_cuenta_corriente` para ENV-8E8YLT vinculándolo a PABLO GAUNA |
+| Script de generación | Generar 6×3 = 18 imágenes con AI gateway |
+| Migración SQL | Crear bucket `marketing-assets` |
+| `src/pages/MarketingAssets.tsx` | **Nuevo** - galería con descarga |
+| `src/App.tsx` | Agregar ruta `/marketing-assets` |
+| `src/pages/SystemSettings.tsx` | Agregar card para acceder a Marketing Assets |
+
+### Nota importante
+Las imágenes se generarán con IA usando el logo y la paleta de marca de Geologistick. Cada imagen tendrá un diseño profesional con el branding consistente (colores teal/dark/cyan, logo, tipografía limpia). Primero genero las imágenes descargables y luego construyo la página en la app.
 
