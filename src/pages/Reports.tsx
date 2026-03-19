@@ -83,6 +83,8 @@ export default function Reports() {
   };
 
   const { enviosPorSucursal, destinos, rendimientoChoferes, resumenGeneral, resumenPeriodoAnterior, slaData, sucursales } = useReportsData(filters);
+  const productividad = useProductividadData(filters);
+  const costos = useCostosData(filters);
 
   // Trend calculation helper
   const calcTrend = (curr: number, prev: number) => {
