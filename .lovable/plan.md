@@ -1,16 +1,27 @@
 
 
-## Plan: Mostrar paradas numeradas en mapa post-optimización
+## Plan: Fix Dashboard Mini Map API Key Error
 
-### Problema
+### Problem
+The `DashboardMiniMap` component uses a **hardcoded Google Maps API key** in an iframe embed URL (line 55). This key is not authorized for the current domain, causing the "Google Maps Platform rejected your request" error.
 
-Cuando hay ruta optimizada, `mapMarkers` agrega marcadores estándar (líneas 701-725) para las mismas posiciones que `routeDeliveryStops` ya muestra con números de orden. Los marcadores estándar tapan a los numerados.
+### Solution
 
-### Solución
+**File:** `src/components/dashboard/DashboardMiniMap.tsx`
 
-**Archivo:** `src/pages/RoutePlanner.tsx` (líneas 700-725)
+Replace the hardcoded iframe embed with a proper Google Maps component using the existing `GoogleMapsProvider` infrastructure (which already fetches the correct API key per tenant).
 
-Cuando `selectedOption` existe, **no agregar** las paradas al array `markers`. Solo mantener el marcador de origen (sucursal origen). Las paradas ya se visualizan correctamente mediante `deliveryStops={routeDeliveryStops}` que muestra los `DeliveryStopMarker` con números 1, 2, 3...
+Changes:
+- Import `useGoogleMaps` from `GoogleMapsProvider` and `GoogleMap` / `Marker` from `@react-google-maps/api`
+- Replace the `<iframe>` with a `<GoogleMap>` component that plots markers for each branch using their `lat/lng` coordinates
+- Auto-fit bounds to show all branch markers
+- Show a fallback message if Google Maps is not loaded yet (API key loading or error)
 
-Cambio concreto: reemplazar el bloque `if (selectedOption)` (líneas 701-725) por un bloque vacío o simplemente eliminarlo, dejando que solo el `else` (envíos sin optimizar) agregue marcadores estándar.
+This reuses the same secure API key flow that all other map components use, avoiding hardcoded keys entirely.
+
+### Files to modify
+
+| File | Change |
+|------|--------|
+| `src/components/dashboard/DashboardMiniMap.tsx` | Replace iframe embed with `GoogleMap` + `Marker` using `useGoogleMaps()` |
 
