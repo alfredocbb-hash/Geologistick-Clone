@@ -18,6 +18,7 @@ import { exportToExcel } from '@/lib/exportExcel';
 import { toast } from 'sonner';
 import ProductividadTab from '@/components/reports/ProductividadTab';
 import CostosTab from '@/components/reports/CostosTab';
+import DemandPredictionTab from '@/components/reports/DemandPredictionTab';
 
 const DATE_PRESETS = [
   { label: 'Hoy', getValue: () => ({ from: new Date(), to: new Date() }) },
