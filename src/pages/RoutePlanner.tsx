@@ -1271,6 +1271,22 @@ export default function RoutePlanner() {
         if (updateError) throw updateError;
       }
 
+      // Notify driver about new route assignment
+      try {
+        await supabase.functions.invoke("notify-driver-route", {
+          body: {
+            type: "route_assigned",
+            driver_id: selectedChofer,
+            route_id: ruta.id,
+            route_number: ruta.numero,
+            tenant_id: profile?.tenant_id,
+            shipment_count: selectedOption.stops.filter(s => s.tipo === "entrega").length,
+          },
+        });
+      } catch (notifErr) {
+        console.warn("Failed to notify driver:", notifErr);
+      }
+
       return ruta;
     },
     onSuccess: (ruta) => {
