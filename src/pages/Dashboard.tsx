@@ -10,6 +10,7 @@ import DashboardWeeklyChart from '@/components/dashboard/DashboardWeeklyChart';
 import DashboardRecentShipments from '@/components/dashboard/DashboardRecentShipments';
 import DashboardDaySummary from '@/components/dashboard/DashboardDaySummary';
 import DashboardTopDrivers from '@/components/dashboard/DashboardTopDrivers';
+import DashboardMiniMap from '@/components/dashboard/DashboardMiniMap';
 
 export default function Dashboard() {
   const { profile, roles } = useAuth();
