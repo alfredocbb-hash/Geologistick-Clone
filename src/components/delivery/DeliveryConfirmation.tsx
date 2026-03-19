@@ -56,7 +56,7 @@ interface MpPaymentData {
 export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: DeliveryConfirmationProps) {
   const { user, profile } = useAuth();
   const queryClient = useQueryClient();
-  const { isNative: isNativeCamera, takePhoto: nativeTakePhoto, pickFromGallery: nativePickFromGallery } = useNativeCamera();
+  const { cameraAvailable, takePhoto: nativeTakePhoto, pickFromGallery: nativePickFromGallery } = useNativeCamera();
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const STORAGE_KEY = `delivery-state-${shipment.id}`;
