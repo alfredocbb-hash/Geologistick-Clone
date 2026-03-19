@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { User, Phone, Building2, Loader2, Check } from 'lucide-react';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { Profile } from '@/lib/auth';
@@ -123,11 +124,10 @@ export function PersonalInfoCard({ profile, sucursalName, onProfileUpdate }: Per
               Teléfono
             </Label>
             {isEditing ? (
-              <Input
+              <PhoneInput
                 id="telefono"
-                type="tel"
                 value={formData.telefono}
-                onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
+                onChange={(value) => setFormData({ ...formData, telefono: value })}
                 placeholder="Tu número de teléfono"
               />
             ) : (

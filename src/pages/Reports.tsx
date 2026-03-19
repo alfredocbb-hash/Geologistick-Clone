@@ -6,12 +6,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar, Download, Package, TrendingUp, Clock, DollarSign, BarChart3, Users, MapPin, FileText, Loader2 } from 'lucide-react';
+import { Calendar, Download, Package, TrendingUp, Clock, DollarSign, BarChart3, Users, MapPin, FileText, Loader2, Activity, Wallet, Brain } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import { useReportsData, type ReportsFilters } from '@/hooks/useReportsData';
+import { useProductividadData } from '@/hooks/useProductividadData';
+import { useCostosData } from '@/hooks/useCostosData';
+import { useDemandPrediction } from '@/hooks/useDemandPrediction';
+import { ProductividadTab } from '@/components/reports/ProductividadTab';
+import { CostosTab } from '@/components/reports/CostosTab';
+import { DemandPredictionTab } from '@/components/reports/DemandPredictionTab';
 import { subDays, subMonths, format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { exportReportPDF } from '@/lib/exportReportPDF';
+import { exportToExcel } from '@/lib/exportExcel';
 import { toast } from 'sonner';
 
 const DATE_PRESETS = [
@@ -66,6 +73,9 @@ export default function Reports() {
   };
 
   const { enviosPorSucursal, destinos, rendimientoChoferes, resumenGeneral, sucursales } = useReportsData(filters);
+  const productividad = useProductividadData(filters);
+  const costos = useCostosData(filters);
+  const demandPrediction = useDemandPrediction();
 
   const handleExportPDF = async (
     tab: 'sucursales' | 'destinos' | 'choferes' | 'resumen',
@@ -145,7 +155,7 @@ export default function Reports() {
 
       {/* Tabs */}
       <Tabs defaultValue="sucursales" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-4 lg:grid-cols-7">
           <TabsTrigger value="sucursales" className="gap-1.5">
             <BarChart3 className="h-4 w-4 hidden sm:block" /> Sucursales
           </TabsTrigger>
@@ -157,6 +167,15 @@ export default function Reports() {
           </TabsTrigger>
           <TabsTrigger value="resumen" className="gap-1.5">
             <FileText className="h-4 w-4 hidden sm:block" /> Resumen
+          </TabsTrigger>
+          <TabsTrigger value="productividad" className="gap-1.5">
+            <Activity className="h-4 w-4 hidden sm:block" /> Productividad
+          </TabsTrigger>
+          <TabsTrigger value="costos" className="gap-1.5">
+            <Wallet className="h-4 w-4 hidden sm:block" /> Costos
+          </TabsTrigger>
+          <TabsTrigger value="prediccion" className="gap-1.5">
+            <Brain className="h-4 w-4 hidden sm:block" /> Predicción
           </TabsTrigger>
         </TabsList>
 
@@ -505,6 +524,41 @@ export default function Reports() {
               </div>
             </>
           )}
+        </TabsContent>
+
+        {/* Tab 5: Productividad */}
+        <TabsContent value="productividad" className="space-y-4">
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={() => {
+              if (productividad.data) {
+                exportToExcel(productividad.data, 'productividad-conductores', 'Productividad');
+                toast.success('Excel exportado');
+              }
+            }}>
+              <Download className="h-4 w-4 mr-2" /> Exportar Excel
+            </Button>
+          </div>
+          <ProductividadTab data={productividad} />
+        </TabsContent>
+
+        {/* Tab 6: Costos */}
+        <TabsContent value="costos" className="space-y-4">
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={() => {
+              if (costos.rutas.data) {
+                exportToExcel(costos.rutas.data, 'costos-operativos', 'Costos');
+                toast.success('Excel exportado');
+              }
+            }}>
+              <Download className="h-4 w-4 mr-2" /> Exportar Excel
+            </Button>
+          </div>
+          <CostosTab rutas={costos.rutas} resumen={costos.resumen} />
+        </TabsContent>
+
+        {/* Tab 7: Predicción de Demanda */}
+        <TabsContent value="prediccion" className="space-y-4">
+          <DemandPredictionTab data={demandPrediction} />
         </TabsContent>
       </Tabs>
     </div>

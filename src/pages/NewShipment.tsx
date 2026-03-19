@@ -10,6 +10,7 @@ import { useTenant } from '@/hooks/useTenant';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PhoneInput, formatArgentinaPhone } from '@/components/ui/phone-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -1230,7 +1231,7 @@ export default function NewShipment() {
           codigo_postal_destino: destinatarioCp || null,
           dni_remitente: formData.remitente_dni || null,
           dni_destinatario: formData.destinatario_dni || null,
-          whatsapp_destinatario: formData.destinatario_whatsapp || null,
+          whatsapp_destinatario: formatArgentinaPhone(formData.destinatario_telefono) || formData.destinatario_whatsapp || null,
           email_destinatario: formData.destinatario_email || null,
           nombre_destinatario: [formData.destinatario_nombre, formData.destinatario_apellido].filter(Boolean).join(' ') || null,
           nombre_remitente: [formData.remitente_nombre, formData.remitente_apellido].filter(Boolean).join(' ') || null,
@@ -1817,28 +1818,28 @@ export default function NewShipment() {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto pb-8">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
+    <div className="pb-24">
+      {/* Header compacto */}
+      <div className="flex items-center justify-between gap-4 mb-4">
+        <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-              <PackagePlus className="h-8 w-8 text-envios" />
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+              <PackagePlus className="h-6 w-6 text-envios" />
               Nuevo Envío
             </h1>
-            <div className="flex items-center gap-3 mt-1">
-              <p className="text-muted-foreground">
-                Completa los datos para crear un nuevo envío
-              </p>
-              <DraftSavingIndicator hasDraft={hasDraft} lastSaved={lastSaved} />
-            </div>
+            {sucursalUsuario && (
+              <Badge variant="outline" className="bg-primary/10 text-primary border-primary hidden sm:flex">
+                <Building2 className="h-3 w-3 mr-1" />
+                {sucursalUsuario.codigo ? `${sucursalUsuario.codigo} - ` : ''}{sucursalUsuario.nombre}
+              </Badge>
+            )}
+            <DraftSavingIndicator hasDraft={hasDraft} lastSaved={lastSaved} />
           </div>
         </div>
         
-        {/* Badge de precio */}
         {selectedTarifa && (
           <Badge className="text-lg px-4 py-2 bg-envios hover:bg-envios">
             <DollarSign className="h-4 w-4 mr-1" />
@@ -1847,85 +1848,59 @@ export default function NewShipment() {
         )}
       </div>
 
-      {/* Draft recovered indicator */}
-      {isDraftRecovered && (
-        <DraftIndicator
-          lastSaved={lastSaved}
-          onDiscard={discardDraft}
-          onDismiss={() => setIsDraftRecovered(false)}
-        />
-      )}
+      {/* Alerts compactados */}
+      <div className="space-y-2 mb-4">
+        {isDraftRecovered && (
+          <DraftIndicator
+            lastSaved={lastSaved}
+            onDiscard={discardDraft}
+            onDismiss={() => setIsDraftRecovered(false)}
+          />
+        )}
 
-      {/* Card de Sucursal Asignada */}
-      <Card className="border-primary/30 bg-primary/5">
-        <CardContent className="py-4">
-          <div className="flex items-center gap-3">
-            <Building2 className="h-5 w-5 text-primary" />
-            <div className="flex-1">
-              <p className="text-sm text-muted-foreground">Sucursal de Origen</p>
-              <p className="font-semibold">
-                {loadingSucursalUsuario ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : sucursalUsuario ? (
-                  <>
-                    {sucursalUsuario.codigo && `${sucursalUsuario.codigo} - `}
-                    {sucursalUsuario.nombre}
-                    {sucursalUsuario.ciudad && ` (${sucursalUsuario.ciudad})`}
-                  </>
-                ) : (
-                  'Sin asignar'
+        {!cajaAbierta && !loadingCaja && sucursalOrigenId && (
+          <Alert variant="destructive" className="py-2">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="flex items-center justify-between text-sm">
+              <span>No hay caja abierta. Debes abrir una sesión de caja.</span>
+              <Button variant="link" className="p-0 h-auto text-destructive-foreground underline text-sm" onClick={() => navigate('/cash')}>
+                Ir a Caja
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {remitenteConCtaCte && formData.tipo_pago !== 'cuenta_corriente' && (
+          <Alert className="border-primary bg-primary/5 py-2">
+            <Wallet className="h-4 w-4" />
+            <AlertDescription className="flex items-center justify-between text-sm">
+              <span>
+                <span className="font-medium">✨ Cta. Cte. disponible:</span> {remitenteConCtaCte.nombre}
+                {remitenteConCtaCte.saldo_cuenta_corriente !== null && (
+                  <span className="ml-1">| Saldo: {formatCurrency(Number(remitenteConCtaCte.saldo_cuenta_corriente) || 0)}</span>
                 )}
-              </p>
-            </div>
-            <Badge variant="outline" className="bg-primary/10 text-primary border-primary">
-              Tu sucursal
-            </Badge>
-          </div>
-        </CardContent>
-      </Card>
+              </span>
+              <Button 
+                variant="outline" 
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => {
+                  handleChange('tipo_pago', 'cuenta_corriente');
+                  handleChange('cliente_cta_cte_id', remitenteConCtaCte.id);
+                }}
+              >
+                Usar Cta Cte
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+      </div>
 
-      {/* Alert de caja no abierta */}
-      {!cajaAbierta && !loadingCaja && sucursalOrigenId && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription className="flex items-center justify-between">
-            <span>No hay caja abierta en tu sucursal. Debes abrir una sesión de caja antes de crear envíos.</span>
-            <Button variant="link" className="p-0 h-auto text-destructive-foreground underline" onClick={() => navigate('/cash')}>
-              Ir a Control de Caja
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Alert de cuenta corriente detectada */}
-      {remitenteConCtaCte && formData.tipo_pago !== 'cuenta_corriente' && (
-        <Alert className="border-primary bg-primary/5">
-          <Wallet className="h-4 w-4" />
-          <AlertDescription className="flex items-center justify-between">
-            <div>
-              <span className="font-medium">✨ Cuenta Corriente Disponible:</span> {remitenteConCtaCte.nombre} tiene cuenta corriente activa.
-              {remitenteConCtaCte.saldo_cuenta_corriente !== null && (
-                <span className="ml-2">Saldo: {formatCurrency(Number(remitenteConCtaCte.saldo_cuenta_corriente) || 0)}</span>
-              )}
-              {remitenteConCtaCte.limite_credito && (
-                <span className="ml-2">Límite: {formatCurrency(remitenteConCtaCte.limite_credito)}</span>
-              )}
-            </div>
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => {
-                handleChange('tipo_pago', 'cuenta_corriente');
-                handleChange('cliente_cta_cte_id', remitenteConCtaCte.id);
-              }}
-            >
-              Usar Cta Cte
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form id="new-shipment-form" onSubmit={handleSubmit}>
+        {/* Grid de 3 columnas */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+        {/* Columna 1: Servicio + Pago */}
+        <div className="space-y-4">
         {/* Tipo de Servicio - 4 opciones */}
         <Card>
           <CardHeader>
@@ -2104,7 +2079,9 @@ export default function NewShipment() {
           </CardContent>
         </Card>
 
-        {/* Remitente */}
+        </div>
+
+        {/* Columna 2: Remitente */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -2159,10 +2136,10 @@ export default function NewShipment() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="remitente_telefono">Teléfono *</Label>
-                <Input
+                <PhoneInput
                   id="remitente_telefono"
                   value={formData.remitente_telefono}
-                  onChange={(e) => handleChange('remitente_telefono', e.target.value)}
+                  onChange={(value) => handleChange('remitente_telefono', value)}
                   required
                 />
               </div>
@@ -2272,6 +2249,8 @@ export default function NewShipment() {
         </Card>
 
         {/* Destinatario - No mostrar para retiro_almacenaje */}
+        {/* Columna 3: Destinatario */}
+        <div className="space-y-4">
         {!esRetiroAlmacenaje && (
           <Card>
             <CardHeader>
@@ -2325,21 +2304,15 @@ export default function NewShipment() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="destinatario_telefono">Teléfono *</Label>
-                  <Input
+                  <Label htmlFor="destinatario_telefono">Teléfono / WhatsApp *</Label>
+                  <PhoneInput
                     id="destinatario_telefono"
                     value={formData.destinatario_telefono}
-                    onChange={(e) => handleChange('destinatario_telefono', e.target.value)}
+                    onChange={(value) => {
+                      handleChange('destinatario_telefono', value);
+                      handleChange('destinatario_whatsapp', value);
+                    }}
                     required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="destinatario_whatsapp">WhatsApp</Label>
-                  <Input
-                    id="destinatario_whatsapp"
-                    value={formData.destinatario_whatsapp}
-                    onChange={(e) => handleChange('destinatario_whatsapp', e.target.value)}
-                    placeholder="Ej: +54 11 1234-5678"
                   />
                 </div>
                 <div className="space-y-2">
@@ -2532,8 +2505,11 @@ export default function NewShipment() {
             </CardContent>
           </Card>
         )}
+        </div>
+        </div>{/* end grid 3 cols */}
 
-        {/* Detalles del Paquete */}
+        {/* Detalles del Paquete — full width */}
+        <div className="space-y-4 mt-4">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -2893,41 +2869,53 @@ export default function NewShipment() {
             </CardContent>
           </Card>
         )}
-
-        {/* Submit Button */}
-        <div className="flex gap-4">
-          <Button
-            type="button"
-            variant="outline"
-            className="flex-1"
-            onClick={() => navigate(-1)}
-          >
-            Cancelar
-          </Button>
-          <Button
-            type="submit"
-            className="flex-1 bg-envios hover:bg-envios/90"
-            disabled={createShipmentMutation.isPending || !sucursalOrigenId}
-          >
-            {createShipmentMutation.isPending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Creando...
-              </>
-            ) : esRetiroAlmacenaje ? (
-              <>
-                <Package className="mr-2 h-4 w-4" />
-                Crear Retiro para Almacenaje
-              </>
-            ) : (
-              <>
-                <PackagePlus className="mr-2 h-4 w-4" />
-                Crear Envío
-              </>
-            )}
-          </Button>
-        </div>
+        </div>{/* end full-width section */}
       </form>
+
+      {/* Sticky Footer */}
+      <div className="fixed bottom-0 left-0 right-0 z-50 bg-background border-t shadow-lg">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            {selectedTarifa && (
+              <span className="text-lg font-bold text-envios">
+                {formatCurrency(precioCalculado)}
+              </span>
+            )}
+          </div>
+          <div className="flex gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => navigate(-1)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              form="new-shipment-form"
+              className="bg-envios hover:bg-envios/90"
+              disabled={createShipmentMutation.isPending || !sucursalOrigenId}
+            >
+              {createShipmentMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creando...
+                </>
+              ) : esRetiroAlmacenaje ? (
+                <>
+                  <Package className="mr-2 h-4 w-4" />
+                  Crear Retiro
+                </>
+              ) : (
+                <>
+                  <PackagePlus className="mr-2 h-4 w-4" />
+                  Crear Envío
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
 
       {/* Payment Method Dialog */}
       <PaymentMethodDialog
