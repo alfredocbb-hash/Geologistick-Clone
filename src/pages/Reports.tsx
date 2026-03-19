@@ -164,7 +164,26 @@ export default function Reports() {
 
         {/* Tab 1: Envíos por Sucursal */}
         <TabsContent value="sucursales" className="space-y-4">
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => exportToExcel({
+                filename: `envios-por-sucursal-${dateRange}`,
+                columns: [
+                  { header: 'Sucursal', key: 'sucursal_nombre' },
+                  { header: 'Total', key: 'total', format: 'number' },
+                  { header: 'Entregados', key: 'entregados', format: 'number' },
+                  { header: 'Pendientes', key: 'pendientes', format: 'number' },
+                  { header: 'Cancelados', key: 'cancelados', format: 'number' },
+                  { header: 'Efectividad %', key: 'efectividad', format: 'percent' },
+                ],
+                data: enviosPorSucursal.data || [],
+              })}
+            >
+              <FileSpreadsheet className="h-4 w-4 mr-2" />
+              Excel
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -172,7 +191,7 @@ export default function Reports() {
               onClick={() => handleExportPDF('sucursales', 'Envios por Sucursal', [sucursalesChartRef], enviosPorSucursal.data || [])}
             >
               {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
-              Exportar PDF
+              PDF
             </Button>
           </div>
 
