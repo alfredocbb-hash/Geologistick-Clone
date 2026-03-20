@@ -338,6 +338,17 @@ export default function ScanQR() {
   };
 
   const handleShipmentAction = (shipment: ScannedShipment, mode: ScanMode) => {
+    // Block final states
+    if (['entregado', 'cancelado'].includes(shipment.estado)) {
+      playWarningSound();
+      const label = shipment.estado === 'entregado' ? 'Entregado' : 'Cancelado';
+      toast.error(`Este envío ya fue ${label.toLowerCase()}`, {
+        description: `Estado actual: ${label}. No se puede realizar ninguna acción.`,
+      });
+      setDuplicateShipment(shipment);
+      return;
+    }
+
     // If specific mode was selected
     if (mode === 'pickup') {
       if (shipment.estado !== 'pendiente') {

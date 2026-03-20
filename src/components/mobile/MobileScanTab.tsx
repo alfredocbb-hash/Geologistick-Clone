@@ -240,6 +240,19 @@ export function MobileScanTab() {
         return;
       }
       
+      // Block final states
+      if (['entregado', 'cancelado'].includes(shipment.estado)) {
+        playWarningSound();
+        vibrateDevice();
+        setScannedShipment(shipment);
+        const label = shipment.estado === 'entregado' ? 'Entregado' : 'Cancelado';
+        toast.error(`Este envío ya fue ${label.toLowerCase()}`, {
+          description: `Estado actual: ${label}. No se puede realizar ninguna acción.`,
+        });
+        setIsPulsing(true);
+        return;
+      }
+
       // Play success sound and vibrate
       playBeepSound();
       vibrateDevice();
@@ -344,6 +357,22 @@ export function MobileScanTab() {
       // Ignore audio errors
     }
   };
+
+  const playWarningSound = () => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.frequency.value = 400;
+      oscillator.type = 'square';
+      gainNode.gain.value = 0.3;
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 0.3);
+    } catch (err) {}
+  };
+
 
   const vibrateDevice = () => {
     try {
