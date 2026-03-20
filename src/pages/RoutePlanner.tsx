@@ -710,7 +710,7 @@ export default function RoutePlanner() {
           markers.push({
             id: envio.id,
             position: { lat: Number(envio.coords.lat), lng: Number(envio.coords.lng) },
-            title: `${index + 1}. ${envio.tracking_number}`,
+            title: `${index + 1}. ${envio.tracking_externo || envio.tracking_number}`,
             icon: envio.tipo === 'retiro' ? 'current' : 'destination',
             type: 'envio',
             data: envio,
