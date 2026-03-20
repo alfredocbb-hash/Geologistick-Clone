@@ -243,7 +243,7 @@ export function SettlementDetailDialog({
 
       const envio = item.envio;
       const destinatario = envio?.clientes;
-      const tracking = envio?.tracking_number || '-';
+      const tracking = envio?.tracking_externo || envio?.tracking_number || '-';
       const fecha = envio?.created_at ? format(new Date(envio.created_at), 'dd/MM/yy') : '-';
       const nombre = destinatario ? `${destinatario.nombre || ''} ${destinatario.apellido || ''}`.trim() : envio?.nombre_destinatario || '-';
       const monto = isBranch 
