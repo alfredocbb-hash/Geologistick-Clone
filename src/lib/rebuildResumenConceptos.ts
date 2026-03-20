@@ -24,7 +24,7 @@ interface DetalleRow {
   tipo_pago: string;
   monto_envio: number;
   comision_aplicada: number;
-  desglose_conceptos?: Record<string, { venta: number; porcentaje: number; comision: number }> | null;
+  desglose_conceptos?: Record<string, { venta: number; porcentaje: number; comision: number; nombre?: string }> | null;
 }
 
 function normalizeTipoPago(tp: string): 'contado' | 'destino' | 'cta_cte' {
