@@ -823,7 +823,7 @@ export default function DriverSettlements() {
                             {format(new Date(envio.fecha_entrega), 'dd/MM/yy', { locale: es })}
                           </TableCell>
                           <TableCell>
-                            ${envio.precio_total.toFixed(2)}
+                            ${envio.precio_efectivo.toFixed(2)}
                           </TableCell>
                           <TableCell>
                             {envio.pago_contra_entrega ? (
