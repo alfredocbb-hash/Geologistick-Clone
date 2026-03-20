@@ -401,7 +401,8 @@ export default function BranchSettlements() {
         }
         
         // Accumulate in resumen
-        const conceptoKey = conceptoId || conceptoNombre;
+        const rolSuffix = rol === 'emisión' ? 'Emisión' : 'Recepción';
+        const conceptoKey = `${conceptoId || conceptoNombre}::${rol}`;
         if (!conceptoAcumulado[tipoKey][conceptoKey]) {
           conceptoAcumulado[tipoKey][conceptoKey] = {
             venta: 0,
