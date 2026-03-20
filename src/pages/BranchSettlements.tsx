@@ -408,7 +408,7 @@ export default function BranchSettlements() {
             venta: 0,
             porcentaje,
             comision: 0,
-            nombre: conceptoNombres[conceptoId || ''] || conceptoNombre,
+            nombre: `${conceptoNombres[conceptoId || ''] || conceptoNombre} (${rolSuffix})`,
              sinConfiguracion,
           };
         }
