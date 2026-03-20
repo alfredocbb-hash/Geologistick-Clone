@@ -35,6 +35,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import QRScanner from '@/components/qr/QRScanner';
+import { formatArgentinaPhone } from '@/components/ui/phone-input';
 import PickupConfirmation from '@/components/scan/PickupConfirmation';
 import DeliveryConfirmation from '@/components/delivery/DeliveryConfirmation';
 import ReportIncidentDialog from '@/components/incidents/ReportIncidentDialog';
