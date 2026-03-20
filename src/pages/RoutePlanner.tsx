@@ -1727,7 +1727,7 @@ export default function RoutePlanner() {
                             onClick={() => setSelectedMapItem({ type: 'envio', data: envio })}
                           >
                             <div className="flex items-center gap-2">
-                              <span className="font-mono text-xs">{envio.tracking_number}</span>
+                              <span className="font-mono text-xs">{envio.tracking_externo || envio.tracking_number}</span>
                               <Badge variant="outline" className="text-xs">
                                 {envio.tipo === "retiro" ? "Retiro" : "Entrega"}
                               </Badge>
