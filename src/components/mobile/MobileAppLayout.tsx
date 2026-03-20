@@ -13,6 +13,7 @@ import { MobileReceptionTab } from './MobileReceptionTab';
 import { MobileDeliveriesTab } from './MobileDeliveriesTab';
 import { MobileHistoryTab } from './MobileHistoryTab';
 import { FlexScanScreen } from './FlexScanScreen';
+import { CheckOutScreen } from './CheckOutScreen';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useAuth } from '@/lib/auth';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -23,16 +24,24 @@ import { NotificationPopover } from '@/components/notifications/NotificationPopo
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { useSubscriptionBlock } from '@/hooks/useSubscriptionBlock';
 import { SubscriptionBlockScreen } from '@/components/subscription/SubscriptionBlockScreen';
+import { Progress } from '@/components/ui/progress';
 
 export type UserMobileRole = 'chofer' | 'centro_logistico' | 'sucursal';
+
+// Tab index for animation direction
+const TAB_ORDER: MobileTab[] = ['home', 'routes', 'reception', 'deliveries', 'scan', 'earnings', 'history', 'profile'];
 
 export function MobileAppLayout() {
   const [activeTab, setActiveTab] = useState<MobileTab>('home');
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showCheckOut, setShowCheckOut] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
+  const [splashProgress, setSplashProgress] = useState(0);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isPulling, setIsPulling] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);
+  const [animDir, setAnimDir] = useState<'left' | 'right' | null>(null);
+  const [isTransitioning, setIsTransitioning] = useState(false);
   const { unreadCount } = useNotifications();
   const { hasRole, profile } = useAuth();
   const { hasPermission, isLoading: permissionsLoading } = usePermissions();
@@ -44,6 +53,7 @@ export function MobileAppLayout() {
   const mainRef = useRef<HTMLDivElement>(null);
   const touchStartY = useRef(0);
   const isRefreshing = useRef(false);
+  const prevTabRef = useRef<MobileTab>('home');
 
   // Online/Offline detection
   useEffect(() => {
@@ -88,13 +98,19 @@ export function MobileAppLayout() {
     setIsPulling(false);
   }, [isPulling, pullDistance, queryClient]);
 
-  // Show splash screen briefly on first load
+  // Animated splash
   useEffect(() => {
+    const interval = setInterval(() => {
+      setSplashProgress(prev => {
+        if (prev >= 100) { clearInterval(interval); return 100; }
+        return prev + 4;
+      });
+    }, 50);
     const timer = setTimeout(() => setShowSplash(false), 1500);
-    return () => clearTimeout(timer);
+    return () => { clearInterval(interval); clearTimeout(timer); };
   }, []);
 
-  // Refresh permissions when app resumes
+  // Refresh permissions on resume
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -114,7 +130,18 @@ export function MobileAppLayout() {
   const userRole = getUserMobileRole();
 
   const handleTabChange = (tab: MobileTab) => {
-    setActiveTab(tab);
+    if (tab === activeTab) return;
+    const prevIdx = TAB_ORDER.indexOf(activeTab);
+    const nextIdx = TAB_ORDER.indexOf(tab);
+    setAnimDir(nextIdx > prevIdx ? 'left' : 'right');
+    setIsTransitioning(true);
+    prevTabRef.current = activeTab;
+    
+    // Brief delay for exit animation, then swap content
+    setTimeout(() => {
+      setActiveTab(tab);
+      setTimeout(() => setIsTransitioning(false), 20);
+    }, 120);
   };
 
   if (showSplash) {
@@ -125,12 +152,14 @@ export function MobileAppLayout() {
           <img 
             src={geologistickLogo} 
             alt="Geologistick" 
-            className="relative w-28 h-28 rounded-3xl object-contain shadow-2xl shadow-primary/40"
+            className="relative w-28 h-28 rounded-3xl object-contain shadow-2xl shadow-primary/40 transition-transform duration-700 animate-scale-in"
           />
         </div>
-        <h1 className="text-2xl font-bold text-white mb-2">ChoferApp</h1>
-        <p className="text-slate-400 text-sm mb-6">Cargando...</p>
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <h1 className="text-2xl font-bold text-white mb-2 animate-fade-in">ChoferApp</h1>
+        <p className="text-slate-400 text-sm mb-6 animate-fade-in">Cargando...</p>
+        <div className="w-48">
+          <Progress value={splashProgress} className="h-1.5 bg-slate-800" />
+        </div>
       </div>
     );
   }
@@ -155,7 +184,7 @@ export function MobileAppLayout() {
   const renderTabContent = () => {
     switch (activeTab) {
       case 'home':
-        return <MobileHomeTab onNavigateToRoutes={() => setActiveTab('routes')} />;
+        return <MobileHomeTab onNavigateToRoutes={() => handleTabChange('routes')} onNavigateToHistory={() => handleTabChange('history')} />;
       case 'routes':
         return <MobileRoutesTab />;
       case 'earnings':
@@ -169,10 +198,21 @@ export function MobileAppLayout() {
       case 'history':
         return <MobileHistoryTab />;
       case 'profile':
-        return <MobileProfileTab />;
+        return <MobileProfileTab onCheckOut={() => setShowCheckOut(true)} />;
       default:
-        return <MobileHomeTab onNavigateToRoutes={() => setActiveTab('routes')} />;
+        return <MobileHomeTab onNavigateToRoutes={() => handleTabChange('routes')} onNavigateToHistory={() => handleTabChange('history')} />;
     }
+  };
+
+  // Animation classes for tab transition
+  const getTransitionClass = () => {
+    if (!animDir) return '';
+    if (isTransitioning) {
+      return animDir === 'left' 
+        ? 'translate-x-[-8%] opacity-0' 
+        : 'translate-x-[8%] opacity-0';
+    }
+    return 'translate-x-0 opacity-100';
   };
 
   return (
@@ -187,10 +227,9 @@ export function MobileAppLayout() {
         </div>
       )}
 
-      {/* Header */}
       <MobileHeader 
         onNotificationsClick={() => setShowNotifications(true)}
-        onProfileClick={() => setActiveTab('profile')}
+        onProfileClick={() => handleTabChange('profile')}
       />
 
       {/* Pull-to-refresh indicator */}
@@ -208,10 +247,10 @@ export function MobileAppLayout() {
         </div>
       )}
 
-      {/* Main Content */}
+      {/* Main Content with tab transitions */}
       <main 
         ref={mainRef}
-        className="px-4 min-h-screen"
+        className={`px-4 min-h-screen transition-all duration-200 ease-out ${getTransitionClass()}`}
         style={{ 
           paddingTop: isPulling ? '0' : 'calc(3.5rem + env(safe-area-inset-top, 0px) + 1rem)',
           paddingBottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))'
@@ -228,7 +267,6 @@ export function MobileAppLayout() {
         {renderTabContent()}
       </main>
 
-      {/* Bottom Navigation */}
       <MobileBottomNav 
         activeTab={activeTab} 
         onTabChange={handleTabChange}
@@ -246,6 +284,17 @@ export function MobileAppLayout() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Check-out Screen */}
+      {showCheckOut && (
+        <CheckOutScreen 
+          onClose={() => setShowCheckOut(false)} 
+          onCheckOutComplete={() => {
+            setShowCheckOut(false);
+            invalidateCheckIn();
+          }} 
+        />
+      )}
     </div>
   );
 }

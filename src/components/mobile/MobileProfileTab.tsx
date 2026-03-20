@@ -333,6 +333,16 @@ export function MobileProfileTab({ onCheckOut }: MobileProfileTabProps = {}) {
         </button>
       </Card>
 
+      {onCheckOut && (
+        <Card className="bg-slate-800/30 border-slate-700 overflow-hidden">
+          <MenuItem 
+            icon={Clock} 
+            label="Finalizar Jornada" 
+            onClick={onCheckOut}
+          />
+        </Card>
+      )}
+
       <Card className="bg-slate-800/30 border-slate-700 overflow-hidden">
         <MenuItem 
           icon={LogOut} 
