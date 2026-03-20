@@ -178,7 +178,7 @@ export function PartnerSettlementsTab({ profile }: PartnerSettlementsTabProps) {
       // 2. Get origin envíos within date range
       const { data: envios, error: envErr } = await supabase
         .from('envios')
-        .select('id, tracking_number, nombre_destinatario, precio_total, fecha_entrega, tipo_pago')
+        .select('id, tracking_number, tracking_externo, nombre_destinatario, precio_total, fecha_entrega, tipo_pago')
         .in('id', envioOrigenIds)
         .gte('fecha_entrega', periodoInicio)
         .lte('fecha_entrega', periodoFin + 'T23:59:59');
