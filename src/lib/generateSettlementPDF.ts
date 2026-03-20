@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import { format } from 'date-fns';
 import { parseDateString } from '@/lib/dateUtils';
 import { supabase } from '@/integrations/supabase/client';
+import { rebuildResumenFromDetalles, resumenHasRoleSeparation } from '@/lib/rebuildResumenConceptos';
 
 interface ConceptoResumenPDF {
   nombre: string;
