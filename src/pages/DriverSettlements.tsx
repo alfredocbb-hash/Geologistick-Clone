@@ -401,7 +401,7 @@ export default function DriverSettlements() {
       // Calculate COD discounts
       const totalDescuentosCOD = aLiquidar
         .filter(e => e.pago_contra_entrega && descuentosCOD[e.id])
-        .reduce((sum, e) => sum + e.precio_total, 0);
+        .reduce((sum, e) => sum + e.precio_efectivo, 0);
 
       // Final amount (commissions - COD)
       const montoTotalFinal = totalComisiones - totalDescuentosCOD;
