@@ -1,32 +1,33 @@
 
 
-## Plan: Fix envíos con precio $0 en liquidaciones de choferes
+## Plan: Fix zona matching para barrios de CABA/GBA en liquidaciones
 
-### Problema
-En `DriverSettlements.tsx`, al calcular la liquidación, solo se usa `precio_total` del envío. Si el envío tiene `precio_total = 0` (común en envíos de ecommerce o envíos antiguos creados antes de configurar tarifas), el monto aparece como $0. El campo `precio_tarifa_vigente` (precio congelado al momento de crear el envío) no se consulta, y tampoco se hace un fallback por zona para obtener el precio.
+### Problema encontrado
 
-Otros módulos de liquidación (ecommerce Settlements) ya implementan la jerarquía de precios correcta: `precio_tarifa_vigente` → `precio_total` → búsqueda por zona.
+Los envíos ML de Lucas Galarza del 18/03/2026 tienen `precio_total = 0`, `precio_tarifa_vigente = 0` y `tarifa_id = null`. Son 9 de 11 envíos afectados.
 
-### Cambios
+La causa: el campo `ciudad_entrega` tiene barrios de CABA (Palermo, Núñez, Floresta, Villa Crespo, Santa Rita, Villa Real, etc.), pero la zona tarifa "Zona 3 - CABA Y GBA" lista "Capital Federal" y "CABA" como ciudades, no barrios individuales. El `findZoneTarifaPrecio` no encuentra match.
 
-**`src/pages/DriverSettlements.tsx`**:
+Sin embargo, el campo `provincia` de esos envíos sí dice "Capital Federal", que está en la lista de la zona.
 
-1. Agregar `precio_tarifa_vigente` al `selectFields` de la query de envíos.
+### Solución
 
-2. Agregar búsqueda de `precio_base` en las zone tarifas (ya se cargan pero solo para comisiones).
+**`src/pages/DriverSettlements.tsx`** — Agregar un tercer nivel de fallback en `findZoneTarifaPrecio` y `findZoneTarifaComision`: si no hay match por `ciudad_entrega`, intentar match por `provincia`.
 
-3. Antes de calcular la comisión, resolver el precio efectivo con la jerarquía:
-   - Si `precio_tarifa_vigente > 0` → usar ese
-   - Si `precio_total > 0` → usar ese
-   - Sino → buscar `precio_base` de la zone tarifa que matchea por `ciudad_entrega`
+Cambios:
+1. Modificar ambas funciones para recibir también `provincia` como segundo parametro.
+2. Después del match por substring de ciudad, agregar match por `provincia` contra la lista de zonas.
+3. Actualizar las llamadas para pasar `(envio as any).provincia` junto con `ciudad_entrega`.
 
-4. Usar el precio efectivo tanto para mostrar en la tabla como para el cálculo de comisión (`calcularComision(precioEfectivo, ...)`).
+Esto también afecta al `findZoneTarifaComision` para el caso de comision_tipo = 'tarifa' (aunque Lucas usa 'porcentaje', otros choferes podrían usar 'tarifa').
 
-5. En la interfaz `EnvioParaLiquidar`, agregar un campo `precio_efectivo` que se use en la tabla y en el cálculo de totales, para que el usuario vea el precio real resuelto.
+### Resultado esperado
+
+Los 9 envíos de barrios CABA van a matchear contra la Zona 3 (precio_base = $8490), y la comisión de Lucas al 60% sería $5094 por envío en vez de $0.
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/pages/DriverSettlements.tsx` | Jerarquía de precios: `precio_tarifa_vigente` → `precio_total` → zone tarifa `precio_base` |
+| `src/pages/DriverSettlements.tsx` | Agregar fallback por `provincia` en `findZoneTarifaPrecio` y `findZoneTarifaComision` |
 
 No se requiere migración de base de datos.
 
