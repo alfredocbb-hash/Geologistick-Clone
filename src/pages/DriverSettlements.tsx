@@ -66,6 +66,7 @@ interface EnvioParaLiquidar {
   id: string;
   tracking_number: string;
   precio_total: number;
+  precio_efectivo: number;
   fecha_entrega: string;
   pago_contra_entrega: boolean;
   tarifa?: {
@@ -206,7 +207,7 @@ export default function DriverSettlements() {
       if (!chofer) throw new Error('Chofer no encontrado');
 
       const selectFields = `
-          id, tracking_number, precio_total, fecha_entrega, tarifa_id,
+          id, tracking_number, precio_total, precio_tarifa_vigente, fecha_entrega, tarifa_id,
           chofer_id, chofer_ultima_milla_id, pago_contra_entrega, ciudad_entrega,
           tarifas:tarifas(comision_chofer_porcentaje, comision_chofer_fija)
         `;
@@ -267,11 +268,28 @@ export default function DriverSettlements() {
       // 2. Fetch zone tarifas for commission fallback (when envio has no tarifa_id)
       const { data: zoneTarifasData } = await supabase
         .from('tarifas')
-        .select('id, zona_destino, comision_chofer_porcentaje, comision_chofer_fija')
+        .select('id, zona_destino, precio_base, comision_chofer_porcentaje, comision_chofer_fija')
         .eq('tenant_id', profile?.tenant_id)
         .eq('tipo_tarifa', 'zona')
         .eq('activa', true);
       const allZoneTarifas = zoneTarifasData || [];
+
+      // Helper: find zone tarifa precio_base by ciudad_entrega
+      const findZoneTarifaPrecio = (ciudad: string | null): number => {
+        if (!ciudad || allZoneTarifas.length === 0) return 0;
+        const ciudadNorm = normalize(ciudad);
+        for (const zt of allZoneTarifas) {
+          if (!zt.zona_destino) continue;
+          const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+          if (zonas.some((z: string) => z === ciudadNorm)) return zt.precio_base || 0;
+        }
+        for (const zt of allZoneTarifas) {
+          if (!zt.zona_destino) continue;
+          const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+          if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) return zt.precio_base || 0;
+        }
+        return 0;
+      };
 
       const normalize = (str: string) => str.toLowerCase().trim()
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -322,13 +340,21 @@ export default function DriverSettlements() {
         if (!tarifa && (chofer.comision_tipo === 'tarifa' || !chofer.comision_tipo)) {
           tarifa = findZoneTarifaComision((envio as any).ciudad_entrega);
         }
+
+        // Price hierarchy: precio_tarifa_vigente → precio_total → zone precio_base
+        const ptv = (envio as any).precio_tarifa_vigente;
+        const precioEfectivo =
+          (ptv && ptv > 0) ? ptv :
+          (envio.precio_total > 0) ? envio.precio_total :
+          findZoneTarifaPrecio((envio as any).ciudad_entrega);
         
-        const comisionCalculada = calcularComision(envio.precio_total, chofer, tarifa);
+        const comisionCalculada = calcularComision(precioEfectivo, chofer, tarifa);
 
         return {
           id: envio.id,
           tracking_number: envio.tracking_number,
           precio_total: envio.precio_total,
+          precio_efectivo: precioEfectivo,
           fecha_entrega: envio.fecha_entrega!,
           pago_contra_entrega: envio.pago_contra_entrega || false,
           tarifa,
@@ -375,7 +401,7 @@ export default function DriverSettlements() {
       // Calculate COD discounts
       const totalDescuentosCOD = aLiquidar
         .filter(e => e.pago_contra_entrega && descuentosCOD[e.id])
-        .reduce((sum, e) => sum + e.precio_total, 0);
+        .reduce((sum, e) => sum + e.precio_efectivo, 0);
 
       // Final amount (commissions - COD)
       const montoTotalFinal = totalComisiones - totalDescuentosCOD;
@@ -603,7 +629,7 @@ export default function DriverSettlements() {
   const totalComisiones = enviosALiquidar.reduce((sum, e) => sum + (montosEditados[e.id] ?? e.comision_calculada), 0);
   const totalDescuentosCOD = enviosALiquidar
     .filter(e => e.pago_contra_entrega && descuentosCOD[e.id])
-    .reduce((sum, e) => sum + e.precio_total, 0);
+    .reduce((sum, e) => sum + e.precio_efectivo, 0);
   const saldoFinal = totalComisiones - totalDescuentosCOD;
   const totalLiquidados = enviosLiquidados.reduce((sum, e) => sum + e.comision_calculada, 0);
   const enviosCOD = enviosALiquidar.filter(e => e.pago_contra_entrega);
@@ -797,13 +823,13 @@ export default function DriverSettlements() {
                             {format(new Date(envio.fecha_entrega), 'dd/MM/yy', { locale: es })}
                           </TableCell>
                           <TableCell>
-                            ${envio.precio_total.toFixed(2)}
+                            ${envio.precio_efectivo.toFixed(2)}
                           </TableCell>
                           <TableCell>
                             {envio.pago_contra_entrega ? (
                               <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500">
                                 <Banknote className="h-3 w-3 mr-1" />
-                                ${envio.precio_total.toFixed(2)}
+                                ${envio.precio_efectivo.toFixed(2)}
                               </Badge>
                             ) : (
                               <span className="text-muted-foreground">-</span>
