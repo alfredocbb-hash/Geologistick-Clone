@@ -322,11 +322,11 @@ export default function LiveMap() {
       const activeChoferIds = activeProfiles?.map(p => p.user_id) || [];
       if (activeChoferIds.length === 0) return [];
 
-      // Obtener ubicaciones solo de choferes válidos
+      // Obtener ubicaciones solo de choferes válidos y activos
       const { data: locations, error: locError } = await supabase
         .from("driver_locations")
         .select("*")
-        .in("chofer_id", validChoferIds)
+        .in("chofer_id", activeChoferIds)
         .order("updated_at", { ascending: false });
       
       if (locError) throw locError;
