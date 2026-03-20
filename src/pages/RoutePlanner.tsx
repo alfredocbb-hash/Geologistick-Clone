@@ -983,7 +983,7 @@ export default function RoutePlanner() {
             ? ((singleItem as any).nombre_remitente || `${(singleItem as any).remitente?.nombre || ''} ${(singleItem as any).remitente?.apellido || ''}`.trim())
             : ((singleItem as any).nombre_destinatario || `${(singleItem as any).destinatario?.nombre || ''} ${(singleItem as any).destinatario?.apellido || ''}`.trim())),
           telefono: isSuc ? '' : ((singleItem as any).tipo === "retiro" ? ((singleItem as any).remitente?.telefono || "") : ((singleItem as any).destinatario?.telefono || "")),
-          tracking: isSuc ? '' : (singleItem as any).tracking_number,
+          tracking: isSuc ? '' : ((singleItem as any).tracking_externo || (singleItem as any).tracking_number),
         };
         const distancia = calcDistance(originLat, originLng, singleStop.lat, singleStop.lng) * 1.3;
         const singleOption: RouteOption = {
