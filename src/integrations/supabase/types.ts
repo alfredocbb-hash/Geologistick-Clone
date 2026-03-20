@@ -350,6 +350,7 @@ export type Database = {
         Row: {
           accuracy: number | null
           checked_in_at: string
+          checkout_at: string | null
           chofer_id: string
           device_info: string | null
           fecha: string
@@ -361,6 +362,7 @@ export type Database = {
         Insert: {
           accuracy?: number | null
           checked_in_at?: string
+          checkout_at?: string | null
           chofer_id: string
           device_info?: string | null
           fecha?: string
@@ -372,6 +374,7 @@ export type Database = {
         Update: {
           accuracy?: number | null
           checked_in_at?: string
+          checkout_at?: string | null
           chofer_id?: string
           device_info?: string | null
           fecha?: string
