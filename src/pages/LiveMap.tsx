@@ -310,6 +310,18 @@ export default function LiveMap() {
       const validChoferIds = choferRoles?.map(r => r.user_id) || [];
       if (validChoferIds.length === 0) return [];
 
+      // Filtrar solo choferes activos
+      const { data: activeProfiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("user_id")
+        .in("user_id", validChoferIds)
+        .eq("activo", true);
+
+      if (profilesError) throw profilesError;
+
+      const activeChoferIds = activeProfiles?.map(p => p.user_id) || [];
+      if (activeChoferIds.length === 0) return [];
+
       // Obtener ubicaciones solo de choferes válidos
       const { data: locations, error: locError } = await supabase
         .from("driver_locations")
