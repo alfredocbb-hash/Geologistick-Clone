@@ -275,18 +275,29 @@ export default function DriverSettlements() {
       const allZoneTarifas = zoneTarifasData || [];
 
       // Helper: find zone tarifa precio_base by ciudad_entrega
-      const findZoneTarifaPrecio = (ciudad: string | null): number => {
-        if (!ciudad || allZoneTarifas.length === 0) return 0;
-        const ciudadNorm = normalize(ciudad);
-        for (const zt of allZoneTarifas) {
-          if (!zt.zona_destino) continue;
-          const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-          if (zonas.some((z: string) => z === ciudadNorm)) return zt.precio_base || 0;
+      const findZoneTarifaPrecio = (ciudad: string | null, provincia?: string | null): number => {
+        if (allZoneTarifas.length === 0) return 0;
+        if (ciudad) {
+          const ciudadNorm = normalize(ciudad);
+          for (const zt of allZoneTarifas) {
+            if (!zt.zona_destino) continue;
+            const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+            if (zonas.some((z: string) => z === ciudadNorm)) return zt.precio_base || 0;
+          }
+          for (const zt of allZoneTarifas) {
+            if (!zt.zona_destino) continue;
+            const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+            if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) return zt.precio_base || 0;
+          }
         }
-        for (const zt of allZoneTarifas) {
-          if (!zt.zona_destino) continue;
-          const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-          if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) return zt.precio_base || 0;
+        // Fallback: match by provincia
+        if (provincia) {
+          const provNorm = normalize(provincia);
+          for (const zt of allZoneTarifas) {
+            if (!zt.zona_destino) continue;
+            const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+            if (zonas.some((z: string) => z === provNorm || provNorm.includes(z) || z.includes(provNorm))) return zt.precio_base || 0;
+          }
         }
         return 0;
       };
