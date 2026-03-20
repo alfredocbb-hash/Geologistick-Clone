@@ -16,7 +16,11 @@ import { useState, useRef } from 'react';
 import { useNativeCamera } from '@/hooks/useNativeCamera';
 import { useTheme } from 'next-themes';
 
-export function MobileProfileTab() {
+interface MobileProfileTabProps {
+  onCheckOut?: () => void;
+}
+
+export function MobileProfileTab({ onCheckOut }: MobileProfileTabProps = {}) {
   const { user, profile, signOut } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
