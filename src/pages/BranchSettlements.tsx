@@ -218,7 +218,38 @@ export default function BranchSettlements() {
       [...(enviosOrigen || []), ...(enviosRecepcion || [])].forEach(e => {
         if (!enviosMap.has(e.id)) enviosMap.set(e.id, e);
       });
-      const envios = Array.from(enviosMap.values());
+      let envios = Array.from(enviosMap.values());
+
+      // Excluir envíos ya liquidados en liquidaciones no canceladas
+      if (envios.length > 0) {
+        const allEnvioIds = envios.map(e => e.id);
+        
+        // Obtener IDs de envíos que ya están en detalles de liquidaciones activas
+        const { data: detallesExistentes } = await supabase
+          .from('liquidacion_sucursal_detalles')
+          .select('envio_id, liquidacion_id')
+          .in('envio_id', allEnvioIds);
+
+        if (detallesExistentes && detallesExistentes.length > 0) {
+          // Obtener las liquidaciones vinculadas para verificar su estado
+          const liquidacionIds = [...new Set(detallesExistentes.map(d => d.liquidacion_id))];
+          const { data: liquidacionesActivas } = await supabase
+            .from('liquidaciones_sucursal')
+            .select('id')
+            .in('id', liquidacionIds)
+            .neq('estado', 'cancelada');
+
+          if (liquidacionesActivas && liquidacionesActivas.length > 0) {
+            const activasSet = new Set(liquidacionesActivas.map(l => l.id));
+            const enviosYaLiquidados = new Set(
+              detallesExistentes
+                .filter(d => activasSet.has(d.liquidacion_id))
+                .map(d => d.envio_id)
+            );
+            envios = envios.filter(e => !enviosYaLiquidados.has(e.id));
+          }
+        }
+      }
 
       // Fetch comisiones de la sucursal separadas por tipo_rol
       const { data: comisionesEmision, error: emisionError } = await supabase
