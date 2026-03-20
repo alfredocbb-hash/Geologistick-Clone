@@ -1,63 +1,78 @@
 
 
-## Plan: Fix de cámara/galería y mejoras para la APK del chofer
+## Plan: Mejoras innovadoras para la APK del chofer
 
-### Parte 1: Fix del problema de cámara e imagen
+Basado en el analisis completo de la app actual, hay varias areas con funcionalidad basica o botones sin accion. Propongo estas mejoras organizadas por impacto:
 
-**Problema identificado:** En la APK (Capacitor WebView), el hook `useNativePlatform` detecta correctamente que es nativo, pero el `useNativeCamera` hace un `dynamic import` de `@capacitor/camera` con `await import(...)`. En el contexto de un WebView cargando una URL remota (`server.url` apunta a `geologic.lovable.app`), el paquete `@capacitor/camera` NO está disponible en el bundle web — solo existe en el build nativo. Esto causa que el import falle silenciosamente y la cámara no funcione.
+---
 
-Para el fallback web (input file), los inputs con `capture="environment"` pueden no dispararse correctamente en algunos WebViews Android porque el click programático pierde el contexto de gesto del usuario dentro de un Dialog.
+### 1. Animaciones y transiciones entre pestanas
+La app cambia de tab instantaneamente sin transicion. Agregar animaciones de slide/fade entre tabs para una sensacion mas nativa y fluida.
 
-**Solución:**
-1. **`src/hooks/useNativeCamera.ts`**: Agregar manejo robusto del error de import con fallback explícito. Si el import de `@capacitor/camera` falla, retornar `null` para que el componente use el fallback HTML. Agregar logs para diagnóstico.
+**Archivo:** `MobileAppLayout.tsx`
+- Wrappear `renderTabContent()` con un componente de transicion animada (CSS transitions con `translate` y `opacity`)
+- Detectar direccion del swipe para animar izquierda/derecha
 
-2. **`src/components/delivery/DeliveryConfirmation.tsx`** y **`src/components/incidents/ReportIncidentDialog.tsx`**: 
-   - Cuando `useNativeCamera` retorna `null` (import falló), forzar el uso del input file HTML directamente.
-   - Asegurar que el click del input file ocurre **directamente** en el handler del click del usuario (sin awaits previos que rompan la cadena de gesto).
-   - Mover la llamada nativa y el fallback a una estructura donde el gesto del usuario se preserve.
+### 2. Botones de Quick Actions funcionales
+Los botones "Historial" y "Reportes" en Home no hacen nada. Conectarlos a sus tabs correspondientes.
 
-### Parte 2: Mejoras para la APK del chofer
+**Archivo:** `MobileHomeTab.tsx`
+- "Historial" navega a tab history
+- "Reportes" muestra un mini-reporte inline (entregas de la semana, porcentaje de exito)
 
-**Archivos afectados:** Componentes en `src/components/mobile/`
+### 3. Racha y gamificacion
+Agregar una "racha de dias trabajados" y un sistema de logros simples en el Home y Perfil. Ej: "5 dias consecutivos", "100 entregas", "0 incidentes esta semana". Motiva al chofer y le da feedback positivo.
 
-| Mejora | Descripción | Archivo |
-|--------|-------------|---------|
-| **Avatar con cámara nativa** | Permitir que el chofer se tome una selfie para su avatar usando la cámara nativa | `MobileProfileTab.tsx` |
-| **Navegación GPS nativa** | Botón "Navegar" que abre Google Maps/Waze directamente con la dirección de la próxima parada | `MobileHomeTab.tsx` |
-| **Pull-to-refresh** | Gesto de arrastrar hacia abajo para refrescar datos en todas las pestañas | `MobileAppLayout.tsx` |
-| **Modo offline básico** | Indicador visual claro cuando no hay conexión + cola de acciones pendientes | `MobileAppLayout.tsx` |
-| **Resumen del día mejorado** | Tarjeta de resumen en Home con entregas completadas vs pendientes, km recorridos hoy, y comisiones del día | `MobileHomeTab.tsx` |
-| **Vibración y sonido en scan** | Feedback háptico más claro al escanear exitosamente un QR | Ya existe parcialmente en `MobileScanTab.tsx` |
-| **Tema oscuro forzado** | La APK siempre usa tema oscuro (ya lo hace) pero agregar opción de cambiar a claro desde perfil | `MobileProfileTab.tsx` |
+**Archivos:** `MobileHomeTab.tsx`, `MobileProfileTab.tsx`
+- Calcular racha desde `driver_checkins` (dias consecutivos)
+- Mostrar badges de logros basados en stats existentes (total entregas, km, etc.)
+- Barra de "objetivo del dia" con progreso animado
 
-### Detalle técnico del fix de cámara
+### 4. Pantalla de Fin de Jornada (Check-out)
+Actualmente hay check-in pero no check-out. Agregar una pantalla de cierre de jornada con resumen del dia: entregas, km, ganancias, incidentes, y un boton de "Finalizar Jornada".
 
-```text
-Flujo actual (roto):
-  Click "Tomar Foto"
-    → await useNativeCamera.takePhoto()
-      → await import('@capacitor/camera')  ← FALLA en WebView remoto
-      → catch silencioso, retorna null
-    → no hace nada (no hay fallback)
+**Archivos nuevos:** `CheckOutScreen.tsx`
+**Archivos editados:** `MobileProfileTab.tsx`, `MobileAppLayout.tsx`, `useCheckIn.ts`
+- Boton "Finalizar Jornada" en perfil
+- Resumen con animaciones de numeros incrementando
+- Registrar hora de salida en `driver_checkins` (campo `checkout_at`)
+- Requiere migracion: agregar columna `checkout_at` a `driver_checkins`
 
-Flujo corregido:
-  Click "Tomar Foto"  
-    → Si isNative Y cameraAvailable:
-        → Usa Capacitor Camera (ya importado al init)
-    → Si no:
-        → cameraInputRef.click() DIRECTO en el handler (preserva gesto)
-```
+### 5. Mapa mini en Home con ubicacion actual
+Mostrar un mini-mapa en el Home con la ubicacion actual del chofer y la proxima parada marcada. Da contexto visual inmediato sin entrar a la ruta.
 
-Cambios clave:
-- `useNativeCamera.ts`: Intentar import al montar el hook, guardar resultado en ref. Si falla, marcar `cameraAvailable = false`.
-- Componentes: Si `!cameraAvailable`, ejecutar `inputRef.click()` de forma **síncrona** en el onClick, sin awaits previos.
+**Archivo:** `MobileHomeTab.tsx`
+- Componente Google Maps embebido pequeno (150px alto) 
+- Marcador del chofer + marcador de proxima parada
+- Click para expandir/ir a ruta activa
 
-### Resumen de archivos a modificar
+### 6. Notificaciones con sonido y vibracion nativa
+Cuando llega una notificacion, vibrar el dispositivo y reproducir un sonido corto.
 
-1. `src/hooks/useNativeCamera.ts` - Fix import dinámico + estado de disponibilidad
-2. `src/components/delivery/DeliveryConfirmation.tsx` - Fallback robusto de cámara
-3. `src/components/incidents/ReportIncidentDialog.tsx` - Fallback robusto de cámara
-4. `src/components/mobile/MobileProfileTab.tsx` - Avatar con cámara + tema
-5. `src/components/mobile/MobileHomeTab.tsx` - Resumen del día mejorado + botón navegar
-6. `src/components/mobile/MobileAppLayout.tsx` - Pull-to-refresh + offline indicator
+**Archivo:** `useNotifications.ts`
+- Usar `navigator.vibrate()` para vibracion
+- Reproducir un audio corto al recibir notificacion nueva
+
+### 7. Splash screen mejorada con animacion
+La splash actual es estatica. Agregar animacion de logo con scale+fade y un loading progress bar.
+
+**Archivo:** `MobileAppLayout.tsx`
+- Logo con animacion `scale(0.8) -> scale(1)` + fade in
+- Progress bar animada debajo
+
+---
+
+### Resumen tecnico
+
+| Mejora | Archivos | Migracion DB |
+|--------|----------|-------------|
+| Transiciones entre tabs | `MobileAppLayout.tsx` | No |
+| Quick Actions funcionales | `MobileHomeTab.tsx` | No |
+| Racha y gamificacion | `MobileHomeTab.tsx`, `MobileProfileTab.tsx` | No |
+| Check-out / Fin de Jornada | Nuevo `CheckOutScreen.tsx`, editar 3 archivos | Si: `checkout_at` en `driver_checkins` |
+| Mini-mapa en Home | `MobileHomeTab.tsx` | No |
+| Vibracion en notificaciones | `useNotifications.ts` | No |
+| Splash animada | `MobileAppLayout.tsx` | No |
+
+La mayoria de las mejoras usan datos que ya existen. Solo el check-out requiere una migracion simple (1 columna).
 
