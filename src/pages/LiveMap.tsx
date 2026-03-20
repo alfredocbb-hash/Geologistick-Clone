@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { fetchDirectionsPath } from "@/lib/fetchDirectionsPath";
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -244,6 +244,7 @@ export default function LiveMap() {
 
   // Hook for main map route visualization
   const driverRoute = useDriverRoute();
+  const queryClient = useQueryClient();
 
   // Driver filters and detail panel state
   const [filterStatus, setFilterStatus] = usePersistedState<DriverFilterStatus>('driver-filter-status', 'all');
@@ -310,11 +311,23 @@ export default function LiveMap() {
       const validChoferIds = choferRoles?.map(r => r.user_id) || [];
       if (validChoferIds.length === 0) return [];
 
-      // Obtener ubicaciones solo de choferes válidos
+      // Filtrar solo choferes activos
+      const { data: activeProfiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("user_id")
+        .in("user_id", validChoferIds)
+        .eq("activo", true);
+
+      if (profilesError) throw profilesError;
+
+      const activeChoferIds = activeProfiles?.map(p => p.user_id) || [];
+      if (activeChoferIds.length === 0) return [];
+
+      // Obtener ubicaciones solo de choferes válidos y activos
       const { data: locations, error: locError } = await supabase
         .from("driver_locations")
         .select("*")
-        .in("chofer_id", validChoferIds)
+        .in("chofer_id", activeChoferIds)
         .order("updated_at", { ascending: false });
       
       if (locError) throw locError;
@@ -437,7 +450,32 @@ export default function LiveMap() {
     };
   }, [refetchDrivers]);
 
-  // Sync initial/refetched data into local state
+  // Realtime subscription for ruta_paradas and envios — invalidate queries on changes
+  useEffect(() => {
+    const channel = supabase
+      .channel('shipment-status-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'ruta_paradas' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['driver-route-progress'] });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'envios' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['driver-route-progress'] });
+          queryClient.invalidateQueries({ queryKey: ['sucursales-live-map'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
   useEffect(() => {
     setDriverLocations(driversData);
   }, [driversData]);
