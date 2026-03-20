@@ -374,6 +374,7 @@ export function MobileScanTab() {
   };
 
 
+  const vibrateDevice = () => {
     try {
       if ('vibrate' in navigator) {
         navigator.vibrate(100);
