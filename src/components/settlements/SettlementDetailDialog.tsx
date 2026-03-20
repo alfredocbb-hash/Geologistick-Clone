@@ -414,9 +414,15 @@ export function SettlementDetailDialog({
             </div>
 
             {/* Payment info if paid */}
-            {isBranch && branchData.resumen_conceptos && (
-              <ConceptBreakdownTable resumen={branchData.resumen_conceptos} />
-            )}
+            {isBranch && (() => {
+              const stored = branchData.resumen_conceptos;
+              const resumen = (stored && resumenHasRoleSeparation(stored))
+                ? stored
+                : branchDetalles.length > 0
+                  ? rebuildResumenFromDetalles(branchDetalles as any)
+                  : stored;
+              return resumen ? <ConceptBreakdownTable resumen={resumen} /> : null;
+            })()}
 
              {/* Remitos Cancelados section for branch settlements */}
              {isBranch && branchData.remitos_cancelados && branchData.remitos_cancelados.cantidad > 0 && (
