@@ -28,6 +28,7 @@ import { es } from 'date-fns/locale';
 import { parseDateString } from '@/lib/dateUtils';
 import jsPDF from 'jspdf';
 import { ConceptBreakdownTable, type ResumenPorTipoPago } from './ConceptBreakdownTable';
+import { rebuildResumenFromDetalles, resumenHasRoleSeparation } from '@/lib/rebuildResumenConceptos';
 
 interface BranchSettlement {
   id: string;
