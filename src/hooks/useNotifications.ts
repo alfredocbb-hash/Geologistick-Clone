@@ -127,6 +127,8 @@ export function useNotifications() {
           setNotifications(prev => [newNotification, ...prev]);
           if (!newNotification.read) {
             setUnreadCount(prev => prev + 1);
+            // Vibrate on new notification
+            try { navigator.vibrate?.([100, 50, 100]); } catch {}
           }
         }
       )

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
-import { Package, TrendingUp, MapPin, Clock, ChevronRight, Truck, Navigation, Zap, ExternalLink } from 'lucide-react';
+import { Package, TrendingUp, MapPin, Clock, ChevronRight, Truck, Navigation, Zap, ExternalLink, Flame } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -10,14 +10,19 @@ import { es } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { getTodayString } from '@/lib/dateUtils';
+import { Route } from 'lucide-react';
+import { useDriverStreak } from '@/hooks/useDriverStreak';
 
 interface MobileHomeTabProps {
   onNavigateToRoutes: () => void;
+  onNavigateToHistory?: () => void;
 }
 
-export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
+export function MobileHomeTab({ onNavigateToRoutes, onNavigateToHistory }: MobileHomeTabProps) {
   const { user, profile } = useAuth();
   const navigate = useNavigate();
+  const { streak, achievements } = useDriverStreak();
+  const unlockedAchievements = achievements.filter(a => a.unlocked);
 
   // Fetch active routes (hojas_ruta)
   const { data: hojasRuta, isLoading: loadingHojas } = useQuery({
@@ -34,14 +39,12 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
         .in('estado', ['asignada', 'en_transito'])
         .order('created_at', { ascending: false })
         .limit(5);
-      
       if (error) throw error;
       return data;
     },
     enabled: !!user?.id
   });
 
-  // Fetch planned routes (rutas_planificadas)
   const { data: rutasPlanificadas, isLoading: loadingRutas } = useQuery({
     queryKey: ['mobile-rutas-planificadas', user?.id],
     queryFn: async () => {
@@ -52,32 +55,26 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
         .in('estado', ['asignada', 'confirmada', 'en_curso', 'pendiente'])
         .order('fecha', { ascending: true })
         .limit(5);
-      
       if (error) throw error;
       return data;
     },
     enabled: !!user?.id
   });
 
-  // Fetch today's stats
   const { data: todayStats } = useQuery({
     queryKey: ['mobile-today-stats', user?.id],
     queryFn: async () => {
       const today = getTodayString();
-      
       const { data: deliveries, error } = await supabase
         .from('envios')
         .select('id, precio_total, estado')
         .eq('chofer_id', user?.id)
         .gte('fecha_entrega', today)
         .lt('fecha_entrega', today + 'T23:59:59');
-      
       if (error) throw error;
-      
       const completed = deliveries?.filter(d => d.estado === 'entregado').length || 0;
       const total = deliveries?.length || 0;
       const earnings = deliveries?.reduce((sum, d) => sum + (d.precio_total || 0), 0) || 0;
-      
       return { completed, total, earnings };
     },
     enabled: !!user?.id
@@ -91,31 +88,34 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
   };
 
   const firstName = profile?.nombre?.split(' ')[0] || 'Chofer';
-
-  // Get the most relevant active route
   const activeRoute = hojasRuta?.find(h => h.estado === 'en_transito') || 
                       rutasPlanificadas?.find(r => r.estado === 'en_curso');
-
   const isLoading = loadingHojas || loadingRutas;
-
-  // Calculate progress percentage
   const progressPercent = todayStats?.total 
     ? Math.round((todayStats.completed / todayStats.total) * 100) 
     : 0;
 
   return (
     <div className="space-y-5 pb-4">
-      {/* Greeting Section */}
-      <div className="space-y-1">
-        <h1 className="text-2xl font-bold text-white">
-          {getGreeting()}, {firstName}! 👋
-        </h1>
-        <p className="text-slate-400 capitalize">
-          {format(new Date(), "EEEE, d 'de' MMMM", { locale: es })}
-        </p>
+      {/* Greeting + Streak */}
+      <div className="flex items-start justify-between">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold text-white">
+            {getGreeting()}, {firstName}! 👋
+          </h1>
+          <p className="text-slate-400 capitalize">
+            {format(new Date(), "EEEE, d 'de' MMMM", { locale: es })}
+          </p>
+        </div>
+        {streak > 0 && (
+          <div className="flex items-center gap-1.5 bg-gradient-to-r from-orange-500/20 to-amber-500/20 border border-orange-500/30 rounded-full px-3 py-1.5">
+            <Flame className="h-4 w-4 text-orange-400" />
+            <span className="text-orange-300 text-sm font-bold">{streak}</span>
+          </div>
+        )}
       </div>
 
-      {/* Active Route Card - Hero Style */}
+      {/* Active Route Card */}
       {isLoading ? (
         <Skeleton className="h-44 w-full rounded-3xl" />
       ) : activeRoute ? (
@@ -123,15 +123,12 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
           className="relative overflow-hidden bg-gradient-to-br from-primary/30 via-primary/20 to-emerald-500/20 border-primary/30 cursor-pointer group"
           onClick={() => {
             const type = 'sucursal_origen_id' in activeRoute ? 'hoja' : 'planificada';
-            // Active routes are already in progress, go to active-route
             navigate(`/active-route?id=${activeRoute.id}&type=${type}`);
           }}
         >
-          {/* Background pattern */}
           <div className="absolute inset-0 opacity-10">
             <div className="absolute top-0 right-0 w-40 h-40 bg-white rounded-full blur-3xl" />
           </div>
-          
           <CardContent className="relative p-5">
             <div className="flex items-center justify-between mb-4">
               <Badge className="bg-emerald-500/30 text-emerald-300 border-emerald-500/40 px-3 py-1">
@@ -142,12 +139,10 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
                 <Navigation className="h-5 w-5 text-white" />
               </div>
             </div>
-            
             <div className="space-y-3">
               <p className="font-bold text-white text-xl">
                 {'numero' in activeRoute ? activeRoute.numero : (activeRoute as any).numero}
               </p>
-              
               <div className="flex items-center gap-2 text-slate-200 text-sm">
                 <MapPin className="h-4 w-4 text-primary" />
                 {'sucursal_origen' in activeRoute 
@@ -155,7 +150,6 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
                   : `${(activeRoute as any).total_paradas || 0} paradas`
                 }
               </div>
-              
               <div className="flex items-center gap-3 text-slate-300 text-sm">
                 <div className="flex items-center gap-1.5">
                   <Package className="h-4 w-4" />
@@ -166,8 +160,6 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
                 </div>
               </div>
             </div>
-
-            {/* Continue button */}
             <button className="mt-5 w-full flex items-center justify-center gap-2 py-3.5 bg-white/20 hover:bg-white/30 rounded-2xl transition-all active:scale-[0.98]">
               <Truck className="h-5 w-5 text-white" />
               <span className="text-white font-semibold">Continuar Ruta</span>
@@ -182,18 +174,14 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
               <Truck className="h-8 w-8 text-slate-500" />
             </div>
             <p className="text-slate-400 mb-3">No hay rutas activas</p>
-            <button 
-              onClick={onNavigateToRoutes}
-              className="inline-flex items-center gap-1 text-primary text-sm font-semibold hover:underline"
-            >
-              Ver rutas pendientes
-              <ChevronRight className="h-4 w-4" />
+            <button onClick={onNavigateToRoutes} className="inline-flex items-center gap-1 text-primary text-sm font-semibold hover:underline">
+              Ver rutas pendientes <ChevronRight className="h-4 w-4" />
             </button>
           </CardContent>
         </Card>
       )}
 
-      {/* Quick Stats - Modern Cards */}
+      {/* Quick Stats */}
       <div className="grid grid-cols-2 gap-3">
         <Card className="bg-slate-900/60 border-slate-800/50 backdrop-blur-xl overflow-hidden">
           <CardContent className="p-4 relative">
@@ -217,50 +205,30 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
             <div className="absolute top-0 right-0 w-20 h-20 bg-blue-500/10 rounded-full blur-2xl" />
             <div className="relative flex items-start gap-3">
               <div className="relative w-12 h-12">
-                {/* Circular progress */}
                 <svg className="w-12 h-12 -rotate-90" viewBox="0 0 48 48">
-                  <circle 
-                    cx="24" cy="24" r="20" 
-                    fill="none" 
-                    stroke="currentColor" 
-                    strokeWidth="4"
-                    className="text-slate-700"
-                  />
-                  <circle 
-                    cx="24" cy="24" r="20" 
-                    fill="none" 
-                    stroke="currentColor" 
-                    strokeWidth="4"
-                    strokeDasharray={`${progressPercent * 1.256} 126`}
-                    strokeLinecap="round"
-                    className="text-blue-400 transition-all duration-500"
-                  />
+                  <circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" strokeWidth="4" className="text-slate-700" />
+                  <circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" strokeWidth="4" strokeDasharray={`${progressPercent * 1.256} 126`} strokeLinecap="round" className="text-blue-400 transition-all duration-500" />
                 </svg>
                 <Package className="absolute inset-0 m-auto h-5 w-5 text-blue-400" />
               </div>
               <div className="flex-1">
                 <p className="text-slate-400 text-xs font-medium">Entregas</p>
-                <p className="text-white font-bold text-xl mt-0.5">
-                  {todayStats?.completed || 0}/{todayStats?.total || 0}
-                </p>
+                <p className="text-white font-bold text-xl mt-0.5">{todayStats?.completed || 0}/{todayStats?.total || 0}</p>
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Navigate to Next Stop Button */}
+      {/* Navigate to Next Stop */}
       {activeRoute && (
         <button
           onClick={() => {
-            // Try to get the address from the active route context
             const address = 'sucursal_destino' in activeRoute
               ? (activeRoute as any).sucursal_destino?.ciudad || ''
               : (activeRoute as any).direccion_inicio || '';
             if (address) {
-              const encodedAddr = encodeURIComponent(address);
-              // Try Google Maps first (works on both Android & iOS)
-              window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodedAddr}`, '_blank');
+              window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`, '_blank');
             } else {
               toast('No hay dirección de destino disponible', { description: 'Abrí la ruta para ver las paradas' });
             }
@@ -270,6 +238,21 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
           <ExternalLink className="h-5 w-5 text-blue-400" />
           <span className="text-blue-300 font-semibold">Navegar con Google Maps</span>
         </button>
+      )}
+
+      {/* Achievements Row */}
+      {unlockedAchievements.length > 0 && (
+        <div className="space-y-2">
+          <h2 className="text-sm font-semibold text-slate-400">Logros</h2>
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+            {unlockedAchievements.map(a => (
+              <div key={a.id} className="flex items-center gap-1.5 bg-slate-900/60 border border-slate-800/50 rounded-full px-3 py-1.5 whitespace-nowrap">
+                <span className="text-base">{a.emoji}</span>
+                <span className="text-xs text-slate-300">{a.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Quick Actions */}
@@ -284,14 +267,20 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
           <span className="text-xs text-slate-300 font-medium">Rutas</span>
         </button>
         
-        <button className="flex flex-col items-center gap-2 p-4 bg-slate-900/60 border border-slate-800/50 rounded-2xl hover:bg-slate-800/60 transition-all active:scale-95">
+        <button 
+          onClick={() => onNavigateToHistory?.()}
+          className="flex flex-col items-center gap-2 p-4 bg-slate-900/60 border border-slate-800/50 rounded-2xl hover:bg-slate-800/60 transition-all active:scale-95"
+        >
           <div className="w-12 h-12 rounded-xl bg-amber-500/20 flex items-center justify-center">
             <Clock className="h-6 w-6 text-amber-400" />
           </div>
           <span className="text-xs text-slate-300 font-medium">Historial</span>
         </button>
         
-        <button className="flex flex-col items-center gap-2 p-4 bg-slate-900/60 border border-slate-800/50 rounded-2xl hover:bg-slate-800/60 transition-all active:scale-95">
+        <button 
+          onClick={() => onNavigateToHistory?.()}
+          className="flex flex-col items-center gap-2 p-4 bg-slate-900/60 border border-slate-800/50 rounded-2xl hover:bg-slate-800/60 transition-all active:scale-95"
+        >
           <div className="w-12 h-12 rounded-xl bg-purple-500/20 flex items-center justify-center">
             <Zap className="h-6 w-6 text-purple-400" />
           </div>
@@ -304,52 +293,32 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-white">Próximas Rutas</h2>
-            <button 
-              onClick={onNavigateToRoutes}
-              className="text-primary text-sm font-medium flex items-center gap-1 hover:underline"
-            >
-              Ver todas
-              <ChevronRight className="h-4 w-4" />
+            <button onClick={onNavigateToRoutes} className="text-primary text-sm font-medium flex items-center gap-1 hover:underline">
+              Ver todas <ChevronRight className="h-4 w-4" />
             </button>
           </div>
-
           <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
             {hojasRuta?.filter(h => h.estado === 'asignada').map((hoja) => (
-              <Card 
-                key={hoja.id} 
-                className="bg-slate-900/60 border-slate-800/50 min-w-[160px] cursor-pointer hover:border-primary/50 transition-all active:scale-95"
-                onClick={() => navigate(`/route-start?id=${hoja.id}&type=hoja`)}
-              >
+              <Card key={hoja.id} className="bg-slate-900/60 border-slate-800/50 min-w-[160px] cursor-pointer hover:border-primary/50 transition-all active:scale-95" onClick={() => navigate(`/route-start?id=${hoja.id}&type=hoja`)}>
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <div className="w-2 h-2 rounded-full bg-amber-400" />
                     <span className="text-xs text-amber-400 font-medium">Pendiente</span>
                   </div>
                   <p className="font-semibold text-white text-sm truncate">{hoja.numero}</p>
-                  <p className="text-xs text-slate-400 mt-1.5">
-                    {hoja.cantidad_envios || 0} envíos
-                  </p>
+                  <p className="text-xs text-slate-400 mt-1.5">{hoja.cantidad_envios || 0} envíos</p>
                 </CardContent>
               </Card>
             ))}
-
             {rutasPlanificadas?.filter(r => ['asignada', 'confirmada'].includes(r.estado || '')).map((ruta) => (
-              <Card 
-                key={ruta.id} 
-                className="bg-slate-900/60 border-slate-800/50 min-w-[160px] cursor-pointer hover:border-primary/50 transition-all active:scale-95"
-                onClick={() => navigate(`/route-start?id=${ruta.id}&type=planificada`)}
-              >
+              <Card key={ruta.id} className="bg-slate-900/60 border-slate-800/50 min-w-[160px] cursor-pointer hover:border-primary/50 transition-all active:scale-95" onClick={() => navigate(`/route-start?id=${ruta.id}&type=planificada`)}>
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <Clock className="h-3 w-3 text-slate-400" />
-                    <span className="text-xs text-slate-400">
-                      {ruta.hora_inicio || 'Pendiente'}
-                    </span>
+                    <span className="text-xs text-slate-400">{ruta.hora_inicio || 'Pendiente'}</span>
                   </div>
                   <p className="font-semibold text-white text-sm truncate">{ruta.numero}</p>
-                  <p className="text-xs text-slate-400 mt-1.5">
-                    {ruta.total_paradas || 0} paradas
-                  </p>
+                  <p className="text-xs text-slate-400 mt-1.5">{ruta.total_paradas || 0} paradas</p>
                 </CardContent>
               </Card>
             ))}
@@ -359,6 +328,3 @@ export function MobileHomeTab({ onNavigateToRoutes }: MobileHomeTabProps) {
     </div>
   );
 }
-
-// Import Route icon
-import { Route } from 'lucide-react';

@@ -1,0 +1,1 @@
+ALTER TABLE public.driver_checkins ADD COLUMN IF NOT EXISTS checkout_at timestamptz DEFAULT NULL;

@@ -16,7 +16,11 @@ import { useState, useRef } from 'react';
 import { useNativeCamera } from '@/hooks/useNativeCamera';
 import { useTheme } from 'next-themes';
 
-export function MobileProfileTab() {
+interface MobileProfileTabProps {
+  onCheckOut?: () => void;
+}
+
+export function MobileProfileTab({ onCheckOut }: MobileProfileTabProps = {}) {
   const { user, profile, signOut } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -328,6 +332,16 @@ export function MobileProfileTab() {
           <ChevronRight className="h-5 w-5 text-slate-500" />
         </button>
       </Card>
+
+      {onCheckOut && (
+        <Card className="bg-slate-800/30 border-slate-700 overflow-hidden">
+          <MenuItem 
+            icon={Clock} 
+            label="Finalizar Jornada" 
+            onClick={onCheckOut}
+          />
+        </Card>
+      )}
 
       <Card className="bg-slate-800/30 border-slate-700 overflow-hidden">
         <MenuItem 
