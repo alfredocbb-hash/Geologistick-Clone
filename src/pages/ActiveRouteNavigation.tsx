@@ -163,7 +163,7 @@ export default function ActiveRouteNavigation() {
           *,
           envio:envios(
             id,
-            tracking_number,
+            tracking_number, tracking_externo,
             estado,
             estado_retiro,
             requiere_retiro,
