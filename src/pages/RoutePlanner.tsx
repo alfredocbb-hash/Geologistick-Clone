@@ -1465,7 +1465,7 @@ export default function RoutePlanner() {
                                     checked={selectedEnvios.includes(envio.id)}
                                     onCheckedChange={() => toggleEnvio(envio.id)}
                                   />
-                                  <span className="font-mono text-xs">{envio.tracking_number}</span>
+                                  <span className="font-mono text-xs">{envio.tracking_externo || envio.tracking_number}</span>
                                   <Badge variant={envio.tipo === "retiro" ? "secondary" : "default"} className="text-xs h-5">
                                     {envio.tipo === "retiro" ? "Retiro" : "Entrega"}
                                   </Badge>
