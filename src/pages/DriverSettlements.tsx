@@ -65,6 +65,7 @@ interface Chofer {
 interface EnvioParaLiquidar {
   id: string;
   tracking_number: string;
+  tracking_externo?: string | null;
   precio_total: number;
   precio_efectivo: number;
   fecha_entrega: string;
