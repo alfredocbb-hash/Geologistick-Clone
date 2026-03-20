@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from "react";
+import { formatArgentinaPhone } from "@/components/ui/phone-input";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
@@ -357,7 +358,7 @@ export default function ImportShipmentsDialog({
               ciudad_entrega: recipientCity,
               destinatario_lat: lat,
               destinatario_lng: lng,
-              whatsapp_destinatario: recipientPhone ? cleanPhoneNumber(recipientPhone) : null,
+              whatsapp_destinatario: recipientPhone ? formatArgentinaPhone(recipientPhone) : null,
               precio_total: totalPrice || 0,
               notas: notes,
               estado: "pendiente",

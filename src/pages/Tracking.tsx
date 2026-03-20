@@ -8,7 +8,6 @@ import { Badge } from '@/components/ui/badge';
 import { Package, Search, MapPin, Clock, CheckCircle, Truck, AlertCircle, Loader2, CalendarClock, Copy, Check } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import TrackingMap from '@/components/tracking/TrackingMap';
 import LiveDriverMap from '@/components/tracking/LiveDriverMap';
 
 type ShipmentStatus = 'pendiente' | 'recogido' | 'en_sucursal' | 'en_transito' | 'en_reparto' | 'entregado' | 'devuelto' | 'cancelado' | 'primera_visita' | 'segunda_visita' | 'reprogramado' | 'incidencia' | 'no_entregado';
@@ -308,19 +307,9 @@ export default function Tracking() {
               </CardContent>
             </Card>
 
-            {/* Live Driver Map (only when en_reparto) */}
+            {/* Live Driver Map (only when en_reparto and driver is within 4km) */}
             {envio.estado === 'en_reparto' && (
               <LiveDriverMap trackingNumber={envio.tracking_number} />
-            )}
-
-            {/* Static Map (hidden when live map is showing) */}
-            {envio.estado !== 'en_reparto' && (
-              <TrackingMap
-                direccion={envio.destino?.direccion}
-                ciudad={envio.destino?.ciudad}
-                estado={envio.estado}
-                mapsApiKey={(envio as any).maps_api_key}
-              />
             )}
 
             {/* Details */}

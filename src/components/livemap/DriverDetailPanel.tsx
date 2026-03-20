@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { formatArgentinaPhone } from '@/components/ui/phone-input';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -258,7 +259,7 @@ export function DriverDetailPanel({
                 </a>
               </Button>
               <Button variant="outline" size="sm" className="flex-1" asChild>
-                <a href={`https://wa.me/${enhancedData.phone.replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener noreferrer">
+                <a href={`https://wa.me/${formatArgentinaPhone(enhancedData.phone).replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer">
                   <MessageCircle className="h-4 w-4 mr-2" />
                   WhatsApp
                 </a>

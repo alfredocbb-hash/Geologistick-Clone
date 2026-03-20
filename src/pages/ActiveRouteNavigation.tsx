@@ -35,6 +35,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import QRScanner from '@/components/qr/QRScanner';
+import { formatArgentinaPhone } from '@/components/ui/phone-input';
 import PickupConfirmation from '@/components/scan/PickupConfirmation';
 import DeliveryConfirmation from '@/components/delivery/DeliveryConfirmation';
 import ReportIncidentDialog from '@/components/incidents/ReportIncidentDialog';
@@ -557,7 +558,9 @@ export default function ActiveRouteNavigation() {
 
   // WhatsApp customer with live tracking link
   const whatsAppCustomer = useCallback((phone: string, name: string, trackingNum?: string) => {
-    const cleanPhone = phone.replace(/\D/g, '');
+    // Normalize Argentine phone for WhatsApp (handles missing +54, 0xx, 15 prefix)
+    const formatted = formatArgentinaPhone(phone);
+    const cleanPhone = formatted.replace(/\D/g, '');
     const trackingLink = trackingNum 
       ? `\n\nSeguí mi ubicación en vivo: ${window.location.origin}/tracking/${trackingNum}`
       : '';

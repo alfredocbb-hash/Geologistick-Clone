@@ -13,7 +13,7 @@ export function formatArgentinaPhone(raw: string): string {
   if (!raw) return "";
 
   // Keep only digits
-  let cleaned = raw.replace(/[^\\d]/g, "");
+  let cleaned = raw.replace(/\D/g, "");
 
   // Remove leading 0 (e.g. 011… → 11…)
   if (cleaned.startsWith("0")) {
@@ -37,7 +37,7 @@ export function formatArgentinaPhone(raw: string): string {
 
 function isValidArgentinePhone(value: string): boolean {
   if (!value) return false;
-  const digits = value.replace(/[^\\d]/g, "");
+  const digits = value.replace(/\D/g, "");
   // A valid Argentine number has 10-13 digits (with or without country code)
   return digits.length >= 10;
 }

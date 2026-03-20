@@ -9,8 +9,10 @@ interface LiveTrackingData {
   tracking_number: string;
   estado: string;
   live: boolean;
+  message?: string;
   driver?: { lat: number; lng: number; updated_at: string };
   destination?: { lat: number | null; lng: number | null; direccion: string | null; ciudad: string | null };
+  maps_api_key?: string | null;
 }
 
 interface LiveDriverMapProps {
@@ -41,22 +43,53 @@ export default function LiveDriverMap({ trackingNumber }: LiveDriverMapProps) {
     );
   }
 
-  if (!data?.live || !data.driver) return null;
+  // Not live yet (driver too far or no location)
+  if (!data?.live || !data.driver) {
+    if (data?.message) {
+      return (
+        <Card className="border-muted">
+          <CardContent className="py-6 flex items-center justify-center gap-2">
+            <Truck className="h-5 w-5 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">{data.message}</span>
+          </CardContent>
+        </Card>
+      );
+    }
+    return null;
+  }
 
-  const { driver, destination } = data;
+  const { driver, destination, maps_api_key } = data;
   const lastUpdate = driver.updated_at
     ? formatDistanceToNow(new Date(driver.updated_at), { addSuffix: true, locale: es })
     : null;
 
-  // Build Google Maps embed with both markers
-  const driverMarker = `${driver.lat},${driver.lng}`;
-  const markers = [`markers=color:blue%7Clabel:R%7C${driverMarker}`];
-  
-  if (destination?.lat && destination?.lng) {
-    markers.push(`markers=color:red%7Clabel:D%7C${destination.lat},${destination.lng}`);
+  // No API key available – show text-only status
+  if (!maps_api_key) {
+    return (
+      <Card className="border-green-500/30">
+        <CardContent className="py-6">
+          <div className="flex items-center gap-2 mb-2">
+            <Badge className="bg-green-600 text-white gap-1.5 px-3 py-1.5">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white" />
+              </span>
+              En vivo
+            </Badge>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            El repartidor está cerca de tu ubicación.
+          </p>
+          {lastUpdate && (
+            <p className="text-xs text-muted-foreground mt-2">Última actualización: {lastUpdate}</p>
+          )}
+        </CardContent>
+      </Card>
+    );
   }
 
-  const mapSrc = `https://www.google.com/maps/embed/v1/directions?key=AIzaSyB41DRUbKWJHPxaFjMAwdrzWzbVKartNGg&origin=${driver.lat},${driver.lng}&destination=${
+  // Build Google Maps embed with directions
+  const mapSrc = `https://www.google.com/maps/embed/v1/directions?key=${maps_api_key}&origin=${driver.lat},${driver.lng}&destination=${
     destination?.lat && destination?.lng
       ? `${destination.lat},${destination.lng}`
       : encodeURIComponent([destination?.direccion, destination?.ciudad, 'Argentina'].filter(Boolean).join(', '))
