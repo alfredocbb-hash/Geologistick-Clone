@@ -450,7 +450,32 @@ export default function LiveMap() {
     };
   }, [refetchDrivers]);
 
-  // Sync initial/refetched data into local state
+  // Realtime subscription for ruta_paradas and envios — invalidate queries on changes
+  useEffect(() => {
+    const channel = supabase
+      .channel('shipment-status-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'ruta_paradas' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['driver-route-progress'] });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'envios' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['driver-route-progress'] });
+          queryClient.invalidateQueries({ queryKey: ['sucursales-live-map'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
   useEffect(() => {
     setDriverLocations(driversData);
   }, [driversData]);
