@@ -50,7 +50,7 @@ export function PartnerSettlementDetailDialog({ open, onOpenChange, liquidacion 
         .from('liquidacion_partner_detalles') as any)
         .select(`
           id, envio_id, concepto_id, nombre_concepto, monto_envio, porcentaje_comision, monto_comision, tipo_pago,
-          envio:envios(tracking_number, nombre_destinatario, fecha_entrega)
+          envio:envios(tracking_number, tracking_externo, nombre_destinatario, fecha_entrega)
         `)
         .eq('liquidacion_id', liquidacion?.id)
         .order('created_at', { ascending: true });
