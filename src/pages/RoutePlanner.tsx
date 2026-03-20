@@ -920,7 +920,7 @@ export default function RoutePlanner() {
             ? (envio.nombre_remitente || `${envio.remitente?.nombre || ''} ${envio.remitente?.apellido || ''}`.trim())
             : (envio.nombre_destinatario || `${envio.destinatario?.nombre || ''} ${envio.destinatario?.apellido || ''}`.trim()),
           telefono: envio.tipo === "retiro" ? (envio.remitente?.telefono || "") : (envio.destinatario?.telefono || ""),
-          tracking: envio.tracking_number,
+          tracking: envio.tracking_externo || envio.tracking_number,
         };
         
         const distancia = calcDistance(originLat, originLng, singleStop.lat, singleStop.lng) * 1.3;
