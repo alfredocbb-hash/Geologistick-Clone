@@ -1,37 +1,32 @@
 
 
-## Plan: Excluir envíos ya liquidados en Liquidaciones de Sucursales
+## Plan: Separar comisiones por rol (Emisión/Recepción) en UI y PDF
 
 ### Problema
 
-Al calcular una nueva liquidación de sucursal, la query trae **todos** los envíos entregados/devueltos del período sin verificar si ya fueron incluidos en una liquidación previa. Esto causa que los mismos envíos aparezcan en múltiples liquidaciones.
+Las comisiones de emisión y recepción se acumulan bajo el mismo concepto. "Flete - Contado" muestra un total combinado cuando deberían ser filas separadas: "Flete (Emisión)" y "Flete (Recepción)".
 
-### Causa raíz
+### Cambios
 
-No hay filtro que excluya los envíos que ya tienen un registro en `liquidacion_sucursal_detalles` vinculado a una liquidación activa (no cancelada).
+**`src/pages/BranchSettlements.tsx`** — Modificar `calcularComisionConcepto` (~línea 404):
 
-### Solución
+1. Cambiar la clave de acumulación de `conceptoKey = conceptoId || conceptoNombre` a `conceptoKey = \`${conceptoId || conceptoNombre}::${rol}\`` para separar emisión/recepción
+2. Ajustar el nombre mostrado: `${nombre} (Emisión)` o `${nombre} (Recepción)`
+3. En la conversión final a array (~línea 554-562), extraer el `concepto_id` real quitando el sufijo `::rol` del key
 
-**`src/pages/BranchSettlements.tsx`** — En la mutación `calculateMutation`, después de obtener y deduplicar los envíos (línea ~221), agregar un paso que:
+**`src/lib/generateSettlementPDF.ts`** — No requiere cambios estructurales. El PDF ya renderiza los conceptos que recibe del `resumenConceptos`. Al separar las filas en el cálculo, el PDF automáticamente mostrará las filas separadas por rol.
 
-1. Tome todos los IDs de envíos obtenidos
-2. Consulte `liquidacion_sucursal_detalles` para ver cuáles ya están vinculados a una liquidación
-3. Cruce con `liquidaciones_sucursal` para excluir solo los que pertenecen a liquidaciones **no canceladas** (estado ≠ 'cancelada')
-4. Filtre los envíos ya liquidados del array antes de proceder con el cálculo de comisiones
+**`src/components/settlements/ConceptBreakdownTable.tsx`** — No requiere cambios. Ya renderiza lo que recibe.
 
-### Lógica
+### Resultado
 
-```text
-envíos del período
-  → obtener IDs
-  → consultar liquidacion_sucursal_detalles WHERE envio_id IN (ids)
-  → JOIN liquidaciones_sucursal WHERE estado != 'cancelada'
-  → remover esos envio_ids del cálculo
-```
+En cada pestaña (Contado / Pago Destino / Cta. Cte.) y en el PDF, cada concepto aparecerá separado:
+- "Flete (Emisión)" — porcentaje y comisión de origen
+- "Flete (Recepción)" — porcentaje y comisión de destino
 
 | Archivo | Cambio |
 |---------|--------|
-| `BranchSettlements.tsx` | Filtrar envíos ya liquidados en `calculateMutation` antes del cálculo de comisiones |
+| `BranchSettlements.tsx` | Incluir rol en clave de acumulación + sufijo en nombre del concepto |
 
 No se requiere migración de base de datos.
 
