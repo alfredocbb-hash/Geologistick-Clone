@@ -370,7 +370,7 @@ export default function DriverSettlements() {
         const precioEfectivo =
           (ptv && ptv > 0) ? ptv :
           (envio.precio_total > 0) ? envio.precio_total :
-          findZoneTarifaPrecio((envio as any).ciudad_entrega);
+          findZoneTarifaPrecio((envio as any).ciudad_entrega, (envio as any).provincia);
         
         const comisionCalculada = calcularComision(precioEfectivo, chofer, tarifa);
 
