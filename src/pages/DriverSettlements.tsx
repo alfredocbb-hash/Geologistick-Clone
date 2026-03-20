@@ -629,7 +629,7 @@ export default function DriverSettlements() {
   const totalComisiones = enviosALiquidar.reduce((sum, e) => sum + (montosEditados[e.id] ?? e.comision_calculada), 0);
   const totalDescuentosCOD = enviosALiquidar
     .filter(e => e.pago_contra_entrega && descuentosCOD[e.id])
-    .reduce((sum, e) => sum + e.precio_total, 0);
+    .reduce((sum, e) => sum + e.precio_efectivo, 0);
   const saldoFinal = totalComisiones - totalDescuentosCOD;
   const totalLiquidados = enviosLiquidados.reduce((sum, e) => sum + e.comision_calculada, 0);
   const enviosCOD = enviosALiquidar.filter(e => e.pago_contra_entrega);
