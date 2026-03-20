@@ -829,7 +829,7 @@ export default function DriverSettlements() {
                             {envio.pago_contra_entrega ? (
                               <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500">
                                 <Banknote className="h-3 w-3 mr-1" />
-                                ${envio.precio_total.toFixed(2)}
+                                ${envio.precio_efectivo.toFixed(2)}
                               </Badge>
                             ) : (
                               <span className="text-muted-foreground">-</span>
