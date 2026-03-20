@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import { format } from 'date-fns';
 import { parseDateString } from '@/lib/dateUtils';
 import { supabase } from '@/integrations/supabase/client';
+import { rebuildResumenFromDetalles, resumenHasRoleSeparation } from '@/lib/rebuildResumenConceptos';
 
 interface ConceptoResumenPDF {
   nombre: string;
@@ -640,7 +641,12 @@ export async function downloadBranchSettlementPDF(liquidacion: {
       cantidadEnvios: items.length,
     },
     items,
-    resumenConceptos: liquidacion.resumen_conceptos || null,
+    resumenConceptos: (() => {
+      const stored = liquidacion.resumen_conceptos || null;
+      if (stored && resumenHasRoleSeparation(stored as any)) return stored;
+      if (detalles && detalles.length > 0) return rebuildResumenFromDetalles(detalles as any) as any;
+      return stored;
+    })(),
   }, resolvedBranding ? { ...resolvedBranding, logo_light: logoBase64 || resolvedBranding.logo_light } : undefined);
 }
 
