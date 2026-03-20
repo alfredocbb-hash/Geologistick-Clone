@@ -401,13 +401,14 @@ export default function BranchSettlements() {
         }
         
         // Accumulate in resumen
-        const conceptoKey = conceptoId || conceptoNombre;
+        const rolSuffix = rol === 'emisión' ? 'Emisión' : 'Recepción';
+        const conceptoKey = `${conceptoId || conceptoNombre}::${rol}`;
         if (!conceptoAcumulado[tipoKey][conceptoKey]) {
           conceptoAcumulado[tipoKey][conceptoKey] = {
             venta: 0,
             porcentaje,
             comision: 0,
-            nombre: conceptoNombres[conceptoId || ''] || conceptoNombre,
+            nombre: `${conceptoNombres[conceptoId || ''] || conceptoNombre} (${rolSuffix})`,
              sinConfiguracion,
           };
         }
@@ -554,7 +555,7 @@ export default function BranchSettlements() {
       (['contado', 'destino', 'cta_cte'] as const).forEach(tipo => {
         resumenConceptos[tipo] = Object.entries(conceptoAcumulado[tipo])
           .map(([key, value]) => ({
-            concepto_id: key === 'default' ? null : key,
+            concepto_id: key === 'default' ? null : key.split('::')[0],
             nombre: value.nombre,
             ventas: value.venta,
             porcentaje: value.porcentaje,
