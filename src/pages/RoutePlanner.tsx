@@ -1508,7 +1508,7 @@ export default function RoutePlanner() {
                                 />
                               </TableCell>
                               <TableCell className="font-mono text-xs">
-                                {envio.tracking_number}
+                                {envio.tracking_externo || envio.tracking_number}
                               </TableCell>
                               <TableCell>
                                 <Badge variant={envio.tipo === "retiro" ? "secondary" : "default"}>
