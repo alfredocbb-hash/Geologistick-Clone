@@ -306,23 +306,36 @@ export default function DriverSettlements() {
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
       // Helper: find zone tarifa commission config by ciudad_entrega
-      const findZoneTarifaComision = (ciudad: string | null): { comision_chofer_porcentaje: number | null; comision_chofer_fija: number | null } | null => {
-        if (!ciudad || allZoneTarifas.length === 0) return null;
-        const ciudadNorm = normalize(ciudad);
-        // Exact match first
-        for (const zt of allZoneTarifas) {
-          if (!zt.zona_destino) continue;
-          const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-          if (zonas.some((z: string) => z === ciudadNorm)) {
-            return { comision_chofer_porcentaje: zt.comision_chofer_porcentaje, comision_chofer_fija: zt.comision_chofer_fija };
+      const findZoneTarifaComision = (ciudad: string | null, provincia?: string | null): { comision_chofer_porcentaje: number | null; comision_chofer_fija: number | null } | null => {
+        if (allZoneTarifas.length === 0) return null;
+        if (ciudad) {
+          const ciudadNorm = normalize(ciudad);
+          // Exact match first
+          for (const zt of allZoneTarifas) {
+            if (!zt.zona_destino) continue;
+            const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+            if (zonas.some((z: string) => z === ciudadNorm)) {
+              return { comision_chofer_porcentaje: zt.comision_chofer_porcentaje, comision_chofer_fija: zt.comision_chofer_fija };
+            }
+          }
+          // Substring match
+          for (const zt of allZoneTarifas) {
+            if (!zt.zona_destino) continue;
+            const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+            if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) {
+              return { comision_chofer_porcentaje: zt.comision_chofer_porcentaje, comision_chofer_fija: zt.comision_chofer_fija };
+            }
           }
         }
-        // Substring match
-        for (const zt of allZoneTarifas) {
-          if (!zt.zona_destino) continue;
-          const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-          if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) {
-            return { comision_chofer_porcentaje: zt.comision_chofer_porcentaje, comision_chofer_fija: zt.comision_chofer_fija };
+        // Fallback: match by provincia
+        if (provincia) {
+          const provNorm = normalize(provincia);
+          for (const zt of allZoneTarifas) {
+            if (!zt.zona_destino) continue;
+            const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+            if (zonas.some((z: string) => z === provNorm || provNorm.includes(z) || z.includes(provNorm))) {
+              return { comision_chofer_porcentaje: zt.comision_chofer_porcentaje, comision_chofer_fija: zt.comision_chofer_fija };
+            }
           }
         }
         // Fallback: largest zone
