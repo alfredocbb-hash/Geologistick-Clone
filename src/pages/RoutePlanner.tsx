@@ -710,7 +710,7 @@ export default function RoutePlanner() {
           markers.push({
             id: envio.id,
             position: { lat: Number(envio.coords.lat), lng: Number(envio.coords.lng) },
-            title: `${index + 1}. ${envio.tracking_number}`,
+            title: `${index + 1}. ${envio.tracking_externo || envio.tracking_number}`,
             icon: envio.tipo === 'retiro' ? 'current' : 'destination',
             type: 'envio',
             data: envio,
@@ -920,7 +920,7 @@ export default function RoutePlanner() {
             ? (envio.nombre_remitente || `${envio.remitente?.nombre || ''} ${envio.remitente?.apellido || ''}`.trim())
             : (envio.nombre_destinatario || `${envio.destinatario?.nombre || ''} ${envio.destinatario?.apellido || ''}`.trim()),
           telefono: envio.tipo === "retiro" ? (envio.remitente?.telefono || "") : (envio.destinatario?.telefono || ""),
-          tracking: envio.tracking_number,
+          tracking: envio.tracking_externo || envio.tracking_number,
         };
         
         const distancia = calcDistance(originLat, originLng, singleStop.lat, singleStop.lng) * 1.3;
@@ -983,7 +983,7 @@ export default function RoutePlanner() {
             ? ((singleItem as any).nombre_remitente || `${(singleItem as any).remitente?.nombre || ''} ${(singleItem as any).remitente?.apellido || ''}`.trim())
             : ((singleItem as any).nombre_destinatario || `${(singleItem as any).destinatario?.nombre || ''} ${(singleItem as any).destinatario?.apellido || ''}`.trim())),
           telefono: isSuc ? '' : ((singleItem as any).tipo === "retiro" ? ((singleItem as any).remitente?.telefono || "") : ((singleItem as any).destinatario?.telefono || "")),
-          tracking: isSuc ? '' : (singleItem as any).tracking_number,
+          tracking: isSuc ? '' : ((singleItem as any).tracking_externo || (singleItem as any).tracking_number),
         };
         const distancia = calcDistance(originLat, originLng, singleStop.lat, singleStop.lng) * 1.3;
         const singleOption: RouteOption = {
@@ -1058,7 +1058,7 @@ export default function RoutePlanner() {
             ? ((e as any).nombre_remitente || `${e.remitente?.nombre || ''} ${e.remitente?.apellido || ''}`.trim())
             : ((e as any).nombre_destinatario || `${e.destinatario?.nombre || ''} ${e.destinatario?.apellido || ''}`.trim()),
           telefono: e.tipo === "retiro" ? e.remitente?.telefono : e.destinatario?.telefono,
-          tracking: e.tracking_number,
+          tracking: e.tracking_externo || e.tracking_number,
         };
       };
 
@@ -1465,7 +1465,7 @@ export default function RoutePlanner() {
                                     checked={selectedEnvios.includes(envio.id)}
                                     onCheckedChange={() => toggleEnvio(envio.id)}
                                   />
-                                  <span className="font-mono text-xs">{envio.tracking_number}</span>
+                                  <span className="font-mono text-xs">{envio.tracking_externo || envio.tracking_number}</span>
                                   <Badge variant={envio.tipo === "retiro" ? "secondary" : "default"} className="text-xs h-5">
                                     {envio.tipo === "retiro" ? "Retiro" : "Entrega"}
                                   </Badge>
@@ -1508,7 +1508,7 @@ export default function RoutePlanner() {
                                 />
                               </TableCell>
                               <TableCell className="font-mono text-xs">
-                                {envio.tracking_number}
+                                {envio.tracking_externo || envio.tracking_number}
                               </TableCell>
                               <TableCell>
                                 <Badge variant={envio.tipo === "retiro" ? "secondary" : "default"}>
@@ -1727,7 +1727,7 @@ export default function RoutePlanner() {
                             onClick={() => setSelectedMapItem({ type: 'envio', data: envio })}
                           >
                             <div className="flex items-center gap-2">
-                              <span className="font-mono text-xs">{envio.tracking_number}</span>
+                              <span className="font-mono text-xs">{envio.tracking_externo || envio.tracking_number}</span>
                               <Badge variant="outline" className="text-xs">
                                 {envio.tipo === "retiro" ? "Retiro" : "Entrega"}
                               </Badge>

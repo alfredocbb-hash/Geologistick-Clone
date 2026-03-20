@@ -44,6 +44,7 @@ interface PartnerSettlementsTabProps {
 interface CalculatedShipment {
   envio_id: string;
   tracking_number: string;
+  tracking_externo?: string | null;
   nombre_destinatario: string | null;
   precio_total: number;
   fecha_entrega: string | null;
@@ -177,7 +178,7 @@ export function PartnerSettlementsTab({ profile }: PartnerSettlementsTabProps) {
       // 2. Get origin envíos within date range
       const { data: envios, error: envErr } = await supabase
         .from('envios')
-        .select('id, tracking_number, nombre_destinatario, precio_total, fecha_entrega, tipo_pago')
+        .select('id, tracking_number, tracking_externo, nombre_destinatario, precio_total, fecha_entrega, tipo_pago')
         .in('id', envioOrigenIds)
         .gte('fecha_entrega', periodoInicio)
         .lte('fecha_entrega', periodoFin + 'T23:59:59');
@@ -247,6 +248,7 @@ export function PartnerSettlementsTab({ profile }: PartnerSettlementsTabProps) {
         return {
           envio_id: envio.id,
           tracking_number: envio.tracking_number,
+          tracking_externo: envio.tracking_externo,
           nombre_destinatario: envio.nombre_destinatario,
           precio_total: envio.precio_total,
           fecha_entrega: envio.fecha_entrega,
@@ -481,7 +483,7 @@ export function PartnerSettlementsTab({ profile }: PartnerSettlementsTabProps) {
                     <TableBody>
                       {calculatedShipments.map(s => (
                         <TableRow key={s.envio_id}>
-                          <TableCell className="font-mono text-sm">{s.tracking_number}</TableCell>
+                          <TableCell className="font-mono text-sm">{s.tracking_externo || s.tracking_number}</TableCell>
                           <TableCell>{s.nombre_destinatario || '-'}</TableCell>
                           <TableCell>
                             {s.fecha_entrega ? format(new Date(s.fecha_entrega), 'dd/MM/yy', { locale: es }) : '-'}

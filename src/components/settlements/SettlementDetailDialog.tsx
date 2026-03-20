@@ -98,7 +98,7 @@ export function SettlementDetailDialog({
         .from('liquidacion_sucursal_detalles')
         .select(`
           *,
-          envio:envios(tracking_number, estado, created_at, nombre_destinatario, destinatario_id, clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
+          envio:envios(tracking_number, tracking_externo, estado, created_at, nombre_destinatario, destinatario_id, clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
         `)
         .eq('liquidacion_id', settlementId)
         .order('created_at', { ascending: false });
@@ -117,7 +117,7 @@ export function SettlementDetailDialog({
         .from('comisiones')
         .select(`
           *,
-          envio:envios(tracking_number, estado, created_at, precio_total, nombre_destinatario, destinatario_id, clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
+          envio:envios(tracking_number, tracking_externo, estado, created_at, precio_total, nombre_destinatario, destinatario_id, clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
         `)
         .eq('liquidacion_id', settlementId)
         .order('created_at', { ascending: false });
@@ -243,7 +243,7 @@ export function SettlementDetailDialog({
 
       const envio = item.envio;
       const destinatario = envio?.clientes;
-      const tracking = envio?.tracking_number || '-';
+      const tracking = envio?.tracking_externo || envio?.tracking_number || '-';
       const fecha = envio?.created_at ? format(new Date(envio.created_at), 'dd/MM/yy') : '-';
       const nombre = destinatario ? `${destinatario.nombre || ''} ${destinatario.apellido || ''}`.trim() : envio?.nombre_destinatario || '-';
       const monto = isBranch 
@@ -518,7 +518,7 @@ export function SettlementDetailDialog({
                       return (
                         <TableRow key={item.id}>
                           <TableCell className="font-mono text-sm">
-                            {envio?.tracking_number || '-'}
+                            {envio?.tracking_externo || envio?.tracking_number || '-'}
                           </TableCell>
                           <TableCell>
                             {envio?.created_at ? format(new Date(envio.created_at), 'dd/MM/yy', { locale: es }) : '-'}

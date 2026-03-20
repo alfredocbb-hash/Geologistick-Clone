@@ -50,7 +50,7 @@ export function PartnerSettlementDetailDialog({ open, onOpenChange, liquidacion 
         .from('liquidacion_partner_detalles') as any)
         .select(`
           id, envio_id, concepto_id, nombre_concepto, monto_envio, porcentaje_comision, monto_comision, tipo_pago,
-          envio:envios(tracking_number, nombre_destinatario, fecha_entrega)
+          envio:envios(tracking_number, tracking_externo, nombre_destinatario, fecha_entrega)
         `)
         .eq('liquidacion_id', liquidacion?.id)
         .order('created_at', { ascending: true });
@@ -68,7 +68,7 @@ export function PartnerSettlementDetailDialog({ open, onOpenChange, liquidacion 
     const key = d.envio_id || d.id;
     if (!envioMap.has(key)) {
       envioMap.set(key, {
-        tracking: d.envio?.tracking_number || '-',
+        tracking: d.envio?.tracking_externo || d.envio?.tracking_number || '-',
         destinatario: d.envio?.nombre_destinatario || '-',
         fecha: d.envio?.fecha_entrega ? format(new Date(d.envio.fecha_entrega), 'dd/MM/yy', { locale: es }) : '-',
         conceptos: [],
@@ -219,7 +219,7 @@ export function PartnerSettlementDetailDialog({ open, onOpenChange, liquidacion 
                       <TableBody>
                         {(detalles || []).map((d: any) => (
                           <TableRow key={d.id}>
-                            <TableCell className="font-mono text-sm">{d.envio?.tracking_number || '-'}</TableCell>
+                            <TableCell className="font-mono text-sm">{d.envio?.tracking_externo || d.envio?.tracking_number || '-'}</TableCell>
                             <TableCell className="text-sm">{d.envio?.nombre_destinatario || '-'}</TableCell>
                             <TableCell className="text-sm">
                               {d.envio?.fecha_entrega ? format(new Date(d.envio.fecha_entrega), 'dd/MM/yy', { locale: es }) : '-'}

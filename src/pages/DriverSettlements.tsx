@@ -65,6 +65,7 @@ interface Chofer {
 interface EnvioParaLiquidar {
   id: string;
   tracking_number: string;
+  tracking_externo?: string | null;
   precio_total: number;
   precio_efectivo: number;
   fecha_entrega: string;
@@ -207,7 +208,7 @@ export default function DriverSettlements() {
       if (!chofer) throw new Error('Chofer no encontrado');
 
       const selectFields = `
-          id, tracking_number, precio_total, precio_tarifa_vigente, fecha_entrega, tarifa_id,
+          id, tracking_number, tracking_externo, precio_total, precio_tarifa_vigente, fecha_entrega, tarifa_id,
           chofer_id, chofer_ultima_milla_id, pago_contra_entrega, ciudad_entrega, provincia,
           tarifas:tarifas(comision_chofer_porcentaje, comision_chofer_fija)
         `;
@@ -377,6 +378,7 @@ export default function DriverSettlements() {
         return {
           id: envio.id,
           tracking_number: envio.tracking_number,
+          tracking_externo: envio.tracking_externo,
           precio_total: envio.precio_total,
           precio_efectivo: precioEfectivo,
           fecha_entrega: envio.fecha_entrega!,
@@ -841,7 +843,7 @@ export default function DriverSettlements() {
                       return (
                         <TableRow key={envio.id} className={!isALiquidar ? 'opacity-60' : ''}>
                           <TableCell className="font-mono">
-                            {envio.tracking_number}
+                            {envio.tracking_externo || envio.tracking_number}
                           </TableCell>
                           <TableCell>
                             {format(new Date(envio.fecha_entrega), 'dd/MM/yy', { locale: es })}

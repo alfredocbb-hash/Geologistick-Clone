@@ -163,7 +163,7 @@ export default function ActiveRouteNavigation() {
           *,
           envio:envios(
             id,
-            tracking_number,
+            tracking_number, tracking_externo,
             estado,
             estado_retiro,
             requiere_retiro,
@@ -208,7 +208,7 @@ export default function ActiveRouteNavigation() {
           *,
           envio:envios(
             id,
-            tracking_number,
+            tracking_number, tracking_externo,
             estado,
             estado_retiro,
             requiere_retiro,
@@ -904,7 +904,7 @@ export default function ActiveRouteNavigation() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">#{index + 1}</span>
-                    <span className="font-mono text-xs">{envio.tracking_number}</span>
+                    <span className="font-mono text-xs">{envio.tracking_externo || envio.tracking_number}</span>
                     {isCurrent && (
                       <Badge variant="outline" className="text-xs border-primary text-primary">
                         Sugerida
