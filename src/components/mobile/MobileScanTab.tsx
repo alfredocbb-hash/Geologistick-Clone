@@ -240,6 +240,19 @@ export function MobileScanTab() {
         return;
       }
       
+      // Block final states
+      if (['entregado', 'cancelado'].includes(shipment.estado)) {
+        playWarningSound();
+        vibrateDevice();
+        setScannedShipment(shipment);
+        const label = shipment.estado === 'entregado' ? 'Entregado' : 'Cancelado';
+        toast.error(`Este envío ya fue ${label.toLowerCase()}`, {
+          description: `Estado actual: ${label}. No se puede realizar ninguna acción.`,
+        });
+        setIsPulsing(true);
+        return;
+      }
+
       // Play success sound and vibrate
       playBeepSound();
       vibrateDevice();
