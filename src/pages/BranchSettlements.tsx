@@ -427,6 +427,7 @@ export default function BranchSettlements() {
           venta: monto,
           porcentaje,
           comision,
+          nombre: conceptoNombres[conceptoId || ''] || conceptoNombre,
         };
         
         return comision;
