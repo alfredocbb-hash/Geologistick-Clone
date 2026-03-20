@@ -340,13 +340,21 @@ export default function DriverSettlements() {
         if (!tarifa && (chofer.comision_tipo === 'tarifa' || !chofer.comision_tipo)) {
           tarifa = findZoneTarifaComision((envio as any).ciudad_entrega);
         }
+
+        // Price hierarchy: precio_tarifa_vigente → precio_total → zone precio_base
+        const ptv = (envio as any).precio_tarifa_vigente;
+        const precioEfectivo =
+          (ptv && ptv > 0) ? ptv :
+          (envio.precio_total > 0) ? envio.precio_total :
+          findZoneTarifaPrecio((envio as any).ciudad_entrega);
         
-        const comisionCalculada = calcularComision(envio.precio_total, chofer, tarifa);
+        const comisionCalculada = calcularComision(precioEfectivo, chofer, tarifa);
 
         return {
           id: envio.id,
           tracking_number: envio.tracking_number,
           precio_total: envio.precio_total,
+          precio_efectivo: precioEfectivo,
           fecha_entrega: envio.fecha_entrega!,
           pago_contra_entrega: envio.pago_contra_entrega || false,
           tarifa,
