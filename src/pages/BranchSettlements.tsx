@@ -555,7 +555,7 @@ export default function BranchSettlements() {
       (['contado', 'destino', 'cta_cte'] as const).forEach(tipo => {
         resumenConceptos[tipo] = Object.entries(conceptoAcumulado[tipo])
           .map(([key, value]) => ({
-            concepto_id: key === 'default' ? null : key,
+            concepto_id: key === 'default' ? null : key.split('::')[0],
             nombre: value.nombre,
             ventas: value.venta,
             porcentaje: value.porcentaje,
