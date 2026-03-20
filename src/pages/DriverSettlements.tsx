@@ -378,6 +378,7 @@ export default function DriverSettlements() {
         return {
           id: envio.id,
           tracking_number: envio.tracking_number,
+          tracking_externo: envio.tracking_externo,
           precio_total: envio.precio_total,
           precio_efectivo: precioEfectivo,
           fecha_entrega: envio.fecha_entrega!,
