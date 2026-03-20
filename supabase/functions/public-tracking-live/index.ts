@@ -6,6 +6,18 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// Haversine distance in km
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 // Simple in-memory rate limit (per isolate)
 const requestLog = new Map<string, number>();
 
@@ -51,7 +63,7 @@ Deno.serve(async (req) => {
     // Find shipment by tracking number
     const { data: envio, error: envioError } = await supabase
       .from("envios")
-      .select("id, estado, chofer_id, tracking_number, destinatario_lat, destinatario_lng, direccion_entrega, ciudad_entrega")
+      .select("id, estado, chofer_id, tracking_number, destinatario_lat, destinatario_lng, direccion_entrega, ciudad_entrega, tenant_id")
       .eq("tracking_number", trackingNumber.toUpperCase())
       .single();
 
@@ -63,18 +75,7 @@ Deno.serve(async (req) => {
     }
 
     // Only expose live location when en_reparto
-    if (envio.estado !== "en_reparto") {
-      return new Response(
-        JSON.stringify({
-          tracking_number: envio.tracking_number,
-          estado: envio.estado,
-          live: false,
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    if (!envio.chofer_id) {
+    if (envio.estado !== "en_reparto" || !envio.chofer_id) {
       return new Response(
         JSON.stringify({
           tracking_number: envio.tracking_number,
@@ -103,6 +104,52 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Check distance: only show live if driver is within 4km of destination
+    const destLat = envio.destinatario_lat;
+    const destLng = envio.destinatario_lng;
+    
+    if (!destLat || !destLng) {
+      return new Response(
+        JSON.stringify({
+          tracking_number: envio.tracking_number,
+          estado: envio.estado,
+          live: false,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const distance = haversineKm(location.lat, location.lng, destLat, destLng);
+    
+    if (distance > 4) {
+      return new Response(
+        JSON.stringify({
+          tracking_number: envio.tracking_number,
+          estado: envio.estado,
+          live: false,
+          message: "El repartidor aún no está cerca de tu ubicación",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Get maps API key for this tenant
+    let mapsApiKey: string | null = null;
+    if (envio.tenant_id) {
+      const { data: integration } = await supabase
+        .from("system_integrations")
+        .select("api_key")
+        .eq("tenant_id", envio.tenant_id)
+        .eq("integration_type", "google_maps")
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
+      
+      if (integration?.api_key) {
+        mapsApiKey = integration.api_key;
+      }
+    }
+
     return new Response(
       JSON.stringify({
         tracking_number: envio.tracking_number,
@@ -114,11 +161,12 @@ Deno.serve(async (req) => {
           updated_at: location.updated_at,
         },
         destination: {
-          lat: envio.destinatario_lat,
-          lng: envio.destinatario_lng,
+          lat: destLat,
+          lng: destLng,
           direccion: envio.direccion_entrega,
           ciudad: envio.ciudad_entrega,
         },
+        maps_api_key: mapsApiKey,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

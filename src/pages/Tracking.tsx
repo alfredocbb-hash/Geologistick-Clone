@@ -307,19 +307,9 @@ export default function Tracking() {
               </CardContent>
             </Card>
 
-            {/* Live Driver Map (only when en_reparto) */}
+            {/* Live Driver Map (only when en_reparto and driver is within 4km) */}
             {envio.estado === 'en_reparto' && (
               <LiveDriverMap trackingNumber={envio.tracking_number} />
-            )}
-
-            {/* Static Map (hidden when live map is showing) */}
-            {envio.estado !== 'en_reparto' && (
-              <TrackingMap
-                direccion={envio.destino?.direccion}
-                ciudad={envio.destino?.ciudad}
-                estado={envio.estado}
-                mapsApiKey={(envio as any).maps_api_key}
-              />
             )}
 
             {/* Details */}
