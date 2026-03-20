@@ -8,7 +8,6 @@ import { Badge } from '@/components/ui/badge';
 import { Package, Search, MapPin, Clock, CheckCircle, Truck, AlertCircle, Loader2, CalendarClock, Copy, Check } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import TrackingMap from '@/components/tracking/TrackingMap';
 import LiveDriverMap from '@/components/tracking/LiveDriverMap';
 
 type ShipmentStatus = 'pendiente' | 'recogido' | 'en_sucursal' | 'en_transito' | 'en_reparto' | 'entregado' | 'devuelto' | 'cancelado' | 'primera_visita' | 'segunda_visita' | 'reprogramado' | 'incidencia' | 'no_entregado';
