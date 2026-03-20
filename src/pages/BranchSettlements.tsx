@@ -101,7 +101,7 @@ export default function BranchSettlements() {
     totalComisiones: number;
     saldo: number;
     resumenConceptos: ResumenPorTipoPago;
-    enviosDesglose: Record<string, Record<string, { venta: number; porcentaje: number; comision: number }>>;
+    enviosDesglose: Record<string, Record<string, { venta: number; porcentaje: number; comision: number; nombre?: string }>>;
      remitosCancelados: {
        cantidad: number;
        totalCobrado: number;
