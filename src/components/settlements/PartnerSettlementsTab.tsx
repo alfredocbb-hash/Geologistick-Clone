@@ -483,7 +483,7 @@ export function PartnerSettlementsTab({ profile }: PartnerSettlementsTabProps) {
                     <TableBody>
                       {calculatedShipments.map(s => (
                         <TableRow key={s.envio_id}>
-                          <TableCell className="font-mono text-sm">{s.tracking_number}</TableCell>
+                          <TableCell className="font-mono text-sm">{s.tracking_externo || s.tracking_number}</TableCell>
                           <TableCell>{s.nombre_destinatario || '-'}</TableCell>
                           <TableCell>
                             {s.fecha_entrega ? format(new Date(s.fecha_entrega), 'dd/MM/yy', { locale: es }) : '-'}

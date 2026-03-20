@@ -219,7 +219,7 @@ export function PartnerSettlementDetailDialog({ open, onOpenChange, liquidacion 
                       <TableBody>
                         {(detalles || []).map((d: any) => (
                           <TableRow key={d.id}>
-                            <TableCell className="font-mono text-sm">{d.envio?.tracking_number || '-'}</TableCell>
+                            <TableCell className="font-mono text-sm">{d.envio?.tracking_externo || d.envio?.tracking_number || '-'}</TableCell>
                             <TableCell className="text-sm">{d.envio?.nombre_destinatario || '-'}</TableCell>
                             <TableCell className="text-sm">
                               {d.envio?.fecha_entrega ? format(new Date(d.envio.fecha_entrega), 'dd/MM/yy', { locale: es }) : '-'}

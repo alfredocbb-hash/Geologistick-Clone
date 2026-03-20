@@ -843,7 +843,7 @@ export default function DriverSettlements() {
                       return (
                         <TableRow key={envio.id} className={!isALiquidar ? 'opacity-60' : ''}>
                           <TableCell className="font-mono">
-                            {envio.tracking_number}
+                            {envio.tracking_externo || envio.tracking_number}
                           </TableCell>
                           <TableCell>
                             {format(new Date(envio.fecha_entrega), 'dd/MM/yy', { locale: es })}

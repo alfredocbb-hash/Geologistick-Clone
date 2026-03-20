@@ -518,7 +518,7 @@ export function SettlementDetailDialog({
                       return (
                         <TableRow key={item.id}>
                           <TableCell className="font-mono text-sm">
-                            {envio?.tracking_number || '-'}
+                            {envio?.tracking_externo || envio?.tracking_number || '-'}
                           </TableCell>
                           <TableCell>
                             {envio?.created_at ? format(new Date(envio.created_at), 'dd/MM/yy', { locale: es }) : '-'}
