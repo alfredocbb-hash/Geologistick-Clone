@@ -358,7 +358,22 @@ export function MobileScanTab() {
     }
   };
 
-  const vibrateDevice = () => {
+  const playWarningSound = () => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.frequency.value = 400;
+      oscillator.type = 'square';
+      gainNode.gain.value = 0.3;
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 0.3);
+    } catch (err) {}
+  };
+
+
     try {
       if ('vibrate' in navigator) {
         navigator.vibrate(100);
