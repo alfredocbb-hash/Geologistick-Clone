@@ -272,9 +272,34 @@ serve(async (req: Request) => {
       })),
     };
 
+    // Fetch Maps API key for the tenant (so public tracking can render maps)
+    let mapsApiKey: string | null = null;
+    if (envio.tenant_id) {
+      for (const env of ['production', 'sandbox']) {
+        const { data: integration } = await supabaseClient
+          .from('system_integrations')
+          .select('config_value')
+          .eq('tenant_id', envio.tenant_id)
+          .eq('integration_type', 'google_maps')
+          .eq('config_key', 'api_key')
+          .eq('environment', env)
+          .eq('is_active', true)
+          .maybeSingle();
+        if (integration?.config_value) {
+          mapsApiKey = integration.config_value;
+          break;
+        }
+      }
+      if (!mapsApiKey) {
+        mapsApiKey = Deno.env.get('GOOGLE_MAPS_API_KEY') || Deno.env.get('VITE_GOOGLE_MAPS_API_KEY') || null;
+      }
+    }
+
+    const finalResponse = { ...response, maps_api_key: mapsApiKey };
+
     logStep("Response built successfully");
 
-    return new Response(JSON.stringify(response), {
+    return new Response(JSON.stringify(finalResponse), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

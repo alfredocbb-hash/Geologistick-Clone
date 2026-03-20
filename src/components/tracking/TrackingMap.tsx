@@ -1,14 +1,29 @@
 import { Card, CardContent } from '@/components/ui/card';
-import { MapPin } from 'lucide-react';
+import { MapPin, Loader2 } from 'lucide-react';
 
 interface TrackingMapProps {
   direccion?: string | null;
   ciudad?: string | null;
   estado?: string;
+  mapsApiKey?: string | null;
 }
 
-export default function TrackingMap({ direccion, ciudad, estado }: TrackingMapProps) {
+export default function TrackingMap({ direccion, ciudad, estado, mapsApiKey }: TrackingMapProps) {
   if (!direccion && !ciudad) return null;
+
+  // No API key available – show a placeholder instead of a broken iframe
+  if (!mapsApiKey) {
+    return (
+      <Card className="overflow-hidden">
+        <CardContent className="p-0">
+          <div className="flex flex-col items-center justify-center h-[220px] bg-muted/30 text-muted-foreground gap-2">
+            <MapPin className="h-8 w-8" />
+            <span className="text-sm">Mapa no disponible</span>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   const query = encodeURIComponent([direccion, ciudad, 'Argentina'].filter(Boolean).join(', '));
 
@@ -29,7 +44,7 @@ export default function TrackingMap({ direccion, ciudad, estado }: TrackingMapPr
             style={{ border: 0 }}
             loading="lazy"
             referrerPolicy="no-referrer-when-downgrade"
-            src={`https://www.google.com/maps/embed/v1/place?key=AIzaSyB41DRUbKWJHPxaFjMAwdrzWzbVKartNGg&q=${query}&zoom=14&language=es`}
+            src={`https://www.google.com/maps/embed/v1/place?key=${mapsApiKey}&q=${query}&zoom=14&language=es`}
           />
         </div>
       </CardContent>

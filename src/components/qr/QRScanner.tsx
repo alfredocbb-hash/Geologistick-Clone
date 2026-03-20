@@ -683,7 +683,7 @@ export default function QRScanner({ onScan, onClose, continuousMode = false, sca
       </div>
 
       {/* Scanner Area */}
-      <div className="flex-1 flex items-center justify-center p-4">
+      <div className="flex-1 flex items-start justify-center pt-6 px-4">
         <div className="relative w-full max-w-sm">
           {/* Web scanner container */}
           {!shouldUseNative && (

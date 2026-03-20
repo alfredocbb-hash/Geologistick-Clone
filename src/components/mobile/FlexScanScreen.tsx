@@ -97,6 +97,10 @@ export function FlexScanScreen() {
     
     if (added) {
       setScanSessionCount(prev => prev + 1);
+      toast.success('📦 Paquete escaneado', {
+        description: `Total: ${packages.length + 1} paquete${packages.length !== 0 ? 's' : ''}`,
+        duration: 1500,
+      });
     }
   }, [addPackageByTracking, ensureGpsTracking]);
 

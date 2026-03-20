@@ -319,6 +319,7 @@ export default function Tracking() {
                 direccion={envio.destino?.direccion}
                 ciudad={envio.destino?.ciudad}
                 estado={envio.estado}
+                mapsApiKey={(envio as any).maps_api_key}
               />
             )}
 
