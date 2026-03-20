@@ -15,6 +15,11 @@ export function formatArgentinaPhone(raw: string): string {
   // Keep only digits
   let cleaned = raw.replace(/\D/g, "");
 
+  // If too few digits, don't normalize — return as-is to avoid legitimizing garbage input
+  if (cleaned.length < 6) {
+    return raw;
+  }
+
   // Remove leading 0 (e.g. 011… → 11…)
   if (cleaned.startsWith("0")) {
     cleaned = cleaned.substring(1);
