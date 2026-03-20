@@ -68,7 +68,7 @@ export function PartnerSettlementDetailDialog({ open, onOpenChange, liquidacion 
     const key = d.envio_id || d.id;
     if (!envioMap.has(key)) {
       envioMap.set(key, {
-        tracking: d.envio?.tracking_number || '-',
+        tracking: d.envio?.tracking_externo || d.envio?.tracking_number || '-',
         destinatario: d.envio?.nombre_destinatario || '-',
         fecha: d.envio?.fecha_entrega ? format(new Date(d.envio.fecha_entrega), 'dd/MM/yy', { locale: es }) : '-',
         conceptos: [],
