@@ -1058,7 +1058,7 @@ export default function RoutePlanner() {
             ? ((e as any).nombre_remitente || `${e.remitente?.nombre || ''} ${e.remitente?.apellido || ''}`.trim())
             : ((e as any).nombre_destinatario || `${e.destinatario?.nombre || ''} ${e.destinatario?.apellido || ''}`.trim()),
           telefono: e.tipo === "retiro" ? e.remitente?.telefono : e.destinatario?.telefono,
-          tracking: e.tracking_number,
+          tracking: e.tracking_externo || e.tracking_number,
         };
       };
 
