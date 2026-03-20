@@ -1,33 +1,54 @@
 
 
-## Plan: Fix zona matching para barrios de CABA/GBA en liquidaciones
+## Plan: Mostrar tracking externo en liquidaciones, planificador y navegación
 
-### Problema encontrado
+### Problema
+Los envíos de terciarizados tienen un `tracking_externo` que no se muestra en varias pantallas clave. Ya se muestra correctamente en `ThirdPartySettlements`, `PrintSettlement`, `Shipments` y `ShipmentDetailsDialog`, pero falta en:
 
-Los envíos ML de Lucas Galarza del 18/03/2026 tienen `precio_total = 0`, `precio_tarifa_vigente = 0` y `tarifa_id = null`. Son 9 de 11 envíos afectados.
+1. **Liquidaciones de choferes** (`DriverSettlements.tsx`)
+2. **Planificador de rutas** (`RoutePlanner.tsx`)
+3. **Navegación de ruta activa** (`ActiveRouteNavigation.tsx`)
+4. **Detalle de liquidación de chofer** (`SettlementDetailDialog.tsx`)
+5. **Liquidaciones de partners** (`PartnerSettlementsTab.tsx`, `PartnerSettlementDetailDialog.tsx`)
 
-La causa: el campo `ciudad_entrega` tiene barrios de CABA (Palermo, Núñez, Floresta, Villa Crespo, Santa Rita, Villa Real, etc.), pero la zona tarifa "Zona 3 - CABA Y GBA" lista "Capital Federal" y "CABA" como ciudades, no barrios individuales. El `findZoneTarifaPrecio` no encuentra match.
+### Cambios
 
-Sin embargo, el campo `provincia` de esos envíos sí dice "Capital Federal", que está en la lista de la zona.
+**`src/pages/DriverSettlements.tsx`**:
+- Agregar `tracking_externo` al `selectFields` de la query
+- Agregar `tracking_externo` a la interfaz `EnvioParaLiquidar`
+- En la tabla, mostrar `tracking_externo || tracking_number`
 
-### Solución
+**`src/pages/RoutePlanner.tsx`**:
+- Ya usa `select(*)` así que `tracking_externo` ya viene en los datos
+- En todos los lugares donde se muestra `tracking_number` (lista de envíos, tabla, drag & drop), usar `envio.tracking_externo || envio.tracking_number`
 
-**`src/pages/DriverSettlements.tsx`** — Agregar un tercer nivel de fallback en `findZoneTarifaPrecio` y `findZoneTarifaComision`: si no hay match por `ciudad_entrega`, intentar match por `provincia`.
+**`src/pages/ActiveRouteNavigation.tsx`**:
+- Agregar `tracking_externo` a las dos queries (hoja_ruta_envios y ruta_paradas)
+- En la lista de paradas, mostrar `tracking_externo || tracking_number`
 
-Cambios:
-1. Modificar ambas funciones para recibir también `provincia` como segundo parametro.
-2. Después del match por substring de ciudad, agregar match por `provincia` contra la lista de zonas.
-3. Actualizar las llamadas para pasar `(envio as any).provincia` junto con `ciudad_entrega`.
+**`src/components/settlements/SettlementDetailDialog.tsx`**:
+- Agregar `tracking_externo` a las queries de comisiones y detalles
+- Mostrar `tracking_externo || tracking_number` en la tabla
 
-Esto también afecta al `findZoneTarifaComision` para el caso de comision_tipo = 'tarifa' (aunque Lucas usa 'porcentaje', otros choferes podrían usar 'tarifa').
+**`src/components/settlements/PartnerSettlementsTab.tsx`**:
+- Agregar `tracking_externo` a la query y la interfaz `CalculatedShipment`
+- Mostrar en tabla
 
-### Resultado esperado
+**`src/components/settlements/PartnerSettlementDetailDialog.tsx`**:
+- Agregar `tracking_externo` a la query
+- Mostrar en tabla y resumen
 
-Los 9 envíos de barrios CABA van a matchear contra la Zona 3 (precio_base = $8490), y la comisión de Lucas al 60% sería $5094 por envío en vez de $0.
+### Patrón de display
+En todos los casos: `{envio.tracking_externo || envio.tracking_number}` — prioridad al tracking externo si existe.
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/pages/DriverSettlements.tsx` | Agregar fallback por `provincia` en `findZoneTarifaPrecio` y `findZoneTarifaComision` |
+| `DriverSettlements.tsx` | Query + interfaz + display |
+| `RoutePlanner.tsx` | Display (datos ya disponibles) |
+| `ActiveRouteNavigation.tsx` | Query + display |
+| `SettlementDetailDialog.tsx` | Query + display |
+| `PartnerSettlementsTab.tsx` | Query + interfaz + display |
+| `PartnerSettlementDetailDialog.tsx` | Query + display |
 
 No se requiere migración de base de datos.
 
