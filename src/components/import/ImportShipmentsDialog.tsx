@@ -358,7 +358,7 @@ export default function ImportShipmentsDialog({
               ciudad_entrega: recipientCity,
               destinatario_lat: lat,
               destinatario_lng: lng,
-              whatsapp_destinatario: recipientPhone ? (() => { const { formatArgentinaPhone } = require('@/components/ui/phone-input'); return formatArgentinaPhone(recipientPhone); })() : null,
+              whatsapp_destinatario: recipientPhone ? formatArgentinaPhone(recipientPhone) : null,
               precio_total: totalPrice || 0,
               notas: notes,
               estado: "pendiente",

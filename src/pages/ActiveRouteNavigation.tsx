@@ -559,7 +559,6 @@ export default function ActiveRouteNavigation() {
   // WhatsApp customer with live tracking link
   const whatsAppCustomer = useCallback((phone: string, name: string, trackingNum?: string) => {
     // Normalize Argentine phone for WhatsApp (handles missing +54, 0xx, 15 prefix)
-    const { formatArgentinaPhone } = require('@/components/ui/phone-input');
     const formatted = formatArgentinaPhone(phone);
     const cleanPhone = formatted.replace(/\D/g, '');
     const trackingLink = trackingNum 

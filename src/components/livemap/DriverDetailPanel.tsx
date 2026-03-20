@@ -259,7 +259,7 @@ export function DriverDetailPanel({
                 </a>
               </Button>
               <Button variant="outline" size="sm" className="flex-1" asChild>
-                <a href={`https://wa.me/${(() => { const { formatArgentinaPhone } = require('@/components/ui/phone-input'); return formatArgentinaPhone(enhancedData.phone).replace(/\D/g, ''); })()}`} target="_blank" rel="noopener noreferrer">
+                <a href={`https://wa.me/${formatArgentinaPhone(enhancedData.phone).replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer">
                   <MessageCircle className="h-4 w-4 mr-2" />
                   WhatsApp
                 </a>
