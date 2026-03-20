@@ -24,7 +24,7 @@ interface DetalleRow {
   tipo_pago: string;
   monto_envio: number;
   comision_aplicada: number;
-  desglose_conceptos?: Record<string, { venta: number; porcentaje: number; comision: number }> | null;
+  desglose_conceptos?: Record<string, { venta: number; porcentaje: number; comision: number; nombre?: string }> | null;
 }
 
 function normalizeTipoPago(tp: string): 'contado' | 'destino' | 'cta_cte' {
@@ -64,9 +64,9 @@ export function rebuildResumenFromDetalles(detalles: DetalleRow[]): ResumenPorTi
       // Use per-concept breakdown
       for (const [rawKey, values] of Object.entries(desglose)) {
         // rawKey might already have ::rol suffix from new code, or not
-        const baseName = rawKey.split('::')[0];
-        const key = `${baseName}::${rol}`;
-        const displayName = `${baseName} (${rolSuffix})`;
+        const rawBaseName = rawKey.split('::')[0];
+        const displayBaseName = values.nombre || rawBaseName;
+        const key = `${displayBaseName}::${rol}`;
 
         if (!groups[tipoPago][key]) {
           groups[tipoPago][key] = { ventas: 0, comision: 0, porcentaje: 0, count: 0 };

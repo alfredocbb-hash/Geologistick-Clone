@@ -101,7 +101,7 @@ export default function BranchSettlements() {
     totalComisiones: number;
     saldo: number;
     resumenConceptos: ResumenPorTipoPago;
-    enviosDesglose: Record<string, Record<string, { venta: number; porcentaje: number; comision: number }>>;
+    enviosDesglose: Record<string, Record<string, { venta: number; porcentaje: number; comision: number; nombre?: string }>>;
      remitosCancelados: {
        cantidad: number;
        totalCobrado: number;
@@ -308,7 +308,7 @@ export default function BranchSettlements() {
       };
 
       // Track per-shipment concept breakdown
-      const enviosDesglose: Record<string, Record<string, { venta: number; porcentaje: number; comision: number }>> = {};
+      const enviosDesglose: Record<string, Record<string, { venta: number; porcentaje: number; comision: number; nombre?: string }>> = {};
 
        // Track missing configurations
        const conceptosSinConfig: Array<{
@@ -427,6 +427,7 @@ export default function BranchSettlements() {
           venta: monto,
           porcentaje,
           comision,
+          nombre: conceptoNombres[conceptoId || ''] || conceptoNombre,
         };
         
         return comision;
