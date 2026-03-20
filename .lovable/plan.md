@@ -1,49 +1,50 @@
 
 
-## Plan: Fixes para Tracking, Modo Flex y Scanner
+## Plan: Tracking live con geofencing 4km, auto-formateo de telefonos, y limpieza de mapa publico
 
-### Problema 1: Error de mapa en Tracking publico
+### Problema 1: Quitar mapa estatico del tracking publico + geofencing 4km
 
-El componente `TrackingMap.tsx` usa una API key hardcodeada (`AIzaSyB41DRUbKWJHPxaFjMAwdrzWzbVKartNGg`) que no esta autorizada para el dominio `geologistick.com`. La solucion es usar la misma API key que ya se obtiene correctamente via `get-maps-config` (visible en los network requests: `AIzaSyCZYrjp7yCOVWeWh6pgMjkCJ0GmJNGbheU`).
+El mapa publico tiene una API key no autorizada y ademas no queres que se muestre. Solo mostrar el mapa en vivo cuando el chofer este a menos de 4km del destino.
 
-**Archivo:** `src/components/tracking/TrackingMap.tsx`
-- Importar `useMapsApiKey` y usar la key dinamica del tenant en vez de la hardcodeada
-- Mostrar un fallback mientras carga o si no hay key
+**Cambios:**
 
-**Archivo:** `src/pages/Tracking.tsx` y `src/pages/TrackingEmbed.tsx`
-- Wrappear con `GoogleMapsProvider` si no esta ya, o pasar la API key al `TrackingMap`
-- Nota: estas paginas son publicas (sin auth), asi que `useMapsApiKey` no tendra session. Necesitamos que el `public-tracking` edge function devuelva tambien la maps API key, o usar la key del env var como fallback. La solucion mas simple: el `TrackingMap` recibe la API key como prop opcional, y `Tracking.tsx`/`TrackingEmbed.tsx` la extraen del response de tracking (que ya incluye `branding`).
+1. **`src/pages/Tracking.tsx`** y **`src/pages/TrackingEmbed.tsx`**: Eliminar el componente `TrackingMap` completamente. Solo mostrar `LiveDriverMap` cuando `estado === 'en_reparto'`.
 
-**Solucion elegida:** Agregar `maps_api_key` al response de `public-tracking` edge function y pasarla como prop a `TrackingMap`. Esto evita requerir auth.
+2. **`src/components/tracking/TrackingMap.tsx`**: Se puede dejar o eliminar (ya no se usa).
 
-### Problema 2: Feedback de escaneo en Modo Flex + boton de colecta
+3. **`supabase/functions/public-tracking-live/index.ts`**: Agregar calculo de distancia entre driver y destino. Solo devolver `live: true` si la distancia es <= 4km. Usar formula Haversine para calcular distancia sin APIs externas.
 
-Actualmente el scan agrega paquetes pero no da feedback visual suficiente. El usuario quiere:
-- Toast/alerta visible cuando se escanea un paquete exitosamente
-- Un boton flotante/contador que muestre cuantos paquetes hay escaneados
-- Ese boton inicia la colecta
+4. **`src/components/tracking/LiveDriverMap.tsx`**: Quitar la API key hardcodeada (`AIzaSyB41DRUb...`). Obtener la `maps_api_key` del response de `public-tracking-live` (que a su vez la busca de `system_integrations` igual que `public-tracking`). Agregar `maps_api_key` al response del edge function.
 
-**Archivo:** `src/components/mobile/FlexScanScreen.tsx`
-- Agregar toast de exito mas visible al escanear (ya existe en `useFlexPackages` pero es sutil)
-- Mover el boton "COLECTAR TODOS" mas arriba, justo debajo del contador de paquetes, haciendolo mas prominente
-- Agregar animacion al contador cuando se agrega un paquete nuevo
+### Problema 2: Auto-formateo de telefonos para WhatsApp
 
-### Problema 3: Recuadro del scanner mas arriba
+Hay un bug critico en `formatArgentinaPhone`: el regex `[^\\d]` esta escapado mal (doble backslash en un string normal JS), por lo que no limpia digitos correctamente. Ademas, el formateo solo ocurre en `onBlur` del `PhoneInput`, pero si el usuario nunca usa ese componente o el telefono viene de otra fuente (CSV import, autocomplete de cliente), el numero queda sin formatear.
 
-En la imagen 2, el recuadro de escaneo esta centrado verticalmente pero queda bajo, dificultando apuntar a etiquetas en mesas/estantes.
+**Cambios:**
 
-**Archivo:** `src/components/qr/QRScanner.tsx`
-- Cambiar el area del scanner de `flex items-center justify-center` a `flex items-start justify-center pt-8` para que el recuadro suba
-- Ajustar tanto el frame nativo como el web
+1. **`src/components/ui/phone-input.tsx`**: Corregir el regex de `[^\\d]` a `[^\d]` (o usar `\D`) tanto en `formatArgentinaPhone` como en `isValidArgentinePhone`.
+
+2. **`src/pages/ActiveRouteNavigation.tsx`**: En `whatsAppCustomer`, antes de hacer `phone.replace(/\D/g, '')`, aplicar `formatArgentinaPhone` al numero para normalizarlo. Asi funciona correctamente incluso si el numero fue cargado sin el prefijo.
+
+3. **`src/components/livemap/DriverDetailPanel.tsx`**: Igual, aplicar formateo antes de construir el link `wa.me`.
+
+4. **`src/pages/NewShipment.tsx`**: Ya usa `formatArgentinaPhone` al guardar — solo necesita el fix del regex.
+
+5. **`src/components/import/ImportShipmentsDialog.tsx`**: Al importar CSV, aplicar `formatArgentinaPhone` al campo de telefono del destinatario antes de guardarlo.
 
 ### Resumen de archivos
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/components/tracking/TrackingMap.tsx` | Recibir API key como prop, eliminar key hardcodeada |
-| `supabase/functions/public-tracking/index.ts` | Incluir maps API key en el response |
-| `src/pages/Tracking.tsx` | Pasar maps_api_key del response al TrackingMap |
-| `src/pages/TrackingEmbed.tsx` | Pasar maps_api_key del response al TrackingMap |
-| `src/components/mobile/FlexScanScreen.tsx` | Reorganizar: contador + boton colecta prominente arriba, mejor feedback |
-| `src/components/qr/QRScanner.tsx` | Subir el recuadro de escaneo (padding-top en vez de centrado) |
+| `src/components/ui/phone-input.tsx` | Fix regex `\\d` -> `\d` |
+| `supabase/functions/public-tracking-live/index.ts` | Geofencing 4km + incluir maps_api_key |
+| `src/components/tracking/LiveDriverMap.tsx` | Usar maps_api_key del response, quitar key hardcodeada |
+| `src/pages/Tracking.tsx` | Quitar TrackingMap estatico |
+| `src/pages/TrackingEmbed.tsx` | Quitar TrackingMap estatico |
+| `src/pages/ActiveRouteNavigation.tsx` | Formatear phone antes de wa.me |
+| `src/components/livemap/DriverDetailPanel.tsx` | Formatear phone antes de wa.me |
+| `src/components/import/ImportShipmentsDialog.tsx` | Formatear telefono al importar CSV |
+
+### Migracion DB
+No se requiere.
 
