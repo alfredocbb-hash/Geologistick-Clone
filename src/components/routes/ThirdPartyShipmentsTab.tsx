@@ -409,6 +409,11 @@ export default function ThirdPartyShipmentsTab() {
       toast.error("La provincia es requerida");
       return false;
     }
+    const phoneDigits = (formData.whatsapp_destinatario || '').replace(/\D/g, '');
+    if (phoneDigits.length > 0 && phoneDigits.length < 10) {
+      toast.error("El teléfono del destinatario debe tener al menos 10 dígitos");
+      return false;
+    }
     return true;
   };
 

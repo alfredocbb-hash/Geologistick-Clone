@@ -1588,6 +1588,27 @@ export default function NewShipment() {
       });
       return;
     }
+
+    // Validar teléfonos antes de guardar
+    const destPhoneDigits = (formData.destinatario_telefono || '').replace(/\D/g, '');
+    if (formData.destinatario_telefono && destPhoneDigits.length > 0 && destPhoneDigits.length < 10) {
+      toast({
+        title: 'Teléfono inválido',
+        description: 'El teléfono del destinatario debe tener al menos 10 dígitos.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const remPhoneDigits = (formData.remitente_telefono || '').replace(/\D/g, '');
+    if (formData.remitente_telefono && remPhoneDigits.length > 0 && remPhoneDigits.length < 10) {
+      toast({
+        title: 'Teléfono inválido',
+        description: 'El teléfono del remitente debe tener al menos 10 dígitos.',
+        variant: 'destructive',
+      });
+      return;
+    }
     
     createShipmentMutation.mutate();
   };
