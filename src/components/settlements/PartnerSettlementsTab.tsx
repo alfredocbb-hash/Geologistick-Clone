@@ -248,6 +248,7 @@ export function PartnerSettlementsTab({ profile }: PartnerSettlementsTabProps) {
         return {
           envio_id: envio.id,
           tracking_number: envio.tracking_number,
+          tracking_externo: envio.tracking_externo,
           nombre_destinatario: envio.nombre_destinatario,
           precio_total: envio.precio_total,
           fecha_entrega: envio.fecha_entrega,
