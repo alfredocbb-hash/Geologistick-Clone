@@ -268,11 +268,28 @@ export default function DriverSettlements() {
       // 2. Fetch zone tarifas for commission fallback (when envio has no tarifa_id)
       const { data: zoneTarifasData } = await supabase
         .from('tarifas')
-        .select('id, zona_destino, comision_chofer_porcentaje, comision_chofer_fija')
+        .select('id, zona_destino, precio_base, comision_chofer_porcentaje, comision_chofer_fija')
         .eq('tenant_id', profile?.tenant_id)
         .eq('tipo_tarifa', 'zona')
         .eq('activa', true);
       const allZoneTarifas = zoneTarifasData || [];
+
+      // Helper: find zone tarifa precio_base by ciudad_entrega
+      const findZoneTarifaPrecio = (ciudad: string | null): number => {
+        if (!ciudad || allZoneTarifas.length === 0) return 0;
+        const ciudadNorm = normalize(ciudad);
+        for (const zt of allZoneTarifas) {
+          if (!zt.zona_destino) continue;
+          const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+          if (zonas.some((z: string) => z === ciudadNorm)) return zt.precio_base || 0;
+        }
+        for (const zt of allZoneTarifas) {
+          if (!zt.zona_destino) continue;
+          const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+          if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) return zt.precio_base || 0;
+        }
+        return 0;
+      };
 
       const normalize = (str: string) => str.toLowerCase().trim()
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
