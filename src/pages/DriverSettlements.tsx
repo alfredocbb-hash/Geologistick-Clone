@@ -208,7 +208,7 @@ export default function DriverSettlements() {
 
       const selectFields = `
           id, tracking_number, precio_total, precio_tarifa_vigente, fecha_entrega, tarifa_id,
-          chofer_id, chofer_ultima_milla_id, pago_contra_entrega, ciudad_entrega,
+          chofer_id, chofer_ultima_milla_id, pago_contra_entrega, ciudad_entrega, provincia,
           tarifas:tarifas(comision_chofer_porcentaje, comision_chofer_fija)
         `;
 
@@ -275,18 +275,29 @@ export default function DriverSettlements() {
       const allZoneTarifas = zoneTarifasData || [];
 
       // Helper: find zone tarifa precio_base by ciudad_entrega
-      const findZoneTarifaPrecio = (ciudad: string | null): number => {
-        if (!ciudad || allZoneTarifas.length === 0) return 0;
-        const ciudadNorm = normalize(ciudad);
-        for (const zt of allZoneTarifas) {
-          if (!zt.zona_destino) continue;
-          const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-          if (zonas.some((z: string) => z === ciudadNorm)) return zt.precio_base || 0;
+      const findZoneTarifaPrecio = (ciudad: string | null, provincia?: string | null): number => {
+        if (allZoneTarifas.length === 0) return 0;
+        if (ciudad) {
+          const ciudadNorm = normalize(ciudad);
+          for (const zt of allZoneTarifas) {
+            if (!zt.zona_destino) continue;
+            const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+            if (zonas.some((z: string) => z === ciudadNorm)) return zt.precio_base || 0;
+          }
+          for (const zt of allZoneTarifas) {
+            if (!zt.zona_destino) continue;
+            const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+            if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) return zt.precio_base || 0;
+          }
         }
-        for (const zt of allZoneTarifas) {
-          if (!zt.zona_destino) continue;
-          const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-          if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) return zt.precio_base || 0;
+        // Fallback: match by provincia
+        if (provincia) {
+          const provNorm = normalize(provincia);
+          for (const zt of allZoneTarifas) {
+            if (!zt.zona_destino) continue;
+            const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+            if (zonas.some((z: string) => z === provNorm || provNorm.includes(z) || z.includes(provNorm))) return zt.precio_base || 0;
+          }
         }
         return 0;
       };
@@ -295,23 +306,36 @@ export default function DriverSettlements() {
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
       // Helper: find zone tarifa commission config by ciudad_entrega
-      const findZoneTarifaComision = (ciudad: string | null): { comision_chofer_porcentaje: number | null; comision_chofer_fija: number | null } | null => {
-        if (!ciudad || allZoneTarifas.length === 0) return null;
-        const ciudadNorm = normalize(ciudad);
-        // Exact match first
-        for (const zt of allZoneTarifas) {
-          if (!zt.zona_destino) continue;
-          const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-          if (zonas.some((z: string) => z === ciudadNorm)) {
-            return { comision_chofer_porcentaje: zt.comision_chofer_porcentaje, comision_chofer_fija: zt.comision_chofer_fija };
+      const findZoneTarifaComision = (ciudad: string | null, provincia?: string | null): { comision_chofer_porcentaje: number | null; comision_chofer_fija: number | null } | null => {
+        if (allZoneTarifas.length === 0) return null;
+        if (ciudad) {
+          const ciudadNorm = normalize(ciudad);
+          // Exact match first
+          for (const zt of allZoneTarifas) {
+            if (!zt.zona_destino) continue;
+            const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+            if (zonas.some((z: string) => z === ciudadNorm)) {
+              return { comision_chofer_porcentaje: zt.comision_chofer_porcentaje, comision_chofer_fija: zt.comision_chofer_fija };
+            }
+          }
+          // Substring match
+          for (const zt of allZoneTarifas) {
+            if (!zt.zona_destino) continue;
+            const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+            if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) {
+              return { comision_chofer_porcentaje: zt.comision_chofer_porcentaje, comision_chofer_fija: zt.comision_chofer_fija };
+            }
           }
         }
-        // Substring match
-        for (const zt of allZoneTarifas) {
-          if (!zt.zona_destino) continue;
-          const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-          if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) {
-            return { comision_chofer_porcentaje: zt.comision_chofer_porcentaje, comision_chofer_fija: zt.comision_chofer_fija };
+        // Fallback: match by provincia
+        if (provincia) {
+          const provNorm = normalize(provincia);
+          for (const zt of allZoneTarifas) {
+            if (!zt.zona_destino) continue;
+            const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+            if (zonas.some((z: string) => z === provNorm || provNorm.includes(z) || z.includes(provNorm))) {
+              return { comision_chofer_porcentaje: zt.comision_chofer_porcentaje, comision_chofer_fija: zt.comision_chofer_fija };
+            }
           }
         }
         // Fallback: largest zone
@@ -338,7 +362,7 @@ export default function DriverSettlements() {
         
         // If no tarifa from envio join and driver uses 'tarifa' commission type, try zone fallback
         if (!tarifa && (chofer.comision_tipo === 'tarifa' || !chofer.comision_tipo)) {
-          tarifa = findZoneTarifaComision((envio as any).ciudad_entrega);
+          tarifa = findZoneTarifaComision((envio as any).ciudad_entrega, (envio as any).provincia);
         }
 
         // Price hierarchy: precio_tarifa_vigente → precio_total → zone precio_base
@@ -346,7 +370,7 @@ export default function DriverSettlements() {
         const precioEfectivo =
           (ptv && ptv > 0) ? ptv :
           (envio.precio_total > 0) ? envio.precio_total :
-          findZoneTarifaPrecio((envio as any).ciudad_entrega);
+          findZoneTarifaPrecio((envio as any).ciudad_entrega, (envio as any).provincia);
         
         const comisionCalculada = calcularComision(precioEfectivo, chofer, tarifa);
 
