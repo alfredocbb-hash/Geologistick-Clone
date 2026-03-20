@@ -1,32 +1,40 @@
 
 
-## Plan: Validar largo mínimo de teléfonos antes de guardar
+## Plan: Sincronización ML en tiempo real + filtrar choferes inactivos en Mapa en Vivo
 
-### Causa raíz
-La función `formatArgentinaPhone` en `src/components/ui/phone-input.tsx` agrega el prefijo `+54` a cualquier input sin importar su largo. El formulario de nuevo envío no valida que el teléfono sea válido antes de crear el cliente y el envío. Por eso `"1"` → `"+541"`.
+### Contexto
+
+Hay dos problemas a resolver:
+
+1. **Sincronización ML**: Ya existe un trigger `auto_sync_ml_status` en la tabla `envios` que llama automáticamente a `mercadolibre-update-status` cuando cambia el estado. Sin embargo, el Mapa en Vivo no refleja los cambios en tiempo real porque `ruta_paradas` y `envios` no tienen suscripciones realtime. El plan previo (aprobado pero no implementado) ya cubría esto.
+
+2. **Choferes inactivos**: La query actual en LiveMap obtiene usuarios con rol `chofer` desde `user_roles`, pero no filtra por `profiles.activo = true`. Esto muestra choferes desactivados en el mapa.
 
 ### Cambios
 
-**`src/components/ui/phone-input.tsx`**:
-- En `formatArgentinaPhone`: si después de limpiar el número tiene menos de 6 dígitos, retornar el string tal cual (sin agregar `+54`). Esto evita que inputs basura se "legitimen" con el prefijo.
+**Migración SQL** — Habilitar realtime en `ruta_paradas` y `envios`:
+```sql
+ALTER PUBLICATION supabase_realtime ADD TABLE public.ruta_paradas;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.envios;
+```
 
-**`src/pages/NewShipment.tsx`**:
-- Antes de llamar a `findOrCreateClient` para el destinatario, validar que el teléfono tenga al menos 10 dígitos (usando `isValidArgentinePhone` o un check inline). Si no es válido, lanzar error con mensaje claro: "El teléfono del destinatario no es válido".
-- Aplicar la misma validación para el remitente.
+**`src/pages/LiveMap.tsx`**:
 
-**`src/components/routes/ThirdPartyShipmentsTab.tsx`**:
-- Agregar validación similar en `validateForm()` para el teléfono del destinatario.
+1. **Filtrar choferes inactivos**: En la query `driver-locations`, después de obtener los `validChoferIds` de `user_roles`, obtener perfiles activos y filtrar por `activo = true`:
+   - Agregar query a `profiles` con `.in('user_id', validChoferIds).eq('activo', true)` para obtener solo los IDs de choferes activos.
+   - Usar esos IDs filtrados para la query de `driver_locations`.
 
-### Impacto
-- Previene la creación de clientes con teléfonos inválidos como `+541`
-- La normalización onBlur sigue funcionando igual para números válidos
-- El indicador ✓ verde ya muestra correctamente que el número es inválido (≥10 dígitos)
+2. **Suscripción realtime a `ruta_paradas` y `envios`**: Agregar un segundo canal de Supabase que escuche cambios en ambas tablas y al recibir un evento:
+   - Invalidar `['driver-route-progress']` para actualizar barras de progreso inmediatamente.
+   - Invalidar `['sucursales-live-map']` para actualizar contadores de envíos.
+
+### Resultado esperado
+
+- Los choferes marcados como inactivos (`activo = false`) no aparecen en el mapa ni en la lista.
+- Cuando un chofer entrega un envío ML desde la app móvil, el trigger `auto_sync_ml_status` ya sincroniza con ML automáticamente, y ahora el mapa reflejará el cambio de estado al instante gracias a la suscripción realtime.
 
 | Archivo | Cambio |
 |---------|--------|
-| `phone-input.tsx` | `formatArgentinaPhone` retorna sin prefijo si < 6 dígitos |
-| `NewShipment.tsx` | Validar teléfono destinatario/remitente antes de guardar |
-| `ThirdPartyShipmentsTab.tsx` | Validar teléfono en `validateForm()` |
-
-No se requiere migración de base de datos. Para corregir el dato existente de ENV-N54JPN, se puede actualizar manualmente el teléfono del cliente.
+| Migración SQL | Habilitar realtime en `ruta_paradas` y `envios` |
+| `src/pages/LiveMap.tsx` | Filtrar choferes por `activo = true` + suscripción realtime a `ruta_paradas`/`envios` |
 
