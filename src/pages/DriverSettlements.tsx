@@ -66,6 +66,7 @@ interface EnvioParaLiquidar {
   id: string;
   tracking_number: string;
   precio_total: number;
+  precio_efectivo: number;
   fecha_entrega: string;
   pago_contra_entrega: boolean;
   tarifa?: {
