@@ -308,7 +308,7 @@ export default function BranchSettlements() {
       };
 
       // Track per-shipment concept breakdown
-      const enviosDesglose: Record<string, Record<string, { venta: number; porcentaje: number; comision: number }>> = {};
+      const enviosDesglose: Record<string, Record<string, { venta: number; porcentaje: number; comision: number; nombre?: string }>> = {};
 
        // Track missing configurations
        const conceptosSinConfig: Array<{
