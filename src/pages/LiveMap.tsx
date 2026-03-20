@@ -244,6 +244,7 @@ export default function LiveMap() {
 
   // Hook for main map route visualization
   const driverRoute = useDriverRoute();
+  const queryClient = useQueryClient();
 
   // Driver filters and detail panel state
   const [filterStatus, setFilterStatus] = usePersistedState<DriverFilterStatus>('driver-filter-status', 'all');
