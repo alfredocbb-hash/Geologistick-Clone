@@ -98,7 +98,7 @@ export function SettlementDetailDialog({
         .from('liquidacion_sucursal_detalles')
         .select(`
           *,
-          envio:envios(tracking_number, estado, created_at, nombre_destinatario, destinatario_id, clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
+          envio:envios(tracking_number, tracking_externo, estado, created_at, nombre_destinatario, destinatario_id, clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
         `)
         .eq('liquidacion_id', settlementId)
         .order('created_at', { ascending: false });
