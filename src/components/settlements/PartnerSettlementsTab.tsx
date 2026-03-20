@@ -44,6 +44,7 @@ interface PartnerSettlementsTabProps {
 interface CalculatedShipment {
   envio_id: string;
   tracking_number: string;
+  tracking_externo?: string | null;
   nombre_destinatario: string | null;
   precio_total: number;
   fecha_entrega: string | null;
