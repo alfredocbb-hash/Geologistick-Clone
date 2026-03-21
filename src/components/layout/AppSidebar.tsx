@@ -262,6 +262,11 @@ const navigation: NavGroup[] = [{
     url: '/admin/branding',
     icon: Palette,
     permissionKey: 'tenants.manage'
+  }, {
+    title: 'API Pública',
+    url: '/admin/api-docs',
+    icon: Key,
+    permissionKey: 'tenants.manage'
   }],
   superAdminOnly: true
 }];

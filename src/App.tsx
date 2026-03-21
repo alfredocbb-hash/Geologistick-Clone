@@ -245,6 +245,7 @@ function AppRoutes() {
       <Route path="/admin/status-guide" element={<DashboardLayout><ShipmentStatusGuide /></DashboardLayout>} />
       <Route path="/admin/partners" element={<DashboardLayout><Partners /></DashboardLayout>} />
       <Route path="/marketing-assets" element={<DashboardLayout><MarketingAssets /></DashboardLayout>} />
+      <Route path="/admin/api-docs" element={<DashboardLayout><TenantApiDocs /></DashboardLayout>} />
       
       {/* Profile */}
       <Route path="/profile" element={<DashboardLayout><Profile /></DashboardLayout>} />
