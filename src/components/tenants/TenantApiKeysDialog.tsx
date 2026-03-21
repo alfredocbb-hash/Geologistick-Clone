@@ -332,64 +332,120 @@ export function TenantApiKeysDialog({ open, onOpenChange, tenant }: TenantApiKey
             )}
 
             {/* Usage Example */}
-            <div className="p-4 bg-muted/50 rounded-lg space-y-3">
+            <div className="p-4 bg-muted/50 rounded-lg space-y-4 max-h-96 overflow-y-auto">
               <h4 className="text-sm font-medium">📖 Documentación de la API</h4>
               
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-muted-foreground">Endpoint</p>
+              {/* --- Tracking --- */}
+              <div className="space-y-2 border-b pb-3">
+                <p className="text-xs font-semibold text-foreground">1. Tracking de envíos</p>
                 <pre className="text-xs bg-background p-2 rounded border overflow-x-auto">
-{`GET /functions/v1/public-tracking?code={TRACKING_NUMBER}`}
+{`GET /functions/v1/public-tracking?code={TRACKING_NUMBER}
+Headers: x-api-key: tu_api_key`}
                 </pre>
+                <p className="text-xs text-muted-foreground">
+                  Sin API Key las hojas de ruta no se incluyen y los datos personales se enmascaran.
+                  Con API Key solo se devuelven envíos de tu empresa.
+                </p>
               </div>
 
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-muted-foreground">Headers</p>
+              {/* --- Cotización --- */}
+              <div className="space-y-2 border-b pb-3">
+                <p className="text-xs font-semibold text-foreground">2. Cotización de tarifas</p>
                 <pre className="text-xs bg-background p-2 rounded border overflow-x-auto">
-{`x-api-key: tu_api_key_aqui`}
-                </pre>
-              </div>
+{`POST /functions/v1/public-rates
+Headers: x-api-key: tu_api_key
+Content-Type: application/json
 
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-muted-foreground">Ejemplo con curl</p>
-                <pre className="text-xs bg-background p-2 rounded border overflow-x-auto">
-{`curl -X GET \\
-  "${import.meta.env.VITE_SUPABASE_URL}/functions/v1/public-tracking?code=ENV-A1B2C3" \\
-  -H "x-api-key: tu_api_key_aqui"`}
-                </pre>
-              </div>
-
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-muted-foreground">Respuesta (con API Key)</p>
-                <pre className="text-xs bg-background p-2 rounded border overflow-x-auto max-h-64">
-{`{
-  "tracking_number": "ENV-A1B2C3",
-  "estado": "en_transito",
-  "origen": { "ciudad": "Rosario", "sucursal": "Norte" },
-  "destino": { "ciudad": "CABA", "sucursal": "Centro" },
-  "sucursal_actual": {
-    "nombre": "Centro Buenos Aires",
-    "ciudad": "CABA",
-    "codigo": "CBA",
-    "es_centro_logistico": true
-  },
-  "hojas_ruta": [
-    {
-      "numero": "HR-20250321-0042",
-      "estado": "en_transito",
-      "fecha_salida": "2025-03-20T14:30:00Z",
-      "cantidad_envios": 15,
-      "origen": { "nombre": "Sucursal Norte", "ciudad": "Rosario" },
-      "destino": { "nombre": "Centro Buenos Aires", "ciudad": "CABA" }
-    }
-  ],
-  "historial": [...]
+Body: {
+  "peso": 5,
+  "bultos": 2,
+  "tipo_servicio": "puerta_puerta",
+  "cp_destino": "1425",
+  "valor_declarado": 50000
 }`}
                 </pre>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Parámetros</p>
+                  <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-0.5">
+                    <li><code>peso</code> — peso en kg (requerido)</li>
+                    <li><code>bultos</code> — cantidad (default: 1)</li>
+                    <li><code>tipo_servicio</code> — <code>sucursal_sucursal</code>, <code>sucursal_puerta</code>, <code>puerta_sucursal</code>, <code>puerta_puerta</code></li>
+                    <li><code>cp_destino</code> / <code>ciudad_destino</code> — filtro de zona (opcional)</li>
+                    <li><code>valor_declarado</code> — para cálculo de seguro (opcional)</li>
+                  </ul>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Respuesta</p>
+                  <pre className="text-xs bg-background p-2 rounded border overflow-x-auto">
+{`{
+  "rates": [
+    {
+      "tarifa": "Envío Estándar",
+      "precio": 4850.00,
+      "moneda": "ARS",
+      "dias_entrega_min": 3,
+      "dias_entrega_max": 5
+    }
+  ],
+  "pickup_points": [
+    {
+      "nombre": "Sucursal Centro",
+      "direccion": "Av. Corrientes 1234",
+      "ciudad": "CABA",
+      "codigo_postal": "1043",
+      "lat": -34.60,
+      "lng": -58.38
+    }
+  ]
+}`}
+                  </pre>
+                </div>
+              </div>
+
+              {/* --- Sucursales --- */}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-foreground">3. Sucursales activas</p>
+                <pre className="text-xs bg-background p-2 rounded border overflow-x-auto">
+{`GET /functions/v1/public-branches?tipo=retiro
+Headers: x-api-key: tu_api_key`}
+                </pre>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Filtros</p>
+                  <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-0.5">
+                    <li><code>tipo=todas</code> — todas las activas (default)</li>
+                    <li><code>tipo=retiro</code> — solo con retiro de clientes</li>
+                    <li><code>tipo=despacho</code> — solo que pueden despachar</li>
+                    <li><code>tipo=entrega</code> — solo que realizan entregas</li>
+                  </ul>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Respuesta</p>
+                  <pre className="text-xs bg-background p-2 rounded border overflow-x-auto">
+{`{
+  "sucursales": [
+    {
+      "nombre": "Sucursal Centro",
+      "codigo": "CEN",
+      "direccion": "Av. Corrientes 1234",
+      "ciudad": "CABA",
+      "codigo_postal": "1043",
+      "telefono": "+54 11 1234-5678",
+      "lat": -34.6037,
+      "lng": -58.3816,
+      "horario_apertura": "09:00",
+      "horario_cierre": "18:00",
+      "permite_retiro_clientes": true,
+      "puede_despachar": true,
+      "realiza_entregas": true
+    }
+  ]
+}`}
+                  </pre>
+                </div>
               </div>
 
               <p className="text-xs text-muted-foreground">
-                <strong>Nota:</strong> Sin API Key, las hojas de ruta no se incluyen y los datos personales se enmascaran.
-                Con API Key solo se devuelven envíos de tu empresa.
+                <strong>Base URL:</strong> <code>{`${import.meta.env.VITE_SUPABASE_URL}`}</code>
               </p>
             </div>
           </div>
