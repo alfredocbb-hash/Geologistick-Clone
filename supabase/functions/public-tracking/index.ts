@@ -147,9 +147,9 @@ serve(async (req: Request) => {
         nombre_remitente,
         nombre_destinatario,
         entregado_en_sucursal,
-        sucursal_origen:sucursales!envios_sucursal_origen_id_fkey(nombre, ciudad, codigo),
-        sucursal_destino:sucursales!envios_sucursal_destino_id_fkey(nombre, ciudad, codigo),
-        sucursal_entrega:sucursales!envios_sucursal_entrega_id_fkey(nombre, ciudad, codigo),
+        sucursal_origen:sucursales!envios_sucursal_origen_id_fkey(nombre, ciudad, codigo, es_centro_logistico),
+        sucursal_destino:sucursales!envios_sucursal_destino_id_fkey(nombre, ciudad, codigo, es_centro_logistico),
+        sucursal_entrega:sucursales!envios_sucursal_entrega_id_fkey(nombre, ciudad, codigo, es_centro_logistico),
         remitente:clientes!envios_remitente_id_fkey(nombre, ciudad),
         destinatario:clientes!envios_destinatario_id_fkey(nombre, ciudad)
       `)
