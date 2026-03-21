@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
     // --- Query branches ---
     let query = supabase
       .from("sucursales")
-      .select("nombre, codigo, direccion, ciudad, codigo_postal, telefono, email, lat, lng, horario_apertura, horario_cierre, permite_retiro_clientes, puede_despachar, realiza_entregas")
+      .select("nombre, codigo, direccion, ciudad, telefono, email, lat, lng, horario_apertura, horario_cierre, permite_retiro_clientes, puede_despachar, realiza_entregas")
       .eq("tenant_id", tenantId)
       .eq("activa", true)
       .order("nombre");
