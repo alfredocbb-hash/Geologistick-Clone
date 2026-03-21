@@ -1,40 +1,45 @@
 
 
-## Plan: Corregir cálculo de tarifas en `public-rates` para igualar lógica de `NewShipment`
+## Diagnóstico: Diferencia de precio entre Horizon y NewShipment
 
-### Problemas identificados
+### Causa raíz
 
-1. **`rangos_kg` ignorados**: El endpoint no usa los rangos escalonados de peso (prioridad 1 en NewShipment). Solo usa `rangos_precios` (base + adicional por kg), lo que da precios incorrectos.
-2. **Concepto "Flete" no sumado al flete base**: NewShipment suma el monto del concepto con código "flete" al flete calculado. El endpoint no lo hace.
-3. **Porcentaje por bulto extra no aplicado**: Cuando `multiplicar_flete_por_bultos = false` y hay más de 1 bulto, NewShipment aplica `porcentaje_flete_bulto`. El endpoint no.
-4. **Conceptos porcentuales no soportados**: NewShipment soporta conceptos con `es_porcentaje = true` que calculan sobre el valor declarado. El endpoint solo usa `monto` fijo.
-5. **`pickup_points` sin datos completos para "sucursal a sucursal"**: Los pickup points ya se devuelven, pero falta el `id` de la sucursal para que Horizon pueda mostrar un selector.
-6. **Auto-resolución no devuelve ciudad en `resolucion`**: Cuando se resuelve desde CP, la ciudad resuelta sí se devuelve (ya implementado), pero si no se resuelve, no se incluye contexto.
+Hay **2 diferencias críticas** en la lógica de `public-rates` vs `NewShipment`:
 
-### Cambio
+1. **`encontrarTarifaPorDestino` devuelve TODAS las tarifas en lugar de UNA sola**
+   - En `NewShipment` (línea 177): si no hay match → retorna `null` (no se cobra)
+   - En `public-rates` (línea 47): si no hay match → retorna TODAS las tarifas activas
+   - Si hay match, `NewShipment` retorna la MEJOR (1 sola), `public-rates` retorna TODAS las que coinciden
+   - **Resultado**: Horizon puede estar sumando conceptos de múltiples tarifas o mostrando la tarifa incorrecta
+
+2. **Conceptos básicos vs adicionales no diferenciados**
+   - En `NewShipment`: solo suma `es_basico = true` automáticamente. Los adicionales (`es_basico = false`) requieren selección manual del operador
+   - En `public-rates`: suma TODOS los conceptos (básicos + adicionales) sin distinción → precio inflado
+   - **Resultado**: $11.650 en Horizon vs $9.250 en el sistema (la diferencia son conceptos adicionales que no deberían sumarse automáticamente)
+
+### Cambio propuesto
 
 | Archivo | Cambio |
 |---------|--------|
-| `supabase/functions/public-rates/index.ts` | Alinear lógica de cálculo con NewShipment |
+| `supabase/functions/public-rates/index.ts` | Corregir lógica para igualar NewShipment |
 
-### Detalle de la corrección del cálculo
+### Correcciones específicas
 
-Se reescribirá el bloque de cálculo de precio (líneas ~322-381) para seguir esta jerarquía:
+1. **`encontrarTarifaPorDestino`**: Cambiar para que retorne UNA sola tarifa (la mejor coincidencia), igual que NewShipment. Si no hay match, no devolver tarifas.
 
-1. **Rangos escalonados (`rangos_kg`)** — si el peso cae en un rango, usar ese precio directamente
-2. **Método simple (`rangos_precios`)** — base + adicional por kg excedente  
-3. **Fallback** — precio base
+2. **Filtro de conceptos**: Solo sumar conceptos con `es_basico = true` (o `es_basico IS NULL` como fallback). Los adicionales NO se suman — se pueden listar aparte en la respuesta para que Horizon los muestre como opcionales.
 
-Después del flete base:
-- Sumar concepto "flete" (código = "flete") al flete
-- Aplicar multiplicación por bultos O porcentaje por bulto extra
-- Sumar conceptos básicos (excluyendo "flete"), soportando `es_porcentaje` y `multiplicar_por_bultos`
-- Sumar conceptos de entrega/retiro según tipo de servicio
-- Sumar seguro
+3. **Respuesta enriquecida**: Separar en la respuesta:
+   ```json
+   {
+     "rates": [{
+       "tarifa": "ENVIOS GENERAL",
+       "precio": 9250,
+       "conceptos_incluidos": [...],
+       "conceptos_opcionales": [...]
+     }]
+   }
+   ```
 
-Adicionalmente:
-- Agregar `porcentaje_flete_bulto` al SELECT de tarifas
-- Agregar `es_porcentaje, porcentaje, multiplicar_por_bultos, activo` al SELECT de conceptos
-- Agregar `id` a los pickup_points para que Horizon pueda usarlos en un selector
-- Filtrar conceptos inactivos (`activo = false`)
+Esto garantiza que el precio de la API coincida exactamente con el que calcula el sistema al crear un envío.
 
