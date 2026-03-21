@@ -244,11 +244,16 @@ const TrackingEmbed = () => {
                     <Badge 
                       className={`${statusConfig[envio.estado].color} text-white`}
                     >
-                      {envio.estado === 'en_sucursal' && envio.sucursal_actual
-                        ? `En Sucursal (${envio.sucursal_actual})`
-                        : envio.estado === 'entregado' && envio.entregado_en_sucursal && envio.sucursal_actual
-                          ? `Entregado en Sucursal (${envio.sucursal_actual})`
-                          : statusConfig[envio.estado].label}
+                      {(() => {
+                        const sucName = typeof envio.sucursal_actual === 'object' && envio.sucursal_actual
+                          ? envio.sucursal_actual.nombre
+                          : envio.sucursal_actual;
+                        if (envio.estado === 'en_sucursal' && sucName)
+                          return `En Sucursal (${sucName})`;
+                        if (envio.estado === 'entregado' && envio.entregado_en_sucursal && sucName)
+                          return `Entregado en Sucursal (${sucName})`;
+                        return statusConfig[envio.estado].label;
+                      })()}
                     </Badge>
                   )}
                 </div>
