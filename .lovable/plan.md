@@ -1,53 +1,40 @@
 
 
-## Plan: Auto-resolver localidad/CP en la API de cotización
+## Plan: Corregir cálculo de tarifas en `public-rates` para igualar lógica de `NewShipment`
 
-### Objetivo
-Cuando el usuario envía solo `cp_origen` (sin `ciudad_origen`) o viceversa, la API auto-completa el campo faltante usando la tabla `sucursales` del tenant. Lo mismo para destino, usando `sucursal_zonas`.
+### Problemas identificados
 
-### Cambios
+1. **`rangos_kg` ignorados**: El endpoint no usa los rangos escalonados de peso (prioridad 1 en NewShipment). Solo usa `rangos_precios` (base + adicional por kg), lo que da precios incorrectos.
+2. **Concepto "Flete" no sumado al flete base**: NewShipment suma el monto del concepto con código "flete" al flete calculado. El endpoint no lo hace.
+3. **Porcentaje por bulto extra no aplicado**: Cuando `multiplicar_flete_por_bultos = false` y hay más de 1 bulto, NewShipment aplica `porcentaje_flete_bulto`. El endpoint no.
+4. **Conceptos porcentuales no soportados**: NewShipment soporta conceptos con `es_porcentaje = true` que calculan sobre el valor declarado. El endpoint solo usa `monto` fijo.
+5. **`pickup_points` sin datos completos para "sucursal a sucursal"**: Los pickup points ya se devuelven, pero falta el `id` de la sucursal para que Horizon pueda mostrar un selector.
+6. **Auto-resolución no devuelve ciudad en `resolucion`**: Cuando se resuelve desde CP, la ciudad resuelta sí se devuelve (ya implementado), pero si no se resuelve, no se incluye contexto.
+
+### Cambio
 
 | Archivo | Cambio |
 |---------|--------|
-| `supabase/functions/public-rates/index.ts` | Auto-resolver ciudad↔CP para origen y destino; incluir datos resueltos en la respuesta |
-| `src/pages/TenantApiDocs.tsx` | Documentar el comportamiento de auto-resolución |
+| `supabase/functions/public-rates/index.ts` | Alinear lógica de cálculo con NewShipment |
 
-### Lógica de resolución
+### Detalle de la corrección del cálculo
 
-**Origen** (usa tabla `sucursales`):
-1. Si viene `cp_origen` pero no `ciudad_origen` → buscar sucursal por CP, usar su `ciudad`
-2. Si viene `ciudad_origen` pero no `cp_origen` → buscar sucursal por ciudad, usar su `codigo_postal`
-3. Si vienen ambos → usar tal cual (comportamiento actual)
+Se reescribirá el bloque de cálculo de precio (líneas ~322-381) para seguir esta jerarquía:
 
-**Destino** (usa tabla `sucursal_zonas`):
-1. Si viene `cp_destino` pero no `ciudad_destino` → buscar en `sucursal_zonas` del tenant una zona cuyo rango de CP contenga el CP dado, usar su `ciudad`
-2. Si viene `ciudad_destino` pero no `cp_destino` → buscar zona por ciudad, usar su CP
-3. Si vienen ambos → usar tal cual
+1. **Rangos escalonados (`rangos_kg`)** — si el peso cae en un rango, usar ese precio directamente
+2. **Método simple (`rangos_precios`)** — base + adicional por kg excedente  
+3. **Fallback** — precio base
 
-### Respuesta enriquecida
-Agregar al response un objeto `resolucion` con los valores resueltos:
-```json
-{
-  "rates": [...],
-  "pickup_points": [...],
-  "resolucion": {
-    "origen": { "ciudad": "Mar del Plata", "codigo_postal": "7600", "sucursal": "Mar del Plata Centro" },
-    "destino": { "ciudad": "Berazategui", "codigo_postal": "1884" }
-  }
-}
-```
+Después del flete base:
+- Sumar concepto "flete" (código = "flete") al flete
+- Aplicar multiplicación por bultos O porcentaje por bulto extra
+- Sumar conceptos básicos (excluyendo "flete"), soportando `es_porcentaje` y `multiplicar_por_bultos`
+- Sumar conceptos de entrega/retiro según tipo de servicio
+- Sumar seguro
 
-Esto permite al consumidor de la API verificar qué se resolvió automáticamente.
-
-### Detalle técnico
-
-En el bloque de filtrado por origen (líneas ~141-174), cambiar el `select("id")` a `select("id, ciudad, codigo_postal, nombre")` y usar los valores para enriquecer `ciudadOrigen`/`cpOrigen` si faltaban.
-
-Para destino, agregar una query a `sucursal_zonas` cuando falte ciudad o CP:
-```sql
-SELECT ciudad, codigo_postal_desde 
-FROM sucursal_zonas 
-WHERE tenant_id = tenantId AND activa = true
-  AND (ciudad ILIKE '%destino%' OR cp_destino BETWEEN codigo_postal_desde AND codigo_postal_hasta)
-```
+Adicionalmente:
+- Agregar `porcentaje_flete_bulto` al SELECT de tarifas
+- Agregar `es_porcentaje, porcentaje, multiplicar_por_bultos, activo` al SELECT de conceptos
+- Agregar `id` a los pickup_points para que Horizon pueda usarlos en un selector
+- Filtrar conceptos inactivos (`activo = false`)
 
