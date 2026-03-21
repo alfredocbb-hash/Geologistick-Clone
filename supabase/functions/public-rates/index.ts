@@ -87,6 +87,8 @@ Deno.serve(async (req) => {
     const peso = Number(params.peso ?? url.searchParams.get("peso") ?? 0);
     const bultos = Math.max(1, Number(params.bultos ?? url.searchParams.get("bultos") ?? 1));
     const tipoServicio = String(params.tipo_servicio ?? url.searchParams.get("tipo_servicio") ?? "");
+    const cpOrigen = String(params.cp_origen ?? url.searchParams.get("cp_origen") ?? "");
+    const ciudadOrigen = String(params.ciudad_origen ?? url.searchParams.get("ciudad_origen") ?? "");
     const cpDestino = String(params.cp_destino ?? url.searchParams.get("cp_destino") ?? "");
     const ciudadDestino = String(params.ciudad_destino ?? url.searchParams.get("ciudad_destino") ?? "");
     const valorDeclarado = Number(params.valor_declarado ?? url.searchParams.get("valor_declarado") ?? 0);
@@ -95,7 +97,7 @@ Deno.serve(async (req) => {
       return errorJson("'peso' es requerido y debe ser mayor a 0", 400);
     }
 
-    logStep("Params", { peso, bultos, tipoServicio, cpDestino, valorDeclarado });
+    logStep("Params", { peso, bultos, tipoServicio, cpOrigen, ciudadOrigen, cpDestino, valorDeclarado });
 
     // Determine which concept filters apply based on tipo_servicio
     const destinoEsPuerta = tipoServicio.endsWith("_puerta") || tipoServicio === "puerta_puerta";
@@ -133,9 +135,48 @@ Deno.serve(async (req) => {
       return jsonResponse({ rates: [], pickup_points: [] });
     }
 
+    let tarifasActivas = tarifasRes.data;
+
+    // --- Filter by origin branch (sucursal_tarifas) ---
+    if (cpOrigen || ciudadOrigen) {
+      const cpOrigenTrim = cpOrigen.trim();
+      const orConditions: string[] = [];
+      if (cpOrigenTrim) orConditions.push(`codigo_postal.eq.${cpOrigenTrim}`);
+      if (ciudadOrigen) orConditions.push(`ciudad.ilike.%${ciudadOrigen.trim()}%`);
+
+      const { data: matchedBranch } = await supabase
+        .from("sucursales")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("activa", true)
+        .or(orConditions.join(","))
+        .limit(1)
+        .maybeSingle();
+
+      const sucursalOrigenId = matchedBranch?.id || null;
+
+      if (sucursalOrigenId) {
+        const { data: sucTarifas } = await supabase
+          .from("sucursal_tarifas")
+          .select("tarifa_id")
+          .eq("sucursal_id", sucursalOrigenId)
+          .eq("habilitada", true);
+
+        if (sucTarifas && sucTarifas.length > 0) {
+          const enabledIds = new Set(sucTarifas.map((st: any) => st.tarifa_id));
+          tarifasActivas = tarifasActivas.filter((t: any) => enabledIds.has(t.id));
+          logStep("Filtered by origin branch", { sucursalOrigenId, before: tarifasRes.data.length, after: tarifasActivas.length });
+        } else {
+          logStep("No sucursal_tarifas for branch, using all", { sucursalOrigenId });
+        }
+      } else {
+        logStep("No matching origin branch found, using all tarifas");
+      }
+    }
+
     // Filter tarifas by destination matching (same logic as NewShipment)
-    const tarifas = encontrarTarifaPorDestino(ciudadDestino || null, cpDestino || null, peso, tarifasRes.data);
-    logStep("Tarifas after destination filter", { total: tarifasRes.data.length, matched: tarifas.length });
+    const tarifas = encontrarTarifaPorDestino(ciudadDestino || null, cpDestino || null, peso, tarifasActivas);
+    logStep("Tarifas after filters", { total: tarifasRes.data.length, afterOrigin: tarifasActivas.length, afterDestino: tarifas.length });
     const seguro = seguroRes.data;
 
     // Fetch concepto precios for all tarifas in one query
