@@ -296,17 +296,22 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Filter tarifas by destination matching
-    const tarifas = encontrarTarifaPorDestino(ciudadDestino || null, cpDestino || null, peso, tarifasActivas);
+    // Filter tarifas by destination matching — returns single best match or null
+    const tarifaMatch = encontrarTarifaPorDestino(ciudadDestino || null, cpDestino || null, peso, tarifasActivas);
+    
+    // If destination was provided but no tariff matched, return empty (same as NewShipment)
+    const tarifas = tarifaMatch ? [tarifaMatch] : ((!ciudadDestino && !cpDestino) ? tarifasActivas : []);
     logStep("Tarifas after filters", { total: tarifasRes.data.length, afterOrigin: tarifasActivas.length, afterDestino: tarifas.length });
     const seguro = seguroRes.data;
 
     // Fetch concepto precios for all tarifas in one query
     const tarifaIds = tarifas.map((t: any) => t.id);
-    const { data: allConceptos } = await supabase
-      .from("tarifa_concepto_precios")
-      .select("tarifa_id, monto, es_porcentaje, porcentaje, multiplicar_por_bultos, concepto:tarifa_conceptos(codigo, nombre, es_basico, activo)")
-      .in("tarifa_id", tarifaIds);
+    const { data: allConceptos } = tarifaIds.length > 0
+      ? await supabase
+          .from("tarifa_concepto_precios")
+          .select("tarifa_id, monto, es_porcentaje, porcentaje, multiplicar_por_bultos, concepto:tarifa_conceptos(codigo, nombre, es_basico, activo)")
+          .in("tarifa_id", tarifaIds)
+      : { data: [] };
 
     // Group conceptos by tarifa_id
     const conceptosByTarifa: Record<string, any[]> = {};
@@ -319,7 +324,7 @@ Deno.serve(async (req) => {
     }
 
     // --- Calculate rates ---
-    const rates: Array<{ tarifa: string; precio: number; moneda: string; dias_entrega_min: number; dias_entrega_max: number; metodo: string }> = [];
+    const rates: any[] = [];
 
     for (const tarifa of tarifas) {
       const precioBase = Number(tarifa.precio_base) || 0;
@@ -332,14 +337,12 @@ Deno.serve(async (req) => {
 
       // --- Hierarchy: rangos_kg > rangos_precios > base ---
       if (tarifa.tipo_tarifa === 'peso') {
-        // PRIORITY 1: Tiered weight ranges (rangos_kg)
         if (rangosKg.length > 0 && peso > 0) {
           const rangoAplicable = rangosKg.find((r: any) => peso >= r.desde && peso <= r.hasta);
           if (rangoAplicable) {
             flete = Number(rangoAplicable.precio) || 0;
             metodo = 'rangos_kg';
           } else {
-            // Weight exceeds all ranges — use last range price
             const ultimoRango = rangosKg[rangosKg.length - 1];
             if (ultimoRango && peso > ultimoRango.hasta) {
               flete = Number(ultimoRango.precio) || 0;
@@ -348,7 +351,6 @@ Deno.serve(async (req) => {
           }
         }
 
-        // PRIORITY 2: Simple method (base + extra per kg)
         if (metodo === 'base') {
           const pesoBaseHasta = Number(rangos.peso_base_hasta) || 0;
           const adicionalPorKg = Number(rangos.adicional_por_kg) || 0;
@@ -386,28 +388,22 @@ Deno.serve(async (req) => {
       }
 
       let precio = fleteTotal;
+      const conceptos_incluidos: Array<{ nombre: string; codigo: string; monto: number }> = [];
+      const conceptos_opcionales: Array<{ nombre: string; codigo: string; monto: number }> = [];
 
       // --- Add concepts (excluding "flete" already added) ---
       for (const c of conceptos) {
-        if (c === conceptoFlete) continue; // already added to freight
+        if (c === conceptoFlete) continue;
 
         const concepto = Array.isArray(c.concepto) ? c.concepto[0] : c.concepto;
         if (!concepto || typeof concepto !== "object") continue;
 
         const codigo = (concepto as any).codigo?.toLowerCase() || "";
+        const nombre = (concepto as any).nombre || "";
         const esBasico = (concepto as any).es_basico;
 
         const isEntrega = codigo.includes("entrega") || codigo.includes("domicilio_entrega") || codigo.includes("puerta_entrega");
         const isRetiro = codigo.includes("retiro") || codigo.includes("domicilio_retiro") || codigo.includes("puerta_retiro");
-
-        // Filter by service type
-        if (!tipoServicio) {
-          if (!esBasico) continue;
-        } else {
-          if (isEntrega && !destinoEsPuerta) continue;
-          if (isRetiro && !origenEsPuerta) continue;
-          if (!esBasico && !isEntrega && !isRetiro) continue;
-        }
 
         // Calculate concept amount
         let montoConcepto = 0;
@@ -419,8 +415,32 @@ Deno.serve(async (req) => {
         if (c.multiplicar_por_bultos && bultos > 1) {
           montoConcepto *= bultos;
         }
+        montoConcepto = Math.round(montoConcepto * 100) / 100;
 
-        precio += montoConcepto;
+        // Determine if concept should be auto-included (es_basico) or optional
+        const conceptoInfo = { nombre, codigo, monto: montoConcepto };
+
+        // Service-type filtering for entrega/retiro concepts
+        if (isEntrega && !destinoEsPuerta) {
+          conceptos_opcionales.push(conceptoInfo);
+          continue;
+        }
+        if (isRetiro && !origenEsPuerta) {
+          conceptos_opcionales.push(conceptoInfo);
+          continue;
+        }
+
+        // es_basico = true (or null as fallback) → auto-include in price
+        // es_basico = false → optional, don't add to price
+        if (esBasico === true || esBasico === null || esBasico === undefined) {
+          // For entrega/retiro concepts, only include if matching service type
+          if (isEntrega || isRetiro || (!isEntrega && !isRetiro)) {
+            precio += montoConcepto;
+            conceptos_incluidos.push(conceptoInfo);
+          }
+        } else {
+          conceptos_opcionales.push(conceptoInfo);
+        }
       }
 
       // --- Insurance ---
@@ -444,6 +464,8 @@ Deno.serve(async (req) => {
         dias_entrega_min: 3,
         dias_entrega_max: 5,
         metodo,
+        conceptos_incluidos,
+        conceptos_opcionales,
       });
     }
 
