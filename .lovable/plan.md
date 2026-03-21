@@ -1,33 +1,54 @@
 
 
-## Plan: Página de API Keys para Super Admin con selector de tenant
+## Plan: Enriquecer historial en API pública de tracking
 
-### Concepto
-Crear una nueva página `/admin/api-docs` accesible solo por super admins, donde se selecciona un tenant y se muestra el panel completo de API Keys + documentación de los endpoints públicos (Tracking, Cotización, Sucursales). Reutiliza el componente `TenantApiKeysDialog` existente pero embebido en una página completa en vez de un dialog.
+### Problema actual
+
+El endpoint `public-tracking` ya devuelve `historial` pero le falta información clave que sí se muestra en el dialog interno (ver imagen):
+
+1. **Nombre del usuario** que realizó el cambio (ej: "Lucas Galarza")
+2. **Rutas de reparto** asociadas (`rutas_planificadas`) — solo devuelve hojas de ruta, no rutas de delivery
 
 ### Cambios
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/pages/TenantApiDocs.tsx` | Nueva página: selector de tenant + `TenantApiKeysDialog` content embebido |
-| `src/components/layout/AppSidebar.tsx` | Agregar item "API Pública" al grupo Super Admin |
-| `src/App.tsx` | Agregar ruta `/admin/api-docs` |
+| `supabase/functions/public-tracking/index.ts` | Agregar perfil del usuario al historial y rutas planificadas |
 
-### Detalle
+### Detalle del cambio
 
-**1. `src/pages/TenantApiDocs.tsx`**
-- Gate de acceso: solo `super_admin`, redirige a `/dashboard` si no lo es
-- Selector de tenant (dropdown con tenants activos)
-- Al seleccionar tenant, muestra:
-  - Gestión de API Keys (generar, activar/desactivar, eliminar) — misma lógica del dialog existente
-  - Documentación de los 3 endpoints (Tracking, Cotización, Sucursales) con la Base URL
-- Layout dentro de `DashboardLayout`
+**Historial enriquecido** (solo para requests con API Key):
+- Consultar `profiles` para los `created_by` del historial
+- Incluir `usuario` (nombre completo) en cada entrada del historial
 
-**2. `src/components/layout/AppSidebar.tsx`**
-- Agregar `{ title: 'API Pública', url: '/admin/api-docs', icon: Key, permissionKey: 'tenants.manage' }` al grupo Super Admin
+**Rutas planificadas**:
+- Consultar `ruta_paradas` → `rutas_planificadas` igual que hace `ShipmentHistoryDialog`
+- Agregar campo `rutas` al response (junto a `hojas_ruta`)
 
-**3. `src/App.tsx`**
-- Import + ruta `<Route path="/admin/api-docs" element={<DashboardLayout><TenantApiDocs /></DashboardLayout>} />`
+### Respuesta actualizada del historial
 
-### No requiere migraciones de base de datos
+```json
+{
+  "historial": [
+    {
+      "estado_anterior": "en_reparto",
+      "estado_nuevo": "entregado",
+      "notas": "Entregado en domicilio - Entregó: Lucas Galarza",
+      "ubicacion": "Berazategui",
+      "fecha": "2026-03-19T15:40:00Z",
+      "usuario": "Lucas Galarza"
+    }
+  ],
+  "rutas": [
+    {
+      "numero": "RP-20260319-2457",
+      "estado": "completada",
+      "tipo": "reparto"
+    }
+  ],
+  "hojas_ruta": [...]
+}
+```
+
+Para acceso público (sin API Key): `usuario` será `null` y `notas` seguirá oculto.
 
