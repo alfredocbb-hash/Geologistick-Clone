@@ -133,7 +133,9 @@ Deno.serve(async (req) => {
       return jsonResponse({ rates: [], pickup_points: [] });
     }
 
-    const tarifas = tarifasRes.data;
+    // Filter tarifas by destination matching (same logic as NewShipment)
+    const tarifas = encontrarTarifaPorDestino(ciudadDestino || null, cpDestino || null, peso, tarifasRes.data);
+    logStep("Tarifas after destination filter", { total: tarifasRes.data.length, matched: tarifas.length });
     const seguro = seguroRes.data;
 
     // Fetch concepto precios for all tarifas in one query
