@@ -193,14 +193,63 @@ serve(async (req: Request) => {
       }
     }
 
-    // Fetch history
+    // Fetch history with user profiles
     const { data: historial } = await supabaseClient
       .from("envio_historial")
-      .select("id, estado_anterior, estado_nuevo, notas, ubicacion, created_at")
+      .select("id, estado_anterior, estado_nuevo, notas, ubicacion, created_at, created_by")
       .eq("envio_id", envio.id)
       .order("created_at", { ascending: false });
 
     logStep("History fetched", { count: historial?.length || 0 });
+
+    // Fetch user display names for history entries (only for authenticated requests)
+    let userNamesMap: Record<string, string> = {};
+    if (isAuthenticated && historial && historial.length > 0) {
+      const userIds = [...new Set(historial.map((h: any) => h.created_by).filter(Boolean))];
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabaseClient
+          .from("profiles")
+          .select("user_id, nombre, apellido")
+          .in("user_id", userIds);
+        if (profiles) {
+          for (const p of profiles) {
+            const fullName = [p.nombre, p.apellido].filter(Boolean).join(" ").trim();
+            if (fullName) userNamesMap[p.user_id] = fullName;
+          }
+        }
+      }
+      logStep("User profiles fetched for history", { count: Object.keys(userNamesMap).length });
+    }
+
+    // Fetch planned routes (rutas_planificadas) via ruta_paradas
+    let rutasResponse: any[] = [];
+    const { data: rutaParadas } = await supabaseClient
+      .from("ruta_paradas")
+      .select(`
+        ruta:rutas_planificadas(
+          numero,
+          estado,
+          tipo
+        )
+      `)
+      .eq("envio_id", envio.id);
+
+    if (rutaParadas) {
+      const seenRutas = new Set<string>();
+      rutasResponse = rutaParadas
+        .map((rp: any) => {
+          const ruta = Array.isArray(rp.ruta) ? rp.ruta[0] : rp.ruta;
+          if (!ruta || seenRutas.has(ruta.numero)) return null;
+          seenRutas.add(ruta.numero);
+          return {
+            numero: ruta.numero,
+            estado: ruta.estado,
+            tipo: ruta.tipo || null,
+          };
+        })
+        .filter(Boolean);
+    }
+    logStep("Planned routes fetched", { count: rutasResponse.length });
 
     // Fetch hojas de ruta (only for authenticated requests)
     let hojasRutaResponse: any[] = [];
@@ -274,7 +323,6 @@ serve(async (req: Request) => {
       fecha_entrega: envio.fecha_entrega,
       origen: {
         ciudad: envio.ciudad_retiro || sucursalOrigen?.ciudad,
-        // Only show full address for authenticated requests
         direccion: isAuthenticated ? envio.direccion_retiro : maskAddress(envio.direccion_retiro),
         sucursal: sucursalOrigen?.nombre,
       },
@@ -285,7 +333,6 @@ serve(async (req: Request) => {
       },
       detalles: {
         bultos: envio.cantidad_bultos,
-        // Only expose weight and description for authenticated requests
         ...(isAuthenticated ? {
           peso_kg: envio.peso_kg,
           descripcion: envio.descripcion,
@@ -307,18 +354,18 @@ serve(async (req: Request) => {
       sucursal_actual: sucursalActualObj,
       entregado_en_sucursal: envio.entregado_en_sucursal || false,
       hojas_ruta: hojasRutaResponse,
-      historial: (historial || []).map((h) => ({
+      rutas: rutasResponse,
+      historial: (historial || []).map((h: any) => ({
         id: h.id,
         estado_anterior: h.estado_anterior,
         estado_nuevo: h.estado_nuevo,
-        // Always sanitize notes, and for public access only show status-based info
         notas: isAuthenticated ? sanitizeNotasForPublic(h.notas) : null,
         ubicacion: h.ubicacion,
         fecha: h.created_at,
+        usuario: isAuthenticated ? (userNamesMap[h.created_by] || null) : null,
       })),
     };
 
-    // Fetch Maps API key for the tenant (so public tracking can render maps)
     let mapsApiKey: string | null = null;
     if (envio.tenant_id) {
       for (const env of ['production', 'sandbox']) {
