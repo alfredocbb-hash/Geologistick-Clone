@@ -1,54 +1,29 @@
 
 
-## Plan: Enriquecer historial en API pública de tracking
+## Plan: Auto-selección de tarifa por destino en API pública
 
-### Problema actual
+### Problema
+Actualmente `public-rates` devuelve **todas** las tarifas activas del tenant. Debería replicar la lógica de `NewShipment.tsx` → `encontrarTarifaPorDestino()`: matchear por `zona_destino` (ciudad o CP) y devolver **una sola tarifa** (o las que coincidan con el destino).
 
-El endpoint `public-tracking` ya devuelve `historial` pero le falta información clave que sí se muestra en el dialog interno (ver imagen):
-
-1. **Nombre del usuario** que realizó el cambio (ej: "Lucas Galarza")
-2. **Rutas de reparto** asociadas (`rutas_planificadas`) — solo devuelve hojas de ruta, no rutas de delivery
-
-### Cambios
+### Cambio
 
 | Archivo | Cambio |
 |---------|--------|
-| `supabase/functions/public-tracking/index.ts` | Agregar perfil del usuario al historial y rutas planificadas |
+| `supabase/functions/public-rates/index.ts` | Agregar campo `zona_destino, rangos_kg` al SELECT de tarifas; filtrar con lógica de matching por destino antes de calcular precios |
 
-### Detalle del cambio
+### Lógica de matching (misma que NewShipment)
 
-**Historial enriquecido** (solo para requests con API Key):
-- Consultar `profiles` para los `created_by` del historial
-- Incluir `usuario` (nombre completo) en cada entrada del historial
+1. Fetch tarifas con campo adicional `zona_destino` y `rangos_kg`
+2. Si `ciudad_destino` o `cp_destino` están presentes:
+   - Normalizar texto (lowercase, sin acentos)
+   - Filtrar tarifas cuya `zona_destino` (CSV) contenga la ciudad o CP
+   - Si hay múltiples coincidencias y `peso > 0`, desempatar por `rangos_kg`
+   - Si queda una sola → devolver solo esa
+3. Si no hay `ciudad_destino` ni `cp_destino` → devolver todas (comportamiento actual, fallback)
 
-**Rutas planificadas**:
-- Consultar `ruta_paradas` → `rutas_planificadas` igual que hace `ShipmentHistoryDialog`
-- Agregar campo `rutas` al response (junto a `hojas_ruta`)
+### Resultado esperado
 
-### Respuesta actualizada del historial
-
-```json
-{
-  "historial": [
-    {
-      "estado_anterior": "en_reparto",
-      "estado_nuevo": "entregado",
-      "notas": "Entregado en domicilio - Entregó: Lucas Galarza",
-      "ubicacion": "Berazategui",
-      "fecha": "2026-03-19T15:40:00Z",
-      "usuario": "Lucas Galarza"
-    }
-  ],
-  "rutas": [
-    {
-      "numero": "RP-20260319-2457",
-      "estado": "completada",
-      "tipo": "reparto"
-    }
-  ],
-  "hojas_ruta": [...]
-}
-```
-
-Para acceso público (sin API Key): `usuario` será `null` y `notas` seguirá oculto.
+Con `cp_destino=1884` y `ciudad_destino=Berazategui`:
+- Solo devuelve la tarifa cuya `zona_destino` incluya "Berazategui" o "1884"
+- En vez de las 4 tarifas actuales, devuelve 1 resultado
 
