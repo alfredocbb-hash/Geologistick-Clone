@@ -73,6 +73,7 @@ import Partners from "./pages/Partners";
 import PrintInvoice from "./pages/PrintInvoice";
 import PrintSettlement from "./pages/PrintSettlement";
 import MarketingAssets from "./pages/MarketingAssets";
+import TenantApiDocs from "./pages/TenantApiDocs";
 import TiendanubeOAuthResult from "./pages/TiendanubeOAuthResult";
 import TiendanubeDocsPublic from "./pages/TiendanubeDocsPublic";
 import MercadoLibreOAuthResult from "./pages/MercadoLibreOAuthResult";
