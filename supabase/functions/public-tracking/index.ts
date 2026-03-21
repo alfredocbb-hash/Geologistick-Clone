@@ -251,7 +251,121 @@ serve(async (req: Request) => {
     }
     logStep("Planned routes fetched", { count: rutasResponse.length });
 
-    // Fetch Maps API key for the tenant (so public tracking can render maps)
+    // Fetch hojas de ruta (only for authenticated requests)
+    let hojasRutaResponse: any[] = [];
+    if (isAuthenticated) {
+      const { data: hojasRutaData } = await supabaseClient
+        .from("hoja_ruta_envios")
+        .select(`
+          hoja_ruta:hojas_ruta(
+            numero,
+            estado,
+            fecha_salida,
+            cantidad_envios,
+            sucursal_origen:sucursales!hojas_ruta_sucursal_origen_id_fkey(nombre, ciudad),
+            sucursal_destino:sucursales!hojas_ruta_sucursal_destino_id_fkey(nombre, ciudad)
+          )
+        `)
+        .eq("envio_id", envio.id);
+
+      if (hojasRutaData) {
+        hojasRutaResponse = hojasRutaData
+          .map((hre: any) => {
+            const hr = Array.isArray(hre.hoja_ruta) ? hre.hoja_ruta[0] : hre.hoja_ruta;
+            if (!hr) return null;
+            const origen = Array.isArray(hr.sucursal_origen) ? hr.sucursal_origen[0] : hr.sucursal_origen;
+            const destino = Array.isArray(hr.sucursal_destino) ? hr.sucursal_destino[0] : hr.sucursal_destino;
+            return {
+              numero: hr.numero,
+              estado: hr.estado,
+              fecha_salida: hr.fecha_salida,
+              cantidad_envios: hr.cantidad_envios,
+              origen: origen ? { nombre: origen.nombre, ciudad: origen.ciudad } : null,
+              destino: destino ? { nombre: destino.nombre, ciudad: destino.ciudad } : null,
+            };
+          })
+          .filter(Boolean);
+      }
+      logStep("Hojas de ruta fetched", { count: hojasRutaResponse.length });
+    }
+
+    // Handle potential array from Supabase join (use first element if array)
+    const sucursalOrigen = Array.isArray(envio.sucursal_origen) ? envio.sucursal_origen[0] : envio.sucursal_origen;
+    const sucursalDestino = Array.isArray(envio.sucursal_destino) ? envio.sucursal_destino[0] : envio.sucursal_destino;
+    const sucursalEntrega = Array.isArray(envio.sucursal_entrega) ? envio.sucursal_entrega[0] : envio.sucursal_entrega;
+    const remitente = Array.isArray(envio.remitente) ? envio.remitente[0] : envio.remitente;
+    const destinatario = Array.isArray(envio.destinatario) ? envio.destinatario[0] : envio.destinatario;
+
+    // Determine current branch as detailed object
+    let sucursalActualObj: { nombre: string; ciudad: string | null; codigo: string | null; es_centro_logistico: boolean } | null = null;
+    const buildSucursalObj = (suc: any) => suc ? {
+      nombre: suc.nombre,
+      ciudad: suc.ciudad || null,
+      codigo: suc.codigo || null,
+      es_centro_logistico: suc.es_centro_logistico || false,
+    } : null;
+
+    if (envio.estado === 'en_sucursal' || envio.estado === 'pendiente' || envio.estado === 'recogido') {
+      sucursalActualObj = buildSucursalObj(sucursalEntrega) || buildSucursalObj(sucursalOrigen);
+    } else if (envio.estado === 'entregado') {
+      sucursalActualObj = buildSucursalObj(sucursalEntrega) || buildSucursalObj(sucursalDestino);
+    } else {
+      sucursalActualObj = buildSucursalObj(sucursalDestino);
+    }
+
+    // Build response - mask PII for public (unauthenticated) access
+    const response = {
+      tracking_number: envio.tracking_number,
+      estado: envio.estado,
+      estado_retiro: envio.estado_retiro,
+      created_at: envio.created_at,
+      updated_at: envio.updated_at,
+      fecha_entrega: envio.fecha_entrega,
+      origen: {
+        ciudad: envio.ciudad_retiro || sucursalOrigen?.ciudad,
+        direccion: isAuthenticated ? envio.direccion_retiro : maskAddress(envio.direccion_retiro),
+        sucursal: sucursalOrigen?.nombre,
+      },
+      destino: {
+        ciudad: envio.ciudad_entrega || sucursalDestino?.ciudad,
+        direccion: isAuthenticated ? envio.direccion_entrega : maskAddress(envio.direccion_entrega),
+        sucursal: sucursalDestino?.nombre,
+      },
+      detalles: {
+        bultos: envio.cantidad_bultos,
+        ...(isAuthenticated ? {
+          peso_kg: envio.peso_kg,
+          descripcion: envio.descripcion,
+        } : {}),
+      },
+      remitente: {
+        nombre: isAuthenticated
+          ? (envio.nombre_remitente || remitente?.nombre || null)
+          : maskName(envio.nombre_remitente || remitente?.nombre || null),
+        ciudad: remitente?.ciudad || null,
+      },
+      destinatario: {
+        nombre: isAuthenticated
+          ? (envio.nombre_destinatario || destinatario?.nombre || null)
+          : maskName(envio.nombre_destinatario || destinatario?.nombre || null),
+        ciudad: destinatario?.ciudad || null,
+      },
+      branding,
+      sucursal_actual: sucursalActualObj,
+      entregado_en_sucursal: envio.entregado_en_sucursal || false,
+      hojas_ruta: hojasRutaResponse,
+      rutas: rutasResponse,
+      historial: (historial || []).map((h: any) => ({
+        id: h.id,
+        estado_anterior: h.estado_anterior,
+        estado_nuevo: h.estado_nuevo,
+        notas: isAuthenticated ? sanitizeNotasForPublic(h.notas) : null,
+        ubicacion: h.ubicacion,
+        fecha: h.created_at,
+        usuario: isAuthenticated ? (userNamesMap[h.created_by] || null) : null,
+      })),
+    };
+
     let mapsApiKey: string | null = null;
     if (envio.tenant_id) {
       for (const env of ['production', 'sandbox']) {
