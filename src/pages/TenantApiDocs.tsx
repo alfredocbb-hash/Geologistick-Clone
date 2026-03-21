@@ -313,7 +313,10 @@ Body: {
   "peso": 5,
   "bultos": 2,
   "tipo_servicio": "puerta_puerta",
+  "cp_origen": "7600",
+  "ciudad_origen": "Mar del Plata",
   "cp_destino": "1425",
+  "ciudad_destino": "CABA",
   "valor_declarado": 50000
 }`}
                 </pre>
@@ -323,7 +326,8 @@ Body: {
                     <li><code>peso</code> — peso en kg (requerido)</li>
                     <li><code>bultos</code> — cantidad (default: 1)</li>
                     <li><code>tipo_servicio</code> — <code>sucursal_sucursal</code>, <code>sucursal_puerta</code>, <code>puerta_sucursal</code>, <code>puerta_puerta</code></li>
-                    <li><code>cp_destino</code> / <code>ciudad_destino</code> — filtro de zona (opcional)</li>
+                    <li><code>cp_origen</code> / <code>ciudad_origen</code> — filtra tarifas habilitadas en la sucursal de origen (opcional)</li>
+                    <li><code>cp_destino</code> / <code>ciudad_destino</code> — filtra por zona de destino (opcional)</li>
                     <li><code>valor_declarado</code> — para cálculo de seguro (opcional)</li>
                   </ul>
                 </div>

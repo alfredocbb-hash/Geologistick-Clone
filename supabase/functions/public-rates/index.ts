@@ -135,9 +135,69 @@ Deno.serve(async (req) => {
       return jsonResponse({ rates: [], pickup_points: [] });
     }
 
+    let tarifasActivas = tarifasRes.data;
+
+    // --- Filter by origin branch (sucursal_tarifas) ---
+    if (cpOrigen || ciudadOrigen) {
+      const cpOrigenTrim = cpOrigen.trim();
+      const ciudadOrigenNorm = ciudadOrigen ? normalizarTexto(ciudadOrigen) : '';
+
+      // Find matching branch
+      const sucursalOrigen = (sucursalesRes.data || []).find((s: any) => {
+        if (cpOrigenTrim && s.codigo_postal?.trim() === cpOrigenTrim) return true;
+        if (ciudadOrigenNorm && s.ciudad && normalizarTexto(s.ciudad).includes(ciudadOrigenNorm)) return true;
+        return false;
+      });
+
+      // Also search all active branches (not just pickup ones) if not found
+      let sucursalOrigenId = sucursalOrigen ? undefined : null;
+      if (sucursalOrigen) {
+        // We need the id — fetch it
+        const { data: matchedBranch } = await supabase
+          .from("sucursales")
+          .select("id")
+          .eq("tenant_id", tenantId)
+          .eq("activa", true)
+          .or(`codigo_postal.eq.${cpOrigenTrim},ciudad.ilike.%${ciudadOrigen}%`)
+          .limit(1)
+          .maybeSingle();
+        sucursalOrigenId = matchedBranch?.id || null;
+      } else {
+        // Search all branches (the pickup query may not include this one)
+        const { data: matchedBranch } = await supabase
+          .from("sucursales")
+          .select("id")
+          .eq("tenant_id", tenantId)
+          .eq("activa", true)
+          .or(`codigo_postal.eq.${cpOrigenTrim},ciudad.ilike.%${ciudadOrigen}%`)
+          .limit(1)
+          .maybeSingle();
+        sucursalOrigenId = matchedBranch?.id || null;
+      }
+
+      if (sucursalOrigenId) {
+        // Get enabled tarifas for this branch
+        const { data: sucTarifas } = await supabase
+          .from("sucursal_tarifas")
+          .select("tarifa_id")
+          .eq("sucursal_id", sucursalOrigenId)
+          .eq("habilitada", true);
+
+        if (sucTarifas && sucTarifas.length > 0) {
+          const enabledIds = new Set(sucTarifas.map((st: any) => st.tarifa_id));
+          tarifasActivas = tarifasActivas.filter((t: any) => enabledIds.has(t.id));
+          logStep("Filtered by origin branch", { sucursalOrigenId, before: tarifasRes.data.length, after: tarifasActivas.length });
+        } else {
+          logStep("No sucursal_tarifas found for branch, using all", { sucursalOrigenId });
+        }
+      } else {
+        logStep("No matching origin branch found, using all tarifas");
+      }
+    }
+
     // Filter tarifas by destination matching (same logic as NewShipment)
-    const tarifas = encontrarTarifaPorDestino(ciudadDestino || null, cpDestino || null, peso, tarifasRes.data);
-    logStep("Tarifas after destination filter", { total: tarifasRes.data.length, matched: tarifas.length });
+    const tarifas = encontrarTarifaPorDestino(ciudadDestino || null, cpDestino || null, peso, tarifasActivas);
+    logStep("Tarifas after filters", { total: tarifasRes.data.length, afterOrigin: tarifasActivas.length, afterDestino: tarifas.length });
     const seguro = seguroRes.data;
 
     // Fetch concepto precios for all tarifas in one query
