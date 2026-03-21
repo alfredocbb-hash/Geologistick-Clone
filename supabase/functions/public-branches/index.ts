@@ -70,7 +70,6 @@ Deno.serve(async (req) => {
       codigo: s.codigo,
       direccion: s.direccion,
       ciudad: s.ciudad,
-      codigo_postal: s.codigo_postal,
       telefono: s.telefono || null,
       email: s.email || null,
       lat: s.lat ? Number(s.lat) : null,
