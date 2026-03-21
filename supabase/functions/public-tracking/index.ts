@@ -193,130 +193,63 @@ serve(async (req: Request) => {
       }
     }
 
-    // Fetch history
+    // Fetch history with user profiles
     const { data: historial } = await supabaseClient
       .from("envio_historial")
-      .select("id, estado_anterior, estado_nuevo, notas, ubicacion, created_at")
+      .select("id, estado_anterior, estado_nuevo, notas, ubicacion, created_at, created_by")
       .eq("envio_id", envio.id)
       .order("created_at", { ascending: false });
 
     logStep("History fetched", { count: historial?.length || 0 });
 
-    // Fetch hojas de ruta (only for authenticated requests)
-    let hojasRutaResponse: any[] = [];
-    if (isAuthenticated) {
-      const { data: hojasRutaData } = await supabaseClient
-        .from("hoja_ruta_envios")
-        .select(`
-          hoja_ruta:hojas_ruta(
-            numero,
-            estado,
-            fecha_salida,
-            cantidad_envios,
-            sucursal_origen:sucursales!hojas_ruta_sucursal_origen_id_fkey(nombre, ciudad),
-            sucursal_destino:sucursales!hojas_ruta_sucursal_destino_id_fkey(nombre, ciudad)
-          )
-        `)
-        .eq("envio_id", envio.id);
-
-      if (hojasRutaData) {
-        hojasRutaResponse = hojasRutaData
-          .map((hre: any) => {
-            const hr = Array.isArray(hre.hoja_ruta) ? hre.hoja_ruta[0] : hre.hoja_ruta;
-            if (!hr) return null;
-            const origen = Array.isArray(hr.sucursal_origen) ? hr.sucursal_origen[0] : hr.sucursal_origen;
-            const destino = Array.isArray(hr.sucursal_destino) ? hr.sucursal_destino[0] : hr.sucursal_destino;
-            return {
-              numero: hr.numero,
-              estado: hr.estado,
-              fecha_salida: hr.fecha_salida,
-              cantidad_envios: hr.cantidad_envios,
-              origen: origen ? { nombre: origen.nombre, ciudad: origen.ciudad } : null,
-              destino: destino ? { nombre: destino.nombre, ciudad: destino.ciudad } : null,
-            };
-          })
-          .filter(Boolean);
+    // Fetch user display names for history entries (only for authenticated requests)
+    let userNamesMap: Record<string, string> = {};
+    if (isAuthenticated && historial && historial.length > 0) {
+      const userIds = [...new Set(historial.map((h: any) => h.created_by).filter(Boolean))];
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabaseClient
+          .from("profiles")
+          .select("user_id, nombre, apellido")
+          .in("user_id", userIds);
+        if (profiles) {
+          for (const p of profiles) {
+            const fullName = [p.nombre, p.apellido].filter(Boolean).join(" ").trim();
+            if (fullName) userNamesMap[p.user_id] = fullName;
+          }
+        }
       }
-      logStep("Hojas de ruta fetched", { count: hojasRutaResponse.length });
+      logStep("User profiles fetched for history", { count: Object.keys(userNamesMap).length });
     }
 
-    // Handle potential array from Supabase join (use first element if array)
-    const sucursalOrigen = Array.isArray(envio.sucursal_origen) ? envio.sucursal_origen[0] : envio.sucursal_origen;
-    const sucursalDestino = Array.isArray(envio.sucursal_destino) ? envio.sucursal_destino[0] : envio.sucursal_destino;
-    const sucursalEntrega = Array.isArray(envio.sucursal_entrega) ? envio.sucursal_entrega[0] : envio.sucursal_entrega;
-    const remitente = Array.isArray(envio.remitente) ? envio.remitente[0] : envio.remitente;
-    const destinatario = Array.isArray(envio.destinatario) ? envio.destinatario[0] : envio.destinatario;
+    // Fetch planned routes (rutas_planificadas) via ruta_paradas
+    let rutasResponse: any[] = [];
+    const { data: rutaParadas } = await supabaseClient
+      .from("ruta_paradas")
+      .select(`
+        ruta:rutas_planificadas(
+          numero,
+          estado,
+          tipo
+        )
+      `)
+      .eq("envio_id", envio.id);
 
-    // Determine current branch as detailed object
-    let sucursalActualObj: { nombre: string; ciudad: string | null; codigo: string | null; es_centro_logistico: boolean } | null = null;
-    const buildSucursalObj = (suc: any) => suc ? {
-      nombre: suc.nombre,
-      ciudad: suc.ciudad || null,
-      codigo: suc.codigo || null,
-      es_centro_logistico: suc.es_centro_logistico || false,
-    } : null;
-
-    if (envio.estado === 'en_sucursal' || envio.estado === 'pendiente' || envio.estado === 'recogido') {
-      sucursalActualObj = buildSucursalObj(sucursalEntrega) || buildSucursalObj(sucursalOrigen);
-    } else if (envio.estado === 'entregado') {
-      sucursalActualObj = buildSucursalObj(sucursalEntrega) || buildSucursalObj(sucursalDestino);
-    } else {
-      sucursalActualObj = buildSucursalObj(sucursalDestino);
+    if (rutaParadas) {
+      const seenRutas = new Set<string>();
+      rutasResponse = rutaParadas
+        .map((rp: any) => {
+          const ruta = Array.isArray(rp.ruta) ? rp.ruta[0] : rp.ruta;
+          if (!ruta || seenRutas.has(ruta.numero)) return null;
+          seenRutas.add(ruta.numero);
+          return {
+            numero: ruta.numero,
+            estado: ruta.estado,
+            tipo: ruta.tipo || null,
+          };
+        })
+        .filter(Boolean);
     }
-
-    // Build response - mask PII for public (unauthenticated) access
-    const response = {
-      tracking_number: envio.tracking_number,
-      estado: envio.estado,
-      estado_retiro: envio.estado_retiro,
-      created_at: envio.created_at,
-      updated_at: envio.updated_at,
-      fecha_entrega: envio.fecha_entrega,
-      origen: {
-        ciudad: envio.ciudad_retiro || sucursalOrigen?.ciudad,
-        // Only show full address for authenticated requests
-        direccion: isAuthenticated ? envio.direccion_retiro : maskAddress(envio.direccion_retiro),
-        sucursal: sucursalOrigen?.nombre,
-      },
-      destino: {
-        ciudad: envio.ciudad_entrega || sucursalDestino?.ciudad,
-        direccion: isAuthenticated ? envio.direccion_entrega : maskAddress(envio.direccion_entrega),
-        sucursal: sucursalDestino?.nombre,
-      },
-      detalles: {
-        bultos: envio.cantidad_bultos,
-        // Only expose weight and description for authenticated requests
-        ...(isAuthenticated ? {
-          peso_kg: envio.peso_kg,
-          descripcion: envio.descripcion,
-        } : {}),
-      },
-      remitente: {
-        nombre: isAuthenticated
-          ? (envio.nombre_remitente || remitente?.nombre || null)
-          : maskName(envio.nombre_remitente || remitente?.nombre || null),
-        ciudad: remitente?.ciudad || null,
-      },
-      destinatario: {
-        nombre: isAuthenticated
-          ? (envio.nombre_destinatario || destinatario?.nombre || null)
-          : maskName(envio.nombre_destinatario || destinatario?.nombre || null),
-        ciudad: destinatario?.ciudad || null,
-      },
-      branding,
-      sucursal_actual: sucursalActualObj,
-      entregado_en_sucursal: envio.entregado_en_sucursal || false,
-      hojas_ruta: hojasRutaResponse,
-      historial: (historial || []).map((h) => ({
-        id: h.id,
-        estado_anterior: h.estado_anterior,
-        estado_nuevo: h.estado_nuevo,
-        // Always sanitize notes, and for public access only show status-based info
-        notas: isAuthenticated ? sanitizeNotasForPublic(h.notas) : null,
-        ubicacion: h.ubicacion,
-        fecha: h.created_at,
-      })),
-    };
+    logStep("Planned routes fetched", { count: rutasResponse.length });
 
     // Fetch Maps API key for the tenant (so public tracking can render maps)
     let mapsApiKey: string | null = null;
