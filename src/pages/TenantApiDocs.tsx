@@ -397,7 +397,6 @@ Headers: x-api-key: tu_api_key`}
       "codigo": "CEN",
       "direccion": "Av. Corrientes 1234",
       "ciudad": "CABA",
-      "codigo_postal": "1043",
       "telefono": "+54 11 1234-5678",
       "lat": -34.6037,
       "lng": -58.3816,
