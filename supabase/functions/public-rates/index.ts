@@ -37,8 +37,8 @@ function encontrarTarifaPorDestino(
   cp: string | null,
   peso: number,
   tarifas: any[]
-): any[] {
-  if (!ciudad && !cp) return tarifas;
+): any | null {
+  if (!ciudad && !cp) return null; // No destination = no match (same as NewShipment)
   const ciudadNorm = ciudad ? normalizarTexto(ciudad) : '';
   const cpTrim = cp?.trim() || '';
 
@@ -50,18 +50,19 @@ function encontrarTarifaPorDestino(
     return false;
   });
 
-  if (coincidentesZona.length === 0) return tarifas;
-  if (coincidentesZona.length === 1) return coincidentesZona;
+  if (coincidentesZona.length === 0) return null; // No match = no rate
+  if (coincidentesZona.length === 1) return coincidentesZona[0];
 
+  // Multiple matches: pick the one whose weight range fits best
   if (peso > 0) {
     const porPeso = coincidentesZona.filter((t: any) => {
       const rangos = Array.isArray(t.rangos_kg) ? t.rangos_kg : [];
       return rangos.some((r: any) => peso >= r.desde && peso <= r.hasta);
     });
-    if (porPeso.length > 0) return porPeso;
+    if (porPeso.length > 0) return porPeso[0]; // Best match by weight
   }
 
-  return coincidentesZona;
+  return coincidentesZona[0]; // Return first match (single tariff)
 }
 
 // --- Auto-resolution helpers ---
