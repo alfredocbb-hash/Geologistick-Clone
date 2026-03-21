@@ -87,6 +87,8 @@ Deno.serve(async (req) => {
     const peso = Number(params.peso ?? url.searchParams.get("peso") ?? 0);
     const bultos = Math.max(1, Number(params.bultos ?? url.searchParams.get("bultos") ?? 1));
     const tipoServicio = String(params.tipo_servicio ?? url.searchParams.get("tipo_servicio") ?? "");
+    const cpOrigen = String(params.cp_origen ?? url.searchParams.get("cp_origen") ?? "");
+    const ciudadOrigen = String(params.ciudad_origen ?? url.searchParams.get("ciudad_origen") ?? "");
     const cpDestino = String(params.cp_destino ?? url.searchParams.get("cp_destino") ?? "");
     const ciudadDestino = String(params.ciudad_destino ?? url.searchParams.get("ciudad_destino") ?? "");
     const valorDeclarado = Number(params.valor_declarado ?? url.searchParams.get("valor_declarado") ?? 0);
@@ -95,7 +97,7 @@ Deno.serve(async (req) => {
       return errorJson("'peso' es requerido y debe ser mayor a 0", 400);
     }
 
-    logStep("Params", { peso, bultos, tipoServicio, cpDestino, valorDeclarado });
+    logStep("Params", { peso, bultos, tipoServicio, cpOrigen, ciudadOrigen, cpDestino, valorDeclarado });
 
     // Determine which concept filters apply based on tipo_servicio
     const destinoEsPuerta = tipoServicio.endsWith("_puerta") || tipoServicio === "puerta_puerta";
