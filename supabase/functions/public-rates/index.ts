@@ -17,6 +17,21 @@ function normalizarTexto(str: string): string {
     .trim();
 }
 
+function extractNumericCP(cp: string): number {
+  const cleaned = cp.replace(/[^0-9]/g, '');
+  return cleaned ? parseInt(cleaned, 10) : NaN;
+}
+
+function cpInRange(cp: string, from: string, to: string): boolean {
+  const cpNum = extractNumericCP(cp);
+  const fromNum = extractNumericCP(from);
+  const toNum = extractNumericCP(to);
+  if (!isNaN(cpNum) && !isNaN(fromNum) && !isNaN(toNum)) {
+    return cpNum >= fromNum && cpNum <= toNum;
+  }
+  return cp >= from && cp <= to;
+}
+
 function encontrarTarifaPorDestino(
   ciudad: string | null,
   cp: string | null,
@@ -38,7 +53,6 @@ function encontrarTarifaPorDestino(
   if (coincidentesZona.length === 0) return tarifas;
   if (coincidentesZona.length === 1) return coincidentesZona;
 
-  // Desempate por peso si hay múltiples zonas coincidentes
   if (peso > 0) {
     const porPeso = coincidentesZona.filter((t: any) => {
       const rangos = Array.isArray(t.rangos_kg) ? t.rangos_kg : [];
@@ -48,6 +62,100 @@ function encontrarTarifaPorDestino(
   }
 
   return coincidentesZona;
+}
+
+// --- Auto-resolution helpers ---
+
+async function resolveOrigen(
+  supabase: any,
+  tenantId: string,
+  cpOrigen: string,
+  ciudadOrigen: string
+): Promise<{ cpOrigen: string; ciudadOrigen: string; sucursalNombre: string | null; resolved: boolean }> {
+  // Both provided or neither — nothing to resolve
+  if ((cpOrigen && ciudadOrigen) || (!cpOrigen && !ciudadOrigen)) {
+    return { cpOrigen, ciudadOrigen, sucursalNombre: null, resolved: false };
+  }
+
+  // sucursales does NOT have codigo_postal, so we can only resolve by ciudad
+  const orConditions: string[] = [];
+  if (ciudadOrigen) orConditions.push(`ciudad.ilike.%${ciudadOrigen.trim()}%`);
+  // For CP we try to match against the address field as a fallback (unlikely to help much)
+  // But since sucursales has no CP column, if only CP is given we can try sucursal_zonas
+  if (cpOrigen && !ciudadOrigen) {
+    // Try sucursal_zonas to find city for this CP
+    const { data: zones } = await supabase
+      .from('sucursal_zonas')
+      .select('ciudad, codigo_postal_desde, codigo_postal_hasta, sucursal_id, sucursales:sucursal_id(nombre, ciudad, tenant_id)')
+      .eq('activa', true);
+
+    if (zones && zones.length > 0) {
+      for (const z of zones) {
+        const suc = Array.isArray(z.sucursales) ? z.sucursales[0] : z.sucursales;
+        if (!suc || suc.tenant_id !== tenantId) continue;
+        if (z.codigo_postal_desde && cpInRange(cpOrigen, z.codigo_postal_desde, z.codigo_postal_hasta || z.codigo_postal_desde)) {
+          return {
+            cpOrigen,
+            ciudadOrigen: z.ciudad || suc.ciudad || '',
+            sucursalNombre: suc.nombre || null,
+            resolved: true,
+          };
+        }
+      }
+    }
+    return { cpOrigen, ciudadOrigen: '', sucursalNombre: null, resolved: false };
+  }
+
+  // ciudadOrigen provided, no CP — just return as-is (no CP column on sucursales)
+  return { cpOrigen: '', ciudadOrigen, sucursalNombre: null, resolved: false };
+}
+
+async function resolveDestino(
+  supabase: any,
+  tenantId: string,
+  cpDestino: string,
+  ciudadDestino: string
+): Promise<{ cpDestino: string; ciudadDestino: string; resolved: boolean }> {
+  if ((cpDestino && ciudadDestino) || (!cpDestino && !ciudadDestino)) {
+    return { cpDestino, ciudadDestino, resolved: false };
+  }
+
+  // Query sucursal_zonas for this tenant's branches
+  const { data: zones } = await supabase
+    .from('sucursal_zonas')
+    .select('ciudad, codigo_postal_desde, codigo_postal_hasta, sucursal_id, sucursales:sucursal_id(tenant_id)')
+    .eq('activa', true);
+
+  const tenantZones = (zones || []).filter((z: any) => {
+    const suc = Array.isArray(z.sucursales) ? z.sucursales[0] : z.sucursales;
+    return suc && suc.tenant_id === tenantId;
+  });
+
+  if (cpDestino && !ciudadDestino) {
+    // Find city by CP range
+    for (const z of tenantZones) {
+      if (z.codigo_postal_desde && cpInRange(cpDestino, z.codigo_postal_desde, z.codigo_postal_hasta || z.codigo_postal_desde)) {
+        return { cpDestino, ciudadDestino: z.ciudad || '', resolved: true };
+      }
+    }
+    return { cpDestino, ciudadDestino: '', resolved: false };
+  }
+
+  if (ciudadDestino && !cpDestino) {
+    // Find CP by city
+    const ciudadNorm = normalizarTexto(ciudadDestino);
+    for (const z of tenantZones) {
+      if (z.ciudad) {
+        const zoneCiudad = normalizarTexto(z.ciudad);
+        if (zoneCiudad === ciudadNorm || zoneCiudad.includes(ciudadNorm) || ciudadNorm.includes(zoneCiudad)) {
+          return { cpDestino: z.codigo_postal_desde || '', ciudadDestino, resolved: true };
+        }
+      }
+    }
+    return { cpDestino: '', ciudadDestino, resolved: false };
+  }
+
+  return { cpDestino, ciudadDestino, resolved: false };
 }
 
 Deno.serve(async (req) => {
@@ -83,21 +191,38 @@ Deno.serve(async (req) => {
       try { params = await req.json(); } catch { /* empty body */ }
     }
     const url = new URL(req.url);
-    // Query string fallback
     const peso = Number(params.peso ?? url.searchParams.get("peso") ?? 0);
     const bultos = Math.max(1, Number(params.bultos ?? url.searchParams.get("bultos") ?? 1));
     const tipoServicio = String(params.tipo_servicio ?? url.searchParams.get("tipo_servicio") ?? "");
-    const cpOrigen = String(params.cp_origen ?? url.searchParams.get("cp_origen") ?? "");
-    const ciudadOrigen = String(params.ciudad_origen ?? url.searchParams.get("ciudad_origen") ?? "");
-    const cpDestino = String(params.cp_destino ?? url.searchParams.get("cp_destino") ?? "");
-    const ciudadDestino = String(params.ciudad_destino ?? url.searchParams.get("ciudad_destino") ?? "");
+    let cpOrigen = String(params.cp_origen ?? url.searchParams.get("cp_origen") ?? "");
+    let ciudadOrigen = String(params.ciudad_origen ?? url.searchParams.get("ciudad_origen") ?? "");
+    let cpDestino = String(params.cp_destino ?? url.searchParams.get("cp_destino") ?? "");
+    let ciudadDestino = String(params.ciudad_destino ?? url.searchParams.get("ciudad_destino") ?? "");
     const valorDeclarado = Number(params.valor_declarado ?? url.searchParams.get("valor_declarado") ?? 0);
 
     if (!peso || peso <= 0) {
       return errorJson("'peso' es requerido y debe ser mayor a 0", 400);
     }
 
-    logStep("Params", { peso, bultos, tipoServicio, cpOrigen, ciudadOrigen, cpDestino, valorDeclarado });
+    logStep("Params", { peso, bultos, tipoServicio, cpOrigen, ciudadOrigen, cpDestino, ciudadDestino, valorDeclarado });
+
+    // --- Auto-resolve origin & destination ---
+    const [origenRes, destinoRes] = await Promise.all([
+      resolveOrigen(supabase, tenantId, cpOrigen, ciudadOrigen),
+      resolveDestino(supabase, tenantId, cpDestino, ciudadDestino),
+    ]);
+
+    cpOrigen = origenRes.cpOrigen;
+    ciudadOrigen = origenRes.ciudadOrigen;
+    cpDestino = destinoRes.cpDestino;
+    ciudadDestino = destinoRes.ciudadDestino;
+
+    if (origenRes.resolved || destinoRes.resolved) {
+      logStep("Auto-resolved", {
+        origen: origenRes.resolved ? { ciudad: ciudadOrigen, cp: cpOrigen } : 'no change',
+        destino: destinoRes.resolved ? { ciudad: ciudadDestino, cp: cpDestino } : 'no change',
+      });
+    }
 
     // Determine which concept filters apply based on tipo_servicio
     const destinoEsPuerta = tipoServicio.endsWith("_puerta") || tipoServicio === "puerta_puerta";
@@ -105,13 +230,11 @@ Deno.serve(async (req) => {
 
     // --- Fetch data in parallel ---
     const [tarifasRes, seguroRes, sucursalesRes] = await Promise.all([
-      // Active tarifas for tenant
       supabase
         .from("tarifas")
         .select("id, nombre, precio_base, tipo_tarifa, rangos_precios, multiplicar_flete_por_bultos, zona_destino, rangos_kg")
         .eq("tenant_id", tenantId)
         .eq("activa", true),
-      // Insurance config
       valorDeclarado > 0
         ? supabase
             .from("configuracion_seguro")
@@ -119,11 +242,10 @@ Deno.serve(async (req) => {
             .eq("tenant_id", tenantId)
             .maybeSingle()
         : Promise.resolve({ data: null, error: null }),
-      // Pickup branches (only if service implies branch destination)
       (tipoServicio === "" || tipoServicio.endsWith("_sucursal") || tipoServicio === "sucursal_sucursal")
         ? supabase
             .from("sucursales")
-            .select("nombre, direccion, ciudad, codigo_postal, lat, lng")
+            .select("nombre, direccion, ciudad, lat, lng")
             .eq("tenant_id", tenantId)
             .eq("activa", true)
             .eq("permite_retiro_clientes", true)
@@ -132,30 +254,31 @@ Deno.serve(async (req) => {
 
     if (tarifasRes.error || !tarifasRes.data?.length) {
       logStep("No active tarifas", { error: tarifasRes.error?.message });
-      return jsonResponse({ rates: [], pickup_points: [] });
+      return jsonResponse({ rates: [], pickup_points: [], resolucion: buildResolucion(origenRes, destinoRes) });
     }
 
     let tarifasActivas = tarifasRes.data;
 
     // --- Filter by origin branch (sucursal_tarifas) ---
-    if (cpOrigen || ciudadOrigen) {
-      const cpOrigenTrim = cpOrigen.trim();
-      const orConditions: string[] = [];
-      if (cpOrigenTrim) orConditions.push(`codigo_postal.eq.${cpOrigenTrim}`);
-      if (ciudadOrigen) orConditions.push(`ciudad.ilike.%${ciudadOrigen.trim()}%`);
-
+    if (ciudadOrigen) {
+      // sucursales has no codigo_postal — match only by ciudad
       const { data: matchedBranch } = await supabase
         .from("sucursales")
-        .select("id")
+        .select("id, nombre, ciudad")
         .eq("tenant_id", tenantId)
         .eq("activa", true)
-        .or(orConditions.join(","))
+        .ilike("ciudad", `%${ciudadOrigen.trim()}%`)
         .limit(1)
         .maybeSingle();
 
       const sucursalOrigenId = matchedBranch?.id || null;
 
       if (sucursalOrigenId) {
+        // Enrich resolution with branch name
+        if (!origenRes.sucursalNombre) {
+          origenRes.sucursalNombre = matchedBranch?.nombre || null;
+        }
+
         const { data: sucTarifas } = await supabase
           .from("sucursal_tarifas")
           .select("tarifa_id")
@@ -174,7 +297,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Filter tarifas by destination matching (same logic as NewShipment)
+    // Filter tarifas by destination matching
     const tarifas = encontrarTarifaPorDestino(ciudadDestino || null, cpDestino || null, peso, tarifasActivas);
     logStep("Tarifas after filters", { total: tarifasRes.data.length, afterOrigin: tarifasActivas.length, afterDestino: tarifas.length });
     const seguro = seguroRes.data;
@@ -199,12 +322,10 @@ Deno.serve(async (req) => {
     for (const tarifa of tarifas) {
       let precio = Number(tarifa.precio_base) || 0;
 
-      // Multiply base by bultos if configured
       if (tarifa.multiplicar_flete_por_bultos && bultos > 1) {
         precio *= bultos;
       }
 
-      // Weight-based additions
       if (tarifa.tipo_tarifa === "peso" && tarifa.rangos_precios) {
         const rangos = tarifa.rangos_precios as any;
         const pesoBaseHasta = Number(rangos.peso_base_hasta) || 0;
@@ -214,7 +335,6 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Add concepts filtered by service type
       const conceptos = conceptosByTarifa[tarifa.id] || [];
       for (const c of conceptos) {
         const concepto = Array.isArray(c.concepto) ? c.concepto[0] : c.concepto;
@@ -223,13 +343,11 @@ Deno.serve(async (req) => {
         const codigo = (concepto as any).codigo?.toLowerCase() || "";
         const esBasico = (concepto as any).es_basico;
 
-        // If no tipo_servicio specified, include all basic concepts
         if (!tipoServicio) {
           if (esBasico) precio += Number(c.monto) || 0;
           continue;
         }
 
-        // Filter by service type
         const isEntrega = codigo.includes("entrega") || codigo.includes("domicilio_entrega") || codigo.includes("puerta_entrega");
         const isRetiro = codigo.includes("retiro") || codigo.includes("domicilio_retiro") || codigo.includes("puerta_retiro");
 
@@ -241,7 +359,6 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Insurance calculation
       if (valorDeclarado > 0 && seguro && seguro.activo) {
         const seguroBase = Number(seguro.seguro_base) || 0;
         const porcentajeExcedente = Number(seguro.porcentaje_excedente) || 0;
@@ -270,20 +387,47 @@ Deno.serve(async (req) => {
       nombre: b.nombre,
       direccion: b.direccion,
       ciudad: b.ciudad,
-      codigo_postal: b.codigo_postal,
       lat: b.lat ? Number(b.lat) : null,
       lng: b.lng ? Number(b.lng) : null,
     }));
 
-    logStep("Returning rates", { count: rates.length, pickups: pickup_points.length });
+    const resolucion = buildResolucion(origenRes, destinoRes);
 
-    return jsonResponse({ rates, pickup_points });
+    logStep("Returning rates", { count: rates.length, pickups: pickup_points.length, resolved: origenRes.resolved || destinoRes.resolved });
+
+    return jsonResponse({ rates, pickup_points, resolucion });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message: msg });
     return errorJson(msg, 500);
   }
 });
+
+function buildResolucion(
+  origenRes: { cpOrigen: string; ciudadOrigen: string; sucursalNombre: string | null; resolved: boolean },
+  destinoRes: { cpDestino: string; ciudadDestino: string; resolved: boolean }
+) {
+  const resolucion: Record<string, any> = {};
+
+  if (origenRes.cpOrigen || origenRes.ciudadOrigen) {
+    resolucion.origen = {
+      ciudad: origenRes.ciudadOrigen || null,
+      codigo_postal: origenRes.cpOrigen || null,
+      ...(origenRes.sucursalNombre ? { sucursal: origenRes.sucursalNombre } : {}),
+      auto_resuelto: origenRes.resolved,
+    };
+  }
+
+  if (destinoRes.cpDestino || destinoRes.ciudadDestino) {
+    resolucion.destino = {
+      ciudad: destinoRes.ciudadDestino || null,
+      codigo_postal: destinoRes.cpDestino || null,
+      auto_resuelto: destinoRes.resolved,
+    };
+  }
+
+  return Object.keys(resolucion).length > 0 ? resolucion : undefined;
+}
 
 function jsonResponse(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {

@@ -326,8 +326,8 @@ Body: {
                     <li><code>peso</code> — peso en kg (requerido)</li>
                     <li><code>bultos</code> — cantidad (default: 1)</li>
                     <li><code>tipo_servicio</code> — <code>sucursal_sucursal</code>, <code>sucursal_puerta</code>, <code>puerta_sucursal</code>, <code>puerta_puerta</code></li>
-                    <li><code>cp_origen</code> / <code>ciudad_origen</code> — filtra tarifas habilitadas en la sucursal de origen (opcional)</li>
-                    <li><code>cp_destino</code> / <code>ciudad_destino</code> — filtra por zona de destino (opcional)</li>
+                    <li><code>cp_origen</code> / <code>ciudad_origen</code> — filtra tarifas habilitadas en la sucursal de origen. Si se envía solo uno, la API intenta auto-resolver el otro usando las zonas de cobertura configuradas.</li>
+                    <li><code>cp_destino</code> / <code>ciudad_destino</code> — filtra por zona de destino. Si se envía solo uno, la API intenta auto-resolver el otro.</li>
                     <li><code>valor_declarado</code> — para cálculo de seguro (opcional)</li>
                   </ul>
                 </div>
