@@ -349,11 +349,23 @@ Body: {
       "nombre": "Sucursal Centro",
       "direccion": "Av. Corrientes 1234",
       "ciudad": "CABA",
-      "codigo_postal": "1043",
       "lat": -34.60,
       "lng": -58.38
     }
-  ]
+  ],
+  "resolucion": {
+    "origen": {
+      "ciudad": "Mar del Plata",
+      "codigo_postal": "7600",
+      "sucursal": "Mar del Plata Centro",
+      "auto_resuelto": true
+    },
+    "destino": {
+      "ciudad": "CABA",
+      "codigo_postal": "1425",
+      "auto_resuelto": false
+    }
+  }
 }`}
                   </pre>
                 </div>
