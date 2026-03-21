@@ -366,6 +366,38 @@ export default function Tracking() {
               </Card>
             </div>
 
+            {/* Hojas de Ruta */}
+            {envio.hojas_ruta && envio.hojas_ruta.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Route className="h-5 w-5" />
+                    Hojas de Ruta
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {envio.hojas_ruta.map((hr, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                        <div className="space-y-1">
+                          <p className="font-mono text-sm font-medium">{hr.numero}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {hr.origen?.nombre}{hr.origen?.ciudad ? ` (${hr.origen.ciudad})` : ''} → {hr.destino?.nombre}{hr.destino?.ciudad ? ` (${hr.destino.ciudad})` : ''}
+                          </p>
+                          {hr.fecha_salida && (
+                            <p className="text-xs text-muted-foreground">
+                              Salida: {format(new Date(hr.fecha_salida), "dd MMM yyyy, HH:mm", { locale: es })}
+                            </p>
+                          )}
+                        </div>
+                        <Badge variant="outline" className="text-xs capitalize">{hr.estado}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* History */}
             {envio.historial && envio.historial.length > 0 && (
               <Card>

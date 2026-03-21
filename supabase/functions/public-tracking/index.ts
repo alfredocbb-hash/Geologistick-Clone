@@ -202,6 +202,44 @@ serve(async (req: Request) => {
 
     logStep("History fetched", { count: historial?.length || 0 });
 
+    // Fetch hojas de ruta (only for authenticated requests)
+    let hojasRutaResponse: any[] = [];
+    if (isAuthenticated) {
+      const { data: hojasRutaData } = await supabaseClient
+        .from("hoja_ruta_envios")
+        .select(`
+          hoja_ruta:hojas_ruta(
+            numero,
+            estado,
+            fecha_salida,
+            cantidad_envios,
+            sucursal_origen:sucursales!hojas_ruta_sucursal_origen_id_fkey(nombre, ciudad),
+            sucursal_destino:sucursales!hojas_ruta_sucursal_destino_id_fkey(nombre, ciudad)
+          )
+        `)
+        .eq("envio_id", envio.id);
+
+      if (hojasRutaData) {
+        hojasRutaResponse = hojasRutaData
+          .map((hre: any) => {
+            const hr = Array.isArray(hre.hoja_ruta) ? hre.hoja_ruta[0] : hre.hoja_ruta;
+            if (!hr) return null;
+            const origen = Array.isArray(hr.sucursal_origen) ? hr.sucursal_origen[0] : hr.sucursal_origen;
+            const destino = Array.isArray(hr.sucursal_destino) ? hr.sucursal_destino[0] : hr.sucursal_destino;
+            return {
+              numero: hr.numero,
+              estado: hr.estado,
+              fecha_salida: hr.fecha_salida,
+              cantidad_envios: hr.cantidad_envios,
+              origen: origen ? { nombre: origen.nombre, ciudad: origen.ciudad } : null,
+              destino: destino ? { nombre: destino.nombre, ciudad: destino.ciudad } : null,
+            };
+          })
+          .filter(Boolean);
+      }
+      logStep("Hojas de ruta fetched", { count: hojasRutaResponse.length });
+    }
+
     // Handle potential array from Supabase join (use first element if array)
     const sucursalOrigen = Array.isArray(envio.sucursal_origen) ? envio.sucursal_origen[0] : envio.sucursal_origen;
     const sucursalDestino = Array.isArray(envio.sucursal_destino) ? envio.sucursal_destino[0] : envio.sucursal_destino;
@@ -209,14 +247,21 @@ serve(async (req: Request) => {
     const remitente = Array.isArray(envio.remitente) ? envio.remitente[0] : envio.remitente;
     const destinatario = Array.isArray(envio.destinatario) ? envio.destinatario[0] : envio.destinatario;
 
-    // Determine current branch based on status
-    let sucursalActual: string | null = null;
+    // Determine current branch as detailed object
+    let sucursalActualObj: { nombre: string; ciudad: string | null; codigo: string | null; es_centro_logistico: boolean } | null = null;
+    const buildSucursalObj = (suc: any) => suc ? {
+      nombre: suc.nombre,
+      ciudad: suc.ciudad || null,
+      codigo: suc.codigo || null,
+      es_centro_logistico: suc.es_centro_logistico || false,
+    } : null;
+
     if (envio.estado === 'en_sucursal' || envio.estado === 'pendiente' || envio.estado === 'recogido') {
-      sucursalActual = sucursalEntrega?.nombre || sucursalOrigen?.nombre || null;
+      sucursalActualObj = buildSucursalObj(sucursalEntrega) || buildSucursalObj(sucursalOrigen);
     } else if (envio.estado === 'entregado') {
-      sucursalActual = sucursalEntrega?.nombre || sucursalDestino?.nombre || null;
+      sucursalActualObj = buildSucursalObj(sucursalEntrega) || buildSucursalObj(sucursalDestino);
     } else {
-      sucursalActual = sucursalDestino?.nombre || null;
+      sucursalActualObj = buildSucursalObj(sucursalDestino);
     }
 
     // Build response - mask PII for public (unauthenticated) access
@@ -259,8 +304,9 @@ serve(async (req: Request) => {
         ciudad: destinatario?.ciudad || null,
       },
       branding,
-      sucursal_actual: sucursalActual,
+      sucursal_actual: sucursalActualObj,
       entregado_en_sucursal: envio.entregado_en_sucursal || false,
+      hojas_ruta: hojasRutaResponse,
       historial: (historial || []).map((h) => ({
         id: h.id,
         estado_anterior: h.estado_anterior,

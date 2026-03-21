@@ -342,6 +342,27 @@ const TrackingEmbed = () => {
                 </CardContent>
               </Card>
             )}
+            {/* Hojas de Ruta */}
+            {envio.hojas_ruta && envio.hojas_ruta.length > 0 && (
+              <Card>
+                <CardContent className="p-4">
+                  <h3 className="font-medium mb-3 text-sm">Hojas de Ruta</h3>
+                  <div className="space-y-2">
+                    {envio.hojas_ruta.map((hr, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-2 rounded border bg-muted/30">
+                        <div>
+                          <p className="font-mono text-xs font-medium">{hr.numero}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {hr.origen?.nombre} → {hr.destino?.nombre}
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="text-xs capitalize">{hr.estado}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         )}
 

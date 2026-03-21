@@ -332,13 +332,65 @@ export function TenantApiKeysDialog({ open, onOpenChange, tenant }: TenantApiKey
             )}
 
             {/* Usage Example */}
-            <div className="p-4 bg-muted/50 rounded-lg space-y-2">
-              <h4 className="text-sm font-medium">Ejemplo de uso:</h4>
-              <pre className="text-xs bg-background p-3 rounded border overflow-x-auto">
+            <div className="p-4 bg-muted/50 rounded-lg space-y-3">
+              <h4 className="text-sm font-medium">📖 Documentación de la API</h4>
+              
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">Endpoint</p>
+                <pre className="text-xs bg-background p-2 rounded border overflow-x-auto">
+{`GET /functions/v1/public-tracking?code={TRACKING_NUMBER}`}
+                </pre>
+              </div>
+
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">Headers</p>
+                <pre className="text-xs bg-background p-2 rounded border overflow-x-auto">
+{`x-api-key: tu_api_key_aqui`}
+                </pre>
+              </div>
+
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">Ejemplo con curl</p>
+                <pre className="text-xs bg-background p-2 rounded border overflow-x-auto">
 {`curl -X GET \\
-  "https://uhlgimnmfifmrxraorrl.supabase.co/functions/v1/public-tracking?tracking=XXX-ENV-123" \\
+  "${import.meta.env.VITE_SUPABASE_URL}/functions/v1/public-tracking?code=ENV-A1B2C3" \\
   -H "x-api-key: tu_api_key_aqui"`}
-              </pre>
+                </pre>
+              </div>
+
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">Respuesta (con API Key)</p>
+                <pre className="text-xs bg-background p-2 rounded border overflow-x-auto max-h-64">
+{`{
+  "tracking_number": "ENV-A1B2C3",
+  "estado": "en_transito",
+  "origen": { "ciudad": "Rosario", "sucursal": "Norte" },
+  "destino": { "ciudad": "CABA", "sucursal": "Centro" },
+  "sucursal_actual": {
+    "nombre": "Centro Buenos Aires",
+    "ciudad": "CABA",
+    "codigo": "CBA",
+    "es_centro_logistico": true
+  },
+  "hojas_ruta": [
+    {
+      "numero": "HR-20250321-0042",
+      "estado": "en_transito",
+      "fecha_salida": "2025-03-20T14:30:00Z",
+      "cantidad_envios": 15,
+      "origen": { "nombre": "Sucursal Norte", "ciudad": "Rosario" },
+      "destino": { "nombre": "Centro Buenos Aires", "ciudad": "CABA" }
+    }
+  ],
+  "historial": [...]
+}`}
+                </pre>
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                <strong>Nota:</strong> Sin API Key, las hojas de ruta no se incluyen y los datos personales se enmascaran.
+                Con API Key solo se devuelven envíos de tu empresa.
+              </p>
             </div>
           </div>
         </DialogContent>
