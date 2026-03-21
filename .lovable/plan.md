@@ -1,62 +1,117 @@
 
 
-## Plan: Enriquecer API de tracking con hojas de ruta y sucursal detallada (por tenant con API Key)
-
-### Contexto
-
-La Edge Function `public-tracking` ya soporta autenticación por API Key (`x-api-key` header) que identifica al tenant. Cada tenant puede generar sus propias API Keys desde el panel de administración. La API ya filtra por `tenant_id` cuando se usa API Key.
-
-Lo que falta es agregar los nuevos campos de respuesta y mejorar la documentación de uso en el panel.
+## Plan: APIs públicas de cotización y sucursales por tenant
 
 ### Cambios
 
-**1. `supabase/functions/public-tracking/index.ts`** — Agregar queries:
+**1. `supabase/functions/public-rates/index.ts`** — Nueva Edge Function de cotización:
 
-- **Hojas de ruta**: Query `hoja_ruta_envios` → `hojas_ruta` (con joins a `sucursales` para origen/destino) filtrando por `envio_id`. Devolver array con `numero`, `estado`, `fecha_salida`, `origen` (nombre, ciudad), `destino` (nombre, ciudad).
-- **Sucursal actual detallada**: Cambiar `sucursal_actual` de string a objeto `{ nombre, ciudad, codigo, es_centro_logistico }` usando los datos ya cargados de las sucursales del envío.
+- Autenticación via `x-api-key` → `validate_api_key` RPC → `tenant_id`
+- Parámetros (POST body o query): `peso`, `bultos`, `tipo_servicio`, `cp_destino`, `ciudad_destino`, `valor_declarado`
+- Busca tarifas activas del tenant, calcula precio total (base + peso + conceptos filtrados por tipo servicio + seguro si aplica)
+- **Respuesta simplificada**: solo precio total por tarifa, sin desglose de conceptos
+- Incluye pickup points si el tipo de servicio implica retiro en sucursal
 
-**2. `src/pages/Tracking.tsx`** — Actualizar interfaz `TrackingResponse` con los nuevos campos y renderizar hojas de ruta como cards con badge de estado y origen→destino.
+**2. `supabase/functions/public-branches/index.ts`** — Nueva Edge Function de sucursales:
 
-**3. `src/pages/TrackingEmbed.tsx`** — Misma actualización de tipos y renderizado de hojas de ruta.
+- Autenticación via `x-api-key`
+- Filtro opcional por tipo: `todas`, `retiro`, `despacho`, `entrega`
+- Devuelve sucursales activas con nombre, dirección, ciudad, CP, coordenadas, horarios, capacidades
 
-**4. `src/components/tenants/TenantApiKeysDialog.tsx`** — Mejorar la sección "Ejemplo de uso" con documentación más completa: endpoints disponibles, parámetros, ejemplo de respuesta con los nuevos campos.
+**3. `src/components/tenants/TenantApiKeysDialog.tsx`** — Agregar documentación de ambos endpoints nuevos
 
-### Respuesta API enriquecida (campos nuevos/modificados)
+### Respuesta API de cotización
 
 ```text
-{
-  ...campos existentes...,
-  "sucursal_actual": {
-    "nombre": "Centro Buenos Aires",
-    "ciudad": "CABA",
-    "codigo": "CBA",
-    "es_centro_logistico": true
-  },
-  "hojas_ruta": [
+POST /functions/v1/public-rates
+Headers: x-api-key: tk_xxx...
+
+Body: {
+  "peso": 5,
+  "bultos": 2,
+  "tipo_servicio": "puerta_puerta",
+  "cp_destino": "1425",
+  "valor_declarado": 50000
+}
+
+Response: {
+  "rates": [
     {
-      "numero": "HR-20250321-0042",
-      "estado": "completada",
-      "fecha_salida": "2025-03-20T14:30:00Z",
-      "cantidad_envios": 15,
-      "origen": { "nombre": "Sucursal Norte", "ciudad": "Rosario" },
-      "destino": { "nombre": "Centro Buenos Aires", "ciudad": "CABA" }
+      "tarifa": "Envío Estándar",
+      "precio": 4850.00,
+      "moneda": "ARS",
+      "dias_entrega_min": 3,
+      "dias_entrega_max": 5
+    },
+    {
+      "tarifa": "Express",
+      "precio": 6200.00,
+      "moneda": "ARS",
+      "dias_entrega_min": 1,
+      "dias_entrega_max": 1
+    }
+  ],
+  "pickup_points": [
+    {
+      "nombre": "Sucursal Centro",
+      "direccion": "Av. Corrientes 1234",
+      "ciudad": "CABA",
+      "codigo_postal": "1043",
+      "precio": 3500.00,
+      "lat": -34.60,
+      "lng": -58.38
     }
   ]
 }
 ```
 
+### Respuesta API de sucursales
+
+```text
+GET /functions/v1/public-branches?tipo=retiro
+Headers: x-api-key: tk_xxx...
+
+Response: {
+  "sucursales": [
+    {
+      "nombre": "Sucursal Centro",
+      "codigo": "CEN",
+      "direccion": "Av. Corrientes 1234",
+      "ciudad": "CABA",
+      "codigo_postal": "1043",
+      "telefono": "+54 11 1234-5678",
+      "email": "centro@empresa.com",
+      "lat": -34.6037,
+      "lng": -58.3816,
+      "horario_apertura": "09:00",
+      "horario_cierre": "18:00",
+      "permite_retiro_clientes": true,
+      "puede_despachar": true,
+      "realiza_entregas": true
+    }
+  ]
+}
+```
+
+### Lógica de cálculo
+
+- Precio base de tarifa (× bultos si `multiplicar_flete_por_bultos`)
+- Adicional por peso según rangos configurados
+- Conceptos básicos sumados al total (filtrados por tipo servicio: "entrega a domicilio" solo si destino es puerta, "retiro" solo si origen es puerta)
+- **Seguro**: si `valor_declarado` > 0, consulta `configuracion_seguro` del tenant y suma `seguro_base` + excedente proporcional
+- Se devuelve **solo el precio total**, sin desglose
+
 ### Seguridad
 
-- Los datos de hojas de ruta solo se devuelven para requests autenticadas (con API Key). Sin API Key, el campo `hojas_ruta` se devuelve vacío.
-- La sucursal actual detallada se muestra en ambos modos (público y autenticado).
-- Cada tenant solo ve envíos de su propio tenant (ya implementado).
+- Ambos endpoints requieren API Key válida
+- Solo datos del tenant autenticado
+- No expone IDs internos
 
 | Archivo | Cambio |
 |---------|--------|
-| `supabase/functions/public-tracking/index.ts` | Query hojas_ruta + sucursal_actual como objeto |
-| `src/pages/Tracking.tsx` | Tipo + UI hojas de ruta |
-| `src/pages/TrackingEmbed.tsx` | Tipo + UI hojas de ruta |
-| `src/components/tenants/TenantApiKeysDialog.tsx` | Documentación API mejorada |
+| `supabase/functions/public-rates/index.ts` | Nueva Edge Function cotización |
+| `supabase/functions/public-branches/index.ts` | Nueva Edge Function sucursales |
+| `src/components/tenants/TenantApiKeysDialog.tsx` | Documentación endpoints nuevos |
 
 No requiere migraciones de base de datos.
 
