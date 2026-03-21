@@ -232,7 +232,7 @@ Deno.serve(async (req) => {
     const [tarifasRes, seguroRes, sucursalesRes] = await Promise.all([
       supabase
         .from("tarifas")
-        .select("id, nombre, precio_base, tipo_tarifa, rangos_precios, multiplicar_flete_por_bultos, zona_destino, rangos_kg")
+        .select("id, nombre, precio_base, tipo_tarifa, rangos_precios, multiplicar_flete_por_bultos, porcentaje_flete_bulto, zona_destino, rangos_kg")
         .eq("tenant_id", tenantId)
         .eq("activa", true),
       valorDeclarado > 0
@@ -245,7 +245,7 @@ Deno.serve(async (req) => {
       (tipoServicio === "" || tipoServicio.endsWith("_sucursal") || tipoServicio === "sucursal_sucursal")
         ? supabase
             .from("sucursales")
-            .select("nombre, direccion, ciudad, lat, lng")
+            .select("id, nombre, direccion, ciudad, lat, lng")
             .eq("tenant_id", tenantId)
             .eq("activa", true)
             .eq("permite_retiro_clientes", true)
@@ -261,7 +261,6 @@ Deno.serve(async (req) => {
 
     // --- Filter by origin branch (sucursal_tarifas) ---
     if (ciudadOrigen) {
-      // sucursales has no codigo_postal — match only by ciudad
       const { data: matchedBranch } = await supabase
         .from("sucursales")
         .select("id, nombre, ciudad")
@@ -274,7 +273,6 @@ Deno.serve(async (req) => {
       const sucursalOrigenId = matchedBranch?.id || null;
 
       if (sucursalOrigenId) {
-        // Enrich resolution with branch name
         if (!origenRes.sucursalNombre) {
           origenRes.sucursalNombre = matchedBranch?.nombre || null;
         }
@@ -306,59 +304,125 @@ Deno.serve(async (req) => {
     const tarifaIds = tarifas.map((t: any) => t.id);
     const { data: allConceptos } = await supabase
       .from("tarifa_concepto_precios")
-      .select("tarifa_id, monto, concepto:tarifa_conceptos(codigo, nombre, es_basico)")
+      .select("tarifa_id, monto, es_porcentaje, porcentaje, multiplicar_por_bultos, concepto:tarifa_conceptos(codigo, nombre, es_basico, activo)")
       .in("tarifa_id", tarifaIds);
 
     // Group conceptos by tarifa_id
     const conceptosByTarifa: Record<string, any[]> = {};
     for (const c of (allConceptos || [])) {
+      const concepto = Array.isArray(c.concepto) ? c.concepto[0] : c.concepto;
+      // Filter out inactive concepts
+      if (concepto && concepto.activo === false) continue;
       if (!conceptosByTarifa[c.tarifa_id]) conceptosByTarifa[c.tarifa_id] = [];
       conceptosByTarifa[c.tarifa_id].push(c);
     }
 
     // --- Calculate rates ---
-    const rates: Array<{ tarifa: string; precio: number; moneda: string; dias_entrega_min: number; dias_entrega_max: number }> = [];
+    const rates: Array<{ tarifa: string; precio: number; moneda: string; dias_entrega_min: number; dias_entrega_max: number; metodo: string }> = [];
 
     for (const tarifa of tarifas) {
-      let precio = Number(tarifa.precio_base) || 0;
+      const precioBase = Number(tarifa.precio_base) || 0;
+      const rangosKg = Array.isArray(tarifa.rangos_kg) ? tarifa.rangos_kg : [];
+      const rangos = (tarifa.rangos_precios as any) || {};
+      const multiplicarPorBultos = !!tarifa.multiplicar_flete_por_bultos;
 
-      if (tarifa.multiplicar_flete_por_bultos && bultos > 1) {
-        precio *= bultos;
-      }
+      let flete = precioBase;
+      let metodo = 'base';
 
-      if (tarifa.tipo_tarifa === "peso" && tarifa.rangos_precios) {
-        const rangos = tarifa.rangos_precios as any;
-        const pesoBaseHasta = Number(rangos.peso_base_hasta) || 0;
-        const adicionalPorKg = Number(rangos.adicional_por_kg) || 0;
-        if (peso > pesoBaseHasta) {
-          precio += (peso - pesoBaseHasta) * adicionalPorKg;
+      // --- Hierarchy: rangos_kg > rangos_precios > base ---
+      if (tarifa.tipo_tarifa === 'peso') {
+        // PRIORITY 1: Tiered weight ranges (rangos_kg)
+        if (rangosKg.length > 0 && peso > 0) {
+          const rangoAplicable = rangosKg.find((r: any) => peso >= r.desde && peso <= r.hasta);
+          if (rangoAplicable) {
+            flete = Number(rangoAplicable.precio) || 0;
+            metodo = 'rangos_kg';
+          } else {
+            // Weight exceeds all ranges — use last range price
+            const ultimoRango = rangosKg[rangosKg.length - 1];
+            if (ultimoRango && peso > ultimoRango.hasta) {
+              flete = Number(ultimoRango.precio) || 0;
+              metodo = 'rangos_kg_excedido';
+            }
+          }
+        }
+
+        // PRIORITY 2: Simple method (base + extra per kg)
+        if (metodo === 'base') {
+          const pesoBaseHasta = Number(rangos.peso_base_hasta) || 0;
+          const adicionalPorKg = Number(rangos.adicional_por_kg) || 0;
+          if (peso > pesoBaseHasta && adicionalPorKg > 0) {
+            flete = precioBase + (peso - pesoBaseHasta) * adicionalPorKg;
+            metodo = 'peso_simple';
+          }
         }
       }
 
+      // --- Add "flete" concept amount to base freight ---
       const conceptos = conceptosByTarifa[tarifa.id] || [];
+      const conceptoFlete = conceptos.find((c: any) => {
+        const concepto = Array.isArray(c.concepto) ? c.concepto[0] : c.concepto;
+        if (!concepto) return false;
+        const codigo = concepto.codigo?.toLowerCase() || '';
+        const nombre = concepto.nombre?.toLowerCase() || '';
+        return codigo === 'flete' || nombre === 'flete';
+      });
+      if (conceptoFlete) {
+        const montoFlete = Number(conceptoFlete.monto) || 0;
+        if (montoFlete > 0) flete += montoFlete;
+      }
+
+      // --- Apply package multiplier OR percentage surcharge ---
+      let fleteTotal = flete;
+      if (multiplicarPorBultos && bultos > 1) {
+        fleteTotal = flete * bultos;
+      } else if (!multiplicarPorBultos && bultos > 1) {
+        const pctBulto = Number(tarifa.porcentaje_flete_bulto) || 0;
+        if (pctBulto > 0) {
+          const recargo = flete * (pctBulto / 100) * (bultos - 1);
+          fleteTotal = flete + recargo;
+        }
+      }
+
+      let precio = fleteTotal;
+
+      // --- Add concepts (excluding "flete" already added) ---
       for (const c of conceptos) {
+        if (c === conceptoFlete) continue; // already added to freight
+
         const concepto = Array.isArray(c.concepto) ? c.concepto[0] : c.concepto;
         if (!concepto || typeof concepto !== "object") continue;
 
         const codigo = (concepto as any).codigo?.toLowerCase() || "";
         const esBasico = (concepto as any).es_basico;
 
-        if (!tipoServicio) {
-          if (esBasico) precio += Number(c.monto) || 0;
-          continue;
-        }
-
         const isEntrega = codigo.includes("entrega") || codigo.includes("domicilio_entrega") || codigo.includes("puerta_entrega");
         const isRetiro = codigo.includes("retiro") || codigo.includes("domicilio_retiro") || codigo.includes("puerta_retiro");
 
-        if (isEntrega && !destinoEsPuerta) continue;
-        if (isRetiro && !origenEsPuerta) continue;
-
-        if (esBasico || isEntrega || isRetiro) {
-          precio += Number(c.monto) || 0;
+        // Filter by service type
+        if (!tipoServicio) {
+          if (!esBasico) continue;
+        } else {
+          if (isEntrega && !destinoEsPuerta) continue;
+          if (isRetiro && !origenEsPuerta) continue;
+          if (!esBasico && !isEntrega && !isRetiro) continue;
         }
+
+        // Calculate concept amount
+        let montoConcepto = 0;
+        if (c.es_porcentaje && c.porcentaje) {
+          montoConcepto = valorDeclarado * Number(c.porcentaje) / 100;
+        } else {
+          montoConcepto = Number(c.monto) || 0;
+        }
+        if (c.multiplicar_por_bultos && bultos > 1) {
+          montoConcepto *= bultos;
+        }
+
+        precio += montoConcepto;
       }
 
+      // --- Insurance ---
       if (valorDeclarado > 0 && seguro && seguro.activo) {
         const seguroBase = Number(seguro.seguro_base) || 0;
         const porcentajeExcedente = Number(seguro.porcentaje_excedente) || 0;
@@ -378,12 +442,14 @@ Deno.serve(async (req) => {
         moneda: "ARS",
         dias_entrega_min: 3,
         dias_entrega_max: 5,
+        metodo,
       });
     }
 
-    // --- Pickup points ---
+    // --- Pickup points (with id for selector) ---
     const pickupBranches = sucursalesRes.data || [];
     const pickup_points = pickupBranches.map((b: any) => ({
+      id: b.id,
       nombre: b.nombre,
       direccion: b.direccion,
       ciudad: b.ciudad,
