@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Package, Search, MapPin, Clock, CheckCircle, Truck, AlertCircle, Loader2, CalendarClock, Copy, Check } from 'lucide-react';
+import { Package, Search, MapPin, Clock, CheckCircle, Truck, AlertCircle, Loader2, CalendarClock, Copy, Check, Route } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import LiveDriverMap from '@/components/tracking/LiveDriverMap';
