@@ -140,43 +140,22 @@ Deno.serve(async (req) => {
     // --- Filter by origin branch (sucursal_tarifas) ---
     if (cpOrigen || ciudadOrigen) {
       const cpOrigenTrim = cpOrigen.trim();
-      const ciudadOrigenNorm = ciudadOrigen ? normalizarTexto(ciudadOrigen) : '';
+      const orConditions: string[] = [];
+      if (cpOrigenTrim) orConditions.push(`codigo_postal.eq.${cpOrigenTrim}`);
+      if (ciudadOrigen) orConditions.push(`ciudad.ilike.%${ciudadOrigen.trim()}%`);
 
-      // Find matching branch
-      const sucursalOrigen = (sucursalesRes.data || []).find((s: any) => {
-        if (cpOrigenTrim && s.codigo_postal?.trim() === cpOrigenTrim) return true;
-        if (ciudadOrigenNorm && s.ciudad && normalizarTexto(s.ciudad).includes(ciudadOrigenNorm)) return true;
-        return false;
-      });
+      const { data: matchedBranch } = await supabase
+        .from("sucursales")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("activa", true)
+        .or(orConditions.join(","))
+        .limit(1)
+        .maybeSingle();
 
-      // Also search all active branches (not just pickup ones) if not found
-      let sucursalOrigenId = sucursalOrigen ? undefined : null;
-      if (sucursalOrigen) {
-        // We need the id — fetch it
-        const { data: matchedBranch } = await supabase
-          .from("sucursales")
-          .select("id")
-          .eq("tenant_id", tenantId)
-          .eq("activa", true)
-          .or(`codigo_postal.eq.${cpOrigenTrim},ciudad.ilike.%${ciudadOrigen}%`)
-          .limit(1)
-          .maybeSingle();
-        sucursalOrigenId = matchedBranch?.id || null;
-      } else {
-        // Search all branches (the pickup query may not include this one)
-        const { data: matchedBranch } = await supabase
-          .from("sucursales")
-          .select("id")
-          .eq("tenant_id", tenantId)
-          .eq("activa", true)
-          .or(`codigo_postal.eq.${cpOrigenTrim},ciudad.ilike.%${ciudadOrigen}%`)
-          .limit(1)
-          .maybeSingle();
-        sucursalOrigenId = matchedBranch?.id || null;
-      }
+      const sucursalOrigenId = matchedBranch?.id || null;
 
       if (sucursalOrigenId) {
-        // Get enabled tarifas for this branch
         const { data: sucTarifas } = await supabase
           .from("sucursal_tarifas")
           .select("tarifa_id")
@@ -188,7 +167,7 @@ Deno.serve(async (req) => {
           tarifasActivas = tarifasActivas.filter((t: any) => enabledIds.has(t.id));
           logStep("Filtered by origin branch", { sucursalOrigenId, before: tarifasRes.data.length, after: tarifasActivas.length });
         } else {
-          logStep("No sucursal_tarifas found for branch, using all", { sucursalOrigenId });
+          logStep("No sucursal_tarifas for branch, using all", { sucursalOrigenId });
         }
       } else {
         logStep("No matching origin branch found, using all tarifas");
