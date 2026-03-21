@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
       // Active tarifas for tenant
       supabase
         .from("tarifas")
-        .select("id, nombre, precio_base, tipo_tarifa, rangos_precios, multiplicar_flete_por_bultos")
+        .select("id, nombre, precio_base, tipo_tarifa, rangos_precios, multiplicar_flete_por_bultos, zona_destino, rangos_kg")
         .eq("tenant_id", tenantId)
         .eq("activa", true),
       // Insurance config
