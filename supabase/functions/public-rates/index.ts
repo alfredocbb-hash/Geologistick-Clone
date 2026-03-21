@@ -10,6 +10,46 @@ const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[PUBLIC-RATES] ${step}${detailsStr}`);
 };
 
+function normalizarTexto(str: string): string {
+  return str.toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+function encontrarTarifaPorDestino(
+  ciudad: string | null,
+  cp: string | null,
+  peso: number,
+  tarifas: any[]
+): any[] {
+  if (!ciudad && !cp) return tarifas;
+  const ciudadNorm = ciudad ? normalizarTexto(ciudad) : '';
+  const cpTrim = cp?.trim() || '';
+
+  const coincidentesZona = tarifas.filter((t: any) => {
+    if (!t.zona_destino) return false;
+    const destinos = t.zona_destino.split(',').map((d: string) => normalizarTexto(d.trim()));
+    if (ciudadNorm && destinos.some((d: string) => d.includes(ciudadNorm) || ciudadNorm.includes(d))) return true;
+    if (cpTrim && destinos.some((d: string) => d === cpTrim)) return true;
+    return false;
+  });
+
+  if (coincidentesZona.length === 0) return tarifas;
+  if (coincidentesZona.length === 1) return coincidentesZona;
+
+  // Desempate por peso si hay múltiples zonas coincidentes
+  if (peso > 0) {
+    const porPeso = coincidentesZona.filter((t: any) => {
+      const rangos = Array.isArray(t.rangos_kg) ? t.rangos_kg : [];
+      return rangos.some((r: any) => peso >= r.desde && peso <= r.hasta);
+    });
+    if (porPeso.length > 0) return porPeso;
+  }
+
+  return coincidentesZona;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -66,7 +106,7 @@ Deno.serve(async (req) => {
       // Active tarifas for tenant
       supabase
         .from("tarifas")
-        .select("id, nombre, precio_base, tipo_tarifa, rangos_precios, multiplicar_flete_por_bultos")
+        .select("id, nombre, precio_base, tipo_tarifa, rangos_precios, multiplicar_flete_por_bultos, zona_destino, rangos_kg")
         .eq("tenant_id", tenantId)
         .eq("activa", true),
       // Insurance config
@@ -93,7 +133,9 @@ Deno.serve(async (req) => {
       return jsonResponse({ rates: [], pickup_points: [] });
     }
 
-    const tarifas = tarifasRes.data;
+    // Filter tarifas by destination matching (same logic as NewShipment)
+    const tarifas = encontrarTarifaPorDestino(ciudadDestino || null, cpDestino || null, peso, tarifasRes.data);
+    logStep("Tarifas after destination filter", { total: tarifasRes.data.length, matched: tarifas.length });
     const seguro = seguroRes.data;
 
     // Fetch concepto precios for all tarifas in one query
