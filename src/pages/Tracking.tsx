@@ -12,6 +12,22 @@ import LiveDriverMap from '@/components/tracking/LiveDriverMap';
 
 type ShipmentStatus = 'pendiente' | 'recogido' | 'en_sucursal' | 'en_transito' | 'en_reparto' | 'entregado' | 'devuelto' | 'cancelado' | 'primera_visita' | 'segunda_visita' | 'reprogramado' | 'incidencia' | 'no_entregado';
 
+interface SucursalActual {
+  nombre: string;
+  ciudad: string | null;
+  codigo: string | null;
+  es_centro_logistico: boolean;
+}
+
+interface HojaRuta {
+  numero: string;
+  estado: string;
+  fecha_salida: string | null;
+  cantidad_envios: number | null;
+  origen: { nombre: string; ciudad: string | null } | null;
+  destino: { nombre: string; ciudad: string | null } | null;
+}
+
 interface TrackingResponse {
   tracking_number: string;
   estado: ShipmentStatus;
@@ -47,9 +63,9 @@ interface TrackingResponse {
     logo: string | null;
     color_primario: string | null;
   } | null;
-  // New fields for branch information
-  sucursal_actual: string | null;
+  sucursal_actual: SucursalActual | string | null;
   entregado_en_sucursal: boolean;
+  hojas_ruta: HojaRuta[];
   historial: Array<{
     id: string;
     estado_anterior: string | null;
