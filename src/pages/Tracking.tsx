@@ -5,12 +5,28 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Package, Search, MapPin, Clock, CheckCircle, Truck, AlertCircle, Loader2, CalendarClock, Copy, Check } from 'lucide-react';
+import { Package, Search, MapPin, Clock, CheckCircle, Truck, AlertCircle, Loader2, CalendarClock, Copy, Check, Route } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import LiveDriverMap from '@/components/tracking/LiveDriverMap';
 
 type ShipmentStatus = 'pendiente' | 'recogido' | 'en_sucursal' | 'en_transito' | 'en_reparto' | 'entregado' | 'devuelto' | 'cancelado' | 'primera_visita' | 'segunda_visita' | 'reprogramado' | 'incidencia' | 'no_entregado';
+
+interface SucursalActual {
+  nombre: string;
+  ciudad: string | null;
+  codigo: string | null;
+  es_centro_logistico: boolean;
+}
+
+interface HojaRuta {
+  numero: string;
+  estado: string;
+  fecha_salida: string | null;
+  cantidad_envios: number | null;
+  origen: { nombre: string; ciudad: string | null } | null;
+  destino: { nombre: string; ciudad: string | null } | null;
+}
 
 interface TrackingResponse {
   tracking_number: string;
@@ -47,9 +63,9 @@ interface TrackingResponse {
     logo: string | null;
     color_primario: string | null;
   } | null;
-  // New fields for branch information
-  sucursal_actual: string | null;
+  sucursal_actual: SucursalActual | string | null;
   entregado_en_sucursal: boolean;
+  hojas_ruta: HojaRuta[];
   historial: Array<{
     id: string;
     estado_anterior: string | null;
@@ -256,11 +272,16 @@ export default function Tracking() {
                       const Icon = statusConfig[envio.estado]?.icon;
                       return Icon ? <Icon className="mr-2 h-4 w-4" /> : null;
                     })()}
-                    {envio.estado === 'en_sucursal' && envio.sucursal_actual
-                      ? `En Sucursal (${envio.sucursal_actual})`
-                      : envio.estado === 'entregado' && envio.entregado_en_sucursal && envio.sucursal_actual
-                        ? `Entregado en Sucursal (${envio.sucursal_actual})`
-                        : statusConfig[envio.estado]?.label || envio.estado}
+                    {(() => {
+                      const sucName = typeof envio.sucursal_actual === 'object' && envio.sucursal_actual
+                        ? envio.sucursal_actual.nombre
+                        : envio.sucursal_actual;
+                      if (envio.estado === 'en_sucursal' && sucName)
+                        return `En Sucursal (${sucName})`;
+                      if (envio.estado === 'entregado' && envio.entregado_en_sucursal && sucName)
+                        return `Entregado en Sucursal (${sucName})`;
+                      return statusConfig[envio.estado]?.label || envio.estado;
+                    })()}
                   </Badge>
                 </div>
               </CardHeader>
@@ -344,6 +365,38 @@ export default function Tracking() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* Hojas de Ruta */}
+            {envio.hojas_ruta && envio.hojas_ruta.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Route className="h-5 w-5" />
+                    Hojas de Ruta
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {envio.hojas_ruta.map((hr, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                        <div className="space-y-1">
+                          <p className="font-mono text-sm font-medium">{hr.numero}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {hr.origen?.nombre}{hr.origen?.ciudad ? ` (${hr.origen.ciudad})` : ''} → {hr.destino?.nombre}{hr.destino?.ciudad ? ` (${hr.destino.ciudad})` : ''}
+                          </p>
+                          {hr.fecha_salida && (
+                            <p className="text-xs text-muted-foreground">
+                              Salida: {format(new Date(hr.fecha_salida), "dd MMM yyyy, HH:mm", { locale: es })}
+                            </p>
+                          )}
+                        </div>
+                        <Badge variant="outline" className="text-xs capitalize">{hr.estado}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* History */}
             {envio.historial && envio.historial.length > 0 && (

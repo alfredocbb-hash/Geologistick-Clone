@@ -13,6 +13,22 @@ import { es } from "date-fns/locale";
 
 type ShipmentStatus = 'pendiente' | 'recogido' | 'en_sucursal' | 'en_transito' | 'en_reparto' | 'entregado' | 'devuelto' | 'cancelado' | 'primera_visita' | 'segunda_visita' | 'reprogramado' | 'incidencia' | 'no_entregado';
 
+interface SucursalActual {
+  nombre: string;
+  ciudad: string | null;
+  codigo: string | null;
+  es_centro_logistico: boolean;
+}
+
+interface HojaRuta {
+  numero: string;
+  estado: string;
+  fecha_salida: string | null;
+  cantidad_envios: number | null;
+  origen: { nombre: string; ciudad: string | null } | null;
+  destino: { nombre: string; ciudad: string | null } | null;
+}
+
 interface TrackingResponse {
   tracking_number: string;
   estado: ShipmentStatus;
@@ -48,9 +64,9 @@ interface TrackingResponse {
     logo: string | null;
     color_primario: string | null;
   } | null;
-  // New fields for branch information
-  sucursal_actual: string | null;
+  sucursal_actual: SucursalActual | string | null;
   entregado_en_sucursal: boolean;
+  hojas_ruta: HojaRuta[];
   historial: Array<{
     id: string;
     estado_anterior: string | null;
@@ -228,11 +244,16 @@ const TrackingEmbed = () => {
                     <Badge 
                       className={`${statusConfig[envio.estado].color} text-white`}
                     >
-                      {envio.estado === 'en_sucursal' && envio.sucursal_actual
-                        ? `En Sucursal (${envio.sucursal_actual})`
-                        : envio.estado === 'entregado' && envio.entregado_en_sucursal && envio.sucursal_actual
-                          ? `Entregado en Sucursal (${envio.sucursal_actual})`
-                          : statusConfig[envio.estado].label}
+                      {(() => {
+                        const sucName = typeof envio.sucursal_actual === 'object' && envio.sucursal_actual
+                          ? envio.sucursal_actual.nombre
+                          : envio.sucursal_actual;
+                        if (envio.estado === 'en_sucursal' && sucName)
+                          return `En Sucursal (${sucName})`;
+                        if (envio.estado === 'entregado' && envio.entregado_en_sucursal && sucName)
+                          return `Entregado en Sucursal (${sucName})`;
+                        return statusConfig[envio.estado].label;
+                      })()}
                     </Badge>
                   )}
                 </div>
@@ -315,6 +336,27 @@ const TrackingEmbed = () => {
                             <p className="text-xs mt-1">{item.notas}</p>
                           )}
                         </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            {/* Hojas de Ruta */}
+            {envio.hojas_ruta && envio.hojas_ruta.length > 0 && (
+              <Card>
+                <CardContent className="p-4">
+                  <h3 className="font-medium mb-3 text-sm">Hojas de Ruta</h3>
+                  <div className="space-y-2">
+                    {envio.hojas_ruta.map((hr, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-2 rounded border bg-muted/30">
+                        <div>
+                          <p className="font-mono text-xs font-medium">{hr.numero}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {hr.origen?.nombre} → {hr.destino?.nombre}
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="text-xs capitalize">{hr.estado}</Badge>
                       </div>
                     ))}
                   </div>
