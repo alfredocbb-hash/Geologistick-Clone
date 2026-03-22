@@ -200,6 +200,9 @@ Deno.serve(async (req) => {
     let cpDestino = String(params.cp_destino ?? url.searchParams.get("cp_destino") ?? "");
     let ciudadDestino = String(params.ciudad_destino ?? url.searchParams.get("ciudad_destino") ?? "");
     const valorDeclarado = Number(params.valor_declarado ?? url.searchParams.get("valor_declarado") ?? 0);
+    const largo = Number(params.largo ?? url.searchParams.get("largo") ?? 0);
+    const ancho = Number(params.ancho ?? url.searchParams.get("ancho") ?? 0);
+    const alto = Number(params.alto ?? url.searchParams.get("alto") ?? 0);
 
     if (!peso || peso <= 0) {
       return errorJson("'peso' es requerido y debe ser mayor a 0", 400);
