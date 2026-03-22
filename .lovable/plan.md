@@ -1,11 +1,13 @@
 
 
-## Plan: Corregir diferencia de precio entre API y NewShipment (COMPLETADO)
+## Plan: Soporte de dimensiones en API public-rates (COMPLETADO)
 
 ### Correcciones aplicadas
 
-1. **`encontrarTarifaPorDestino` ahora retorna UNA sola tarifa** (la mejor coincidencia), igual que NewShipment. Si no hay match de destino → no devuelve tarifas (en vez de devolver todas).
+1. **Nuevos parámetros**: `largo`, `ancho`, `alto` (cm, opcionales) aceptados por POST body o query string.
 
-2. **Filtro de conceptos por `es_basico`**: Solo se suman automáticamente al precio los conceptos con `es_basico = true` (o `null`/`undefined` como fallback). Los conceptos con `es_basico = false` se listan aparte como opcionales.
+2. **Consulta de tarifas enriquecida**: Se incluyen `precio_por_m3` y `umbral_volumen_cm` en el SELECT.
 
-3. **Respuesta enriquecida**: Cada rate ahora incluye `conceptos_incluidos` y `conceptos_opcionales` para que Horizon pueda mostrarlos diferenciados.
+3. **Lógica de volumen con prioridad máxima**: Si alguna dimensión supera `umbral_volumen_cm` y `precio_por_m3 > 0`, el flete se calcula como `precioBase + (volumen_m3 × precio_por_m3)` con `metodo = 'volumen_excedido'`.
+
+4. **Respuesta enriquecida**: Cuando aplica volumen, se incluye `detalle_volumen` con dimensiones, volumen en m³ y umbral usado.
