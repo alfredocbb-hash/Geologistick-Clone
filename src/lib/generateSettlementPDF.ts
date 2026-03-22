@@ -580,10 +580,22 @@ export async function downloadDriverSettlementPDF(liquidacion: {
       notas: liquidacion.notas,
     },
     entityName: `${liquidacion.chofer?.nombre || ''} ${liquidacion.chofer?.apellido || ''}`.trim() || 'N-A',
-    totals: {
-      montoTotal: liquidacion.monto_total,
-      cantidadEnvios: liquidacion.cantidad_envios || items.length,
-    },
+    totals: (() => {
+      const t: SettlementPDFData['totals'] = {
+        montoTotal: liquidacion.monto_total,
+        cantidadEnvios: liquidacion.cantidad_envios || items.length,
+      };
+      // Parse COD deductions from notas
+      if (liquidacion.notas) {
+        const comMatch = liquidacion.notas.match(/Comisiones:\s*\$?([\d,.]+)/);
+        const codMatch = liquidacion.notas.match(/Descuentos COD:\s*-?\$?([\d,.]+)/);
+        if (comMatch && codMatch) {
+          t.totalComisionesChofer = parseFloat(comMatch[1].replace(/,/g, ''));
+          t.totalDescuentosCOD = parseFloat(codMatch[1].replace(/,/g, ''));
+        }
+      }
+      return t;
+    })(),
     items,
   }, resolvedBranding ? { ...resolvedBranding, logo_light: logoBase64 || resolvedBranding.logo_light } : undefined);
 }
