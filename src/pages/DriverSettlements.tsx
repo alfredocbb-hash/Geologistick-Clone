@@ -218,6 +218,7 @@ export default function DriverSettlements() {
         .from('envios')
         .select(selectFields)
         .eq('estado', 'entregado')
+        .or('entregado_en_sucursal.is.null,entregado_en_sucursal.eq.false')
         .or(`chofer_id.eq.${chofer.user_id},chofer_ultima_milla_id.eq.${chofer.user_id}`)
         .gte('fecha_entrega', toLocalISOStart(fechaInicio))
         .lte('fecha_entrega', toLocalISOEnd(fechaFin))
@@ -247,6 +248,7 @@ export default function DriverSettlements() {
             .from('envios')
             .select(selectFields)
             .eq('estado', 'entregado')
+            .or('entregado_en_sucursal.is.null,entregado_en_sucursal.eq.false')
             .in('id', envioIds);
           enviosByRuta = data || [];
         }
