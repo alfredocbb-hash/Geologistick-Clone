@@ -338,8 +338,28 @@ Deno.serve(async (req) => {
       let flete = precioBase;
       let metodo = 'base';
 
-      // --- Hierarchy: rangos_kg > rangos_precios > base ---
-      if (tarifa.tipo_tarifa === 'peso') {
+      // --- Hierarchy: volumen > rangos_kg > rangos_precios > base ---
+
+      // Volume check (highest priority) — same logic as NewShipment
+      const umbralVolumen = Number(tarifa.umbral_volumen_cm) || 50;
+      const precioPorM3 = Number(tarifa.precio_por_m3) || 0;
+      let detalleVolumen: Record<string, unknown> | null = null;
+
+      if (
+        tarifa.tipo_tarifa === 'peso' &&
+        largo > 0 && ancho > 0 && alto > 0 &&
+        precioPorM3 > 0 &&
+        (largo > umbralVolumen || ancho > umbralVolumen || alto > umbralVolumen)
+      ) {
+        const volumenM3 = (largo * ancho * alto) / 1_000_000;
+        flete = precioBase + (volumenM3 * precioPorM3);
+        metodo = 'volumen_excedido';
+        detalleVolumen = {
+          dimensiones_cm: { largo, ancho, alto },
+          volumen_m3: Math.round(volumenM3 * 1_000_000) / 1_000_000,
+          umbral_cm: umbralVolumen,
+        };
+      } else if (tarifa.tipo_tarifa === 'peso') {
         if (rangosKg.length > 0 && peso > 0) {
           const rangoAplicable = rangosKg.find((r: any) => peso >= r.desde && peso <= r.hasta);
           if (rangoAplicable) {
