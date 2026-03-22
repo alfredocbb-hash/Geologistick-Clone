@@ -236,7 +236,7 @@ Deno.serve(async (req) => {
     const [tarifasRes, seguroRes, sucursalesRes] = await Promise.all([
       supabase
         .from("tarifas")
-        .select("id, nombre, precio_base, tipo_tarifa, rangos_precios, multiplicar_flete_por_bultos, porcentaje_flete_bulto, zona_destino, rangos_kg")
+        .select("id, nombre, precio_base, tipo_tarifa, rangos_precios, multiplicar_flete_por_bultos, porcentaje_flete_bulto, zona_destino, rangos_kg, precio_por_m3, umbral_volumen_cm")
         .eq("tenant_id", tenantId)
         .eq("activa", true),
       valorDeclarado > 0
