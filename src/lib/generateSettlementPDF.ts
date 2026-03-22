@@ -40,6 +40,8 @@ interface SettlementPDFData {
     saldo?: number;
     cantidadEnvios?: number;
     cantidadMovimientos?: number;
+    totalComisionesChofer?: number;
+    totalDescuentosCOD?: number;
   };
   items: Array<{
     tracking?: string;
@@ -286,10 +288,20 @@ export async function generateSettlementPDF(
     doc.setFontSize(9);
     doc.text(`Cantidad de Envíos: ${totals.cantidadEnvios || 0}`, 15, y);
     y += 10;
+
+    if (totals.totalComisionesChofer !== undefined && totals.totalDescuentosCOD !== undefined && totals.totalDescuentosCOD > 0) {
+      doc.text(`Comisiones: ${formatCurrency(totals.totalComisionesChofer)}`, 15, y);
+      y += 7;
+      doc.setTextColor(200, 50, 50);
+      doc.text(`Descuentos COD: -${formatCurrency(totals.totalDescuentosCOD)}`, 15, y);
+      doc.setTextColor(50, 50, 50);
+      y += 10;
+    }
+
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
     doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-    doc.text(`MONTO TOTAL: ${formatCurrency(totals.montoTotal || 0)}`, 15, y);
+    doc.text(`MONTO NETO: ${formatCurrency(totals.montoTotal || 0)}`, 15, y);
   }
 
   y += 14;
@@ -568,10 +580,22 @@ export async function downloadDriverSettlementPDF(liquidacion: {
       notas: liquidacion.notas,
     },
     entityName: `${liquidacion.chofer?.nombre || ''} ${liquidacion.chofer?.apellido || ''}`.trim() || 'N-A',
-    totals: {
-      montoTotal: liquidacion.monto_total,
-      cantidadEnvios: liquidacion.cantidad_envios || items.length,
-    },
+    totals: (() => {
+      const t: SettlementPDFData['totals'] = {
+        montoTotal: liquidacion.monto_total,
+        cantidadEnvios: liquidacion.cantidad_envios || items.length,
+      };
+      // Parse COD deductions from notas
+      if (liquidacion.notas) {
+        const comMatch = liquidacion.notas.match(/Comisiones:\s*\$?([\d,.]+)/);
+        const codMatch = liquidacion.notas.match(/Descuentos COD:\s*-?\$?([\d,.]+)/);
+        if (comMatch && codMatch) {
+          t.totalComisionesChofer = parseFloat(comMatch[1].replace(/,/g, ''));
+          t.totalDescuentosCOD = parseFloat(codMatch[1].replace(/,/g, ''));
+        }
+      }
+      return t;
+    })(),
     items,
   }, resolvedBranding ? { ...resolvedBranding, logo_light: logoBase64 || resolvedBranding.logo_light } : undefined);
 }
