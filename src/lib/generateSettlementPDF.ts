@@ -288,10 +288,20 @@ export async function generateSettlementPDF(
     doc.setFontSize(9);
     doc.text(`Cantidad de Envíos: ${totals.cantidadEnvios || 0}`, 15, y);
     y += 10;
+
+    if (totals.totalComisionesChofer !== undefined && totals.totalDescuentosCOD !== undefined && totals.totalDescuentosCOD > 0) {
+      doc.text(`Comisiones: ${formatCurrency(totals.totalComisionesChofer)}`, 15, y);
+      y += 7;
+      doc.setTextColor(200, 50, 50);
+      doc.text(`Descuentos COD: -${formatCurrency(totals.totalDescuentosCOD)}`, 15, y);
+      doc.setTextColor(50, 50, 50);
+      y += 10;
+    }
+
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
     doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-    doc.text(`MONTO TOTAL: ${formatCurrency(totals.montoTotal || 0)}`, 15, y);
+    doc.text(`MONTO NETO: ${formatCurrency(totals.montoTotal || 0)}`, 15, y);
   }
 
   y += 14;
