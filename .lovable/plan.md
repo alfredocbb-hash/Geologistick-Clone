@@ -1,32 +1,31 @@
 
 
-## Plan: Excluir envíos entregados en sucursal de la liquidación de choferes
+## Plan: Mostrar descuentos COD en el PDF de liquidación de choferes
 
 ### Problema
+Cuando se genera una liquidación de chofer con descuentos por cobro en destino (COD), el PDF solo muestra el monto total neto. No se ve el desglose de comisiones brutas vs descuentos COD, haciendo que el chofer no entienda por qué el monto es menor a la suma de sus comisiones.
 
-La consulta de cálculo en `DriverSettlements.tsx` no distingue entre envíos entregados a domicilio por el chofer y envíos entregados en mostrador de sucursal. Si un chofer transportó el paquete pero la entrega final fue en sucursal, el envío aparece incorrectamente en su liquidación porque su ID sigue en `chofer_id` / `chofer_ultima_milla_id`.
+### Solución
+Modificar el PDF de liquidación de choferes para mostrar un bloque de resumen financiero con el desglose: Comisiones brutas → Descuentos COD → Monto Neto.
 
-### Cambio propuesto
+### Cambios
 
-**Archivo:** `src/pages/DriverSettlements.tsx`
+**Archivo: `src/lib/generateSettlementPDF.ts`**
 
-En las dos queries de cálculo (por `fecha_entrega` y por `ruta_paradas`), agregar el filtro:
+1. **Ampliar la interfaz `SettlementPDFData.totals`**: Agregar campos opcionales `totalComisionesChofer` y `totalDescuentosCOD` para choferes.
 
-```typescript
-.or('entregado_en_sucursal.is.null,entregado_en_sucursal.eq.false')
-```
+2. **Modificar el bloque "Financial summary box" para driver** (líneas ~284-293): Si existen descuentos COD, mostrar 3 líneas en vez de 2:
+   - `Comisiones: $X`
+   - `Descuentos COD: -$Y`
+   - `MONTO NETO: $Z`
+   
+   Aumentar el alto del box cuando hay descuentos COD.
 
-Esto excluye los envíos donde `entregado_en_sucursal = true`, asegurando que solo se liquiden envíos que el chofer entregó efectivamente a domicilio.
+3. **En `downloadDriverSettlementPDF`** (líneas ~558-576): Parsear los valores de comisiones y descuentos COD desde el campo `notas` de la liquidación (formato "Comisiones: $X | Descuentos COD: -$Y") y pasarlos como `totals.totalComisionesChofer` y `totals.totalDescuentosCOD`.
 
-### Detalle técnico
+### Detalle del parseo de notas
+El sistema ya guarda en `notas`: `Comisiones: $12500.00 | Descuentos COD: -$8000.00`
+Se extraerán con regex los valores numéricos para reconstruir el desglose.
 
-1. **Query por fecha_entrega** (línea ~217): agregar filtro `entregado_en_sucursal` 
-2. **Query por ruta_paradas** (línea ~248): agregar el mismo filtro
-3. Ambas queries ya filtran por `estado = 'entregado'`, solo falta esta condición adicional
-
-### Impacto
-
-- Solo afecta el cálculo de nuevas liquidaciones
-- Las liquidaciones ya generadas no se modifican
-- Los envíos entregados en sucursal seguirán apareciendo en las liquidaciones de sucursal (donde corresponden)
+Si no se encuentran descuentos COD en las notas (liquidaciones sin COD), el PDF se renderiza exactamente como antes.
 
