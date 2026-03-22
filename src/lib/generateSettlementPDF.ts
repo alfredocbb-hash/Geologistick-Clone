@@ -40,6 +40,8 @@ interface SettlementPDFData {
     saldo?: number;
     cantidadEnvios?: number;
     cantidadMovimientos?: number;
+    totalComisionesChofer?: number;
+    totalDescuentosCOD?: number;
   };
   items: Array<{
     tracking?: string;
