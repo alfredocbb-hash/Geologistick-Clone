@@ -248,6 +248,7 @@ export default function DriverSettlements() {
             .from('envios')
             .select(selectFields)
             .eq('estado', 'entregado')
+            .or('entregado_en_sucursal.is.null,entregado_en_sucursal.eq.false')
             .in('id', envioIds);
           enviosByRuta = data || [];
         }
