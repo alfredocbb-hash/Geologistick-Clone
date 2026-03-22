@@ -208,7 +208,7 @@ Deno.serve(async (req) => {
       return errorJson("'peso' es requerido y debe ser mayor a 0", 400);
     }
 
-    logStep("Params", { peso, bultos, tipoServicio, cpOrigen, ciudadOrigen, cpDestino, ciudadDestino, valorDeclarado });
+    logStep("Params", { peso, bultos, tipoServicio, cpOrigen, ciudadOrigen, cpDestino, ciudadDestino, valorDeclarado, largo, ancho, alto });
 
     // --- Auto-resolve origin & destination ---
     const [origenRes, destinoRes] = await Promise.all([
