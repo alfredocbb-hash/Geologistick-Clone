@@ -489,6 +489,7 @@ Deno.serve(async (req) => {
         metodo,
         conceptos_incluidos,
         conceptos_opcionales,
+        ...(detalleVolumen ? { detalle_volumen: detalleVolumen } : {}),
       });
     }
 
