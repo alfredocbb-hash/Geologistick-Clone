@@ -1605,6 +1605,19 @@ export default function Settlements() {
                                       <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 text-[10px]">Liquidado</Badge>
                                     ) : (
                                       <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 text-[10px]">A liquidar</Badge>
+                                  )}
+                                  </TableCell>
+                                  <TableCell className="text-right text-sm">
+                                    {envio.conceptos_adicionales.length > 0 ? (
+                                      <div className="flex flex-col items-end gap-0.5">
+                                        {envio.conceptos_adicionales.map((ca, i) => (
+                                          <span key={i} className="text-xs text-muted-foreground">
+                                            {ca.nombre}: ${ca.monto.toLocaleString()}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <span className="text-muted-foreground">-</span>
                                     )}
                                   </TableCell>
                                   <TableCell className="text-right">
