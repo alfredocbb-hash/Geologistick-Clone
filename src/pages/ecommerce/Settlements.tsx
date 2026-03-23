@@ -1560,7 +1560,7 @@ export default function Settlements() {
                           <div className="p-3 bg-muted/50 rounded-lg">
                             <p className="text-sm text-muted-foreground">Total Envíos</p>
                             <p className="text-xl font-bold text-orange-600">
-                              ${totalEnviosIncluded.toLocaleString()}
+                              ${(totalEnviosIncluded + totalCargosGlobalDia).toLocaleString()}
                             </p>
                           </div>
                           <div className="p-3 bg-muted/50 rounded-lg">
