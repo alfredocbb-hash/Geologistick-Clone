@@ -32,7 +32,7 @@ export function SellerConceptosEditor({ sellerId, tarifaId }: SellerConceptosEdi
         .from('tarifas')
         .select('id')
         .eq('seller_exclusivo_id' as any, sellerId)
-        .eq('activa', true);
+        .eq('activa', true) as any;
       return (data || []).map(t => t.id);
     },
     enabled: !!sellerId,
