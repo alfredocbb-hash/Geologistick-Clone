@@ -722,6 +722,23 @@ export async function downloadSellerSettlementPDF(liquidacion: {
     precio: e.estado === 'cancelado' ? 0 : (e.precio_total || 0),
   }));
 
+  // Parse cargos globales por día from notas
+  const cargosGlobalesDia: Array<{ nombre: string; monto_dia: number; dias: number; total: number }> = [];
+  if (liquidacion.notas) {
+    const lines = liquidacion.notas.split('\n');
+    for (const line of lines) {
+      const match = line.match(/(.+?):\s*(\d+)\s*días?\s*×\s*\$?([\d.,]+)\s*=\s*\$?([\d.,]+)/);
+      if (match) {
+        cargosGlobalesDia.push({
+          nombre: match[1].trim(),
+          dias: parseInt(match[2]),
+          monto_dia: parseFloat(match[3].replace(/\./g, '').replace(',', '.')),
+          total: parseFloat(match[4].replace(/\./g, '').replace(',', '.')),
+        });
+      }
+    }
+  }
+
   await generateSettlementPDF({
     type: 'seller',
     settlement: {
@@ -743,6 +760,7 @@ export async function downloadSellerSettlementPDF(liquidacion: {
     },
     items: [],
     shipments: shipmentItems,
+    cargosGlobalesDia,
   }, resolvedBranding ? { ...resolvedBranding, logo_light: logoBase64 || resolvedBranding.logo_light } : undefined);
 }
 
