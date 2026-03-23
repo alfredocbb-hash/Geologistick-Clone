@@ -1,22 +1,24 @@
 
 
-## Plan: Corregir concepto "por día" que se aplica por envío
+## Plan: Mostrar cargos globales por día en el PDF de liquidación de seller
 
 ### Problema
-El concepto "Retiro" ($7.000) se muestra y suma en cada fila de envío individual porque el registro existente en la base de datos tiene `multiplicar_por_dias = false` (fue creado antes de la migración). No hay forma de editar conceptos de tarifas existentes.
+El PDF de liquidación de seller muestra "Movimientos: 187" (que no se quiere ver) y no detalla el cargo por retiro/día ($7.000 × 5 días = $35.000), aunque está incluido en el total.
 
-### Solución (2 partes)
+### Cambios en `src/lib/generateSettlementPDF.ts`
 
-**1. Actualizar registros existentes vía migración**
-- Ejecutar un `UPDATE` que marque `multiplicar_por_dias = true` en todos los `tarifa_concepto_precios` cuyo concepto tenga el código `RECARGO_DIA` (o nombre que contenga "retiro" / "día"), para que los registros preexistentes funcionen correctamente sin recrear la tarifa.
+**1. Agregar soporte para `cargosGlobalesDia` en la interfaz `SettlementPDFData`**
+- Nuevo campo opcional: `cargosGlobalesDia?: Array<{ nombre: string; monto_dia: number; dias: number; total: number }>`
 
-**2. Permitir editar conceptos de tarifas de seller existentes**
-- En la página de Sellers o en `CreateSellerTarifaDialog`, agregar la posibilidad de **editar** los conceptos adicionales de una tarifa ya creada, incluyendo el toggle "Cobro por día (lun-vie)". Esto evita que el usuario tenga que borrar y recrear la tarifa.
+**2. Modificar el bloque financiero del PDF para tipo `seller`**
+- Quitar la línea "Movimientos: N"
+- Antes de "SALDO DEL PERÍODO", agregar una línea por cada cargo global (ej: "Retiro por día: 5 días × $7.000 = $35.000")
+- Ajustar la altura del box (`boxH`) dinámicamente según la cantidad de cargos globales
 
-### Alternativa más simple (recomendada)
-Si el usuario prefiere una solución rápida: solo la migración que actualice los registros existentes, y luego el sistema ya funcionará correctamente (el motor de liquidación ya tiene la lógica implementada para separar cargos por día de cargos por envío).
+**3. Pasar los cargos globales desde `downloadSellerSettlementPDF`**
+- Parsear los cargos desde el campo `notas` de la liquidación (donde se guardan como texto: `"Retiro_dia: 5 días × $7.000 = $35.000"`)
+- Extraer nombre, días, monto por día y total usando un regex simple
 
 ### Archivos a modificar
-- Migración SQL (actualizar registros existentes)
-- Opcionalmente: `CreateSellerTarifaDialog.tsx` (agregar modo edición de conceptos)
+- `src/lib/generateSettlementPDF.ts`
 
