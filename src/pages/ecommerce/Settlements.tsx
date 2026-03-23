@@ -1448,6 +1448,7 @@ export default function Settlements() {
                               <TableHead>Destinatario</TableHead>
                               <TableHead>Ciudad</TableHead>
                               <TableHead>Estado</TableHead>
+                              <TableHead>Estado Liq.</TableHead>
                               <TableHead className="text-right">Precio</TableHead>
                             </TableRow>
                           </TableHeader>
