@@ -1541,7 +1541,8 @@ export default function Settlements() {
                       const excludedCount = excludedEnvioIds.size;
                       const liquidadosCount = calculatedEnvios.filter(e => e.estado_liquidacion === 'liquidado').length;
                       const totalEnviosIncluded = includedEnvios.reduce((sum, e) => sum + (e.precio_total || 0), 0);
-                      const saldoPeriodoCalc = calculatedTotals.totalCargos + totalEnviosIncluded - calculatedTotals.totalPagos;
+                      const totalCargosGlobalDia = cargosGlobalesDia.reduce((sum, g) => sum + g.total, 0);
+                      const saldoPeriodoCalc = calculatedTotals.totalCargos + totalEnviosIncluded + totalCargosGlobalDia - calculatedTotals.totalPagos;
                       return (
                         <>
                           <div className="p-3 bg-muted/50 rounded-lg">
