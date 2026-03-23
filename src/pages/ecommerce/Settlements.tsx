@@ -751,6 +751,7 @@ export default function Settlements() {
                 precioCalculado = true;
                 zonaMatch = match.zona;
               }
+            }
           }
           // If no tarifa and no zone match, keep original precio_total as fallback
 
