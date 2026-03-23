@@ -1411,35 +1411,47 @@ export default function Settlements() {
               {calculatedTotals && (
                 <div className="space-y-4 pt-4 border-t">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="text-sm text-muted-foreground">Envíos</p>
-                      <p className="text-xl font-bold">
-                        {calculatedEnvios.filter(e => e.estado_liquidacion === 'a_liquidar').length}
-                        {calculatedEnvios.some(e => e.estado_liquidacion === 'liquidado') && (
-                          <span className="text-sm font-normal text-muted-foreground ml-1">
-                            (+{calculatedEnvios.filter(e => e.estado_liquidacion === 'liquidado').length} liquidados)
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                    <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="text-sm text-muted-foreground">Total Envíos</p>
-                      <p className="text-xl font-bold text-orange-600">
-                        ${(calculatedTotals.totalEnvios || 0).toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="text-sm text-muted-foreground">Total Pagos</p>
-                      <p className="text-xl font-bold text-green-600">
-                        ${calculatedTotals.totalPagos.toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="text-sm text-muted-foreground">Saldo Período</p>
-                      <p className={`text-xl font-bold ${calculatedTotals.saldoPeriodo > 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                        ${calculatedTotals.saldoPeriodo.toLocaleString()}
-                      </p>
-                    </div>
+                    {(() => {
+                      const includedEnvios = calculatedEnvios.filter(e => e.estado_liquidacion === 'a_liquidar' && !excludedEnvioIds.has(e.id));
+                      const excludedCount = excludedEnvioIds.size;
+                      const liquidadosCount = calculatedEnvios.filter(e => e.estado_liquidacion === 'liquidado').length;
+                      const totalEnviosIncluded = includedEnvios.reduce((sum, e) => sum + (e.precio_total || 0), 0);
+                      const saldoPeriodoCalc = calculatedTotals.totalCargos + totalEnviosIncluded - calculatedTotals.totalPagos;
+                      return (
+                        <>
+                          <div className="p-3 bg-muted/50 rounded-lg">
+                            <p className="text-sm text-muted-foreground">Envíos</p>
+                            <p className="text-xl font-bold">
+                              {includedEnvios.length}
+                              {(liquidadosCount > 0 || excludedCount > 0) && (
+                                <span className="text-sm font-normal text-muted-foreground ml-1">
+                                  {liquidadosCount > 0 && `+${liquidadosCount} liq.`}
+                                  {excludedCount > 0 && ` -${excludedCount} excl.`}
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                          <div className="p-3 bg-muted/50 rounded-lg">
+                            <p className="text-sm text-muted-foreground">Total Envíos</p>
+                            <p className="text-xl font-bold text-orange-600">
+                              ${totalEnviosIncluded.toLocaleString()}
+                            </p>
+                          </div>
+                          <div className="p-3 bg-muted/50 rounded-lg">
+                            <p className="text-sm text-muted-foreground">Total Pagos</p>
+                            <p className="text-xl font-bold text-green-600">
+                              ${calculatedTotals.totalPagos.toLocaleString()}
+                            </p>
+                          </div>
+                          <div className="p-3 bg-muted/50 rounded-lg">
+                            <p className="text-sm text-muted-foreground">Saldo Período</p>
+                            <p className={`text-xl font-bold ${saldoPeriodoCalc > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                              ${saldoPeriodoCalc.toLocaleString()}
+                            </p>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
 
                   {hasCalculatedData && (
