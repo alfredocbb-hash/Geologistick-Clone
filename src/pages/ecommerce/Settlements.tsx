@@ -707,46 +707,55 @@ export default function Settlements() {
           let precioFinal = e.precio_total || 0;
           let precioCalculado = false;
           let zonaMatch: string | null = null;
+          let matchedTarifaId: string | null = null;
+          let conceptosAdicionales: ConceptoAdicional[] = [];
 
           // Priority: use frozen price if available
           if (e.precio_tarifa_vigente != null && e.precio_tarifa_vigente > 0) {
             precioFinal = e.precio_tarifa_vigente;
             precioCalculado = true;
             zonaMatch = 'Precio congelado';
+            // Try to find the tarifa for concepts — use envio's tarifa_id or seller's assigned tarifa
+            matchedTarifaId = e.tarifa_id || null;
+            if (!matchedTarifaId) {
+              const ownerSellerId = envioToSellerMap.get(e.id) || calcSellers[0];
+              matchedTarifaId = sellerTarifaMap.get(ownerSellerId) || null;
+            }
           } else if (precioFinal > 0) {
-            // precio_total was calculated with the tariff at creation time — use it as historical fallback
             precioCalculado = false;
             zonaMatch = null;
+            matchedTarifaId = e.tarifa_id || null;
+            if (!matchedTarifaId) {
+              const ownerSellerId = envioToSellerMap.get(e.id) || calcSellers[0];
+              matchedTarifaId = sellerTarifaMap.get(ownerSellerId) || null;
+            }
           } else {
-            // precio_total is 0 or null — try zone/tarifa lookup as last resort
             const ownerSellerId = envioToSellerMap.get(e.id) || calcSellers[0];
             const sellerTarifaId = sellerTarifaMap.get(ownerSellerId);
 
-            // Helper to match city against a list of zone tarifas
-            const matchZoneIn = (ciudad: string, tarifaList: any[]): { precio: number; zona: string } | null => {
+            const matchZoneIn = (ciudad: string, tarifaList: any[]): { precio: number; zona: string; tarifaId: string } | null => {
               if (!ciudad || tarifaList.length === 0) return null;
               const ciudadNorm = normalize(ciudad);
               for (const zt of tarifaList) {
                 if (!zt.zona_destino) continue;
                 const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
                 if (zonas.some((z: string) => z === ciudadNorm)) {
-                  return { precio: zt.precio_base || 0, zona: zt.nombre || zt.zona_destino };
+                  return { precio: zt.precio_base || 0, zona: zt.nombre || zt.zona_destino, tarifaId: zt.id };
                 }
               }
               for (const zt of tarifaList) {
                 if (!zt.zona_destino) continue;
                 const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
                 if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) {
-                  return { precio: zt.precio_base || 0, zona: zt.nombre || zt.zona_destino };
+                  return { precio: zt.precio_base || 0, zona: zt.nombre || zt.zona_destino, tarifaId: zt.id };
                 }
               }
               const fallback = tarifaList
                 .filter(t => t.zona_destino && t.zona_destino.split(',').length > 3)
                 .sort((a: any, b: any) => (b.zona_destino?.split(',').length || 0) - (a.zona_destino?.split(',').length || 0))[0];
-              return fallback ? { precio: fallback.precio_base || 0, zona: `${fallback.nombre} (fallback)` } : null;
+              return fallback ? { precio: fallback.precio_base || 0, zona: `${fallback.nombre} (fallback)`, tarifaId: fallback.id } : null;
             };
 
-            // Priority: 1) seller exclusive tarifas, 2) assigned tarifa, 3) general zone tarifas
             const sellerExclusives = mutExclusiveBySeller.get(ownerSellerId) || [];
             if (sellerExclusives.length > 0 && e.ciudad_entrega) {
               const match = matchZoneIn(e.ciudad_entrega, sellerExclusives);
@@ -754,6 +763,7 @@ export default function Settlements() {
                 precioFinal = match.precio;
                 precioCalculado = true;
                 zonaMatch = match.zona + ' (exclusiva)';
+                matchedTarifaId = match.tarifaId;
               }
             }
 
@@ -766,11 +776,13 @@ export default function Settlements() {
                     precioFinal = match.precio;
                     precioCalculado = true;
                     zonaMatch = match.zona;
+                    matchedTarifaId = match.tarifaId;
                   }
                 } else {
                   precioFinal = tarifa.precio_base || 0;
                   precioCalculado = true;
                   zonaMatch = tarifa.nombre;
+                  matchedTarifaId = tarifa.id;
                 }
               }
             }
@@ -781,15 +793,37 @@ export default function Settlements() {
                 precioFinal = match.precio;
                 precioCalculado = true;
                 zonaMatch = match.zona;
+                matchedTarifaId = match.tarifaId;
               }
             }
           }
-          // If no tarifa and no zone match, keep original precio_total as fallback
+
+          // Sum basic concepts from the matched tarifa
+          if (matchedTarifaId) {
+            const concepts = conceptosByTarifa.get(matchedTarifaId) || [];
+            for (const c of concepts) {
+              let montoConcepto = 0;
+              if (c.es_porcentaje && c.porcentaje > 0) {
+                montoConcepto = precioFinal * c.porcentaje / 100;
+              } else {
+                montoConcepto = c.monto;
+              }
+              if (c.multiplicar_por_bultos) {
+                montoConcepto *= (e.cantidad_bultos || 1);
+              }
+              if (montoConcepto > 0) {
+                conceptosAdicionales.push({ nombre: c.nombre, monto: Math.round(montoConcepto * 100) / 100 });
+              }
+            }
+            const totalConceptos = conceptosAdicionales.reduce((sum, ca) => sum + ca.monto, 0);
+            precioFinal += totalConceptos;
+          }
 
           // Cancelado sin visitas = $0
           const tieneVisitas = e.estado === 'cancelado' ? enviosConVisitas.has(e.id) : true;
           if (e.estado === 'cancelado' && !tieneVisitas) {
             precioFinal = 0;
+            conceptosAdicionales = [];
           }
 
           return {
@@ -807,6 +841,7 @@ export default function Settlements() {
             tiene_visitas: tieneVisitas,
             destinatario: e.destinatario || null,
             estado_liquidacion: e.liquidacion_seller_id ? 'liquidado' as const : 'a_liquidar' as const,
+            conceptos_adicionales: conceptosAdicionales,
           };
         });
       }
