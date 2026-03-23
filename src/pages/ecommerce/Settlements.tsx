@@ -1463,7 +1463,10 @@ export default function Settlements() {
                               </TableRow>
                             ) : (
                               calculatedEnvios.map((envio) => (
-                                <TableRow key={envio.id} className={envio.precio_total === 0 ? 'bg-destructive/5' : ''}>
+                                <TableRow key={envio.id} className={cn(
+                                  envio.precio_total === 0 && envio.estado_liquidacion === 'a_liquidar' ? 'bg-destructive/5' : '',
+                                  envio.estado_liquidacion === 'liquidado' ? 'opacity-60' : ''
+                                )}>
                                   <TableCell className="text-sm">
                                     {format(new Date(envio.created_at), 'dd/MM/yy')}
                                   </TableCell>
@@ -1473,34 +1476,45 @@ export default function Settlements() {
                                   <TableCell>
                                     <Badge variant="outline" className="text-xs">{envio.estado || '-'}</Badge>
                                   </TableCell>
+                                  <TableCell>
+                                    {envio.estado_liquidacion === 'liquidado' ? (
+                                      <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 text-[10px]">Liquidado</Badge>
+                                    ) : (
+                                      <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 text-[10px]">A liquidar</Badge>
+                                    )}
+                                  </TableCell>
                                   <TableCell className="text-right">
                                     <div className="flex items-center justify-end gap-1">
-                                      <Input
-                                        type="number"
-                                        value={envio.precio_total}
-                                        onChange={(e) => {
-                                          const nuevoPrecio = parseFloat(e.target.value) || 0;
-                                          const updated = calculatedEnvios.map(ev =>
-                                            ev.id === envio.id ? { ...ev, precio_total: nuevoPrecio } : ev
-                                          );
-                                          setCalculatedEnvios(updated);
-                                          if (calculatedTotals) {
-                                            const totalEnvios = updated.reduce((sum, ev) => sum + ev.precio_total, 0);
-                                            setCalculatedTotals({
-                                              ...calculatedTotals,
-                                              totalEnvios,
-                                              saldoPeriodo: calculatedTotals.totalCargos + totalEnvios - calculatedTotals.totalPagos,
-                                            });
-                                          }
-                                        }}
-                                        className="w-24 h-7 text-right text-sm font-medium px-2"
-                                      />
+                                      {envio.estado_liquidacion === 'liquidado' ? (
+                                        <span className="text-sm font-medium text-muted-foreground">${envio.precio_total.toLocaleString()}</span>
+                                      ) : (
+                                        <Input
+                                          type="number"
+                                          value={envio.precio_total}
+                                          onChange={(e) => {
+                                            const nuevoPrecio = parseFloat(e.target.value) || 0;
+                                            const updated = calculatedEnvios.map(ev =>
+                                              ev.id === envio.id ? { ...ev, precio_total: nuevoPrecio } : ev
+                                            );
+                                            setCalculatedEnvios(updated);
+                                            if (calculatedTotals) {
+                                              const totalEnvios = updated.filter(ev => ev.estado_liquidacion === 'a_liquidar').reduce((sum, ev) => sum + ev.precio_total, 0);
+                                              setCalculatedTotals({
+                                                ...calculatedTotals,
+                                                totalEnvios,
+                                                saldoPeriodo: calculatedTotals.totalCargos + totalEnvios - calculatedTotals.totalPagos,
+                                              });
+                                            }
+                                          }}
+                                          className="w-24 h-7 text-right text-sm font-medium px-2"
+                                        />
+                                      )}
                                       {envio.precio_calculado && (
                                         <Badge variant="secondary" className="text-[10px] px-1 py-0">
                                           Zona
                                         </Badge>
                                       )}
-                                      {envio.precio_total === 0 && (
+                                      {envio.precio_total === 0 && envio.estado_liquidacion === 'a_liquidar' && (
                                         <Badge variant="destructive" className="text-[10px] px-1 py-0">
                                           Sin precio
                                         </Badge>
