@@ -686,11 +686,11 @@ export default function Settlements() {
           ...uniqueTarifaIds,
           ...allZoneTarifasRaw.map(t => t.id),
         ])];
-        const conceptosByTarifa = new Map<string, { nombre: string; monto: number; es_porcentaje: boolean; porcentaje: number; multiplicar_por_bultos: boolean }[]>();
+        const conceptosByTarifa = new Map<string, { nombre: string; monto: number; es_porcentaje: boolean; porcentaje: number; multiplicar_por_bultos: boolean; multiplicar_por_dias: boolean }[]>();
         if (allTarifaIdsForConcepts.length > 0) {
-          const { data: conceptoPreciosData } = await supabase
-            .from('tarifa_concepto_precios')
-            .select('tarifa_id, monto, es_porcentaje, porcentaje, multiplicar_por_bultos, concepto:tarifa_conceptos!inner(nombre, es_basico, activo)')
+          const { data: conceptoPreciosData } = await (supabase
+            .from('tarifa_concepto_precios') as any)
+            .select('tarifa_id, monto, es_porcentaje, porcentaje, multiplicar_por_bultos, multiplicar_por_dias, concepto:tarifa_conceptos!inner(nombre, es_basico, activo)')
             .in('tarifa_id', allTarifaIdsForConcepts);
 
           (conceptoPreciosData || []).forEach((cp: any) => {
@@ -703,6 +703,7 @@ export default function Settlements() {
               es_porcentaje: cp.es_porcentaje || false,
               porcentaje: cp.porcentaje || 0,
               multiplicar_por_bultos: cp.multiplicar_por_bultos || false,
+              multiplicar_por_dias: cp.multiplicar_por_dias || false,
             });
             conceptosByTarifa.set(cp.tarifa_id, list);
           });
