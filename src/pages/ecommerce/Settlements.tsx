@@ -84,6 +84,7 @@ interface CalculatedEnvio {
   created_at: string;
   tiene_visitas?: boolean;
   destinatario?: { nombre: string | null; apellido: string | null } | null;
+  estado_liquidacion: 'a_liquidar' | 'liquidado';
 }
 
 const METODOS_PAGO = [
