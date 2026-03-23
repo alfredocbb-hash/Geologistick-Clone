@@ -691,45 +691,50 @@ export default function Settlements() {
             const ownerSellerId = envioToSellerMap.get(e.id) || calcSellers[0];
             const sellerTarifaId = sellerTarifaMap.get(ownerSellerId);
 
-            if (sellerTarifaId) {
+            // Helper to match city against a list of zone tarifas
+            const matchZoneIn = (ciudad: string, tarifaList: any[]): { precio: number; zona: string } | null => {
+              if (!ciudad || tarifaList.length === 0) return null;
+              const ciudadNorm = normalize(ciudad);
+              for (const zt of tarifaList) {
+                if (!zt.zona_destino) continue;
+                const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+                if (zonas.some((z: string) => z === ciudadNorm)) {
+                  return { precio: zt.precio_base || 0, zona: zt.nombre || zt.zona_destino };
+                }
+              }
+              for (const zt of tarifaList) {
+                if (!zt.zona_destino) continue;
+                const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
+                if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) {
+                  return { precio: zt.precio_base || 0, zona: zt.nombre || zt.zona_destino };
+                }
+              }
+              const fallback = tarifaList
+                .filter(t => t.zona_destino && t.zona_destino.split(',').length > 3)
+                .sort((a: any, b: any) => (b.zona_destino?.split(',').length || 0) - (a.zona_destino?.split(',').length || 0))[0];
+              return fallback ? { precio: fallback.precio_base || 0, zona: `${fallback.nombre} (fallback)` } : null;
+            };
+
+            // Priority: 1) seller exclusive tarifas, 2) assigned tarifa, 3) general zone tarifas
+            const sellerExclusives = mutExclusiveBySeller.get(ownerSellerId) || [];
+            if (sellerExclusives.length > 0 && e.ciudad_entrega) {
+              const match = matchZoneIn(e.ciudad_entrega, sellerExclusives);
+              if (match) {
+                precioFinal = match.precio;
+                precioCalculado = true;
+                zonaMatch = match.zona + ' (exclusiva)';
+              }
+            }
+
+            if (precioFinal === 0 && sellerTarifaId) {
               const tarifa = tarifasMap.get(sellerTarifaId);
               if (tarifa) {
-                if (tarifa.tipo_tarifa === 'zona' && e.ciudad_entrega && allZoneTarifas.length > 0) {
-                  const ciudadNorm = normalize(e.ciudad_entrega);
-                  let matched = false;
-                  for (const zt of allZoneTarifas) {
-                    if (!zt.zona_destino) continue;
-                    const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-                    if (zonas.some((z: string) => z === ciudadNorm)) {
-                      precioFinal = zt.precio_base || 0;
-                      precioCalculado = true;
-                      zonaMatch = zt.nombre || zt.zona_destino;
-                      matched = true;
-                      break;
-                    }
-                  }
-                  if (!matched) {
-                    for (const zt of allZoneTarifas) {
-                      if (!zt.zona_destino) continue;
-                      const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-                      if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) {
-                        precioFinal = zt.precio_base || 0;
-                        precioCalculado = true;
-                        zonaMatch = zt.nombre || zt.zona_destino;
-                        matched = true;
-                        break;
-                      }
-                    }
-                  }
-                  if (!matched) {
-                    const fallback = allZoneTarifas
-                      .filter(t => t.zona_destino && t.zona_destino.split(',').length > 3)
-                      .sort((a: any, b: any) => (b.zona_destino?.split(',').length || 0) - (a.zona_destino?.split(',').length || 0))[0];
-                    if (fallback) {
-                      precioFinal = fallback.precio_base || 0;
-                      precioCalculado = true;
-                      zonaMatch = `${fallback.nombre} (fallback)`;
-                    }
+                if (tarifa.tipo_tarifa === 'zona' && e.ciudad_entrega) {
+                  const match = matchZoneIn(e.ciudad_entrega, allZoneTarifas);
+                  if (match) {
+                    precioFinal = match.precio;
+                    precioCalculado = true;
+                    zonaMatch = match.zona;
                   }
                 } else {
                   precioFinal = tarifa.precio_base || 0;
@@ -737,42 +742,16 @@ export default function Settlements() {
                   zonaMatch = tarifa.nombre;
                 }
               }
-            } else if (allZoneTarifas.length > 0 && e.ciudad_entrega) {
-              const ciudadNorm = normalize(e.ciudad_entrega);
-              let matched = false;
-              for (const zt of allZoneTarifas) {
-                if (!zt.zona_destino) continue;
-                const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-                if (zonas.some((z: string) => z === ciudadNorm)) {
-                  precioFinal = zt.precio_base || 0;
-                  precioCalculado = true;
-                  zonaMatch = zt.nombre || zt.zona_destino;
-                  matched = true;
-                  break;
-                }
+            }
+            
+            if (precioFinal === 0 && allZoneTarifas.length > 0 && e.ciudad_entrega) {
+              const match = matchZoneIn(e.ciudad_entrega, allZoneTarifas);
+              if (match) {
+                precioFinal = match.precio;
+                precioCalculado = true;
+                zonaMatch = match.zona;
               }
-              if (!matched) {
-                for (const zt of allZoneTarifas) {
-                  if (!zt.zona_destino) continue;
-                  const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-                  if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) {
-                    precioFinal = zt.precio_base || 0;
-                    precioCalculado = true;
-                    zonaMatch = zt.nombre || zt.zona_destino;
-                    matched = true;
-                    break;
-                  }
-                }
-              }
-              if (!matched) {
-                const fallback = allZoneTarifas
-                  .filter(t => t.zona_destino && t.zona_destino.split(',').length > 3)
-                  .sort((a: any, b: any) => (b.zona_destino?.split(',').length || 0) - (a.zona_destino?.split(',').length || 0))[0];
-                if (fallback) {
-                  precioFinal = fallback.precio_base || 0;
-                  precioCalculado = true;
-                  zonaMatch = `${fallback.nombre} (fallback)`;
-                }
+            }
               }
             }
           }
