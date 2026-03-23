@@ -1582,6 +1582,18 @@ export default function Settlements() {
 
                   {hasCalculatedData && (
                     <>
+                      {cargosGlobalesDia.length > 0 && (
+                        <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20 p-3 space-y-1">
+                          {cargosGlobalesDia.map((cargo, i) => (
+                            <div key={i} className="flex items-center justify-between text-sm">
+                              <span className="font-medium">{cargo.nombre}</span>
+                              <span>
+                                {cargo.dias} días × ${cargo.monto_dia.toLocaleString()} = <strong>${cargo.total.toLocaleString()}</strong>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <div className="max-h-48 overflow-y-auto border rounded-lg">
                         <Table>
                           <TableHeader>
