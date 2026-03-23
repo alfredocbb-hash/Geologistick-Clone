@@ -134,6 +134,7 @@ export default function Settlements() {
     saldoAnterior: number;
     totalEnvios: number;
   } | null>(null);
+  const [cargosGlobalesDia, setCargosGlobalesDia] = useState<CargoGlobalDia[]>([]);
   
   const [notas, setNotas] = useState('');
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
