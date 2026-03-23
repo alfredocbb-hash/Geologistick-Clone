@@ -131,6 +131,7 @@ export default function Settlements() {
   const [payReferencia, setPayReferencia] = useState('');
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelingLiquidacion, setCancelingLiquidacion] = useState<SellerLiquidacion | null>(null);
+  const [excludedEnvioIds, setExcludedEnvioIds] = useState<Set<string>>(new Set());
 
   // Fetch sellers with account
   const { data: sellers, isLoading: loadingSellers } = useQuery({
@@ -810,6 +811,7 @@ export default function Settlements() {
       setCalculatedMovements(data.movements);
       setCalculatedEnvios(data.envios);
       setCalculatedTotals(data.totals);
+      setExcludedEnvioIds(new Set());
       if (data.envios.filter(e => e.estado_liquidacion === 'a_liquidar').length === 0) {
         toast.info(data.envios.length > 0 
           ? 'Todos los envíos del período ya están liquidados' 
@@ -824,7 +826,7 @@ export default function Settlements() {
   // Generate liquidacion mutation - creates one per selected seller
   const generateMutation = useMutation({
     mutationFn: async () => {
-      const pendingEnvios = calculatedEnvios.filter(e => e.estado_liquidacion === 'a_liquidar');
+      const pendingEnvios = calculatedEnvios.filter(e => e.estado_liquidacion === 'a_liquidar' && !excludedEnvioIds.has(e.id));
       if (calcSellers.length === 0 || pendingEnvios.length === 0) {
         throw new Error('No hay envíos para liquidar');
       }
@@ -1409,35 +1411,47 @@ export default function Settlements() {
               {calculatedTotals && (
                 <div className="space-y-4 pt-4 border-t">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="text-sm text-muted-foreground">Envíos</p>
-                      <p className="text-xl font-bold">
-                        {calculatedEnvios.filter(e => e.estado_liquidacion === 'a_liquidar').length}
-                        {calculatedEnvios.some(e => e.estado_liquidacion === 'liquidado') && (
-                          <span className="text-sm font-normal text-muted-foreground ml-1">
-                            (+{calculatedEnvios.filter(e => e.estado_liquidacion === 'liquidado').length} liquidados)
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                    <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="text-sm text-muted-foreground">Total Envíos</p>
-                      <p className="text-xl font-bold text-orange-600">
-                        ${(calculatedTotals.totalEnvios || 0).toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="text-sm text-muted-foreground">Total Pagos</p>
-                      <p className="text-xl font-bold text-green-600">
-                        ${calculatedTotals.totalPagos.toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="text-sm text-muted-foreground">Saldo Período</p>
-                      <p className={`text-xl font-bold ${calculatedTotals.saldoPeriodo > 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                        ${calculatedTotals.saldoPeriodo.toLocaleString()}
-                      </p>
-                    </div>
+                    {(() => {
+                      const includedEnvios = calculatedEnvios.filter(e => e.estado_liquidacion === 'a_liquidar' && !excludedEnvioIds.has(e.id));
+                      const excludedCount = excludedEnvioIds.size;
+                      const liquidadosCount = calculatedEnvios.filter(e => e.estado_liquidacion === 'liquidado').length;
+                      const totalEnviosIncluded = includedEnvios.reduce((sum, e) => sum + (e.precio_total || 0), 0);
+                      const saldoPeriodoCalc = calculatedTotals.totalCargos + totalEnviosIncluded - calculatedTotals.totalPagos;
+                      return (
+                        <>
+                          <div className="p-3 bg-muted/50 rounded-lg">
+                            <p className="text-sm text-muted-foreground">Envíos</p>
+                            <p className="text-xl font-bold">
+                              {includedEnvios.length}
+                              {(liquidadosCount > 0 || excludedCount > 0) && (
+                                <span className="text-sm font-normal text-muted-foreground ml-1">
+                                  {liquidadosCount > 0 && `+${liquidadosCount} liq.`}
+                                  {excludedCount > 0 && ` -${excludedCount} excl.`}
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                          <div className="p-3 bg-muted/50 rounded-lg">
+                            <p className="text-sm text-muted-foreground">Total Envíos</p>
+                            <p className="text-xl font-bold text-orange-600">
+                              ${totalEnviosIncluded.toLocaleString()}
+                            </p>
+                          </div>
+                          <div className="p-3 bg-muted/50 rounded-lg">
+                            <p className="text-sm text-muted-foreground">Total Pagos</p>
+                            <p className="text-xl font-bold text-green-600">
+                              ${calculatedTotals.totalPagos.toLocaleString()}
+                            </p>
+                          </div>
+                          <div className="p-3 bg-muted/50 rounded-lg">
+                            <p className="text-sm text-muted-foreground">Saldo Período</p>
+                            <p className={`text-xl font-bold ${saldoPeriodoCalc > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                              ${saldoPeriodoCalc.toLocaleString()}
+                            </p>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
 
                   {hasCalculatedData && (
@@ -1446,6 +1460,24 @@ export default function Settlements() {
                         <Table>
                           <TableHeader>
                             <TableRow>
+                              <TableHead className="w-8">
+                                {(() => {
+                                  const pendingEnvios = calculatedEnvios.filter(e => e.estado_liquidacion === 'a_liquidar');
+                                  const allIncluded = pendingEnvios.length > 0 && pendingEnvios.every(e => !excludedEnvioIds.has(e.id));
+                                  return (
+                                    <Checkbox
+                                      checked={allIncluded}
+                                      onCheckedChange={(checked) => {
+                                        if (checked) {
+                                          setExcludedEnvioIds(new Set());
+                                        } else {
+                                          setExcludedEnvioIds(new Set(pendingEnvios.map(e => e.id)));
+                                        }
+                                      }}
+                                    />
+                                  );
+                                })()}
+                              </TableHead>
                               <TableHead>Fecha</TableHead>
                               <TableHead>Tracking</TableHead>
                               <TableHead>Destinatario</TableHead>
@@ -1458,18 +1490,38 @@ export default function Settlements() {
                           <TableBody>
                             {calculatedEnvios.length === 0 ? (
                               <TableRow>
-                                <TableCell colSpan={7} className="text-center py-4 text-muted-foreground">
+                                <TableCell colSpan={8} className="text-center py-4 text-muted-foreground">
                                   {sellers?.some(s => calcSellers.includes(s.id) && s.cliente_id)
                                     ? 'No hay envíos en el período'
                                     : 'Sellers no tienen cliente vinculado'}
                                 </TableCell>
                               </TableRow>
                             ) : (
-                              calculatedEnvios.map((envio) => (
+                              calculatedEnvios.map((envio) => {
+                                const isExcluded = excludedEnvioIds.has(envio.id);
+                                const isPending = envio.estado_liquidacion === 'a_liquidar';
+                                return (
                                 <TableRow key={envio.id} className={cn(
-                                  envio.precio_total === 0 && envio.estado_liquidacion === 'a_liquidar' ? 'bg-destructive/5' : '',
-                                  envio.estado_liquidacion === 'liquidado' ? 'opacity-60' : ''
+                                  envio.precio_total === 0 && isPending && !isExcluded ? 'bg-destructive/5' : '',
+                                  envio.estado_liquidacion === 'liquidado' ? 'opacity-60' : '',
+                                  isExcluded ? 'opacity-40 line-through' : ''
                                 )}>
+                                  <TableCell>
+                                    {isPending ? (
+                                      <Checkbox
+                                        checked={!isExcluded}
+                                        onCheckedChange={(checked) => {
+                                          const newSet = new Set(excludedEnvioIds);
+                                          if (checked) {
+                                            newSet.delete(envio.id);
+                                          } else {
+                                            newSet.add(envio.id);
+                                          }
+                                          setExcludedEnvioIds(newSet);
+                                        }}
+                                      />
+                                    ) : null}
+                                  </TableCell>
                                   <TableCell className="text-sm">
                                     {format(new Date(envio.created_at), 'dd/MM/yy')}
                                   </TableCell>
@@ -1488,7 +1540,7 @@ export default function Settlements() {
                                   </TableCell>
                                   <TableCell className="text-right">
                                     <div className="flex items-center justify-end gap-1">
-                                      {envio.estado_liquidacion === 'liquidado' ? (
+                                      {envio.estado_liquidacion === 'liquidado' || isExcluded ? (
                                         <span className="text-sm font-medium text-muted-foreground">${envio.precio_total.toLocaleString()}</span>
                                       ) : (
                                         <Input
@@ -1500,14 +1552,6 @@ export default function Settlements() {
                                               ev.id === envio.id ? { ...ev, precio_total: nuevoPrecio } : ev
                                             );
                                             setCalculatedEnvios(updated);
-                                            if (calculatedTotals) {
-                                              const totalEnvios = updated.filter(ev => ev.estado_liquidacion === 'a_liquidar').reduce((sum, ev) => sum + ev.precio_total, 0);
-                                              setCalculatedTotals({
-                                                ...calculatedTotals,
-                                                totalEnvios,
-                                                saldoPeriodo: calculatedTotals.totalCargos + totalEnvios - calculatedTotals.totalPagos,
-                                              });
-                                            }
                                           }}
                                           className="w-24 h-7 text-right text-sm font-medium px-2"
                                         />
@@ -1517,7 +1561,7 @@ export default function Settlements() {
                                           Zona
                                         </Badge>
                                       )}
-                                      {envio.precio_total === 0 && envio.estado_liquidacion === 'a_liquidar' && (
+                                      {envio.precio_total === 0 && isPending && !isExcluded && (
                                         <Badge variant="destructive" className="text-[10px] px-1 py-0">
                                           Sin precio
                                         </Badge>
@@ -1525,7 +1569,8 @@ export default function Settlements() {
                                     </div>
                                   </TableCell>
                                 </TableRow>
-                              ))
+                                );
+                              })
                             )}
                           </TableBody>
                         </Table>
