@@ -772,6 +772,7 @@ export default function Settlements() {
             created_at: e.created_at,
             tiene_visitas: tieneVisitas,
             destinatario: e.destinatario || null,
+            estado_liquidacion: e.liquidacion_seller_id ? 'liquidado' as const : 'a_liquidar' as const,
           };
         });
       }
