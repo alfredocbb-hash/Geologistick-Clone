@@ -973,7 +973,8 @@ export default function Settlements() {
         const sellerTotalPagos = sellerMovs
           .filter(m => m.tipo === 'pago')
           .reduce((sum, m) => sum + Math.abs(m.monto || 0), 0);
-        const sellerTotalEnvios = sellerEnvios.reduce((sum, e) => sum + (e.precio_total || 0), 0);
+        const sellerTotalEnvios = sellerEnvios.reduce((sum, e) => sum + (e.precio_total || 0), 0)
+          + (isFirstSeller ? cargosGlobalesDia.reduce((sum, g) => sum + g.total, 0) : 0);
 
         // Skip if no data for this seller
         if (sellerMovs.length === 0 && sellerEnvios.length === 0) continue;
