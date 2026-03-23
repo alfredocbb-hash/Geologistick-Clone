@@ -70,6 +70,11 @@ interface CalculatedMovement {
   saldo_anterior?: number;
 }
 
+interface ConceptoAdicional {
+  nombre: string;
+  monto: number;
+}
+
 interface CalculatedEnvio {
   id: string;
   tracking_number: string;
@@ -85,6 +90,7 @@ interface CalculatedEnvio {
   tiene_visitas?: boolean;
   destinatario?: { nombre: string | null; apellido: string | null } | null;
   estado_liquidacion: 'a_liquidar' | 'liquidado';
+  conceptos_adicionales: ConceptoAdicional[];
 }
 
 const METODOS_PAGO = [
