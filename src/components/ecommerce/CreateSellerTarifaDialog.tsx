@@ -136,7 +136,8 @@ export function CreateSellerTarifaDialog({
               tarifa_id: tarifa.id,
               concepto_id: conceptoId,
               monto: concepto.monto,
-            });
+              multiplicar_por_dias: concepto.multiplicar_por_dias,
+            } as any);
           if (cpErr) console.error('Error linking concepto:', cpErr);
         }
       }
