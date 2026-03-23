@@ -287,6 +287,9 @@ export function SellerDetailsDialog({ open, onOpenChange, seller }: SellerDetail
             />
           )}
 
+          {/* Conceptos Adicionales Editor */}
+          <SellerConceptosEditor sellerId={seller.id} tarifaId={null} />
+
           {/* Dates */}
           <div className="flex items-center justify-between text-sm text-muted-foreground">
             <div className="flex items-center gap-1">
