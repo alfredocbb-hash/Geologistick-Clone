@@ -673,6 +673,33 @@ export default function Settlements() {
         });
         const allZoneTarifas = allZoneTarifasRaw.filter(t => !t.seller_exclusivo_id);
 
+        // Fetch basic concepts for all tarifas (assigned + zone)
+        const allTarifaIdsForConcepts = [...new Set([
+          ...uniqueTarifaIds,
+          ...allZoneTarifasRaw.map(t => t.id),
+        ])];
+        const conceptosByTarifa = new Map<string, { nombre: string; monto: number; es_porcentaje: boolean; porcentaje: number; multiplicar_por_bultos: boolean }[]>();
+        if (allTarifaIdsForConcepts.length > 0) {
+          const { data: conceptoPreciosData } = await supabase
+            .from('tarifa_concepto_precios')
+            .select('tarifa_id, monto, es_porcentaje, porcentaje, multiplicar_por_bultos, concepto:tarifa_conceptos!inner(nombre, es_basico, activo)')
+            .in('tarifa_id', allTarifaIdsForConcepts);
+
+          (conceptoPreciosData || []).forEach((cp: any) => {
+            const concepto = cp.concepto;
+            if (!concepto || !concepto.activo || !concepto.es_basico) return;
+            const list = conceptosByTarifa.get(cp.tarifa_id) || [];
+            list.push({
+              nombre: concepto.nombre,
+              monto: cp.monto || 0,
+              es_porcentaje: cp.es_porcentaje || false,
+              porcentaje: cp.porcentaje || 0,
+              multiplicar_por_bultos: cp.multiplicar_por_bultos || false,
+            });
+            conceptosByTarifa.set(cp.tarifa_id, list);
+          });
+        }
+
         const normalize = (str: string) => str.toLowerCase().trim()
           .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
