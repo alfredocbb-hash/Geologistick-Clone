@@ -117,6 +117,7 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
   const { tenantId } = useTenant();
   const queryClient = useQueryClient();
   const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [showCreateTarifa, setShowCreateTarifa] = useState(false);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
