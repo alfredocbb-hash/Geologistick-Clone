@@ -61,6 +61,7 @@ interface SettlementPDFData {
     precio: number;
   }>;
   resumenConceptos?: ResumenConceptosPDF | null;
+  cargosGlobalesDia?: Array<{ nombre: string; monto_dia: number; dias: number; total: number }>;
 }
 
 interface BrandingData {
@@ -248,7 +249,9 @@ export async function generateSettlementPDF(
   if (y < bodyStart) y = bodyStart;
 
   // Financial summary box
-  const boxH = isSeller ? 36 : isBranch ? 32 : 28;
+  const cargosGlobales = data.cargosGlobalesDia || [];
+  const sellerExtraLines = cargosGlobales.length;
+  const boxH = isSeller ? (29 + sellerExtraLines * 7) : isBranch ? 32 : 28;
   const lightR = Math.min(255, primaryRgb[0] + Math.round((255 - primaryRgb[0]) * 0.88));
   const lightG = Math.min(255, primaryRgb[1] + Math.round((255 - primaryRgb[1]) * 0.88));
   const lightB = Math.min(255, primaryRgb[2] + Math.round((255 - primaryRgb[2]) * 0.88));
@@ -264,11 +267,14 @@ export async function generateSettlementPDF(
   if (isSeller && totals.totalCargos !== undefined) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    doc.text(`Movimientos: ${totals.cantidadMovimientos || 0}`, 15, y);
-    doc.text(`Total Envíos: ${formatCurrency(totals.totalCargos || 0)}`, pageWidth / 2, y);
+    doc.text(`Total Envíos: ${formatCurrency(totals.totalCargos || 0)}`, 15, y);
+    doc.text(`Total Pagos: ${formatCurrency(totals.totalPagos || 0)}`, pageWidth / 2, y);
     y += 7;
-    doc.text(`Total Pagos: ${formatCurrency(totals.totalPagos || 0)}`, 15, y);
-    y += 7;
+    // Show global per-day charges
+    for (const cargo of cargosGlobales) {
+      doc.text(`${cargo.nombre}: ${cargo.dias} días × ${formatCurrency(cargo.monto_dia)} = ${formatCurrency(cargo.total)}`, 15, y);
+      y += 7;
+    }
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
     doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
@@ -716,6 +722,23 @@ export async function downloadSellerSettlementPDF(liquidacion: {
     precio: e.estado === 'cancelado' ? 0 : (e.precio_total || 0),
   }));
 
+  // Parse cargos globales por día from notas
+  const cargosGlobalesDia: Array<{ nombre: string; monto_dia: number; dias: number; total: number }> = [];
+  if (liquidacion.notas) {
+    const lines = liquidacion.notas.split('\n');
+    for (const line of lines) {
+      const match = line.match(/(.+?):\s*(\d+)\s*días?\s*×\s*\$?([\d.,]+)\s*=\s*\$?([\d.,]+)/);
+      if (match) {
+        cargosGlobalesDia.push({
+          nombre: match[1].trim(),
+          dias: parseInt(match[2]),
+          monto_dia: parseFloat(match[3].replace(/\./g, '').replace(',', '.')),
+          total: parseFloat(match[4].replace(/\./g, '').replace(',', '.')),
+        });
+      }
+    }
+  }
+
   await generateSettlementPDF({
     type: 'seller',
     settlement: {
@@ -737,6 +760,7 @@ export async function downloadSellerSettlementPDF(liquidacion: {
     },
     items: [],
     shipments: shipmentItems,
+    cargosGlobalesDia,
   }, resolvedBranding ? { ...resolvedBranding, logo_light: logoBase64 || resolvedBranding.logo_light } : undefined);
 }
 
