@@ -61,6 +61,7 @@ interface SettlementPDFData {
     precio: number;
   }>;
   resumenConceptos?: ResumenConceptosPDF | null;
+  cargosGlobalesDia?: Array<{ nombre: string; monto_dia: number; dias: number; total: number }>;
 }
 
 interface BrandingData {
