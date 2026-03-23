@@ -856,6 +856,49 @@ export default function Settlements() {
         });
       }
 
+      // Calculate per-day global charges
+      const countWeekdays = (start: Date, end: Date): number => {
+        let count = 0;
+        const d = new Date(start);
+        while (d <= end) {
+          const day = d.getDay();
+          if (day !== 0 && day !== 6) count++;
+          d.setDate(d.getDate() + 1);
+        }
+        return count;
+      };
+      const diasHabiles = countWeekdays(fechaInicio, fechaFin);
+
+      // Collect unique per-day concepts from all tarifas used by selected sellers
+      const perDayConceptsSeen = new Set<string>();
+      const globalDiaCharges: CargoGlobalDia[] = [];
+      for (const sellerId of calcSellers) {
+        const sellerObj = selectedSellerObjs.find(s => s.id === sellerId);
+        // Get all tarifas exclusive to this seller + assigned tarifa
+        const exclusives = mutExclusiveBySeller.get(sellerId) || [];
+        const tarifaIdsToCheck = [
+          ...exclusives.map(t => t.id),
+          ...(sellerObj?.tarifa_id ? [sellerObj.tarifa_id] : []),
+        ];
+        for (const tid of tarifaIdsToCheck) {
+          const concepts = conceptosByTarifa.get(tid) || [];
+          for (const c of concepts) {
+            if (!c.multiplicar_por_dias) continue;
+            const key = `${sellerId}-${c.nombre}`;
+            if (perDayConceptsSeen.has(key)) continue;
+            perDayConceptsSeen.add(key);
+            globalDiaCharges.push({
+              nombre: c.nombre,
+              monto_dia: c.monto,
+              dias: diasHabiles,
+              total: Math.round(c.monto * diasHabiles * 100) / 100,
+            });
+          }
+        }
+      }
+
+      const totalCargosGlobalDia = globalDiaCharges.reduce((sum, g) => sum + g.total, 0);
+
       const totalCargos = allMovs
         .filter(m => m.tipo === 'cargo')
         .reduce((sum, m) => sum + (m.monto || 0), 0);
@@ -868,7 +911,7 @@ export default function Settlements() {
         .filter(m => m.tipo === 'ajuste')
         .reduce((sum, m) => sum + (m.monto || 0), 0);
 
-      const totalEnvios = allEnvios.filter(e => e.estado_liquidacion === 'a_liquidar').reduce((sum, e) => sum + (e.precio_total || 0), 0);
+      const totalEnvios = allEnvios.filter(e => e.estado_liquidacion === 'a_liquidar').reduce((sum, e) => sum + (e.precio_total || 0), 0) + totalCargosGlobalDia;
 
       const saldoPeriodo = totalCargos + totalEnvios - totalPagos + totalAjustes;
       const saldoAnterior = allMovs[0]?.saldo_anterior || 0;
@@ -876,6 +919,7 @@ export default function Settlements() {
       return {
         movements: allMovs,
         envios: allEnvios,
+        cargosGlobalesDia: globalDiaCharges,
         totals: {
           totalCargos,
           totalPagos,
