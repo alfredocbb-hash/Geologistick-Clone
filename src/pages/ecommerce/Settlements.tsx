@@ -623,6 +623,7 @@ export default function Settlements() {
         }
       }
 
+      let globalDiaChargesRef: CargoGlobalDia[] = [];
       {
         // 5: Combinar los tres conjuntos sin duplicados
         const ecommerceIds = new Set(ecommerceEnvios.map(e => e.id));
