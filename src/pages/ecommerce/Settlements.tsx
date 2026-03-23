@@ -822,8 +822,10 @@ export default function Settlements() {
   // Generate liquidacion mutation - creates one per selected seller
   const generateMutation = useMutation({
     mutationFn: async () => {
-      if (calcSellers.length === 0 || calculatedEnvios.length === 0) {
+      const pendingEnvios = calculatedEnvios.filter(e => e.estado_liquidacion === 'a_liquidar');
+      if (calcSellers.length === 0 || pendingEnvios.length === 0) {
         throw new Error('No hay envíos para liquidar');
+      }
       }
 
       const createdLiquidaciones: any[] = [];
