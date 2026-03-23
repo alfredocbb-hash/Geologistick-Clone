@@ -1,0 +1,1 @@
+ALTER TABLE public.tarifa_concepto_precios ADD COLUMN multiplicar_por_dias boolean DEFAULT false;

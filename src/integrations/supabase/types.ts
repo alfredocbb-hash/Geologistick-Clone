@@ -3827,6 +3827,7 @@ export type Database = {
           id: string
           monto: number
           multiplicar_por_bultos: boolean
+          multiplicar_por_dias: boolean | null
           porcentaje: number | null
           tarifa_id: string
         }
@@ -3837,6 +3838,7 @@ export type Database = {
           id?: string
           monto?: number
           multiplicar_por_bultos?: boolean
+          multiplicar_por_dias?: boolean | null
           porcentaje?: number | null
           tarifa_id: string
         }
@@ -3847,6 +3849,7 @@ export type Database = {
           id?: string
           monto?: number
           multiplicar_por_bultos?: boolean
+          multiplicar_por_dias?: boolean | null
           porcentaje?: number | null
           tarifa_id?: string
         }
