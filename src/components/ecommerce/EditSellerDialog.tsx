@@ -15,8 +15,9 @@ import { Switch } from '@/components/ui/switch';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, User, UserPlus, UserX, Link2Off, CheckCircle } from 'lucide-react';
+import { Loader2, User, UserPlus, UserX, Link2Off, CheckCircle, Plus } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { CreateSellerTarifaDialog } from './CreateSellerTarifaDialog';
 
 const formSchema = z.object({
   nombre: z.string().min(2, 'Nombre requerido'),
