@@ -653,14 +653,21 @@ export default function Settlements() {
           (tarifasData || []).forEach(t => tarifasMap.set(t.id, t));
         }
 
-        // Always fetch all zone tarifas for the tenant (needed even when sellers have no tarifa_id)
+        // Fetch all zone tarifas for the tenant — split into exclusive and general
         const { data: zoneTarifasData } = await supabase
           .from('tarifas')
-          .select('id, precio_base, zona_destino, nombre')
+          .select('id, precio_base, zona_destino, nombre, seller_exclusivo_id')
           .eq('tenant_id', tenantId)
           .eq('tipo_tarifa', 'zona')
           .eq('activa', true);
-        const allZoneTarifas = zoneTarifasData || [];
+        const allZoneTarifasRaw = zoneTarifasData || [];
+        const mutExclusiveBySeller = new Map<string, any[]>();
+        allZoneTarifasRaw.filter(t => t.seller_exclusivo_id).forEach(t => {
+          const list = mutExclusiveBySeller.get(t.seller_exclusivo_id!) || [];
+          list.push(t);
+          mutExclusiveBySeller.set(t.seller_exclusivo_id!, list);
+        });
+        const allZoneTarifas = allZoneTarifasRaw.filter(t => !t.seller_exclusivo_id);
 
         const normalize = (str: string) => str.toLowerCase().trim()
           .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
