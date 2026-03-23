@@ -1490,7 +1490,7 @@ export default function Settlements() {
                           <TableBody>
                             {calculatedEnvios.length === 0 ? (
                               <TableRow>
-                                <TableCell colSpan={7} className="text-center py-4 text-muted-foreground">
+                                <TableCell colSpan={8} className="text-center py-4 text-muted-foreground">
                                   {sellers?.some(s => calcSellers.includes(s.id) && s.cliente_id)
                                     ? 'No hay envíos en el período'
                                     : 'Sellers no tienen cliente vinculado'}
