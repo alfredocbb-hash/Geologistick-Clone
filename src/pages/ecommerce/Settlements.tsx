@@ -481,9 +481,8 @@ export default function Settlements() {
       if (sellerEnvioIds.length > 0) {
         const { data: ecomEnvios, error: ecomError } = await (supabase
           .from('envios') as any)
-          .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
+          .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
           .in('id', sellerEnvioIds)
-          .is('liquidacion_seller_id', null)
           .order('created_at', { ascending: true });
 
         if (ecomError) throw ecomError;
