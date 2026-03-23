@@ -10,6 +10,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { SellerIntegrationStatus } from './SellerIntegrationStatus';
+import { SellerConceptosEditor } from './SellerConceptosEditor';
 
 interface Seller {
   id: string;
