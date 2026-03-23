@@ -1408,7 +1408,14 @@ export default function Settlements() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="p-3 bg-muted/50 rounded-lg">
                       <p className="text-sm text-muted-foreground">Envíos</p>
-                      <p className="text-xl font-bold">{calculatedEnvios.length}</p>
+                      <p className="text-xl font-bold">
+                        {calculatedEnvios.filter(e => e.estado_liquidacion === 'a_liquidar').length}
+                        {calculatedEnvios.some(e => e.estado_liquidacion === 'liquidado') && (
+                          <span className="text-sm font-normal text-muted-foreground ml-1">
+                            (+{calculatedEnvios.filter(e => e.estado_liquidacion === 'liquidado').length} liquidados)
+                          </span>
+                        )}
+                      </p>
                     </div>
                     <div className="p-3 bg-muted/50 rounded-lg">
                       <p className="text-sm text-muted-foreground">Total Envíos</p>
