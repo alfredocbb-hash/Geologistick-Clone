@@ -837,7 +837,7 @@ export default function Settlements() {
         const sellerMovs = calculatedMovements.filter(m => (m as any).seller_id === sellerId);
         // For envíos we assign all to first seller (they share cliente_id)
         const isFirstSeller = sellerId === calcSellers[0];
-        const sellerEnvios = isFirstSeller ? calculatedEnvios : [];
+        const sellerEnvios = isFirstSeller ? pendingEnvios : [];
 
         const sellerTotalCargos = sellerMovs
           .filter(m => m.tipo === 'cargo')
