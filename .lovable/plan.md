@@ -1,40 +1,39 @@
 
 
-## Plan: Integrar tarifas exclusivas de seller en el cálculo de liquidaciones
+## Plan: Agregar estado de liquidación a envíos en liquidaciones de seller
 
-### Problema detectado
+### Problema actual
 
-El motor de liquidaciones en `Settlements.tsx` busca tarifas de zona para calcular precios, pero carga **todas** las tarifas de zona activas del tenant (línea 639-644 y 174-180) sin distinguir las exclusivas de un seller. Esto causa:
+Cuando se calcula una liquidación de seller, los envíos ya liquidados se **excluyen completamente** del resultado (filtro `.is('liquidacion_seller_id', null)`). Esto impide al usuario ver cuáles envíos del período ya fueron procesados en liquidaciones anteriores, a diferencia del flujo de choferes que muestra todos los envíos con badges "A liquidar" / "Liquidado".
 
-1. Las tarifas exclusivas de Kingdom se mezclan con las generales en el matching de zona
-2. No se priorizan las tarifas exclusivas del seller al calcular el precio de sus envíos
-3. Si Kingdom tiene tarifas exclusivas con precios distintos (ej: $4,610 vs tarifa general de $3,000), el matching podría tomar la tarifa equivocada
-
-### Cambios
+### Cambios propuestos
 
 **Archivo: `src/pages/ecommerce/Settlements.tsx`**
 
-#### 1. En el cálculo de saldos (query `seller-tariff-balances`, ~línea 174)
-- Cargar tarifas exclusivas por seller: `SELECT * FROM tarifas WHERE seller_exclusivo_id IN (sellerIds) AND activa = true`
-- Al calcular precio de cada envío de un seller, primero buscar match en sus tarifas exclusivas
-- Solo usar tarifas generales como fallback si no hay exclusivas
+1. **Remover el filtro `.is('liquidacion_seller_id', null)` de las 4 queries de envíos** (líneas 485, 522, 535, 594) para traer **todos** los envíos del período, liquidados o no.
 
-#### 2. En la mutación de cálculo de liquidación (`calculateMutation`, ~línea 638)
-- Mismo patrón: cargar tarifas exclusivas de los sellers seleccionados
-- Al hacer zone matching, priorizar las tarifas exclusivas del seller dueño del envío
-- Fallback a tarifas generales solo si no hay match exclusivo
+2. **Agregar campo `estado_liquidacion`** al tipo `CalculatedEnvio`: `'a_liquidar' | 'liquidado'`, determinado por si el envío tiene `liquidacion_seller_id` distinto de null.
 
-### Lógica de prioridad (ambos lugares)
+3. **Adaptar las queries** para incluir el campo `liquidacion_seller_id` en el `select`, y marcar cada envío con su estado.
 
-```text
-1. precio_tarifa_vigente (congelado) → usar directamente
-2. precio_total > 0 → usar como fallback histórico
-3. Si precio = 0:
-   a. Buscar en tarifas exclusivas del seller (seller_exclusivo_id = seller.id)
-   b. Si no hay match → buscar en tarifa asignada (tarifa_id)
-   c. Si no hay match → buscar en tarifas generales de zona (seller_exclusivo_id IS NULL)
-```
+4. **Actualizar los stats** del calculador:
+   - Mostrar conteo de "A liquidar" vs "Liquidados"
+   - Solo sumar precios de envíos "a_liquidar" en los totales
 
-### Archivos a modificar
-- `src/pages/ecommerce/Settlements.tsx` — 2 secciones: query de saldos y mutación de cálculo
+5. **Agregar columna "Estado Liq." a la tabla de envíos** en la pre-visualización (~línea 1440):
+   - Badge naranja "A liquidar" para envíos sin liquidar
+   - Badge verde "Liquidado" para envíos ya liquidados (fila con `opacity-60`)
+   - Los envíos liquidados no son editables en precio
+
+6. **Proteger la generación**: el `generateMutation` solo procesa envíos con `estado_liquidacion === 'a_liquidar'` (ya no depende del filtro de la query).
+
+### Detalle técnico
+
+- Se modifica la query de envíos para incluir `liquidacion_seller_id` en el select
+- Se agrega la propiedad `estado_liquidacion` al tipo `CalculatedEnvio`
+- Se agrega lógica de filtrado en `generateMutation` para solo vincular envíos con `estado_liquidacion === 'a_liquidar'`
+- Se replica el patrón visual exacto del `DriverSettlements.tsx` (badges, opacity, protección de edición)
+
+### Archivo a modificar
+- `src/pages/ecommerce/Settlements.tsx`
 
