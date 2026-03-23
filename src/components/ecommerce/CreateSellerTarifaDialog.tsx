@@ -20,6 +20,7 @@ interface ConceptoAdicional {
   nombre: string;
   codigo: string;
   monto: number;
+  multiplicar_por_dias: boolean;
 }
 
 interface CreateSellerTarifaDialogProps {
