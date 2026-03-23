@@ -807,10 +807,11 @@ export default function Settlements() {
             }
           }
 
-          // Sum basic concepts from the matched tarifa
+          // Sum basic concepts from the matched tarifa (skip multiplicar_por_dias — those are global)
           if (matchedTarifaId) {
             const concepts = conceptosByTarifa.get(matchedTarifaId) || [];
             for (const c of concepts) {
+              if (c.multiplicar_por_dias) continue; // handled globally
               let montoConcepto = 0;
               if (c.es_porcentaje && c.porcentaje > 0) {
                 montoConcepto = precioFinal * c.porcentaje / 100;
