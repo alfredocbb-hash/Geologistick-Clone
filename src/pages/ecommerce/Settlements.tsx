@@ -131,6 +131,7 @@ export default function Settlements() {
   const [payReferencia, setPayReferencia] = useState('');
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelingLiquidacion, setCancelingLiquidacion] = useState<SellerLiquidacion | null>(null);
+  const [excludedEnvioIds, setExcludedEnvioIds] = useState<Set<string>>(new Set());
 
   // Fetch sellers with account
   const { data: sellers, isLoading: loadingSellers } = useQuery({
