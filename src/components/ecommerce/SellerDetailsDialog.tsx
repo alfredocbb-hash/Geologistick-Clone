@@ -10,6 +10,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { SellerIntegrationStatus } from './SellerIntegrationStatus';
+import { SellerConceptosEditor } from './SellerConceptosEditor';
 
 interface Seller {
   id: string;
@@ -285,6 +286,9 @@ export function SellerDetailsDialog({ open, onOpenChange, seller }: SellerDetail
               isSyncing={isSyncing}
             />
           )}
+
+          {/* Conceptos Adicionales Editor */}
+          <SellerConceptosEditor sellerId={seller.id} tarifaId={null} />
 
           {/* Dates */}
           <div className="flex items-center justify-between text-sm text-muted-foreground">
