@@ -996,7 +996,7 @@ export default function Settlements() {
             saldo_final: (sellerMovs[0]?.saldo_anterior || 0) + sellerTotalEnvios - sellerTotalPagos,
             cantidad_movimientos: sellerMovs.length + sellerEnvios.length,
             estado: 'generada',
-            notas: [notas, sellerNames].filter(Boolean).join(' | ') || null,
+            notas: [notas, sellerNames, ...(isFirstSeller ? cargosGlobalesDia.map(g => `${g.nombre}: ${g.dias} días × $${g.monto_dia.toLocaleString()} = $${g.total.toLocaleString()}`) : [])].filter(Boolean).join(' | ') || null,
             generado_por: user?.id,
             tenant_id: profile?.tenant_id,
           })
