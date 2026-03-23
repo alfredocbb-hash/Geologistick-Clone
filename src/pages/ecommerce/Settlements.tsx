@@ -789,7 +789,7 @@ export default function Settlements() {
         .filter(m => m.tipo === 'ajuste')
         .reduce((sum, m) => sum + (m.monto || 0), 0);
 
-      const totalEnvios = allEnvios.reduce((sum, e) => sum + (e.precio_total || 0), 0);
+      const totalEnvios = allEnvios.filter(e => e.estado_liquidacion === 'a_liquidar').reduce((sum, e) => sum + (e.precio_total || 0), 0);
 
       const saldoPeriodo = totalCargos + totalEnvios - totalPagos + totalAjustes;
       const saldoAnterior = allMovs[0]?.saldo_anterior || 0;
