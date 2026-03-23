@@ -70,6 +70,11 @@ interface CalculatedMovement {
   saldo_anterior?: number;
 }
 
+interface ConceptoAdicional {
+  nombre: string;
+  monto: number;
+}
+
 interface CalculatedEnvio {
   id: string;
   tracking_number: string;
@@ -85,6 +90,7 @@ interface CalculatedEnvio {
   tiene_visitas?: boolean;
   destinatario?: { nombre: string | null; apellido: string | null } | null;
   estado_liquidacion: 'a_liquidar' | 'liquidado';
+  conceptos_adicionales: ConceptoAdicional[];
 }
 
 const METODOS_PAGO = [
@@ -482,7 +488,7 @@ export default function Settlements() {
       if (sellerEnvioIds.length > 0) {
         const { data: ecomEnvios, error: ecomError } = await (supabase
           .from('envios') as any)
-          .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
+          .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
           .in('id', sellerEnvioIds)
           .order('created_at', { ascending: true });
 
@@ -516,7 +522,7 @@ export default function Settlements() {
           // Query 1: envíos comunes filtrados por fecha_entrega en el rango
           const { data: commonEnvios, error: commonError } = await supabase
             .from('envios')
-            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
+            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
             .in('remitente_id', uniqueOnlyClienteIds)
             .gte('fecha_entrega', fechaInicioStr)
             .lte('fecha_entrega', fechaFinStr)
@@ -527,7 +533,7 @@ export default function Settlements() {
           // Query 2: envíos sin fecha_entrega, filtrados por created_at en el rango
           const { data: commonEnviosNoDate, error: commonNoDateError } = await (supabase
             .from('envios') as any)
-            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
+            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
             .in('remitente_id', uniqueOnlyClienteIds)
             .is('fecha_entrega', null)
             .gte('created_at', fechaInicioStr)
@@ -588,7 +594,7 @@ export default function Settlements() {
         if (ctaCteEnvioIds.length > 0) {
           const { data: fetchedEnvios } = await (supabase
             .from('envios') as any)
-            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
+            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
             .in('id', ctaCteEnvioIds)
             .order('created_at', { ascending: true });
 
@@ -667,6 +673,33 @@ export default function Settlements() {
         });
         const allZoneTarifas = allZoneTarifasRaw.filter(t => !t.seller_exclusivo_id);
 
+        // Fetch basic concepts for all tarifas (assigned + zone)
+        const allTarifaIdsForConcepts = [...new Set([
+          ...uniqueTarifaIds,
+          ...allZoneTarifasRaw.map(t => t.id),
+        ])];
+        const conceptosByTarifa = new Map<string, { nombre: string; monto: number; es_porcentaje: boolean; porcentaje: number; multiplicar_por_bultos: boolean }[]>();
+        if (allTarifaIdsForConcepts.length > 0) {
+          const { data: conceptoPreciosData } = await supabase
+            .from('tarifa_concepto_precios')
+            .select('tarifa_id, monto, es_porcentaje, porcentaje, multiplicar_por_bultos, concepto:tarifa_conceptos!inner(nombre, es_basico, activo)')
+            .in('tarifa_id', allTarifaIdsForConcepts);
+
+          (conceptoPreciosData || []).forEach((cp: any) => {
+            const concepto = cp.concepto;
+            if (!concepto || !concepto.activo || !concepto.es_basico) return;
+            const list = conceptosByTarifa.get(cp.tarifa_id) || [];
+            list.push({
+              nombre: concepto.nombre,
+              monto: cp.monto || 0,
+              es_porcentaje: cp.es_porcentaje || false,
+              porcentaje: cp.porcentaje || 0,
+              multiplicar_por_bultos: cp.multiplicar_por_bultos || false,
+            });
+            conceptosByTarifa.set(cp.tarifa_id, list);
+          });
+        }
+
         const normalize = (str: string) => str.toLowerCase().trim()
           .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
@@ -674,46 +707,55 @@ export default function Settlements() {
           let precioFinal = e.precio_total || 0;
           let precioCalculado = false;
           let zonaMatch: string | null = null;
+          let matchedTarifaId: string | null = null;
+          let conceptosAdicionales: ConceptoAdicional[] = [];
 
           // Priority: use frozen price if available
           if (e.precio_tarifa_vigente != null && e.precio_tarifa_vigente > 0) {
             precioFinal = e.precio_tarifa_vigente;
             precioCalculado = true;
             zonaMatch = 'Precio congelado';
+            // Try to find the tarifa for concepts — use envio's tarifa_id or seller's assigned tarifa
+            matchedTarifaId = e.tarifa_id || null;
+            if (!matchedTarifaId) {
+              const ownerSellerId = envioToSellerMap.get(e.id) || calcSellers[0];
+              matchedTarifaId = sellerTarifaMap.get(ownerSellerId) || null;
+            }
           } else if (precioFinal > 0) {
-            // precio_total was calculated with the tariff at creation time — use it as historical fallback
             precioCalculado = false;
             zonaMatch = null;
+            matchedTarifaId = e.tarifa_id || null;
+            if (!matchedTarifaId) {
+              const ownerSellerId = envioToSellerMap.get(e.id) || calcSellers[0];
+              matchedTarifaId = sellerTarifaMap.get(ownerSellerId) || null;
+            }
           } else {
-            // precio_total is 0 or null — try zone/tarifa lookup as last resort
             const ownerSellerId = envioToSellerMap.get(e.id) || calcSellers[0];
             const sellerTarifaId = sellerTarifaMap.get(ownerSellerId);
 
-            // Helper to match city against a list of zone tarifas
-            const matchZoneIn = (ciudad: string, tarifaList: any[]): { precio: number; zona: string } | null => {
+            const matchZoneIn = (ciudad: string, tarifaList: any[]): { precio: number; zona: string; tarifaId: string } | null => {
               if (!ciudad || tarifaList.length === 0) return null;
               const ciudadNorm = normalize(ciudad);
               for (const zt of tarifaList) {
                 if (!zt.zona_destino) continue;
                 const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
                 if (zonas.some((z: string) => z === ciudadNorm)) {
-                  return { precio: zt.precio_base || 0, zona: zt.nombre || zt.zona_destino };
+                  return { precio: zt.precio_base || 0, zona: zt.nombre || zt.zona_destino, tarifaId: zt.id };
                 }
               }
               for (const zt of tarifaList) {
                 if (!zt.zona_destino) continue;
                 const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
                 if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) {
-                  return { precio: zt.precio_base || 0, zona: zt.nombre || zt.zona_destino };
+                  return { precio: zt.precio_base || 0, zona: zt.nombre || zt.zona_destino, tarifaId: zt.id };
                 }
               }
               const fallback = tarifaList
                 .filter(t => t.zona_destino && t.zona_destino.split(',').length > 3)
                 .sort((a: any, b: any) => (b.zona_destino?.split(',').length || 0) - (a.zona_destino?.split(',').length || 0))[0];
-              return fallback ? { precio: fallback.precio_base || 0, zona: `${fallback.nombre} (fallback)` } : null;
+              return fallback ? { precio: fallback.precio_base || 0, zona: `${fallback.nombre} (fallback)`, tarifaId: fallback.id } : null;
             };
 
-            // Priority: 1) seller exclusive tarifas, 2) assigned tarifa, 3) general zone tarifas
             const sellerExclusives = mutExclusiveBySeller.get(ownerSellerId) || [];
             if (sellerExclusives.length > 0 && e.ciudad_entrega) {
               const match = matchZoneIn(e.ciudad_entrega, sellerExclusives);
@@ -721,6 +763,7 @@ export default function Settlements() {
                 precioFinal = match.precio;
                 precioCalculado = true;
                 zonaMatch = match.zona + ' (exclusiva)';
+                matchedTarifaId = match.tarifaId;
               }
             }
 
@@ -733,11 +776,13 @@ export default function Settlements() {
                     precioFinal = match.precio;
                     precioCalculado = true;
                     zonaMatch = match.zona;
+                    matchedTarifaId = match.tarifaId;
                   }
                 } else {
                   precioFinal = tarifa.precio_base || 0;
                   precioCalculado = true;
                   zonaMatch = tarifa.nombre;
+                  matchedTarifaId = tarifa.id;
                 }
               }
             }
@@ -748,15 +793,37 @@ export default function Settlements() {
                 precioFinal = match.precio;
                 precioCalculado = true;
                 zonaMatch = match.zona;
+                matchedTarifaId = match.tarifaId;
               }
             }
           }
-          // If no tarifa and no zone match, keep original precio_total as fallback
+
+          // Sum basic concepts from the matched tarifa
+          if (matchedTarifaId) {
+            const concepts = conceptosByTarifa.get(matchedTarifaId) || [];
+            for (const c of concepts) {
+              let montoConcepto = 0;
+              if (c.es_porcentaje && c.porcentaje > 0) {
+                montoConcepto = precioFinal * c.porcentaje / 100;
+              } else {
+                montoConcepto = c.monto;
+              }
+              if (c.multiplicar_por_bultos) {
+                montoConcepto *= (e.cantidad_bultos || 1);
+              }
+              if (montoConcepto > 0) {
+                conceptosAdicionales.push({ nombre: c.nombre, monto: Math.round(montoConcepto * 100) / 100 });
+              }
+            }
+            const totalConceptos = conceptosAdicionales.reduce((sum, ca) => sum + ca.monto, 0);
+            precioFinal += totalConceptos;
+          }
 
           // Cancelado sin visitas = $0
           const tieneVisitas = e.estado === 'cancelado' ? enviosConVisitas.has(e.id) : true;
           if (e.estado === 'cancelado' && !tieneVisitas) {
             precioFinal = 0;
+            conceptosAdicionales = [];
           }
 
           return {
@@ -774,6 +841,7 @@ export default function Settlements() {
             tiene_visitas: tieneVisitas,
             destinatario: e.destinatario || null,
             estado_liquidacion: e.liquidacion_seller_id ? 'liquidado' as const : 'a_liquidar' as const,
+            conceptos_adicionales: conceptosAdicionales,
           };
         });
       }
@@ -1484,13 +1552,14 @@ export default function Settlements() {
                               <TableHead>Ciudad</TableHead>
                               <TableHead>Estado</TableHead>
                               <TableHead>Estado Liq.</TableHead>
+                              <TableHead className="text-right">Adicional</TableHead>
                               <TableHead className="text-right">Precio</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
                             {calculatedEnvios.length === 0 ? (
                               <TableRow>
-                                <TableCell colSpan={8} className="text-center py-4 text-muted-foreground">
+                                <TableCell colSpan={9} className="text-center py-4 text-muted-foreground">
                                   {sellers?.some(s => calcSellers.includes(s.id) && s.cliente_id)
                                     ? 'No hay envíos en el período'
                                     : 'Sellers no tienen cliente vinculado'}
@@ -1536,6 +1605,19 @@ export default function Settlements() {
                                       <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 text-[10px]">Liquidado</Badge>
                                     ) : (
                                       <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 text-[10px]">A liquidar</Badge>
+                                  )}
+                                  </TableCell>
+                                  <TableCell className="text-right text-sm">
+                                    {envio.conceptos_adicionales.length > 0 ? (
+                                      <div className="flex flex-col items-end gap-0.5">
+                                        {envio.conceptos_adicionales.map((ca, i) => (
+                                          <span key={i} className="text-xs text-muted-foreground">
+                                            {ca.nombre}: ${ca.monto.toLocaleString()}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <span className="text-muted-foreground">-</span>
                                     )}
                                   </TableCell>
                                   <TableCell className="text-right">
