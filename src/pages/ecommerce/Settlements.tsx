@@ -1460,6 +1460,24 @@ export default function Settlements() {
                         <Table>
                           <TableHeader>
                             <TableRow>
+                              <TableHead className="w-8">
+                                {(() => {
+                                  const pendingEnvios = calculatedEnvios.filter(e => e.estado_liquidacion === 'a_liquidar');
+                                  const allIncluded = pendingEnvios.length > 0 && pendingEnvios.every(e => !excludedEnvioIds.has(e.id));
+                                  return (
+                                    <Checkbox
+                                      checked={allIncluded}
+                                      onCheckedChange={(checked) => {
+                                        if (checked) {
+                                          setExcludedEnvioIds(new Set());
+                                        } else {
+                                          setExcludedEnvioIds(new Set(pendingEnvios.map(e => e.id)));
+                                        }
+                                      }}
+                                    />
+                                  );
+                                })()}
+                              </TableHead>
                               <TableHead>Fecha</TableHead>
                               <TableHead>Tracking</TableHead>
                               <TableHead>Destinatario</TableHead>
