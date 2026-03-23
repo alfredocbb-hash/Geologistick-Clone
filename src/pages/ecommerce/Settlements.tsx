@@ -826,7 +826,6 @@ export default function Settlements() {
       if (calcSellers.length === 0 || pendingEnvios.length === 0) {
         throw new Error('No hay envíos para liquidar');
       }
-      }
 
       const createdLiquidaciones: any[] = [];
 
