@@ -545,21 +545,43 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Tarifa</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {tarifas?.map((t) => (
-                          <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="flex gap-2">
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {tarifas?.map((t) => (
+                            <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="shrink-0"
+                        onClick={() => setShowCreateTarifa(true)}
+                        title="Crear tarifa personalizada"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )}
+              />
+              <CreateSellerTarifaDialog
+                open={showCreateTarifa}
+                onOpenChange={setShowCreateTarifa}
+                sellerId={seller.id}
+                sellerNombre={seller.nombre}
+                onSuccess={(tarifaId) => {
+                  form.setValue('tarifa_id', tarifaId, { shouldDirty: true });
+                  queryClient.invalidateQueries({ queryKey: ['tarifas-active'] });
+                }}
               />
             </div>
 

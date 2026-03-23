@@ -368,6 +368,7 @@ export default function NewShipment() {
         .from('tarifas')
         .select('*')
         .eq('activa', true)
+        .is('seller_exclusivo_id', null)
         .order('nombre');
       if (error) throw error;
       return data;
