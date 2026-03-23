@@ -84,6 +84,7 @@ interface CalculatedEnvio {
   created_at: string;
   tiene_visitas?: boolean;
   destinatario?: { nombre: string | null; apellido: string | null } | null;
+  estado_liquidacion: 'a_liquidar' | 'liquidado';
 }
 
 const METODOS_PAGO = [
@@ -480,9 +481,8 @@ export default function Settlements() {
       if (sellerEnvioIds.length > 0) {
         const { data: ecomEnvios, error: ecomError } = await (supabase
           .from('envios') as any)
-          .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
+          .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
           .in('id', sellerEnvioIds)
-          .is('liquidacion_seller_id', null)
           .order('created_at', { ascending: true });
 
         if (ecomError) throw ecomError;
@@ -515,11 +515,10 @@ export default function Settlements() {
           // Query 1: envíos comunes filtrados por fecha_entrega en el rango
           const { data: commonEnvios, error: commonError } = await supabase
             .from('envios')
-            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
+            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
             .in('remitente_id', uniqueOnlyClienteIds)
             .gte('fecha_entrega', fechaInicioStr)
             .lte('fecha_entrega', fechaFinStr)
-            .is('liquidacion_seller_id', null)
             .order('created_at', { ascending: true });
 
           if (commonError) throw commonError;
@@ -527,12 +526,11 @@ export default function Settlements() {
           // Query 2: envíos sin fecha_entrega, filtrados por created_at en el rango
           const { data: commonEnviosNoDate, error: commonNoDateError } = await (supabase
             .from('envios') as any)
-            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
+            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
             .in('remitente_id', uniqueOnlyClienteIds)
             .is('fecha_entrega', null)
             .gte('created_at', fechaInicioStr)
             .lte('created_at', fechaFinStr)
-            .is('liquidacion_seller_id', null)
             .order('created_at', { ascending: true });
 
           if (commonNoDateError) throw commonNoDateError;
@@ -589,9 +587,8 @@ export default function Settlements() {
         if (ctaCteEnvioIds.length > 0) {
           const { data: fetchedEnvios } = await (supabase
             .from('envios') as any)
-            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
+            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
             .in('id', ctaCteEnvioIds)
-            .is('liquidacion_seller_id', null)
             .order('created_at', { ascending: true });
 
           ctaCteEnvios = fetchedEnvios || [];
@@ -775,6 +772,7 @@ export default function Settlements() {
             created_at: e.created_at,
             tiene_visitas: tieneVisitas,
             destinatario: e.destinatario || null,
+            estado_liquidacion: e.liquidacion_seller_id ? 'liquidado' as const : 'a_liquidar' as const,
           };
         });
       }
@@ -791,7 +789,7 @@ export default function Settlements() {
         .filter(m => m.tipo === 'ajuste')
         .reduce((sum, m) => sum + (m.monto || 0), 0);
 
-      const totalEnvios = allEnvios.reduce((sum, e) => sum + (e.precio_total || 0), 0);
+      const totalEnvios = allEnvios.filter(e => e.estado_liquidacion === 'a_liquidar').reduce((sum, e) => sum + (e.precio_total || 0), 0);
 
       const saldoPeriodo = totalCargos + totalEnvios - totalPagos + totalAjustes;
       const saldoAnterior = allMovs[0]?.saldo_anterior || 0;
@@ -812,8 +810,10 @@ export default function Settlements() {
       setCalculatedMovements(data.movements);
       setCalculatedEnvios(data.envios);
       setCalculatedTotals(data.totals);
-      if (data.envios.length === 0) {
-        toast.info('No hay envíos sin liquidar en el período seleccionado');
+      if (data.envios.filter(e => e.estado_liquidacion === 'a_liquidar').length === 0) {
+        toast.info(data.envios.length > 0 
+          ? 'Todos los envíos del período ya están liquidados' 
+          : 'No hay envíos en el período seleccionado');
       }
     },
     onError: (error: Error) => {
@@ -824,7 +824,8 @@ export default function Settlements() {
   // Generate liquidacion mutation - creates one per selected seller
   const generateMutation = useMutation({
     mutationFn: async () => {
-      if (calcSellers.length === 0 || calculatedEnvios.length === 0) {
+      const pendingEnvios = calculatedEnvios.filter(e => e.estado_liquidacion === 'a_liquidar');
+      if (calcSellers.length === 0 || pendingEnvios.length === 0) {
         throw new Error('No hay envíos para liquidar');
       }
 
@@ -837,7 +838,7 @@ export default function Settlements() {
         const sellerMovs = calculatedMovements.filter(m => (m as any).seller_id === sellerId);
         // For envíos we assign all to first seller (they share cliente_id)
         const isFirstSeller = sellerId === calcSellers[0];
-        const sellerEnvios = isFirstSeller ? calculatedEnvios : [];
+        const sellerEnvios = isFirstSeller ? pendingEnvios : [];
 
         const sellerTotalCargos = sellerMovs
           .filter(m => m.tipo === 'cargo')
@@ -1410,7 +1411,14 @@ export default function Settlements() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="p-3 bg-muted/50 rounded-lg">
                       <p className="text-sm text-muted-foreground">Envíos</p>
-                      <p className="text-xl font-bold">{calculatedEnvios.length}</p>
+                      <p className="text-xl font-bold">
+                        {calculatedEnvios.filter(e => e.estado_liquidacion === 'a_liquidar').length}
+                        {calculatedEnvios.some(e => e.estado_liquidacion === 'liquidado') && (
+                          <span className="text-sm font-normal text-muted-foreground ml-1">
+                            (+{calculatedEnvios.filter(e => e.estado_liquidacion === 'liquidado').length} liquidados)
+                          </span>
+                        )}
+                      </p>
                     </div>
                     <div className="p-3 bg-muted/50 rounded-lg">
                       <p className="text-sm text-muted-foreground">Total Envíos</p>
@@ -1443,21 +1451,25 @@ export default function Settlements() {
                               <TableHead>Destinatario</TableHead>
                               <TableHead>Ciudad</TableHead>
                               <TableHead>Estado</TableHead>
+                              <TableHead>Estado Liq.</TableHead>
                               <TableHead className="text-right">Precio</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
                             {calculatedEnvios.length === 0 ? (
                               <TableRow>
-                                <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
+                                <TableCell colSpan={7} className="text-center py-4 text-muted-foreground">
                                   {sellers?.some(s => calcSellers.includes(s.id) && s.cliente_id)
-                                    ? 'No hay envíos sin liquidar en el período'
+                                    ? 'No hay envíos en el período'
                                     : 'Sellers no tienen cliente vinculado'}
                                 </TableCell>
                               </TableRow>
                             ) : (
                               calculatedEnvios.map((envio) => (
-                                <TableRow key={envio.id} className={envio.precio_total === 0 ? 'bg-destructive/5' : ''}>
+                                <TableRow key={envio.id} className={cn(
+                                  envio.precio_total === 0 && envio.estado_liquidacion === 'a_liquidar' ? 'bg-destructive/5' : '',
+                                  envio.estado_liquidacion === 'liquidado' ? 'opacity-60' : ''
+                                )}>
                                   <TableCell className="text-sm">
                                     {format(new Date(envio.created_at), 'dd/MM/yy')}
                                   </TableCell>
@@ -1467,34 +1479,45 @@ export default function Settlements() {
                                   <TableCell>
                                     <Badge variant="outline" className="text-xs">{envio.estado || '-'}</Badge>
                                   </TableCell>
+                                  <TableCell>
+                                    {envio.estado_liquidacion === 'liquidado' ? (
+                                      <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 text-[10px]">Liquidado</Badge>
+                                    ) : (
+                                      <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 text-[10px]">A liquidar</Badge>
+                                    )}
+                                  </TableCell>
                                   <TableCell className="text-right">
                                     <div className="flex items-center justify-end gap-1">
-                                      <Input
-                                        type="number"
-                                        value={envio.precio_total}
-                                        onChange={(e) => {
-                                          const nuevoPrecio = parseFloat(e.target.value) || 0;
-                                          const updated = calculatedEnvios.map(ev =>
-                                            ev.id === envio.id ? { ...ev, precio_total: nuevoPrecio } : ev
-                                          );
-                                          setCalculatedEnvios(updated);
-                                          if (calculatedTotals) {
-                                            const totalEnvios = updated.reduce((sum, ev) => sum + ev.precio_total, 0);
-                                            setCalculatedTotals({
-                                              ...calculatedTotals,
-                                              totalEnvios,
-                                              saldoPeriodo: calculatedTotals.totalCargos + totalEnvios - calculatedTotals.totalPagos,
-                                            });
-                                          }
-                                        }}
-                                        className="w-24 h-7 text-right text-sm font-medium px-2"
-                                      />
+                                      {envio.estado_liquidacion === 'liquidado' ? (
+                                        <span className="text-sm font-medium text-muted-foreground">${envio.precio_total.toLocaleString()}</span>
+                                      ) : (
+                                        <Input
+                                          type="number"
+                                          value={envio.precio_total}
+                                          onChange={(e) => {
+                                            const nuevoPrecio = parseFloat(e.target.value) || 0;
+                                            const updated = calculatedEnvios.map(ev =>
+                                              ev.id === envio.id ? { ...ev, precio_total: nuevoPrecio } : ev
+                                            );
+                                            setCalculatedEnvios(updated);
+                                            if (calculatedTotals) {
+                                              const totalEnvios = updated.filter(ev => ev.estado_liquidacion === 'a_liquidar').reduce((sum, ev) => sum + ev.precio_total, 0);
+                                              setCalculatedTotals({
+                                                ...calculatedTotals,
+                                                totalEnvios,
+                                                saldoPeriodo: calculatedTotals.totalCargos + totalEnvios - calculatedTotals.totalPagos,
+                                              });
+                                            }
+                                          }}
+                                          className="w-24 h-7 text-right text-sm font-medium px-2"
+                                        />
+                                      )}
                                       {envio.precio_calculado && (
                                         <Badge variant="secondary" className="text-[10px] px-1 py-0">
                                           Zona
                                         </Badge>
                                       )}
-                                      {envio.precio_total === 0 && (
+                                      {envio.precio_total === 0 && envio.estado_liquidacion === 'a_liquidar' && (
                                         <Badge variant="destructive" className="text-[10px] px-1 py-0">
                                           Sin precio
                                         </Badge>
