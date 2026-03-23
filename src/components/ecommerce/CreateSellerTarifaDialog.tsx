@@ -52,6 +52,7 @@ export function CreateSellerTarifaDialog({
     nombre: 'Recargo por día',
     codigo: 'RECARGO_DIA',
     monto: 0,
+    multiplicar_por_dias: true,
   });
 
   const updateZona = (index: number, field: keyof ZonaRow, value: string | number) => {
