@@ -1540,7 +1540,7 @@ export default function Settlements() {
                                   </TableCell>
                                   <TableCell className="text-right">
                                     <div className="flex items-center justify-end gap-1">
-                                      {envio.estado_liquidacion === 'liquidado' ? (
+                                      {envio.estado_liquidacion === 'liquidado' || isExcluded ? (
                                         <span className="text-sm font-medium text-muted-foreground">${envio.precio_total.toLocaleString()}</span>
                                       ) : (
                                         <Input
@@ -1552,14 +1552,6 @@ export default function Settlements() {
                                               ev.id === envio.id ? { ...ev, precio_total: nuevoPrecio } : ev
                                             );
                                             setCalculatedEnvios(updated);
-                                            if (calculatedTotals) {
-                                              const totalEnvios = updated.filter(ev => ev.estado_liquidacion === 'a_liquidar').reduce((sum, ev) => sum + ev.precio_total, 0);
-                                              setCalculatedTotals({
-                                                ...calculatedTotals,
-                                                totalEnvios,
-                                                saldoPeriodo: calculatedTotals.totalCargos + totalEnvios - calculatedTotals.totalPagos,
-                                              });
-                                            }
                                           }}
                                           className="w-24 h-7 text-right text-sm font-medium px-2"
                                         />
@@ -1569,7 +1561,7 @@ export default function Settlements() {
                                           Zona
                                         </Badge>
                                       )}
-                                      {envio.precio_total === 0 && envio.estado_liquidacion === 'a_liquidar' && (
+                                      {envio.precio_total === 0 && isPending && !isExcluded && (
                                         <Badge variant="destructive" className="text-[10px] px-1 py-0">
                                           Sin precio
                                         </Badge>
@@ -1577,7 +1569,8 @@ export default function Settlements() {
                                     </div>
                                   </TableCell>
                                 </TableRow>
-                              ))
+                                );
+                              })
                             )}
                           </TableBody>
                         </Table>
