@@ -810,8 +810,10 @@ export default function Settlements() {
       setCalculatedMovements(data.movements);
       setCalculatedEnvios(data.envios);
       setCalculatedTotals(data.totals);
-      if (data.envios.length === 0) {
-        toast.info('No hay envíos sin liquidar en el período seleccionado');
+      if (data.envios.filter(e => e.estado_liquidacion === 'a_liquidar').length === 0) {
+        toast.info(data.envios.length > 0 
+          ? 'Todos los envíos del período ya están liquidados' 
+          : 'No hay envíos en el período seleccionado');
       }
     },
     onError: (error: Error) => {
