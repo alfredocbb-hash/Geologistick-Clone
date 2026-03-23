@@ -1497,11 +1497,31 @@ export default function Settlements() {
                                 </TableCell>
                               </TableRow>
                             ) : (
-                              calculatedEnvios.map((envio) => (
+                              calculatedEnvios.map((envio) => {
+                                const isExcluded = excludedEnvioIds.has(envio.id);
+                                const isPending = envio.estado_liquidacion === 'a_liquidar';
+                                return (
                                 <TableRow key={envio.id} className={cn(
-                                  envio.precio_total === 0 && envio.estado_liquidacion === 'a_liquidar' ? 'bg-destructive/5' : '',
-                                  envio.estado_liquidacion === 'liquidado' ? 'opacity-60' : ''
+                                  envio.precio_total === 0 && isPending && !isExcluded ? 'bg-destructive/5' : '',
+                                  envio.estado_liquidacion === 'liquidado' ? 'opacity-60' : '',
+                                  isExcluded ? 'opacity-40 line-through' : ''
                                 )}>
+                                  <TableCell>
+                                    {isPending ? (
+                                      <Checkbox
+                                        checked={!isExcluded}
+                                        onCheckedChange={(checked) => {
+                                          const newSet = new Set(excludedEnvioIds);
+                                          if (checked) {
+                                            newSet.delete(envio.id);
+                                          } else {
+                                            newSet.add(envio.id);
+                                          }
+                                          setExcludedEnvioIds(newSet);
+                                        }}
+                                      />
+                                    ) : null}
+                                  </TableCell>
                                   <TableCell className="text-sm">
                                     {format(new Date(envio.created_at), 'dd/MM/yy')}
                                   </TableCell>
