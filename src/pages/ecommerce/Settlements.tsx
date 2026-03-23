@@ -170,14 +170,23 @@ export default function Settlements() {
         (tarifasData || []).forEach(t => tarifasMap.set(t.id, t));
       }
 
-      // Always load zone tarifas for the tenant (needed even when sellers have no tarifa_id)
+      // Load zone tarifas for the tenant — split into exclusive and general
       const { data: zoneTarifas } = await supabase
         .from('tarifas')
-        .select('id, precio_base, zona_destino, nombre')
+        .select('id, precio_base, zona_destino, nombre, seller_exclusivo_id')
         .eq('tenant_id', tenantId)
         .eq('tipo_tarifa', 'zona')
         .eq('activa', true);
-      const allZoneTarifas = zoneTarifas || [];
+      const allZoneTarifasRaw = zoneTarifas || [];
+      // Exclusive tarifas grouped by seller
+      const exclusiveTarifasBySeller = new Map<string, any[]>();
+      allZoneTarifasRaw.filter(t => t.seller_exclusivo_id).forEach(t => {
+        const list = exclusiveTarifasBySeller.get(t.seller_exclusivo_id!) || [];
+        list.push(t);
+        exclusiveTarifasBySeller.set(t.seller_exclusivo_id!, list);
+      });
+      // General zone tarifas (no seller_exclusivo_id)
+      const allZoneTarifas = allZoneTarifasRaw.filter(t => !t.seller_exclusivo_id);
 
       // 2. For each seller, fetch their envios and payments
       const balances: Record<string, { totalEnvios: number; totalPagos: number; cantEnvios: number; saldoCalculado: number }> = {};
