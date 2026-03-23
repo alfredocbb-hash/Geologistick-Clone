@@ -25,15 +25,15 @@ export function SellerConceptosEditor({ sellerId, tarifaId }: SellerConceptosEdi
   const queryClient = useQueryClient();
 
   // Fetch all tarifas for this seller (exclusive ones)
-  const { data: tarifaIds } = useQuery({
+  const { data: tarifaIds } = useQuery<string[]>({
     queryKey: ['seller-tarifa-ids', sellerId],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await (supabase as any)
         .from('tarifas')
         .select('id')
-        .eq('seller_exclusivo_id' as any, sellerId)
-        .eq('activa', true) as any;
-      return (data || []).map(t => t.id);
+        .eq('seller_exclusivo_id', sellerId)
+        .eq('activa', true);
+      return (data || []).map((t: any) => t.id);
     },
     enabled: !!sellerId,
   });
