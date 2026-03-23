@@ -895,10 +895,10 @@ export default function Settlements() {
           }
         }
         // Export to outer scope
-        (globalDiaChargesRef as any) = globalDiaChargesLocal;
+        globalDiaChargesRef = globalDiaChargesLocal;
       }
 
-      const globalDiaCharges: CargoGlobalDia[] = (globalDiaChargesRef as any) || [];
+      const globalDiaCharges = globalDiaChargesRef;
       const totalCargosGlobalDia = globalDiaCharges.reduce((sum, g) => sum + g.total, 0);
 
       const totalCargos = allMovs
