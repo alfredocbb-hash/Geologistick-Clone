@@ -811,6 +811,7 @@ export default function Settlements() {
       setCalculatedMovements(data.movements);
       setCalculatedEnvios(data.envios);
       setCalculatedTotals(data.totals);
+      setExcludedEnvioIds(new Set());
       if (data.envios.filter(e => e.estado_liquidacion === 'a_liquidar').length === 0) {
         toast.info(data.envios.length > 0 
           ? 'Todos los envíos del período ya están liquidados' 
