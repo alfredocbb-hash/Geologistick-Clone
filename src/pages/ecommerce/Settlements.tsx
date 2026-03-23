@@ -752,6 +752,7 @@ export default function Settlements() {
                 zonaMatch = match.zona;
               }
             }
+          }
           // If no tarifa and no zone match, keep original precio_total as fallback
 
           // Cancelado sin visitas = $0
