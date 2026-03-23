@@ -1,0 +1,1 @@
+ALTER TABLE public.tarifas ADD COLUMN seller_exclusivo_id UUID REFERENCES public.ecommerce_sellers(id) ON DELETE SET NULL;

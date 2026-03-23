@@ -15,8 +15,9 @@ import { Switch } from '@/components/ui/switch';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, User, UserPlus, UserX, Link2Off, CheckCircle } from 'lucide-react';
+import { Loader2, User, UserPlus, UserX, Link2Off, CheckCircle, Plus } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { CreateSellerTarifaDialog } from './CreateSellerTarifaDialog';
 
 const formSchema = z.object({
   nombre: z.string().min(2, 'Nombre requerido'),
@@ -116,6 +117,7 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
   const { tenantId } = useTenant();
   const queryClient = useQueryClient();
   const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [showCreateTarifa, setShowCreateTarifa] = useState(false);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -543,21 +545,43 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Tarifa</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {tarifas?.map((t) => (
-                          <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="flex gap-2">
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {tarifas?.map((t) => (
+                            <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="shrink-0"
+                        onClick={() => setShowCreateTarifa(true)}
+                        title="Crear tarifa personalizada"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )}
+              />
+              <CreateSellerTarifaDialog
+                open={showCreateTarifa}
+                onOpenChange={setShowCreateTarifa}
+                sellerId={seller.id}
+                sellerNombre={seller.nombre}
+                onSuccess={(tarifaId) => {
+                  form.setValue('tarifa_id', tarifaId, { shouldDirty: true });
+                  queryClient.invalidateQueries({ queryKey: ['tarifas-active'] });
+                }}
               />
             </div>
 

@@ -3936,6 +3936,7 @@ export type Database = {
           precio_por_m3: number | null
           rangos_kg: Json | null
           rangos_precios: Json | null
+          seller_exclusivo_id: string | null
           tenant_id: string | null
           tipo_tarifa: string | null
           umbral_volumen_cm: number | null
@@ -3961,6 +3962,7 @@ export type Database = {
           precio_por_m3?: number | null
           rangos_kg?: Json | null
           rangos_precios?: Json | null
+          seller_exclusivo_id?: string | null
           tenant_id?: string | null
           tipo_tarifa?: string | null
           umbral_volumen_cm?: number | null
@@ -3986,6 +3988,7 @@ export type Database = {
           precio_por_m3?: number | null
           rangos_kg?: Json | null
           rangos_precios?: Json | null
+          seller_exclusivo_id?: string | null
           tenant_id?: string | null
           tipo_tarifa?: string | null
           umbral_volumen_cm?: number | null
@@ -3994,6 +3997,13 @@ export type Database = {
           zona_origen?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "tarifas_seller_exclusivo_id_fkey"
+            columns: ["seller_exclusivo_id"]
+            isOneToOne: false
+            referencedRelation: "ecommerce_sellers"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tarifas_tenant_id_fkey"
             columns: ["tenant_id"]

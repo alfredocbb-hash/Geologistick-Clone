@@ -109,16 +109,55 @@ export function CreateShipmentFromOrderDialog({
     enabled: !!tenantId && open && !alreadyHasShipment,
   });
 
+  // Fetch exclusive seller tarifas first, fallback to seller.tarifa_id
+  const { data: sellerTarifas } = useQuery({
+    queryKey: ['seller-exclusive-tarifas', seller?.id],
+    queryFn: async () => {
+      if (!seller?.id) return [];
+      const { data, error } = await supabase
+        .from('tarifas')
+        .select('id, nombre, precio_base, zona_destino, tipo_tarifa')
+        .eq('seller_exclusivo_id', seller.id)
+        .eq('activa', true);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!seller?.id && open && !alreadyHasShipment,
+  });
+
+  // Determine which tarifa to use based on zone matching
+  const matchedTarifaId = (() => {
+    if (!sellerTarifas?.length) return seller?.tarifa_id || null;
+    
+    const ciudad = order.shipping_city?.toLowerCase().trim() || '';
+    const provincia = order.shipping_province?.toLowerCase().trim() || '';
+    
+    // Try to match by city in zona_destino
+    for (const t of sellerTarifas) {
+      if (!t.zona_destino) continue;
+      const destinos = t.zona_destino.split(',').map((d: string) => d.trim().toLowerCase());
+      if (destinos.some(d => ciudad.includes(d) || d.includes(ciudad))) return t.id;
+    }
+    // Try province match
+    for (const t of sellerTarifas) {
+      if (!t.zona_destino) continue;
+      const destinos = t.zona_destino.split(',').map((d: string) => d.trim().toLowerCase());
+      if (destinos.some(d => provincia.includes(d) || d.includes(provincia))) return t.id;
+    }
+    // Fallback to first exclusive tarifa or seller.tarifa_id
+    return sellerTarifas[0]?.id || seller?.tarifa_id || null;
+  })();
+
   // Fetch tarifa and calculate price
   const { data: tarifaData } = useQuery({
-    queryKey: ['tarifa-precios', seller?.tarifa_id],
+    queryKey: ['tarifa-precios', matchedTarifaId],
     queryFn: async () => {
-      if (!seller?.tarifa_id) return null;
+      if (!matchedTarifaId) return null;
       
       const { data: tarifa, error: tarifaError } = await supabase
         .from('tarifas')
         .select('id, nombre, precio_base')
-        .eq('id', seller.tarifa_id)
+        .eq('id', matchedTarifaId)
         .single();
       
       if (tarifaError) throw tarifaError;
@@ -129,13 +168,13 @@ export function CreateShipmentFromOrderDialog({
           monto,
           concepto:tarifa_conceptos(codigo, nombre, es_basico)
         `)
-        .eq('tarifa_id', seller.tarifa_id);
+        .eq('tarifa_id', matchedTarifaId);
       
       if (conceptosError) throw conceptosError;
       
       return { tarifa, conceptos };
     },
-    enabled: !!seller?.tarifa_id && open && !alreadyHasShipment,
+    enabled: !!matchedTarifaId && open && !alreadyHasShipment,
   });
 
   // Set default origin branch from seller
