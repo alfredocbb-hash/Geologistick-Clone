@@ -20,6 +20,7 @@ interface ConceptoAdicional {
   nombre: string;
   codigo: string;
   monto: number;
+  multiplicar_por_dias: boolean;
 }
 
 interface CreateSellerTarifaDialogProps {
@@ -51,6 +52,7 @@ export function CreateSellerTarifaDialog({
     nombre: 'Recargo por día',
     codigo: 'RECARGO_DIA',
     monto: 0,
+    multiplicar_por_dias: true,
   });
 
   const updateZona = (index: number, field: keyof ZonaRow, value: string | number) => {
@@ -134,7 +136,8 @@ export function CreateSellerTarifaDialog({
               tarifa_id: tarifa.id,
               concepto_id: conceptoId,
               monto: concepto.monto,
-            });
+              multiplicar_por_dias: concepto.multiplicar_por_dias,
+            } as any);
           if (cpErr) console.error('Error linking concepto:', cpErr);
         }
       }
@@ -233,30 +236,42 @@ export function CreateSellerTarifaDialog({
               <Switch checked={agregarConcepto} onCheckedChange={setAgregarConcepto} />
             </div>
             {agregarConcepto && (
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <Label className="text-xs text-muted-foreground">Nombre</Label>
-                  <Input
-                    value={concepto.nombre}
-                    onChange={(e) => setConcepto(prev => ({ ...prev, nombre: e.target.value }))}
-                    className="h-9 text-sm"
-                  />
+              <div className="space-y-3">
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Nombre</Label>
+                    <Input
+                      value={concepto.nombre}
+                      onChange={(e) => setConcepto(prev => ({ ...prev, nombre: e.target.value }))}
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Código</Label>
+                    <Input
+                      value={concepto.codigo}
+                      onChange={(e) => setConcepto(prev => ({ ...prev, codigo: e.target.value }))}
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Monto $</Label>
+                    <Input
+                      type="number"
+                      value={concepto.monto || ''}
+                      onChange={(e) => setConcepto(prev => ({ ...prev, monto: parseFloat(e.target.value) || 0 }))}
+                      className="h-9 text-sm"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Código</Label>
-                  <Input
-                    value={concepto.codigo}
-                    onChange={(e) => setConcepto(prev => ({ ...prev, codigo: e.target.value }))}
-                    className="h-9 text-sm"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Monto $</Label>
-                  <Input
-                    type="number"
-                    value={concepto.monto || ''}
-                    onChange={(e) => setConcepto(prev => ({ ...prev, monto: parseFloat(e.target.value) || 0 }))}
-                    className="h-9 text-sm"
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="text-sm">Cobro por día (lun-vie)</Label>
+                    <p className="text-xs text-muted-foreground">Se multiplica por días hábiles del período de liquidación</p>
+                  </div>
+                  <Switch
+                    checked={concepto.multiplicar_por_dias}
+                    onCheckedChange={(v) => setConcepto(prev => ({ ...prev, multiplicar_por_dias: v }))}
                   />
                 </div>
               </div>

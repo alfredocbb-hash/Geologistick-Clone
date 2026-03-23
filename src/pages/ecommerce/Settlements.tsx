@@ -75,6 +75,13 @@ interface ConceptoAdicional {
   monto: number;
 }
 
+interface CargoGlobalDia {
+  nombre: string;
+  monto_dia: number;
+  dias: number;
+  total: number;
+}
+
 interface CalculatedEnvio {
   id: string;
   tracking_number: string;
@@ -127,6 +134,7 @@ export default function Settlements() {
     saldoAnterior: number;
     totalEnvios: number;
   } | null>(null);
+  const [cargosGlobalesDia, setCargosGlobalesDia] = useState<CargoGlobalDia[]>([]);
   
   const [notas, setNotas] = useState('');
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
@@ -615,6 +623,7 @@ export default function Settlements() {
         }
       }
 
+      let globalDiaChargesRef: CargoGlobalDia[] = [];
       {
         // 5: Combinar los tres conjuntos sin duplicados
         const ecommerceIds = new Set(ecommerceEnvios.map(e => e.id));
@@ -678,11 +687,11 @@ export default function Settlements() {
           ...uniqueTarifaIds,
           ...allZoneTarifasRaw.map(t => t.id),
         ])];
-        const conceptosByTarifa = new Map<string, { nombre: string; monto: number; es_porcentaje: boolean; porcentaje: number; multiplicar_por_bultos: boolean }[]>();
+        const conceptosByTarifa = new Map<string, { nombre: string; monto: number; es_porcentaje: boolean; porcentaje: number; multiplicar_por_bultos: boolean; multiplicar_por_dias: boolean }[]>();
         if (allTarifaIdsForConcepts.length > 0) {
-          const { data: conceptoPreciosData } = await supabase
-            .from('tarifa_concepto_precios')
-            .select('tarifa_id, monto, es_porcentaje, porcentaje, multiplicar_por_bultos, concepto:tarifa_conceptos!inner(nombre, es_basico, activo)')
+          const { data: conceptoPreciosData } = await (supabase
+            .from('tarifa_concepto_precios') as any)
+            .select('tarifa_id, monto, es_porcentaje, porcentaje, multiplicar_por_bultos, multiplicar_por_dias, concepto:tarifa_conceptos!inner(nombre, es_basico, activo)')
             .in('tarifa_id', allTarifaIdsForConcepts);
 
           (conceptoPreciosData || []).forEach((cp: any) => {
@@ -695,6 +704,7 @@ export default function Settlements() {
               es_porcentaje: cp.es_porcentaje || false,
               porcentaje: cp.porcentaje || 0,
               multiplicar_por_bultos: cp.multiplicar_por_bultos || false,
+              multiplicar_por_dias: cp.multiplicar_por_dias || false,
             });
             conceptosByTarifa.set(cp.tarifa_id, list);
           });
@@ -798,10 +808,11 @@ export default function Settlements() {
             }
           }
 
-          // Sum basic concepts from the matched tarifa
+          // Sum basic concepts from the matched tarifa (skip multiplicar_por_dias — those are global)
           if (matchedTarifaId) {
             const concepts = conceptosByTarifa.get(matchedTarifaId) || [];
             for (const c of concepts) {
+              if (c.multiplicar_por_dias) continue; // handled globally
               let montoConcepto = 0;
               if (c.es_porcentaje && c.porcentaje > 0) {
                 montoConcepto = precioFinal * c.porcentaje / 100;
@@ -844,7 +855,51 @@ export default function Settlements() {
             conceptos_adicionales: conceptosAdicionales,
           };
         });
+
+        // Calculate per-day global charges inside this block where conceptosByTarifa is available
+        const countWeekdays = (start: Date, end: Date): number => {
+          let count = 0;
+          const d = new Date(start);
+          while (d <= end) {
+            const day = d.getDay();
+            if (day !== 0 && day !== 6) count++;
+            d.setDate(d.getDate() + 1);
+          }
+          return count;
+        };
+        const diasHabiles = countWeekdays(fechaInicio, fechaFin);
+
+        const perDayConceptsSeen = new Set<string>();
+        const globalDiaChargesLocal: CargoGlobalDia[] = [];
+        for (const sellerId of calcSellers) {
+          const sellerObj = selectedSellerObjs.find(s => s.id === sellerId);
+          const exclusives = mutExclusiveBySeller.get(sellerId) || [];
+          const tarifaIdsToCheck = [
+            ...exclusives.map(t => t.id),
+            ...(sellerObj?.tarifa_id ? [sellerObj.tarifa_id] : []),
+          ];
+          for (const tid of tarifaIdsToCheck) {
+            const concepts = conceptosByTarifa.get(tid) || [];
+            for (const c of concepts) {
+              if (!c.multiplicar_por_dias) continue;
+              const key = `${sellerId}-${c.nombre}`;
+              if (perDayConceptsSeen.has(key)) continue;
+              perDayConceptsSeen.add(key);
+              globalDiaChargesLocal.push({
+                nombre: c.nombre,
+                monto_dia: c.monto,
+                dias: diasHabiles,
+                total: Math.round(c.monto * diasHabiles * 100) / 100,
+              });
+            }
+          }
+        }
+        // Export to outer scope
+        globalDiaChargesRef = globalDiaChargesLocal;
       }
+
+      const globalDiaCharges = globalDiaChargesRef;
+      const totalCargosGlobalDia = globalDiaCharges.reduce((sum, g) => sum + g.total, 0);
 
       const totalCargos = allMovs
         .filter(m => m.tipo === 'cargo')
@@ -858,7 +913,7 @@ export default function Settlements() {
         .filter(m => m.tipo === 'ajuste')
         .reduce((sum, m) => sum + (m.monto || 0), 0);
 
-      const totalEnvios = allEnvios.filter(e => e.estado_liquidacion === 'a_liquidar').reduce((sum, e) => sum + (e.precio_total || 0), 0);
+      const totalEnvios = allEnvios.filter(e => e.estado_liquidacion === 'a_liquidar').reduce((sum, e) => sum + (e.precio_total || 0), 0) + totalCargosGlobalDia;
 
       const saldoPeriodo = totalCargos + totalEnvios - totalPagos + totalAjustes;
       const saldoAnterior = allMovs[0]?.saldo_anterior || 0;
@@ -866,6 +921,7 @@ export default function Settlements() {
       return {
         movements: allMovs,
         envios: allEnvios,
+        cargosGlobalesDia: globalDiaCharges,
         totals: {
           totalCargos,
           totalPagos,
@@ -879,6 +935,7 @@ export default function Settlements() {
       setCalculatedMovements(data.movements);
       setCalculatedEnvios(data.envios);
       setCalculatedTotals(data.totals);
+      setCargosGlobalesDia(data.cargosGlobalesDia);
       setExcludedEnvioIds(new Set());
       if (data.envios.filter(e => e.estado_liquidacion === 'a_liquidar').length === 0) {
         toast.info(data.envios.length > 0 
@@ -916,7 +973,8 @@ export default function Settlements() {
         const sellerTotalPagos = sellerMovs
           .filter(m => m.tipo === 'pago')
           .reduce((sum, m) => sum + Math.abs(m.monto || 0), 0);
-        const sellerTotalEnvios = sellerEnvios.reduce((sum, e) => sum + (e.precio_total || 0), 0);
+        const sellerTotalEnvios = sellerEnvios.reduce((sum, e) => sum + (e.precio_total || 0), 0)
+          + (isFirstSeller ? cargosGlobalesDia.reduce((sum, g) => sum + g.total, 0) : 0);
 
         // Skip if no data for this seller
         if (sellerMovs.length === 0 && sellerEnvios.length === 0) continue;
@@ -938,7 +996,7 @@ export default function Settlements() {
             saldo_final: (sellerMovs[0]?.saldo_anterior || 0) + sellerTotalEnvios - sellerTotalPagos,
             cantidad_movimientos: sellerMovs.length + sellerEnvios.length,
             estado: 'generada',
-            notas: [notas, sellerNames].filter(Boolean).join(' | ') || null,
+            notas: [notas, sellerNames, ...(isFirstSeller ? cargosGlobalesDia.map(g => `${g.nombre}: ${g.dias} días × $${g.monto_dia.toLocaleString()} = $${g.total.toLocaleString()}`) : [])].filter(Boolean).join(' | ') || null,
             generado_por: user?.id,
             tenant_id: profile?.tenant_id,
           })
@@ -1484,7 +1542,8 @@ export default function Settlements() {
                       const excludedCount = excludedEnvioIds.size;
                       const liquidadosCount = calculatedEnvios.filter(e => e.estado_liquidacion === 'liquidado').length;
                       const totalEnviosIncluded = includedEnvios.reduce((sum, e) => sum + (e.precio_total || 0), 0);
-                      const saldoPeriodoCalc = calculatedTotals.totalCargos + totalEnviosIncluded - calculatedTotals.totalPagos;
+                      const totalCargosGlobalDia = cargosGlobalesDia.reduce((sum, g) => sum + g.total, 0);
+                      const saldoPeriodoCalc = calculatedTotals.totalCargos + totalEnviosIncluded + totalCargosGlobalDia - calculatedTotals.totalPagos;
                       return (
                         <>
                           <div className="p-3 bg-muted/50 rounded-lg">
@@ -1502,7 +1561,7 @@ export default function Settlements() {
                           <div className="p-3 bg-muted/50 rounded-lg">
                             <p className="text-sm text-muted-foreground">Total Envíos</p>
                             <p className="text-xl font-bold text-orange-600">
-                              ${totalEnviosIncluded.toLocaleString()}
+                              ${(totalEnviosIncluded + totalCargosGlobalDia).toLocaleString()}
                             </p>
                           </div>
                           <div className="p-3 bg-muted/50 rounded-lg">
@@ -1524,6 +1583,18 @@ export default function Settlements() {
 
                   {hasCalculatedData && (
                     <>
+                      {cargosGlobalesDia.length > 0 && (
+                        <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20 p-3 space-y-1">
+                          {cargosGlobalesDia.map((cargo, i) => (
+                            <div key={i} className="flex items-center justify-between text-sm">
+                              <span className="font-medium">{cargo.nombre}</span>
+                              <span>
+                                {cargo.dias} días × ${cargo.monto_dia.toLocaleString()} = <strong>${cargo.total.toLocaleString()}</strong>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <div className="max-h-48 overflow-y-auto border rounded-lg">
                         <Table>
                           <TableHeader>
