@@ -75,6 +75,13 @@ interface ConceptoAdicional {
   monto: number;
 }
 
+interface CargoGlobalDia {
+  nombre: string;
+  monto_dia: number;
+  dias: number;
+  total: number;
+}
+
 interface CalculatedEnvio {
   id: string;
   tracking_number: string;
