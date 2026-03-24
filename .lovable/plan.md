@@ -1,24 +1,22 @@
 
 
-## Plan: Mostrar cargos globales por día en el PDF de liquidación de seller
+## Plan: Exportar estructura y datos de la base de datos
 
-### Problema
-El PDF de liquidación de seller muestra "Movimientos: 187" (que no se quiere ver) y no detalla el cargo por retiro/día ($7.000 × 5 días = $35.000), aunque está incluido en el total.
+### Qué se hará
+Ejecutar un script que genere un archivo SQL completo con:
+1. **Estructura (CREATE TABLE)** de las 70 tablas del esquema `public`
+2. **Datos (INSERT INTO)** de todas las tablas
+3. **Funciones, triggers, tipos y enums** del esquema público
+4. **Índices y constraints** (foreign keys, unique, etc.)
 
-### Cambios en `src/lib/generateSettlementPDF.ts`
+### Método
+Se usará `pg_dump` con las variables de entorno ya configuradas para exportar el esquema `public` completo. El archivo resultante se guardará en `/mnt/documents/` para descarga directa.
 
-**1. Agregar soporte para `cargosGlobalesDia` en la interfaz `SettlementPDFData`**
-- Nuevo campo opcional: `cargosGlobalesDia?: Array<{ nombre: string; monto_dia: number; dias: number; total: number }>`
+### Resultado
+Un archivo `database_dump.sql` descargable con todo lo necesario para recrear la base en otro servidor PostgreSQL.
 
-**2. Modificar el bloque financiero del PDF para tipo `seller`**
-- Quitar la línea "Movimientos: N"
-- Antes de "SALDO DEL PERÍODO", agregar una línea por cada cargo global (ej: "Retiro por día: 5 días × $7.000 = $35.000")
-- Ajustar la altura del box (`boxH`) dinámicamente según la cantidad de cargos globales
-
-**3. Pasar los cargos globales desde `downloadSellerSettlementPDF`**
-- Parsear los cargos desde el campo `notas` de la liquidación (donde se guardan como texto: `"Retiro_dia: 5 días × $7.000 = $35.000"`)
-- Extraer nombre, días, monto por día y total usando un regex simple
-
-### Archivos a modificar
-- `src/lib/generateSettlementPDF.ts`
+### Nota importante
+- Se excluyen los esquemas internos (`auth`, `storage`, `realtime`, etc.) ya que son propios de la infraestructura actual
+- Las contraseñas de usuarios **no** se exportan (están en `auth.users` que es un esquema reservado)
+- Las políticas RLS se incluirán para referencia
 
