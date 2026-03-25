@@ -1,22 +1,25 @@
 
 
-## Plan: Exportar estructura y datos de la base de datos
+## Plan: Editar precios de envíos en liquidación no aprobada
 
-### Qué se hará
-Ejecutar un script que genere un archivo SQL completo con:
-1. **Estructura (CREATE TABLE)** de las 70 tablas del esquema `public`
-2. **Datos (INSERT INTO)** de todas las tablas
-3. **Funciones, triggers, tipos y enums** del esquema público
-4. **Índices y constraints** (foreign keys, unique, etc.)
+### Problema
+Una vez generada la liquidación, el diálogo de detalle muestra los precios como solo lectura. El administrador no puede corregir precios sin cancelar y regenerar la liquidación completa.
 
-### Método
-Se usará `pg_dump` con las variables de entorno ya configuradas para exportar el esquema `public` completo. El archivo resultante se guardará en `/mnt/documents/` para descarga directa.
+### Solución
+Hacer editables los precios de cada envío en el tab "Envíos" del `SellerLiquidacionDetailDialog`, solo cuando el estado de la liquidación es `generada` (no aprobada, no pagada, no cancelada).
 
-### Resultado
-Un archivo `database_dump.sql` descargable con todo lo necesario para recrear la base en otro servidor PostgreSQL.
+### Cambios en `SellerLiquidacionDetailDialog.tsx`
 
-### Nota importante
-- Se excluyen los esquemas internos (`auth`, `storage`, `realtime`, etc.) ya que son propios de la infraestructura actual
-- Las contraseñas de usuarios **no** se exportan (están en `auth.users` que es un esquema reservado)
-- Las políticas RLS se incluirán para referencia
+1. **Precio editable por envío**: En la columna "Precio" de la tabla de envíos, si `liquidacion.estado === 'generada'` y el envío no está excluido, mostrar un `Input` editable en lugar del texto fijo. Mantener los cambios en estado local.
+
+2. **Botón "Guardar Cambios"**: Agregar un botón debajo de la tabla que:
+   - Actualice `envios.precio_total` en la base de datos para cada envío modificado
+   - Recalcule y actualice `liquidaciones_seller.total_cargos` y `saldo_periodo` y `saldo_final` con los nuevos totales
+   - Invalide las queries relacionadas para refrescar los datos
+   - Solo se muestre cuando hay cambios pendientes
+
+3. **Indicador visual**: Mostrar el botón solo cuando hay diferencias entre los precios editados y los originales. Mostrar un badge "Editado" en los envíos con precio modificado.
+
+### Archivos a modificar
+- `src/components/ecommerce/SellerLiquidacionDetailDialog.tsx`
 
