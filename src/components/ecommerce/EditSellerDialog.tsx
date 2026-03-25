@@ -585,6 +585,29 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
               />
             </div>
 
+            {/* Logistics Account Toggle */}
+            {form.watch('plataforma') === 'mercadolibre' && (
+              <div className="flex items-center justify-between rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20 p-4">
+                <div className="space-y-0.5">
+                  <Label>Cuenta Logística</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Usar esta cuenta para registrar envíos Flex de sellers no autorizados
+                  </p>
+                </div>
+                <FormField
+                  control={form.control}
+                  name="es_cuenta_logistica"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <Switch checked={field.value} onCheckedChange={field.onChange} />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              </div>
+            )}
+
             <div className="flex items-center justify-between rounded-lg border p-4">
               <div className="space-y-0.5">
                 <Label>Cuenta Corriente</Label>
