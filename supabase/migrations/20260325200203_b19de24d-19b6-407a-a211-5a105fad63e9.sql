@@ -1,0 +1,1 @@
+ALTER TABLE public.ecommerce_sellers ADD COLUMN IF NOT EXISTS es_cuenta_logistica BOOLEAN DEFAULT false;
