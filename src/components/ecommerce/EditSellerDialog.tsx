@@ -186,6 +186,7 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
         express_surcharge: seller.express_surcharge || 0,
         permite_pickup: seller.permite_pickup || false,
         pickup_surcharge: seller.pickup_surcharge || 0,
+        es_cuenta_logistica: (seller as any).es_cuenta_logistica || false,
         // User linking
         vincular_usuario: seller.user_id ? 'mantener' : 'ninguno',
         user_id: '',
