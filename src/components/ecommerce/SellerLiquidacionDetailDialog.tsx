@@ -508,6 +508,20 @@ export function SellerLiquidacionDetailDialog({
                                       </TooltipContent>
                                     </Tooltip>
                                   </TooltipProvider>
+                                ) : isEditable ? (
+                                  <div className="flex items-center justify-end gap-1">
+                                    <span className="text-muted-foreground">$</span>
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      className="w-24 h-8 text-right text-sm"
+                                      value={editedPrices[envio.id] !== undefined ? editedPrices[envio.id] : (envio.precio_total || 0)}
+                                      onChange={(e) => handlePriceChange(envio.id, e.target.value)}
+                                    />
+                                    {editedPrices[envio.id] !== undefined && parseFloat(editedPrices[envio.id]) !== (envio.precio_total || 0) && (
+                                      <Badge variant="outline" className="text-xs border-orange-300 text-orange-600">Editado</Badge>
+                                    )}
+                                  </div>
                                 ) : (
                                   `$${envio.precio_total?.toLocaleString()}`
                                 )}
@@ -532,6 +546,14 @@ export function SellerLiquidacionDetailDialog({
                           )}
                         </TableBody>
                       </Table>
+                    )}
+                    {isEditable && hasChanges && (
+                      <div className="p-4 border-t flex justify-end">
+                        <Button onClick={handleSaveChanges} disabled={isSaving}>
+                          <Save className="mr-2 h-4 w-4" />
+                          {isSaving ? 'Guardando...' : 'Guardar Cambios'}
+                        </Button>
+                      </div>
                     )}
                   </CardContent>
                 </Card>
