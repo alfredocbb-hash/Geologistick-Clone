@@ -44,6 +44,7 @@ const formSchema = z.object({
   express_surcharge: z.number().default(0),
   permite_pickup: z.boolean().default(false),
   pickup_surcharge: z.number().default(0),
+  es_cuenta_logistica: z.boolean().default(false),
   // User linking fields
   vincular_usuario: z.enum(['ninguno', 'existente', 'nuevo', 'mantener']).default('mantener'),
   user_id: z.string().optional(),
@@ -104,6 +105,7 @@ interface Seller {
   express_surcharge?: number | null;
   permite_pickup?: boolean | null;
   pickup_surcharge?: number | null;
+  es_cuenta_logistica?: boolean | null;
 }
 
 interface EditSellerDialogProps {
@@ -146,6 +148,7 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
       express_surcharge: seller.express_surcharge || 0,
       permite_pickup: seller.permite_pickup || false,
       pickup_surcharge: seller.pickup_surcharge || 0,
+      es_cuenta_logistica: (seller as any).es_cuenta_logistica || false,
       // User linking
       vincular_usuario: seller.user_id ? 'mantener' : 'ninguno',
       user_id: '',
@@ -183,6 +186,7 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
         express_surcharge: seller.express_surcharge || 0,
         permite_pickup: seller.permite_pickup || false,
         pickup_surcharge: seller.pickup_surcharge || 0,
+        es_cuenta_logistica: (seller as any).es_cuenta_logistica || false,
         // User linking
         vincular_usuario: seller.user_id ? 'mantener' : 'ninguno',
         user_id: '',
@@ -370,6 +374,7 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
           express_surcharge: values.express_surcharge,
           permite_pickup: values.permite_pickup,
           pickup_surcharge: values.pickup_surcharge,
+          es_cuenta_logistica: values.es_cuenta_logistica,
           user_id: newUserId,
       };
       if (clienteId) updateData.cliente_id = clienteId;
@@ -584,6 +589,29 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
                 }}
               />
             </div>
+
+            {/* Logistics Account Toggle */}
+            {form.watch('plataforma') === 'mercadolibre' && (
+              <div className="flex items-center justify-between rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20 p-4">
+                <div className="space-y-0.5">
+                  <Label>Cuenta Logística</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Usar esta cuenta para registrar envíos Flex de sellers no autorizados
+                  </p>
+                </div>
+                <FormField
+                  control={form.control}
+                  name="es_cuenta_logistica"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <Switch checked={field.value} onCheckedChange={field.onChange} />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              </div>
+            )}
 
             <div className="flex items-center justify-between rounded-lg border p-4">
               <div className="space-y-0.5">

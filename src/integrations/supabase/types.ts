@@ -674,6 +674,7 @@ export type Database = {
           dias_retiro: string[] | null
           direccion: string | null
           email: string
+          es_cuenta_logistica: boolean | null
           express_delivery_days: number | null
           express_surcharge: number | null
           horario_retiro: string | null
@@ -716,6 +717,7 @@ export type Database = {
           dias_retiro?: string[] | null
           direccion?: string | null
           email: string
+          es_cuenta_logistica?: boolean | null
           express_delivery_days?: number | null
           express_surcharge?: number | null
           horario_retiro?: string | null
@@ -758,6 +760,7 @@ export type Database = {
           dias_retiro?: string[] | null
           direccion?: string | null
           email?: string
+          es_cuenta_logistica?: boolean | null
           express_delivery_days?: number | null
           express_surcharge?: number | null
           horario_retiro?: string | null

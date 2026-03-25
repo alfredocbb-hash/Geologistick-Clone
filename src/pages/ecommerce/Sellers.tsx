@@ -620,7 +620,14 @@ Saludos`;
                   <TableRow key={seller.id}>
                     <TableCell>
                       <div className="flex flex-col">
-                        <span className="font-medium">{seller.nombre}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{seller.nombre}</span>
+                          {(seller as any).es_cuenta_logistica && (
+                            <Badge variant="outline" className="text-[10px] border-blue-500 text-blue-600 dark:text-blue-400">
+                              Logística
+                            </Badge>
+                          )}
+                        </div>
                         <span className="text-xs text-muted-foreground">{seller.email}</span>
                       </div>
                     </TableCell>
