@@ -105,6 +105,7 @@ interface Seller {
   express_surcharge?: number | null;
   permite_pickup?: boolean | null;
   pickup_surcharge?: number | null;
+  es_cuenta_logistica?: boolean | null;
 }
 
 interface EditSellerDialogProps {
