@@ -105,9 +105,69 @@ export function SellerLiquidacionDetailDialog({
   // Adjusted total excluding cancelled without visits
   const adjustedTotal = useMemo(() => {
     if (!envios) return 0;
-    return envios.reduce((sum: number, e: any) =>
-      sum + (isExcludedFromSettlement(e) ? 0 : (e.precio_total || 0)), 0);
-  }, [envios, enviosConVisitasSet]);
+    return envios.reduce((sum: number, e: any) => {
+      if (isExcludedFromSettlement(e)) return sum;
+      const edited = editedPrices[e.id];
+      const price = edited !== undefined ? parseFloat(edited) || 0 : (e.precio_total || 0);
+      return sum + price;
+    }, 0);
+  }, [envios, enviosConVisitasSet, editedPrices]);
+
+  const isEditable = liquidacion?.estado === 'generada';
+
+  const hasChanges = useMemo(() => {
+    if (!envios) return false;
+    return Object.entries(editedPrices).some(([id, val]) => {
+      const envio = envios.find((e: any) => e.id === id);
+      return envio && parseFloat(val) !== (envio.precio_total || 0);
+    });
+  }, [editedPrices, envios]);
+
+  const handlePriceChange = useCallback((envioId: string, value: string) => {
+    setEditedPrices(prev => ({ ...prev, [envioId]: value }));
+  }, []);
+
+  const handleSaveChanges = useCallback(async () => {
+    if (!liquidacion || !envios) return;
+    setIsSaving(true);
+    try {
+      const updates = Object.entries(editedPrices)
+        .filter(([id, val]) => {
+          const envio = envios.find((e: any) => e.id === id);
+          return envio && parseFloat(val) !== (envio.precio_total || 0);
+        });
+
+      for (const [envioId, val] of updates) {
+        await (supabase.from('envios') as any)
+          .update({ precio_total: parseFloat(val) || 0 })
+          .eq('id', envioId);
+      }
+
+      // Recalculate totals
+      const newTotalCargos = adjustedTotal;
+      const saldoAnterior = liquidacion.saldo_anterior || 0;
+      const totalPagos = liquidacion.total_pagos || 0;
+      const newSaldoPeriodo = newTotalCargos - totalPagos;
+      const newSaldoFinal = saldoAnterior + newSaldoPeriodo;
+
+      await (supabase.from('liquidaciones_seller') as any)
+        .update({
+          total_cargos: newTotalCargos,
+          saldo_periodo: newSaldoPeriodo,
+          saldo_final: newSaldoFinal,
+        })
+        .eq('id', liquidacion.id);
+
+      setEditedPrices({});
+      queryClient.invalidateQueries({ queryKey: ['seller-liquidacion-envios'] });
+      queryClient.invalidateQueries({ queryKey: ['seller-liquidaciones'] });
+      toast.success('Precios actualizados correctamente');
+    } catch (err) {
+      toast.error('Error al guardar los cambios');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [liquidacion, envios, editedPrices, adjustedTotal, queryClient]);
 
   // Fetch factura if exists
   const { data: factura } = useQuery({
