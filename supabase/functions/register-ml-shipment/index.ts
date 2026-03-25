@@ -10,6 +10,7 @@ interface RegisterRequest {
   ml_shipment_id: string;
   sender_id: string;
   user_id?: string; // Optional: user who is registering (for sucursal_origen)
+  use_logistics_account?: boolean; // Flag to use generic logistics account
 }
 
 serve(async (req) => {
@@ -23,9 +24,9 @@ serve(async (req) => {
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    const { ml_shipment_id, sender_id, user_id }: RegisterRequest = await req.json();
+    const { ml_shipment_id, sender_id, user_id, use_logistics_account }: RegisterRequest = await req.json();
 
-    console.log('[register-ml-shipment] Request:', { ml_shipment_id, sender_id, user_id });
+    console.log('[register-ml-shipment] Request:', { ml_shipment_id, sender_id, user_id, use_logistics_account });
 
     if (!ml_shipment_id || !sender_id) {
       return new Response(
@@ -35,7 +36,10 @@ serve(async (req) => {
     }
 
     // 1. Find seller by store_id
-    const { data: seller, error: sellerError } = await supabase
+    let seller: any = null;
+    let isLogisticsAccount = false;
+
+    const { data: directSeller, error: sellerError } = await supabase
       .from('ecommerce_sellers')
       .select('*')
       .eq('store_id', sender_id)
@@ -50,14 +54,45 @@ serve(async (req) => {
       );
     }
 
+    if (directSeller) {
+      seller = directSeller;
+      console.log('[register-ml-shipment] Found direct seller:', seller.nombre, seller.id);
+    } else if (use_logistics_account && user_id) {
+      // No direct seller found — look for a logistics account in the user's tenant
+      console.log('[register-ml-shipment] No direct seller, looking for logistics account...');
+
+      const { data: userProfile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('user_id', user_id)
+        .single();
+
+      if (userProfile?.tenant_id) {
+        const { data: logisticsSeller } = await supabase
+          .from('ecommerce_sellers')
+          .select('*')
+          .eq('tenant_id', userProfile.tenant_id)
+          .eq('es_cuenta_logistica', true)
+          .eq('plataforma', 'mercadolibre')
+          .eq('activo', true)
+          .not('access_token', 'is', null)
+          .limit(1)
+          .maybeSingle();
+
+        if (logisticsSeller) {
+          seller = logisticsSeller;
+          isLogisticsAccount = true;
+          console.log('[register-ml-shipment] Using logistics account:', seller.nombre, seller.id);
+        }
+      }
+    }
+
     if (!seller) {
       return new Response(
         JSON.stringify({ error: `Seller con store_id ${sender_id} no encontrado` }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    console.log('[register-ml-shipment] Found seller:', seller.nombre, seller.id);
 
     // 2. Check if access_token is valid, refresh if needed
     let accessToken = seller.access_token;
@@ -233,19 +268,19 @@ serve(async (req) => {
       }
     }
     
-    // Fallback to seller's pickup branch if no user branch
-    if (!sucursalOrigenId && seller.sucursal_pickup_id) {
+    // Fallback to seller's pickup branch if no user branch (only for direct sellers)
+    if (!sucursalOrigenId && !isLogisticsAccount && seller.sucursal_pickup_id) {
       sucursalOrigenId = seller.sucursal_pickup_id;
       console.log('[register-ml-shipment] Using seller pickup branch:', sucursalOrigenId);
     }
 
-    // 9. Get seller's rate for pricing - zone-based lookup
+    // 9. Get rate for pricing - zone-based lookup
     let precioTotal = 0;
     let tarifaIdMatch: string | null = null;
     let tarifaMetodo: string | null = null;
 
-    if (seller.tarifa_id) {
-      // Seller has a specific rate assigned
+    // For logistics account, skip seller-specific rate
+    if (!isLogisticsAccount && seller.tarifa_id) {
       const { data: tarifa } = await supabase
         .from('tarifas')
         .select('id, precio_base')
@@ -261,10 +296,11 @@ serve(async (req) => {
 
     // If no seller rate or price is 0, try zone-based pricing
     if (precioTotal === 0 && city) {
+      const tenantId = seller.tenant_id;
       const { data: zoneTarifas } = await supabase
         .from('tarifas')
         .select('id, precio_base, zona_destino')
-        .eq('tenant_id', seller.tenant_id)
+        .eq('tenant_id', tenantId)
         .eq('tipo_tarifa', 'zona')
         .eq('activa', true);
 
@@ -329,52 +365,57 @@ serve(async (req) => {
       fechaEntregaEstimadaReg = nowArgReg.toISOString().substring(0, 10);
     }
 
-    // 11. Create ecommerce_order
-    const { data: ecommerceOrder, error: orderError } = await supabase
-      .from('ecommerce_orders')
-      .insert({
-        seller_id: seller.id,
-        tenant_id: seller.tenant_id,
-        plataforma: 'mercadolibre',
-        external_order_id: String(mlShipment.order_id || ml_shipment_id),
-        external_order_number: String(mlShipment.order_id || ml_shipment_id),
-        buyer_name: receiverName,
-        buyer_phone: phone,
-        shipping_address: fullAddress,
-        shipping_city: city,
-        shipping_province: state,
-        shipping_postal_code: zip,
-        shipping_lat: receiver.latitude,
-        shipping_lng: receiver.longitude,
-        order_status: 'pending',
-        fulfillment_status: 'pending',
-        ml_shipment_id: parseInt(ml_shipment_id),
-        ml_tracking_number: trackingNumber,
-        synced_at: new Date().toISOString(),
-        raw_data: mlShipment,
-        shipping_cost: mlShippingCost,
-        fecha_entrega_estimada: fechaEntregaEstimadaReg,
-      })
-      .select()
-      .single();
+    // 11. Create ecommerce_order ONLY for direct sellers (not logistics account)
+    let ecommerceOrderId: string | null = null;
+    if (!isLogisticsAccount) {
+      const { data: ecommerceOrder, error: orderError } = await supabase
+        .from('ecommerce_orders')
+        .insert({
+          seller_id: seller.id,
+          tenant_id: seller.tenant_id,
+          plataforma: 'mercadolibre',
+          external_order_id: String(mlShipment.order_id || ml_shipment_id),
+          external_order_number: String(mlShipment.order_id || ml_shipment_id),
+          buyer_name: receiverName,
+          buyer_phone: phone,
+          shipping_address: fullAddress,
+          shipping_city: city,
+          shipping_province: state,
+          shipping_postal_code: zip,
+          shipping_lat: receiver.latitude,
+          shipping_lng: receiver.longitude,
+          order_status: 'pending',
+          fulfillment_status: 'pending',
+          ml_shipment_id: parseInt(ml_shipment_id),
+          ml_tracking_number: trackingNumber,
+          synced_at: new Date().toISOString(),
+          raw_data: mlShipment,
+          shipping_cost: mlShippingCost,
+          fecha_entrega_estimada: fechaEntregaEstimadaReg,
+        })
+        .select()
+        .single();
 
-    if (orderError) {
-      console.error('[register-ml-shipment] Order creation error:', orderError);
-      return new Response(
-        JSON.stringify({ error: 'Error al crear orden ecommerce' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      if (orderError) {
+        console.error('[register-ml-shipment] Order creation error:', orderError);
+        return new Response(
+          JSON.stringify({ error: 'Error al crear orden ecommerce' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      ecommerceOrderId = ecommerceOrder.id;
+      console.log('[register-ml-shipment] Created ecommerce_order:', ecommerceOrderId);
+    } else {
+      console.log('[register-ml-shipment] Logistics account — skipping ecommerce_order creation');
     }
 
-    console.log('[register-ml-shipment] Created ecommerce_order:', ecommerceOrder.id);
-
-    // 11. Create envio with ORIGINAL ml_shipment_id and sucursal_origen
+    // 12. Create envio
     const { data: envio, error: envioError } = await supabase
       .from('envios')
       .insert({
         tenant_id: seller.tenant_id,
         tracking_number: trackingNumber,
-        ml_shipment_id: parseInt(ml_shipment_id), // Original ID from QR
+        ml_shipment_id: parseInt(ml_shipment_id),
         ml_order_id: mlShipment.order_id,
         ml_sync_status: 'synced',
         ml_last_sync_at: new Date().toISOString(),
@@ -387,19 +428,19 @@ serve(async (req) => {
         whatsapp_destinatario: phone,
         entrega_lat: receiver.latitude,
         entrega_lng: receiver.longitude,
-          precio_total: precioTotal,
-          precio_tarifa_vigente: precioTotal,
-          tarifa_id: tarifaIdMatch || seller.tarifa_id,
-          tarifa_metodo_aplicado: tarifaMetodo,
-          tipo_servicio: 'express',
-          tipo_servicio_detalle: 'ML Flex',
-          horario_preferido_entrega: horarioPreferido,
-          pago_contra_entrega: false,
-          descripcion: `Pedido MercadoLibre Flex #${mlShipment.order_id || ml_shipment_id}`,
-          sucursal_origen_id: sucursalOrigenId, // Track who did the pickup
-          precio_flete_ml: mlShippingCost, // ML shipping rate from API
-          nombre_remitente: seller.nombre,
-          remitente_id: seller.cliente_id || null,
+        precio_total: precioTotal,
+        precio_tarifa_vigente: precioTotal,
+        tarifa_id: tarifaIdMatch || (!isLogisticsAccount ? seller.tarifa_id : null),
+        tarifa_metodo_aplicado: tarifaMetodo,
+        tipo_servicio: 'express',
+        tipo_servicio_detalle: 'ML Flex',
+        horario_preferido_entrega: horarioPreferido,
+        pago_contra_entrega: false,
+        descripcion: `Pedido MercadoLibre Flex #${mlShipment.order_id || ml_shipment_id}${isLogisticsAccount ? ' (cuenta logística)' : ''}`,
+        sucursal_origen_id: sucursalOrigenId,
+        precio_flete_ml: mlShippingCost,
+        nombre_remitente: isLogisticsAccount ? `ML Seller ${sender_id}` : seller.nombre,
+        remitente_id: !isLogisticsAccount ? (seller.cliente_id || null) : null,
       })
       .select()
       .single();
@@ -407,23 +448,27 @@ serve(async (req) => {
     if (envioError) {
       console.error('[register-ml-shipment] Envio creation error:', envioError);
       // Cleanup: delete the ecommerce_order we just created
-      await supabase.from('ecommerce_orders').delete().eq('id', ecommerceOrder.id);
+      if (ecommerceOrderId) {
+        await supabase.from('ecommerce_orders').delete().eq('id', ecommerceOrderId);
+      }
       return new Response(
         JSON.stringify({ error: 'Error al crear envío' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('[register-ml-shipment] Created envio:', envio.id, envio.tracking_number, 'sucursal_origen:', sucursalOrigenId);
+    console.log('[register-ml-shipment] Created envio:', envio.id, envio.tracking_number, 'sucursal_origen:', sucursalOrigenId, 'logistics_account:', isLogisticsAccount);
 
-    // 12. Link ecommerce_order to envio
-    await supabase
-      .from('ecommerce_orders')
-      .update({ envio_id: envio.id })
-      .eq('id', ecommerceOrder.id);
+    // 13. Link ecommerce_order to envio (only for direct sellers)
+    if (ecommerceOrderId) {
+      await supabase
+        .from('ecommerce_orders')
+        .update({ envio_id: envio.id })
+        .eq('id', ecommerceOrderId);
+    }
 
-    // 13. Record charge in seller's account if applicable
-    if (precioTotal > 0 && seller.tiene_cuenta_corriente) {
+    // 14. Record charge in seller's account if applicable (only for direct sellers)
+    if (!isLogisticsAccount && precioTotal > 0 && seller.tiene_cuenta_corriente) {
       const { data: currentBalance } = await supabase
         .from('ecommerce_sellers')
         .select('saldo_cuenta_corriente')
@@ -446,11 +491,13 @@ serve(async (req) => {
       console.log('[register-ml-shipment] Recorded charge:', precioTotal);
     }
 
-    // 14. Create history entry
+    // 15. Create history entry
     await supabase.from('envio_historial').insert({
       envio_id: envio.id,
       estado_nuevo: 'pendiente',
-      notas: `Envío registrado desde escaneo QR ML Flex. Seller: ${seller.nombre}${sucursalOrigenId ? ' (con sucursal origen)' : ''}`,
+      notas: isLogisticsAccount 
+        ? `Envío registrado desde escaneo QR ML Flex via cuenta logística (${seller.nombre}). Seller original: ${sender_id}`
+        : `Envío registrado desde escaneo QR ML Flex. Seller: ${seller.nombre}${sucursalOrigenId ? ' (con sucursal origen)' : ''}`,
     });
 
     console.log('[register-ml-shipment] Success! Envio:', envio.tracking_number);
@@ -472,6 +519,7 @@ serve(async (req) => {
         seller: {
           id: seller.id,
           nombre: seller.nombre,
+          is_logistics_account: isLogisticsAccount,
         },
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

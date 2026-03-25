@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Package, Store, AlertTriangle, CheckCircle2, MapPin } from 'lucide-react';
+import { Loader2, Package, Store, AlertTriangle, CheckCircle2, MapPin, Truck } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
@@ -12,7 +12,7 @@ interface MLRegisterDialogProps {
   open: boolean;
   mlShipmentId: string;
   mlSenderId?: string;
-  userId?: string; // User who is registering (for sucursal_origen)
+  userId?: string;
   onClose: () => void;
   onSuccess: (envio: any) => void;
 }
@@ -21,6 +21,11 @@ interface SellerInfo {
   id: string;
   nombre: string;
   store_id: string;
+}
+
+interface LogisticsAccountInfo {
+  id: string;
+  nombre: string;
 }
 
 export function MLRegisterDialog({
@@ -35,6 +40,7 @@ export function MLRegisterDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [isLookingUpSeller, setIsLookingUpSeller] = useState(false);
   const [seller, setSeller] = useState<SellerInfo | null>(null);
+  const [logisticsAccount, setLogisticsAccount] = useState<LogisticsAccountInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [registeredEnvio, setRegisteredEnvio] = useState<any>(null);
 
@@ -44,6 +50,7 @@ export function MLRegisterDialog({
       lookupSeller();
       setRegisteredEnvio(null);
       setError(null);
+      setLogisticsAccount(null);
     }
   }, [open, mlSenderId]);
 
@@ -52,6 +59,7 @@ export function MLRegisterDialog({
     
     setIsLookingUpSeller(true);
     try {
+      // First try direct seller
       const { data, error } = await supabase
         .from('ecommerce_sellers')
         .select('id, nombre, store_id')
@@ -63,6 +71,10 @@ export function MLRegisterDialog({
       
       if (data) {
         setSeller(data);
+      } else {
+        // No direct seller — check for logistics account in user's tenant
+        setSeller(null);
+        await lookupLogisticsAccount();
       }
     } catch (err) {
       console.error('Error looking up seller:', err);
@@ -71,9 +83,47 @@ export function MLRegisterDialog({
     }
   };
 
+  const lookupLogisticsAccount = async () => {
+    if (!userId) return;
+
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('user_id', userId)
+        .single();
+
+      if (!profile?.tenant_id) return;
+
+      const { data: logSeller } = await supabase
+        .from('ecommerce_sellers')
+        .select('id, nombre')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('es_cuenta_logistica', true)
+        .eq('plataforma', 'mercadolibre')
+        .eq('activo', true)
+        .not('access_token', 'is', null)
+        .limit(1)
+        .maybeSingle();
+
+      if (logSeller) {
+        setLogisticsAccount(logSeller);
+      }
+    } catch (err) {
+      console.error('Error looking up logistics account:', err);
+    }
+  };
+
   const handleRegister = async () => {
     if (!mlSenderId) {
       setError('No se pudo identificar el seller desde el código QR');
+      return;
+    }
+
+    const useLogisticsAccount = !seller && !!logisticsAccount;
+
+    if (!seller && !logisticsAccount) {
+      setError('No hay seller directo ni cuenta logística configurada');
       return;
     }
 
@@ -85,7 +135,8 @@ export function MLRegisterDialog({
         body: {
           ml_shipment_id: mlShipmentId,
           sender_id: mlSenderId,
-          user_id: userId, // Pass user for sucursal_origen tracking
+          user_id: userId,
+          use_logistics_account: useLogisticsAccount,
         },
       });
 
@@ -183,6 +234,8 @@ export function MLRegisterDialog({
     );
   }
 
+  const canRegister = !!seller || !!logisticsAccount;
+
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent className="sm:max-w-md">
@@ -230,6 +283,16 @@ export function MLRegisterDialog({
             )}
           </div>
 
+          {/* Logistics Account Info - shown when no direct seller but logistics account exists */}
+          {!isLookingUpSeller && !seller && logisticsAccount && (
+            <Alert className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30">
+              <Truck className="h-4 w-4 text-blue-600" />
+              <AlertDescription className="text-blue-800 dark:text-blue-200">
+                Se usará la cuenta logística <strong>{logisticsAccount.nombre}</strong> para obtener los datos del envío desde MercadoLibre.
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Error Alert */}
           {error && (
             <Alert variant="destructive">
@@ -238,13 +301,13 @@ export function MLRegisterDialog({
             </Alert>
           )}
 
-          {/* Warning if seller not found */}
-          {!isLookingUpSeller && !seller && mlSenderId && (
+          {/* Warning if no seller and no logistics account */}
+          {!isLookingUpSeller && !seller && !logisticsAccount && mlSenderId && (
             <Alert>
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
-                El seller con store_id {mlSenderId} no está registrado en el sistema. 
-                Debe agregarlo primero en la sección de E-commerce → Sellers.
+                El seller con store_id {mlSenderId} no está registrado y no hay una cuenta logística configurada.
+                Configure una cuenta logística en E-commerce → Sellers para poder registrar envíos de sellers no autorizados.
               </AlertDescription>
             </Alert>
           )}
@@ -256,7 +319,7 @@ export function MLRegisterDialog({
           </Button>
           <Button 
             onClick={handleRegister} 
-            disabled={isLoading || !seller}
+            disabled={isLoading || !canRegister}
             className="gap-2"
           >
             {isLoading ? (
