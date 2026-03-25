@@ -1,25 +1,39 @@
 
 
-## Plan: Editar precios de envíos en liquidación no aprobada
+## Plan: Seller genérico para registrar envíos Flex sin autorización individual
 
-### Problema
-Una vez generada la liquidación, el diálogo de detalle muestra los precios como solo lectura. El administrador no puede corregir precios sin cancelar y regenerar la liquidación completa.
+### Concepto
+Agregar un campo `es_cuenta_logistica` (boolean) a la tabla `ecommerce_sellers`. Cuando se escanea un QR Flex cuyo `sender_id` no tiene seller registrado, el sistema busca un seller marcado como "cuenta logística" del mismo tenant y usa sus credenciales OAuth para consultar la API de ML y obtener los datos completos del envío (dirección, destinatario, etc.).
 
-### Solución
-Hacer editables los precios de cada envío en el tab "Envíos" del `SellerLiquidacionDetailDialog`, solo cuando el estado de la liquidación es `generada` (no aprobada, no pagada, no cancelada).
+### Cambios
 
-### Cambios en `SellerLiquidacionDetailDialog.tsx`
+**1. Migración SQL**
+- Agregar columna `es_cuenta_logistica BOOLEAN DEFAULT false` a `ecommerce_sellers`
 
-1. **Precio editable por envío**: En la columna "Precio" de la tabla de envíos, si `liquidacion.estado === 'generada'` y el envío no está excluido, mostrar un `Input` editable en lugar del texto fijo. Mantener los cambios en estado local.
+**2. Edge Function `register-ml-shipment/index.ts`**
+- Cuando no se encuentra seller por `store_id`: buscar un seller con `es_cuenta_logistica = true` del mismo tenant (obtenido vía `user_id`)
+- Usar las credenciales OAuth de ese seller genérico para llamar a la API de ML
+- Crear el envío normalmente con los datos obtenidos, pero sin vincular a un seller específico (sin orden ecommerce ni cargo en cuenta corriente)
 
-2. **Botón "Guardar Cambios"**: Agregar un botón debajo de la tabla que:
-   - Actualice `envios.precio_total` en la base de datos para cada envío modificado
-   - Recalcule y actualice `liquidaciones_seller.total_cargos` y `saldo_periodo` y `saldo_final` con los nuevos totales
-   - Invalide las queries relacionadas para refrescar los datos
-   - Solo se muestre cuando hay cambios pendientes
+**3. Frontend `MLRegisterDialog.tsx`**
+- Cuando no se encuentra el seller directo: en lugar de bloquear, mostrar "Se usará la cuenta logística para obtener datos" y habilitar el botón "Registrar"
+- Si tampoco hay cuenta logística configurada, mostrar mensaje indicando que se necesita configurar una
 
-3. **Indicador visual**: Mostrar el botón solo cuando hay diferencias entre los precios editados y los originales. Mostrar un badge "Editado" en los envíos con precio modificado.
+**4. Página de Sellers (`src/pages/ecommerce/Sellers.tsx`)**
+- Agregar un toggle/switch en la tabla o en el diálogo de edición para marcar un seller como "Cuenta Logística"
+- Mostrar un badge visual cuando un seller es cuenta logística
+
+### Flujo resultante
+1. Escaneo QR Flex → `sender_id` no encontrado en sellers
+2. Sistema busca seller con `es_cuenta_logistica = true` en el tenant
+3. Usa sus credenciales para consultar ML API → obtiene dirección, destinatario, etc.
+4. Crea envío con datos completos, sin vincular a seller/orden ecommerce
+5. Paquete queda listo para planificación de ruta
 
 ### Archivos a modificar
-- `src/components/ecommerce/SellerLiquidacionDetailDialog.tsx`
+- Migración SQL (nueva columna)
+- `supabase/functions/register-ml-shipment/index.ts`
+- `src/components/scan/MLRegisterDialog.tsx`
+- `src/pages/ecommerce/Sellers.tsx` (toggle cuenta logística)
+- `src/components/ecommerce/EditSellerDialog.tsx` (campo editable)
 
