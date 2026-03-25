@@ -44,6 +44,7 @@ const formSchema = z.object({
   express_surcharge: z.number().default(0),
   permite_pickup: z.boolean().default(false),
   pickup_surcharge: z.number().default(0),
+  es_cuenta_logistica: z.boolean().default(false),
   // User linking fields
   vincular_usuario: z.enum(['ninguno', 'existente', 'nuevo', 'mantener']).default('mantener'),
   user_id: z.string().optional(),
