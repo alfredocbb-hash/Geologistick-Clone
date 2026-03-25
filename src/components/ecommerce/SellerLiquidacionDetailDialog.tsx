@@ -56,6 +56,8 @@ export function SellerLiquidacionDetailDialog({
 }: SellerLiquidacionDetailDialogProps) {
   const [activeTab, setActiveTab] = useState('resumen');
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
+  const [editedPrices, setEditedPrices] = useState<Record<string, string>>({});
+  const [isSaving, setIsSaving] = useState(false);
   const queryClient = useQueryClient();
 
   // Fetch envíos vinculados a esta liquidación
