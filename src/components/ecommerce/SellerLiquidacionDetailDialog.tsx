@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -13,8 +13,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Printer, Download, Calendar, DollarSign, FileText, Package, Receipt, Info } from 'lucide-react';
+import { Printer, Download, Calendar, DollarSign, FileText, Package, Receipt, Info, Save } from 'lucide-react';
+import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { parseDateString } from '@/lib/dateUtils';
@@ -54,6 +56,8 @@ export function SellerLiquidacionDetailDialog({
 }: SellerLiquidacionDetailDialogProps) {
   const [activeTab, setActiveTab] = useState('resumen');
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
+  const [editedPrices, setEditedPrices] = useState<Record<string, string>>({});
+  const [isSaving, setIsSaving] = useState(false);
   const queryClient = useQueryClient();
 
   // Fetch envíos vinculados a esta liquidación
@@ -101,9 +105,69 @@ export function SellerLiquidacionDetailDialog({
   // Adjusted total excluding cancelled without visits
   const adjustedTotal = useMemo(() => {
     if (!envios) return 0;
-    return envios.reduce((sum: number, e: any) =>
-      sum + (isExcludedFromSettlement(e) ? 0 : (e.precio_total || 0)), 0);
-  }, [envios, enviosConVisitasSet]);
+    return envios.reduce((sum: number, e: any) => {
+      if (isExcludedFromSettlement(e)) return sum;
+      const edited = editedPrices[e.id];
+      const price = edited !== undefined ? parseFloat(edited) || 0 : (e.precio_total || 0);
+      return sum + price;
+    }, 0);
+  }, [envios, enviosConVisitasSet, editedPrices]);
+
+  const isEditable = liquidacion?.estado === 'generada';
+
+  const hasChanges = useMemo(() => {
+    if (!envios) return false;
+    return Object.entries(editedPrices).some(([id, val]) => {
+      const envio = envios.find((e: any) => e.id === id);
+      return envio && parseFloat(val) !== (envio.precio_total || 0);
+    });
+  }, [editedPrices, envios]);
+
+  const handlePriceChange = useCallback((envioId: string, value: string) => {
+    setEditedPrices(prev => ({ ...prev, [envioId]: value }));
+  }, []);
+
+  const handleSaveChanges = useCallback(async () => {
+    if (!liquidacion || !envios) return;
+    setIsSaving(true);
+    try {
+      const updates = Object.entries(editedPrices)
+        .filter(([id, val]) => {
+          const envio = envios.find((e: any) => e.id === id);
+          return envio && parseFloat(val) !== (envio.precio_total || 0);
+        });
+
+      for (const [envioId, val] of updates) {
+        await (supabase.from('envios') as any)
+          .update({ precio_total: parseFloat(val) || 0 })
+          .eq('id', envioId);
+      }
+
+      // Recalculate totals
+      const newTotalCargos = adjustedTotal;
+      const saldoAnterior = liquidacion.saldo_anterior || 0;
+      const totalPagos = liquidacion.total_pagos || 0;
+      const newSaldoPeriodo = newTotalCargos - totalPagos;
+      const newSaldoFinal = saldoAnterior + newSaldoPeriodo;
+
+      await (supabase.from('liquidaciones_seller') as any)
+        .update({
+          total_cargos: newTotalCargos,
+          saldo_periodo: newSaldoPeriodo,
+          saldo_final: newSaldoFinal,
+        })
+        .eq('id', liquidacion.id);
+
+      setEditedPrices({});
+      queryClient.invalidateQueries({ queryKey: ['seller-liquidacion-envios'] });
+      queryClient.invalidateQueries({ queryKey: ['seller-liquidaciones'] });
+      toast.success('Precios actualizados correctamente');
+    } catch (err) {
+      toast.error('Error al guardar los cambios');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [liquidacion, envios, editedPrices, adjustedTotal, queryClient]);
 
   // Fetch factura if exists
   const { data: factura } = useQuery({
@@ -444,6 +508,20 @@ export function SellerLiquidacionDetailDialog({
                                       </TooltipContent>
                                     </Tooltip>
                                   </TooltipProvider>
+                                ) : isEditable ? (
+                                  <div className="flex items-center justify-end gap-1">
+                                    <span className="text-muted-foreground">$</span>
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      className="w-24 h-8 text-right text-sm"
+                                      value={editedPrices[envio.id] !== undefined ? editedPrices[envio.id] : (envio.precio_total || 0)}
+                                      onChange={(e) => handlePriceChange(envio.id, e.target.value)}
+                                    />
+                                    {editedPrices[envio.id] !== undefined && parseFloat(editedPrices[envio.id]) !== (envio.precio_total || 0) && (
+                                      <Badge variant="outline" className="text-xs border-orange-300 text-orange-600">Editado</Badge>
+                                    )}
+                                  </div>
                                 ) : (
                                   `$${envio.precio_total?.toLocaleString()}`
                                 )}
@@ -468,6 +546,14 @@ export function SellerLiquidacionDetailDialog({
                           )}
                         </TableBody>
                       </Table>
+                    )}
+                    {isEditable && hasChanges && (
+                      <div className="p-4 border-t flex justify-end">
+                        <Button onClick={handleSaveChanges} disabled={isSaving}>
+                          <Save className="mr-2 h-4 w-4" />
+                          {isSaving ? 'Guardando...' : 'Guardar Cambios'}
+                        </Button>
+                      </div>
                     )}
                   </CardContent>
                 </Card>
