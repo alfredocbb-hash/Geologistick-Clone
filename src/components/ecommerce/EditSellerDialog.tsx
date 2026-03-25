@@ -374,6 +374,7 @@ export function EditSellerDialog({ open, onOpenChange, seller, onSuccess }: Edit
           express_surcharge: values.express_surcharge,
           permite_pickup: values.permite_pickup,
           pickup_surcharge: values.pickup_surcharge,
+          es_cuenta_logistica: values.es_cuenta_logistica,
           user_id: newUserId,
       };
       if (clienteId) updateData.cliente_id = clienteId;
