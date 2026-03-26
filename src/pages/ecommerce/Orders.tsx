@@ -222,7 +222,7 @@ export default function Orders() {
         .from('ecommerce_orders')
         .select(`
           *,
-          seller:ecommerce_sellers(id, nombre, tarifa_id, sucursal_pickup_id, tiene_cuenta_corriente, store_id),
+          seller:ecommerce_sellers(id, nombre, tarifa_id, sucursal_pickup_id, tiene_cuenta_corriente, store_id, activo),
           envio:envios!ecommerce_orders_envio_id_fkey(tracking_number, estado, chofer_id)
         `)
         .eq('tenant_id', tenantId);
