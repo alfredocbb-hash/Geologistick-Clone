@@ -61,6 +61,7 @@ interface Order {
     sucursal_pickup_id: string | null;
     tiene_cuenta_corriente: boolean;
     store_id: string | null;
+    activo: boolean | null;
   };
   envio?: {
     tracking_number: string;
@@ -222,7 +223,7 @@ export default function Orders() {
         .from('ecommerce_orders')
         .select(`
           *,
-          seller:ecommerce_sellers(id, nombre, tarifa_id, sucursal_pickup_id, tiene_cuenta_corriente, store_id),
+          seller:ecommerce_sellers(id, nombre, tarifa_id, sucursal_pickup_id, tiene_cuenta_corriente, store_id, activo),
           envio:envios!ecommerce_orders_envio_id_fkey(tracking_number, estado, chofer_id)
         `)
         .eq('tenant_id', tenantId);
@@ -265,6 +266,9 @@ export default function Orders() {
   const choferMap = ordersData?.choferMap || {};
 
   const filteredOrders = orders?.filter(o => {
+    // Excluir pedidos de sellers inactivos
+    if (o.seller?.activo === false) return false;
+
     const s = search.toLowerCase();
     const matchesSearch = 
       o.buyer_name.toLowerCase().includes(s) ||
