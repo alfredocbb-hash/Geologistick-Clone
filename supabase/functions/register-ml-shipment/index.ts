@@ -28,37 +28,42 @@ serve(async (req) => {
 
     console.log('[register-ml-shipment] Request:', { ml_shipment_id, sender_id, user_id, use_logistics_account });
 
-    if (!ml_shipment_id || !sender_id) {
+    if (!ml_shipment_id) {
       return new Response(
-        JSON.stringify({ error: 'ml_shipment_id and sender_id are required' }),
+        JSON.stringify({ error: 'ml_shipment_id is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // 1. Find seller by store_id
+    // 1. Find seller by store_id (only if sender_id provided)
     let seller: any = null;
     let isLogisticsAccount = false;
 
-    const { data: directSeller, error: sellerError } = await supabase
-      .from('ecommerce_sellers')
-      .select('*')
-      .eq('store_id', sender_id)
-      .eq('plataforma', 'mercadolibre')
-      .maybeSingle();
+    if (sender_id) {
+      const { data: directSeller, error: sellerError } = await supabase
+        .from('ecommerce_sellers')
+        .select('*')
+        .eq('store_id', sender_id)
+        .eq('plataforma', 'mercadolibre')
+        .maybeSingle();
 
-    if (sellerError) {
-      console.error('[register-ml-shipment] Seller lookup error:', sellerError);
-      return new Response(
-        JSON.stringify({ error: 'Error al buscar seller' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      if (sellerError) {
+        console.error('[register-ml-shipment] Seller lookup error:', sellerError);
+        return new Response(
+          JSON.stringify({ error: 'Error al buscar seller' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (directSeller) {
+        seller = directSeller;
+        console.log('[register-ml-shipment] Found direct seller:', seller.nombre, seller.id);
+      }
     }
 
-    if (directSeller) {
-      seller = directSeller;
-      console.log('[register-ml-shipment] Found direct seller:', seller.nombre, seller.id);
-    } else if (use_logistics_account && user_id) {
-      // No direct seller found — look for a logistics account in the user's tenant
+    // If no direct seller found, try logistics account
+    if (!seller && use_logistics_account && user_id) {
+      // Look for a logistics account in the user's tenant
       console.log('[register-ml-shipment] No direct seller, looking for logistics account...');
 
       const { data: userProfile } = await supabase
