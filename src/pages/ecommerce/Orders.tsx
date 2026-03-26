@@ -266,6 +266,9 @@ export default function Orders() {
   const choferMap = ordersData?.choferMap || {};
 
   const filteredOrders = orders?.filter(o => {
+    // Excluir pedidos de sellers inactivos
+    if (o.seller?.activo === false) return false;
+
     const s = search.toLowerCase();
     const matchesSearch = 
       o.buyer_name.toLowerCase().includes(s) ||
