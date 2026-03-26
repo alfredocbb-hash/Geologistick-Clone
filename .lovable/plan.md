@@ -1,26 +1,49 @@
 
 
-## Plan: Corregir registro de envíos ML Flex en ambos modos de escaneo
+## Plan: Corregir flujo de registro ML — múltiples problemas detectados
 
-### Problema 1 — Modo Flex: escanea pero no hace nada
-En `FlexScanScreen.tsx`, cuando se escanea un QR de ML y el envío no está registrado, el código solo muestra un toast de advertencia (línea 86) pero **nunca establece `mlRegisterData`**, por lo que el `MLRegisterDialog` nunca se abre. El estado `mlRegisterData` existe (línea 45) y el dialog está renderizado (línea 366), pero la conexión entre el escaneo fallido y la apertura del dialog está rota.
+### Diagnóstico
 
-### Problema 2 — Modo normal: no detecta la cuenta logística
-En `MLRegisterDialog.tsx`, la función `lookupLogisticsAccount` consulta `profiles` y `ecommerce_sellers` desde el frontend. Hay dos posibles causas:
-- El chofer puede no tener acceso RLS para leer `ecommerce_sellers` filtrado por `access_token`
-- La query usa `.not('access_token', 'is', null)` que requiere visibilidad del campo
+Revisé los logs de la Edge Function `register-ml-shipment`: **nunca fue invocada**. El problema es 100% del frontend — el diálogo no llega a llamar al backend.
 
-### Cambios
+Identifiqué **dos problemas principales**:
 
-**1. `src/components/mobile/FlexScanScreen.tsx`**
-- En `handleQRScanned`, cuando un ML shipment no se encuentra (`!added`), cerrar el scanner y abrir el `MLRegisterDialog` estableciendo `mlRegisterData` con el `shipmentId` y `senderId` del QR parseado
-- Flujo: escaneo → no encontrado → cierra scanner → abre MLRegisterDialog → si registra exitosamente → agrega paquete a la lista
+### Problema 1: `mlSenderId` undefined bloquea el lookup
 
-**2. `src/components/scan/MLRegisterDialog.tsx`**
-- Hacer la búsqueda de cuenta logística más robusta: quitar el filtro `.not('access_token', 'is', null)` del frontend (el chofer probablemente no tiene visibilidad de ese campo por RLS)
-- En su lugar, buscar solo por `es_cuenta_logistica = true`, `activo = true`, y `plataforma = 'mercadolibre'` — la validación del token se hará en la Edge Function al momento de registrar
+En `MLRegisterDialog.tsx`, el `useEffect` (línea 49) requiere `mlSenderId` para ejecutarse:
+```javascript
+if (open && mlSenderId) { lookupSeller(); }
+```
+
+Pero **no todos los formatos de QR incluyen `sender_id`**. Solo el formato JSON (`{"id":"...","sender_id":...}`) lo incluye. Si el QR se parsea como número puro (10+ dígitos) o con prefijo `ML:`, `mlSenderId` queda `undefined` y el `useEffect` nunca se ejecuta → el diálogo se abre vacío, sin seller ni cuenta logística, y el botón "Registrar" queda deshabilitado.
+
+Además, `lookupLogisticsAccount()` tiene `if (!userId) return;` como guard, pero no tiene guard por `mlSenderId`. Sin embargo, si el `useEffect` no se ejecuta, nunca se llama `lookupLogisticsAccount`.
+
+### Problema 2: El botón "Registrar" requiere `mlSenderId`
+
+En `handleRegister` (línea 117):
+```javascript
+if (!mlSenderId) {
+  setError('No se pudo identificar el seller desde el código QR');
+  return;
+}
+```
+Esto bloquea completamente el registro cuando no hay `sender_id`.
+
+### Solución
+
+**1. `MLRegisterDialog.tsx`** — Hacer el flujo robusto sin `mlSenderId`:
+- El `useEffect` debe ejecutarse siempre que `open` sea true (no depender de `mlSenderId`)
+- Si hay `mlSenderId`, buscar seller directo primero; si no hay, ir directo a buscar cuenta logística
+- `handleRegister`: si no hay `mlSenderId`, permitir registro con cuenta logística pasando `sender_id` como string vacío o un placeholder (la Edge Function ya maneja el lookup por cuenta logística)
+- Quitar el guard `if (!mlSenderId)` que bloquea el registro
+
+**2. `register-ml-shipment/index.ts` (Edge Function)** — Hacer `sender_id` opcional cuando `use_logistics_account` es true:
+- Cuando se usa cuenta logística, el `sender_id` no es estrictamente necesario para el lookup (ya se busca por tenant)
+- Validar solo que haya `ml_shipment_id`
+- Si `sender_id` no viene pero `use_logistics_account` es true, buscar la cuenta logística directamente por tenant del usuario
 
 ### Archivos a modificar
-- `src/components/mobile/FlexScanScreen.tsx` — conectar escaneo fallido con MLRegisterDialog
-- `src/components/scan/MLRegisterDialog.tsx` — quitar filtro de access_token en lookupLogisticsAccount
+- `src/components/scan/MLRegisterDialog.tsx` — useEffect sin depender de mlSenderId + handleRegister sin bloquear por mlSenderId
+- `supabase/functions/register-ml-shipment/index.ts` — sender_id opcional cuando use_logistics_account=true
 
