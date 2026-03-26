@@ -82,8 +82,13 @@ export function FlexScanScreen() {
       added = !!pkg;
       
       if (!added) {
-        // In continuous mode, just show toast; user can register after closing scanner
-        toast.warning(`ML-${parsed.value}: no encontrado, escanea otro o cierra para registrar`);
+        // Close scanner and open MLRegisterDialog for unregistered ML shipments
+        setShowScanner(false);
+        setMlRegisterData({
+          shipmentId: parsed.value,
+          senderId: parsed.mlSenderId,
+        });
+        return;
       }
     } else if (parsed.type === 'tracking') {
       const trackingNumber = parsed.value;
