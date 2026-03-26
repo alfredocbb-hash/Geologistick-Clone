@@ -58,6 +58,7 @@ export function MLRegisterDialog({
         .select('id, nombre, store_id')
         .eq('store_id', mlSenderId!)
         .eq('plataforma', 'mercadolibre')
+        .eq('activo', true)
         .maybeSingle();
 
       if (data) {
