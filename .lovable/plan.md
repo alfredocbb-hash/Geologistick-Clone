@@ -1,74 +1,62 @@
 
-## Plan: hacer que el registro con cuenta logística no dependa del frontend
+Objetivo: destrabar definitivamente el registro de envíos ML para choferes cuando el seller original no opera Flex y debe entrar por la cuenta logística FULLIMPORT.
 
-### Lo que confirmé
-- La cuenta logística **sí existe** en el mismo tenant del chofer Dar Logística:
-  - chofer: `f23d3df2-9926-46de-ac09-b72c3c66babf`
-  - tenant: `94a9ea85-43c5-49ac-9bfa-86843072c2ce`
-  - seller logístico activo: **FULLIMPORT**
-- No hay logs recientes de `register-ml-shipment`, así que el backend **ni siquiera está siendo llamado**.
-- El problema actual está en la UI: el botón queda bloqueado porque el diálogo depende de detectar la cuenta logística desde el cliente antes de permitir registrar.
+Diagnóstico confirmado:
+- La función `register-ml-shipment` no está recibiendo llamadas: no hay logs recientes y tampoco aparece tráfico asociado.
+- En `supabase/functions/register-ml-shipment/index.ts` los headers CORS están incompletos. Falta permitir los headers que envía el cliente web (`x-supabase-client-platform`, `x-supabase-client-platform-version`, `x-supabase-client-runtime`, `x-supabase-client-runtime-version`), así que el preflight puede bloquear la llamada antes de llegar a la función.
+- Además, en la base existe:
+  - FULLIMPORT activa como cuenta logística
+  - KINGDOM VINTAGE con `store_id = 222370892` pero `activo = false`
+- Hoy tanto el frontend como la función siguen pudiendo resolver primero ese seller inactivo, en vez de forzar fallback a FULLIMPORT.
 
-### Causa probable
-El flujo hoy hace esto:
-1. escanea QR
-2. abre `MLRegisterDialog`
-3. intenta descubrir seller/cuenta logística desde el frontend
-4. si no lo logra, deshabilita “Registrar Envío”
+Qué voy a corregir:
+1. Desbloquear la llamada a la función
+- Actualizar `register-ml-shipment` para usar los headers CORS completos en:
+  - OPTIONS
+  - respuestas exitosas
+  - respuestas de error
+- Esto debería hacer que el botón “Registrar Envío” realmente llegue al backend.
 
-Eso explica exactamente tu captura: el sistema muestra “no registrado” aunque FULLIMPORT sí esté configurado.
+2. Ignorar sellers inactivos en este flujo
+- En `register-ml-shipment`, la búsqueda directa por `sender_id` debe incluir `activo = true`.
+- Si el seller existe pero está inactivo, no debe usarse su token; se debe pasar directo al fallback por cuenta logística del tenant.
+- En `MLRegisterDialog.tsx`, el lookup informativo también debe ignorar sellers inactivos para no mostrar una resolución engañosa.
 
-### Cambio recomendado
-Mover la decisión real al backend y dejar el frontend como un disparador simple.
+3. Mantener la cuenta logística como fallback real
+- Si no hay seller activo coincidente, la función debe usar FULLIMPORT del tenant del chofer.
+- Si falla, debe devolver un error concreto del backend, no un falso negativo de UI.
 
-### Implementación
-**1. `src/components/scan/MLRegisterDialog.tsx`**
-- Dejar de bloquear el botón por `seller` / `logisticsAccount`
-- Permitir siempre intentar el registro cuando haya `mlShipmentId`
-- Cambiar el mensaje de advertencia:
-  - si hay seller directo, mostrarlo
-  - si no, mostrar “se intentará registrar con cuenta logística del tenant”
-- Si falla, mostrar el error real devuelto por la función
-
-**2. `supabase/functions/register-ml-shipment/index.ts`**
-- Resolver todo del lado servidor:
-  - si existe seller directo por `sender_id`, usarlo
-  - si no existe, buscar la cuenta logística activa del tenant del usuario
-- Quitar dependencias innecesarias del frontend para decidir si se puede registrar
-- Mantener validación de token y de `logistic_type = self_service`
-- Mejorar logs para distinguir:
-  - seller directo encontrado
+4. Mejorar trazabilidad para este caso
+- Agregar logs claros en la función para distinguir:
+  - seller directo activo encontrado
+  - seller directo ignorado por inactivo
   - fallback a cuenta logística
-  - cuenta logística no encontrada
-  - token inválido / shipment no Flex
+  - error de ML / token / shipment no Flex
 
-**3. `src/components/mobile/FlexScanScreen.tsx` y `src/components/mobile/MobileScanTab.tsx`**
-- Mantener apertura del diálogo al escanear un ML no registrado
-- Asegurar que el cierre/apertura del scanner no limpie el intento antes de registrar
-- No depender de estados visuales de seller para habilitar el flujo
-
-### Resultado esperado
-Con Dar Logística:
-- escanea QR ML
-- se abre el diálogo
-- el botón **Registrar Envío** queda habilitado
-- al tocarlo, la función intenta:
-  - seller directo si existe
-  - si no, FULLIMPORT como cuenta logística
-- si ML devuelve datos válidos del shipment Flex, el envío se crea correctamente
-
-### Validación
-Voy a considerar correcto cuando se cumplan estos casos:
-1. **Modo normal**: QR de seller no registrado abre diálogo y permite registrar
-2. **Modo Flex**: QR de seller no registrado abre diálogo y permite registrar
-3. **Caso exitoso**: se crea el envío y aparece tracking/destino
-4. **Caso fallido real**: si ML rechaza el shipment, se muestra error concreto y no un falso “no hay cuenta logística”
-
-### Archivos a tocar
-- `src/components/scan/MLRegisterDialog.tsx`
-- `src/components/mobile/FlexScanScreen.tsx`
-- `src/components/mobile/MobileScanTab.tsx`
+Archivos a tocar:
 - `supabase/functions/register-ml-shipment/index.ts`
+- `src/components/scan/MLRegisterDialog.tsx`
 
-### Nota técnica
-La evidencia actual indica que **la configuración de datos está bien**; lo que falla es la lógica de habilitación en pantalla. Por eso el ajuste más robusto es que el frontend no “decida” si existe cuenta logística: solo debe intentar registrar y dejar esa resolución al backend.
+Validación esperada:
+1. Escaneo con chofer Dar Logística en modo normal:
+- abre el diálogo
+- “Registrar Envío” sí dispara la función
+- si el seller del QR está inactivo, usa FULLIMPORT
+
+2. Escaneo en modo Flex:
+- mismo comportamiento
+- al registrar exitosamente, agrega el envío al flujo Flex
+
+3. Caso de error real:
+- si ML rechaza el shipment o no es `self_service`, se muestra ese error exacto
+
+Detalles técnicos:
+```text
+QR -> MLRegisterDialog -> register-ml-shipment
+                       -> seller activo por sender_id? sí => usar seller
+                       -> no / inactivo => usar FULLIMPORT del tenant
+```
+
+Causa más probable del “sigue igual”:
+- la llamada está siendo frenada antes de entrar a la función por CORS
+- y, una vez destrabada, todavía hay que evitar que un seller inactivo gane prioridad sobre la cuenta logística
