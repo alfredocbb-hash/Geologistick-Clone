@@ -1,39 +1,29 @@
 
 
-## Plan: Seller genérico para registrar envíos Flex sin autorización individual
+## Plan: Filtrar pedidos y envíos de sellers inactivos
 
-### Concepto
-Agregar un campo `es_cuenta_logistica` (boolean) a la tabla `ecommerce_sellers`. Cuando se escanea un QR Flex cuyo `sender_id` no tiene seller registrado, el sistema busca un seller marcado como "cuenta logística" del mismo tenant y usa sus credenciales OAuth para consultar la API de ML y obtener los datos completos del envío (dirección, destinatario, etc.).
+### Problema
+Cuando un seller se marca como inactivo (`activo = false`), sus pedidos y envíos siguen apareciendo en:
+1. **Pedidos (Orders.tsx)** — la query trae todas las `ecommerce_orders` por `tenant_id` sin verificar si el seller está activo
+2. **Gestión de Envíos (Shipments.tsx)** — muestra todos los envíos sin distinción
+
+El webhook de ML ya filtra correctamente por `activo = true`, así que no se crean envíos nuevos para sellers inactivos. El problema es solo de visualización.
 
 ### Cambios
 
-**1. Migración SQL**
-- Agregar columna `es_cuenta_logistica BOOLEAN DEFAULT false` a `ecommerce_sellers`
+**1. `src/pages/ecommerce/Orders.tsx`**
+- En la query principal de órdenes, agregar un filtro join: solo traer órdenes cuyo `seller.activo` sea `true` (usando el join existente con `ecommerce_sellers`)
+- Alternativa más simple: filtrar client-side con `orders.filter(o => o.seller?.activo !== false)` ya que el join ya trae el campo
+- El select del filtro de sellers ya filtra por `activo = true` (línea 209), así que el dropdown está correcto
 
-**2. Edge Function `register-ml-shipment/index.ts`**
-- Cuando no se encuentra seller por `store_id`: buscar un seller con `es_cuenta_logistica = true` del mismo tenant (obtenido vía `user_id`)
-- Usar las credenciales OAuth de ese seller genérico para llamar a la API de ML
-- Crear el envío normalmente con los datos obtenidos, pero sin vincular a un seller específico (sin orden ecommerce ni cargo en cuenta corriente)
+**2. `src/pages/Shipments.tsx`**  
+- Los envíos en Gestión de Envíos no tienen relación directa con `ecommerce_sellers` en la query. Estos envíos se muestran por `tenant_id` + fecha + estado.
+- Para envíos ML de sellers inactivos: agregar un filtro que excluya envíos cuyo `remitente_id` corresponda a un seller inactivo, o bien dejarlos visibles pero con un indicador visual de "seller inactivo"
 
-**3. Frontend `MLRegisterDialog.tsx`**
-- Cuando no se encuentra el seller directo: en lugar de bloquear, mostrar "Se usará la cuenta logística para obtener datos" y habilitar el botón "Registrar"
-- Si tampoco hay cuenta logística configurada, mostrar mensaje indicando que se necesita configurar una
-
-**4. Página de Sellers (`src/pages/ecommerce/Sellers.tsx`)**
-- Agregar un toggle/switch en la tabla o en el diálogo de edición para marcar un seller como "Cuenta Logística"
-- Mostrar un badge visual cuando un seller es cuenta logística
-
-### Flujo resultante
-1. Escaneo QR Flex → `sender_id` no encontrado en sellers
-2. Sistema busca seller con `es_cuenta_logistica = true` en el tenant
-3. Usa sus credenciales para consultar ML API → obtiene dirección, destinatario, etc.
-4. Crea envío con datos completos, sin vincular a seller/orden ecommerce
-5. Paquete queda listo para planificación de ruta
+### Enfoque recomendado
+Filtrar **en la query de Orders** para no mostrar pedidos de sellers inactivos, ya que esos pedidos no deberían gestionarse. Para Shipments, los envíos ya creados probablemente deban seguir visibles (ya están en operación), pero se puede agregar un badge visual.
 
 ### Archivos a modificar
-- Migración SQL (nueva columna)
-- `supabase/functions/register-ml-shipment/index.ts`
-- `src/components/scan/MLRegisterDialog.tsx`
-- `src/pages/ecommerce/Sellers.tsx` (toggle cuenta logística)
-- `src/components/ecommerce/EditSellerDialog.tsx` (campo editable)
+- `src/pages/ecommerce/Orders.tsx` — filtro client-side en `filteredOrders`
+- `src/pages/Shipments.tsx` — opcional: badge indicador para envíos de sellers inactivos
 
