@@ -1,49 +1,74 @@
 
+## Plan: hacer que el registro con cuenta logística no dependa del frontend
 
-## Plan: Corregir flujo de registro ML — múltiples problemas detectados
+### Lo que confirmé
+- La cuenta logística **sí existe** en el mismo tenant del chofer Dar Logística:
+  - chofer: `f23d3df2-9926-46de-ac09-b72c3c66babf`
+  - tenant: `94a9ea85-43c5-49ac-9bfa-86843072c2ce`
+  - seller logístico activo: **FULLIMPORT**
+- No hay logs recientes de `register-ml-shipment`, así que el backend **ni siquiera está siendo llamado**.
+- El problema actual está en la UI: el botón queda bloqueado porque el diálogo depende de detectar la cuenta logística desde el cliente antes de permitir registrar.
 
-### Diagnóstico
+### Causa probable
+El flujo hoy hace esto:
+1. escanea QR
+2. abre `MLRegisterDialog`
+3. intenta descubrir seller/cuenta logística desde el frontend
+4. si no lo logra, deshabilita “Registrar Envío”
 
-Revisé los logs de la Edge Function `register-ml-shipment`: **nunca fue invocada**. El problema es 100% del frontend — el diálogo no llega a llamar al backend.
+Eso explica exactamente tu captura: el sistema muestra “no registrado” aunque FULLIMPORT sí esté configurado.
 
-Identifiqué **dos problemas principales**:
+### Cambio recomendado
+Mover la decisión real al backend y dejar el frontend como un disparador simple.
 
-### Problema 1: `mlSenderId` undefined bloquea el lookup
+### Implementación
+**1. `src/components/scan/MLRegisterDialog.tsx`**
+- Dejar de bloquear el botón por `seller` / `logisticsAccount`
+- Permitir siempre intentar el registro cuando haya `mlShipmentId`
+- Cambiar el mensaje de advertencia:
+  - si hay seller directo, mostrarlo
+  - si no, mostrar “se intentará registrar con cuenta logística del tenant”
+- Si falla, mostrar el error real devuelto por la función
 
-En `MLRegisterDialog.tsx`, el `useEffect` (línea 49) requiere `mlSenderId` para ejecutarse:
-```javascript
-if (open && mlSenderId) { lookupSeller(); }
-```
+**2. `supabase/functions/register-ml-shipment/index.ts`**
+- Resolver todo del lado servidor:
+  - si existe seller directo por `sender_id`, usarlo
+  - si no existe, buscar la cuenta logística activa del tenant del usuario
+- Quitar dependencias innecesarias del frontend para decidir si se puede registrar
+- Mantener validación de token y de `logistic_type = self_service`
+- Mejorar logs para distinguir:
+  - seller directo encontrado
+  - fallback a cuenta logística
+  - cuenta logística no encontrada
+  - token inválido / shipment no Flex
 
-Pero **no todos los formatos de QR incluyen `sender_id`**. Solo el formato JSON (`{"id":"...","sender_id":...}`) lo incluye. Si el QR se parsea como número puro (10+ dígitos) o con prefijo `ML:`, `mlSenderId` queda `undefined` y el `useEffect` nunca se ejecuta → el diálogo se abre vacío, sin seller ni cuenta logística, y el botón "Registrar" queda deshabilitado.
+**3. `src/components/mobile/FlexScanScreen.tsx` y `src/components/mobile/MobileScanTab.tsx`**
+- Mantener apertura del diálogo al escanear un ML no registrado
+- Asegurar que el cierre/apertura del scanner no limpie el intento antes de registrar
+- No depender de estados visuales de seller para habilitar el flujo
 
-Además, `lookupLogisticsAccount()` tiene `if (!userId) return;` como guard, pero no tiene guard por `mlSenderId`. Sin embargo, si el `useEffect` no se ejecuta, nunca se llama `lookupLogisticsAccount`.
+### Resultado esperado
+Con Dar Logística:
+- escanea QR ML
+- se abre el diálogo
+- el botón **Registrar Envío** queda habilitado
+- al tocarlo, la función intenta:
+  - seller directo si existe
+  - si no, FULLIMPORT como cuenta logística
+- si ML devuelve datos válidos del shipment Flex, el envío se crea correctamente
 
-### Problema 2: El botón "Registrar" requiere `mlSenderId`
+### Validación
+Voy a considerar correcto cuando se cumplan estos casos:
+1. **Modo normal**: QR de seller no registrado abre diálogo y permite registrar
+2. **Modo Flex**: QR de seller no registrado abre diálogo y permite registrar
+3. **Caso exitoso**: se crea el envío y aparece tracking/destino
+4. **Caso fallido real**: si ML rechaza el shipment, se muestra error concreto y no un falso “no hay cuenta logística”
 
-En `handleRegister` (línea 117):
-```javascript
-if (!mlSenderId) {
-  setError('No se pudo identificar el seller desde el código QR');
-  return;
-}
-```
-Esto bloquea completamente el registro cuando no hay `sender_id`.
+### Archivos a tocar
+- `src/components/scan/MLRegisterDialog.tsx`
+- `src/components/mobile/FlexScanScreen.tsx`
+- `src/components/mobile/MobileScanTab.tsx`
+- `supabase/functions/register-ml-shipment/index.ts`
 
-### Solución
-
-**1. `MLRegisterDialog.tsx`** — Hacer el flujo robusto sin `mlSenderId`:
-- El `useEffect` debe ejecutarse siempre que `open` sea true (no depender de `mlSenderId`)
-- Si hay `mlSenderId`, buscar seller directo primero; si no hay, ir directo a buscar cuenta logística
-- `handleRegister`: si no hay `mlSenderId`, permitir registro con cuenta logística pasando `sender_id` como string vacío o un placeholder (la Edge Function ya maneja el lookup por cuenta logística)
-- Quitar el guard `if (!mlSenderId)` que bloquea el registro
-
-**2. `register-ml-shipment/index.ts` (Edge Function)** — Hacer `sender_id` opcional cuando `use_logistics_account` es true:
-- Cuando se usa cuenta logística, el `sender_id` no es estrictamente necesario para el lookup (ya se busca por tenant)
-- Validar solo que haya `ml_shipment_id`
-- Si `sender_id` no viene pero `use_logistics_account` es true, buscar la cuenta logística directamente por tenant del usuario
-
-### Archivos a modificar
-- `src/components/scan/MLRegisterDialog.tsx` — useEffect sin depender de mlSenderId + handleRegister sin bloquear por mlSenderId
-- `supabase/functions/register-ml-shipment/index.ts` — sender_id opcional cuando use_logistics_account=true
-
+### Nota técnica
+La evidencia actual indica que **la configuración de datos está bien**; lo que falla es la lógica de habilitación en pantalla. Por eso el ajuste más robusto es que el frontend no “decida” si existe cuenta logística: solo debe intentar registrar y dejar esa resolución al backend.
