@@ -86,7 +86,7 @@ export function FlexScanScreen() {
         setShowScanner(false);
         setMlRegisterData({
           shipmentId: parsed.value,
-          senderId: parsed.senderId,
+          senderId: parsed.mlSenderId,
         });
         return;
       }
