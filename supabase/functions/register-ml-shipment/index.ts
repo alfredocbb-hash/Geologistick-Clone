@@ -35,10 +35,11 @@ serve(async (req) => {
       );
     }
 
-    // 1. Find seller by store_id (only if sender_id provided)
+    // 1. Find seller — try direct match first, then auto-fallback to logistics account
     let seller: any = null;
     let isLogisticsAccount = false;
 
+    // Step A: try direct seller by store_id
     if (sender_id) {
       const { data: directSeller, error: sellerError } = await supabase
         .from('ecommerce_sellers')
@@ -49,22 +50,15 @@ serve(async (req) => {
 
       if (sellerError) {
         console.error('[register-ml-shipment] Seller lookup error:', sellerError);
-        return new Response(
-          JSON.stringify({ error: 'Error al buscar seller' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      if (directSeller) {
+      } else if (directSeller) {
         seller = directSeller;
         console.log('[register-ml-shipment] Found direct seller:', seller.nombre, seller.id);
       }
     }
 
-    // If no direct seller found, try logistics account
-    if (!seller && use_logistics_account && user_id) {
-      // Look for a logistics account in the user's tenant
-      console.log('[register-ml-shipment] No direct seller, looking for logistics account...');
+    // Step B: no direct seller → auto-fallback to logistics account via user's tenant
+    if (!seller && user_id) {
+      console.log('[register-ml-shipment] No direct seller, looking for logistics account in user tenant...');
 
       const { data: userProfile } = await supabase
         .from('profiles')
@@ -80,7 +74,6 @@ serve(async (req) => {
           .eq('es_cuenta_logistica', true)
           .eq('plataforma', 'mercadolibre')
           .eq('activo', true)
-          .not('access_token', 'is', null)
           .limit(1)
           .maybeSingle();
 
@@ -88,13 +81,15 @@ serve(async (req) => {
           seller = logisticsSeller;
           isLogisticsAccount = true;
           console.log('[register-ml-shipment] Using logistics account:', seller.nombre, seller.id);
+        } else {
+          console.log('[register-ml-shipment] No logistics account found for tenant:', userProfile.tenant_id);
         }
       }
     }
 
     if (!seller) {
       return new Response(
-        JSON.stringify({ error: `Seller con store_id ${sender_id} no encontrado` }),
+        JSON.stringify({ error: 'No se encontró seller directo ni cuenta logística configurada para este tenant' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
