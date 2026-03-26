@@ -116,11 +116,6 @@ export function MLRegisterDialog({
   };
 
   const handleRegister = async () => {
-    if (!mlSenderId) {
-      setError('No se pudo identificar el seller desde el código QR');
-      return;
-    }
-
     const useLogisticsAccount = !seller && !!logisticsAccount;
 
     if (!seller && !logisticsAccount) {
@@ -135,7 +130,7 @@ export function MLRegisterDialog({
       const { data, error: fnError } = await supabase.functions.invoke('register-ml-shipment', {
         body: {
           ml_shipment_id: mlShipmentId,
-          sender_id: mlSenderId,
+          sender_id: mlSenderId || '',
           user_id: userId,
           use_logistics_account: useLogisticsAccount,
         },
