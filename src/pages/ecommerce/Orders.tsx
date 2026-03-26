@@ -61,6 +61,7 @@ interface Order {
     sucursal_pickup_id: string | null;
     tiene_cuenta_corriente: boolean;
     store_id: string | null;
+    activo: boolean | null;
   };
   envio?: {
     tracking_number: string;
