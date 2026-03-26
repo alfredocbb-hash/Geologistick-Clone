@@ -46,7 +46,7 @@ export function MLRegisterDialog({
 
   // Look up seller when dialog opens
   useEffect(() => {
-    if (open && mlSenderId) {
+    if (open) {
       lookupSeller();
       setRegisteredEnvio(null);
       setError(null);
@@ -55,27 +55,29 @@ export function MLRegisterDialog({
   }, [open, mlSenderId]);
 
   const lookupSeller = async () => {
-    if (!mlSenderId) return;
-    
     setIsLookingUpSeller(true);
+    setSeller(null);
     try {
-      // First try direct seller
-      const { data, error } = await supabase
-        .from('ecommerce_sellers')
-        .select('id, nombre, store_id')
-        .eq('store_id', mlSenderId)
-        .eq('plataforma', 'mercadolibre')
-        .maybeSingle();
+      // If we have a sender ID, try direct seller first
+      if (mlSenderId) {
+        const { data, error } = await supabase
+          .from('ecommerce_sellers')
+          .select('id, nombre, store_id')
+          .eq('store_id', mlSenderId)
+          .eq('plataforma', 'mercadolibre')
+          .maybeSingle();
 
-      if (error) throw error;
-      
-      if (data) {
-        setSeller(data);
-      } else {
-        // No direct seller — check for logistics account in user's tenant
-        setSeller(null);
-        await lookupLogisticsAccount();
+        if (error) throw error;
+        
+        if (data) {
+          setSeller(data);
+          setIsLookingUpSeller(false);
+          return;
+        }
       }
+      
+      // No direct seller (or no sender ID) — check for logistics account
+      await lookupLogisticsAccount();
     } catch (err) {
       console.error('Error looking up seller:', err);
     } finally {
