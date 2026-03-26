@@ -298,7 +298,7 @@ export function MLRegisterDialog({
           )}
 
           {/* Warning if no seller and no logistics account */}
-          {!isLookingUpSeller && !seller && !logisticsAccount && mlSenderId && (
+          {!isLookingUpSeller && !seller && !logisticsAccount && (
             <Alert>
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
