@@ -102,7 +102,6 @@ export function MLRegisterDialog({
         .eq('es_cuenta_logistica', true)
         .eq('plataforma', 'mercadolibre')
         .eq('activo', true)
-        .not('access_token', 'is', null)
         .limit(1)
         .maybeSingle();
 
