@@ -46,6 +46,7 @@ serve(async (req) => {
         .select('*')
         .eq('store_id', sender_id)
         .eq('plataforma', 'mercadolibre')
+        .eq('activo', true)
         .maybeSingle();
 
       if (sellerError) {
