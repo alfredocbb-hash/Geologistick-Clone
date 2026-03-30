@@ -1,37 +1,46 @@
 
 
-## Plan: Marcadores por color de seller en el Planificador de Rutas
+## Plan: Pestaña "Envíos" en Reportes con Detalle Financiero + Export Excel/PDF
 
 ### Objetivo
-Diferenciar visualmente en el mapa los envíos de cada seller/remitente con un color distinto, y agregar una leyenda dinámica debajo del mapa con el nombre de cada seller y su color asignado.
+Agregar una nueva pestaña **"Envíos"** en Reportes y Análisis con tabla detallada: seller/remitente, destinatario, localidad, importe, estado de liquidación, comisión del chofer, importe abonado, y diferencia (ganancia neta). Con descarga en Excel prolijo y PDF.
+
+### Datos de la DB
+- `envios`: `tracking_number`, `nombre_remitente`, `nombre_destinatario`, `ciudad_entrega`, `precio_total`, `estado`, `liquidacion_seller_id`, `chofer_id`
+- `comisiones`: `envio_id`, `monto` (comisión chofer)
+- `pagos`: `envio_id`, `monto`, `estado` (cobrado_chofer/rendido/pagado)
+- `liquidaciones_seller`: `id`, `estado` → estado de liquidación
 
 ### Cambios
 
-**1. `src/components/maps/MapView.tsx`** — Soporte para color personalizado en markers
-- Agregar propiedad opcional `customIconUrl?: string` al `MarkerInfo` interface
-- En el render de `Marker`, si `customIconUrl` está presente usarlo en lugar de `getMarkerIcon()`
+**1. `src/hooks/useReportsData.ts`** — Nueva query `enviosDetalle`
+- Consulta `envios` del período con los campos necesarios
+- Queries secundarias: `comisiones` (mapa envio→monto), `pagos` con estado in (cobrado_chofer, rendido, pagado) (mapa envio→monto), `liquidaciones_seller` para estado liquidación
+- Retorna array con: tracking, remitente, destinatario, localidad, importe, estado_liquidacion, comision_chofer, importe_abonado, diferencia
+- Totales agregados para KPIs
 
-**2. `src/pages/RoutePlanner.tsx`** — Asignar colores por seller y renderizar leyenda
+**2. `src/pages/Reports.tsx`** — Nueva pestaña "Envíos"
+- Tab con icono `Package`, label "Envíos"
+- 4 KPI cards: Total Envíos, Importe Total, Total Comisiones, Diferencia Neta
+- Tabla con columnas: Tracking, Remitente, Destinatario, Localidad, Importe, Est. Liquidación, Comisión Chofer, Abonado, Diferencia
+- Fila de totales
+- Botón Excel: usa `exportToExcel` con columnas formateadas (currency para montos, text para el resto)
+- Botón PDF: usa `exportReportPDF` con tab type `envios`
+- Actualizar grid de tabs de 9 a 10 columnas
 
-- **Paleta de colores**: definir un array de ~10 colores distinguibles (rojo, azul, violeta, naranja, gris, verde oscuro, rosa, marrón, cyan, etc.)
-- **Mapeo seller→color**: en un `useMemo`, extraer los `nombre_remitente` únicos de `selectedEnviosData` (solo entregas, no retiros). Asignar un color a cada seller por orden de aparición.
-- **Markers**: al construir `mapMarkers`, para envíos de tipo `entrega`, generar un marker SVG inline con el color del seller usando `google.maps.SymbolPath.CIRCLE` o un Data URI SVG coloreado, y pasarlo como `customIconUrl`
-- **Leyenda dinámica**: debajo de la leyenda estática existente (Origen / Sucursales / Retiros / Entregas), agregar una sección con los sellers y sus colores, solo si hay más de un seller. Formato: punto de color + nombre del seller
+**3. `src/lib/exportReportPDF.ts`** — Soporte para tab `envios`
+- Agregar `'envios'` al type del tab en `ReportExportOptions`
+- Agregar case `envios` que renderiza tabla con las columnas del reporte
 
-### Detalle técnico del marker coloreado
-
-Para generar iconos de color dinámico sin depender de URLs externas, se usará un SVG inline codificado como Data URI:
-
-```typescript
-const createColoredMarkerUrl = (color: string) => {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
-    <circle cx="16" cy="16" r="12" fill="${color}" stroke="white" stroke-width="2"/>
-  </svg>`;
-  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
-};
-```
+### Detalle del Excel
+El Excel incluirá:
+- Headers con nombres descriptivos en español
+- Columnas de montos formateadas como currency ($)
+- Fila de totales al final
+- Formato limpio usando la función `exportToExcel` existente
 
 ### Archivos a modificar
-- `src/components/maps/MapView.tsx` (agregar `customIconUrl` al interface + usarlo)
-- `src/pages/RoutePlanner.tsx` (mapeo de sellers→colores, markers coloreados, leyenda)
+- `src/hooks/useReportsData.ts`
+- `src/pages/Reports.tsx`
+- `src/lib/exportReportPDF.ts`
 
