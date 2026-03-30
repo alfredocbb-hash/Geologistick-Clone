@@ -560,6 +560,7 @@ export default function Reports() {
                   filename: `detalle-envios-${dateRange}`,
                   columns: [
                     { header: 'Tracking', key: 'tracking_number' },
+                    { header: 'Fecha', key: 'fecha' },
                     { header: 'Remitente / Seller', key: 'nombre_remitente' },
                     { header: 'Destinatario', key: 'nombre_destinatario' },
                     { header: 'Localidad', key: 'ciudad_entrega' },
