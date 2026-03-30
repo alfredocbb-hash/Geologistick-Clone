@@ -227,7 +227,7 @@ function MapViewComponent({
               key={marker.id || index}
               position={marker.position}
               title={marker.title}
-              icon={getMarkerIcon(marker.icon)}
+              icon={marker.customIconUrl || getMarkerIcon(marker.icon)}
               onClick={() => {
                 if (marker.onClick) {
                   marker.onClick();
