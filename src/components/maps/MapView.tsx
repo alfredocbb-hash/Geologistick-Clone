@@ -11,6 +11,7 @@ export interface MarkerInfo {
   position: { lat: number; lng: number };
   title?: string;
   icon?: 'origin' | 'destination' | 'branch' | 'current' | 'warning' | 'driver';
+  customIconUrl?: string;
   id?: string;
   type?: 'envio' | 'sucursal' | 'origin' | 'driver';
   data?: any;
