@@ -62,6 +62,7 @@ export interface SLAData {
 
 export interface EnvioDetalleRow {
   tracking_number: string;
+  fecha: string;
   nombre_remitente: string;
   nombre_destinatario: string;
   ciudad_entrega: string;
