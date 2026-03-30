@@ -622,7 +622,7 @@ export default function Shipments() {
                             <Printer className="h-4 w-4" />
                           </Link>
                         </Button>
-                        {canChangeStatus && envio.estado !== 'cancelado' && envio.estado !== 'entregado' && (
+                        {canChangeStatus && envio.estado !== 'cancelado' && (envio.estado !== 'entregado' || isSuperAdmin()) && (
                           <Button
                             variant="ghost"
                             size="icon"
