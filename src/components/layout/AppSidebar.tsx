@@ -6,7 +6,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useBranchConfig } from '@/hooks/useBranchConfig';
 import { useTenantContext } from '@/components/providers/TenantProvider';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from '@/components/ui/sidebar';
-import { LayoutDashboard, Truck, Users, DollarSign, CreditCard, Settings, Building2, Tags, UserCog, Wallet, FileText, PackagePlus, MapPin, ClipboardList, LogOut, ChevronLeft, ChevronRight, QrCode, Route, Map, Car, Plug, Home, Palette, Crown, GitBranch, ShoppingCart, Store, ShoppingBag, Receipt, Package, Globe, AlertTriangle, BarChart3, Handshake, Key } from 'lucide-react';
+import { LayoutDashboard, Truck, Users, DollarSign, CreditCard, Settings, Building2, Tags, UserCog, Wallet, FileText, PackagePlus, MapPin, ClipboardList, LogOut, ChevronLeft, ChevronRight, QrCode, Route, Map, Car, Plug, Home, Palette, Crown, GitBranch, ShoppingCart, Store, ShoppingBag, Receipt, Package, Globe, AlertTriangle, BarChart3, Handshake, Key, Activity } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
