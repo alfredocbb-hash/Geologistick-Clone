@@ -453,7 +453,7 @@ export function useReportsData(filters: ReportsFilters) {
     queryFn: async (): Promise<EnvioDetalleRow[]> => {
       let query = supabase
         .from('envios')
-        .select('id, tracking_number, nombre_remitente, nombre_destinatario, ciudad_entrega, precio_total, estado, liquidacion_seller_id')
+        .select('id, tracking_number, created_at, nombre_remitente, nombre_destinatario, ciudad_entrega, precio_total, estado, liquidacion_seller_id')
         .eq('tenant_id', tenantId!)
         .gte('created_at', from)
         .lte('created_at', to);
