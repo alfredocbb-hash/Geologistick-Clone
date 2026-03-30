@@ -121,7 +121,7 @@ function addChartImage(doc: jsPDF, imgData: string, pageWidth: number, margin: n
 
 // ── Main export function ──
 export interface ReportExportOptions {
-  tab: 'sucursales' | 'destinos' | 'choferes' | 'resumen';
+  tab: 'sucursales' | 'destinos' | 'choferes' | 'resumen' | 'envios';
   title: string;
   subtitle: string;
   dateRange: string;
