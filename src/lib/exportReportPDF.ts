@@ -232,7 +232,7 @@ export async function exportReportPDF(opts: ReportExportOptions) {
       5
     );
   } else if (opts.tab === 'envios') {
-    const data = opts.data as { tracking_number: string; nombre_remitente: string; nombre_destinatario: string; ciudad_entrega: string; precio_total: number; estado_liquidacion: string; comision_chofer: number; importe_abonado: number; diferencia: number }[];
+    const data = opts.data as { tracking_number: string; fecha: string; nombre_remitente: string; nombre_destinatario: string; ciudad_entrega: string; precio_total: number; estado_liquidacion: string; comision_chofer: number; importe_abonado: number; diferencia: number }[];
     if (y > pageHeight - 60) {
       addPageFooter(doc, pageWidth, pageHeight, dateStr);
       doc.addPage();
@@ -243,6 +243,7 @@ export async function exportReportPDF(opts: ReportExportOptions) {
       doc,
       [
         { label: 'Tracking', align: 'left' },
+        { label: 'Fecha', align: 'left' },
         { label: 'Remitente', align: 'left' },
         { label: 'Destinatario', align: 'left' },
         { label: 'Localidad', align: 'left' },
@@ -254,6 +255,7 @@ export async function exportReportPDF(opts: ReportExportOptions) {
       ],
       data.map(d => [
         d.tracking_number,
+        d.fecha || '',
         d.nombre_remitente.substring(0, 15),
         d.nombre_destinatario.substring(0, 15),
         d.ciudad_entrega.substring(0, 12),

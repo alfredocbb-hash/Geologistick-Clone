@@ -560,6 +560,7 @@ export default function Reports() {
                   filename: `detalle-envios-${dateRange}`,
                   columns: [
                     { header: 'Tracking', key: 'tracking_number' },
+                    { header: 'Fecha', key: 'fecha' },
                     { header: 'Remitente / Seller', key: 'nombre_remitente' },
                     { header: 'Destinatario', key: 'nombre_destinatario' },
                     { header: 'Localidad', key: 'ciudad_entrega' },
@@ -573,6 +574,7 @@ export default function Reports() {
                     ...data,
                     {
                       tracking_number: 'TOTALES',
+                      fecha: '',
                       nombre_remitente: '',
                       nombre_destinatario: '',
                       ciudad_entrega: '',
@@ -678,6 +680,7 @@ export default function Reports() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Tracking</TableHead>
+                        <TableHead>Fecha</TableHead>
                         <TableHead>Remitente</TableHead>
                         <TableHead>Destinatario</TableHead>
                         <TableHead>Localidad</TableHead>
@@ -692,6 +695,7 @@ export default function Reports() {
                       {(enviosDetalle.data || []).map((row, i) => (
                         <TableRow key={i}>
                           <TableCell className="font-mono text-xs">{row.tracking_number}</TableCell>
+                          <TableCell className="text-xs">{row.fecha}</TableCell>
                           <TableCell className="max-w-[120px] truncate">{row.nombre_remitente}</TableCell>
                           <TableCell className="max-w-[120px] truncate">{row.nombre_destinatario}</TableCell>
                           <TableCell>{row.ciudad_entrega}</TableCell>
@@ -710,7 +714,7 @@ export default function Reports() {
                         const data = enviosDetalle.data!;
                         return (
                           <TableRow className="font-bold border-t-2">
-                            <TableCell colSpan={4}>TOTALES</TableCell>
+                            <TableCell colSpan={5}>TOTALES</TableCell>
                             <TableCell className="text-right">${data.reduce((s, d) => s + d.precio_total, 0).toLocaleString()}</TableCell>
                             <TableCell></TableCell>
                             <TableCell className="text-right">${data.reduce((s, d) => s + d.comision_chofer, 0).toLocaleString()}</TableCell>
@@ -720,7 +724,7 @@ export default function Reports() {
                         );
                       })()}
                       {(enviosDetalle.data || []).length === 0 && (
-                        <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">No hay datos para el período seleccionado</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-8">No hay datos para el período seleccionado</TableCell></TableRow>
                       )}
                     </TableBody>
                   </Table>

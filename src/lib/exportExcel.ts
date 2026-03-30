@@ -1,7 +1,7 @@
 /**
- * Export data to Excel (.xlsx) format using a simple CSV-based approach
- * that Excel can open natively.
+ * Export data to Excel (.xlsx) format using the xlsx library
  */
+import * as XLSX from 'xlsx';
 
 interface ExcelColumn {
   header: string;
@@ -16,44 +16,58 @@ interface ExportExcelOptions {
   data: Record<string, any>[];
 }
 
-function escapeCSV(value: any): string {
+function formatValue(value: any, format?: string): string | number {
   if (value === null || value === undefined) return '';
-  const str = String(value);
-  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-    return `"${str.replace(/"/g, '""')}"`;
-  }
-  return str;
-}
-
-function formatValue(value: any, format?: string): string {
-  if (value === null || value === undefined) return '';
-  if (format === 'currency') return `$${Number(value).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`;
-  if (format === 'percent') return `${Number(value).toFixed(1)}%`;
-  if (format === 'number') return Number(value).toLocaleString('es-AR');
+  if (format === 'currency') return Number(value);
+  if (format === 'percent') return Number(value) / 100;
+  if (format === 'number') return Number(value);
   return String(value);
 }
 
-export function exportToExcel({ filename, columns, data }: ExportExcelOptions) {
-  // BOM for Excel to recognize UTF-8
-  const BOM = '\uFEFF';
+export function exportToExcel({ filename, sheetName = 'Reporte', columns, data }: ExportExcelOptions) {
+  // Build header row
+  const headers = columns.map(c => c.header);
   
-  // Header row
-  const headerRow = columns.map(c => escapeCSV(c.header)).join(',');
-  
-  // Data rows
-  const dataRows = data.map(row =>
-    columns.map(col => escapeCSV(formatValue(row[col.key], col.format))).join(',')
+  // Build data rows
+  const rows = data.map(row =>
+    columns.map(col => formatValue(row[col.key], col.format))
   );
-  
-  const csvContent = BOM + [headerRow, ...dataRows].join('\n');
-  
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `${filename}.csv`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+
+  const wsData = [headers, ...rows];
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  // Set column widths based on header length and data
+  ws['!cols'] = columns.map((col, i) => {
+    const maxDataLen = Math.max(
+      col.header.length,
+      ...data.slice(0, 50).map(row => String(row[col.key] ?? '').length)
+    );
+    return { wch: Math.min(Math.max(maxDataLen + 4, 12), 30) };
+  });
+
+  // Apply currency format to currency columns
+  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+  for (let R = 1; R <= range.e.r; R++) {
+    for (let C = 0; C <= range.e.c; C++) {
+      const col = columns[C];
+      if (!col) continue;
+      const addr = XLSX.utils.encode_cell({ r: R, c: C });
+      const cell = ws[addr];
+      if (!cell) continue;
+      if (col.format === 'currency') {
+        cell.t = 'n';
+        cell.z = '$#,##0.00';
+      } else if (col.format === 'percent') {
+        cell.t = 'n';
+        cell.z = '0.0%';
+      } else if (col.format === 'number') {
+        cell.t = 'n';
+        cell.z = '#,##0';
+      }
+    }
+  }
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  XLSX.writeFile(wb, `${filename}.xlsx`);
 }
