@@ -707,11 +707,16 @@ export default function RoutePlanner() {
         const hasCoords = envio.coords?.lat && envio.coords?.lng;
         
         if (hasCoords) {
+          const isRetiro = envio.tipo === 'retiro';
+          const sellerName = envio.nombre_remitente || '';
+          const sellerColor = !isRetiro && sellerName ? sellerColorMap[sellerName] : undefined;
+          
           markers.push({
             id: envio.id,
             position: { lat: Number(envio.coords.lat), lng: Number(envio.coords.lng) },
             title: `${index + 1}. ${envio.tracking_externo || envio.tracking_number}`,
-            icon: envio.tipo === 'retiro' ? 'current' : 'destination',
+            icon: isRetiro ? 'current' : 'destination',
+            customIconUrl: sellerColor ? createColoredMarkerUrl(sellerColor) : undefined,
             type: 'envio',
             data: envio,
           });
@@ -720,7 +725,7 @@ export default function RoutePlanner() {
     }
     
     return markers;
-  }, [selectedEnviosData, selectedOption, sucursalOrigen, sucursalesConEnvios]);
+  }, [selectedEnviosData, selectedOption, sucursalOrigen, sucursalesConEnvios, sellerColorMap]);
 
   // Polyline path for drawing route on map
   const routePolyline = useMemo(() => {
