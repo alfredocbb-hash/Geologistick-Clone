@@ -60,6 +60,18 @@ export interface SLAData {
   distribucionHoras: { rango: string; cantidad: number }[];
 }
 
+export interface EnvioDetalleRow {
+  tracking_number: string;
+  nombre_remitente: string;
+  nombre_destinatario: string;
+  ciudad_entrega: string;
+  precio_total: number;
+  estado_liquidacion: string;
+  comision_chofer: number;
+  importe_abonado: number;
+  diferencia: number;
+}
+
 export function useReportsData(filters: ReportsFilters) {
   const { tenantId } = useTenant();
   const from = startOfDay(filters.dateFrom).toISOString();
