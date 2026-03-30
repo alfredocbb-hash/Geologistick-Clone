@@ -267,12 +267,25 @@ function AppRoutes() {
 // Global handler to prevent unhandled promise rejections from freezing the app
 function GlobalErrorBoundary({ children }: { children: React.ReactNode }) {
   useEffect(() => {
-    const handler = (event: PromiseRejectionEvent) => {
+    const handleRejection = (event: PromiseRejectionEvent) => {
       console.error('[GlobalErrorBoundary] Unhandled promise rejection:', event.reason);
       event.preventDefault();
+      import('@/lib/errorLogger').then(({ logError }) => {
+        const err = event.reason instanceof Error ? event.reason : new Error(String(event.reason));
+        logError(err, 'GlobalErrorBoundary:unhandledrejection');
+      });
     };
-    window.addEventListener('unhandledrejection', handler);
-    return () => window.removeEventListener('unhandledrejection', handler);
+    const handleError = (event: ErrorEvent) => {
+      import('@/lib/errorLogger').then(({ logError }) => {
+        logError(event.error || new Error(event.message), 'GlobalErrorBoundary:onerror');
+      });
+    };
+    window.addEventListener('unhandledrejection', handleRejection);
+    window.addEventListener('error', handleError);
+    return () => {
+      window.removeEventListener('unhandledrejection', handleRejection);
+      window.removeEventListener('error', handleError);
+    };
   }, []);
   return <>{children}</>;
 }

@@ -267,6 +267,11 @@ const navigation: NavGroup[] = [{
     url: '/admin/api-docs',
     icon: Key,
     permissionKey: 'tenants.manage'
+  }, {
+    title: 'Actividad y Logs',
+    url: '/admin/activity',
+    icon: Activity,
+    permissionKey: 'tenants.manage'
   }],
   superAdminOnly: true
 }];
