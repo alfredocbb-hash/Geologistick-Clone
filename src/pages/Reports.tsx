@@ -680,6 +680,7 @@ export default function Reports() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Tracking</TableHead>
+                        <TableHead>Fecha</TableHead>
                         <TableHead>Remitente</TableHead>
                         <TableHead>Destinatario</TableHead>
                         <TableHead>Localidad</TableHead>
