@@ -574,6 +574,7 @@ export default function Reports() {
                     ...data,
                     {
                       tracking_number: 'TOTALES',
+                      fecha: '',
                       nombre_remitente: '',
                       nombre_destinatario: '',
                       ciudad_entrega: '',
