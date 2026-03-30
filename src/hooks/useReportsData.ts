@@ -60,6 +60,18 @@ export interface SLAData {
   distribucionHoras: { rango: string; cantidad: number }[];
 }
 
+export interface EnvioDetalleRow {
+  tracking_number: string;
+  nombre_remitente: string;
+  nombre_destinatario: string;
+  ciudad_entrega: string;
+  precio_total: number;
+  estado_liquidacion: string;
+  comision_chofer: number;
+  importe_abonado: number;
+  diferencia: number;
+}
+
 export function useReportsData(filters: ReportsFilters) {
   const { tenantId } = useTenant();
   const from = startOfDay(filters.dateFrom).toISOString();
@@ -435,6 +447,92 @@ export function useReportsData(filters: ReportsFilters) {
     enabled: !!tenantId,
   });
 
+  const enviosDetalle = useQuery({
+    queryKey: ['reports-envios-detalle', tenantId, from, to, filters.sucursalId],
+    queryFn: async (): Promise<EnvioDetalleRow[]> => {
+      let query = supabase
+        .from('envios')
+        .select('id, tracking_number, nombre_remitente, nombre_destinatario, ciudad_entrega, precio_total, estado, liquidacion_seller_id')
+        .eq('tenant_id', tenantId!)
+        .gte('created_at', from)
+        .lte('created_at', to);
+
+      if (filters.sucursalId) {
+        query = query.eq('sucursal_origen_id', filters.sucursalId);
+      }
+
+      const { data: enviosData, error } = await query;
+      if (error) throw error;
+      if (!enviosData || enviosData.length === 0) return [];
+
+      const envioIds = enviosData.map(e => e.id);
+
+      // Fetch comisiones
+      const { data: comisionesData } = await supabase
+        .from('comisiones')
+        .select('envio_id, monto')
+        .in('envio_id', envioIds.slice(0, 500));
+
+      const comisionMap = new Map<string, number>();
+      for (const c of comisionesData || []) {
+        if (c.envio_id) {
+          comisionMap.set(c.envio_id, (comisionMap.get(c.envio_id) || 0) + c.monto);
+        }
+      }
+
+      // Fetch pagos
+      const { data: pagosData } = await supabase
+        .from('pagos')
+        .select('envio_id, monto, estado')
+        .in('envio_id', envioIds.slice(0, 500))
+        .in('estado', ['cobrado_chofer', 'rendido', 'pagado']);
+
+      const pagoMap = new Map<string, number>();
+      for (const p of pagosData || []) {
+        if (p.envio_id) {
+          pagoMap.set(p.envio_id, (pagoMap.get(p.envio_id) || 0) + p.monto);
+        }
+      }
+
+      // Fetch liquidaciones_seller status
+      const liqIds = [...new Set(enviosData.map(e => e.liquidacion_seller_id).filter(Boolean))] as string[];
+      const liqMap = new Map<string, string>();
+      if (liqIds.length > 0) {
+        const { data: liqData } = await supabase
+          .from('liquidaciones_seller')
+          .select('id, estado')
+          .in('id', liqIds);
+        for (const l of liqData || []) {
+          liqMap.set(l.id, l.estado || 'pendiente');
+        }
+      }
+
+      const ESTADO_LIQ_LABELS: Record<string, string> = {
+        pendiente: 'Pendiente',
+        liquidada: 'Liquidada',
+        pagada: 'Pagada',
+      };
+
+      return enviosData.map(e => {
+        const comision = comisionMap.get(e.id) || 0;
+        const abonado = pagoMap.get(e.id) || 0;
+        const liqEstado = e.liquidacion_seller_id ? (liqMap.get(e.liquidacion_seller_id) || 'pendiente') : 'sin_liquidacion';
+        return {
+          tracking_number: e.tracking_number || '',
+          nombre_remitente: e.nombre_remitente || 'Sin remitente',
+          nombre_destinatario: e.nombre_destinatario || 'Sin destinatario',
+          ciudad_entrega: e.ciudad_entrega || 'Sin ciudad',
+          precio_total: e.precio_total || 0,
+          estado_liquidacion: ESTADO_LIQ_LABELS[liqEstado] || liqEstado,
+          comision_chofer: comision,
+          importe_abonado: abonado,
+          diferencia: (e.precio_total || 0) - comision - abonado,
+        };
+      });
+    },
+    enabled: !!tenantId,
+  });
+
   return {
     enviosPorSucursal,
     destinos,
@@ -443,5 +541,6 @@ export function useReportsData(filters: ReportsFilters) {
     resumenPeriodoAnterior,
     slaData,
     sucursales,
+    enviosDetalle,
   };
 }
