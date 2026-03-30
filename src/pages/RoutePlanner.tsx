@@ -1721,6 +1721,18 @@ export default function RoutePlanner() {
                     <span>Entregas</span>
                   </div>
                 </div>
+                {/* Seller color legend */}
+                {Object.keys(sellerColorMap).length > 1 && (
+                  <div className="flex flex-wrap gap-3 text-xs">
+                    <span className="text-muted-foreground font-medium">Sellers:</span>
+                    {Object.entries(sellerColorMap).map(([seller, color]) => (
+                      <div key={seller} className="flex items-center gap-1">
+                        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: color }}></span>
+                        <span>{seller}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 <div className="h-80 rounded-lg overflow-hidden">
                   <MapView
