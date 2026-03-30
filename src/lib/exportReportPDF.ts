@@ -243,6 +243,7 @@ export async function exportReportPDF(opts: ReportExportOptions) {
       doc,
       [
         { label: 'Tracking', align: 'left' },
+        { label: 'Fecha', align: 'left' },
         { label: 'Remitente', align: 'left' },
         { label: 'Destinatario', align: 'left' },
         { label: 'Localidad', align: 'left' },
@@ -254,6 +255,7 @@ export async function exportReportPDF(opts: ReportExportOptions) {
       ],
       data.map(d => [
         d.tracking_number,
+        d.fecha || '',
         d.nombre_remitente.substring(0, 15),
         d.nombre_destinatario.substring(0, 15),
         d.ciudad_entrega.substring(0, 12),

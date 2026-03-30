@@ -520,6 +520,7 @@ export function useReportsData(filters: ReportsFilters) {
         const liqEstado = e.liquidacion_seller_id ? (liqMap.get(e.liquidacion_seller_id) || 'pendiente') : 'sin_liquidacion';
         return {
           tracking_number: e.tracking_number || '',
+          fecha: e.created_at ? new Date(e.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '',
           nombre_remitente: e.nombre_remitente || 'Sin remitente',
           nombre_destinatario: e.nombre_destinatario || 'Sin destinatario',
           ciudad_entrega: e.ciudad_entrega || 'Sin ciudad',

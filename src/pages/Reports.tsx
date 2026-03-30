@@ -724,7 +724,7 @@ export default function Reports() {
                         );
                       })()}
                       {(enviosDetalle.data || []).length === 0 && (
-                        <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">No hay datos para el período seleccionado</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-8">No hay datos para el período seleccionado</TableCell></TableRow>
                       )}
                     </TableBody>
                   </Table>
