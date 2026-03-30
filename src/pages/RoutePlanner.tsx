@@ -666,6 +666,30 @@ export default function RoutePlanner() {
     }
   }, []);
 
+  // Seller color palette and mapping
+  const SELLER_COLORS = [
+    '#E91E63', '#9C27B0', '#FF9800', '#607D8B', '#009688',
+    '#795548', '#00BCD4', '#FF5722', '#3F51B5', '#8BC34A',
+  ];
+
+  const createColoredMarkerUrl = useCallback((color: string) => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="12" fill="${color}" stroke="white" stroke-width="2"/></svg>`;
+    return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+  }, []);
+
+  const sellerColorMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    const uniqueSellers = [...new Set(
+      selectedEnviosData
+        .filter(e => e.tipo !== 'retiro' && e.nombre_remitente)
+        .map(e => e.nombre_remitente as string)
+    )];
+    uniqueSellers.forEach((seller, i) => {
+      map[seller] = SELLER_COLORS[i % SELLER_COLORS.length];
+    });
+    return map;
+  }, [selectedEnviosData]);
+
   // Map markers - show all sucursales, selected shipments, and origin
   const mapMarkers = useMemo(() => {
     const markers: MarkerInfo[] = [];
@@ -707,11 +731,16 @@ export default function RoutePlanner() {
         const hasCoords = envio.coords?.lat && envio.coords?.lng;
         
         if (hasCoords) {
+          const isRetiro = envio.tipo === 'retiro';
+          const sellerName = envio.nombre_remitente || '';
+          const sellerColor = !isRetiro && sellerName ? sellerColorMap[sellerName] : undefined;
+          
           markers.push({
             id: envio.id,
             position: { lat: Number(envio.coords.lat), lng: Number(envio.coords.lng) },
             title: `${index + 1}. ${envio.tracking_externo || envio.tracking_number}`,
-            icon: envio.tipo === 'retiro' ? 'current' : 'destination',
+            icon: isRetiro ? 'current' : 'destination',
+            customIconUrl: sellerColor ? createColoredMarkerUrl(sellerColor) : undefined,
             type: 'envio',
             data: envio,
           });
@@ -720,7 +749,7 @@ export default function RoutePlanner() {
     }
     
     return markers;
-  }, [selectedEnviosData, selectedOption, sucursalOrigen, sucursalesConEnvios]);
+  }, [selectedEnviosData, selectedOption, sucursalOrigen, sucursalesConEnvios, sellerColorMap]);
 
   // Polyline path for drawing route on map
   const routePolyline = useMemo(() => {
@@ -1692,6 +1721,18 @@ export default function RoutePlanner() {
                     <span>Entregas</span>
                   </div>
                 </div>
+                {/* Seller color legend */}
+                {Object.keys(sellerColorMap).length > 1 && (
+                  <div className="flex flex-wrap gap-3 text-xs">
+                    <span className="text-muted-foreground font-medium">Sellers:</span>
+                    {Object.entries(sellerColorMap).map(([seller, color]) => (
+                      <div key={seller} className="flex items-center gap-1">
+                        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: color }}></span>
+                        <span>{seller}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 <div className="h-80 rounded-lg overflow-hidden">
                   <MapView

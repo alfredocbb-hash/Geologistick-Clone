@@ -11,6 +11,7 @@ export interface MarkerInfo {
   position: { lat: number; lng: number };
   title?: string;
   icon?: 'origin' | 'destination' | 'branch' | 'current' | 'warning' | 'driver';
+  customIconUrl?: string;
   id?: string;
   type?: 'envio' | 'sucursal' | 'origin' | 'driver';
   data?: any;
@@ -226,7 +227,7 @@ function MapViewComponent({
               key={marker.id || index}
               position={marker.position}
               title={marker.title}
-              icon={getMarkerIcon(marker.icon)}
+              icon={marker.customIconUrl || getMarkerIcon(marker.icon)}
               onClick={() => {
                 if (marker.onClick) {
                   marker.onClick();
