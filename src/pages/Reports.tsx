@@ -96,7 +96,7 @@ export default function Reports() {
   const prev = resumenPeriodoAnterior.data;
 
   const handleExportPDF = async (
-    tab: 'sucursales' | 'destinos' | 'choferes' | 'resumen',
+    tab: 'sucursales' | 'destinos' | 'choferes' | 'resumen' | 'envios',
     title: string,
     chartRefs: React.RefObject<HTMLDivElement | null>[],
     data: any
