@@ -285,6 +285,9 @@ export function ChangeStatusDialog({
   const availableStatuses = statusOrder.filter(s => s !== currentStatus);
   const currentConfig = currentStatus ? statusConfig[currentStatus] : null;
 
+  const isEntregado = currentStatus === 'entregado';
+  const blockedByFinalState = isEntregado && !isSuperAdmin();
+
   if (!open || !currentConfig) {
     return null;
   }
@@ -309,6 +312,18 @@ export function ChangeStatusDialog({
             {currentConfig.label}
           </Badge>
         </div>
+
+        {blockedByFinalState && (
+          <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-sm text-destructive">
+            <strong>Este envío ya fue entregado.</strong> Solo un super administrador puede modificar su estado.
+          </div>
+        )}
+
+        {isEntregado && isSuperAdmin() && (
+          <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-sm text-amber-700 dark:text-amber-400">
+            <strong>⚠️ Atención:</strong> Estás modificando un envío que ya fue entregado. Este cambio quedará registrado en el historial.
+          </div>
+        )}
 
         {/* Status Selection */}
         <div className="space-y-3">
