@@ -49,7 +49,7 @@ interface ScannedShipment {
 }
 
 export function MobileScanTab() {
-  const { user, hasRole } = useAuth();
+  const { user, hasRole, isSuperAdmin } = useAuth();
   const { hasPermission } = usePermissions();
   const queryClient = useQueryClient();
   
