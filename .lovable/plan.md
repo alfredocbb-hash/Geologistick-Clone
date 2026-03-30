@@ -1,36 +1,34 @@
 
 
-## Plan: Agregar fecha de envío + exportar como XLSX real
+## Plan: Mostrar todos los usuarios en Actividad y Logs (cross-tenant)
 
-### Problema
-1. Falta la columna "Fecha" en el reporte de Envíos (tabla y exports)
-2. El Excel se exporta como CSV renombrado, lo que causa problemas visuales (caracteres, formato). Necesita ser un `.xlsx` real usando la librería `xlsx` que ya está instalada.
+### Problema actual
+La tabla `user_activity_logs` se creó hoy y solo tiene registros de 3 usuarios que iniciaron sesión desde entonces. El super_admin **sí ve** esos 3 usuarios correctamente (el RLS funciona bien), pero espera ver los 24 usuarios del sistema. No es un problema de permisos, sino de que no hay registros de login para los demás usuarios.
+
+### Solución
+Agregar una sección/tab **"Usuarios"** que muestre **todos los perfiles del sistema** agrupados por tenant, con su último login registrado (si existe). Esto da visibilidad completa al super_admin.
 
 ### Cambios
 
-**1. `src/hooks/useReportsData.ts`** — Agregar `fecha` al query y al tipo
-- Agregar `created_at` al select de la query `enviosDetalle`
-- Agregar `fecha: string` al interface `EnvioDetalleRow`
-- En el map, formatear `created_at` como fecha legible (dd/MM/yyyy) y asignarla al campo `fecha`
+**`src/pages/UserActivityAdmin.tsx`**
 
-**2. `src/lib/exportExcel.ts`** — Reescribir para generar XLSX real
-- Reemplazar la lógica CSV por la librería `xlsx` (ya instalada)
-- Crear un workbook con sheet, aplicar headers en negrita, anchos de columna automáticos, y formato de moneda para columnas currency
-- Exportar como `.xlsx` real con `XLSX.writeFile()`
+1. **Nuevo tab "Usuarios"** con icono `Users`:
+   - Query a `profiles` (todos, sin filtro de tenant — el RLS ya permite al super_admin ver todos)
+   - Join con `user_activity_logs` para obtener el último login de cada usuario (`MAX(created_at)`)
+   - Join con `user_roles` para mostrar roles
+   - Join con `tenants` para mostrar nombre del tenant
 
-**3. `src/pages/Reports.tsx`** — Agregar columna "Fecha" en tabla y exports
-- Agregar `<TableHead>Fecha</TableHead>` y la celda correspondiente en cada fila
-- Agregar columna `{ header: 'Fecha', key: 'fecha' }` en el export Excel
-- Actualizar colSpan de totales de 4 a 5
-- Actualizar colSpan del mensaje vacío de 9 a 10
+2. **Tabla con columnas**: Nombre, Email, Tenant, Roles, Último acceso, Estado (activo/inactivo)
 
-**4. `src/lib/exportReportPDF.ts`** — Agregar columna Fecha al PDF
-- Agregar "Fecha" a los headers de la tabla del caso `envios`
-- Incluir `row.fecha` en las celdas
+3. **KPI cards**: Total usuarios, Usuarios activos hoy (de activity_logs), Tenants
 
-### Archivos a modificar
-- `src/hooks/useReportsData.ts`
-- `src/lib/exportExcel.ts`
-- `src/pages/Reports.tsx`
-- `src/lib/exportReportPDF.ts`
+4. **Filtro** por tenant y búsqueda por nombre/email
+
+### Detalle técnico
+- Query principal: `profiles` con `select('*, tenant:tenants(nombre)')`
+- Query secundaria: `user_activity_logs` agrupada por `user_id` para obtener `MAX(created_at)` como último login — esto se hará en el frontend agrupando los logs existentes
+- No requiere cambios de DB ni RLS
+
+### Archivo a modificar
+- `src/pages/UserActivityAdmin.tsx`
 
