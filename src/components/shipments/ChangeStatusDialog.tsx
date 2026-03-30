@@ -326,6 +326,7 @@ export function ChangeStatusDialog({
         )}
 
         {/* Status Selection */}
+        {!blockedByFinalState && (
         <div className="space-y-3">
           <Label>Nuevo estado</Label>
           <RadioGroup 
