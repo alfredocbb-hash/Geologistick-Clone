@@ -666,6 +666,30 @@ export default function RoutePlanner() {
     }
   }, []);
 
+  // Seller color palette and mapping
+  const SELLER_COLORS = [
+    '#E91E63', '#9C27B0', '#FF9800', '#607D8B', '#009688',
+    '#795548', '#00BCD4', '#FF5722', '#3F51B5', '#8BC34A',
+  ];
+
+  const createColoredMarkerUrl = useCallback((color: string) => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="12" fill="${color}" stroke="white" stroke-width="2"/></svg>`;
+    return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+  }, []);
+
+  const sellerColorMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    const uniqueSellers = [...new Set(
+      selectedEnviosData
+        .filter(e => e.tipo !== 'retiro' && e.nombre_remitente)
+        .map(e => e.nombre_remitente as string)
+    )];
+    uniqueSellers.forEach((seller, i) => {
+      map[seller] = SELLER_COLORS[i % SELLER_COLORS.length];
+    });
+    return map;
+  }, [selectedEnviosData]);
+
   // Map markers - show all sucursales, selected shipments, and origin
   const mapMarkers = useMemo(() => {
     const markers: MarkerInfo[] = [];
