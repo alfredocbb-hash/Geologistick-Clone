@@ -73,6 +73,7 @@ import Partners from "./pages/Partners";
 import PrintInvoice from "./pages/PrintInvoice";
 import PrintSettlement from "./pages/PrintSettlement";
 import MarketingAssets from "./pages/MarketingAssets";
+import UserActivityAdmin from "./pages/UserActivityAdmin";
 import TenantApiDocs from "./pages/TenantApiDocs";
 import TiendanubeOAuthResult from "./pages/TiendanubeOAuthResult";
 import TiendanubeDocsPublic from "./pages/TiendanubeDocsPublic";
@@ -246,6 +247,7 @@ function AppRoutes() {
       <Route path="/admin/partners" element={<DashboardLayout><Partners /></DashboardLayout>} />
       <Route path="/marketing-assets" element={<DashboardLayout><MarketingAssets /></DashboardLayout>} />
       <Route path="/admin/api-docs" element={<DashboardLayout><TenantApiDocs /></DashboardLayout>} />
+      <Route path="/admin/activity" element={<DashboardLayout><UserActivityAdmin /></DashboardLayout>} />
       
       {/* Profile */}
       <Route path="/profile" element={<DashboardLayout><Profile /></DashboardLayout>} />
@@ -267,12 +269,25 @@ function AppRoutes() {
 // Global handler to prevent unhandled promise rejections from freezing the app
 function GlobalErrorBoundary({ children }: { children: React.ReactNode }) {
   useEffect(() => {
-    const handler = (event: PromiseRejectionEvent) => {
+    const handleRejection = (event: PromiseRejectionEvent) => {
       console.error('[GlobalErrorBoundary] Unhandled promise rejection:', event.reason);
       event.preventDefault();
+      import('@/lib/errorLogger').then(({ logError }) => {
+        const err = event.reason instanceof Error ? event.reason : new Error(String(event.reason));
+        logError(err, 'GlobalErrorBoundary:unhandledrejection');
+      });
     };
-    window.addEventListener('unhandledrejection', handler);
-    return () => window.removeEventListener('unhandledrejection', handler);
+    const handleError = (event: ErrorEvent) => {
+      import('@/lib/errorLogger').then(({ logError }) => {
+        logError(event.error || new Error(event.message), 'GlobalErrorBoundary:onerror');
+      });
+    };
+    window.addEventListener('unhandledrejection', handleRejection);
+    window.addEventListener('error', handleError);
+    return () => {
+      window.removeEventListener('unhandledrejection', handleRejection);
+      window.removeEventListener('error', handleError);
+    };
   }, []);
   return <>{children}</>;
 }
