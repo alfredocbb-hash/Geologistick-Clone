@@ -542,6 +542,194 @@ export default function Reports() {
           )}
         </TabsContent>
 
+        {/* Tab: Envíos Detalle */}
+        <TabsContent value="envios-detalle" className="space-y-4">
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const data = enviosDetalle.data || [];
+                const totals = data.reduce((acc, d) => ({
+                  precio_total: acc.precio_total + d.precio_total,
+                  comision_chofer: acc.comision_chofer + d.comision_chofer,
+                  importe_abonado: acc.importe_abonado + d.importe_abonado,
+                  diferencia: acc.diferencia + d.diferencia,
+                }), { precio_total: 0, comision_chofer: 0, importe_abonado: 0, diferencia: 0 });
+                exportToExcel({
+                  filename: `detalle-envios-${dateRange}`,
+                  columns: [
+                    { header: 'Tracking', key: 'tracking_number' },
+                    { header: 'Remitente / Seller', key: 'nombre_remitente' },
+                    { header: 'Destinatario', key: 'nombre_destinatario' },
+                    { header: 'Localidad', key: 'ciudad_entrega' },
+                    { header: 'Importe', key: 'precio_total', format: 'currency' },
+                    { header: 'Est. Liquidación', key: 'estado_liquidacion' },
+                    { header: 'Comisión Chofer', key: 'comision_chofer', format: 'currency' },
+                    { header: 'Importe Abonado', key: 'importe_abonado', format: 'currency' },
+                    { header: 'Diferencia', key: 'diferencia', format: 'currency' },
+                  ],
+                  data: [
+                    ...data,
+                    {
+                      tracking_number: 'TOTALES',
+                      nombre_remitente: '',
+                      nombre_destinatario: '',
+                      ciudad_entrega: '',
+                      precio_total: totals.precio_total,
+                      estado_liquidacion: '',
+                      comision_chofer: totals.comision_chofer,
+                      importe_abonado: totals.importe_abonado,
+                      diferencia: totals.diferencia,
+                    },
+                  ],
+                });
+              }}
+            >
+              <FileSpreadsheet className="h-4 w-4 mr-2" />
+              Excel
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={exporting}
+              onClick={() => handleExportPDF('envios', 'Detalle de Envíos', [], enviosDetalle.data || [])}
+            >
+              {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+              PDF
+            </Button>
+          </div>
+
+          {enviosDetalle.isLoading ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-28" />)}
+            </div>
+          ) : (
+            <>
+              {/* KPI Cards */}
+              {(() => {
+                const data = enviosDetalle.data || [];
+                const totalEnvios = data.length;
+                const totalImporte = data.reduce((s, d) => s + d.precio_total, 0);
+                const totalComisiones = data.reduce((s, d) => s + d.comision_chofer, 0);
+                const totalDiferencia = data.reduce((s, d) => s + d.diferencia, 0);
+                return (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <Card>
+                      <CardContent className="pt-6">
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                            <Package className="h-5 w-5 text-primary" />
+                          </div>
+                          <div>
+                            <p className="text-sm text-muted-foreground">Total Envíos</p>
+                            <p className="text-2xl font-bold">{totalEnvios}</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="pt-6">
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                            <DollarSign className="h-5 w-5 text-primary" />
+                          </div>
+                          <div>
+                            <p className="text-sm text-muted-foreground">Importe Total</p>
+                            <p className="text-2xl font-bold">${totalImporte.toLocaleString()}</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="pt-6">
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                            <Users className="h-5 w-5 text-primary" />
+                          </div>
+                          <div>
+                            <p className="text-sm text-muted-foreground">Total Comisiones</p>
+                            <p className="text-2xl font-bold">${totalComisiones.toLocaleString()}</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="pt-6">
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                            <TrendingUp className="h-5 w-5 text-primary" />
+                          </div>
+                          <div>
+                            <p className="text-sm text-muted-foreground">Diferencia Neta</p>
+                            <p className="text-2xl font-bold">${totalDiferencia.toLocaleString()}</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                );
+              })()}
+
+              {/* Table */}
+              <Card>
+                <CardContent className="pt-6">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Tracking</TableHead>
+                        <TableHead>Remitente</TableHead>
+                        <TableHead>Destinatario</TableHead>
+                        <TableHead>Localidad</TableHead>
+                        <TableHead className="text-right">Importe</TableHead>
+                        <TableHead>Est. Liquidación</TableHead>
+                        <TableHead className="text-right">Comisión</TableHead>
+                        <TableHead className="text-right">Abonado</TableHead>
+                        <TableHead className="text-right">Diferencia</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(enviosDetalle.data || []).map((row, i) => (
+                        <TableRow key={i}>
+                          <TableCell className="font-mono text-xs">{row.tracking_number}</TableCell>
+                          <TableCell className="max-w-[120px] truncate">{row.nombre_remitente}</TableCell>
+                          <TableCell className="max-w-[120px] truncate">{row.nombre_destinatario}</TableCell>
+                          <TableCell>{row.ciudad_entrega}</TableCell>
+                          <TableCell className="text-right">${row.precio_total.toLocaleString()}</TableCell>
+                          <TableCell>
+                            <Badge variant={row.estado_liquidacion === 'Liquidada' || row.estado_liquidacion === 'Pagada' ? 'default' : 'secondary'}>
+                              {row.estado_liquidacion}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">${row.comision_chofer.toLocaleString()}</TableCell>
+                          <TableCell className="text-right">${row.importe_abonado.toLocaleString()}</TableCell>
+                          <TableCell className="text-right font-medium">${row.diferencia.toLocaleString()}</TableCell>
+                        </TableRow>
+                      ))}
+                      {(enviosDetalle.data || []).length > 0 && (() => {
+                        const data = enviosDetalle.data!;
+                        return (
+                          <TableRow className="font-bold border-t-2">
+                            <TableCell colSpan={4}>TOTALES</TableCell>
+                            <TableCell className="text-right">${data.reduce((s, d) => s + d.precio_total, 0).toLocaleString()}</TableCell>
+                            <TableCell></TableCell>
+                            <TableCell className="text-right">${data.reduce((s, d) => s + d.comision_chofer, 0).toLocaleString()}</TableCell>
+                            <TableCell className="text-right">${data.reduce((s, d) => s + d.importe_abonado, 0).toLocaleString()}</TableCell>
+                            <TableCell className="text-right">${data.reduce((s, d) => s + d.diferencia, 0).toLocaleString()}</TableCell>
+                          </TableRow>
+                        );
+                      })()}
+                      {(enviosDetalle.data || []).length === 0 && (
+                        <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">No hay datos para el período seleccionado</TableCell></TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </TabsContent>
+
         {/* Tab: Productividad */}
         <TabsContent value="productividad" className="space-y-4">
           <ProductividadTab data={productividad.data} isLoading={productividad.isLoading} />
