@@ -354,6 +354,7 @@ export function ChangeStatusDialog({
             })}
           </RadioGroup>
         </div>
+        )}
 
         {/* Notes */}
         <div className="space-y-2">
