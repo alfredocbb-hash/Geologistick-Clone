@@ -83,7 +83,7 @@ export default function Reports() {
     sucursalId: sucursalId !== 'all' ? sucursalId : undefined,
   };
 
-  const { enviosPorSucursal, destinos, rendimientoChoferes, resumenGeneral, resumenPeriodoAnterior, slaData, sucursales } = useReportsData(filters);
+  const { enviosPorSucursal, destinos, rendimientoChoferes, resumenGeneral, resumenPeriodoAnterior, slaData, sucursales, enviosDetalle } = useReportsData(filters);
   const productividad = useProductividadData(filters);
   const costos = useCostosData(filters);
 
