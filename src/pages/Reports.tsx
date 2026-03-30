@@ -714,7 +714,7 @@ export default function Reports() {
                         const data = enviosDetalle.data!;
                         return (
                           <TableRow className="font-bold border-t-2">
-                            <TableCell colSpan={4}>TOTALES</TableCell>
+                            <TableCell colSpan={5}>TOTALES</TableCell>
                             <TableCell className="text-right">${data.reduce((s, d) => s + d.precio_total, 0).toLocaleString()}</TableCell>
                             <TableCell></TableCell>
                             <TableCell className="text-right">${data.reduce((s, d) => s + d.comision_chofer, 0).toLocaleString()}</TableCell>
