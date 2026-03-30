@@ -231,6 +231,42 @@ export async function exportReportPDF(opts: ReportExportOptions) {
       margin,
       5
     );
+  } else if (opts.tab === 'envios') {
+    const data = opts.data as { tracking_number: string; nombre_remitente: string; nombre_destinatario: string; ciudad_entrega: string; precio_total: number; estado_liquidacion: string; comision_chofer: number; importe_abonado: number; diferencia: number }[];
+    if (y > pageHeight - 60) {
+      addPageFooter(doc, pageWidth, pageHeight, dateStr);
+      doc.addPage();
+      addPageHeader(doc, logoBase64, opts.title, pageWidth, margin);
+      y = 28;
+    }
+    drawTable(
+      doc,
+      [
+        { label: 'Tracking', align: 'left' },
+        { label: 'Remitente', align: 'left' },
+        { label: 'Destinatario', align: 'left' },
+        { label: 'Localidad', align: 'left' },
+        { label: 'Importe', align: 'right' },
+        { label: 'Liq.', align: 'left' },
+        { label: 'Comisión', align: 'right' },
+        { label: 'Abonado', align: 'right' },
+        { label: 'Diferencia', align: 'right' },
+      ],
+      data.map(d => [
+        d.tracking_number,
+        d.nombre_remitente.substring(0, 15),
+        d.nombre_destinatario.substring(0, 15),
+        d.ciudad_entrega.substring(0, 12),
+        `$${d.precio_total.toLocaleString()}`,
+        d.estado_liquidacion,
+        `$${d.comision_chofer.toLocaleString()}`,
+        `$${d.importe_abonado.toLocaleString()}`,
+        `$${d.diferencia.toLocaleString()}`,
+      ]),
+      y,
+      pageWidth,
+      margin
+    );
   } else if (opts.tab === 'resumen') {
     const data = opts.data as { totalEnvios: number; tasaEntrega: number; tiempoPromedio: number | null; ingresosTotales: number; evolucionDiaria: any[]; distribucionEstados: { estado: string; cantidad: number }[] };
 
