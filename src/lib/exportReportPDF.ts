@@ -232,7 +232,7 @@ export async function exportReportPDF(opts: ReportExportOptions) {
       5
     );
   } else if (opts.tab === 'envios') {
-    const data = opts.data as { tracking_number: string; nombre_remitente: string; nombre_destinatario: string; ciudad_entrega: string; precio_total: number; estado_liquidacion: string; comision_chofer: number; importe_abonado: number; diferencia: number }[];
+    const data = opts.data as { tracking_number: string; fecha: string; nombre_remitente: string; nombre_destinatario: string; ciudad_entrega: string; precio_total: number; estado_liquidacion: string; comision_chofer: number; importe_abonado: number; diferencia: number }[];
     if (y > pageHeight - 60) {
       addPageFooter(doc, pageWidth, pageHeight, dateStr);
       doc.addPage();
