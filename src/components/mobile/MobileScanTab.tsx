@@ -240,8 +240,10 @@ export function MobileScanTab() {
         return;
       }
       
-      // Block final states
-      if (['entregado', 'cancelado'].includes(shipment.estado)) {
+      // Block final states (super_admin can bypass 'entregado')
+      const isFinalState = ['entregado', 'cancelado'].includes(shipment.estado);
+      const canBypass = shipment.estado === 'entregado' && isSuperAdmin();
+      if (isFinalState && !canBypass) {
         playWarningSound();
         vibrateDevice();
         setScannedShipment(shipment);

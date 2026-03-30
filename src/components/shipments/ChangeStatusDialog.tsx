@@ -386,7 +386,7 @@ export function ChangeStatusDialog({
           </Button>
           <Button 
             onClick={() => changeStatusMutation.mutate()}
-            disabled={!newStatus || changeStatusMutation.isPending}
+            disabled={!newStatus || changeStatusMutation.isPending || blockedByFinalState}
           >
             {changeStatusMutation.isPending ? 'Guardando...' : 'Confirmar Cambio'}
           </Button>
