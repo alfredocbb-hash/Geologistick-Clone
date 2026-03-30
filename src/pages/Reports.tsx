@@ -695,6 +695,7 @@ export default function Reports() {
                       {(enviosDetalle.data || []).map((row, i) => (
                         <TableRow key={i}>
                           <TableCell className="font-mono text-xs">{row.tracking_number}</TableCell>
+                          <TableCell className="text-xs">{row.fecha}</TableCell>
                           <TableCell className="max-w-[120px] truncate">{row.nombre_remitente}</TableCell>
                           <TableCell className="max-w-[120px] truncate">{row.nombre_destinatario}</TableCell>
                           <TableCell>{row.ciudad_entrega}</TableCell>
