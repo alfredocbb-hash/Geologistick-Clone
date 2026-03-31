@@ -94,16 +94,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
           }, 0);
 
-          // Log login activity
-          if (event === 'SIGNED_IN') {
-            supabase.from('user_activity_logs').insert({
-              user_id: session.user.id,
-              action: 'login',
-              user_agent: navigator.userAgent,
-            }).then(({ error: logErr }) => {
-              if (logErr) console.error('[Auth] Failed to log activity:', logErr);
-            });
-          }
         } else {
           setProfile(null);
           setRoles([]);
