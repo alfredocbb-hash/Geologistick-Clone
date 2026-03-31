@@ -1,34 +1,64 @@
 
 
-## Plan: Mostrar todos los usuarios en Actividad y Logs (cross-tenant)
+## Plan: Registrar logins server-side con trigger en auth.users
 
-### Problema actual
-La tabla `user_activity_logs` se creó hoy y solo tiene registros de 3 usuarios que iniciaron sesión desde entonces. El super_admin **sí ve** esos 3 usuarios correctamente (el RLS funciona bien), pero espera ver los 24 usuarios del sistema. No es un problema de permisos, sino de que no hay registros de login para los demás usuarios.
+### Problema
+El registro de actividad actual se hace desde el cliente (React `onAuthStateChange`), lo que significa que solo se registra si el usuario inicia sesión desde un navegador que ejecuta tu app. Si inician desde otro PC, red o dispositivo donde el cliente no se ejecutó, no queda registro.
 
 ### Solución
-Agregar una sección/tab **"Usuarios"** que muestre **todos los perfiles del sistema** agrupados por tenant, con su último login registrado (si existe). Esto da visibilidad completa al super_admin.
+Crear un **trigger en la base de datos** que detecte cambios en `auth.users.last_sign_in_at` y automáticamente inserte un log en `user_activity_logs`. Esto funciona independientemente del dispositivo/red porque se ejecuta server-side.
+
+Además, agregar `tenant_id` al log para poder filtrar por empresa, y eliminar el insert duplicado del cliente.
 
 ### Cambios
 
-**`src/pages/UserActivityAdmin.tsx`**
+**1. Migración SQL** — Trigger server-side para logins
+```sql
+CREATE OR REPLACE FUNCTION public.log_auth_signin()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = 'public'
+AS $$
+DECLARE
+  v_tenant_id UUID;
+BEGIN
+  IF TG_OP = 'UPDATE' 
+     AND NEW.last_sign_in_at IS DISTINCT FROM OLD.last_sign_in_at THEN
+    
+    SELECT tenant_id INTO v_tenant_id
+    FROM public.profiles
+    WHERE user_id = NEW.id;
 
-1. **Nuevo tab "Usuarios"** con icono `Users`:
-   - Query a `profiles` (todos, sin filtro de tenant — el RLS ya permite al super_admin ver todos)
-   - Join con `user_activity_logs` para obtener el último login de cada usuario (`MAX(created_at)`)
-   - Join con `user_roles` para mostrar roles
-   - Join con `tenants` para mostrar nombre del tenant
+    INSERT INTO public.user_activity_logs (user_id, tenant_id, action, details, created_at)
+    VALUES (
+      NEW.id,
+      v_tenant_id,
+      'login',
+      jsonb_build_object('email', NEW.email),
+      COALESCE(NEW.last_sign_in_at, now())
+    );
+  END IF;
+  RETURN NEW;
+END;
+$$;
 
-2. **Tabla con columnas**: Nombre, Email, Tenant, Roles, Último acceso, Estado (activo/inactivo)
+DROP TRIGGER IF EXISTS trg_log_auth_signin ON auth.users;
+CREATE TRIGGER trg_log_auth_signin
+  AFTER UPDATE OF last_sign_in_at ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.log_auth_signin();
+```
 
-3. **KPI cards**: Total usuarios, Usuarios activos hoy (de activity_logs), Tenants
+**2. `src/lib/auth.tsx`** — Eliminar el insert client-side de login
+- Eliminar el bloque `if (event === 'SIGNED_IN') { supabase.from('user_activity_logs').insert(...) }` (líneas ~98-105) ya que el trigger server-side lo reemplaza completamente.
 
-4. **Filtro** por tenant y búsqueda por nombre/email
+### Resultado
+- Todo login queda registrado sin importar desde qué dispositivo, red o IP se conecte el usuario
+- El `tenant_id` se guarda automáticamente para filtrar por empresa
+- Sin código duplicado en el cliente
 
-### Detalle técnico
-- Query principal: `profiles` con `select('*, tenant:tenants(nombre)')`
-- Query secundaria: `user_activity_logs` agrupada por `user_id` para obtener `MAX(created_at)` como último login — esto se hará en el frontend agrupando los logs existentes
-- No requiere cambios de DB ni RLS
-
-### Archivo a modificar
-- `src/pages/UserActivityAdmin.tsx`
+### Archivos a modificar
+- Migración SQL (nueva)
+- `src/lib/auth.tsx`
 
