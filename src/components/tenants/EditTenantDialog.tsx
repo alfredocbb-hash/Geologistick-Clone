@@ -109,6 +109,7 @@ export function EditTenantDialog({ open, onOpenChange, tenant, onSuccess }: Edit
             : null,
           ecommerce_enabled: ecommerceEnabled,
           modo_flex: modoFlexEnabled,
+          modo_flex_mixto: modoFlexMixtoEnabled,
           configuracion: {
             ...((tenant as any).configuracion || {}),
             auto_seleccion_tarifa_por_zona: autoSeleccionTarifaEnabled
