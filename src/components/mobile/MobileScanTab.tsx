@@ -54,6 +54,8 @@ export function MobileScanTab() {
   const { user, hasRole, isSuperAdmin } = useAuth();
   const { hasPermission } = usePermissions();
   const queryClient = useQueryClient();
+  const { tenant } = useTenant();
+  const modoFlexMixto = !!(tenant as any)?.modo_flex_mixto;
   
   const [showScanner, setShowScanner] = useState(false);
   const [scannedShipment, setScannedShipment] = useState<ScannedShipment | null>(null);
@@ -67,6 +69,8 @@ export function MobileScanTab() {
   const [pendingMLData, setPendingMLData] = useState<{ mlShipmentId: string; mlSenderId?: string } | null>(null);
   const [isPulsing, setIsPulsing] = useState(true);
   const [showCollectScreen, setShowCollectScreen] = useState(false);
+  const [showOCRCapture, setShowOCRCapture] = useState(false);
+  const [pendingOCRShipmentId, setPendingOCRShipmentId] = useState<string | null>(null);
   
   // Route sheet states
   const [showReceiveRouteSheetDialog, setShowReceiveRouteSheetDialog] = useState(false);
