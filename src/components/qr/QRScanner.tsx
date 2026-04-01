@@ -652,7 +652,7 @@ export default function QRScanner({ onScan, onClose, continuousMode = false, sca
           <Camera className="h-5 w-5" />
           <span className="font-medium">Escáner QR</span>
           {continuousMode && scannedCount > 0 && (
-            <span className="bg-primary text-primary-foreground text-xs font-bold px-2.5 py-1 rounded-full animate-pulse">
+            <span className="flex-shrink-0 bg-primary text-primary-foreground text-xs font-bold px-2.5 py-1 rounded-full">
               {scannedCount} ✓
             </span>
           )}
