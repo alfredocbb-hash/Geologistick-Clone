@@ -14,9 +14,11 @@ import { BranchDeliveryDialog } from '@/components/scan/BranchDeliveryDialog';
 import { UltimaMillaDialog } from '@/components/scan/UltimaMillaDialog';
 import { MLDeliveryDialog } from '@/components/scan/MLDeliveryDialog';
 import { MLRegisterDialog } from '@/components/scan/MLRegisterDialog';
+import { OCRCaptureDialog } from '@/components/mobile/OCRCaptureDialog';
 import { ReceiveRouteSheetDialog } from '@/components/scan/ReceiveRouteSheetDialog';
 import { CollectRouteSheetDialog } from '@/components/scan/CollectRouteSheetDialog';
 import { parseQRCode } from '@/lib/qrParser';
+import { useTenant } from '@/hooks/useTenant';
 
 type ScanMode = 'idle' | 'scanning';
 
@@ -52,6 +54,8 @@ export function MobileScanTab() {
   const { user, hasRole, isSuperAdmin } = useAuth();
   const { hasPermission } = usePermissions();
   const queryClient = useQueryClient();
+  const { tenant } = useTenant();
+  const modoFlexMixto = !!(tenant as any)?.modo_flex_mixto;
   
   const [showScanner, setShowScanner] = useState(false);
   const [scannedShipment, setScannedShipment] = useState<ScannedShipment | null>(null);
@@ -65,6 +69,8 @@ export function MobileScanTab() {
   const [pendingMLData, setPendingMLData] = useState<{ mlShipmentId: string; mlSenderId?: string } | null>(null);
   const [isPulsing, setIsPulsing] = useState(true);
   const [showCollectScreen, setShowCollectScreen] = useState(false);
+  const [showOCRCapture, setShowOCRCapture] = useState(false);
+  const [pendingOCRShipmentId, setPendingOCRShipmentId] = useState<string | null>(null);
   
   // Route sheet states
   const [showReceiveRouteSheetDialog, setShowReceiveRouteSheetDialog] = useState(false);
@@ -687,8 +693,67 @@ export function MobileScanTab() {
           userId={user?.id}
           onClose={handleDialogClose}
           onSuccess={handleMLRegisterSuccess}
+          onFallbackOCR={modoFlexMixto ? () => {
+            setPendingOCRShipmentId(pendingMLData.mlShipmentId);
+            setShowMLRegisterDialog(false);
+            setPendingMLData(null);
+            setShowOCRCapture(true);
+          } : undefined}
         />
       )}
+
+      {/* OCR Capture Dialog - fallback when ML register fails */}
+      <OCRCaptureDialog
+        open={showOCRCapture}
+        mlShipmentId={pendingOCRShipmentId || undefined}
+        onClose={() => {
+          setShowOCRCapture(false);
+          setPendingOCRShipmentId(null);
+          setIsPulsing(true);
+        }}
+        onConfirm={async (data) => {
+          try {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('tenant_id')
+              .eq('id', user!.id)
+              .single();
+
+            const trackingNumber = `OCR-${Date.now()}`;
+            const { data: envio, error } = await supabase
+              .from('envios')
+              .insert({
+                tracking_number: trackingNumber,
+                direccion_entrega: data.direccion,
+                ciudad_entrega: data.localidad,
+                cp_entrega: data.codigoPostal,
+                nombre_destinatario: data.nombreDestinatario || null,
+                estado: 'pendiente',
+                precio_total: 0,
+                is_manual_entry: true,
+                source_module: 'mobile_scan',
+                tenant_id: profile?.tenant_id,
+                ml_shipment_id: data.mlShipmentId ? parseInt(data.mlShipmentId) : null,
+                created_by: user?.id,
+              })
+              .select()
+              .single();
+
+            if (error) throw error;
+
+            toast.success('Envío creado por OCR', {
+              description: `Tracking: ${trackingNumber}`,
+            });
+            setShowOCRCapture(false);
+            setPendingOCRShipmentId(null);
+            setIsPulsing(true);
+            queryClient.invalidateQueries({ queryKey: ['envios'] });
+            queryClient.invalidateQueries({ queryKey: ['mobile-recent-scans'] });
+          } catch (err: any) {
+            toast.error('Error al crear envío', { description: err.message });
+          }
+        }}
+      />
 
       {/* Route Sheet Reception Dialog (for admin/operator roles) */}
       {showReceiveRouteSheetDialog && scannedRouteSheetId && (

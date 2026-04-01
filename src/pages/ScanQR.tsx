@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -28,8 +28,10 @@ import { BranchDeliveryDialog } from '@/components/scan/BranchDeliveryDialog';
 import { ReceiveRouteSheetDialog } from '@/components/scan/ReceiveRouteSheetDialog';
 import { MLDeliveryDialog } from '@/components/scan/MLDeliveryDialog';
 import { MLRegisterDialog } from '@/components/scan/MLRegisterDialog';
+import { OCRCaptureDialog } from '@/components/mobile/OCRCaptureDialog';
 import { parseQRCode, ParsedQR } from '@/lib/qrParser';
 import { CollectScanScreen } from '@/components/mobile/CollectScanScreen';
+import { useTenant } from '@/hooks/useTenant';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   pendiente: { label: 'Pendiente', color: 'bg-orange-100 text-orange-800' },
@@ -97,6 +99,11 @@ export default function ScanQR() {
   const [showMLRegisterDialog, setShowMLRegisterDialog] = useState(false);
   const [pendingMLData, setPendingMLData] = useState<{ mlShipmentId: string; mlSenderId?: string } | null>(null);
   const [showMassCollect, setShowMassCollect] = useState(false);
+  const [showOCRCapture, setShowOCRCapture] = useState(false);
+  const [pendingOCRShipmentId, setPendingOCRShipmentId] = useState<string | null>(null);
+
+  const { tenant } = useTenant();
+  const modoFlexMixto = !!(tenant as any)?.modo_flex_mixto;
 
   // Role-based permissions
   const isDriver = hasRole('chofer');
@@ -739,10 +746,64 @@ export default function ScanQR() {
             setPendingMLData(null);
           }}
           onSuccess={handleMLRegisterSuccess}
+          onFallbackOCR={modoFlexMixto ? () => {
+            setPendingOCRShipmentId(pendingMLData.mlShipmentId);
+            setShowMLRegisterDialog(false);
+            setPendingMLData(null);
+            setShowOCRCapture(true);
+          } : undefined}
         />
       )}
 
-      {/* Mass Collect Overlay */}
+      {/* OCR Capture Dialog - fallback when ML register fails */}
+      <OCRCaptureDialog
+        open={showOCRCapture}
+        mlShipmentId={pendingOCRShipmentId || undefined}
+        onClose={() => {
+          setShowOCRCapture(false);
+          setPendingOCRShipmentId(null);
+        }}
+        onConfirm={async (data) => {
+          try {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('tenant_id')
+              .eq('id', user!.id)
+              .single();
+
+            const trackingNumber = `OCR-${Date.now()}`;
+            const { data: envio, error } = await supabase
+              .from('envios')
+              .insert({
+                tracking_number: trackingNumber,
+                direccion_entrega: data.direccion,
+                ciudad_entrega: data.localidad,
+                cp_entrega: data.codigoPostal,
+                nombre_destinatario: data.nombreDestinatario || null,
+                estado: 'pendiente',
+                precio_total: 0,
+                is_manual_entry: true,
+                source_module: 'scan_qr',
+                tenant_id: profile?.tenant_id,
+                ml_shipment_id: data.mlShipmentId ? parseInt(data.mlShipmentId) : null,
+                created_by: user?.id,
+              })
+              .select()
+              .single();
+
+            if (error) throw error;
+
+            toast.success('Envío creado por OCR', {
+              description: `Tracking: ${trackingNumber}`,
+            });
+            setShowOCRCapture(false);
+            setPendingOCRShipmentId(null);
+            queryClient.invalidateQueries({ queryKey: ['envios'] });
+          } catch (err: any) {
+            toast.error('Error al crear envío', { description: err.message });
+          }
+        }}
+      />
       {showMassCollect && (
         <div className="fixed inset-0 z-50 bg-background">
           <div className="flex flex-col h-full p-4">
