@@ -1053,6 +1053,7 @@ export type Database = {
           horario_preferido_entrega: string | null
           horario_retiro: string | null
           id: string
+          is_manual_entry: boolean | null
           largo_cm: number | null
           liquidacion_seller_id: string | null
           ml_last_sync_at: string | null
@@ -1081,6 +1082,7 @@ export type Database = {
           retira_foto: string | null
           rotulo_generado: boolean | null
           rotulo_generado_at: string | null
+          source_module: string | null
           sucursal_destino_id: string | null
           sucursal_entrega_id: string | null
           sucursal_origen_id: string | null
@@ -1152,6 +1154,7 @@ export type Database = {
           horario_preferido_entrega?: string | null
           horario_retiro?: string | null
           id?: string
+          is_manual_entry?: boolean | null
           largo_cm?: number | null
           liquidacion_seller_id?: string | null
           ml_last_sync_at?: string | null
@@ -1180,6 +1183,7 @@ export type Database = {
           retira_foto?: string | null
           rotulo_generado?: boolean | null
           rotulo_generado_at?: string | null
+          source_module?: string | null
           sucursal_destino_id?: string | null
           sucursal_entrega_id?: string | null
           sucursal_origen_id?: string | null
@@ -1251,6 +1255,7 @@ export type Database = {
           horario_preferido_entrega?: string | null
           horario_retiro?: string | null
           id?: string
+          is_manual_entry?: boolean | null
           largo_cm?: number | null
           liquidacion_seller_id?: string | null
           ml_last_sync_at?: string | null
@@ -1279,6 +1284,7 @@ export type Database = {
           retira_foto?: string | null
           rotulo_generado?: boolean | null
           rotulo_generado_at?: string | null
+          source_module?: string | null
           sucursal_destino_id?: string | null
           sucursal_entrega_id?: string | null
           sucursal_origen_id?: string | null
@@ -4415,6 +4421,7 @@ export type Database = {
           max_sucursales: number | null
           max_usuarios: number | null
           modo_flex: boolean | null
+          modo_flex_mixto: boolean | null
           nombre: string
           plan: string | null
           slug: string
@@ -4439,6 +4446,7 @@ export type Database = {
           max_sucursales?: number | null
           max_usuarios?: number | null
           modo_flex?: boolean | null
+          modo_flex_mixto?: boolean | null
           nombre: string
           plan?: string | null
           slug: string
@@ -4463,6 +4471,7 @@ export type Database = {
           max_sucursales?: number | null
           max_usuarios?: number | null
           modo_flex?: boolean | null
+          modo_flex_mixto?: boolean | null
           nombre?: string
           plan?: string | null
           slug?: string

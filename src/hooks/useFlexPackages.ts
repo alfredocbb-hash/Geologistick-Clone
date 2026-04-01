@@ -18,6 +18,15 @@ export interface FlexPackage {
   horario_preferido_entrega: string | null;
   wasTransferred?: boolean;
   previousDriver?: string;
+  isManualEntry?: boolean;
+}
+
+export interface ManualPackageData {
+  direccion: string;
+  ciudad: string;
+  codigoPostal: string;
+  nombreDestinatario: string;
+  mlShipmentId?: string;
 }
 
 interface UseFlexPackagesReturn {
@@ -25,6 +34,7 @@ interface UseFlexPackagesReturn {
   isLoading: boolean;
   addPackage: (envioId: string) => Promise<FlexPackage | null>;
   addPackageByTracking: (tracking: string) => Promise<FlexPackage | null>;
+  addManualPackage: (data: ManualPackageData) => Promise<FlexPackage | null>;
   removePackage: (id: string) => void;
   clearPackages: () => void;
   optimizeRoute: (currentLocation: { lat: number; lng: number }) => void;
@@ -501,6 +511,93 @@ export function useFlexPackages(): UseFlexPackagesReturn {
     }
   }, [user?.id, packages, clearPackages]);
 
+  // Add manual package from OCR data
+  const addManualPackage = useCallback(async (data: ManualPackageData): Promise<FlexPackage | null> => {
+    if (!user?.id || !(profile as any)?.tenant_id) return null;
+
+    setIsLoading(true);
+    try {
+      const tenantId = (profile as any).tenant_id;
+
+      // Generate tracking number via RPC
+      const { data: trackingNumber, error: trackingError } = await supabase.rpc('generate_tracking_number');
+      if (trackingError || !trackingNumber) throw new Error('Error generando tracking number');
+
+      // Geocode the address
+      let lat: number | null = null;
+      let lng: number | null = null;
+      try {
+        const { data: geoData } = await supabase.functions.invoke('geocode-address', {
+          body: {
+            address: data.direccion,
+            city: data.ciudad || undefined,
+          },
+        });
+        if (geoData?.lat && geoData?.lng) {
+          lat = geoData.lat;
+          lng = geoData.lng;
+        }
+      } catch (e) {
+        console.warn('[addManualPackage] Geocoding failed, continuing without coords:', e);
+      }
+
+      // Create envio
+      const { data: envio, error: insertError } = await supabase
+        .from('envios')
+        .insert({
+          tracking_number: trackingNumber,
+          direccion_entrega: data.direccion,
+          ciudad_entrega: data.ciudad || null,
+          cp_entrega: data.codigoPostal || null,
+          codigo_postal_destino: data.codigoPostal || null,
+          nombre_destinatario: data.nombreDestinatario || null,
+          entrega_lat: lat,
+          entrega_lng: lng,
+          destinatario_lat: lat,
+          destinatario_lng: lng,
+          estado: 'recogido' as any,
+          chofer_id: user.id,
+          chofer_ultima_milla_id: user.id,
+          fecha_asignacion_ultima_milla: new Date().toISOString(),
+          fecha_recogida: new Date().toISOString(),
+          tenant_id: tenantId,
+          created_by: user.id,
+          precio_total: 0,
+          is_manual_entry: true as any,
+          source_module: 'flex_mixto' as any,
+          ml_shipment_id: data.mlShipmentId ? parseInt(data.mlShipmentId) : null,
+        } as any)
+        .select()
+        .single();
+
+      if (insertError || !envio) {
+        throw new Error(insertError?.message || 'Error al crear envío manual');
+      }
+
+      const flexPackage: FlexPackage = {
+        id: envio.id,
+        tracking_number: envio.tracking_number,
+        direccion_entrega: envio.direccion_entrega,
+        ciudad_entrega: envio.ciudad_entrega,
+        nombre_destinatario: envio.nombre_destinatario,
+        entrega_lat: lat,
+        entrega_lng: lng,
+        estado: envio.estado,
+        horario_preferido_entrega: null,
+        isManualEntry: true,
+      };
+
+      setPackages(prev => [...prev, flexPackage]);
+      return flexPackage;
+    } catch (error: any) {
+      console.error('Error adding manual package:', error);
+      toast.error('Error al crear envío manual', { description: error.message });
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user?.id, profile]);
+
   const packagesWithCoords = packages.filter(p => p.entrega_lat && p.entrega_lng);
 
   return {
@@ -508,6 +605,7 @@ export function useFlexPackages(): UseFlexPackagesReturn {
     isLoading,
     addPackage,
     addPackageByTracking,
+    addManualPackage,
     removePackage,
     clearPackages,
     optimizeRoute,

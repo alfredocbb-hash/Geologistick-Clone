@@ -13,6 +13,7 @@ import { MobileReceptionTab } from './MobileReceptionTab';
 import { MobileDeliveriesTab } from './MobileDeliveriesTab';
 import { MobileHistoryTab } from './MobileHistoryTab';
 import { FlexScanScreen } from './FlexScanScreen';
+import { FlexMixtoScreen } from './FlexMixtoScreen';
 import { CheckOutScreen } from './CheckOutScreen';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useAuth } from '@/lib/auth';
@@ -194,7 +195,9 @@ export function MobileAppLayout() {
       case 'deliveries':
         return <MobileDeliveriesTab />;
       case 'scan':
-        return tenant?.modo_flex && userRole === 'chofer' ? <FlexScanScreen /> : <MobileScanTab />;
+        return tenant?.modo_flex && userRole === 'chofer' 
+          ? (tenant as any)?.modo_flex_mixto ? <FlexMixtoScreen /> : <FlexScanScreen />
+          : <MobileScanTab />;
       case 'history':
         return <MobileHistoryTab />;
       case 'profile':

@@ -1,0 +1,1 @@
+ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS modo_flex_mixto BOOLEAN DEFAULT false;
