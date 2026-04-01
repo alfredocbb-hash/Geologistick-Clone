@@ -49,6 +49,7 @@ export function EditTenantDialog({ open, onOpenChange, tenant, onSuccess }: Edit
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [ecommerceEnabled, setEcommerceEnabled] = useState(tenant.ecommerce_enabled ?? false);
   const [modoFlexEnabled, setModoFlexEnabled] = useState((tenant as any).modo_flex ?? false);
+  const [modoFlexMixtoEnabled, setModoFlexMixtoEnabled] = useState((tenant as any).modo_flex_mixto ?? false);
   const [autoSeleccionTarifaEnabled, setAutoSeleccionTarifaEnabled] = useState(
     !!((tenant as any).configuracion?.auto_seleccion_tarifa_por_zona)
   );
@@ -80,6 +81,7 @@ export function EditTenantDialog({ open, onOpenChange, tenant, onSuccess }: Edit
     });
     setEcommerceEnabled(tenant.ecommerce_enabled ?? false);
     setModoFlexEnabled((tenant as any).modo_flex ?? false);
+    setModoFlexMixtoEnabled((tenant as any).modo_flex_mixto ?? false);
     setAutoSeleccionTarifaEnabled(!!((tenant as any).configuracion?.auto_seleccion_tarifa_por_zona));
   }, [tenant, form]);
 
@@ -107,6 +109,7 @@ export function EditTenantDialog({ open, onOpenChange, tenant, onSuccess }: Edit
             : null,
           ecommerce_enabled: ecommerceEnabled,
           modo_flex: modoFlexEnabled,
+          modo_flex_mixto: modoFlexMixtoEnabled,
           configuracion: {
             ...((tenant as any).configuracion || {}),
             auto_seleccion_tarifa_por_zona: autoSeleccionTarifaEnabled
@@ -322,6 +325,21 @@ export function EditTenantDialog({ open, onOpenChange, tenant, onSuccess }: Edit
               <Switch 
                 checked={modoFlexEnabled} 
                 onCheckedChange={setModoFlexEnabled} 
+              />
+            </div>
+
+            {/* Modo Flex Mixto Toggle */}
+            <div className="flex items-center justify-between rounded-lg border p-4">
+              <div>
+                <Label className="text-base font-medium">Modo Flex Mixto</Label>
+                <p className="text-sm text-muted-foreground">
+                  Habilita fallback OCR cuando el seller no está autorizado en ML
+                </p>
+              </div>
+              <Switch 
+                checked={modoFlexMixtoEnabled} 
+                onCheckedChange={setModoFlexMixtoEnabled}
+                disabled={!modoFlexEnabled}
               />
             </div>
 
