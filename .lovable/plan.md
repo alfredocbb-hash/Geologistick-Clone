@@ -1,38 +1,45 @@
 
 
-## Plan: Botón de contador visible en el escáner QR (modo continuo)
+## Plan: Agregar toggle "Modo Flex Mixto" al diálogo de edición de tenant
 
 ### Problema
-En modo continuo (Flex, Flex Mixto, Colecta), cuando se escanean más de ~10 paquetes, el badge del contador en el header se pierde visualmente y el chofer solo puede cerrar con la X pequeña en la esquina. Falta un botón grande y accesible para cerrar el escáner y volver a la lista.
+La columna `modo_flex_mixto` existe en la base de datos y el código la lee en `MobileAppLayout`, pero falta el toggle en el formulario de edición de empresa para poder activarla.
 
-### Solución
-Agregar un **botón flotante fijo en la parte inferior** del escáner QR cuando está en `continuousMode` y hay paquetes escaneados. Este botón:
+### Cambios en `src/components/tenants/EditTenantDialog.tsx`
 
-- Se muestra siempre visible en la parte inferior de la pantalla
-- Muestra el contador: **"LISTO · 15 paquetes ✓"**
-- Al tocarlo, cierra el escáner (mismo que `onClose`)
-- Usa colores llamativos (verde/primary) para que sea fácil de encontrar
-- Se agranda visualmente cuando `scannedCount > 0`
+1. **Agregar estado** `modoFlexMixtoEnabled` (junto a los otros, línea ~51):
+   ```ts
+   const [modoFlexMixtoEnabled, setModoFlexMixtoEnabled] = useState((tenant as any).modo_flex_mixto ?? false);
+   ```
+
+2. **Reset en useEffect** (línea ~83, junto a los otros resets):
+   ```ts
+   setModoFlexMixtoEnabled((tenant as any).modo_flex_mixto ?? false);
+   ```
+
+3. **Incluir en el update** del `onSubmit` (línea ~109):
+   ```ts
+   modo_flex_mixto: modoFlexMixtoEnabled,
+   ```
+
+4. **Agregar toggle en el UI** después del toggle "Modo Flex" (línea ~326):
+   ```tsx
+   <div className="flex items-center justify-between rounded-lg border p-4">
+     <div>
+       <Label className="text-base font-medium">Modo Flex Mixto</Label>
+       <p className="text-sm text-muted-foreground">
+         Habilita fallback OCR cuando el seller no está autorizado en ML
+       </p>
+     </div>
+     <Switch 
+       checked={modoFlexMixtoEnabled} 
+       onCheckedChange={setModoFlexMixtoEnabled}
+       disabled={!modoFlexEnabled}
+     />
+   </div>
+   ```
+   El toggle se deshabilita si "Modo Flex" no está activo (ya que Flex Mixto es una extensión de Flex).
 
 ### Archivo a modificar
-- `src/components/qr/QRScanner.tsx`
-
-### Cambios específicos
-
-**1. Botón flotante inferior** (antes del cierre del div principal, ~línea 893):
-```tsx
-{continuousMode && scannedCount > 0 && (
-  <div className="p-4 bg-black/80 safe-area-bottom">
-    <Button
-      onClick={handleClose}
-      className="w-full h-14 text-lg font-bold gap-3 bg-gradient-to-r from-emerald-600 to-emerald-500"
-    >
-      <Package className="h-5 w-5" />
-      LISTO · {scannedCount} paquete{scannedCount !== 1 ? 's' : ''} ✓
-    </Button>
-  </div>
-)}
-```
-
-**2. Header badge**: Mantener el badge existente pero sin `animate-pulse` (distrae) y con `flex-shrink-0` para que no se comprima en pantallas chicas.
+- `src/components/tenants/EditTenantDialog.tsx`
 
