@@ -4421,6 +4421,7 @@ export type Database = {
           max_sucursales: number | null
           max_usuarios: number | null
           modo_flex: boolean | null
+          modo_flex_mixto: boolean | null
           nombre: string
           plan: string | null
           slug: string
@@ -4445,6 +4446,7 @@ export type Database = {
           max_sucursales?: number | null
           max_usuarios?: number | null
           modo_flex?: boolean | null
+          modo_flex_mixto?: boolean | null
           nombre: string
           plan?: string | null
           slug: string
@@ -4469,6 +4471,7 @@ export type Database = {
           max_sucursales?: number | null
           max_usuarios?: number | null
           modo_flex?: boolean | null
+          modo_flex_mixto?: boolean | null
           nombre?: string
           plan?: string | null
           slug?: string
