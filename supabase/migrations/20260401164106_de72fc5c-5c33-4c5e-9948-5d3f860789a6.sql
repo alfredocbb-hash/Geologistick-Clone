@@ -1,0 +1,2 @@
+ALTER TABLE public.envios ADD COLUMN IF NOT EXISTS is_manual_entry BOOLEAN DEFAULT false;
+ALTER TABLE public.envios ADD COLUMN IF NOT EXISTS source_module TEXT DEFAULT NULL;
