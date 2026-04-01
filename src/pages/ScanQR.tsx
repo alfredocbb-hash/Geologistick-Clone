@@ -99,6 +99,11 @@ export default function ScanQR() {
   const [showMLRegisterDialog, setShowMLRegisterDialog] = useState(false);
   const [pendingMLData, setPendingMLData] = useState<{ mlShipmentId: string; mlSenderId?: string } | null>(null);
   const [showMassCollect, setShowMassCollect] = useState(false);
+  const [showOCRCapture, setShowOCRCapture] = useState(false);
+  const [pendingOCRShipmentId, setPendingOCRShipmentId] = useState<string | null>(null);
+
+  const { tenant } = useTenant();
+  const modoFlexMixto = !!(tenant as any)?.modo_flex_mixto;
 
   // Role-based permissions
   const isDriver = hasRole('chofer');
