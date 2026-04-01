@@ -100,14 +100,15 @@ export function FlexMixtoScreen() {
 
   // Handle ML registration failure → trigger OCR fallback
   const handleMLRegisterClose = useCallback(() => {
-    const mlId = pendingMLShipmentId;
     setMlRegisterData(null);
-    
-    // If MLRegisterDialog was closed without success, offer OCR fallback
-    if (mlId) {
-      setShowOCRCapture(true);
-    }
-  }, [pendingMLShipmentId]);
+    setPendingMLShipmentId(undefined);
+  }, []);
+
+  // Explicit OCR fallback from MLRegisterDialog error state
+  const handleFallbackOCR = useCallback(() => {
+    setMlRegisterData(null);
+    setShowOCRCapture(true);
+  }, []);
 
   // Handle OCR confirm → create manual shipment
   const handleOCRConfirm = useCallback(async (data: {
