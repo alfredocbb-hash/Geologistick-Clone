@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -28,8 +28,10 @@ import { BranchDeliveryDialog } from '@/components/scan/BranchDeliveryDialog';
 import { ReceiveRouteSheetDialog } from '@/components/scan/ReceiveRouteSheetDialog';
 import { MLDeliveryDialog } from '@/components/scan/MLDeliveryDialog';
 import { MLRegisterDialog } from '@/components/scan/MLRegisterDialog';
+import { OCRCaptureDialog } from '@/components/mobile/OCRCaptureDialog';
 import { parseQRCode, ParsedQR } from '@/lib/qrParser';
 import { CollectScanScreen } from '@/components/mobile/CollectScanScreen';
+import { useTenant } from '@/hooks/useTenant';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   pendiente: { label: 'Pendiente', color: 'bg-orange-100 text-orange-800' },
