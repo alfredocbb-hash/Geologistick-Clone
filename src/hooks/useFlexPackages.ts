@@ -18,6 +18,7 @@ export interface FlexPackage {
   horario_preferido_entrega: string | null;
   wasTransferred?: boolean;
   previousDriver?: string;
+  isManualEntry?: boolean;
 }
 
 interface UseFlexPackagesReturn {
