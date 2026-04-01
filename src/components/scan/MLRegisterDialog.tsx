@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Package, Store, AlertTriangle, CheckCircle2, MapPin, Truck } from 'lucide-react';
+import { Loader2, Package, Store, AlertTriangle, CheckCircle2, MapPin, Truck, Camera } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
