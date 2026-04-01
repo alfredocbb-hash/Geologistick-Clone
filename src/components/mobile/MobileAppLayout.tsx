@@ -13,6 +13,7 @@ import { MobileReceptionTab } from './MobileReceptionTab';
 import { MobileDeliveriesTab } from './MobileDeliveriesTab';
 import { MobileHistoryTab } from './MobileHistoryTab';
 import { FlexScanScreen } from './FlexScanScreen';
+import { FlexMixtoScreen } from './FlexMixtoScreen';
 import { CheckOutScreen } from './CheckOutScreen';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useAuth } from '@/lib/auth';
