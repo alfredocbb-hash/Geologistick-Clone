@@ -14,9 +14,11 @@ import { BranchDeliveryDialog } from '@/components/scan/BranchDeliveryDialog';
 import { UltimaMillaDialog } from '@/components/scan/UltimaMillaDialog';
 import { MLDeliveryDialog } from '@/components/scan/MLDeliveryDialog';
 import { MLRegisterDialog } from '@/components/scan/MLRegisterDialog';
+import { OCRCaptureDialog } from '@/components/mobile/OCRCaptureDialog';
 import { ReceiveRouteSheetDialog } from '@/components/scan/ReceiveRouteSheetDialog';
 import { CollectRouteSheetDialog } from '@/components/scan/CollectRouteSheetDialog';
 import { parseQRCode } from '@/lib/qrParser';
+import { useTenant } from '@/hooks/useTenant';
 
 type ScanMode = 'idle' | 'scanning';
 

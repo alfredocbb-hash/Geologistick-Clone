@@ -746,10 +746,64 @@ export default function ScanQR() {
             setPendingMLData(null);
           }}
           onSuccess={handleMLRegisterSuccess}
+          onFallbackOCR={modoFlexMixto ? () => {
+            setPendingOCRShipmentId(pendingMLData.mlShipmentId);
+            setShowMLRegisterDialog(false);
+            setPendingMLData(null);
+            setShowOCRCapture(true);
+          } : undefined}
         />
       )}
 
-      {/* Mass Collect Overlay */}
+      {/* OCR Capture Dialog - fallback when ML register fails */}
+      <OCRCaptureDialog
+        open={showOCRCapture}
+        mlShipmentId={pendingOCRShipmentId || undefined}
+        onClose={() => {
+          setShowOCRCapture(false);
+          setPendingOCRShipmentId(null);
+        }}
+        onConfirm={async (data) => {
+          try {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('tenant_id')
+              .eq('id', user!.id)
+              .single();
+
+            const trackingNumber = `OCR-${Date.now()}`;
+            const { data: envio, error } = await supabase
+              .from('envios')
+              .insert({
+                tracking_number: trackingNumber,
+                direccion_entrega: data.direccion,
+                ciudad_entrega: data.localidad,
+                cp_entrega: data.codigoPostal,
+                nombre_destinatario: data.nombreDestinatario || null,
+                estado: 'pendiente',
+                precio_total: 0,
+                is_manual_entry: true,
+                source_module: 'scan_qr',
+                tenant_id: profile?.tenant_id,
+                ml_shipment_id: data.mlShipmentId ? parseInt(data.mlShipmentId) : null,
+                created_by: user?.id,
+              })
+              .select()
+              .single();
+
+            if (error) throw error;
+
+            toast.success('Envío creado por OCR', {
+              description: `Tracking: ${trackingNumber}`,
+            });
+            setShowOCRCapture(false);
+            setPendingOCRShipmentId(null);
+            queryClient.invalidateQueries({ queryKey: ['envios'] });
+          } catch (err: any) {
+            toast.error('Error al crear envío', { description: err.message });
+          }
+        }}
+      />
       {showMassCollect && (
         <div className="fixed inset-0 z-50 bg-background">
           <div className="flex flex-col h-full p-4">
