@@ -1,45 +1,44 @@
 
 
-## Plan: Agregar toggle "Modo Flex Mixto" al diálogo de edición de tenant
+## Fix: Mostrar opción OCR cuando falla el registro ML
 
 ### Problema
-La columna `modo_flex_mixto` existe en la base de datos y el código la lee en `MobileAppLayout`, pero falta el toggle en el formulario de edición de empresa para poder activarla.
+Cuando el chofer escanea un envío ML no registrado, se abre el `MLRegisterDialog`. Si el registro falla (seller no autorizado, 401/403), el diálogo muestra un error pero no ofrece alternativa. El usuario tiene que cerrar el diálogo manualmente y recién ahí se activa el OCR — pero eso no es intuitivo ni claro.
 
-### Cambios en `src/components/tenants/EditTenantDialog.tsx`
+### Solución
+Dos cambios coordinados:
 
-1. **Agregar estado** `modoFlexMixtoEnabled` (junto a los otros, línea ~51):
-   ```ts
-   const [modoFlexMixtoEnabled, setModoFlexMixtoEnabled] = useState((tenant as any).modo_flex_mixto ?? false);
-   ```
+**1. `MLRegisterDialog` — agregar prop `onFallbackOCR` y botón OCR en estado de error**
 
-2. **Reset en useEffect** (línea ~83, junto a los otros resets):
-   ```ts
-   setModoFlexMixtoEnabled((tenant as any).modo_flex_mixto ?? false);
-   ```
+- Nueva prop opcional: `onFallbackOCR?: () => void`
+- Cuando hay un error Y `onFallbackOCR` está definido, mostrar un botón "📷 Usar OCR (foto etiqueta)" debajo del alert de error
+- Al tocarlo, llama `onFallbackOCR()` (que cerrará el diálogo y abrirá el OCR)
 
-3. **Incluir en el update** del `onSubmit` (línea ~109):
-   ```ts
-   modo_flex_mixto: modoFlexMixtoEnabled,
-   ```
+```tsx
+{error && onFallbackOCR && (
+  <Button variant="outline" onClick={onFallbackOCR} className="w-full gap-2">
+    <Camera className="h-4 w-4" />
+    Usar OCR (foto de etiqueta)
+  </Button>
+)}
+```
 
-4. **Agregar toggle en el UI** después del toggle "Modo Flex" (línea ~326):
-   ```tsx
-   <div className="flex items-center justify-between rounded-lg border p-4">
-     <div>
-       <Label className="text-base font-medium">Modo Flex Mixto</Label>
-       <p className="text-sm text-muted-foreground">
-         Habilita fallback OCR cuando el seller no está autorizado en ML
-       </p>
-     </div>
-     <Switch 
-       checked={modoFlexMixtoEnabled} 
-       onCheckedChange={setModoFlexMixtoEnabled}
-       disabled={!modoFlexEnabled}
-     />
-   </div>
-   ```
-   El toggle se deshabilita si "Modo Flex" no está activo (ya que Flex Mixto es una extensión de Flex).
+**2. `FlexMixtoScreen` — pasar `onFallbackOCR` al diálogo**
 
-### Archivo a modificar
-- `src/components/tenants/EditTenantDialog.tsx`
+- Agregar handler `handleFallbackOCR` que cierra el `MLRegisterDialog`, guarda el `pendingMLShipmentId`, y abre `showOCRCapture`
+- Pasar este handler como `onFallbackOCR` prop al `MLRegisterDialog`
+
+```tsx
+const handleFallbackOCR = useCallback(() => {
+  setMlRegisterData(null);
+  setShowOCRCapture(true);
+}, []);
+```
+
+### Archivos a modificar
+- `src/components/scan/MLRegisterDialog.tsx` — agregar prop y botón OCR
+- `src/components/mobile/FlexMixtoScreen.tsx` — pasar el handler
+
+### Resultado
+El chofer verá: intenta registrar → falla → aparece botón "Usar OCR" en el mismo diálogo → toca → se abre la cámara OCR.
 
