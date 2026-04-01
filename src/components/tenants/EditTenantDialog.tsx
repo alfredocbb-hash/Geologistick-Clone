@@ -328,6 +328,21 @@ export function EditTenantDialog({ open, onOpenChange, tenant, onSuccess }: Edit
               />
             </div>
 
+            {/* Modo Flex Mixto Toggle */}
+            <div className="flex items-center justify-between rounded-lg border p-4">
+              <div>
+                <Label className="text-base font-medium">Modo Flex Mixto</Label>
+                <p className="text-sm text-muted-foreground">
+                  Habilita fallback OCR cuando el seller no está autorizado en ML
+                </p>
+              </div>
+              <Switch 
+                checked={modoFlexMixtoEnabled} 
+                onCheckedChange={setModoFlexMixtoEnabled}
+                disabled={!modoFlexEnabled}
+              />
+            </div>
+
             {/* Auto-selección de Tarifa Toggle */}
             <div className="flex items-center justify-between rounded-lg border p-4">
               <div>
