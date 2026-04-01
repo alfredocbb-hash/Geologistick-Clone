@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { Html5Qrcode, Html5QrcodeScannerState } from 'html5-qrcode';
 import { BarcodeScanner, BarcodeFormat, LensFacing } from '@capacitor-mlkit/barcode-scanning';
 import { Button } from '@/components/ui/button';
-import { X, Camera, SwitchCamera, Loader2, Settings, RefreshCw, Globe, Smartphone } from 'lucide-react';
+import { X, Camera, SwitchCamera, Loader2, Settings, RefreshCw, Globe, Smartphone, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNativePlatform } from '@/hooks/useNativePlatform';
 
