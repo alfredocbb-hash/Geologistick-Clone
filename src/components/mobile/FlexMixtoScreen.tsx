@@ -360,6 +360,7 @@ export function FlexMixtoScreen() {
           userId={user?.id}
           onClose={handleMLRegisterClose}
           onSuccess={handleMLRegistered}
+          onFallbackOCR={handleFallbackOCR}
         />
       )}
 

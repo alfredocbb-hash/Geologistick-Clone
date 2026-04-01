@@ -242,10 +242,22 @@ export function MLRegisterDialog({
 
           {/* Error Alert */}
           {error && (
-            <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
+            <>
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+              {onFallbackOCR && (
+                <Button
+                  variant="outline"
+                  onClick={onFallbackOCR}
+                  className="w-full gap-2 border-amber-600 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+                >
+                  <Camera className="h-4 w-4" />
+                  Usar OCR (foto de etiqueta)
+                </Button>
+              )}
+            </>
           )}
         </div>
 
