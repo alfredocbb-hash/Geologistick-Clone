@@ -854,6 +854,19 @@ export default function QRScanner({ onScan, onClose, continuousMode = false, sca
         </div>
       </div>
 
+      {/* Floating bottom button for continuous mode */}
+      {continuousMode && scannedCount > 0 && (
+        <div className="p-4 bg-black/80">
+          <Button
+            onClick={handleClose}
+            className="w-full h-14 text-lg font-bold gap-3 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 shadow-lg shadow-emerald-500/30 text-white"
+          >
+            <Package className="h-5 w-5" />
+            LISTO · {scannedCount} paquete{scannedCount !== 1 ? 's' : ''} ✓
+          </Button>
+        </div>
+      )}
+
       {/* Instructions & Diagnostics */}
       <div className="p-4 text-center bg-black/50">
         <p className="text-white/70 text-sm">
