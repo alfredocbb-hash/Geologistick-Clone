@@ -1,44 +1,27 @@
 
+Diagnóstico: Sí, muy probablemente tengas que actualizar la APK.
 
-## Fix: Mostrar opción OCR cuando falla el registro ML
+Qué veo en el proyecto:
+- `capacitor.config.ts` usa `webDir: 'dist'`
+- No tiene `server.url` configurado
+- Eso significa que la APK carga una copia local del frontend embebida dentro de la app, no la preview en vivo
 
-### Problema
-Cuando el chofer escanea un envío ML no registrado, se abre el `MLRegisterDialog`. Si el registro falla (seller no autorizado, 401/403), el diálogo muestra un error pero no ofrece alternativa. El usuario tiene que cerrar el diálogo manualmente y recién ahí se activa el OCR — pero eso no es intuitivo ni claro.
+Consecuencia:
+- Los cambios que vemos en la preview/web no se reflejan solos en la APK ya instalada
+- Para que el cambio del escáner aparezca en Android, hace falta reconstruir y resincronizar la app nativa
 
-### Solución
-Dos cambios coordinados:
+Cómo confirmarlo rápido:
+1. Probá el flujo en la preview/web
+2. Si en la preview aparece el botón inferior `LISTO · N paquetes ✓` y en la APK no, entonces el problema es que la APK está desactualizada
+3. Si tampoco aparece en la preview, entonces no es un problema de APK y habría que revisar el flujo específico donde se abre `QRScanner`
 
-**1. `MLRegisterDialog` — agregar prop `onFallbackOCR` y botón OCR en estado de error**
+Siguiente paso recomendado:
+1. Hacé `git pull` del proyecto actualizado
+2. Ejecutá `npm run build`
+3. Ejecutá `npx cap sync android`
+4. Volvé a generar/instalar la APK
+5. Si sigue mostrando la versión vieja, desinstalá la app anterior del celular antes de reinstalar
 
-- Nueva prop opcional: `onFallbackOCR?: () => void`
-- Cuando hay un error Y `onFallbackOCR` está definido, mostrar un botón "📷 Usar OCR (foto etiqueta)" debajo del alert de error
-- Al tocarlo, llama `onFallbackOCR()` (que cerrará el diálogo y abrirá el OCR)
-
-```tsx
-{error && onFallbackOCR && (
-  <Button variant="outline" onClick={onFallbackOCR} className="w-full gap-2">
-    <Camera className="h-4 w-4" />
-    Usar OCR (foto de etiqueta)
-  </Button>
-)}
-```
-
-**2. `FlexMixtoScreen` — pasar `onFallbackOCR` al diálogo**
-
-- Agregar handler `handleFallbackOCR` que cierra el `MLRegisterDialog`, guarda el `pendingMLShipmentId`, y abre `showOCRCapture`
-- Pasar este handler como `onFallbackOCR` prop al `MLRegisterDialog`
-
-```tsx
-const handleFallbackOCR = useCallback(() => {
-  setMlRegisterData(null);
-  setShowOCRCapture(true);
-}, []);
-```
-
-### Archivos a modificar
-- `src/components/scan/MLRegisterDialog.tsx` — agregar prop y botón OCR
-- `src/components/mobile/FlexMixtoScreen.tsx` — pasar el handler
-
-### Resultado
-El chofer verá: intenta registrar → falla → aparece botón "Usar OCR" en el mismo diálogo → toca → se abre la cámara OCR.
-
+Nota importante:
+- Publicar o actualizar la web no actualiza una APK ya instalada
+- En este proyecto, cada cambio frontend para mobile requiere nueva build + sync + nueva APK
