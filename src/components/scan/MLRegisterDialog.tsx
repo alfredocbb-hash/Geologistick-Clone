@@ -15,6 +15,7 @@ interface MLRegisterDialogProps {
   userId?: string;
   onClose: () => void;
   onSuccess: (envio: any) => void;
+  onFallbackOCR?: () => void;
 }
 
 interface SellerInfo {
