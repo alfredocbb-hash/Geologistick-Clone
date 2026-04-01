@@ -21,11 +21,20 @@ export interface FlexPackage {
   isManualEntry?: boolean;
 }
 
+export interface ManualPackageData {
+  direccion: string;
+  ciudad: string;
+  codigoPostal: string;
+  nombreDestinatario: string;
+  mlShipmentId?: string;
+}
+
 interface UseFlexPackagesReturn {
   packages: FlexPackage[];
   isLoading: boolean;
   addPackage: (envioId: string) => Promise<FlexPackage | null>;
   addPackageByTracking: (tracking: string) => Promise<FlexPackage | null>;
+  addManualPackage: (data: ManualPackageData) => Promise<FlexPackage | null>;
   removePackage: (id: string) => void;
   clearPackages: () => void;
   optimizeRoute: (currentLocation: { lat: number; lng: number }) => void;
