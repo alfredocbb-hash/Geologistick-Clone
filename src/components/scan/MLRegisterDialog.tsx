@@ -31,6 +31,7 @@ export function MLRegisterDialog({
   userId,
   onClose,
   onSuccess,
+  onFallbackOCR,
 }: MLRegisterDialogProps) {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
