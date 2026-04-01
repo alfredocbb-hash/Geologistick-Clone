@@ -1,27 +1,59 @@
 
-Diagnóstico: Sí, muy probablemente tengas que actualizar la APK.
 
-Qué veo en el proyecto:
-- `capacitor.config.ts` usa `webDir: 'dist'`
-- No tiene `server.url` configurado
-- Eso significa que la APK carga una copia local del frontend embebida dentro de la app, no la preview en vivo
+## Plan: Agregar fallback OCR al MLRegisterDialog en ScanQR y MobileScanTab
 
-Consecuencia:
-- Los cambios que vemos en la preview/web no se reflejan solos en la APK ya instalada
-- Para que el cambio del escáner aparezca en Android, hace falta reconstruir y resincronizar la app nativa
+### Problema
+El botón "Usar OCR (foto de etiqueta)" solo aparece en el módulo Flex Mixto porque es el único que pasa `onFallbackOCR` al `MLRegisterDialog`. En `/scan` (ScanQR) y en el tab de escaneo móvil (MobileScanTab), el prop no se pasa, así que cuando falla el registro ML (error 401), el chofer ve el error pero no tiene opción de OCR.
 
-Cómo confirmarlo rápido:
-1. Probá el flujo en la preview/web
-2. Si en la preview aparece el botón inferior `LISTO · N paquetes ✓` y en la APK no, entonces el problema es que la APK está desactualizada
-3. Si tampoco aparece en la preview, entonces no es un problema de APK y habría que revisar el flujo específico donde se abre `QRScanner`
+### Solución
+Agregar el flujo OCR a los dos módulos que faltan, condicionado a que el tenant tenga `modo_flex_mixto` habilitado.
 
-Siguiente paso recomendado:
-1. Hacé `git pull` del proyecto actualizado
-2. Ejecutá `npm run build`
-3. Ejecutá `npx cap sync android`
-4. Volvé a generar/instalar la APK
-5. Si sigue mostrando la versión vieja, desinstalá la app anterior del celular antes de reinstalar
+### Cambios
 
-Nota importante:
-- Publicar o actualizar la web no actualiza una APK ya instalada
-- En este proyecto, cada cambio frontend para mobile requiere nueva build + sync + nueva APK
+**1. `src/pages/ScanQR.tsx`**
+- Importar `OCRCaptureDialog`
+- Agregar estados: `showOCRCapture`, `pendingOCRShipmentId`
+- Consultar `modo_flex_mixto` del tenant (ya se tiene acceso al tenant via `useTenant`)
+- Crear `handleFallbackOCR`: cierra MLRegisterDialog, abre OCRCaptureDialog
+- Crear `handleOCRConfirm`: llama a `addManualPackage` o crea el envío manual directamente
+- Pasar `onFallbackOCR={handleFallbackOCR}` al `MLRegisterDialog` (solo si `modo_flex_mixto` está activo)
+- Renderizar `OCRCaptureDialog`
+
+**2. `src/components/mobile/MobileScanTab.tsx`**
+- Mismos cambios: importar OCRCaptureDialog, estados, handler, pasar prop condicionalmente
+
+### Detalle técnico
+
+En ambos archivos, el patrón es idéntico:
+
+```tsx
+// Estado
+const [showOCRCapture, setShowOCRCapture] = useState(false);
+const [pendingOCRShipmentId, setPendingOCRShipmentId] = useState<string | null>(null);
+
+// Handler
+const handleFallbackOCR = () => {
+  setPendingOCRShipmentId(pendingMLData?.mlShipmentId || null);
+  setShowMLRegisterDialog(false);
+  setPendingMLData(null);
+  setShowOCRCapture(true);
+};
+
+// En MLRegisterDialog agregar:
+onFallbackOCR={tenantData?.modo_flex_mixto ? handleFallbackOCR : undefined}
+
+// Renderizar OCRCaptureDialog
+<OCRCaptureDialog
+  open={showOCRCapture}
+  mlShipmentId={pendingOCRShipmentId || undefined}
+  onClose={() => setShowOCRCapture(false)}
+  onConfirm={handleOCRConfirm}
+/>
+```
+
+El `handleOCRConfirm` creará el envío manual en la tabla `envios` con `is_manual_entry: true` y `source_module: 'scan_qr'` (o `'mobile_scan'`), usando la misma lógica que ya existe en `useFlexPackages.addManualPackage`.
+
+### Archivos a modificar
+- `src/pages/ScanQR.tsx`
+- `src/components/mobile/MobileScanTab.tsx`
+
