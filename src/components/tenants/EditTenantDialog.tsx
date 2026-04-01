@@ -81,6 +81,7 @@ export function EditTenantDialog({ open, onOpenChange, tenant, onSuccess }: Edit
     });
     setEcommerceEnabled(tenant.ecommerce_enabled ?? false);
     setModoFlexEnabled((tenant as any).modo_flex ?? false);
+    setModoFlexMixtoEnabled((tenant as any).modo_flex_mixto ?? false);
     setAutoSeleccionTarifaEnabled(!!((tenant as any).configuracion?.auto_seleccion_tarifa_por_zona));
   }, [tenant, form]);
 
