@@ -195,7 +195,9 @@ export function MobileAppLayout() {
       case 'deliveries':
         return <MobileDeliveriesTab />;
       case 'scan':
-        return tenant?.modo_flex && userRole === 'chofer' ? <FlexScanScreen /> : <MobileScanTab />;
+        return tenant?.modo_flex && userRole === 'chofer' 
+          ? (tenant as any)?.modo_flex_mixto ? <FlexMixtoScreen /> : <FlexScanScreen />
+          : <MobileScanTab />;
       case 'history':
         return <MobileHistoryTab />;
       case 'profile':
