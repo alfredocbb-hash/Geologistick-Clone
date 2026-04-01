@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { Html5Qrcode, Html5QrcodeScannerState } from 'html5-qrcode';
 import { BarcodeScanner, BarcodeFormat, LensFacing } from '@capacitor-mlkit/barcode-scanning';
 import { Button } from '@/components/ui/button';
-import { X, Camera, SwitchCamera, Loader2, Settings, RefreshCw, Globe, Smartphone } from 'lucide-react';
+import { X, Camera, SwitchCamera, Loader2, Settings, RefreshCw, Globe, Smartphone, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNativePlatform } from '@/hooks/useNativePlatform';
 
@@ -652,7 +652,7 @@ export default function QRScanner({ onScan, onClose, continuousMode = false, sca
           <Camera className="h-5 w-5" />
           <span className="font-medium">Escáner QR</span>
           {continuousMode && scannedCount > 0 && (
-            <span className="bg-primary text-primary-foreground text-xs font-bold px-2.5 py-1 rounded-full animate-pulse">
+            <span className="flex-shrink-0 bg-primary text-primary-foreground text-xs font-bold px-2.5 py-1 rounded-full">
               {scannedCount} ✓
             </span>
           )}
@@ -853,6 +853,19 @@ export default function QRScanner({ onScan, onClose, continuousMode = false, sca
           )}
         </div>
       </div>
+
+      {/* Floating bottom button for continuous mode */}
+      {continuousMode && scannedCount > 0 && (
+        <div className="p-4 bg-black/80">
+          <Button
+            onClick={handleClose}
+            className="w-full h-14 text-lg font-bold gap-3 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 shadow-lg shadow-emerald-500/30 text-white"
+          >
+            <Package className="h-5 w-5" />
+            LISTO · {scannedCount} paquete{scannedCount !== 1 ? 's' : ''} ✓
+          </Button>
+        </div>
+      )}
 
       {/* Instructions & Diagnostics */}
       <div className="p-4 text-center bg-black/50">
