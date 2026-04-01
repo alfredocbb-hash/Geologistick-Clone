@@ -49,6 +49,7 @@ export function EditTenantDialog({ open, onOpenChange, tenant, onSuccess }: Edit
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [ecommerceEnabled, setEcommerceEnabled] = useState(tenant.ecommerce_enabled ?? false);
   const [modoFlexEnabled, setModoFlexEnabled] = useState((tenant as any).modo_flex ?? false);
+  const [modoFlexMixtoEnabled, setModoFlexMixtoEnabled] = useState((tenant as any).modo_flex_mixto ?? false);
   const [autoSeleccionTarifaEnabled, setAutoSeleccionTarifaEnabled] = useState(
     !!((tenant as any).configuracion?.auto_seleccion_tarifa_por_zona)
   );
