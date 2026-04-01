@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Package, Store, AlertTriangle, CheckCircle2, MapPin, Truck } from 'lucide-react';
+import { Loader2, Package, Store, AlertTriangle, CheckCircle2, MapPin, Truck, Camera } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
@@ -15,6 +15,7 @@ interface MLRegisterDialogProps {
   userId?: string;
   onClose: () => void;
   onSuccess: (envio: any) => void;
+  onFallbackOCR?: () => void;
 }
 
 interface SellerInfo {
@@ -30,6 +31,7 @@ export function MLRegisterDialog({
   userId,
   onClose,
   onSuccess,
+  onFallbackOCR,
 }: MLRegisterDialogProps) {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
@@ -240,10 +242,22 @@ export function MLRegisterDialog({
 
           {/* Error Alert */}
           {error && (
-            <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
+            <>
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+              {onFallbackOCR && (
+                <Button
+                  variant="outline"
+                  onClick={onFallbackOCR}
+                  className="w-full gap-2 border-amber-600 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+                >
+                  <Camera className="h-4 w-4" />
+                  Usar OCR (foto de etiqueta)
+                </Button>
+              )}
+            </>
           )}
         </div>
 
