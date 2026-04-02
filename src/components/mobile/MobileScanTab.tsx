@@ -16,6 +16,7 @@ import { MLDeliveryDialog } from '@/components/scan/MLDeliveryDialog';
 import { MLRegisterDialog } from '@/components/scan/MLRegisterDialog';
 import { MLNotFoundChoiceDialog } from '@/components/scan/MLNotFoundChoiceDialog';
 import { OCRCaptureDialog } from '@/components/mobile/OCRCaptureDialog';
+import { BulkOCRScreen } from '@/components/mobile/BulkOCRScreen';
 import { ReceiveRouteSheetDialog } from '@/components/scan/ReceiveRouteSheetDialog';
 import { CollectRouteSheetDialog } from '@/components/scan/CollectRouteSheetDialog';
 import { parseQRCode } from '@/lib/qrParser';
@@ -73,6 +74,7 @@ export function MobileScanTab() {
   const [showCollectScreen, setShowCollectScreen] = useState(false);
   const [showOCRCapture, setShowOCRCapture] = useState(false);
   const [pendingOCRShipmentId, setPendingOCRShipmentId] = useState<string | null>(null);
+  const [showBulkOCR, setShowBulkOCR] = useState(false);
   
   // Route sheet states
   const [showReceiveRouteSheetDialog, setShowReceiveRouteSheetDialog] = useState(false);
@@ -706,6 +708,11 @@ export function MobileScanTab() {
             setPendingMLData(null);
             setShowOCRCapture(true);
           }}
+          onChooseBulkOCR={() => {
+            setShowMLChoiceDialog(false);
+            setPendingMLData(null);
+            setShowBulkOCR(true);
+          }}
         />
       )}
 
@@ -794,6 +801,12 @@ export function MobileScanTab() {
       {showCollectScreen && (
         <div className="fixed inset-0 z-40 bg-slate-950 p-4 overflow-auto">
           <CollectScanScreen onClose={() => setShowCollectScreen(false)} />
+        </div>
+      )}
+      {/* Bulk OCR Screen */}
+      {showBulkOCR && (
+        <div className="fixed inset-0 z-40 bg-slate-950 p-4 overflow-auto">
+          <BulkOCRScreen onClose={() => setShowBulkOCR(false)} />
         </div>
       )}
     </div>

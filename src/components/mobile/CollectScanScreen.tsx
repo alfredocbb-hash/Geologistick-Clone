@@ -12,6 +12,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { useCollectPackages } from '@/hooks/useCollectPackages';
+import { BulkOCRScreen } from '@/components/mobile/BulkOCRScreen';
 import QRScanner from '@/components/qr/QRScanner';
 import { MLRegisterDialog } from '@/components/scan/MLRegisterDialog';
 import { MLNotFoundChoiceDialog } from '@/components/scan/MLNotFoundChoiceDialog';
@@ -33,6 +34,7 @@ export function CollectScanScreen({ onClose }: CollectScanScreenProps) {
   const [showMLChoiceDialog, setShowMLChoiceDialog] = useState(false);
   const [pendingMLShipmentId, setPendingMLShipmentId] = useState<string | null>(null);
   const [showOCRCapture, setShowOCRCapture] = useState(false);
+  const [showBulkOCR, setShowBulkOCR] = useState(false);
 
   const {
     packages,
@@ -201,6 +203,11 @@ export function CollectScanScreen({ onClose }: CollectScanScreenProps) {
             setShowMLChoiceDialog(false);
             setShowOCRCapture(true);
           }}
+          onChooseBulkOCR={() => {
+            setShowMLChoiceDialog(false);
+            setPendingMLShipmentId(null);
+            setShowBulkOCR(true);
+          }}
         />
       )}
 
@@ -275,6 +282,13 @@ export function CollectScanScreen({ onClose }: CollectScanScreenProps) {
           return trackingNumber;
         }}
       />
+
+      {/* Bulk OCR Screen */}
+      {showBulkOCR && (
+        <div className="fixed inset-0 z-50 bg-slate-950 p-4 overflow-auto">
+          <BulkOCRScreen onClose={() => setShowBulkOCR(false)} />
+        </div>
+      )}
     </div>
   );
 }
