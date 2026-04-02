@@ -4,28 +4,30 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Camera, Check, RotateCcw, MapPin } from 'lucide-react';
+import { Loader2, Camera, Check, RotateCcw, MapPin, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { parseOCRText, type OCRExtractedData } from '@/lib/ocrParser';
 import { useNativeCamera } from '@/hooks/useNativeCamera';
 
-interface OCRConfirmData {
+export interface OCRConfirmData {
   direccion: string;
   localidad: string;
   codigoPostal: string;
   nombreDestinatario: string;
   mlShipmentId?: string;
+  referencia?: string;
+  barrio?: string;
 }
 
 interface OCRCaptureDialogProps {
   open: boolean;
   mlShipmentId?: string;
   onClose: () => void;
-  onConfirm: (data: OCRConfirmData) => Promise<void> | void;
+  onConfirm: (data: OCRConfirmData) => Promise<string | void> | string | void;
   continuousMode?: boolean;
 }
 
-type Step = 'capture' | 'processing' | 'confirm';
+type Step = 'capture' | 'processing' | 'confirm' | 'success';
 
 export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, continuousMode = false }: OCRCaptureDialogProps) {
   const [step, setStep] = useState<Step>('capture');
@@ -35,12 +37,17 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
   const [isConfirming, setIsConfirming] = useState(false);
   const [savedCount, setSavedCount] = useState(0);
   const [progressMsg, setProgressMsg] = useState('Analizando etiqueta...');
+  const [ocrFailed, setOcrFailed] = useState(false);
+  const [generatedTracking, setGeneratedTracking] = useState('');
+  const [detectedMLId, setDetectedMLId] = useState<string | undefined>();
 
   // Editable fields
   const [direccion, setDireccion] = useState('');
   const [localidad, setLocalidad] = useState('');
   const [codigoPostal, setCodigoPostal] = useState('');
   const [nombreDestinatario, setNombreDestinatario] = useState('');
+  const [referencia, setReferencia] = useState('');
+  const [barrio, setBarrio] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { isNative, cameraAvailable, takePhoto } = useNativeCamera();
@@ -53,6 +60,11 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
     setLocalidad('');
     setCodigoPostal('');
     setNombreDestinatario('');
+    setReferencia('');
+    setBarrio('');
+    setOcrFailed(false);
+    setGeneratedTracking('');
+    setDetectedMLId(undefined);
   }, []);
 
   const workerRef = useRef<any>(null);
@@ -62,6 +74,7 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
     workerRef.current = null;
     setIsProcessing(false);
     setProgressMsg('');
+    setOcrFailed(true);
     setStep('confirm');
     toast.info('Ingresá los datos manualmente.');
   }, []);
@@ -74,7 +87,6 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
 
     let worker: any = null;
     const timeoutId = setTimeout(() => {
-      // Force resolve to manual entry after 30s
       worker?.terminate?.().catch(() => {});
       workerRef.current = null;
     }, 30000);
@@ -106,10 +118,22 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
       setLocalidad(extracted.localidad || '');
       setCodigoPostal(extracted.codigoPostal || '');
       setNombreDestinatario(extracted.nombreDestinatario || '');
+      setReferencia(extracted.referencia || '');
+      setBarrio(extracted.barrio || '');
+
+      // Use ML shipment ID from OCR if detected, otherwise use prop
+      const detectedId = extracted.mlShipmentId || undefined;
+      setDetectedMLId(detectedId);
+
+      // Check if OCR got meaningful data
+      const hasData = !!(extracted.direccion || extracted.localidad || extracted.codigoPostal || extracted.nombreDestinatario || extracted.mlShipmentId);
+      setOcrFailed(!hasData);
       setStep('confirm');
 
-      if (!extracted.direccion) {
-        toast.warning('No se detectó una dirección clara. Ingresala manualmente.');
+      if (!hasData) {
+        toast.warning('No se pudo leer la etiqueta. Ingresá los datos manualmente.');
+      } else if (extracted.mlShipmentId) {
+        toast.success(`Envío ML detectado: ${extracted.mlShipmentId}`);
       }
     } catch (error: any) {
       clearTimeout(timeoutId);
@@ -118,6 +142,7 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
 
       if (error.message === 'TIMEOUT') {
         toast.warning('OCR tardó demasiado. Ingresá los datos manualmente.');
+        setOcrFailed(true);
         setStep('confirm');
       } else {
         console.error('[OCR] Processing error:', error);
@@ -154,6 +179,7 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
     setStep('capture');
     setImageData(null);
     setOcrData(null);
+    setOcrFailed(false);
   }, []);
 
   const handleConfirm = useCallback(async () => {
@@ -164,26 +190,32 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
 
     setIsConfirming(true);
     try {
-      await onConfirm({
+      const effectiveMLId = detectedMLId || mlShipmentId;
+      const result = await onConfirm({
         direccion: direccion.trim(),
         localidad: localidad.trim(),
         codigoPostal: codigoPostal.trim(),
         nombreDestinatario: nombreDestinatario.trim(),
-        mlShipmentId,
+        mlShipmentId: effectiveMLId,
+        referencia: referencia.trim() || undefined,
+        barrio: barrio.trim() || undefined,
       });
 
       if (continuousMode) {
         setSavedCount(prev => prev + 1);
         toast.success('✅ Paquete guardado', { duration: 1500 });
         resetFields();
+      } else {
+        // Show success step
+        setGeneratedTracking(typeof result === 'string' ? result : '');
+        setStep('success');
       }
-      // In non-continuous mode, the parent handles closing
     } catch (err: any) {
       toast.error('Error al guardar envío', { description: err.message });
     } finally {
       setIsConfirming(false);
     }
-  }, [direccion, localidad, codigoPostal, nombreDestinatario, mlShipmentId, onConfirm, continuousMode, resetFields]);
+  }, [direccion, localidad, codigoPostal, nombreDestinatario, referencia, barrio, detectedMLId, mlShipmentId, onConfirm, continuousMode, resetFields]);
 
   const handleOpenChange = useCallback((open: boolean) => {
     if (!open) {
@@ -192,6 +224,8 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
       onClose();
     }
   }, [onClose, resetFields]);
+
+  const effectiveMLId = detectedMLId || mlShipmentId;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -202,6 +236,7 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
               {step === 'capture' && '📷 Capturar etiqueta'}
               {step === 'processing' && '🔍 Procesando...'}
               {step === 'confirm' && '✏️ Confirmar datos'}
+              {step === 'success' && '✅ Envío creado'}
             </DialogTitle>
             {continuousMode && savedCount > 0 && (
               <Badge className="bg-emerald-600 text-white">
@@ -282,6 +317,16 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
         {/* Step 3: Confirm / Edit */}
         {step === 'confirm' && (
           <div className="space-y-4">
+            {/* OCR failed banner */}
+            {ocrFailed && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                <AlertTriangle className="h-4 w-4 text-amber-400 flex-shrink-0" />
+                <span className="text-xs text-amber-300">
+                  No se pudo leer la etiqueta. Ingresá los datos manualmente.
+                </span>
+              </div>
+            )}
+
             {imageData && (
               <img
                 src={imageData}
@@ -290,9 +335,16 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
               />
             )}
 
+            {/* ML Shipment ID detected */}
+            {effectiveMLId && (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/30">
+                <span className="text-xs text-blue-300 font-mono">ML Envío: {effectiveMLId}</span>
+              </div>
+            )}
+
             <div className="space-y-3">
               <div>
-                <Label className="text-slate-300 text-xs">Dirección detectada *</Label>
+                <Label className="text-slate-300 text-xs">Dirección *</Label>
                 <Input
                   value={direccion}
                   onChange={(e) => setDireccion(e.target.value)}
@@ -323,13 +375,34 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
               </div>
 
               <div>
-                <Label className="text-slate-300 text-xs">Nombre destinatario (opcional)</Label>
+                <Label className="text-slate-300 text-xs">Destinatario</Label>
                 <Input
                   value={nombreDestinatario}
                   onChange={(e) => setNombreDestinatario(e.target.value)}
                   placeholder="Ej: Juan Pérez"
                   className="bg-slate-900 border-slate-700 text-white"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-slate-300 text-xs">Barrio / Partido</Label>
+                  <Input
+                    value={barrio}
+                    onChange={(e) => setBarrio(e.target.value)}
+                    placeholder="Ej: Centro"
+                    className="bg-slate-900 border-slate-700 text-white"
+                  />
+                </div>
+                <div>
+                  <Label className="text-slate-300 text-xs">Referencia</Label>
+                  <Input
+                    value={referencia}
+                    onChange={(e) => setReferencia(e.target.value)}
+                    placeholder="Ej: Timbre 3B"
+                    className="bg-slate-900 border-slate-700 text-white"
+                  />
+                </div>
               </div>
             </div>
 
@@ -353,9 +426,34 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
                 ) : (
                   <MapPin className="h-4 w-4" />
                 )}
-                {isConfirming ? 'Guardando...' : 'Confirmar'}
+                {isConfirming ? 'Guardando...' : ocrFailed ? 'Crear envío' : 'Confirmar'}
               </Button>
             </div>
+          </div>
+        )}
+
+        {/* Step 4: Success */}
+        {step === 'success' && (
+          <div className="flex flex-col items-center gap-4 py-6">
+            <div className="w-20 h-20 rounded-full bg-emerald-500/20 flex items-center justify-center">
+              <CheckCircle2 className="h-10 w-10 text-emerald-400" />
+            </div>
+            <div className="text-center">
+              <h3 className="text-lg font-semibold text-white mb-1">Envío creado</h3>
+              {generatedTracking && (
+                <p className="text-sm text-slate-400 font-mono">{generatedTracking}</p>
+              )}
+              {effectiveMLId && (
+                <p className="text-xs text-blue-400 mt-1">ML Envío: {effectiveMLId}</p>
+              )}
+            </div>
+            <Button
+              onClick={() => handleOpenChange(false)}
+              className="w-full gap-2 bg-gradient-to-r from-primary to-emerald-500"
+            >
+              <Check className="h-4 w-4" />
+              Listo
+            </Button>
           </div>
         )}
       </DialogContent>

@@ -27,6 +27,8 @@ export interface ManualPackageData {
   codigoPostal: string;
   nombreDestinatario: string;
   mlShipmentId?: string;
+  referencia?: string;
+  barrio?: string;
 }
 
 interface UseFlexPackagesReturn {
@@ -551,6 +553,7 @@ export function useFlexPackages(): UseFlexPackagesReturn {
           cp_entrega: data.codigoPostal || null,
           codigo_postal_destino: data.codigoPostal || null,
           nombre_destinatario: data.nombreDestinatario || null,
+          notas: data.referencia || null,
           entrega_lat: lat,
           entrega_lng: lng,
           destinatario_lat: lat,

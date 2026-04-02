@@ -1,6 +1,6 @@
 /**
- * OCR text parser for Argentine shipping labels.
- * Extracts address, city, and postal code from raw OCR output.
+ * OCR text parser for Argentine shipping labels (especially MercadoLibre).
+ * Extracts address, city, postal code, recipient, ML shipment ID, referencia, barrio.
  */
 
 export interface OCRExtractedData {
@@ -8,6 +8,9 @@ export interface OCRExtractedData {
   localidad: string | null;
   codigoPostal: string | null;
   nombreDestinatario: string | null;
+  mlShipmentId: string | null;
+  referencia: string | null;
+  barrio: string | null;
 }
 
 /**
@@ -21,65 +24,71 @@ function cleanText(raw: string): string {
 }
 
 /**
+ * Extract ML shipment ID (e.g. "Envio: 46236169153", "Envío 46236169153")
+ */
+function extractMLShipmentId(text: string): string | null {
+  const patterns = [
+    /Env[ií]o\s*:?\s*#?\s*(\d{8,12})/i,
+    /N[°º]?\s*env[ií]o\s*:?\s*(\d{8,12})/i,
+    /shipment\s*:?\s*#?\s*(\d{8,12})/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+/**
  * Extract postal code (4-digit Argentine CP)
  */
 function extractPostalCode(text: string): string | null {
-  // Try patterns: "CP 1234", "C.P. 1234", "CP: 1234", "(1234)"
   const patterns = [
     /(?:C\.?P\.?\s*:?\s*)(\d{4})/i,
+    /(?:Cp\s*:?\s*)(\d{4})/i,
     /\((\d{4})\)/,
     /(?:^|\s)([A-Z]\d{4}[A-Z]{3})(?:\s|$)/i, // CPA format like B1636FDA
   ];
 
   for (const pattern of patterns) {
     const match = text.match(pattern);
-    if (match) {
-      return match[1];
-    }
+    if (match) return match[1];
   }
 
   // Look for standalone 4-digit number that could be a CP
   const standaloneCP = text.match(/(?:^|\s)(\d{4})(?:\s|$)/);
   if (standaloneCP) {
     const num = parseInt(standaloneCP[1]);
-    if (num >= 1000 && num <= 9999) {
-      return standaloneCP[1];
-    }
+    if (num >= 1000 && num <= 9999) return standaloneCP[1];
   }
 
   return null;
 }
 
 /**
- * Extract street address (e.g. "Av. San Martín 1234", "Calle 45 N° 678")
+ * Extract street address
  */
 function extractAddress(text: string): string | null {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
 
-  // Pattern: street name + number
+  // Priority 1: keyword-based (ML labels use "Dirección:")
+  for (const line of lines) {
+    const keywordMatch = line.match(/(?:Direcci[oó]n|Domicilio|Dir\.?)\s*:?\s*(.+)/i);
+    if (keywordMatch) return cleanText(keywordMatch[1]);
+  }
+
+  // Priority 2: pattern-based street + number
   const addressPatterns = [
-    // "Av. Something 1234" or "Calle Something 1234"
     /(?:Av\.?|Avda\.?|Avenida|Calle|Bv\.?|Blvd\.?|Boulevar|Pasaje|Pje\.?|Diagonal|Diag\.?)\s+[A-ZÁÉÍÓÚÑa-záéíóúñ\s.]+\s+\d{1,5}/i,
-    // "Something 1234" (word + number at end)
     /[A-ZÁÉÍÓÚÑa-záéíóúñ][A-ZÁÉÍÓÚÑa-záéíóúñ\s.]{2,}\s+\d{1,5}(?:\s|$)/i,
-    // "1234 Something" (number + street)
     /\d{1,5}\s+[A-ZÁÉÍÓÚÑa-záéíóúñ][A-ZÁÉÍÓÚÑa-záéíóúñ\s.]{2,}/i,
   ];
 
   for (const line of lines) {
     for (const pattern of addressPatterns) {
       const match = line.match(pattern);
-      if (match) {
-        return cleanText(match[0]);
-      }
-    }
-  }
-
-  // Fallback: look for keyword-based extraction
-  for (const line of lines) {
-    const keywordMatch = line.match(/(?:Direcci[oó]n|Domicilio|Dir\.?)\s*:?\s*(.+)/i);
-    if (keywordMatch) {
-      return cleanText(keywordMatch[1]);
+      if (match) return cleanText(match[0]);
     }
   }
 
@@ -92,7 +101,6 @@ function extractAddress(text: string): string | null {
 function extractLocality(text: string): string | null {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
 
-  // Try keyword-based extraction first
   const keywords = [
     /(?:Localidad|Ciudad|City|Loc\.?)\s*:?\s*([A-ZÁÉÍÓÚÑa-záéíóúñ\s.]{2,})/i,
     /(?:Partido|Depto\.?|Departamento)\s*:?\s*([A-ZÁÉÍÓÚÑa-záéíóúñ\s.]{2,})/i,
@@ -101,9 +109,7 @@ function extractLocality(text: string): string | null {
   for (const line of lines) {
     for (const pattern of keywords) {
       const match = line.match(pattern);
-      if (match) {
-        return cleanText(match[1]);
-      }
+      if (match) return cleanText(match[1]);
     }
   }
 
@@ -117,16 +123,42 @@ function extractRecipientName(text: string): string | null {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
 
   const patterns = [
-    /(?:Destinatario|Receptor|Para|Nombre)\s*:?\s*([A-ZÁÉÍÓÚÑa-záéíóúñ\s.]{2,})/i,
+    /(?:Destinatario|Dest\.?|Receptor|Para|Nombre)\s*:?\s*([A-ZÁÉÍÓÚÑa-záéíóúñ\s.]{2,})/i,
   ];
 
   for (const line of lines) {
     for (const pattern of patterns) {
       const match = line.match(pattern);
-      if (match) {
-        return cleanText(match[1]);
-      }
+      if (match) return cleanText(match[1]);
     }
+  }
+
+  return null;
+}
+
+/**
+ * Extract referencia / observaciones
+ */
+function extractReferencia(text: string): string | null {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+
+  for (const line of lines) {
+    const match = line.match(/(?:Referencia|Ref\.?|Observaci[oó]n|Obs\.?)\s*:?\s*(.+)/i);
+    if (match) return cleanText(match[1]);
+  }
+
+  return null;
+}
+
+/**
+ * Extract barrio / partido
+ */
+function extractBarrio(text: string): string | null {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+
+  for (const line of lines) {
+    const match = line.match(/(?:Barrio|Partido)\s*:?\s*([A-ZÁÉÍÓÚÑa-záéíóúñ\s.]{2,})/i);
+    if (match) return cleanText(match[1]);
   }
 
   return null;
@@ -143,5 +175,8 @@ export function parseOCRText(rawText: string): OCRExtractedData {
     localidad: extractLocality(text),
     codigoPostal: extractPostalCode(text),
     nombreDestinatario: extractRecipientName(text),
+    mlShipmentId: extractMLShipmentId(text),
+    referencia: extractReferencia(text),
+    barrio: extractBarrio(text),
   };
 }
