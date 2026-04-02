@@ -50,6 +50,7 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
   const [barrio, setBarrio] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const handleConfirmRef = useRef<(() => void) | null>(null);
   const { isNative, cameraAvailable, takePhoto } = useNativeCamera();
 
   const resetFields = useCallback(() => {
@@ -115,12 +116,25 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
 
       const hasData = !!(extracted.direccion || extracted.localidad || extracted.codigoPostal || extracted.nombreDestinatario || extracted.mlShipmentId);
       setOcrFailed(!hasData);
-      setStep('confirm');
 
       if (!hasData) {
+        setStep('confirm');
         toast.warning('No se pudo leer la etiqueta. Ingresá los datos manualmente.');
-      } else if (extracted.mlShipmentId) {
-        toast.success(`Envío ML detectado: ${extracted.mlShipmentId}`);
+      } else {
+        // Check if we have enough data to auto-confirm
+        const canAutoConfirm = !!(extracted.direccion && (extracted.localidad || extracted.codigoPostal));
+        if (canAutoConfirm) {
+          toast.info('Datos extraídos — guardando envío...');
+          // Set step to confirm briefly then auto-trigger
+          setStep('confirm');
+          // Use setTimeout to let state settle before confirming
+          setTimeout(() => {
+            handleConfirmRef.current?.();
+          }, 100);
+        } else {
+          setStep('confirm');
+          toast.info('Datos extraídos — revisá y confirmá');
+        }
       }
     } catch (error: any) {
       clearTimeout(timeoutId);
@@ -201,6 +215,9 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
       setIsConfirming(false);
     }
   }, [direccion, localidad, codigoPostal, nombreDestinatario, referencia, barrio, detectedMLId, mlShipmentId, onConfirm, continuousMode, resetFields]);
+
+  // Keep ref in sync for auto-confirm from processImage
+  handleConfirmRef.current = handleConfirm;
 
   const handleOpenChange = useCallback((open: boolean) => {
     if (!open) {
