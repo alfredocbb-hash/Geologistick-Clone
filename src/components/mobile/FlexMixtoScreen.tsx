@@ -218,15 +218,24 @@ export function FlexMixtoScreen() {
         )}
       </div>
 
-      {/* Scan Button */}
-      <Button
-        onClick={() => { ensureGpsTracking(); setShowScanner(true); }}
-        className="w-full h-20 text-lg font-semibold gap-3 bg-gradient-to-br from-primary via-primary to-amber-500 hover:opacity-90 shadow-xl shadow-primary/30 mb-4"
-        disabled={isLoading}
-      >
-        {isLoading ? <Loader2 className="h-8 w-8 animate-spin" /> : <QrCode className="h-8 w-8" />}
-        ESCANEAR PAQUETE
-      </Button>
+      {/* Scan Buttons */}
+      <div className="flex gap-3 mb-4">
+        <Button
+          onClick={() => { ensureGpsTracking(); setShowScanner(true); }}
+          className="flex-1 h-20 text-lg font-semibold gap-3 bg-gradient-to-br from-primary via-primary to-amber-500 hover:opacity-90 shadow-xl shadow-primary/30"
+          disabled={isLoading}
+        >
+          {isLoading ? <Loader2 className="h-8 w-8 animate-spin" /> : <QrCode className="h-8 w-8" />}
+          ESCANEAR
+        </Button>
+        <Button
+          onClick={() => setShowBulkOCR(true)}
+          className="h-20 px-5 text-sm font-semibold gap-2 bg-gradient-to-br from-amber-600 to-orange-500 hover:opacity-90 shadow-xl shadow-amber-500/30 flex flex-col"
+        >
+          <Camera className="h-7 w-7" />
+          <span>OCR MASIVO</span>
+        </Button>
+      </div>
 
       {/* Package Counter */}
       {hasPackages && (
