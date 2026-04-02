@@ -1,46 +1,111 @@
 
 
-## Fix: Error handling en registro ML y bugs en OCR fallback
+## Plan: Fix OCR feedback + Modo Escaneo Masivo OCR
 
-### Problema 1: Error genérico al registrar
-`supabase.functions.invoke` devuelve `FunctionsHttpError` con mensaje genérico ("Edge Function returned a non-2xx status code"). El error real del backend (ej: "Invalid caller.id: 293662607") se pierde porque no se lee `error.context.json()`. Esto hace que el usuario vea un mensaje inútil.
+### Problema 1: OCR no da feedback al confirmar
+El `OCRCaptureDialog.handleConfirm` llama a `onConfirm()` sin esperar el resultado ni mostrar estado de carga. Si la inserción falla o tarda, el usuario no ve nada. El diálogo no se cierra solo porque el `onConfirm` async necesita completarse primero.
 
-### Problema 2: Query de perfil usa columna incorrecta
-En los handlers de OCR confirm de `ScanQR.tsx` y `MobileScanTab.tsx`, la query `profiles` usa `.eq('id', user!.id)` pero la columna correcta es `user_id`. Esto causa que `tenant_id` sea `null` y el envío falle al insertarse.
+### Problema 2: Necesidad de escaneo masivo (600+ envíos)
+El flujo actual es 1 foto → 1 confirmación → 1 envío. Para 600 paquetes de sellers no registrados, necesitan un modo batch donde se fotografíen etiquetas consecutivamente, se acumulen en una lista, y luego se asignen a choferes con optimización de rutas.
+
+---
 
 ### Cambios
 
-**1. `src/components/scan/MLRegisterDialog.tsx`** — Mejorar error handling
-```tsx
-// Reemplazar el bloque try/catch de handleRegister para leer el body real del error:
-const { data, error: fnError } = await supabase.functions.invoke(...);
+**1. `src/components/mobile/OCRCaptureDialog.tsx` — Fix feedback**
+- Hacer `handleConfirm` async, mostrar spinner mientras `onConfirm` ejecuta
+- Agregar estado `isConfirming` con Loader2 en el botón Confirmar
+- Capturar errores del `onConfirm` y mostrar toast de error
+- Después de éxito, resetear el estado y cerrar
 
-if (fnError) {
-  // Leer el mensaje real del edge function
-  let errorMessage = 'Error al registrar envío';
-  try {
-    const errorBody = await fnError.context?.json?.();
-    if (errorBody?.error) errorMessage = errorBody.error;
-  } catch {
-    errorMessage = fnError.message || errorMessage;
-  }
-  throw new Error(errorMessage);
-}
+**2. `src/components/mobile/OCRCaptureDialog.tsx` — Modo continuo**
+- Agregar prop opcional `continuousMode?: boolean`
+- En modo continuo, después de confirmar exitosamente: en vez de cerrar, volver al paso "capture" para tomar la siguiente foto
+- Mostrar toast de éxito breve y un contador de paquetes escaneados en el header
+
+**3. Nuevo: `src/components/mobile/BulkOCRScreen.tsx` — Pantalla de escaneo masivo**
+- Pantalla fullscreen para escaneo masivo de etiquetas por OCR
+- Usa `OCRCaptureDialog` en modo continuo internamente, o bien implementa el flujo inline (foto → OCR → confirm → siguiente)
+- Muestra lista acumulada de paquetes escaneados con dirección y tracking
+- Contador prominente: "X paquetes escaneados"
+- Botones: "Optimizar y asignar rutas" → navega al planificador con los envíos pre-seleccionados
+- Botón para exportar/ver lista de todos los escaneados
+- Usa `useFlexPackages.addManualPackage` para cada paquete confirmado
+
+**4. `src/components/mobile/FlexMixtoScreen.tsx` — Agregar acceso al modo masivo**
+- Nuevo botón "Escaneo Masivo OCR" que abre `BulkOCRScreen`
+- Visible cuando `modo_flex_mixto` está activo
+
+**5. `src/pages/ScanQR.tsx` y `src/components/mobile/MobileScanTab.tsx` — Fix onConfirm**
+- Envolver el `onConfirm` del OCRCaptureDialog para que devuelva una Promise y el diálogo pueda manejar el loading/error
+
+### Flujo del escaneo masivo
+
+```text
+┌─────────────────────────┐
+│   ESCANEO MASIVO OCR    │
+│   0 paquetes            │
+│                         │
+│  ┌───────────────────┐  │
+│  │  📷 TOMAR FOTO    │  │
+│  └───────────────────┘  │
+│                         │
+│  (lista vacía)          │
+│                         │
+│  [Cancelar]             │
+└─────────────────────────┘
+
+    ↓ (toma foto, OCR, confirma)
+
+┌─────────────────────────┐
+│   ESCANEO MASIVO OCR    │
+│   3 paquetes ✓          │
+│                         │
+│  ┌───────────────────┐  │
+│  │  📷 SIGUIENTE     │  │
+│  └───────────────────┘  │
+│                         │
+│  1. Av. San Martín 1234 │
+│  2. Calle 45 N° 678     │
+│  3. Belgrano 890        │
+│                         │
+│  [Ir al Planificador]   │
+│  [Asignar a chofer]     │
+└─────────────────────────┘
 ```
 
-**2. `src/pages/ScanQR.tsx`** — Fix query de perfil
-- Cambiar `.eq('id', user!.id)` → `.eq('user_id', user!.id)` en el handler `onConfirm` del `OCRCaptureDialog`
+### Detalle técnico: OCRCaptureDialog con loading
 
-**3. `src/components/mobile/MobileScanTab.tsx`** — Mismo fix
-- Cambiar `.eq('id', user!.id)` → `.eq('user_id', user!.id)` en el handler `onConfirm` del `OCRCaptureDialog`
+```tsx
+const [isConfirming, setIsConfirming] = useState(false);
 
-### Resultado
-- El usuario verá el mensaje de error real ("Error al obtener envío de MercadoLibre: 401") en lugar del genérico
-- El botón "Usar OCR" aparecerá correctamente después del error (ya funciona, pero ahora con mejor contexto)
-- El flujo OCR podrá crear envíos correctamente al tener el `tenant_id` correcto
+const handleConfirm = useCallback(async () => {
+  if (!direccion.trim()) {
+    toast.error('La dirección es obligatoria');
+    return;
+  }
+  setIsConfirming(true);
+  try {
+    await onConfirm({ ... });
+    // En modo continuo: volver a capture
+    if (continuousMode) {
+      setStep('capture');
+      setImageData(null);
+      setOcrData(null);
+      setDireccion(''); setLocalidad(''); // reset fields
+    }
+  } catch (err: any) {
+    toast.error('Error al guardar', { description: err.message });
+  } finally {
+    setIsConfirming(false);
+  }
+}, [...]);
+```
 
-### Archivos a modificar
-- `src/components/scan/MLRegisterDialog.tsx`
-- `src/pages/ScanQR.tsx`
-- `src/components/mobile/MobileScanTab.tsx`
+### Archivos a crear/modificar
+- `src/components/mobile/OCRCaptureDialog.tsx` — fix feedback + modo continuo
+- `src/components/mobile/BulkOCRScreen.tsx` — nueva pantalla masiva
+- `src/components/mobile/FlexMixtoScreen.tsx` — botón acceso masivo
+- `src/pages/ScanQR.tsx` — fix onConfirm para devolver Promise
+- `src/components/mobile/MobileScanTab.tsx` — fix onConfirm para devolver Promise
 
