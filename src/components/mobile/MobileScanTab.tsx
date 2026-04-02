@@ -686,6 +686,29 @@ export function MobileScanTab() {
         />
       )}
 
+      {/* ML Not Found Choice Dialog */}
+      {showMLChoiceDialog && pendingMLData && (
+        <MLNotFoundChoiceDialog
+          open={showMLChoiceDialog}
+          mlShipmentId={pendingMLData.mlShipmentId}
+          onClose={() => {
+            setShowMLChoiceDialog(false);
+            setPendingMLData(null);
+            setIsPulsing(true);
+          }}
+          onChooseManual={() => {
+            setShowMLChoiceDialog(false);
+            setShowMLRegisterDialog(true);
+          }}
+          onChooseOCR={() => {
+            setPendingOCRShipmentId(pendingMLData.mlShipmentId);
+            setShowMLChoiceDialog(false);
+            setPendingMLData(null);
+            setShowOCRCapture(true);
+          }}
+        />
+      )}
+
       {/* ML Register Dialog - for unregistered ML shipments */}
       {showMLRegisterDialog && pendingMLData && (
         <MLRegisterDialog
@@ -695,12 +718,12 @@ export function MobileScanTab() {
           userId={user?.id}
           onClose={handleDialogClose}
           onSuccess={handleMLRegisterSuccess}
-          onFallbackOCR={modoFlexMixto ? () => {
+          onFallbackOCR={() => {
             setPendingOCRShipmentId(pendingMLData.mlShipmentId);
             setShowMLRegisterDialog(false);
             setPendingMLData(null);
             setShowOCRCapture(true);
-          } : undefined}
+          }}
         />
       )}
 
