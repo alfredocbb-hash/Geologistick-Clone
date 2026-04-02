@@ -282,6 +282,13 @@ export function CollectScanScreen({ onClose }: CollectScanScreenProps) {
           return trackingNumber;
         }}
       />
+
+      {/* Bulk OCR Screen */}
+      {showBulkOCR && (
+        <div className="fixed inset-0 z-50 bg-slate-950 p-4 overflow-auto">
+          <BulkOCRScreen onClose={() => setShowBulkOCR(false)} />
+        </div>
+      )}
     </div>
   );
 }
