@@ -1,40 +1,29 @@
 
 
-## Plan: Modo "Álbum primero, procesar después" para OCR Masivo
+## Plan: Sub-menú OCR con opción masiva
 
-### Concepto
-El usuario toma todas las fotos que necesite de forma rápida (se almacenan localmente como thumbnails en memoria). Al terminar, presiona "Procesar todo" y el sistema envía todas las fotos a la IA en paralelo, mostrando el progreso en tiempo real.
+### Problema
+Cuando el usuario elige "Escanear etiqueta (OCR)" en el diálogo de ML no encontrado, va directo al OCR individual. El usuario quiere que se le pregunte si desea modo individual o masivo (álbum).
 
-### Flujo UX
+### Solución
 
-```text
-[TOMAR FOTOS]          [ÁLBUM LOCAL]              [PROCESAMIENTO]
-  Cámara rápida  →  Grid de thumbnails      →   Cola paralela
-  tap-tap-tap        (10, 50, 100+ fotos)        Progress bar global
-  sin esperas        Eliminar individualmente    Cada foto → OCR → auto-save
-                     "PROCESAR TODO (47)"        Errores marcados en rojo
-                                                 Al terminar → Planificar Ruta
-```
+**Modificar `src/components/scan/MLNotFoundChoiceDialog.tsx`**:
+- Agregar un callback `onChooseBulkOCR` a las props
+- Cuando el usuario toca "Escanear etiqueta (OCR)", en vez de llamar `onChooseOCR` directamente, mostrar un segundo paso dentro del mismo diálogo con dos opciones:
+  - **"Una etiqueta"** → llama `onChooseOCR` (flujo actual, OCRCaptureDialog individual)
+  - **"Modo masivo (álbum)"** → llama `onChooseBulkOCR` (abre BulkOCRScreen)
+- Usar un estado interno `step: 'choice' | 'ocr-mode'` para manejar la transición
 
-### Cambios técnicos
+**Modificar `src/components/mobile/MobileScanTab.tsx`**:
+- Agregar handler `onChooseBulkOCR` que navega a la pantalla de OCR masivo (BulkOCRScreen) o la abre inline
+- Pasar el nuevo callback al `MLNotFoundChoiceDialog`
 
-**`src/components/mobile/BulkOCRScreen.tsx`** — Refactor principal:
-- Agregar nuevo estado `albumMode` con dos fases: `capturing` y `processing`
-- **Fase 1 (Capturing)**: Botón de cámara abre `<input type="file" capture="environment">` o cámara nativa. Cada foto se guarda como data URL en un array `photoAlbum: { id, dataUrl, thumbnail }[]`. Se muestra un grid de miniaturas con botón de eliminar individual. Botón grande "PROCESAR TODO (N)".
-- **Fase 2 (Processing)**: Al presionar "Procesar todo", iterar sobre las fotos en lotes de 3-4 en paralelo (para no saturar la Edge Function). Cada foto pasa por `ocr-label` → auto-confirm → insert en `envios`. Progress bar global (X de N). Las que fallan quedan marcadas en rojo con opción de reintentar.
-- Mantener el modo actual (ráfaga + cola) como opción alternativa.
-
-**`src/components/mobile/BulkOCRScreen.tsx`** — UI del álbum:
-- Grid responsive de thumbnails (3 columnas en móvil)
-- Contador grande visible "47 fotos"
-- Botón flotante de cámara para seguir tomando
-- Progress bar durante procesamiento con "12 de 47 procesados · 2 errores"
-- Al finalizar: mismos botones actuales (Planificar Ruta / Finalizar)
-
-**Selector de modo al entrar**:
-- Al abrir BulkOCRScreen, mostrar dos opciones: "Ráfaga (procesa al vuelo)" vs "Álbum (fotos primero, procesar después)"
-- Guardar preferencia en localStorage
+**Modificar `src/components/mobile/CollectScanScreen.tsx`**:
+- Mismo patrón: agregar handler `onChooseBulkOCR` que activa el `BulkOCRScreen` desde la colecta
+- Pasar el callback al diálogo
 
 ### Archivos a modificar
-- `src/components/mobile/BulkOCRScreen.tsx` — Agregar modo álbum con grid, captura rápida, y procesamiento batch
+- `src/components/scan/MLNotFoundChoiceDialog.tsx` — Agregar paso intermedio con opción individual/masivo
+- `src/components/mobile/MobileScanTab.tsx` — Conectar callback de OCR masivo
+- `src/components/mobile/CollectScanScreen.tsx` — Conectar callback de OCR masivo
 
