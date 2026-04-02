@@ -74,6 +74,7 @@ export function MobileScanTab() {
   const [showCollectScreen, setShowCollectScreen] = useState(false);
   const [showOCRCapture, setShowOCRCapture] = useState(false);
   const [pendingOCRShipmentId, setPendingOCRShipmentId] = useState<string | null>(null);
+  const [showBulkOCR, setShowBulkOCR] = useState(false);
   
   // Route sheet states
   const [showReceiveRouteSheetDialog, setShowReceiveRouteSheetDialog] = useState(false);
