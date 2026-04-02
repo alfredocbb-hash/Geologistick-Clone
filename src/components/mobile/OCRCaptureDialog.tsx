@@ -6,8 +6,8 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Camera, Check, RotateCcw, MapPin, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
-import { parseOCRText, type OCRExtractedData } from '@/lib/ocrParser';
 import { useNativeCamera } from '@/hooks/useNativeCamera';
+import { supabase } from '@/integrations/supabase/client';
 
 export interface OCRConfirmData {
   direccion: string;
