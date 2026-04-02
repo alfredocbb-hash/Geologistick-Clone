@@ -76,6 +76,27 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
     toast.info('Ingresá los datos manualmente.');
   }, []);
 
+  const confirmWithData = useCallback(async (data: OCRConfirmData) => {
+    if (isAutoConfirming.current) return;
+    isAutoConfirming.current = true;
+    try {
+      const result = await onConfirm(data);
+      if (continuousMode) {
+        setSavedCount(prev => prev + 1);
+        toast.success('✅ Paquete guardado', { duration: 1500 });
+        resetFields();
+      } else {
+        setGeneratedTracking(typeof result === 'string' ? result : '');
+        setStep('success');
+      }
+    } catch (err: any) {
+      toast.error('Error al guardar envío', { description: err.message });
+      setStep('confirm');
+    } finally {
+      isAutoConfirming.current = false;
+    }
+  }, [onConfirm, continuousMode, resetFields]);
+
   const processImage = useCallback(async (dataUrl: string) => {
     setImageData(dataUrl);
     setStep('processing');
@@ -93,7 +114,6 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
       clearTimeout(timeoutId);
 
       if (error) {
-        // Try to get descriptive error from response
         let errMsg = 'Error al procesar';
         try {
           const ctx = await error.context?.json?.();
@@ -121,16 +141,19 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
         setStep('confirm');
         toast.warning('No se pudo leer la etiqueta. Ingresá los datos manualmente.');
       } else {
-        // Check if we have enough data to auto-confirm
         const canAutoConfirm = !!(extracted.direccion && (extracted.localidad || extracted.codigoPostal));
         if (canAutoConfirm) {
           toast.info('Datos extraídos — guardando envío...');
-          // Set step to confirm briefly then auto-trigger
-          setStep('confirm');
-          // Use setTimeout to let state settle before confirming
-          setTimeout(() => {
-            handleConfirmRef.current?.();
-          }, 100);
+          const confirmData: OCRConfirmData = {
+            direccion: (extracted.direccion || '').trim(),
+            localidad: (extracted.localidad || '').trim(),
+            codigoPostal: (extracted.codigoPostal || '').trim(),
+            nombreDestinatario: (extracted.nombreDestinatario || '').trim(),
+            mlShipmentId: detectedId,
+            referencia: extracted.referencia?.trim() || undefined,
+            barrio: extracted.barrio?.trim() || undefined,
+          };
+          await confirmWithData(confirmData);
         } else {
           setStep('confirm');
           toast.info('Datos extraídos — revisá y confirmá');
@@ -152,7 +175,7 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
       setIsProcessing(false);
       setProgressMsg('');
     }
-  }, []);
+  }, [confirmWithData]);
 
   const handleNativeCapture = useCallback(async () => {
     const result = await takePhoto();
