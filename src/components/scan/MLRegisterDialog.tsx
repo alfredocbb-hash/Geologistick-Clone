@@ -40,14 +40,18 @@ export function MLRegisterDialog({
   const [error, setError] = useState<string | null>(null);
   const [registeredEnvio, setRegisteredEnvio] = useState<any>(null);
 
-  // Look up seller when dialog opens (informational only — does NOT block registration)
+  // Look up seller when dialog opens — if not found and OCR fallback available, skip to OCR
   useEffect(() => {
     if (open) {
       setRegisteredEnvio(null);
       setError(null);
       setSeller(null);
       if (mlSenderId) {
-        lookupSeller();
+        lookupSellerAndMaybeRedirect();
+      } else if (onFallbackOCR) {
+        // No sender info at all → go straight to OCR
+        onFallbackOCR();
+        onClose();
       }
     }
   }, [open, mlSenderId]);
