@@ -67,11 +67,7 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
     setDetectedMLId(undefined);
   }, []);
 
-  const workerRef = useRef<any>(null);
-
   const skipToManual = useCallback(() => {
-    workerRef.current?.terminate?.().catch(() => {});
-    workerRef.current = null;
     setIsProcessing(false);
     setProgressMsg('');
     setOcrFailed(true);
@@ -83,36 +79,29 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
     setImageData(dataUrl);
     setStep('processing');
     setIsProcessing(true);
-    setProgressMsg('Descargando motor OCR...');
+    setProgressMsg('Analizando etiqueta con IA...');
 
-    let worker: any = null;
-    const timeoutId = setTimeout(() => {
-      worker?.terminate?.().catch(() => {});
-      workerRef.current = null;
-    }, 30000);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     try {
-      const ocrProcess = async () => {
-        const { createWorker } = await import('tesseract.js');
-        setProgressMsg('Iniciando motor OCR...');
-        worker = await createWorker('spa');
-        workerRef.current = worker;
-        setProgressMsg('Analizando imagen...');
-        const { data } = await worker.recognize(dataUrl);
-        await worker.terminate();
-        workerRef.current = null;
-        return data.text;
-      };
+      const { data, error } = await supabase.functions.invoke('ocr-label', {
+        body: { image: dataUrl },
+      });
 
-      const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('TIMEOUT')), 30000)
-      );
-
-      const rawText = await Promise.race([ocrProcess(), timeout]);
       clearTimeout(timeoutId);
-      console.log('[OCR] Raw text:', rawText);
 
-      const extracted = parseOCRText(rawText);
+      if (error) {
+        // Try to get descriptive error from response
+        let errMsg = 'Error al procesar';
+        try {
+          const ctx = await error.context?.json?.();
+          if (ctx?.error) errMsg = ctx.error;
+        } catch {}
+        throw new Error(errMsg);
+      }
+
+      const extracted = data || {};
       setOcrData(extracted);
       setDireccion(extracted.direccion || '');
       setLocalidad(extracted.localidad || '');
@@ -121,11 +110,9 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
       setReferencia(extracted.referencia || '');
       setBarrio(extracted.barrio || '');
 
-      // Use ML shipment ID from OCR if detected, otherwise use prop
       const detectedId = extracted.mlShipmentId || undefined;
       setDetectedMLId(detectedId);
 
-      // Check if OCR got meaningful data
       const hasData = !!(extracted.direccion || extracted.localidad || extracted.codigoPostal || extracted.nombreDestinatario || extracted.mlShipmentId);
       setOcrFailed(!hasData);
       setStep('confirm');
@@ -137,10 +124,8 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
       }
     } catch (error: any) {
       clearTimeout(timeoutId);
-      worker?.terminate?.().catch(() => {});
-      workerRef.current = null;
 
-      if (error.message === 'TIMEOUT') {
+      if (error.name === 'AbortError' || error.message === 'TIMEOUT') {
         toast.warning('OCR tardó demasiado. Ingresá los datos manualmente.');
         setOcrFailed(true);
         setStep('confirm');
