@@ -1,48 +1,62 @@
 
 
-## Diagnóstico: Error 401 al registrar envío ML
+## Fix: OCR se queda colgado en "Procesando..." después de tomar foto
 
-### Lo que está pasando
+### Causa raíz
+`createWorker('spa')` de tesseract.js v7 descarga ~15MB de archivos WASM + datos de idioma desde CDN. En WebViews móviles esto puede colgar indefinidamente — el Promise no resuelve ni rechaza, dejando al usuario en el spinner eterno.
 
-El error 401 es **esperado y correcto**. Cuando escaneás un envío de un seller que no está registrado en el sistema, la función intenta usar la "cuenta logística" (FULLIMPORT, ML user 293662607) para consultar los datos del envío. Pero MercadoLibre rechaza la consulta porque esa cuenta no tiene autorización para ver envíos del seller 1698401281.
+### Solución
+Agregar un **timeout de 30 segundos** al proceso OCR completo. Si se excede, cancelar el worker y ofrecer al usuario la opción de **ingresar los datos manualmente** (sin OCR). Además, agregar mensajes de progreso para que el usuario sepa qué está pasando.
 
-```text
-Flujo actual:
-QR scan → sender_id 1698401281 no registrado → fallback a cuenta logística (293662607) → ML API rechaza: "Invalid caller.id" → 401
+### Cambios en `src/components/mobile/OCRCaptureDialog.tsx`
+
+**1. Timeout en `processImage`**
+```tsx
+const processImage = async (dataUrl: string) => {
+  setStep('processing');
+  setImageData(dataUrl);
+  
+  let worker: any = null;
+  const timeout = new Promise((_, reject) => 
+    setTimeout(() => reject(new Error('TIMEOUT')), 30000)
+  );
+  
+  try {
+    const { createWorker } = await import('tesseract.js');
+    setProgressMsg('Iniciando motor OCR...');
+    
+    const ocrProcess = async () => {
+      worker = await createWorker('spa');
+      setProgressMsg('Analizando imagen...');
+      const { data } = await worker.recognize(dataUrl);
+      await worker.terminate();
+      return data.text;
+    };
+    
+    const rawText = await Promise.race([ocrProcess(), timeout]);
+    // ... parse and set fields
+    setStep('confirm');
+  } catch (error) {
+    worker?.terminate?.().catch(() => {});
+    
+    if (error.message === 'TIMEOUT') {
+      toast.warning('OCR tardó demasiado. Ingresá los datos manualmente.');
+      setStep('confirm'); // Ir a confirm con campos vacíos para editar
+    } else {
+      toast.error('Error OCR', { description: error.message });
+      setStep('capture');
+    }
+  }
+};
 ```
 
-### Lo que debería pasar
+**2. Mensaje de progreso dinámico**
+- Agregar estado `progressMsg` que muestra "Descargando motor OCR...", "Analizando imagen..." en el paso `processing`
+- Reemplazar el texto fijo "Analizando etiqueta con OCR..." por el mensaje dinámico
 
-Después del error 401, el `MLRegisterDialog` muestra:
-1. El mensaje de error descriptivo
-2. El botón **"Usar OCR (foto de etiqueta)"** (porque `modo_flex_mixto = true` en tu tenant)
+**3. Botón "Saltar OCR" durante el procesamiento**
+- En el paso `processing`, agregar un botón "Ingresar manualmente" que permite al usuario saltar directamente al paso `confirm` con campos vacíos si no quiere esperar
 
-Al hacer click en "Usar OCR", se abre el `OCRCaptureDialog` donde tomás la foto de la etiqueta y se crea el envío manualmente.
-
-### Posible problema a investigar
-
-Si el botón "Usar OCR" **no aparece** después del error, puede ser porque `supabase.functions.invoke` está poniendo la respuesta de error en `data` en vez de `fnError` (depende de la versión del cliente). En ese caso:
-
-- Línea 101 de `MLRegisterDialog.tsx`: `if (data?.error)` lanza el error pero no pasa por el path que setea `setError()` correctamente — sí lo hace, ya que cae en el `catch` de línea 110.
-
-### Plan de verificación
-
-No hay un bug de código evidente. El flujo está correctamente conectado. Te sugiero:
-
-1. Hacer click en **"Registrar Envío"** en el dialog
-2. Esperar el error 401
-3. Verificar que aparece el botón naranja **"Usar OCR (foto de etiqueta)"**
-4. Hacer click y tomar la foto
-5. Confirmar los datos → el envío se crea con tracking `OCR-{timestamp}`
-
-Si el botón OCR **no aparece**, el fix sería asegurar que `data?.error` también active el estado de error y muestre el fallback. Si aparece y todo funciona, el 401 es simplemente el paso previo esperado antes de usar OCR.
-
-### Si querés que el 401 no sea visible al usuario
-
-Se puede cambiar el flujo para que cuando el seller no esté registrado, se salte directamente al OCR sin intentar llamar a la API de ML. Esto evitaría la demora y el mensaje de error. El cambio sería:
-
-**`src/components/scan/MLRegisterDialog.tsx`**: Si el lookup del seller falla (no se encuentra en `ecommerce_sellers`) y hay `onFallbackOCR`, ir directo al OCR sin intentar registrar vía API.
-
-### Archivos a modificar
-- `src/components/scan/MLRegisterDialog.tsx` — Auto-redirect a OCR cuando no hay seller directo y `onFallbackOCR` está disponible
+### Archivo a modificar
+- `src/components/mobile/OCRCaptureDialog.tsx`
 
