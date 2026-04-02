@@ -19,17 +19,26 @@ export interface OCRConfirmData {
   barrio?: string;
 }
 
+export interface OCRQueueItem {
+  id: string;
+  status: 'processing' | 'saved' | 'error';
+  trackingNumber?: string;
+  error?: string;
+  preview?: string; // thumbnail data
+}
+
 interface OCRCaptureDialogProps {
   open: boolean;
   mlShipmentId?: string;
   onClose: () => void;
   onConfirm: (data: OCRConfirmData) => Promise<string | void> | string | void;
   continuousMode?: boolean;
+  onQueueUpdate?: (item: OCRQueueItem) => void;
 }
 
 type Step = 'capture' | 'processing' | 'confirm' | 'success';
 
-export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, continuousMode = false }: OCRCaptureDialogProps) {
+export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, continuousMode = false, onQueueUpdate }: OCRCaptureDialogProps) {
   const [step, setStep] = useState<Step>('capture');
   const [imageData, setImageData] = useState<string | null>(null);
   const [ocrData, setOcrData] = useState<Record<string, string> | null>(null);
@@ -40,6 +49,7 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
   const [ocrFailed, setOcrFailed] = useState(false);
   const [generatedTracking, setGeneratedTracking] = useState('');
   const [detectedMLId, setDetectedMLId] = useState<string | undefined>();
+  const [processingInBackground, setProcessingInBackground] = useState(0);
 
   // Editable fields
   const [direccion, setDireccion] = useState('');
@@ -76,28 +86,81 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
     toast.info('Ingresá los datos manualmente.');
   }, []);
 
-  const confirmWithData = useCallback(async (data: OCRConfirmData) => {
-    if (isAutoConfirming.current) return;
-    isAutoConfirming.current = true;
+  const confirmWithData = useCallback(async (data: OCRConfirmData): Promise<string | undefined> => {
     try {
       const result = await onConfirm(data);
-      if (continuousMode) {
+      return typeof result === 'string' ? result : undefined;
+    } catch (err: any) {
+      throw err;
+    }
+  }, [onConfirm]);
+
+  // Background pipeline for continuous mode: process image without blocking the camera
+  const processImageInBackground = useCallback(async (dataUrl: string) => {
+    const queueId = `ocr-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
+    
+    // Notify queue: processing
+    onQueueUpdate?.({ id: queueId, status: 'processing', preview: dataUrl });
+    setProcessingInBackground(prev => prev + 1);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('ocr-label', {
+        body: { image: dataUrl },
+      });
+
+      if (error) {
+        let errMsg = 'Error al procesar';
+        try {
+          const ctx = await error.context?.json?.();
+          if (ctx?.error) errMsg = ctx.error;
+        } catch {}
+        throw new Error(errMsg);
+      }
+
+      const extracted = data || {};
+      const canAutoConfirm = !!(extracted.direccion && (extracted.localidad || extracted.codigoPostal));
+
+      if (canAutoConfirm) {
+        const confirmData: OCRConfirmData = {
+          direccion: (extracted.direccion || '').trim(),
+          localidad: (extracted.localidad || '').trim(),
+          codigoPostal: (extracted.codigoPostal || '').trim(),
+          nombreDestinatario: (extracted.nombreDestinatario || '').trim(),
+          mlShipmentId: extracted.mlShipmentId || undefined,
+          referencia: extracted.referencia?.trim() || undefined,
+          barrio: extracted.barrio?.trim() || undefined,
+        };
+        const tracking = await confirmWithData(confirmData);
         setSavedCount(prev => prev + 1);
-        toast.success('✅ Paquete guardado', { duration: 1500 });
-        resetFields();
+        onQueueUpdate?.({ id: queueId, status: 'saved', trackingNumber: tracking || 'OK' });
       } else {
-        setGeneratedTracking(typeof result === 'string' ? result : '');
-        setStep('success');
+        // Can't auto-confirm — mark as error for manual review
+        onQueueUpdate?.({
+          id: queueId,
+          status: 'error',
+          error: 'Datos incompletos — revisar manualmente',
+        });
       }
     } catch (err: any) {
-      toast.error('Error al guardar envío', { description: err.message });
-      setStep('confirm');
+      onQueueUpdate?.({
+        id: queueId,
+        status: 'error',
+        error: err.message || 'Error al procesar',
+      });
     } finally {
-      isAutoConfirming.current = false;
+      setProcessingInBackground(prev => prev - 1);
     }
-  }, [onConfirm, continuousMode, resetFields]);
+  }, [confirmWithData, onQueueUpdate]);
 
+  // Standard (blocking) processImage for single mode
   const processImage = useCallback(async (dataUrl: string) => {
+    // In continuous mode with queue support: fire-and-forget, return to capture immediately
+    if (continuousMode && onQueueUpdate) {
+      processImageInBackground(dataUrl);
+      // Camera stays on capture step — no blocking
+      return;
+    }
+
     setImageData(dataUrl);
     setStep('processing');
     setIsProcessing(true);
@@ -153,7 +216,24 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
             referencia: extracted.referencia?.trim() || undefined,
             barrio: extracted.barrio?.trim() || undefined,
           };
-          await confirmWithData(confirmData);
+          
+          isAutoConfirming.current = true;
+          try {
+            const result = await confirmWithData(confirmData);
+            if (continuousMode) {
+              setSavedCount(prev => prev + 1);
+              toast.success('✅ Paquete guardado', { duration: 1500 });
+              resetFields();
+            } else {
+              setGeneratedTracking(result || '');
+              setStep('success');
+            }
+          } catch (err: any) {
+            toast.error('Error al guardar envío', { description: err.message });
+            setStep('confirm');
+          } finally {
+            isAutoConfirming.current = false;
+          }
         } else {
           setStep('confirm');
           toast.info('Datos extraídos — revisá y confirmá');
@@ -175,7 +255,7 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
       setIsProcessing(false);
       setProgressMsg('');
     }
-  }, [confirmWithData]);
+  }, [continuousMode, onQueueUpdate, processImageInBackground, confirmWithData, resetFields]);
 
   const handleNativeCapture = useCallback(async () => {
     const result = await takePhoto();
@@ -228,7 +308,6 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
         toast.success('✅ Paquete guardado', { duration: 1500 });
         resetFields();
       } else {
-        // Show success step
         setGeneratedTracking(typeof result === 'string' ? result : '');
         setStep('success');
       }
@@ -238,9 +317,6 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
       setIsConfirming(false);
     }
   }, [direccion, localidad, codigoPostal, nombreDestinatario, referencia, barrio, detectedMLId, mlShipmentId, onConfirm, continuousMode, resetFields]);
-
-  // Keep ref in sync for auto-confirm from processImage
-  // handleConfirmRef removed — auto-confirm now uses confirmWithData directly
 
   const handleOpenChange = useCallback((open: boolean) => {
     if (!open) {
@@ -263,11 +339,19 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
               {step === 'confirm' && '✏️ Confirmar datos'}
               {step === 'success' && '✅ Envío creado'}
             </DialogTitle>
-            {continuousMode && savedCount > 0 && (
-              <Badge className="bg-emerald-600 text-white">
-                {savedCount} guardado{savedCount !== 1 ? 's' : ''}
-              </Badge>
-            )}
+            <div className="flex items-center gap-2">
+              {processingInBackground > 0 && (
+                <Badge className="bg-amber-600 text-white animate-pulse">
+                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                  {processingInBackground}
+                </Badge>
+              )}
+              {continuousMode && savedCount > 0 && (
+                <Badge className="bg-emerald-600 text-white">
+                  {savedCount} guardado{savedCount !== 1 ? 's' : ''}
+                </Badge>
+              )}
+            </div>
           </div>
         </DialogHeader>
 
@@ -279,7 +363,7 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
             </div>
             <p className="text-sm text-slate-400 text-center max-w-xs">
               {continuousMode
-                ? 'Tomá una foto de la siguiente etiqueta para continuar.'
+                ? 'Tomá fotos rápido — se procesan en paralelo mientras seguís escaneando.'
                 : 'Tomá una foto clara de la etiqueta del paquete para extraer la dirección de entrega.'}
             </p>
 
@@ -342,7 +426,6 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
         {/* Step 3: Confirm / Edit */}
         {step === 'confirm' && (
           <div className="space-y-4">
-            {/* OCR failed banner */}
             {ocrFailed && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30">
                 <AlertTriangle className="h-4 w-4 text-amber-400 flex-shrink-0" />
@@ -360,7 +443,6 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
               />
             )}
 
-            {/* ML Shipment ID detected */}
             {effectiveMLId && (
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/30">
                 <span className="text-xs text-blue-300 font-mono">ML Envío: {effectiveMLId}</span>
