@@ -87,7 +87,15 @@ export function MLRegisterDialog({
       });
 
       if (fnError) {
-        throw new Error(fnError.message || 'Error al registrar envío');
+        let errorMessage = 'Error al registrar envío';
+        try {
+          const errorBody = await fnError.context?.json?.();
+          if (errorBody?.error) errorMessage = errorBody.error;
+          else if (errorBody?.message) errorMessage = errorBody.message;
+        } catch {
+          errorMessage = fnError.message || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
 
       if (data?.error) {
