@@ -1,59 +1,36 @@
 
 
-## Plan: Agregar fallback OCR al MLRegisterDialog en ScanQR y MobileScanTab
+## Fix: OCR no procesa la imagen — API de tesseract.js incompatible
 
 ### Problema
-El botón "Usar OCR (foto de etiqueta)" solo aparece en el módulo Flex Mixto porque es el único que pasa `onFallbackOCR` al `MLRegisterDialog`. En `/scan` (ScanQR) y en el tab de escaneo móvil (MobileScanTab), el prop no se pasa, así que cuando falla el registro ML (error 401), el chofer ve el error pero no tiene opción de OCR.
+El código usa `Tesseract.recognize(dataUrl, 'spa', {...})` que era la API de tesseract.js v2. El proyecto tiene instalado **tesseract.js v7**, que eliminó esa función. En v5+ se debe usar `createWorker` + `worker.recognize()`. Por eso al tomar la foto no pasa nada — la llamada falla silenciosamente.
 
 ### Solución
-Agregar el flujo OCR a los dos módulos que faltan, condicionado a que el tenant tenga `modo_flex_mixto` habilitado.
 
-### Cambios
+**Archivo: `src/components/mobile/OCRCaptureDialog.tsx`**
 
-**1. `src/pages/ScanQR.tsx`**
-- Importar `OCRCaptureDialog`
-- Agregar estados: `showOCRCapture`, `pendingOCRShipmentId`
-- Consultar `modo_flex_mixto` del tenant (ya se tiene acceso al tenant via `useTenant`)
-- Crear `handleFallbackOCR`: cierra MLRegisterDialog, abre OCRCaptureDialog
-- Crear `handleOCRConfirm`: llama a `addManualPackage` o crea el envío manual directamente
-- Pasar `onFallbackOCR={handleFallbackOCR}` al `MLRegisterDialog` (solo si `modo_flex_mixto` está activo)
-- Renderizar `OCRCaptureDialog`
-
-**2. `src/components/mobile/MobileScanTab.tsx`**
-- Mismos cambios: importar OCRCaptureDialog, estados, handler, pasar prop condicionalmente
-
-### Detalle técnico
-
-En ambos archivos, el patrón es idéntico:
-
+Reemplazar el bloque de `processImage` que hace:
 ```tsx
-// Estado
-const [showOCRCapture, setShowOCRCapture] = useState(false);
-const [pendingOCRShipmentId, setPendingOCRShipmentId] = useState<string | null>(null);
-
-// Handler
-const handleFallbackOCR = () => {
-  setPendingOCRShipmentId(pendingMLData?.mlShipmentId || null);
-  setShowMLRegisterDialog(false);
-  setPendingMLData(null);
-  setShowOCRCapture(true);
-};
-
-// En MLRegisterDialog agregar:
-onFallbackOCR={tenantData?.modo_flex_mixto ? handleFallbackOCR : undefined}
-
-// Renderizar OCRCaptureDialog
-<OCRCaptureDialog
-  open={showOCRCapture}
-  mlShipmentId={pendingOCRShipmentId || undefined}
-  onClose={() => setShowOCRCapture(false)}
-  onConfirm={handleOCRConfirm}
-/>
+const Tesseract = await import('tesseract.js');
+const result = await Tesseract.recognize(dataUrl, 'spa', { logger: ... });
+const rawText = result.data.text;
 ```
 
-El `handleOCRConfirm` creará el envío manual en la tabla `envios` con `is_manual_entry: true` y `source_module: 'scan_qr'` (o `'mobile_scan'`), usando la misma lógica que ya existe en `useFlexPackages.addManualPackage`.
+Por la API correcta de v7:
+```tsx
+const { createWorker } = await import('tesseract.js');
+const worker = await createWorker('spa');
+const { data } = await worker.recognize(dataUrl);
+const rawText = data.text;
+await worker.terminate();
+```
 
-### Archivos a modificar
-- `src/pages/ScanQR.tsx`
-- `src/components/mobile/MobileScanTab.tsx`
+Cambios clave:
+- `createWorker('spa')` — crea el worker con el idioma español ya cargado
+- `worker.recognize(dataUrl)` — procesa la imagen
+- `worker.terminate()` — libera recursos después del OCR
+- Se elimina el `logger` callback (no soportado en v7 de esta forma)
+
+### Archivo a modificar
+- `src/components/mobile/OCRCaptureDialog.tsx` — solo el bloque `processImage`
 
