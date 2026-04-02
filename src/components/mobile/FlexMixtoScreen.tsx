@@ -19,6 +19,7 @@ import { FlexMapPreview } from './FlexMapPreview';
 import { TransferFlexPackagesDialog } from '@/components/scan/TransferFlexPackagesDialog';
 import { CreateRouteSheetDialog } from '@/components/scan/CreateRouteSheetDialog';
 import { OCRCaptureDialog } from './OCRCaptureDialog';
+import { BulkOCRScreen } from './BulkOCRScreen';
 import { parseQRCode } from '@/lib/qrParser';
 import { useNavigate } from 'react-router-dom';
 import type { FlexPackage } from '@/hooks/useFlexPackages';

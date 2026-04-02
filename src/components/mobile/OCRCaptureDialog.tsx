@@ -3,31 +3,37 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import { Loader2, Camera, Check, RotateCcw, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import { parseOCRText, type OCRExtractedData } from '@/lib/ocrParser';
 import { useNativeCamera } from '@/hooks/useNativeCamera';
 
+interface OCRConfirmData {
+  direccion: string;
+  localidad: string;
+  codigoPostal: string;
+  nombreDestinatario: string;
+  mlShipmentId?: string;
+}
+
 interface OCRCaptureDialogProps {
   open: boolean;
   mlShipmentId?: string;
   onClose: () => void;
-  onConfirm: (data: {
-    direccion: string;
-    localidad: string;
-    codigoPostal: string;
-    nombreDestinatario: string;
-    mlShipmentId?: string;
-  }) => void;
+  onConfirm: (data: OCRConfirmData) => Promise<void> | void;
+  continuousMode?: boolean;
 }
 
 type Step = 'capture' | 'processing' | 'confirm';
 
-export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm }: OCRCaptureDialogProps) {
+export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, continuousMode = false }: OCRCaptureDialogProps) {
   const [step, setStep] = useState<Step>('capture');
   const [imageData, setImageData] = useState<string | null>(null);
   const [ocrData, setOcrData] = useState<OCRExtractedData | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [savedCount, setSavedCount] = useState(0);
 
   // Editable fields
   const [direccion, setDireccion] = useState('');
@@ -38,13 +44,22 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm }: OCR
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { isNative, cameraAvailable, takePhoto } = useNativeCamera();
 
+  const resetFields = useCallback(() => {
+    setStep('capture');
+    setImageData(null);
+    setOcrData(null);
+    setDireccion('');
+    setLocalidad('');
+    setCodigoPostal('');
+    setNombreDestinatario('');
+  }, []);
+
   const processImage = useCallback(async (dataUrl: string) => {
     setImageData(dataUrl);
     setStep('processing');
     setIsProcessing(true);
 
     try {
-      // Dynamic import to avoid bundle bloat
       const { createWorker } = await import('tesseract.js');
       const worker = await createWorker('spa');
       const { data } = await worker.recognize(dataUrl);
@@ -55,7 +70,6 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm }: OCR
       const extracted = parseOCRText(rawText);
       setOcrData(extracted);
 
-      // Pre-fill editable fields
       setDireccion(extracted.direccion || '');
       setLocalidad(extracted.localidad || '');
       setCodigoPostal(extracted.codigoPostal || '');
@@ -92,8 +106,6 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm }: OCR
       processImage(dataUrl);
     };
     reader.readAsDataURL(file);
-    
-    // Reset input so same file can be selected again
     e.target.value = '';
   }, [processImage]);
 
@@ -103,39 +115,59 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm }: OCR
     setOcrData(null);
   }, []);
 
-  const handleConfirm = useCallback(() => {
+  const handleConfirm = useCallback(async () => {
     if (!direccion.trim()) {
       toast.error('La dirección es obligatoria');
       return;
     }
 
-    onConfirm({
-      direccion: direccion.trim(),
-      localidad: localidad.trim(),
-      codigoPostal: codigoPostal.trim(),
-      nombreDestinatario: nombreDestinatario.trim(),
-      mlShipmentId,
-    });
-  }, [direccion, localidad, codigoPostal, nombreDestinatario, mlShipmentId, onConfirm]);
+    setIsConfirming(true);
+    try {
+      await onConfirm({
+        direccion: direccion.trim(),
+        localidad: localidad.trim(),
+        codigoPostal: codigoPostal.trim(),
+        nombreDestinatario: nombreDestinatario.trim(),
+        mlShipmentId,
+      });
+
+      if (continuousMode) {
+        setSavedCount(prev => prev + 1);
+        toast.success('✅ Paquete guardado', { duration: 1500 });
+        resetFields();
+      }
+      // In non-continuous mode, the parent handles closing
+    } catch (err: any) {
+      toast.error('Error al guardar envío', { description: err.message });
+    } finally {
+      setIsConfirming(false);
+    }
+  }, [direccion, localidad, codigoPostal, nombreDestinatario, mlShipmentId, onConfirm, continuousMode, resetFields]);
 
   const handleOpenChange = useCallback((open: boolean) => {
     if (!open) {
-      setStep('capture');
-      setImageData(null);
-      setOcrData(null);
+      resetFields();
+      setSavedCount(0);
       onClose();
     }
-  }, [onClose]);
+  }, [onClose, resetFields]);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="bg-slate-950 border-slate-800 text-white max-w-md mx-auto">
         <DialogHeader>
-          <DialogTitle className="text-white">
-            {step === 'capture' && '📷 Capturar etiqueta'}
-            {step === 'processing' && '🔍 Procesando...'}
-            {step === 'confirm' && '✏️ Confirmar datos'}
-          </DialogTitle>
+          <div className="flex items-center justify-between">
+            <DialogTitle className="text-white">
+              {step === 'capture' && '📷 Capturar etiqueta'}
+              {step === 'processing' && '🔍 Procesando...'}
+              {step === 'confirm' && '✏️ Confirmar datos'}
+            </DialogTitle>
+            {continuousMode && savedCount > 0 && (
+              <Badge className="bg-emerald-600 text-white">
+                {savedCount} guardado{savedCount !== 1 ? 's' : ''}
+              </Badge>
+            )}
+          </div>
         </DialogHeader>
 
         {/* Step 1: Capture */}
@@ -145,7 +177,9 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm }: OCR
               <Camera className="h-12 w-12 text-slate-500" />
             </div>
             <p className="text-sm text-slate-400 text-center max-w-xs">
-              Tomá una foto clara de la etiqueta del paquete para extraer la dirección de entrega.
+              {continuousMode
+                ? 'Tomá una foto de la siguiente etiqueta para continuar.'
+                : 'Tomá una foto clara de la etiqueta del paquete para extraer la dirección de entrega.'}
             </p>
 
             {isNative && cameraAvailable ? (
@@ -154,7 +188,7 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm }: OCR
                 className="w-full h-14 text-lg gap-3 bg-gradient-to-r from-primary to-emerald-500"
               >
                 <Camera className="h-6 w-6" />
-                TOMAR FOTO
+                {continuousMode ? 'SIGUIENTE FOTO' : 'TOMAR FOTO'}
               </Button>
             ) : (
               <>
@@ -163,7 +197,7 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm }: OCR
                   className="w-full h-14 text-lg gap-3 bg-gradient-to-r from-primary to-emerald-500"
                 >
                   <Camera className="h-6 w-6" />
-                  TOMAR FOTO
+                  {continuousMode ? 'SIGUIENTE FOTO' : 'TOMAR FOTO'}
                 </Button>
                 <input
                   ref={fileInputRef}
@@ -176,8 +210,8 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm }: OCR
               </>
             )}
 
-            <Button variant="ghost" onClick={onClose} className="text-slate-400">
-              Cancelar
+            <Button variant="ghost" onClick={() => handleOpenChange(false)} className="text-slate-400">
+              {continuousMode && savedCount > 0 ? `Listo (${savedCount} guardados)` : 'Cancelar'}
             </Button>
           </div>
         )}
@@ -200,7 +234,6 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm }: OCR
         {/* Step 3: Confirm / Edit */}
         {step === 'confirm' && (
           <div className="space-y-4">
-            {/* Preview thumbnail */}
             {imageData && (
               <img
                 src={imageData}
@@ -256,6 +289,7 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm }: OCR
               <Button
                 variant="outline"
                 onClick={handleRetry}
+                disabled={isConfirming}
                 className="flex-1 gap-2 border-slate-700 text-slate-300"
               >
                 <RotateCcw className="h-4 w-4" />
@@ -263,11 +297,15 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm }: OCR
               </Button>
               <Button
                 onClick={handleConfirm}
-                disabled={!direccion.trim()}
+                disabled={!direccion.trim() || isConfirming}
                 className="flex-1 gap-2 bg-gradient-to-r from-primary to-emerald-500"
               >
-                <MapPin className="h-4 w-4" />
-                Confirmar
+                {isConfirming ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <MapPin className="h-4 w-4" />
+                )}
+                {isConfirming ? 'Guardando...' : 'Confirmar'}
               </Button>
             </div>
           </div>
