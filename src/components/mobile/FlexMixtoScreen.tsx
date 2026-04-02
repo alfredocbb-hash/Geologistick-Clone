@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   QrCode, Map, Play, Trash2, X, Package, MapPin, Loader2,
-  Users, Navigation, FileText, CheckCircle2, Clock, ScanSearch,
+  Users, Navigation, FileText, CheckCircle2, Clock, ScanSearch, Camera,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useFlexPackages } from '@/hooks/useFlexPackages';
@@ -19,6 +19,7 @@ import { FlexMapPreview } from './FlexMapPreview';
 import { TransferFlexPackagesDialog } from '@/components/scan/TransferFlexPackagesDialog';
 import { CreateRouteSheetDialog } from '@/components/scan/CreateRouteSheetDialog';
 import { OCRCaptureDialog } from './OCRCaptureDialog';
+import { BulkOCRScreen } from './BulkOCRScreen';
 import { parseQRCode } from '@/lib/qrParser';
 import { useNavigate } from 'react-router-dom';
 import type { FlexPackage } from '@/hooks/useFlexPackages';
@@ -39,6 +40,7 @@ export function FlexMixtoScreen() {
   // OCR Fallback state
   const [showOCRCapture, setShowOCRCapture] = useState(false);
   const [pendingMLShipmentId, setPendingMLShipmentId] = useState<string | undefined>();
+  const [showBulkOCR, setShowBulkOCR] = useState(false);
   
   const {
     packages, isLoading, addPackageByTracking, addPackage,
@@ -216,15 +218,24 @@ export function FlexMixtoScreen() {
         )}
       </div>
 
-      {/* Scan Button */}
-      <Button
-        onClick={() => { ensureGpsTracking(); setShowScanner(true); }}
-        className="w-full h-20 text-lg font-semibold gap-3 bg-gradient-to-br from-primary via-primary to-amber-500 hover:opacity-90 shadow-xl shadow-primary/30 mb-4"
-        disabled={isLoading}
-      >
-        {isLoading ? <Loader2 className="h-8 w-8 animate-spin" /> : <QrCode className="h-8 w-8" />}
-        ESCANEAR PAQUETE
-      </Button>
+      {/* Scan Buttons */}
+      <div className="flex gap-3 mb-4">
+        <Button
+          onClick={() => { ensureGpsTracking(); setShowScanner(true); }}
+          className="flex-1 h-20 text-lg font-semibold gap-3 bg-gradient-to-br from-primary via-primary to-amber-500 hover:opacity-90 shadow-xl shadow-primary/30"
+          disabled={isLoading}
+        >
+          {isLoading ? <Loader2 className="h-8 w-8 animate-spin" /> : <QrCode className="h-8 w-8" />}
+          ESCANEAR
+        </Button>
+        <Button
+          onClick={() => setShowBulkOCR(true)}
+          className="h-20 px-5 text-sm font-semibold gap-2 bg-gradient-to-br from-amber-600 to-orange-500 hover:opacity-90 shadow-xl shadow-amber-500/30 flex flex-col"
+        >
+          <Camera className="h-7 w-7" />
+          <span>OCR MASIVO</span>
+        </Button>
+      </div>
 
       {/* Package Counter */}
       {hasPackages && (
@@ -388,6 +399,12 @@ export function FlexMixtoScreen() {
         onClose={() => setShowRouteSheetDialog(false)}
         onSuccess={handleRouteSheetSuccess}
       />
+      {/* Bulk OCR Screen */}
+      {showBulkOCR && (
+        <div className="fixed inset-0 z-50 bg-slate-950 p-4 overflow-auto">
+          <BulkOCRScreen onClose={() => setShowBulkOCR(false)} />
+        </div>
+      )}
     </div>
   );
 }
