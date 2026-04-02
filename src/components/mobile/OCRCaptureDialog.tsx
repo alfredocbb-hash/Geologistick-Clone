@@ -55,38 +55,78 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
     setNombreDestinatario('');
   }, []);
 
+  const workerRef = useRef<any>(null);
+
+  const skipToManual = useCallback(() => {
+    workerRef.current?.terminate?.().catch(() => {});
+    workerRef.current = null;
+    setIsProcessing(false);
+    setProgressMsg('');
+    setStep('confirm');
+    toast.info('Ingresá los datos manualmente.');
+  }, []);
+
   const processImage = useCallback(async (dataUrl: string) => {
     setImageData(dataUrl);
     setStep('processing');
     setIsProcessing(true);
+    setProgressMsg('Descargando motor OCR...');
+
+    let worker: any = null;
+    const timeoutId = setTimeout(() => {
+      // Force resolve to manual entry after 30s
+      worker?.terminate?.().catch(() => {});
+      workerRef.current = null;
+    }, 30000);
 
     try {
-      const { createWorker } = await import('tesseract.js');
-      const worker = await createWorker('spa');
-      const { data } = await worker.recognize(dataUrl);
-      const rawText = data.text;
-      await worker.terminate();
+      const ocrProcess = async () => {
+        const { createWorker } = await import('tesseract.js');
+        setProgressMsg('Iniciando motor OCR...');
+        worker = await createWorker('spa');
+        workerRef.current = worker;
+        setProgressMsg('Analizando imagen...');
+        const { data } = await worker.recognize(dataUrl);
+        await worker.terminate();
+        workerRef.current = null;
+        return data.text;
+      };
+
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('TIMEOUT')), 30000)
+      );
+
+      const rawText = await Promise.race([ocrProcess(), timeout]);
+      clearTimeout(timeoutId);
       console.log('[OCR] Raw text:', rawText);
 
       const extracted = parseOCRText(rawText);
       setOcrData(extracted);
-
       setDireccion(extracted.direccion || '');
       setLocalidad(extracted.localidad || '');
       setCodigoPostal(extracted.codigoPostal || '');
       setNombreDestinatario(extracted.nombreDestinatario || '');
-
       setStep('confirm');
 
       if (!extracted.direccion) {
         toast.warning('No se detectó una dirección clara. Ingresala manualmente.');
       }
     } catch (error: any) {
-      console.error('[OCR] Processing error:', error);
-      toast.error('Error al procesar la imagen', { description: error.message });
-      setStep('capture');
+      clearTimeout(timeoutId);
+      worker?.terminate?.().catch(() => {});
+      workerRef.current = null;
+
+      if (error.message === 'TIMEOUT') {
+        toast.warning('OCR tardó demasiado. Ingresá los datos manualmente.');
+        setStep('confirm');
+      } else {
+        console.error('[OCR] Processing error:', error);
+        toast.error('Error al procesar la imagen', { description: error.message });
+        setStep('capture');
+      }
     } finally {
       setIsProcessing(false);
+      setProgressMsg('');
     }
   }, []);
 
