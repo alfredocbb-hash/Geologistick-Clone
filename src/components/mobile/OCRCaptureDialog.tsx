@@ -45,17 +45,11 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm }: OCR
 
     try {
       // Dynamic import to avoid bundle bloat
-      const Tesseract = await import('tesseract.js');
-      
-      const result = await Tesseract.recognize(dataUrl, 'spa', {
-        logger: (m: any) => {
-          if (m.status === 'recognizing text') {
-            // Could show progress here
-          }
-        },
-      });
-
-      const rawText = result.data.text;
+      const { createWorker } = await import('tesseract.js');
+      const worker = await createWorker('spa');
+      const { data } = await worker.recognize(dataUrl);
+      const rawText = data.text;
+      await worker.terminate();
       console.log('[OCR] Raw text:', rawText);
 
       const extracted = parseOCRText(rawText);
