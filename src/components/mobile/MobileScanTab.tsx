@@ -803,6 +803,12 @@ export function MobileScanTab() {
           <CollectScanScreen onClose={() => setShowCollectScreen(false)} />
         </div>
       )}
+      {/* Bulk OCR Screen */}
+      {showBulkOCR && (
+        <div className="fixed inset-0 z-40 bg-slate-950 p-4 overflow-auto">
+          <BulkOCRScreen onClose={() => setShowBulkOCR(false)} />
+        </div>
+      )}
     </div>
   );
 }
