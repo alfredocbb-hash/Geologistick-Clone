@@ -261,7 +261,7 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
         {step === 'processing' && (
           <div className="flex flex-col items-center gap-4 py-8">
             <Loader2 className="h-12 w-12 animate-spin text-primary" />
-            <p className="text-sm text-slate-400">Analizando etiqueta con OCR...</p>
+            <p className="text-sm text-slate-400">{progressMsg || 'Analizando etiqueta con OCR...'}</p>
             {imageData && (
               <img
                 src={imageData}
@@ -269,6 +269,13 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
                 className="w-full max-h-40 object-contain rounded-lg opacity-50"
               />
             )}
+            <Button
+              variant="ghost"
+              onClick={skipToManual}
+              className="text-slate-400 underline text-xs"
+            >
+              Saltar OCR / Ingresar manualmente
+            </Button>
           </div>
         )}
 
