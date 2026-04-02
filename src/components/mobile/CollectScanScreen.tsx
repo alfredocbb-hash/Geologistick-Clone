@@ -12,6 +12,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { useCollectPackages } from '@/hooks/useCollectPackages';
+import { BulkOCRScreen } from '@/components/mobile/BulkOCRScreen';
 import QRScanner from '@/components/qr/QRScanner';
 import { MLRegisterDialog } from '@/components/scan/MLRegisterDialog';
 import { MLNotFoundChoiceDialog } from '@/components/scan/MLNotFoundChoiceDialog';
