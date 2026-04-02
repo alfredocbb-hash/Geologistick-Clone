@@ -203,6 +203,11 @@ export function CollectScanScreen({ onClose }: CollectScanScreenProps) {
             setShowMLChoiceDialog(false);
             setShowOCRCapture(true);
           }}
+          onChooseBulkOCR={() => {
+            setShowMLChoiceDialog(false);
+            setPendingMLShipmentId(null);
+            setShowBulkOCR(true);
+          }}
         />
       )}
 
