@@ -1,65 +1,42 @@
 
 
-## Plan: Mejorar parser OCR para etiquetas ML + Pantalla de éxito
+## Plan: Fix OCR pantalla en blanco + Error de cliente al crear envío
 
-### Contexto
-Las etiquetas de MercadoLibre tienen un formato con campos etiquetados: `Envio: 46236169153`, `Dirección: ...`, `CP: ...`, `Localidad: ...`, `Destinatario: ...`, `Barrio: ...`, `Referencia: ...`, `Entrega: ...`. El parser actual no extrae el número de envío ni usa los labels de ML. Además, después de confirmar no hay feedback claro de que el envío se creó.
+### Problema 1: OCR se pone en blanco después de tomar la foto
 
-### Cambios
+**Causa raíz**: Tesseract.js intenta descargar ~15MB de archivos WASM en el WebView móvil. Esto causa un crash de memoria o recarga silenciosa del WebView, dejando la pantalla en blanco. El timeout de 30 segundos no ayuda si el WebView se reinicia antes.
 
-**1. `src/lib/ocrParser.ts` — Agregar campo `mlShipmentId` + mejorar patrones**
-- Agregar `mlShipmentId: string | null` y `referencia: string | null` y `barrio: string | null` al interface `OCRExtractedData`
-- Nueva función `extractMLShipmentId`: buscar patrones `Envio\s*:?\s*(\d{8,12})`, `Env[ií]o\s*#?\s*(\d+)`, `N°?\s*envio\s*:?\s*(\d+)`
-- Nueva función `extractReferencia`: buscar `Referencia\s*:?\s*(.+)`
-- Nueva función `extractBarrio`: buscar `Barrio\s*:?\s*(.+)`, `Partido\s*:?\s*(.+)`
-- Mejorar `extractAddress`: agregar patrón keyword `Direcci[oó]n\s*:?\s*(.+)` con mayor prioridad (ya existe como fallback, moverlo primero)
-- Mejorar `extractLocality`: agregar `Barrio` como keyword alternativo
-- Mejorar `extractPostalCode`: agregar patrón `Cp\s*:?\s*(\d{4})` (ML usa "Cp" minúscula)
-- Mejorar `extractRecipientName`: agregar `Dest\.?\s*:?\s*(.+)` como patrón
+**Solución**: Eliminar la dependencia de Tesseract.js en el flujo OCR. En su lugar, usar el modelo de IA de Lovable Cloud (Gemini Flash) vía una edge function para extraer datos de la etiqueta directamente desde la imagen. Esto es más rápido, más liviano, y funciona mejor en WebViews móviles.
 
-**2. `src/components/mobile/OCRCaptureDialog.tsx` — Campos nuevos + paso éxito**
-- Agregar campos editables: `referencia` y `barrio`
-- Auto-poblar `mlShipmentId` desde el OCR cuando se detecta "Envio: XXXX"
-- Agregar step `'success'` con checkmark verde, tracking generado, y botón "Listo"/"Siguiente"
-- Cambiar `onConfirm` para que devuelva `Promise<string | void>` (tracking number)
-- Agregar `referencia` y `barrio` al `OCRConfirmData` interface
-- Cuando OCR no detecta ningún campo, mostrar banner "No se pudo leer. Ingresá los datos."
+**Cambios**:
+- **Crear `supabase/functions/ocr-label/index.ts`**: Edge function que recibe la imagen en base64, la envía a Gemini Flash con un prompt estructurado para extraer los campos (Envio, Dirección, CP, Localidad, Barrio, Destinatario, Referencia), y devuelve JSON.
+- **Modificar `src/components/mobile/OCRCaptureDialog.tsx`**: Reemplazar el bloque de Tesseract.js por una llamada a `supabase.functions.invoke('ocr-label', { body: { image: dataUrl } })`. Eliminar la importación dinámica de `tesseract.js`. Mantener el timeout de 30 segundos y el botón "Saltar OCR" como fallback.
 
-**3. `src/components/mobile/FlexMixtoScreen.tsx` — Devolver tracking desde onConfirm**
-- `handleOCRConfirm` debe retornar el `tracking_number` generado
+### Problema 2: Error de cliente al crear envío en Berazategui (BlackBox)
 
-**4. `src/components/mobile/MobileScanTab.tsx` — Devolver tracking desde onConfirm**
-- Mismo ajuste para retornar tracking
+**Causa raíz**: El índice único `idx_clientes_dni_cuit_unique` es **global** (no incluye `tenant_id`). Cuando un cliente con el mismo DNI/CUIT existe en otro tenant, el INSERT falla con error 23505. La búsqueda previa por DNI no lo encuentra (RLS filtra por tenant), y la recuperación post-error tampoco (mismo RLS).
 
-**5. `src/components/mobile/BulkOCRScreen.tsx` — Devolver tracking desde onConfirm**
-- Mismo ajuste
-
-**6. `src/hooks/useFlexPackages.ts` — Aceptar `referencia`/`barrio`/`mlShipmentId` en addManualPackage**
-- Agregar campos opcionales `referencia`, `barrio`, `mlShipmentId` al `ManualPackageData`
-- Guardar `observaciones` (referencia), `barrio` y `ml_shipment_id` en el insert de `envios`
-
-### Flujo corregido
 ```text
-Foto etiqueta ML → OCR detecta:
-  Envio: 46236169153
-  Dirección: Av. Rivadavia 1234
-  CP: 1878
-  Localidad: Quilmes
-  Barrio: Centro
-  Destinatario: Juan Pérez
-  Referencia: Timbre 3B
-
-→ Campos pre-llenados editables
-→ Confirmar → Spinner "Guardando..."
-→ ✅ Envío creado - OCR-1712345678 (ML: 46236169153)
-→ "Listo" o "Siguiente" (modo continuo)
+Flujo actual:
+1. Buscar por DNI → No encuentra (RLS filtra otro tenant)
+2. Buscar por nombre+dirección → No encuentra (cliente nuevo)
+3. INSERT → Falla: unique violation en idx_clientes_dni_cuit_unique
+4. Recovery: buscar otra vez → No encuentra → ERROR
 ```
 
-### Archivos a modificar
-- `src/lib/ocrParser.ts`
-- `src/components/mobile/OCRCaptureDialog.tsx`
-- `src/components/mobile/FlexMixtoScreen.tsx`
-- `src/components/mobile/MobileScanTab.tsx`
-- `src/components/mobile/BulkOCRScreen.tsx`
-- `src/hooks/useFlexPackages.ts`
+**Solución**: Migración SQL para reemplazar el índice global por uno per-tenant.
+
+**Cambios**:
+- **Migración SQL**: 
+  ```sql
+  DROP INDEX IF EXISTS idx_clientes_dni_cuit_unique;
+  CREATE UNIQUE INDEX idx_clientes_dni_cuit_unique 
+    ON public.clientes (tenant_id, lower(trim(dni_cuit))) 
+    WHERE dni_cuit IS NOT NULL AND dni_cuit <> '';
+  ```
+
+### Archivos a crear/modificar
+- `supabase/functions/ocr-label/index.ts` — nueva edge function con Gemini Flash
+- `src/components/mobile/OCRCaptureDialog.tsx` — reemplazar Tesseract por llamada a edge function
+- Migración SQL — fix índice único de DNI per-tenant
 
