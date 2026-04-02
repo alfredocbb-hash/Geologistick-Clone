@@ -40,19 +40,23 @@ export function MLRegisterDialog({
   const [error, setError] = useState<string | null>(null);
   const [registeredEnvio, setRegisteredEnvio] = useState<any>(null);
 
-  // Look up seller when dialog opens (informational only — does NOT block registration)
+  // Look up seller when dialog opens — if not found and OCR fallback available, skip to OCR
   useEffect(() => {
     if (open) {
       setRegisteredEnvio(null);
       setError(null);
       setSeller(null);
       if (mlSenderId) {
-        lookupSeller();
+        lookupSellerAndMaybeRedirect();
+      } else if (onFallbackOCR) {
+        // No sender info at all → go straight to OCR
+        onFallbackOCR();
+        onClose();
       }
     }
   }, [open, mlSenderId]);
 
-  const lookupSeller = async () => {
+  const lookupSellerAndMaybeRedirect = async () => {
     setIsLookingUpSeller(true);
     try {
       const { data } = await supabase
@@ -65,6 +69,10 @@ export function MLRegisterDialog({
 
       if (data) {
         setSeller(data);
+      } else if (onFallbackOCR) {
+        // Seller not registered → skip API call that would 401, go straight to OCR
+        onFallbackOCR();
+        onClose();
       }
     } catch (err) {
       console.error('Error looking up seller:', err);
