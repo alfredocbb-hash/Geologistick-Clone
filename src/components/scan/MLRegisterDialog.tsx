@@ -56,7 +56,7 @@ export function MLRegisterDialog({
     }
   }, [open, mlSenderId]);
 
-  const lookupSeller = async () => {
+  const lookupSellerAndMaybeRedirect = async () => {
     setIsLookingUpSeller(true);
     try {
       const { data } = await supabase
@@ -69,6 +69,10 @@ export function MLRegisterDialog({
 
       if (data) {
         setSeller(data);
+      } else if (onFallbackOCR) {
+        // Seller not registered → skip API call that would 401, go straight to OCR
+        onFallbackOCR();
+        onClose();
       }
     } catch (err) {
       console.error('Error looking up seller:', err);
