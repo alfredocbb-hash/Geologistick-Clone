@@ -1,62 +1,65 @@
 
 
-## Fix: OCR se queda colgado en "Procesando..." después de tomar foto
+## Plan: Mejorar parser OCR para etiquetas ML + Pantalla de éxito
 
-### Causa raíz
-`createWorker('spa')` de tesseract.js v7 descarga ~15MB de archivos WASM + datos de idioma desde CDN. En WebViews móviles esto puede colgar indefinidamente — el Promise no resuelve ni rechaza, dejando al usuario en el spinner eterno.
+### Contexto
+Las etiquetas de MercadoLibre tienen un formato con campos etiquetados: `Envio: 46236169153`, `Dirección: ...`, `CP: ...`, `Localidad: ...`, `Destinatario: ...`, `Barrio: ...`, `Referencia: ...`, `Entrega: ...`. El parser actual no extrae el número de envío ni usa los labels de ML. Además, después de confirmar no hay feedback claro de que el envío se creó.
 
-### Solución
-Agregar un **timeout de 30 segundos** al proceso OCR completo. Si se excede, cancelar el worker y ofrecer al usuario la opción de **ingresar los datos manualmente** (sin OCR). Además, agregar mensajes de progreso para que el usuario sepa qué está pasando.
+### Cambios
 
-### Cambios en `src/components/mobile/OCRCaptureDialog.tsx`
+**1. `src/lib/ocrParser.ts` — Agregar campo `mlShipmentId` + mejorar patrones**
+- Agregar `mlShipmentId: string | null` y `referencia: string | null` y `barrio: string | null` al interface `OCRExtractedData`
+- Nueva función `extractMLShipmentId`: buscar patrones `Envio\s*:?\s*(\d{8,12})`, `Env[ií]o\s*#?\s*(\d+)`, `N°?\s*envio\s*:?\s*(\d+)`
+- Nueva función `extractReferencia`: buscar `Referencia\s*:?\s*(.+)`
+- Nueva función `extractBarrio`: buscar `Barrio\s*:?\s*(.+)`, `Partido\s*:?\s*(.+)`
+- Mejorar `extractAddress`: agregar patrón keyword `Direcci[oó]n\s*:?\s*(.+)` con mayor prioridad (ya existe como fallback, moverlo primero)
+- Mejorar `extractLocality`: agregar `Barrio` como keyword alternativo
+- Mejorar `extractPostalCode`: agregar patrón `Cp\s*:?\s*(\d{4})` (ML usa "Cp" minúscula)
+- Mejorar `extractRecipientName`: agregar `Dest\.?\s*:?\s*(.+)` como patrón
 
-**1. Timeout en `processImage`**
-```tsx
-const processImage = async (dataUrl: string) => {
-  setStep('processing');
-  setImageData(dataUrl);
-  
-  let worker: any = null;
-  const timeout = new Promise((_, reject) => 
-    setTimeout(() => reject(new Error('TIMEOUT')), 30000)
-  );
-  
-  try {
-    const { createWorker } = await import('tesseract.js');
-    setProgressMsg('Iniciando motor OCR...');
-    
-    const ocrProcess = async () => {
-      worker = await createWorker('spa');
-      setProgressMsg('Analizando imagen...');
-      const { data } = await worker.recognize(dataUrl);
-      await worker.terminate();
-      return data.text;
-    };
-    
-    const rawText = await Promise.race([ocrProcess(), timeout]);
-    // ... parse and set fields
-    setStep('confirm');
-  } catch (error) {
-    worker?.terminate?.().catch(() => {});
-    
-    if (error.message === 'TIMEOUT') {
-      toast.warning('OCR tardó demasiado. Ingresá los datos manualmente.');
-      setStep('confirm'); // Ir a confirm con campos vacíos para editar
-    } else {
-      toast.error('Error OCR', { description: error.message });
-      setStep('capture');
-    }
-  }
-};
+**2. `src/components/mobile/OCRCaptureDialog.tsx` — Campos nuevos + paso éxito**
+- Agregar campos editables: `referencia` y `barrio`
+- Auto-poblar `mlShipmentId` desde el OCR cuando se detecta "Envio: XXXX"
+- Agregar step `'success'` con checkmark verde, tracking generado, y botón "Listo"/"Siguiente"
+- Cambiar `onConfirm` para que devuelva `Promise<string | void>` (tracking number)
+- Agregar `referencia` y `barrio` al `OCRConfirmData` interface
+- Cuando OCR no detecta ningún campo, mostrar banner "No se pudo leer. Ingresá los datos."
+
+**3. `src/components/mobile/FlexMixtoScreen.tsx` — Devolver tracking desde onConfirm**
+- `handleOCRConfirm` debe retornar el `tracking_number` generado
+
+**4. `src/components/mobile/MobileScanTab.tsx` — Devolver tracking desde onConfirm**
+- Mismo ajuste para retornar tracking
+
+**5. `src/components/mobile/BulkOCRScreen.tsx` — Devolver tracking desde onConfirm**
+- Mismo ajuste
+
+**6. `src/hooks/useFlexPackages.ts` — Aceptar `referencia`/`barrio`/`mlShipmentId` en addManualPackage**
+- Agregar campos opcionales `referencia`, `barrio`, `mlShipmentId` al `ManualPackageData`
+- Guardar `observaciones` (referencia), `barrio` y `ml_shipment_id` en el insert de `envios`
+
+### Flujo corregido
+```text
+Foto etiqueta ML → OCR detecta:
+  Envio: 46236169153
+  Dirección: Av. Rivadavia 1234
+  CP: 1878
+  Localidad: Quilmes
+  Barrio: Centro
+  Destinatario: Juan Pérez
+  Referencia: Timbre 3B
+
+→ Campos pre-llenados editables
+→ Confirmar → Spinner "Guardando..."
+→ ✅ Envío creado - OCR-1712345678 (ML: 46236169153)
+→ "Listo" o "Siguiente" (modo continuo)
 ```
 
-**2. Mensaje de progreso dinámico**
-- Agregar estado `progressMsg` que muestra "Descargando motor OCR...", "Analizando imagen..." en el paso `processing`
-- Reemplazar el texto fijo "Analizando etiqueta con OCR..." por el mensaje dinámico
-
-**3. Botón "Saltar OCR" durante el procesamiento**
-- En el paso `processing`, agregar un botón "Ingresar manualmente" que permite al usuario saltar directamente al paso `confirm` con campos vacíos si no quiere esperar
-
-### Archivo a modificar
+### Archivos a modificar
+- `src/lib/ocrParser.ts`
 - `src/components/mobile/OCRCaptureDialog.tsx`
+- `src/components/mobile/FlexMixtoScreen.tsx`
+- `src/components/mobile/MobileScanTab.tsx`
+- `src/components/mobile/BulkOCRScreen.tsx`
+- `src/hooks/useFlexPackages.ts`
 
