@@ -1,26 +1,23 @@
 
+## Fix: OCR crea envío pero el usuario no ve confirmación
 
-## Plan: Asignar sucursal de origen a envíos creados por OCR
+### Causa raíz
 
-### Problema
-Cuando se crea un envío por OCR (desde MobileScanTab, BulkOCRScreen, o FlexMixtoScreen), el envío no tiene `sucursal_origen_id` ni `sucursal_entrega_id`. Esto significa que el envío queda "flotando" sin estar vinculado a ninguna sucursal. No aparece en la lista de envíos pendientes de la sucursal, ni puede ser colectado por un chofer para planificar rutas.
+Hay **dos bugs** en el flujo OCR:
 
-### Solución
-Al crear un envío por OCR, asignar automáticamente la sucursal del usuario como `sucursal_origen_id` y `sucursal_entrega_id` (ubicación física actual). Esto permite que:
-1. El envío aparezca en la recepción de la sucursal
-2. Un chofer pueda colectarlo desde esa sucursal
-3. Se pueda planificar una ruta o transferir a otro chofer
+**Bug 1 — ScanQR.tsx cierra el diálogo antes de mostrar el éxito**: El `onConfirm` del OCRCaptureDialog en `ScanQR.tsx` (línea 798) ejecuta `setShowOCRCapture(false)` inmediatamente después del insert, lo que cierra el diálogo ANTES de que pueda transicionar al paso de éxito. Además no devuelve el tracking number.
+
+**Bug 2 — ScanQR.tsx no envía todos los campos**: Falta `sucursal_origen_id`, `sucursal_entrega_id`, `notas` (referencia) y `barrio` en el insert del envío.
+
+El flujo en `MobileScanTab.tsx` está correcto (devuelve tracking y no cierra el diálogo), pero el de `ScanQR.tsx` no.
 
 ### Cambios
 
-**1. `src/components/mobile/MobileScanTab.tsx`** — En el `onConfirm` del OCRCaptureDialog, agregar `sucursal_origen_id` y `sucursal_entrega_id` desde `profile.sucursal_id` al insert de envíos.
-
-**2. `src/components/mobile/BulkOCRScreen.tsx`** — Mismo fix: agregar `sucursal_origen_id` y `sucursal_entrega_id` al insert.
-
-**3. `src/hooks/useFlexPackages.ts`** — En `addManualPackage`, agregar `sucursal_origen_id` y `sucursal_entrega_id` desde `profile.sucursal_id` al insert.
+**1. `src/pages/ScanQR.tsx`** — Corregir el `onConfirm` del OCRCaptureDialog:
+- Agregar `sucursal_id` al query de profiles
+- Agregar `sucursal_origen_id`, `sucursal_entrega_id`, `notas`, `source_module` al insert
+- **Eliminar** `setShowOCRCapture(false)` y `setPendingOCRShipmentId(null)` del handler — dejar que el diálogo maneje su propio cierre vía el paso de éxito
+- **Retornar** el `trackingNumber` para que se muestre en la pantalla de éxito
 
 ### Archivos a modificar
-- `src/components/mobile/MobileScanTab.tsx`
-- `src/components/mobile/BulkOCRScreen.tsx`
-- `src/hooks/useFlexPackages.ts`
-
+- `src/pages/ScanQR.tsx` (solo el bloque `onConfirm` del OCRCaptureDialog)
