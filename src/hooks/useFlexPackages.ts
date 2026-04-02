@@ -564,6 +564,8 @@ export function useFlexPackages(): UseFlexPackagesReturn {
           fecha_asignacion_ultima_milla: new Date().toISOString(),
           fecha_recogida: new Date().toISOString(),
           tenant_id: tenantId,
+          sucursal_origen_id: (profile as any)?.sucursal_id || null,
+          sucursal_entrega_id: (profile as any)?.sucursal_id || null,
           created_by: user.id,
           precio_total: 0,
           is_manual_entry: true as any,

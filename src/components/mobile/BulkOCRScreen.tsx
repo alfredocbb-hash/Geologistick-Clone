@@ -28,16 +28,18 @@ export function BulkOCRScreen({ onClose }: BulkOCRScreenProps) {
   const [packages, setPackages] = useState<BulkPackage[]>([]);
   const [showOCR, setShowOCR] = useState(true);
   const [tenantId, setTenantId] = useState<string | null>(null);
+  const [sucursalId, setSucursalId] = useState<string | null>(null);
 
   // Fetch tenant_id once
   const ensureTenantId = useCallback(async () => {
     if (tenantId) return tenantId;
     const { data } = await supabase
       .from('profiles')
-      .select('tenant_id')
+      .select('tenant_id, sucursal_id')
       .eq('user_id', user!.id)
       .single();
     const tid = data?.tenant_id || null;
+    setSucursalId(data?.sucursal_id || null);
     setTenantId(tid);
     return tid;
   }, [user, tenantId]);
@@ -68,6 +70,8 @@ export function BulkOCRScreen({ onClose }: BulkOCRScreenProps) {
         is_manual_entry: true,
         source_module: 'bulk_ocr',
         tenant_id: tid,
+        sucursal_origen_id: sucursalId || null,
+        sucursal_entrega_id: sucursalId || null,
         ml_shipment_id: data.mlShipmentId ? parseInt(data.mlShipmentId) : null,
         created_by: user?.id,
       })
