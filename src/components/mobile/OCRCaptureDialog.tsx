@@ -50,7 +50,7 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
   const [barrio, setBarrio] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const handleConfirmRef = useRef<(() => void) | null>(null);
+  const isAutoConfirming = useRef(false);
   const { isNative, cameraAvailable, takePhoto } = useNativeCamera();
 
   const resetFields = useCallback(() => {
