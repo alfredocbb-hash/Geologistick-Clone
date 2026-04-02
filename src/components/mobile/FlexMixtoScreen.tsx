@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   QrCode, Map, Play, Trash2, X, Package, MapPin, Loader2,
-  Users, Navigation, FileText, CheckCircle2, Clock, ScanSearch,
+  Users, Navigation, FileText, CheckCircle2, Clock, ScanSearch, Camera,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useFlexPackages } from '@/hooks/useFlexPackages';
