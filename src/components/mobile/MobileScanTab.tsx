@@ -67,6 +67,7 @@ export function MobileScanTab() {
   const [showUltimaMillaDialog, setShowUltimaMillaDialog] = useState(false);
   const [showMLDeliveryDialog, setShowMLDeliveryDialog] = useState(false);
   const [showMLRegisterDialog, setShowMLRegisterDialog] = useState(false);
+  const [showMLChoiceDialog, setShowMLChoiceDialog] = useState(false);
   const [pendingMLData, setPendingMLData] = useState<{ mlShipmentId: string; mlSenderId?: string } | null>(null);
   const [isPulsing, setIsPulsing] = useState(true);
   const [showCollectScreen, setShowCollectScreen] = useState(false);
