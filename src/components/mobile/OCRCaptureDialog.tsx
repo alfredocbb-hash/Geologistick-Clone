@@ -240,7 +240,7 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
   }, [direccion, localidad, codigoPostal, nombreDestinatario, referencia, barrio, detectedMLId, mlShipmentId, onConfirm, continuousMode, resetFields]);
 
   // Keep ref in sync for auto-confirm from processImage
-  handleConfirmRef.current = handleConfirm;
+  // handleConfirmRef removed — auto-confirm now uses confirmWithData directly
 
   const handleOpenChange = useCallback((open: boolean) => {
     if (!open) {
