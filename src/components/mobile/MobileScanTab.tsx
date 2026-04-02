@@ -16,6 +16,7 @@ import { MLDeliveryDialog } from '@/components/scan/MLDeliveryDialog';
 import { MLRegisterDialog } from '@/components/scan/MLRegisterDialog';
 import { MLNotFoundChoiceDialog } from '@/components/scan/MLNotFoundChoiceDialog';
 import { OCRCaptureDialog } from '@/components/mobile/OCRCaptureDialog';
+import { BulkOCRScreen } from '@/components/mobile/BulkOCRScreen';
 import { ReceiveRouteSheetDialog } from '@/components/scan/ReceiveRouteSheetDialog';
 import { CollectRouteSheetDialog } from '@/components/scan/CollectRouteSheetDialog';
 import { parseQRCode } from '@/lib/qrParser';
