@@ -14,8 +14,11 @@ import {
 import { useCollectPackages } from '@/hooks/useCollectPackages';
 import QRScanner from '@/components/qr/QRScanner';
 import { MLRegisterDialog } from '@/components/scan/MLRegisterDialog';
+import { MLNotFoundChoiceDialog } from '@/components/scan/MLNotFoundChoiceDialog';
+import { OCRCaptureDialog } from '@/components/mobile/OCRCaptureDialog';
 import { parseQRCode } from '@/lib/qrParser';
 import { useAuth } from '@/lib/auth';
+import { supabase } from '@/integrations/supabase/client';
 import type { CollectPackage } from '@/hooks/useCollectPackages';
 
 interface CollectScanScreenProps {
@@ -27,6 +30,9 @@ export function CollectScanScreen({ onClose }: CollectScanScreenProps) {
   const [showScanner, setShowScanner] = useState(false);
   const [scanSessionCount, setScanSessionCount] = useState(0);
   const [mlRegisterData, setMlRegisterData] = useState<{ shipmentId: string; senderId?: string } | null>(null);
+  const [showMLChoiceDialog, setShowMLChoiceDialog] = useState(false);
+  const [pendingMLShipmentId, setPendingMLShipmentId] = useState<string | null>(null);
+  const [showOCRCapture, setShowOCRCapture] = useState(false);
 
   const {
     packages,
@@ -47,7 +53,9 @@ export function CollectScanScreen({ onClose }: CollectScanScreenProps) {
       const mlTracking = `ML-${parsed.value}`;
       const pkg = await addPackageByTracking(mlTracking);
       if (!pkg) {
-        toast.warning(`ML-${parsed.value}: no encontrado en el sistema`);
+        // ML not found — show choice dialog
+        setPendingMLShipmentId(parsed.value);
+        setShowMLChoiceDialog(true);
       }
     } else if (parsed.type === 'tracking') {
       const pkg = await addPackageByTracking(parsed.value);
@@ -175,6 +183,27 @@ export function CollectScanScreen({ onClose }: CollectScanScreenProps) {
         </div>
       )}
 
+      {/* ML Not Found Choice Dialog */}
+      {showMLChoiceDialog && pendingMLShipmentId && (
+        <MLNotFoundChoiceDialog
+          open={showMLChoiceDialog}
+          mlShipmentId={pendingMLShipmentId}
+          onClose={() => {
+            setShowMLChoiceDialog(false);
+            setPendingMLShipmentId(null);
+          }}
+          onChooseManual={() => {
+            setShowMLChoiceDialog(false);
+            setMlRegisterData({ shipmentId: pendingMLShipmentId });
+            setPendingMLShipmentId(null);
+          }}
+          onChooseOCR={() => {
+            setShowMLChoiceDialog(false);
+            setShowOCRCapture(true);
+          }}
+        />
+      )}
+
       {/* ML Register Dialog */}
       {mlRegisterData && (
         <MLRegisterDialog
@@ -185,13 +214,67 @@ export function CollectScanScreen({ onClose }: CollectScanScreenProps) {
           onClose={() => setMlRegisterData(null)}
           onSuccess={async (envio: any) => {
             setMlRegisterData(null);
-            // After registering, add to list
             if (envio?.tracking_number) {
               await addPackageByTracking(envio.tracking_number);
             }
           }}
+          onFallbackOCR={() => {
+            const mlId = mlRegisterData.shipmentId;
+            setMlRegisterData(null);
+            setPendingMLShipmentId(mlId);
+            setShowOCRCapture(true);
+          }}
         />
       )}
+
+      {/* OCR Capture Dialog */}
+      <OCRCaptureDialog
+        open={showOCRCapture}
+        mlShipmentId={pendingMLShipmentId || undefined}
+        onClose={() => {
+          setShowOCRCapture(false);
+          setPendingMLShipmentId(null);
+        }}
+        onConfirm={async (data) => {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('tenant_id, sucursal_id')
+            .eq('user_id', user!.id)
+            .single();
+
+          const trackingNumber = `OCR-${Date.now()}`;
+          const { data: envio, error } = await supabase
+            .from('envios')
+            .insert({
+              tracking_number: trackingNumber,
+              direccion_entrega: data.direccion,
+              ciudad_entrega: data.localidad,
+              cp_entrega: data.codigoPostal,
+              nombre_destinatario: data.nombreDestinatario || null,
+              notas: data.referencia || null,
+              estado: 'pendiente',
+              precio_total: 0,
+              is_manual_entry: true,
+              source_module: 'mobile_collect',
+              tenant_id: profile?.tenant_id,
+              sucursal_origen_id: profile?.sucursal_id || null,
+              sucursal_entrega_id: profile?.sucursal_id || null,
+              ml_shipment_id: data.mlShipmentId ? parseInt(data.mlShipmentId) : null,
+              created_by: user?.id,
+            })
+            .select()
+            .single();
+
+          if (error) throw error;
+
+          // Add to collect list
+          if (trackingNumber) {
+            await addPackageByTracking(trackingNumber);
+          }
+          setPendingMLShipmentId(null);
+          return trackingNumber;
+        }}
+      />
     </div>
   );
 }

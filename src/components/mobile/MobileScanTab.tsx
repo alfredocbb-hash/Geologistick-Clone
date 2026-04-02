@@ -14,6 +14,7 @@ import { BranchDeliveryDialog } from '@/components/scan/BranchDeliveryDialog';
 import { UltimaMillaDialog } from '@/components/scan/UltimaMillaDialog';
 import { MLDeliveryDialog } from '@/components/scan/MLDeliveryDialog';
 import { MLRegisterDialog } from '@/components/scan/MLRegisterDialog';
+import { MLNotFoundChoiceDialog } from '@/components/scan/MLNotFoundChoiceDialog';
 import { OCRCaptureDialog } from '@/components/mobile/OCRCaptureDialog';
 import { ReceiveRouteSheetDialog } from '@/components/scan/ReceiveRouteSheetDialog';
 import { CollectRouteSheetDialog } from '@/components/scan/CollectRouteSheetDialog';
@@ -66,6 +67,7 @@ export function MobileScanTab() {
   const [showUltimaMillaDialog, setShowUltimaMillaDialog] = useState(false);
   const [showMLDeliveryDialog, setShowMLDeliveryDialog] = useState(false);
   const [showMLRegisterDialog, setShowMLRegisterDialog] = useState(false);
+  const [showMLChoiceDialog, setShowMLChoiceDialog] = useState(false);
   const [pendingMLData, setPendingMLData] = useState<{ mlShipmentId: string; mlSenderId?: string } | null>(null);
   const [isPulsing, setIsPulsing] = useState(true);
   const [showCollectScreen, setShowCollectScreen] = useState(false);
@@ -174,9 +176,9 @@ export function MobileScanTab() {
         }
 
         if (!shipment) {
-          // Shipment not found - show registration dialog
+          // Shipment not found - show choice dialog
           setPendingMLData({ mlShipmentId: parsed.value, mlSenderId: parsed.mlSenderId });
-          setShowMLRegisterDialog(true);
+          setShowMLChoiceDialog(true);
           return;
         }
 
@@ -684,6 +686,29 @@ export function MobileScanTab() {
         />
       )}
 
+      {/* ML Not Found Choice Dialog */}
+      {showMLChoiceDialog && pendingMLData && (
+        <MLNotFoundChoiceDialog
+          open={showMLChoiceDialog}
+          mlShipmentId={pendingMLData.mlShipmentId}
+          onClose={() => {
+            setShowMLChoiceDialog(false);
+            setPendingMLData(null);
+            setIsPulsing(true);
+          }}
+          onChooseManual={() => {
+            setShowMLChoiceDialog(false);
+            setShowMLRegisterDialog(true);
+          }}
+          onChooseOCR={() => {
+            setPendingOCRShipmentId(pendingMLData.mlShipmentId);
+            setShowMLChoiceDialog(false);
+            setPendingMLData(null);
+            setShowOCRCapture(true);
+          }}
+        />
+      )}
+
       {/* ML Register Dialog - for unregistered ML shipments */}
       {showMLRegisterDialog && pendingMLData && (
         <MLRegisterDialog
@@ -693,12 +718,12 @@ export function MobileScanTab() {
           userId={user?.id}
           onClose={handleDialogClose}
           onSuccess={handleMLRegisterSuccess}
-          onFallbackOCR={modoFlexMixto ? () => {
+          onFallbackOCR={() => {
             setPendingOCRShipmentId(pendingMLData.mlShipmentId);
             setShowMLRegisterDialog(false);
             setPendingMLData(null);
             setShowOCRCapture(true);
-          } : undefined}
+          }}
         />
       )}
 
