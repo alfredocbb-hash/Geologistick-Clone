@@ -34,6 +34,7 @@ export function CollectScanScreen({ onClose }: CollectScanScreenProps) {
   const [showMLChoiceDialog, setShowMLChoiceDialog] = useState(false);
   const [pendingMLShipmentId, setPendingMLShipmentId] = useState<string | null>(null);
   const [showOCRCapture, setShowOCRCapture] = useState(false);
+  const [showBulkOCR, setShowBulkOCR] = useState(false);
 
   const {
     packages,
