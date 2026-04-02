@@ -34,10 +34,11 @@ export function BulkOCRScreen({ onClose }: BulkOCRScreenProps) {
     if (tenantId) return tenantId;
     const { data } = await supabase
       .from('profiles')
-      .select('tenant_id')
+      .select('tenant_id, sucursal_id')
       .eq('user_id', user!.id)
       .single();
     const tid = data?.tenant_id || null;
+    setSucursalId(data?.sucursal_id || null);
     setTenantId(tid);
     return tid;
   }, [user, tenantId]);
