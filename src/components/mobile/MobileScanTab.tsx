@@ -708,6 +708,11 @@ export function MobileScanTab() {
             setPendingMLData(null);
             setShowOCRCapture(true);
           }}
+          onChooseBulkOCR={() => {
+            setShowMLChoiceDialog(false);
+            setPendingMLData(null);
+            setShowBulkOCR(true);
+          }}
         />
       )}
 
