@@ -48,7 +48,9 @@ export function BulkOCRScreen({ onClose }: BulkOCRScreenProps) {
     codigoPostal: string;
     nombreDestinatario: string;
     mlShipmentId?: string;
-  }) => {
+    referencia?: string;
+    barrio?: string;
+  }): Promise<string> => {
     const tid = await ensureTenantId();
     const trackingNumber = `OCR-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
 
@@ -60,6 +62,7 @@ export function BulkOCRScreen({ onClose }: BulkOCRScreenProps) {
         ciudad_entrega: data.localidad,
         cp_entrega: data.codigoPostal,
         nombre_destinatario: data.nombreDestinatario || null,
+        notas: data.referencia || null,
         estado: 'pendiente',
         precio_total: 0,
         is_manual_entry: true,
@@ -81,6 +84,8 @@ export function BulkOCRScreen({ onClose }: BulkOCRScreenProps) {
       codigoPostal: data.codigoPostal,
       nombreDestinatario: data.nombreDestinatario,
     }]);
+
+    return trackingNumber;
   }, [ensureTenantId, user?.id]);
 
   const handleFinish = useCallback(() => {

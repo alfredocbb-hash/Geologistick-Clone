@@ -119,7 +119,9 @@ export function FlexMixtoScreen() {
     codigoPostal: string;
     nombreDestinatario: string;
     mlShipmentId?: string;
-  }) => {
+    referencia?: string;
+    barrio?: string;
+  }): Promise<string | void> => {
     if (!addManualPackage) return;
     
     const pkg = await addManualPackage({
@@ -128,14 +130,12 @@ export function FlexMixtoScreen() {
       codigoPostal: data.codigoPostal,
       nombreDestinatario: data.nombreDestinatario,
       mlShipmentId: data.mlShipmentId,
+      referencia: data.referencia,
+      barrio: data.barrio,
     });
     
     if (pkg) {
-      setShowOCRCapture(false);
-      setPendingMLShipmentId(undefined);
-      toast.success('📦 Paquete agregado manualmente (OCR)', {
-        description: pkg.tracking_number,
-      });
+      return pkg.tracking_number;
     }
   }, [addManualPackage]);
 

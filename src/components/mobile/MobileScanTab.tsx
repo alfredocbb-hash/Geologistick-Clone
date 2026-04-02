@@ -727,6 +727,7 @@ export function MobileScanTab() {
               ciudad_entrega: data.localidad,
               cp_entrega: data.codigoPostal,
               nombre_destinatario: data.nombreDestinatario || null,
+              notas: data.referencia || null,
               estado: 'pendiente',
               precio_total: 0,
               is_manual_entry: true,
@@ -740,14 +741,9 @@ export function MobileScanTab() {
 
           if (error) throw error;
 
-          toast.success('Envío creado por OCR', {
-            description: `Tracking: ${trackingNumber}`,
-          });
-          setShowOCRCapture(false);
-          setPendingOCRShipmentId(null);
-          setIsPulsing(true);
           queryClient.invalidateQueries({ queryKey: ['envios'] });
           queryClient.invalidateQueries({ queryKey: ['mobile-recent-scans'] });
+          return trackingNumber;
         }}
       />
 
