@@ -14,8 +14,11 @@ import {
 import { useCollectPackages } from '@/hooks/useCollectPackages';
 import QRScanner from '@/components/qr/QRScanner';
 import { MLRegisterDialog } from '@/components/scan/MLRegisterDialog';
+import { MLNotFoundChoiceDialog } from '@/components/scan/MLNotFoundChoiceDialog';
+import { OCRCaptureDialog } from '@/components/mobile/OCRCaptureDialog';
 import { parseQRCode } from '@/lib/qrParser';
 import { useAuth } from '@/lib/auth';
+import { supabase } from '@/integrations/supabase/client';
 import type { CollectPackage } from '@/hooks/useCollectPackages';
 
 interface CollectScanScreenProps {
