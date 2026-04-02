@@ -40,6 +40,7 @@ export function FlexMixtoScreen() {
   // OCR Fallback state
   const [showOCRCapture, setShowOCRCapture] = useState(false);
   const [pendingMLShipmentId, setPendingMLShipmentId] = useState<string | undefined>();
+  const [showBulkOCR, setShowBulkOCR] = useState(false);
   
   const {
     packages, isLoading, addPackageByTracking, addPackage,
