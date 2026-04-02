@@ -399,6 +399,12 @@ export function FlexMixtoScreen() {
         onClose={() => setShowRouteSheetDialog(false)}
         onSuccess={handleRouteSheetSuccess}
       />
+      {/* Bulk OCR Screen */}
+      {showBulkOCR && (
+        <div className="fixed inset-0 z-50 bg-slate-950 p-4 overflow-auto">
+          <BulkOCRScreen onClose={() => setShowBulkOCR(false)} />
+        </div>
+      )}
     </div>
   );
 }
