@@ -34,6 +34,7 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
   const [isProcessing, setIsProcessing] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [savedCount, setSavedCount] = useState(0);
+  const [progressMsg, setProgressMsg] = useState('Analizando etiqueta...');
 
   // Editable fields
   const [direccion, setDireccion] = useState('');
