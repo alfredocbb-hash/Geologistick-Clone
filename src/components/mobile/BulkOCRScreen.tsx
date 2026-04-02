@@ -70,6 +70,8 @@ export function BulkOCRScreen({ onClose }: BulkOCRScreenProps) {
         is_manual_entry: true,
         source_module: 'bulk_ocr',
         tenant_id: tid,
+        sucursal_origen_id: sucursalId || null,
+        sucursal_entrega_id: sucursalId || null,
         ml_shipment_id: data.mlShipmentId ? parseInt(data.mlShipmentId) : null,
         created_by: user?.id,
       })
