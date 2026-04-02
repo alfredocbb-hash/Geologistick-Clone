@@ -176,9 +176,9 @@ export function MobileScanTab() {
         }
 
         if (!shipment) {
-          // Shipment not found - show registration dialog
+          // Shipment not found - show choice dialog
           setPendingMLData({ mlShipmentId: parsed.value, mlSenderId: parsed.mlSenderId });
-          setShowMLRegisterDialog(true);
+          setShowMLChoiceDialog(true);
           return;
         }
 
