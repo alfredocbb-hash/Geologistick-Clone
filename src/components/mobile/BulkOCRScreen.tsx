@@ -28,6 +28,7 @@ export function BulkOCRScreen({ onClose }: BulkOCRScreenProps) {
   const [packages, setPackages] = useState<BulkPackage[]>([]);
   const [showOCR, setShowOCR] = useState(true);
   const [tenantId, setTenantId] = useState<string | null>(null);
+  const [sucursalId, setSucursalId] = useState<string | null>(null);
 
   // Fetch tenant_id once
   const ensureTenantId = useCallback(async () => {
