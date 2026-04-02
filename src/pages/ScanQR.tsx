@@ -766,7 +766,7 @@ export default function ScanQR() {
         onConfirm={async (data) => {
           const { data: profile } = await supabase
             .from('profiles')
-            .select('tenant_id')
+            .select('tenant_id, sucursal_id')
             .eq('user_id', user!.id)
             .single();
 
@@ -779,11 +779,14 @@ export default function ScanQR() {
               ciudad_entrega: data.localidad,
               cp_entrega: data.codigoPostal,
               nombre_destinatario: data.nombreDestinatario || null,
+              notas: data.referencia || null,
               estado: 'pendiente',
               precio_total: 0,
               is_manual_entry: true,
               source_module: 'scan_qr',
               tenant_id: profile?.tenant_id,
+              sucursal_origen_id: profile?.sucursal_id || null,
+              sucursal_entrega_id: profile?.sucursal_id || null,
               ml_shipment_id: data.mlShipmentId ? parseInt(data.mlShipmentId) : null,
               created_by: user?.id,
             })
@@ -792,12 +795,8 @@ export default function ScanQR() {
 
           if (error) throw error;
 
-          toast.success('Envío creado por OCR', {
-            description: `Tracking: ${trackingNumber}`,
-          });
-          setShowOCRCapture(false);
-          setPendingOCRShipmentId(null);
           queryClient.invalidateQueries({ queryKey: ['envios'] });
+          return trackingNumber;
         }}
       />
       {showMassCollect && (
