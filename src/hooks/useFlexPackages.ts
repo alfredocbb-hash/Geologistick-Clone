@@ -27,6 +27,8 @@ export interface ManualPackageData {
   codigoPostal: string;
   nombreDestinatario: string;
   mlShipmentId?: string;
+  referencia?: string;
+  barrio?: string;
 }
 
 interface UseFlexPackagesReturn {
