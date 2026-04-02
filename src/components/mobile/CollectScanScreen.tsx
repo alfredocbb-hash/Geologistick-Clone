@@ -53,7 +53,9 @@ export function CollectScanScreen({ onClose }: CollectScanScreenProps) {
       const mlTracking = `ML-${parsed.value}`;
       const pkg = await addPackageByTracking(mlTracking);
       if (!pkg) {
-        toast.warning(`ML-${parsed.value}: no encontrado en el sistema`);
+        // ML not found — show choice dialog
+        setPendingMLShipmentId(parsed.value);
+        setShowMLChoiceDialog(true);
       }
     } else if (parsed.type === 'tracking') {
       const pkg = await addPackageByTracking(parsed.value);
