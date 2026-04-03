@@ -230,10 +230,14 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
     }
     queryClient.invalidateQueries({ queryKey: ['envios'] });
     queryClient.invalidateQueries({ queryKey: ['envios-planificador'] });
-    const ids = packages.map(p => p.id).join(',');
-    navigate(`/route-planner?envio_ids=${ids}`);
-    onClose();
-  }, [packages, queryClient, navigate, onClose]);
+    const ids = packages.map(p => p.id);
+    if (onPackagesReady) {
+      onPackagesReady(ids);
+    } else {
+      navigate(`/route-planner?envio_ids=${ids.join(',')}`);
+      onClose();
+    }
+  }, [packages, queryClient, navigate, onClose, onPackagesReady]);
 
   const showPhotoError = (photo: AlbumPhoto) => {
     if (photo.error) {
