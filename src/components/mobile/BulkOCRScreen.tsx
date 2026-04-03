@@ -226,7 +226,7 @@ export function BulkOCRScreen({ onClose }: BulkOCRScreenProps) {
     queryClient.invalidateQueries({ queryKey: ['envios'] });
     queryClient.invalidateQueries({ queryKey: ['envios-planificador'] });
     const ids = packages.map(p => p.id).join(',');
-    navigate(`/route-planner?envios=${ids}`);
+    navigate(`/route-planner?envio_ids=${ids}`);
     onClose();
   }, [packages, queryClient, navigate, onClose]);
 

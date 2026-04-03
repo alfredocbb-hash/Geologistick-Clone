@@ -149,6 +149,7 @@ function NativeAppWrapper() {
     <Routes>
       <Route path="/route-start" element={<RouteStart />} />
       <Route path="/active-route" element={<ActiveRouteNavigation />} />
+      <Route path="/route-planner" element={<RoutePlanner />} />
       <Route path="*" element={<MobileAppLayout />} />
     </Routes>
   );
