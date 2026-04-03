@@ -26,6 +26,7 @@ import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { useSubscriptionBlock } from '@/hooks/useSubscriptionBlock';
 import { SubscriptionBlockScreen } from '@/components/subscription/SubscriptionBlockScreen';
 import { Progress } from '@/components/ui/progress';
+import { MobileCameraProvider, useMobileCamera } from './MobileCameraContext';
 
 export type UserMobileRole = 'chofer' | 'centro_logistico' | 'sucursal';
 
