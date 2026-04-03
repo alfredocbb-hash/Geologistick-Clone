@@ -39,25 +39,25 @@ serve(async (req) => {
             content: [
               {
                 type: "text",
-                text: `Analiza esta imagen de una etiqueta de envío de MercadoLibre o similar. Extrae los siguientes campos si están presentes. Responde SOLO con el JSON, sin texto adicional ni markdown.
+                text: `Analiza esta imagen de una etiqueta de envío. Extrae la información logística. Responde SOLO con el JSON puro.
 
 Campos a extraer:
-- mlShipmentId: número de envío (buscar "Envio:", "Envío:", "N° envio", números de 8-12 dígitos)
-- direccion: dirección de entrega (buscar "Dirección:", "Dir:", calle y número)
-- codigoPostal: código postal (buscar "CP:", "Cp:", "C.P.", números de 4 dígitos)
-- localidad: ciudad/localidad (buscar "Localidad:", "Ciudad:")
-- barrio: barrio o partido (buscar "Barrio:", "Partido:")
-- nombreDestinatario: nombre del destinatario (buscar "Destinatario:", "Dest:", nombre de persona)
-- referencia: referencia u observaciones (buscar "Referencia:", "Ref:", "Obs:", instrucciones de entrega)
+- mlShipmentId: Busca números de 8-12 dígitos precedidos por "Envio:", "Envío:", "N° envio".
+- trackingNumber: Busca cualquier número de seguimiento, factura, remito o identificador (Ej: "Factura:", "Remito:", "Seguimiento:", "TRK-...", etc).
+- direccion: Calle y número de entrega.
+- codigoPostal: Código postal (4 dígitos).
+- localidad: Ciudad o localidad.
+- barrio: Barrio o partido.
+- nombreDestinatario: Nombre de la persona que recibe.
+- referencia: Observaciones, entre-calles, piso/depto o instrucciones.
 
 Formato de respuesta (JSON puro):
-{"mlShipmentId":"","direccion":"","codigoPostal":"","localidad":"","barrio":"","nombreDestinatario":"","referencia":""}
+{"mlShipmentId":"","trackingNumber":"","direccion":"","codigoPostal":"","localidad":"","barrio":"","nombreDestinatario":"","referencia":""}
 
 Reglas:
-- Si un campo no se encuentra, dejarlo como string vacío ""
-- No inventar datos
-- Limpiar texto basura del OCR (caracteres sueltos, ruido)
-- El mlShipmentId debe ser solo números`
+- Si no encontrás un campo, dejar "".
+- NO inventar datos.
+- El trackingNumber es PRIORIDAD si no hay mlShipmentId.`
               },
               {
                 type: "image_url",
@@ -70,21 +70,8 @@ Reglas:
     });
 
     if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit excedido, intente de nuevo" }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Créditos insuficientes" }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
       const errText = await response.text();
-      console.error("AI gateway error:", response.status, errText);
-      return new Response(JSON.stringify({ error: "Error al procesar la imagen" }), {
+      return new Response(JSON.stringify({ error: "Error AI: " + response.status }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -93,7 +80,6 @@ Reglas:
     const data = await response.json();
     const rawContent = data.choices?.[0]?.message?.content || "";
 
-    // Parse JSON from the response (may have markdown fences)
     let extracted: Record<string, string> = {};
     try {
       const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
@@ -104,25 +90,19 @@ Reglas:
       console.error("Failed to parse AI response:", rawContent);
     }
 
-    // Normalize: ensure all expected keys exist as strings
-    const result = {
+    return new Response(JSON.stringify({
       mlShipmentId: String(extracted.mlShipmentId || "").trim(),
+      trackingNumber: String(extracted.trackingNumber || "").trim(),
       direccion: String(extracted.direccion || "").trim(),
       codigoPostal: String(extracted.codigoPostal || "").trim(),
       localidad: String(extracted.localidad || "").trim(),
       barrio: String(extracted.barrio || "").trim(),
       nombreDestinatario: String(extracted.nombreDestinatario || "").trim(),
       referencia: String(extracted.referencia || "").trim(),
-    };
-
-    return new Response(JSON.stringify(result), {
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
-    console.error("ocr-label error:", e);
-    return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Error desconocido" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ error: String(e) }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });

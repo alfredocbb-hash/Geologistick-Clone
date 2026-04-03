@@ -1,15 +1,16 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
-import { X, Camera, MapPin, Navigation, Package, Loader2, Route, AlertCircle, Image, Zap, RefreshCw, Trash2 } from 'lucide-react';
+import { X, Camera, MapPin, Package, Loader2, Route, AlertCircle, Image, Zap, RefreshCw, Trash2, Check, Smartphone, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { OCRCaptureDialog, type OCRQueueItem } from './OCRCaptureDialog';
+import { useNativeCamera } from '@/hooks/useNativeCamera';
 
 type BulkMode = 'select' | 'burst' | 'album';
 type AlbumPhase = 'capturing' | 'processing' | 'done';
@@ -37,562 +38,363 @@ interface QueueEntry {
   status: 'processing' | 'saved' | 'error';
   trackingNumber?: string;
   error?: string;
+  preview?: string;
 }
 
 interface BulkOCRScreenProps {
   onClose: () => void;
 }
 
-const BATCH_SIZE = 3;
-
-function getStoredMode(): BulkMode {
-  try {
-    const stored = localStorage.getItem('bulk_ocr_mode');
-    if (stored === 'burst' || stored === 'album') return stored;
-  } catch {}
-  return 'select';
-}
-
 export function BulkOCRScreen({ onClose }: BulkOCRScreenProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { takePhoto } = useNativeCamera();
 
-  const [mode, setMode] = useState<BulkMode>(getStoredMode());
+  const [mode, setMode] = useState<BulkMode>('select');
   const [packages, setPackages] = useState<BulkPackage[]>([]);
-
-  // Burst mode state
   const [queue, setQueue] = useState<QueueEntry[]>([]);
   const [showOCR, setShowOCR] = useState(false);
-
-  // Album mode state
   const [albumPhotos, setAlbumPhotos] = useState<AlbumPhoto[]>([]);
   const [albumPhase, setAlbumPhase] = useState<AlbumPhase>('capturing');
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [processedCount, setProcessedCount] = useState(0);
 
-  const [tenantId, setTenantId] = useState<string | null>(null);
-  const [sucursalId, setSucursalId] = useState<string | null>(null);
+  const [profileData, setProfileData] = useState<{ tenant_id: string; sucursal_id: string | null } | null>(null);
 
-  const selectMode = useCallback((m: 'burst' | 'album') => {
-    try { localStorage.setItem('bulk_ocr_mode', m); } catch {}
-    setMode(m);
-    if (m === 'burst') setShowOCR(true);
-  }, []);
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!user?.id) return;
+      const { data } = await supabase
+        .from('profiles')
+        .select('tenant_id, sucursal_id')
+        .eq('user_id', user.id)
+        .single();
+      if (data) setProfileData(data);
+    };
+    fetchProfile();
+  }, [user?.id]);
 
-  const ensureTenantId = useCallback(async () => {
-    if (tenantId) return tenantId;
-    const { data } = await supabase
-      .from('profiles')
-      .select('tenant_id, sucursal_id')
-      .eq('user_id', user!.id)
-      .single();
-    const tid = data?.tenant_id || null;
-    setSucursalId(data?.sucursal_id || null);
-    setTenantId(tid);
-    return tid;
-  }, [user, tenantId]);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
 
-  // ── Album: capture photo ──
-  const handleFileCapture = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
-    Array.from(files).forEach(file => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        setAlbumPhotos(prev => [...prev, {
-          id: `photo-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
-          dataUrl,
-          status: 'pending',
-        }]);
-      };
-      reader.readAsDataURL(file);
-    });
-    // Reset input so same file can be captured again
-    e.target.value = '';
-  }, []);
+  const startCamera = async () => {
+    try {
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1280 } }
+      });
+      setStream(newStream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = newStream;
+        await videoRef.current.play();
+      }
+      setIsCameraOpen(true);
+    } catch (err) {
+      toast.error("Usa la cámara del sistema (icono celular)");
+    }
+  };
 
-  const removePhoto = useCallback((id: string) => {
-    setAlbumPhotos(prev => prev.filter(p => p.id !== id));
-  }, []);
+  const stopCamera = () => {
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    setStream(null);
+    setIsCameraOpen(false);
+  };
 
-  // ── Album: process all photos ──
+  const handleNativeFallback = async () => {
+    const result = await takePhoto();
+    if (result?.webPath || result?.dataUrl) {
+      setAlbumPhotos(prev => [...prev, {
+        id: `photo-${Date.now()}`,
+        dataUrl: result.webPath || result.dataUrl!,
+        status: 'pending'
+      }]);
+    }
+  };
+
+  const captureToAlbum = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d')?.drawImage(video, 0, 0);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+    setAlbumPhotos(prev => [...prev, { id: `photo-${Date.now()}`, dataUrl, status: 'pending' }]);
+    toast.success("Foto añadida", { duration: 500 });
+  };
+
   const processAlbum = useCallback(async () => {
+    if (!profileData) {
+      toast.error("Cargando perfil...");
+      return;
+    }
+
     setAlbumPhase('processing');
     setProcessedCount(0);
-    const tid = await ensureTenantId();
-    const photos = albumPhotos.filter(p => p.status === 'pending' || p.status === 'error');
 
-    // Process in batches
-    for (let i = 0; i < photos.length; i += BATCH_SIZE) {
-      const batch = photos.slice(i, i + BATCH_SIZE);
-      await Promise.all(batch.map(async (photo) => {
-        // Mark processing
-        setAlbumPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'processing' as PhotoStatus, error: undefined } : p));
+    const photosToProcess = albumPhotos.filter(p => p.status === 'pending' || p.status === 'error');
 
-        try {
-          // Call OCR edge function
-          const { data: ocrData, error: ocrError } = await supabase.functions.invoke('ocr-label', {
-            body: { image: photo.dataUrl },
-          });
-          if (ocrError) throw new Error(ocrError.message || 'Error OCR');
+    for (const photo of photosToProcess) {
+      setAlbumPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'processing', error: undefined } : p));
 
-          const parsed = typeof ocrData === 'string' ? JSON.parse(ocrData) : ocrData;
-          if (parsed.error) throw new Error(parsed.error);
+      try {
+        const { data: ocrData, error: ocrError } = await supabase.functions.invoke('ocr-label', {
+          body: { image: photo.dataUrl }
+        });
 
-          const direccion = (parsed.direccion || '').trim();
-          const localidad = (parsed.localidad || '').trim();
-          const codigoPostal = (parsed.codigoPostal || '').trim();
+        if (ocrError) throw new Error("Error IA: Verificá conexión");
+        if (!ocrData || !ocrData.direccion) throw new Error("Sin dirección detectada");
 
-          if (!direccion || (!localidad && !codigoPostal)) {
-            throw new Error('Datos insuficientes: falta dirección o localidad/CP');
-          }
+        // Prioridad al tracking Number detectado, sino ML ID, sino generado
+        const tracking = ocrData.trackingNumber || ocrData.mlShipmentId || `OCR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-          // Auto-save
-          const trackingNumber = `OCR-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
-          const { data: envio, error: insertError } = await supabase
-            .from('envios')
-            .insert({
-              tracking_number: trackingNumber,
-              direccion_entrega: direccion,
-              ciudad_entrega: localidad,
-              cp_entrega: codigoPostal,
-              nombre_destinatario: (parsed.nombreDestinatario || '').trim() || null,
-              notas: (parsed.referencia || '').trim() || null,
-              estado: 'pendiente',
-              precio_total: 0,
-              is_manual_entry: true,
-              source_module: 'bulk_ocr_album',
-              tenant_id: tid,
-              sucursal_origen_id: sucursalId || null,
-              sucursal_entrega_id: sucursalId || null,
-              ml_shipment_id: parsed.mlShipmentId ? parseInt(parsed.mlShipmentId) : null,
-              created_by: user?.id,
-            })
-            .select('id, tracking_number')
-            .single();
+        const { data: envio, error: insertError } = await supabase.from('envios').insert({
+          tracking_number: tracking,
+          direccion_entrega: ocrData.direccion,
+          ciudad_entrega: ocrData.localidad || '',
+          cp_entrega: ocrData.codigoPostal || '',
+          nombre_destinatario: ocrData.nombreDestinatario || null,
+          notas: ocrData.referencia || ocrData.barrio || null,
+          estado: 'pendiente',
+          precio_total: 0,
+          source_module: 'bulk_ocr_album',
+          tenant_id: profileData.tenant_id,
+          sucursal_origen_id: profileData.sucursal_id,
+          ml_shipment_id: ocrData.mlShipmentId ? parseInt(ocrData.mlShipmentId) : null,
+          created_by: user?.id
+        }).select().single();
 
-          if (insertError) throw insertError;
-
-          setAlbumPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'saved' as PhotoStatus, trackingNumber: envio.tracking_number } : p));
-          setPackages(prev => [...prev, {
-            id: envio.id,
-            tracking_number: envio.tracking_number,
-            direccion,
-            localidad,
-            codigoPostal,
-            nombreDestinatario: (parsed.nombreDestinatario || '').trim(),
-          }]);
-        } catch (err: any) {
-          setAlbumPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'error' as PhotoStatus, error: err.message || 'Error desconocido' } : p));
+        if (insertError) {
+          if (insertError.code === '23505') throw new Error(`Tracking duplicado: ${tracking}`);
+          throw new Error(`DB Error: ${insertError.message}`);
         }
-        setProcessedCount(c => c + 1);
-      }));
+
+        setPackages(prev => [...prev, {
+          id: envio.id,
+          tracking_number: tracking,
+          direccion: ocrData.direccion,
+          localidad: ocrData.localidad,
+          codigoPostal: ocrData.codigoPostal || '',
+          nombreDestinatario: ocrData.nombreDestinatario || ''
+        }]);
+
+        setAlbumPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'saved', trackingNumber: tracking } : p));
+      } catch (e: any) {
+        setAlbumPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'error', error: e.message } : p));
+      }
+      setProcessedCount(prev => prev + 1);
     }
     setAlbumPhase('done');
-  }, [albumPhotos, ensureTenantId, sucursalId, user?.id]);
-
-  const retryErrors = useCallback(() => {
-    setAlbumPhotos(prev => prev.map(p => p.status === 'error' ? { ...p, status: 'pending' as PhotoStatus, error: undefined } : p));
-    setAlbumPhase('capturing');
-  }, []);
-
-  // ── Burst mode handlers ──
-  const handleOCRConfirm = useCallback(async (data: {
-    direccion: string; localidad: string; codigoPostal: string;
-    nombreDestinatario: string; mlShipmentId?: string; referencia?: string; barrio?: string;
-  }): Promise<string> => {
-    const tid = await ensureTenantId();
-    const trackingNumber = `OCR-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
-    const { data: envio, error } = await supabase
-      .from('envios')
-      .insert({
-        tracking_number: trackingNumber, direccion_entrega: data.direccion,
-        ciudad_entrega: data.localidad, cp_entrega: data.codigoPostal,
-        nombre_destinatario: data.nombreDestinatario || null, notas: data.referencia || null,
-        estado: 'pendiente', precio_total: 0, is_manual_entry: true, source_module: 'bulk_ocr',
-        tenant_id: tid, sucursal_origen_id: sucursalId || null, sucursal_entrega_id: sucursalId || null,
-        ml_shipment_id: data.mlShipmentId ? parseInt(data.mlShipmentId) : null, created_by: user?.id,
-      })
-      .select('id, tracking_number')
-      .single();
-    if (error) throw error;
-    setPackages(prev => [...prev, {
-      id: envio.id, tracking_number: envio.tracking_number,
-      direccion: data.direccion, localidad: data.localidad,
-      codigoPostal: data.codigoPostal, nombreDestinatario: data.nombreDestinatario,
-    }]);
-    return trackingNumber;
-  }, [ensureTenantId, user?.id, sucursalId]);
-
-  const handleQueueUpdate = useCallback((item: OCRQueueItem) => {
-    setQueue(prev => {
-      const existing = prev.findIndex(q => q.id === item.id);
-      const entry: QueueEntry = { id: item.id, status: item.status, trackingNumber: item.trackingNumber, error: item.error };
-      if (existing >= 0) { const u = [...prev]; u[existing] = entry; return u; }
-      return [...prev, entry];
-    });
-  }, []);
-
-  // ── Common actions ──
-  const handleFinish = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ['envios'] });
-    toast.success(`${packages.length} envío${packages.length !== 1 ? 's' : ''} creado${packages.length !== 1 ? 's' : ''} por OCR`);
-    onClose();
-  }, [packages.length, queryClient, onClose]);
+  }, [albumPhotos, user?.id, profileData]);
 
   const handleGoToPlanner = useCallback(() => {
+    if (packages.length === 0) {
+      toast.error("No hay paquetes guardados para planificar");
+      return;
+    }
     queryClient.invalidateQueries({ queryKey: ['envios'] });
+    queryClient.invalidateQueries({ queryKey: ['envios-planificador'] });
     const ids = packages.map(p => p.id).join(',');
-    navigate(`/route-planner?envio_ids=${ids}`);
+    // Fix: RoutePlanner expects 'envios' parameter, not 'envio_ids'
+    navigate(`/route-planner?envios=${ids}`);
     onClose();
   }, [packages, queryClient, navigate, onClose]);
 
-  const removePackage = useCallback(async (id: string) => {
-    await supabase.from('envios').delete().eq('id', id);
-    setPackages(prev => prev.filter(p => p.id !== id));
-  }, []);
+  const showPhotoError = (photo: AlbumPhoto) => {
+    if (photo.error) {
+      toast.error("Error detallado:", { description: photo.error });
+    }
+  };
 
-  // ── Stats ──
-  const processingCount = mode === 'burst'
-    ? queue.filter(q => q.status === 'processing').length
-    : albumPhotos.filter(p => p.status === 'processing').length;
-  const errorCount = mode === 'burst'
-    ? queue.filter(q => q.status === 'error').length
-    : albumPhotos.filter(p => p.status === 'error').length;
-  const pendingPhotos = albumPhotos.filter(p => p.status === 'pending').length;
-  const totalAlbum = albumPhotos.length;
-  const progressPercent = totalAlbum > 0 ? Math.round((processedCount / totalAlbum) * 100) : 0;
+  const removePhoto = (id: string) => {
+    setAlbumPhotos(prev => prev.filter(p => p.id !== id));
+  };
 
-  // ── Mode selector ──
+  if (isCameraOpen) {
+    return (
+      <div className="fixed inset-0 z-[10001] bg-black flex flex-col pt-safe-extra">
+        <div className="flex items-center justify-between p-6 mt-8">
+          <h2 className="text-white font-black uppercase tracking-widest">Captura ({albumPhotos.length})</h2>
+          <Button onClick={stopCamera} variant="ghost" className="text-white rounded-full bg-white/10 h-12 w-12"><X /></Button>
+        </div>
+        <div className="flex-1 relative overflow-hidden rounded-[2.5rem] mx-4 border-2 border-slate-800 shadow-2xl">
+          <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+          <div className="absolute inset-10 border-2 border-warning/20 rounded-2xl pointer-events-none">
+             <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-warning rounded-tl-xl shadow-[0_0_10px_orange]" />
+             <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-warning rounded-tr-xl shadow-[0_0_10px_orange]" />
+             <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-warning rounded-bl-xl shadow-[0_0_10px_orange]" />
+             <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-warning rounded-br-xl shadow-[0_0_10px_orange]" />
+          </div>
+        </div>
+        <div className="p-10 flex flex-col items-center gap-4 mb-8">
+          <div className="flex items-center gap-8">
+            <Button onClick={handleNativeFallback} variant="outline" className="rounded-full h-14 w-14 bg-white/5 border-white/10"><Smartphone className="h-6 w-6 text-white" /></Button>
+            <Button onClick={captureToAlbum} className="w-24 h-24 rounded-full bg-warning border-8 border-slate-900 shadow-2xl active:scale-95"><Camera className="text-black h-10 w-10" /></Button>
+            <Button onClick={startCamera} variant="outline" className="rounded-full h-14 w-14 bg-white/5 border-white/10"><RefreshCw className="h-6 w-6 text-white" /></Button>
+          </div>
+          <p className="text-slate-500 text-[10px] font-black uppercase text-center tracking-[0.2em]">Toca para añadir al álbum</p>
+        </div>
+        <canvas ref={canvasRef} className="hidden" />
+      </div>
+    );
+  }
+
   if (mode === 'select') {
     return (
-      <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-foreground">Escaneo Masivo OCR</h1>
-          <Button variant="ghost" size="sm" onClick={onClose} className="text-muted-foreground">
-            <X className="h-5 w-5" />
-          </Button>
+      <div className="fixed inset-0 z-[10000] bg-slate-950 flex flex-col p-6 pt-safe-extra">
+        <div className="flex items-center justify-between mb-10 mt-10">
+          <h1 className="text-2xl font-black text-white tracking-tighter uppercase leading-none">OCR Masivo</h1>
+          <Button variant="ghost" size="icon" onClick={onClose} className="text-white/50 rounded-full bg-white/5 h-12 w-12"><X /></Button>
         </div>
-        <div className="flex-1 flex flex-col items-center justify-center gap-4 px-4">
-          <p className="text-muted-foreground text-center mb-4">¿Cómo querés escanear las etiquetas?</p>
-          <Button
-            onClick={() => selectMode('album')}
-            variant="outline"
-            className="w-full h-24 gap-4 justify-start text-left border-primary/30 hover:border-primary"
-          >
-            <Image className="h-8 w-8 text-primary flex-shrink-0" />
-            <div>
-              <div className="font-semibold text-base">Álbum (recomendado)</div>
-              <div className="text-xs text-muted-foreground font-normal">
-                Tomá todas las fotos primero, después procesá todo junto
-              </div>
-            </div>
+        <div className="flex-1 flex flex-col gap-4">
+          <Button onClick={() => setMode('album')} className="w-full h-32 flex-col bg-slate-900 border-slate-800 border-2 rounded-[2rem] active:scale-95 transition-all shadow-2xl">
+            <Image className="h-8 w-8 text-primary mb-2" />
+            <div className="font-black text-white uppercase tracking-tight text-lg leading-tight">Modo Álbum</div>
+            <div className="text-[10px] text-slate-500 font-bold uppercase">Saca fotos y procesa al final</div>
           </Button>
-          <Button
-            onClick={() => selectMode('burst')}
-            variant="outline"
-            className="w-full h-24 gap-4 justify-start text-left"
-          >
-            <Zap className="h-8 w-8 text-amber-500 flex-shrink-0" />
-            <div>
-              <div className="font-semibold text-base">Ráfaga (al vuelo)</div>
-              <div className="text-xs text-muted-foreground font-normal">
-                Cada foto se procesa inmediatamente con IA en background
-              </div>
-            </div>
+          <Button onClick={() => { setShowOCR(true); setMode('burst'); }} className="w-full h-32 flex-col bg-slate-900 border-slate-800 border-2 rounded-[2rem] active:scale-95 transition-all shadow-2xl">
+            <Zap className="h-8 w-8 text-amber-500 mb-2" />
+            <div className="font-black text-white uppercase tracking-tight text-lg leading-tight">Modo Ráfaga</div>
+            <div className="text-[10px] text-slate-500 font-bold uppercase">Procesamiento inmediato</div>
           </Button>
         </div>
       </div>
     );
   }
-
-  // ── Album mode ──
-  if (mode === 'album') {
-    return (
-      <div className="flex flex-col h-full">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h1 className="text-xl font-bold text-foreground">Modo Álbum</h1>
-            <p className="text-sm text-muted-foreground">
-              {albumPhase === 'capturing' && `${totalAlbum} foto${totalAlbum !== 1 ? 's' : ''} capturada${totalAlbum !== 1 ? 's' : ''}`}
-              {albumPhase === 'processing' && `Procesando ${processedCount} de ${totalAlbum}...`}
-              {albumPhase === 'done' && `${packages.length} envío${packages.length !== 1 ? 's' : ''} creado${packages.length !== 1 ? 's' : ''}`}
-            </p>
-          </div>
-          <Button variant="ghost" size="sm" onClick={onClose} className="text-muted-foreground">
-            <X className="h-5 w-5" />
-          </Button>
-        </div>
-
-        {/* Progress bar during processing */}
-        {albumPhase === 'processing' && (
-          <div className="mb-3 space-y-1.5">
-            <Progress value={progressPercent} className="h-3" />
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>{processedCount} de {totalAlbum}</span>
-              {errorCount > 0 && <span className="text-destructive">{errorCount} error{errorCount !== 1 ? 'es' : ''}</span>}
-            </div>
-          </div>
-        )}
-
-        {/* Status badges */}
-        <div className="flex items-center gap-2 mb-3 flex-wrap">
-          {packages.length > 0 && (
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-              <Package className="h-3.5 w-3.5 text-emerald-500" />
-              <span className="text-xs font-semibold text-emerald-500">{packages.length} guardados</span>
-            </div>
-          )}
-          {errorCount > 0 && albumPhase !== 'processing' && (
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-destructive/10 border border-destructive/20">
-              <AlertCircle className="h-3.5 w-3.5 text-destructive" />
-              <span className="text-xs font-semibold text-destructive">{errorCount} error{errorCount !== 1 ? 'es' : ''}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Camera button (capturing phase) */}
-        {albumPhase === 'capturing' && (
-          <>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={handleFileCapture}
-              className="hidden"
-            />
-            <Button
-              onClick={() => fileInputRef.current?.click()}
-              className="w-full h-14 text-lg font-semibold gap-3 bg-gradient-to-br from-primary via-primary to-amber-500 hover:opacity-90 shadow-xl shadow-primary/30 mb-3"
-            >
-              <Camera className="h-6 w-6" />
-              {totalAlbum === 0 ? 'TOMAR PRIMERA FOTO' : 'TOMAR SIGUIENTE FOTO'}
-            </Button>
-          </>
-        )}
-
-        {/* Photo grid */}
-        {totalAlbum > 0 ? (
-          <div className="flex-1 min-h-0">
-            <ScrollArea className="h-full">
-              <div className="grid grid-cols-3 gap-2 pr-2 pb-2">
-                {albumPhotos.map((photo, idx) => (
-                  <div key={photo.id} className="relative aspect-square rounded-lg overflow-hidden border border-border">
-                    <img src={photo.dataUrl} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover" />
-                    {/* Status overlay */}
-                    {photo.status === 'processing' && (
-                      <div className="absolute inset-0 bg-background/60 flex items-center justify-center">
-                        <Loader2 className="h-6 w-6 text-primary animate-spin" />
-                      </div>
-                    )}
-                    {photo.status === 'saved' && (
-                      <div className="absolute inset-0 bg-emerald-500/20 flex items-center justify-center">
-                        <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center">
-                          <Package className="h-4 w-4 text-white" />
-                        </div>
-                      </div>
-                    )}
-                    {photo.status === 'error' && (
-                      <div className="absolute inset-0 bg-destructive/20 flex items-center justify-center">
-                        <div className="w-8 h-8 rounded-full bg-destructive flex items-center justify-center">
-                          <AlertCircle className="h-4 w-4 text-white" />
-                        </div>
-                      </div>
-                    )}
-                    {/* Index badge */}
-                    <div className="absolute top-1 left-1 bg-background/80 rounded-full w-5 h-5 flex items-center justify-center">
-                      <span className="text-[10px] font-bold text-foreground">{idx + 1}</span>
-                    </div>
-                    {/* Delete button (only during capturing) */}
-                    {albumPhase === 'capturing' && photo.status === 'pending' && (
-                      <button
-                        onClick={() => removePhoto(photo.id)}
-                        className="absolute top-1 right-1 bg-background/80 rounded-full w-5 h-5 flex items-center justify-center hover:bg-destructive/80"
-                      >
-                        <X className="h-3 w-3 text-foreground" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
-          </div>
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
-            <div className="w-20 h-20 rounded-full bg-muted/50 flex items-center justify-center mb-4">
-              <Image className="h-10 w-10 text-muted-foreground" />
-            </div>
-            <h3 className="text-lg font-medium text-foreground mb-2">Sin fotos</h3>
-            <p className="text-sm text-muted-foreground max-w-xs">
-              Tomá fotos de las etiquetas. Todas se guardan localmente hasta que presiones "Procesar todo".
-            </p>
-          </div>
-        )}
-
-        {/* Action buttons */}
-        <div className="mt-3 space-y-2">
-          {albumPhase === 'capturing' && totalAlbum > 0 && (
-            <Button
-              onClick={processAlbum}
-              className="w-full h-14 text-lg font-semibold gap-3 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 shadow-lg shadow-blue-500/30"
-            >
-              <Loader2 className="h-5 w-5" style={{ animation: 'none' }} />
-              PROCESAR TODO · {totalAlbum} FOTO{totalAlbum !== 1 ? 'S' : ''}
-            </Button>
-          )}
-          {albumPhase === 'done' && errorCount > 0 && (
-            <Button onClick={retryErrors} variant="outline" className="w-full h-12 gap-2 border-amber-500/30 text-amber-500">
-              <RefreshCw className="h-4 w-4" /> REINTENTAR {errorCount} CON ERROR
-            </Button>
-          )}
-          {albumPhase === 'done' && packages.length > 0 && (
-            <>
-              <Button
-                onClick={handleGoToPlanner}
-                className="w-full h-14 text-lg font-semibold gap-3 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 shadow-lg shadow-blue-500/30"
-              >
-                <Route className="h-5 w-5" />
-                PLANIFICAR RUTA · {packages.length} ENVÍO{packages.length !== 1 ? 'S' : ''}
-              </Button>
-              <Button onClick={handleFinish} variant="outline" className="w-full h-12 text-base font-semibold gap-3 border-border text-muted-foreground">
-                <Navigation className="h-5 w-5" />
-                FINALIZAR SIN PLANIFICAR
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // ── Burst mode (original) ──
-  const burstProcessingCount = queue.filter(q => q.status === 'processing').length;
-  const burstErrorCount = queue.filter(q => q.status === 'error').length;
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between mb-4">
+    <div className="fixed inset-0 z-[10000] bg-slate-950 flex flex-col p-4 pt-safe-extra pb-safe-extra overflow-hidden">
+      <div className="flex items-center justify-between mb-6 mt-10 px-2">
         <div>
-          <h1 className="text-xl font-bold text-foreground">Modo Ráfaga</h1>
-          <p className="text-sm text-muted-foreground">
-            {packages.length} paquete{packages.length !== 1 ? 's' : ''} guardado{packages.length !== 1 ? 's' : ''}
-            {burstProcessingCount > 0 && ` · ${burstProcessingCount} procesando`}
-          </p>
+          <h1 className="text-2xl font-black text-white tracking-tighter uppercase leading-none">Álbum</h1>
+          <p className="text-[10px] font-bold text-primary uppercase tracking-widest">{albumPhotos.length} fotos cargadas</p>
         </div>
-        <Button variant="ghost" size="sm" onClick={onClose} className="text-muted-foreground">
-          <X className="h-5 w-5" />
-        </Button>
+        <Button variant="ghost" size="icon" onClick={onClose} className="text-white/50 rounded-full bg-white/5 h-12 w-12"><X /></Button>
       </div>
 
-      <div className="flex items-center gap-2 mb-3">
-        {packages.length > 0 && (
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-            <Package className="h-4 w-4 text-emerald-500" />
-            <span className="text-sm font-semibold text-emerald-500">{packages.length}</span>
-          </div>
-        )}
-        {burstProcessingCount > 0 && (
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 animate-pulse">
-            <Loader2 className="h-4 w-4 text-amber-500 animate-spin" />
-            <span className="text-sm font-semibold text-amber-500">{burstProcessingCount} procesando</span>
-          </div>
-        )}
-        {burstErrorCount > 0 && (
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-destructive/10 border border-destructive/20">
-            <AlertCircle className="h-4 w-4 text-destructive" />
-            <span className="text-sm font-semibold text-destructive">{burstErrorCount} error{burstErrorCount !== 1 ? 'es' : ''}</span>
-          </div>
-        )}
-      </div>
+      <div className="flex-1 min-h-0 bg-slate-900/50 rounded-[2.5rem] border border-slate-800 overflow-hidden mb-6 shadow-inner relative">
+        <ScrollArea className="h-full p-4">
+          {albumPhotos.length > 0 ? (
+            <div className="grid grid-cols-3 gap-3 pb-32">
+              {albumPhotos.map((photo, idx) => (
+                <div
+                  key={photo.id}
+                  onClick={() => photo.status === 'error' && showPhotoError(photo)}
+                  className={`relative aspect-square rounded-2xl overflow-hidden border-2 shadow-md transition-all active:scale-95 ${photo.status === 'error' ? 'border-destructive' : 'border-slate-800'}`}
+                >
+                  <img src={photo.dataUrl} className="w-full h-full object-cover" alt="captured" />
+                  <div className="absolute top-1 left-1 bg-black/60 text-white text-[8px] font-black h-4 w-4 rounded-full flex items-center justify-center">{idx + 1}</div>
 
-      <Button
-        onClick={() => setShowOCR(true)}
-        className="w-full h-16 text-lg font-semibold gap-3 bg-gradient-to-br from-primary via-primary to-amber-500 hover:opacity-90 shadow-xl shadow-primary/30 mb-4"
-      >
-        <Camera className="h-7 w-7" />
-        {packages.length === 0 && burstProcessingCount === 0 ? 'TOMAR PRIMERA FOTO' : 'TOMAR SIGUIENTE FOTO'}
-      </Button>
+                  {photo.status === 'processing' && (
+                    <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center">
+                      <Loader2 className="h-5 w-5 text-primary animate-spin" />
+                    </div>
+                  )}
+                  {photo.status === 'saved' && (
+                    <div className="absolute inset-0 bg-emerald-500/40 flex items-center justify-center">
+                      <Check className="text-white h-8 w-8 drop-shadow-md" />
+                    </div>
+                  )}
+                  {photo.status === 'error' && (
+                    <div className="absolute inset-0 bg-destructive/40 flex flex-col items-center justify-center text-center p-1">
+                      <AlertCircle className="text-white h-6 w-6 mb-1" />
+                      <span className="text-[7px] font-black text-white uppercase leading-none">Error</span>
+                    </div>
+                  )}
 
-      {(packages.length > 0 || queue.length > 0) ? (
-        <div className="flex-1 min-h-0">
-          <ScrollArea className="h-full">
-            <div className="space-y-2 pr-2">
-              {queue.filter(q => q.status === 'processing').map((item) => (
-                <div key={item.id} className="flex items-center gap-3 p-3 rounded-xl bg-amber-950/30 border border-amber-800/30 animate-pulse">
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center">
-                    <Loader2 className="h-4 w-4 text-amber-500 animate-spin" />
-                  </div>
-                  <span className="text-sm text-amber-300">Procesando con IA...</span>
-                </div>
-              ))}
-              {queue.filter(q => q.status === 'error').map((item) => (
-                <div key={item.id} className="flex items-center gap-3 p-3 rounded-xl bg-red-950/30 border border-red-800/30">
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-destructive/20 flex items-center justify-center">
-                    <AlertCircle className="h-4 w-4 text-destructive" />
-                  </div>
-                  <span className="text-sm text-destructive">{item.error || 'Error al procesar'}</span>
-                </div>
-              ))}
-              {packages.map((pkg, index) => (
-                <div key={pkg.id} className="flex items-center gap-3 p-3 rounded-xl bg-muted/30 border border-border">
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-500 font-bold text-sm flex items-center justify-center">
-                    {index + 1}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm text-foreground truncate">{pkg.tracking_number}</span>
-                      <Badge variant="outline" className="text-[10px] border-amber-600 text-amber-500">OCR</Badge>
-                    </div>
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <MapPin className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-xs text-muted-foreground truncate">{pkg.direccion}</span>
-                    </div>
-                    {pkg.nombreDestinatario && (
-                      <span className="text-xs text-muted-foreground truncate block">{pkg.nombreDestinatario}</span>
-                    )}
-                  </div>
-                  <Button variant="ghost" size="icon" onClick={() => removePackage(pkg.id)}
-                    className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 flex-shrink-0">
-                    <X className="h-4 w-4" />
-                  </Button>
+                  {albumPhase === 'capturing' && photo.status === 'pending' && (
+                    <button onClick={(e) => { e.stopPropagation(); removePhoto(photo.id); }} className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1 hover:bg-destructive transition-colors"><Trash2 className="h-3 w-3" /></button>
+                  )}
                 </div>
               ))}
             </div>
-          </ScrollArea>
-        </div>
-      ) : (
-        <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
-          <div className="w-20 h-20 rounded-full bg-muted/50 flex items-center justify-center mb-4">
-            <Camera className="h-10 w-10 text-muted-foreground" />
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full py-20 opacity-30 text-center">
+              <Image className="h-16 w-16 mb-4 text-slate-600" />
+              <p className="font-black text-[10px] uppercase tracking-widest text-white leading-none">Sin fotos cargadas</p>
+            </div>
+          )}
+        </ScrollArea>
+
+        {albumPhotos.some(p => p.status === 'error') && albumPhase === 'done' && (
+          <div className="absolute bottom-4 left-4 right-4 bg-destructive text-white p-3 rounded-2xl flex items-center gap-3 shadow-2xl animate-bounce">
+            <Info className="h-5 w-5" />
+            <p className="text-[10px] font-black uppercase leading-tight">Toca las fotos rojas para ver el error</p>
           </div>
-          <h3 className="text-lg font-medium text-foreground mb-2">Sin paquetes</h3>
-          <p className="text-sm text-muted-foreground max-w-xs">
-            Tomá fotos de las etiquetas — se procesan en paralelo sin bloquear la cámara.
-          </p>
-        </div>
-      )}
+        )}
+      </div>
 
-      {packages.length > 0 && (
-        <div className="mt-4 space-y-2">
-          <Button onClick={handleGoToPlanner} disabled={burstProcessingCount > 0}
-            className="w-full h-14 text-lg font-semibold gap-3 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 shadow-lg shadow-blue-500/30">
-            <Route className="h-5 w-5" />
-            PLANIFICAR RUTA · {packages.length} ENVÍO{packages.length !== 1 ? 'S' : ''}
-          </Button>
-          <Button onClick={handleFinish} disabled={burstProcessingCount > 0} variant="outline"
-            className="w-full h-12 text-base font-semibold gap-3 border-border text-muted-foreground">
-            <Navigation className="h-5 w-5" />
-            FINALIZAR SIN PLANIFICAR
-          </Button>
-        </div>
-      )}
+      <div className="space-y-3 px-2 pb-16 bg-slate-950 z-50">
+        {albumPhase === 'capturing' && (
+          <>
+            <Button onClick={startCamera} className="w-full h-16 rounded-2xl bg-primary text-white font-black text-lg shadow-2xl shadow-primary/20 active:scale-95 transition-all">
+              <Camera className="mr-3 h-6 w-6" /> ABRIR CÁMARA
+            </Button>
+            {albumPhotos.length > 0 && (
+              <Button onClick={processAlbum} className="w-full h-14 rounded-2xl bg-white text-black font-black active:scale-95 transition-all border-2 border-slate-200">
+                PROCESAR {albumPhotos.length} FOTOS
+              </Button>
+            )}
+          </>
+        )}
+        {(albumPhase === 'done' || albumPhase === 'processing') && (
+          <div className="flex flex-col gap-2">
+            {albumPhase === 'done' && (
+              <Button onClick={handleGoToPlanner} className="w-full h-16 rounded-2xl bg-emerald-500 text-white font-black text-lg shadow-xl active:scale-95 transition-all">
+                <Route className="mr-3 h-6 w-6" /> PLANIFICAR RUTA ({packages.length})
+              </Button>
+            )}
+            <Button onClick={() => { setAlbumPhase('capturing'); }} variant="ghost" className="text-slate-500 font-bold uppercase tracking-tighter hover:bg-white/5 rounded-xl">
+              <RefreshCw className="h-4 w-4 mr-2" /> VOLVER A CAPTURAR
+            </Button>
+          </div>
+        )}
+      </div>
 
-      <OCRCaptureDialog open={showOCR} onClose={() => setShowOCR(false)}
-        onConfirm={handleOCRConfirm} continuousMode onQueueUpdate={handleQueueUpdate} />
+      <OCRCaptureDialog
+        open={showOCR}
+        onClose={() => { setShowOCR(false); setMode('select'); }}
+        onConfirm={async (d) => {
+          if (!profileData) return;
+          const trackingNumber = d.trackingNumber || d.mlShipmentId || `OCR-${Date.now()}`;
+          const { data: envio } = await supabase.from('envios').insert({
+            tracking_number: trackingNumber,
+            direccion_entrega: d.direccion,
+            ciudad_entrega: d.localidad,
+            cp_entrega: d.codigoPostal,
+            nombre_destinatario: d.nombreDestinatario || null,
+            notas: d.referencia || d.barrio || null,
+            estado: 'pendiente',
+            precio_total: 0,
+            tenant_id: profileData.tenant_id,
+            sucursal_origen_id: profileData.sucursal_id,
+            ml_shipment_id: d.mlShipmentId ? parseInt(d.mlShipmentId) : null,
+            source_module: 'bulk_ocr_burst',
+            created_by: user?.id
+          }).select().single();
+
+          if (envio) {
+            setPackages(prev => [...prev, {
+              id: envio.id,
+              tracking_number: trackingNumber,
+              direccion: d.direccion,
+              localidad: d.localidad,
+              codigoPostal: d.codigoPostal || '',
+              nombreDestinatario: d.nombreDestinatario || ''
+            }]);
+          }
+        }}
+        continuousMode
+        onQueueUpdate={(item) => {
+          setQueue(prev => {
+            const idx = prev.findIndex(q => q.id === item.id);
+            if (idx >= 0) { const u = [...prev]; u[idx] = item; return u; }
+            return [...prev, item];
+          });
+        }}
+      />
     </div>
   );
 }

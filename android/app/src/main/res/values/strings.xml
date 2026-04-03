@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">GeologistickAPK</string>
+    <string name="title_activity_main">GeologistickAPK</string>
+    <string name="package_name">com.geologic.choferapp</string>
+    <string name="custom_url_scheme">com.geologic.choferapp</string>
+</resources>

@@ -21,9 +21,21 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Package, Truck, Building2, ArrowRight, Loader2, CheckCircle } from "lucide-react";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
+import { Package, Truck, Building2, ArrowRight, Loader2, CheckCircle, QrCode } from "lucide-react";
+import QRScanner from "@/components/qr/QRScanner";
+
+interface EnvioItem {
+  id: string;
+  envio: {
+    id: string;
+    tracking_number: string;
+    cantidad_bultos: number;
+    estado: string;
+    destinatario: { nombre: string; apellido: string | null };
+    remitente: { nombre: string; apellido: string | null };
+  };
+  estado: string;
+}
 
 interface CollectRouteSheetDialogProps {
   hojaRutaId: string | null;
@@ -35,6 +47,7 @@ export function CollectRouteSheetDialog({ hojaRutaId, onClose, onSuccess }: Coll
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [selectedEnvios, setSelectedEnvios] = useState<string[]>([]);
+  const [showScanner, setShowScanner] = useState(false);
 
   const { data: hojaRuta, isLoading } = useQuery({
     queryKey: ["hoja-ruta-collect", hojaRutaId],
@@ -53,11 +66,11 @@ export function CollectRouteSheetDialog({ hojaRutaId, onClose, onSuccess }: Coll
 
       if (error) throw error;
 
-      // Fetch envíos
       const { data: enviosData, error: enviosError } = await supabase
         .from("hoja_ruta_envios")
         .select(`
-          *,
+          id,
+          estado,
           envio:envios(
             id,
             tracking_number,
@@ -67,14 +80,13 @@ export function CollectRouteSheetDialog({ hojaRutaId, onClose, onSuccess }: Coll
             remitente:clientes!envios_remitente_id_fkey(nombre, apellido)
           )
         `)
-        .eq("hoja_ruta_id", hojaRutaId)
-        .order("orden");
+        .eq("hoja_ruta_id", hojaRutaId);
 
       if (enviosError) throw enviosError;
 
       return {
         ...data,
-        envios: enviosData || [],
+        envios: (enviosData || []) as unknown as EnvioItem[],
       };
     },
     enabled: !!hojaRutaId,
@@ -86,18 +98,14 @@ export function CollectRouteSheetDialog({ hojaRutaId, onClose, onSuccess }: Coll
         throw new Error("Selecciona al menos un envío");
       }
 
-      // Update hoja_ruta_envios to 'recolectado'
       const { error: hreError } = await supabase
         .from("hoja_ruta_envios")
-        .update({
-          estado: "recolectado",
-        })
+        .update({ estado: "recolectado" })
         .eq("hoja_ruta_id", hojaRuta.id)
         .in("envio_id", selectedEnvios);
 
       if (hreError) throw hreError;
 
-      // Update envíos status to 'en_transito'
       const { error: enviosError } = await supabase
         .from("envios")
         .update({ 
@@ -108,14 +116,12 @@ export function CollectRouteSheetDialog({ hojaRutaId, onClose, onSuccess }: Coll
 
       if (enviosError) throw enviosError;
 
-      // Check if all envíos are collected
-      const allCollected = hojaRuta.envios.every(e => 
+      const allCollected = hojaRuta.envios.every(e =>
         selectedEnvios.includes(e.envio?.id) || e.estado === "recolectado"
       );
 
-      // If all collected, start the route
       if (allCollected) {
-        const { error: hrError } = await supabase
+        await supabase
           .from("hojas_ruta")
           .update({
             estado: "en_transito",
@@ -123,126 +129,113 @@ export function CollectRouteSheetDialog({ hojaRutaId, onClose, onSuccess }: Coll
             fecha_salida: new Date().toISOString(),
           })
           .eq("id", hojaRuta.id);
-
-        if (hrError) throw hrError;
       }
 
       return { count: selectedEnvios.length, allCollected };
     },
     onSuccess: ({ count, allCollected }) => {
-      queryClient.invalidateQueries({ queryKey: ["hoja-ruta-collect"] });
-      queryClient.invalidateQueries({ queryKey: ["hojas-ruta"] });
       queryClient.invalidateQueries({ queryKey: ["my-hojas-ruta"] });
-      queryClient.invalidateQueries({ queryKey: ["envios"] });
-      
-      toast.success(
-        allCollected
-          ? `${count} envíos recolectados. ¡Ruta iniciada!`
-          : `${count} envío(s) recolectado(s)`
-      );
-      
+      toast.success(allCollected ? "¡Ruta iniciada!" : `${count} envíos recolectados`);
       onSuccess?.();
       onClose();
     },
-    onError: (error: Error) => {
-      toast.error(error.message || "Error al recolectar envíos");
-    },
+    onError: (error: Error) => toast.error(error.message),
   });
 
-  const toggleEnvio = (envioId: string) => {
-    setSelectedEnvios(prev =>
-      prev.includes(envioId)
-        ? prev.filter(id => id !== envioId)
-        : [...prev, envioId]
-    );
-  };
+  const handleScannerCollect = (scannedData: string[]) => {
+    if (!hojaRuta) return;
 
-  const selectAllPending = () => {
-    const pendingIds = hojaRuta?.envios
-      .filter(e => e.estado !== "recolectado" && e.envio?.id)
-      .map(e => e.envio.id) || [];
-    setSelectedEnvios(pendingIds);
+    // Mapear los trackings escaneados a IDs de envíos de esta hoja de ruta
+    const foundIds = hojaRuta.envios
+      .filter(item => scannedData.includes(item.envio.tracking_number))
+      .map(item => item.envio.id);
+
+    if (foundIds.length > 0) {
+      setSelectedEnvios(prev => Array.from(new Set([...prev, ...foundIds])));
+      toast.success(`${foundIds.length} paquetes marcados para colectar`);
+    } else {
+      toast.error("No se encontraron paquetes de esta hoja de ruta");
+    }
+    setShowScanner(false);
   };
 
   if (!hojaRutaId) return null;
 
   const pendingEnvios = hojaRuta?.envios.filter(e => e.estado !== "recolectado") || [];
-  const collectedEnvios = hojaRuta?.envios.filter(e => e.estado === "recolectado") || [];
 
   return (
-    <Dialog open={!!hojaRutaId} onOpenChange={() => onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Truck className="h-5 w-5" />
-            Recolectar Envíos
-          </DialogTitle>
-          <DialogDescription>
-            Selecciona los envíos que estás cargando en el vehículo para iniciar la ruta
-          </DialogDescription>
-        </DialogHeader>
-
-        {isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin" />
-          </div>
-        ) : hojaRuta ? (
-          <div className="space-y-4">
-            {/* Info de la hoja */}
-            <div className="bg-muted rounded-lg p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-mono font-medium text-lg">{hojaRuta.numero}</span>
-                <Badge variant="secondary">
-                  {hojaRuta.estado === "en_transito" ? "En Tránsito" : "Pendiente"}
-                </Badge>
+    <>
+      <Dialog open={!!hojaRutaId && !showScanner} onOpenChange={() => onClose()}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Truck className="h-5 w-5 text-warning" />
+                Recolectar Envíos
               </div>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Building2 className="h-4 w-4" />
-                <span>{hojaRuta.sucursal_origen?.nombre}</span>
-                <ArrowRight className="h-4 w-4" />
-                <span>{hojaRuta.sucursal_destino?.nombre}</span>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {hojaRuta.cantidad_envios || pendingEnvios.length + collectedEnvios.length} envíos en total
-              </p>
-            </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="bg-warning/10 border-warning/30 text-warning font-bold"
+                onClick={() => setShowScanner(true)}
+              >
+                <QrCode className="h-4 w-4 mr-2" />
+                ESCANEAR CARGA
+              </Button>
+            </DialogTitle>
+            <DialogDescription>
+              Escanea los paquetes o selecciónalos manualmente para cargarlos
+            </DialogDescription>
+          </DialogHeader>
 
-            {/* Envíos pendientes de recolectar */}
-            {pendingEnvios.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-medium">Por Recolectar ({pendingEnvios.length})</h4>
-                  <Button variant="outline" size="sm" onClick={selectAllPending}>
-                    Seleccionar todos
-                  </Button>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
+          ) : hojaRuta ? (
+            <div className="space-y-4">
+              <div className="bg-muted/50 rounded-xl p-4 border">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-mono font-bold text-lg">{hojaRuta.numero}</span>
+                  <Badge className="bg-warning text-black">{pendingEnvios.length} pendientes</Badge>
                 </div>
-                <div className="border rounded-lg">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Building2 className="h-4 w-4" />
+                  <span>{hojaRuta.sucursal_origen?.nombre}</span>
+                  <ArrowRight className="h-4 w-4" />
+                  <span>{hojaRuta.sucursal_destino?.nombre}</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="border rounded-xl overflow-hidden">
                   <Table>
-                    <TableHeader>
+                    <TableHeader className="bg-muted/50">
                       <TableRow>
                         <TableHead className="w-10"></TableHead>
-                        <TableHead>Tracking</TableHead>
-                        <TableHead>Remitente</TableHead>
-                        <TableHead className="text-center">Bultos</TableHead>
+                        <TableHead>Paquete / Tracking</TableHead>
+                        <TableHead className="text-right">Bultos</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {pendingEnvios.map(item => (
-                        <TableRow key={item.id}>
+                        <TableRow key={item.id} className={selectedEnvios.includes(item.envio.id) ? "bg-warning/5" : ""}>
                           <TableCell>
                             <Checkbox
-                              checked={selectedEnvios.includes(item.envio?.id)}
-                              onCheckedChange={() => item.envio?.id && toggleEnvio(item.envio.id)}
+                              checked={selectedEnvios.includes(item.envio.id)}
+                              onCheckedChange={() => {
+                                setSelectedEnvios(prev =>
+                                  prev.includes(item.envio.id) ? prev.filter(id => id !== item.envio.id) : [...prev, item.envio.id]
+                                );
+                              }}
                             />
                           </TableCell>
-                          <TableCell className="font-mono text-sm">
-                            {item.envio?.tracking_number}
-                          </TableCell>
                           <TableCell>
-                            {item.envio?.remitente?.nombre} {item.envio?.remitente?.apellido}
+                            <div className="font-mono font-bold text-sm">{item.envio.tracking_number}</div>
+                            <div className="text-[10px] text-muted-foreground uppercase">
+                              {item.envio.remitente?.nombre} {item.envio.remitente?.apellido}
+                            </div>
                           </TableCell>
-                          <TableCell className="text-center">
-                            {item.envio?.cantidad_bultos || 1}
+                          <TableCell className="text-right font-bold">
+                            {item.envio.cantidad_bultos}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -250,64 +243,27 @@ export function CollectRouteSheetDialog({ hojaRutaId, onClose, onSuccess }: Coll
                   </Table>
                 </div>
               </div>
-            )}
 
-            {/* Envíos ya recolectados */}
-            {collectedEnvios.length > 0 && (
-              <div className="space-y-2">
-                <h4 className="font-medium text-muted-foreground">
-                  Ya Recolectados ({collectedEnvios.length})
-                </h4>
-                <div className="border rounded-lg opacity-60">
-                  <Table>
-                    <TableBody>
-                      {collectedEnvios.map(item => (
-                        <TableRow key={item.id}>
-                          <TableCell className="w-10">
-                            <CheckCircle className="h-4 w-4 text-green-500" />
-                          </TableCell>
-                          <TableCell className="font-mono text-sm">
-                            {item.envio?.tracking_number}
-                          </TableCell>
-                          <TableCell>
-                            {item.envio?.remitente?.nombre} {item.envio?.remitente?.apellido}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-            )}
-
-            {/* Botón confirmar */}
-            {pendingEnvios.length > 0 && (
               <Button
-                className="w-full bg-primary hover:bg-primary/90"
-                size="lg"
+                className="w-full h-14 bg-warning hover:bg-warning/90 text-black font-black rounded-2xl shadow-lg"
                 onClick={() => collectMutation.mutate()}
                 disabled={selectedEnvios.length === 0 || collectMutation.isPending}
               >
-                {collectMutation.isPending ? (
-                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Procesando...</>
-                ) : (
-                  <><Truck className="mr-2 h-4 w-4" />Recolectar y Cargar ({selectedEnvios.length})</>
-                )}
+                {collectMutation.isPending ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Truck className="mr-2 h-5 w-5" />}
+                CONFIRMAR RECOLECCIÓN ({selectedEnvios.length})
               </Button>
-            )}
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
-            {pendingEnvios.length === 0 && (
-              <p className="text-center text-muted-foreground py-4">
-                Todos los envíos de esta hoja de ruta ya fueron recolectados
-              </p>
-            )}
-          </div>
-        ) : (
-          <p className="text-center text-destructive py-4">
-            No se encontró la hoja de ruta
-          </p>
-        )}
-      </DialogContent>
-    </Dialog>
+      {showScanner && (
+        <QRScanner
+          onScan={() => {}}
+          onClose={() => setShowScanner(false)}
+          onCollect={handleScannerCollect}
+        />
+      )}
+    </>
   );
 }

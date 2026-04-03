@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.geologic.choferapp',
-  appName: 'ChoferApp',
+  appName: 'GeologistickAPK',
   webDir: 'dist',
   plugins: {
     StatusBar: {

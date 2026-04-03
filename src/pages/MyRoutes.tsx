@@ -21,7 +21,8 @@ import {
   Calendar,
   Navigation,
   Home,
-  ArrowRight
+  ArrowRight,
+  TrendingUp
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -172,23 +173,23 @@ export default function MyRoutes() {
     const config: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
       pendiente: { 
         label: 'Pendiente', 
-        className: 'bg-warning/10 text-warning border-warning',
+        className: 'bg-warning/20 text-warning border-warning/30',
         icon: <Clock className="h-3 w-3" />
       },
       en_transito: { 
         label: 'En Curso', 
-        className: 'bg-primary/10 text-primary border-primary',
+        className: 'bg-primary/20 text-primary border-primary/30',
         icon: <Navigation className="h-3 w-3" />
       },
       completada: { 
         label: 'Completada', 
-        className: 'bg-success/10 text-success border-success',
+        className: 'bg-success/20 text-success border-success/30',
         icon: <CheckCircle className="h-3 w-3" />
       },
     };
     const c = config[estado] || { label: estado, className: '', icon: null };
     return (
-      <Badge variant="outline" className={`${c.className} flex items-center gap-1`}>
+      <Badge variant="outline" className={`${c.className} flex items-center gap-1 font-semibold`}>
         {c.icon}
         {c.label}
       </Badge>
@@ -199,23 +200,23 @@ export default function MyRoutes() {
     const config: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
       confirmada: { 
         label: 'Por Iniciar', 
-        className: 'bg-warning/10 text-warning border-warning',
+        className: 'bg-warning/20 text-warning border-warning/30',
         icon: <Clock className="h-3 w-3" />
       },
       en_curso: { 
         label: 'En Curso', 
-        className: 'bg-primary/10 text-primary border-primary',
+        className: 'bg-primary/20 text-primary border-primary/30',
         icon: <Navigation className="h-3 w-3" />
       },
       completada: { 
         label: 'Completada', 
-        className: 'bg-success/10 text-success border-success',
+        className: 'bg-success/20 text-success border-success/30',
         icon: <CheckCircle className="h-3 w-3" />
       },
     };
     const c = config[estado] || { label: estado, className: '', icon: null };
     return (
-      <Badge variant="outline" className={`${c.className} flex items-center gap-1`}>
+      <Badge variant="outline" className={`${c.className} flex items-center gap-1 font-semibold`}>
         {c.icon}
         {c.label}
       </Badge>
@@ -249,67 +250,79 @@ export default function MyRoutes() {
     const isCompleted = hoja.estado === 'completada';
 
     return (
-      <Card className={isCompleted ? 'opacity-70' : isActive ? 'border-primary border-2' : ''}>
-        <CardContent className="p-4">
-          <div className="flex items-start justify-between mb-3">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <Badge variant="secondary" className="text-xs">Transferencia</Badge>
+      <Card className={`glass-card hover-lift ${isCompleted ? 'opacity-70' : isActive ? 'ring-2 ring-primary ring-offset-2 dark:ring-offset-background' : ''}`}>
+        <CardContent className="p-5">
+          <div className="flex items-start justify-between mb-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="bg-geo-blue/10 text-geo-blue border-geo-blue/20">Transferencia</Badge>
                 {getHojaStatusBadge(hoja.estado)}
               </div>
-              <span className="font-mono font-bold text-lg">{hoja.numero}</span>
-              <div className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+              <h3 className="font-mono font-bold text-xl text-glow">{hoja.numero}</h3>
+              <div className="text-xs text-muted-foreground flex items-center gap-1">
                 <Calendar className="h-3 w-3" />
-                {format(parseDateString(hoja.created_at), 'dd/MM/yy', { locale: es })}
+                {format(parseDateString(hoja.created_at), 'PPP', { locale: es })}
               </div>
             </div>
-            <div className="text-right">
-              <div className="text-2xl font-bold">{hoja.cantidad_envios || 0}</div>
-              <div className="text-xs text-muted-foreground">envíos</div>
+            <div className="bg-primary/10 p-3 rounded-2xl text-center min-w-[70px]">
+              <div className="text-2xl font-black text-primary leading-none">{hoja.cantidad_envios || 0}</div>
+              <div className="text-[10px] uppercase font-bold text-primary/70 tracking-tighter">envíos</div>
             </div>
           </div>
 
           {/* Route info */}
-          <div className="space-y-2 mb-4">
-            <div className="flex items-center gap-2 text-sm">
-              <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
-              <span className="font-medium">{hoja.sucursal_origen?.nombre || 'Origen'}</span>
-              <ArrowRight className="h-4 w-4 text-muted-foreground" />
-              <span className="font-medium">{hoja.sucursal_destino?.nombre || 'Destino'}</span>
+          <div className="bg-muted/30 rounded-xl p-3 space-y-3 mb-5 border border-border/50">
+            <div className="flex items-center gap-3">
+              <div className="relative flex flex-col items-center">
+                <div className="h-2 w-2 rounded-full bg-geo-teal shadow-[0_0_8px_hsl(var(--geo-teal))]" />
+                <div className="w-[1px] h-4 bg-border" />
+                <div className="h-2 w-2 rounded-full bg-primary shadow-[0_0_8px_hsl(var(--primary))]" />
+              </div>
+              <div className="flex-1 text-sm space-y-2">
+                <div className="font-bold flex justify-between">
+                  <span>{hoja.sucursal_origen?.nombre || 'Origen'}</span>
+                  <span className="text-[10px] text-muted-foreground font-normal">SALIDA</span>
+                </div>
+                <div className="font-bold flex justify-between">
+                  <span>{hoja.sucursal_destino?.nombre || 'Destino'}</span>
+                  <span className="text-[10px] text-muted-foreground font-normal">DESTINO</span>
+                </div>
+              </div>
             </div>
             
-            {hoja.vehiculo && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Truck className="h-4 w-4" />
-                {hoja.vehiculo.patente}
-                {hoja.vehiculo.marca && ` - ${hoja.vehiculo.marca} ${hoja.vehiculo.modelo || ''}`}
-              </div>
-            )}
+            <div className="flex items-center justify-between pt-2 border-t border-border/30">
+              {hoja.vehiculo && (
+                <div className="flex items-center gap-2 text-xs font-medium">
+                  <Truck className="h-3.5 w-3.5 text-primary" />
+                  <span className="bg-muted px-2 py-0.5 rounded-md">{hoja.vehiculo.patente}</span>
+                </div>
+              )}
 
-            {hoja.distancia_total_km && (
-              <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                <span>{hoja.distancia_total_km.toFixed(1)} km</span>
-                {hoja.tiempo_estimado_horas && (
-                  <span>~{Math.round(hoja.tiempo_estimado_horas * 60)} min</span>
-                )}
-              </div>
-            )}
+              {hoja.distancia_total_km && (
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                   <div className="flex items-center gap-1">
+                    <TrendingUp className="h-3 w-3" />
+                    {hoja.distancia_total_km.toFixed(1)} km
+                   </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Actions */}
-          <div className="flex gap-2">
+          <div className="flex gap-3 mt-auto">
             {isPending && (
               <>
                 <Button 
                   variant="outline"
-                  className="flex-1"
+                  className="flex-1 rounded-xl h-12 font-bold border-muted-foreground/20"
                   onClick={() => setCollectHojaId(hoja.id)}
                 >
                   <Package className="h-4 w-4 mr-2" />
                   Recolectar
                 </Button>
                 <Button 
-                  className="flex-1 bg-primary hover:bg-primary/90"
+                  className="flex-1 btn-premium text-white rounded-xl h-12 font-bold shadow-lg"
                   onClick={() => navigate(`/route-start?id=${hoja.id}&type=hoja`)}
                 >
                   <PlayCircle className="h-4 w-4 mr-2" />
@@ -319,17 +332,17 @@ export default function MyRoutes() {
             )}
             {isActive && (
               <Button 
-                className="flex-1 bg-success hover:bg-success/90"
+                className="flex-1 btn-premium text-white rounded-xl h-12 font-bold shadow-lg"
                 onClick={() => navigate(`/active-route?id=${hoja.id}&type=hoja`)}
               >
                 <Navigation className="h-4 w-4 mr-2" />
-                Continuar Ruta
+                Ir al Mapa
               </Button>
             )}
             {isCompleted && hoja.fin_real && (
-              <div className="text-sm text-success flex items-center gap-1 w-full justify-center">
+              <div className="bg-success/10 py-2.5 rounded-xl text-sm text-success font-bold flex items-center gap-2 w-full justify-center border border-success/20">
                 <CheckCircle className="h-4 w-4" />
-                Completada {format(new Date(hoja.fin_real), 'dd/MM HH:mm', { locale: es })}
+                Completada el {format(new Date(hoja.fin_real), 'dd/MM HH:mm', { locale: es })}
               </div>
             )}
           </div>
@@ -348,42 +361,41 @@ export default function MyRoutes() {
       : 0;
 
     return (
-      <Card className={isCompleted ? 'opacity-70' : isActive ? 'border-primary border-2' : ''}>
-        <CardContent className="p-4">
-          <div className="flex items-start justify-between mb-3">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <Badge variant="secondary" className="text-xs bg-chofer/10 text-chofer">
+      <Card className={`glass-card hover-lift ${isCompleted ? 'opacity-70' : isActive ? 'ring-2 ring-geo-teal ring-offset-2 dark:ring-offset-background' : ''}`}>
+        <CardContent className="p-5">
+          <div className="flex items-start justify-between mb-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="bg-chofer/10 text-chofer border-chofer/20">
                   <Home className="h-3 w-3 mr-1" />
                   Reparto
                 </Badge>
                 {getRutaStatusBadge(ruta.estado)}
               </div>
-              <span className="font-mono font-bold text-lg">{ruta.numero}</span>
-              <div className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+              <h3 className="font-mono font-bold text-xl text-glow">{ruta.numero}</h3>
+              <div className="text-xs text-muted-foreground flex items-center gap-1">
                 <Calendar className="h-3 w-3" />
-                {format(parseDateString(ruta.fecha), 'dd/MM/yy', { locale: es })}
-                {ruta.hora_inicio && ` ${ruta.hora_inicio.slice(0, 5)}`}
+                {format(parseDateString(ruta.fecha), 'PPP', { locale: es })}
               </div>
             </div>
-            <div className="text-right">
-              <div className="text-2xl font-bold">
+            <div className="bg-chofer/10 p-3 rounded-2xl text-center min-w-[70px]">
+              <div className="text-2xl font-black text-chofer leading-none">
                 {ruta.paradas_completadas || 0}/{ruta.total_paradas || 0}
               </div>
-              <div className="text-xs text-muted-foreground">paradas</div>
+              <div className="text-[10px] uppercase font-bold text-chofer/70 tracking-tighter">paradas</div>
             </div>
           </div>
 
           {/* Progress bar for active routes */}
-          {isActive && ruta.total_paradas && (
-            <div className="mb-4">
-              <div className="flex justify-between text-xs text-muted-foreground mb-1">
-                <span>Progreso</span>
-                <span>{progress}%</span>
+          {isActive && (
+            <div className="mb-5 bg-muted/30 p-3 rounded-xl border border-border/50">
+              <div className="flex justify-between text-xs font-bold mb-2">
+                <span className="text-muted-foreground">Progreso de entrega</span>
+                <span className="text-primary">{progress}%</span>
               </div>
-              <div className="h-2 bg-muted rounded-full overflow-hidden">
+              <div className="h-3 bg-muted rounded-full overflow-hidden shadow-inner">
                 <div 
-                  className="h-full bg-primary rounded-full transition-all" 
+                  className="h-full bg-gradient-to-r from-primary to-accent rounded-full transition-all duration-1000 ease-out"
                   style={{ width: `${progress}%` }}
                 />
               </div>
@@ -391,56 +403,59 @@ export default function MyRoutes() {
           )}
 
           {/* Route info */}
-          <div className="space-y-2 mb-4">
+          <div className="space-y-3 mb-5 px-1">
             {ruta.sucursal && (
-              <div className="flex items-center gap-2 text-sm">
-                <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
-                <span className="font-medium">Base: {ruta.sucursal.nombre}</span>
+              <div className="flex items-center gap-3 text-sm">
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <MapPin className="h-4 w-4 text-primary icon-glow" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-muted-foreground uppercase font-bold">Base de Operaciones</span>
+                  <span className="font-bold">{ruta.sucursal.nombre}</span>
+                </div>
               </div>
             )}
             
-            {ruta.vehiculo && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Truck className="h-4 w-4" />
-                {ruta.vehiculo.patente}
-                {ruta.vehiculo.marca && ` - ${ruta.vehiculo.marca} ${ruta.vehiculo.modelo || ''}`}
-              </div>
-            )}
-
-            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              {ruta.distancia_total_km && (
-                <span>{ruta.distancia_total_km.toFixed(1)} km</span>
+            <div className="flex items-center gap-6 pt-1">
+              {ruta.vehiculo && (
+                <div className="flex items-center gap-2">
+                  <Truck className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-bold bg-muted px-2 py-0.5 rounded-md">{ruta.vehiculo.patente}</span>
+                </div>
               )}
-              {ruta.tiempo_estimado_minutos && (
-                <span>~{ruta.tiempo_estimado_minutos} min</span>
+              {ruta.distancia_total_km && (
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-bold">{ruta.distancia_total_km.toFixed(1)} km</span>
+                </div>
               )}
             </div>
           </div>
 
           {/* Actions */}
-          <div className="flex gap-2">
+          <div className="flex gap-3">
             {isPending && (
               <Button 
-                className="flex-1 bg-chofer hover:bg-chofer/90"
+                className="flex-1 btn-premium text-white rounded-xl h-12 font-bold shadow-lg"
                 onClick={() => navigate(`/route-start?id=${ruta.id}&type=planificada`)}
               >
                 <PlayCircle className="h-4 w-4 mr-2" />
-                Iniciar Ruta
+                Comenzar Jornada
               </Button>
             )}
             {isActive && (
               <Button 
-                className="flex-1 bg-success hover:bg-success/90"
+                className="flex-1 btn-premium text-white rounded-xl h-12 font-bold shadow-lg"
                 onClick={() => navigate(`/active-route?id=${ruta.id}&type=planificada`)}
               >
                 <Navigation className="h-4 w-4 mr-2" />
-                Continuar Ruta
+                Continuar Navegación
               </Button>
             )}
             {isCompleted && (
-              <div className="text-sm text-success flex items-center gap-1 w-full justify-center">
+              <div className="bg-success/10 py-2.5 rounded-xl text-sm text-success font-bold flex items-center gap-2 w-full justify-center border border-success/20">
                 <CheckCircle className="h-4 w-4" />
-                Completada
+                Jornada Finalizada
               </div>
             )}
           </div>
@@ -450,67 +465,53 @@ export default function MyRoutes() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Mis Rutas</h1>
-          <p className="text-muted-foreground">Rutas y hojas de ruta asignadas</p>
+    <div className="max-w-xl mx-auto space-y-8 pb-10">
+      {/* Header Premium */}
+      <div className="relative overflow-hidden rounded-3xl bg-geo-dark p-6 text-white shadow-2xl">
+        <div className="absolute top-0 right-0 -mt-8 -mr-8 h-32 w-32 rounded-full bg-primary/20 blur-3xl" />
+        <div className="absolute bottom-0 left-0 -mb-8 -ml-8 h-32 w-32 rounded-full bg-geo-teal/20 blur-3xl" />
+
+        <div className="relative flex items-center justify-between">
+          <div className="space-y-1">
+            <h1 className="text-3xl font-black tracking-tighter text-glow">MIS RUTAS</h1>
+            <p className="text-primary-foreground/60 text-xs font-bold uppercase tracking-widest">Panel de Chofer</p>
+          </div>
+          <Button
+            onClick={() => setShowQRScanner(true)}
+            className="rounded-2xl bg-white/10 hover:bg-white/20 border-white/10 backdrop-blur-md h-12 w-12 p-0"
+          >
+            <QrCode className="h-6 w-6" />
+          </Button>
         </div>
-        <Button onClick={() => setShowQRScanner(true)} variant="outline">
-          <QrCode className="h-4 w-4 mr-2" />
-          Escanear
-        </Button>
       </div>
 
-      {/* Stats */}
-      <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-        <Card className="border-warning/30 bg-warning/5">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Por Iniciar</CardTitle>
-            <Clock className="h-4 w-4 text-warning" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-warning">{stats.pending}</div>
-          </CardContent>
+      {/* Stats Premium - Horizontal scroll on mobile */}
+      <div className="flex gap-3 overflow-x-auto pb-2 px-1 no-scrollbar">
+        <Card className="glass-card flex-1 min-w-[120px] p-4 text-center border-l-4 border-l-warning">
+          <Clock className="h-5 w-5 text-warning mx-auto mb-2 icon-glow" />
+          <div className="text-2xl font-black">{stats.pending}</div>
+          <div className="text-[10px] uppercase font-bold text-muted-foreground">Pendientes</div>
         </Card>
-        <Card className="border-primary/30 bg-primary/5">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">En Curso</CardTitle>
-            <Navigation className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-primary">{stats.active}</div>
-          </CardContent>
+        <Card className="glass-card flex-1 min-w-[120px] p-4 text-center border-l-4 border-l-primary">
+          <Navigation className="h-5 w-5 text-primary mx-auto mb-2 icon-glow" />
+          <div className="text-2xl font-black">{stats.active}</div>
+          <div className="text-[10px] uppercase font-bold text-muted-foreground">En Curso</div>
         </Card>
-        <Card className="border-success/30 bg-success/5">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Completadas</CardTitle>
-            <CheckCircle className="h-4 w-4 text-success" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-success">{stats.completed}</div>
-          </CardContent>
-        </Card>
-        <Card className="border-muted">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Paradas</CardTitle>
-            <MapPin className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalEnvios + stats.totalParadas}</div>
-          </CardContent>
+        <Card className="glass-card flex-1 min-w-[120px] p-4 text-center border-l-4 border-l-success">
+          <CheckCircle className="h-5 w-5 text-success mx-auto mb-2 icon-glow" />
+          <div className="text-2xl font-black">{stats.completed}</div>
+          <div className="text-[10px] uppercase font-bold text-muted-foreground">Listas</div>
         </Card>
       </div>
 
-      {/* Active Routes Section - Both Types */}
+      {/* Active Routes Section - Highlights active work */}
       {(activeRutas.length > 0 || activeHojas.length > 0) && (
-        <div className="space-y-3">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Navigation className="h-5 w-5 text-primary" />
-            Rutas Activas
+        <div className="space-y-4">
+          <h2 className="text-sm font-black uppercase tracking-widest flex items-center gap-2 px-1">
+            <div className="h-2 w-2 rounded-full bg-primary animate-pulse shadow-[0_0_8px_hsl(var(--primary))]" />
+            Trabajo en Curso
           </h2>
-          <div className="space-y-3">
+          <div className="space-y-4">
             {activeRutas.map((ruta) => (
               <RutaCard key={ruta.id} ruta={ruta} />
             ))}
@@ -523,37 +524,36 @@ export default function MyRoutes() {
 
       {/* Tabs for Pending and Completed */}
       <Tabs defaultValue="pending" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="pending" className="flex items-center gap-2">
-            <Clock className="h-4 w-4" />
+        <TabsList className="grid w-full grid-cols-2 p-1 bg-muted/50 rounded-2xl h-14">
+          <TabsTrigger value="pending" className="rounded-xl font-bold data-[state=active]:shadow-lg">
             Por Iniciar
             {stats.pending > 0 && (
-              <Badge variant="secondary" className="ml-1">{stats.pending}</Badge>
+              <Badge className="ml-2 bg-primary text-white text-[10px] h-5 px-1.5">{stats.pending}</Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="completed" className="flex items-center gap-2">
-            <CheckCircle className="h-4 w-4" />
-            Completadas
+          <TabsTrigger value="completed" className="rounded-xl font-bold data-[state=active]:shadow-lg">
+            Finalizadas
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="pending" className="mt-4">
+        <TabsContent value="pending" className="mt-6">
           {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <div className="flex flex-col items-center justify-center py-20 gap-4">
+              <Loader2 className="h-10 w-10 animate-spin text-primary" />
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Sincronizando datos...</p>
             </div>
           ) : (pendingRutas.length === 0 && pendingHojas.length === 0) ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <CheckCircle className="h-12 w-12 text-success mb-4" />
-                <h3 className="text-lg font-semibold">Sin rutas por iniciar</h3>
-                <p className="text-muted-foreground text-center mt-2">
-                  No tienes rutas pendientes de iniciar
-                </p>
-              </CardContent>
-            </Card>
+            <div className="flex flex-col items-center justify-center py-16 text-center space-y-4 bg-muted/20 rounded-3xl border-2 border-dashed border-border">
+              <div className="bg-success/10 p-5 rounded-full">
+                <CheckCircle className="h-10 w-10 text-success" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-xl font-black">¡Todo al día!</h3>
+                <p className="text-muted-foreground text-sm max-w-[200px]">No tienes tareas pendientes asignadas por ahora.</p>
+              </div>
+            </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {pendingRutas.map((ruta) => (
                 <RutaCard key={ruta.id} ruta={ruta} />
               ))}
@@ -564,23 +564,18 @@ export default function MyRoutes() {
           )}
         </TabsContent>
 
-        <TabsContent value="completed" className="mt-4">
+        <TabsContent value="completed" className="mt-6">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           ) : (completedRutas.length === 0 && completedHojas.length === 0) ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <RouteIcon className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold">Sin rutas completadas</h3>
-                <p className="text-muted-foreground text-center mt-2">
-                  Aún no has completado ninguna ruta
-                </p>
-              </CardContent>
-            </Card>
+            <div className="flex flex-col items-center justify-center py-16 text-center space-y-4 bg-muted/20 rounded-3xl border-2 border-dashed border-border">
+               <RouteIcon className="h-12 w-12 text-muted-foreground" />
+               <p className="text-muted-foreground text-sm">Historial vacío.</p>
+            </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {completedRutas.map((ruta) => (
                 <RutaCard key={ruta.id} ruta={ruta} />
               ))}

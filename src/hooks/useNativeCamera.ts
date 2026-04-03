@@ -1,30 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNativePlatform } from './useNativePlatform';
 
 interface CameraResult {
-  dataUrl: string;
+  dataUrl?: string;
+  webPath?: string;
 }
 
-// Cache the module at module level so we only try once
 let cameraModulePromise: Promise<any> | null = null;
 let cameraModule: any = null;
-let cameraImportFailed = false;
 
 function getCameraModule() {
   if (cameraModule) return Promise.resolve(cameraModule);
-  if (cameraImportFailed) return Promise.resolve(null);
   if (!cameraModulePromise) {
-    cameraModulePromise = import('@capacitor/camera')
-      .then((mod) => {
-        cameraModule = mod;
-        console.log('[useNativeCamera] @capacitor/camera loaded successfully');
-        return mod;
-      })
-      .catch((err) => {
-        cameraImportFailed = true;
-        console.warn('[useNativeCamera] @capacitor/camera import failed (expected in remote WebView):', err?.message || err);
-        return null;
-      });
+    cameraModulePromise = import('@capacitor/camera').then((mod) => {
+      cameraModule = mod;
+      return mod;
+    });
   }
   return cameraModulePromise;
 }
@@ -33,15 +24,12 @@ export function useNativeCamera() {
   const { isNative } = useNativePlatform();
   const [cameraAvailable, setCameraAvailable] = useState<boolean | null>(null);
 
-  // Try to load the module on mount
   useEffect(() => {
     if (!isNative) {
       setCameraAvailable(false);
       return;
     }
-    getCameraModule().then((mod) => {
-      setCameraAvailable(!!mod);
-    });
+    getCameraModule().then((mod) => setCameraAvailable(!!mod));
   }, [isNative]);
 
   const takePhoto = useCallback(async (): Promise<CameraResult | null> => {
@@ -50,26 +38,25 @@ export function useNativeCamera() {
 
     try {
       const { Camera, CameraResultType, CameraSource, CameraDirection } = mod;
+
+      // OPTIMIZACIÓN EXTREMA PARA ANDROID
       const result = await Camera.getPhoto({
-        quality: 85,
+        quality: 40, // Muy baja para evitar reinicios, suficiente para OCR
         allowEditing: false,
-        resultType: CameraResultType.DataUrl,
+        resultType: CameraResultType.Uri, // USAR URI ES VITAL
         source: CameraSource.Camera,
-        direction: CameraDirection.Rear,
-        width: 1280,
+        direction: CameraDirection.Rear, // FORZAR TRASERA
+        width: 800, // Tamaño ideal para OCR y memoria
         correctOrientation: true,
+        saveToGallery: false
       });
 
-      if (result.dataUrl) {
-        return { dataUrl: result.dataUrl };
-      }
-      return null;
+      return {
+        webPath: result.webPath,
+        dataUrl: result.dataUrl // Podría ser undefined con Uri
+      };
     } catch (error: any) {
-      if (error?.message?.includes('cancelled') || error?.message?.includes('denied')) {
-        console.log('[useNativeCamera] Camera cancelled or denied:', error.message);
-        return null;
-      }
-      console.error('[useNativeCamera] Native camera error:', error);
+      console.error('[useNativeCamera] Camera Error:', error);
       return null;
     }
   }, []);
@@ -77,30 +64,16 @@ export function useNativeCamera() {
   const pickFromGallery = useCallback(async (): Promise<CameraResult | null> => {
     const mod = await getCameraModule();
     if (!mod) return null;
-
     try {
       const { Camera, CameraResultType, CameraSource } = mod;
       const result = await Camera.getPhoto({
-        quality: 85,
-        allowEditing: false,
-        resultType: CameraResultType.DataUrl,
+        quality: 50,
+        resultType: CameraResultType.Uri,
         source: CameraSource.Photos,
-        width: 1280,
-        correctOrientation: true,
+        width: 1000,
       });
-
-      if (result.dataUrl) {
-        return { dataUrl: result.dataUrl };
-      }
-      return null;
-    } catch (error: any) {
-      if (error?.message?.includes('cancelled') || error?.message?.includes('denied')) {
-        console.log('[useNativeCamera] Gallery cancelled or denied:', error.message);
-        return null;
-      }
-      console.error('[useNativeCamera] Native gallery error:', error);
-      return null;
-    }
+      return { webPath: result.webPath };
+    } catch (e) { return null; }
   }, []);
 
   return { isNative, cameraAvailable: cameraAvailable === true, takePhoto, pickFromGallery };

@@ -87,6 +87,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
         if (parsed.signature) setSignature(parsed.signature);
         if (parsed.notes) setNotes(parsed.notes);
         if (parsed.amountCollected) setAmountCollected(parsed.amountCollected);
+        if (parsed.paymentMethod) setPaymentMethod(parsed.paymentMethod);
       } catch (e) {
         console.error('Error restoring delivery state:', e);
       }
@@ -128,6 +129,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
             signature,
             notes,
             amountCollected,
+            paymentMethod,
           }));
         } catch (e) {
           console.warn('Could not persist photo to sessionStorage:', e);
@@ -138,10 +140,10 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
   };
 
   // Save state before opening camera (Android WebView may reload)
-  const persistState = () => {
+  const persistState = (currentPreview?: string) => {
     try {
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
-        photoPreview,
+        photoPreview: currentPreview || photoPreview,
         signature,
         amountCollected,
         notes,
@@ -153,10 +155,12 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
   const handleOpenCamera = (e: React.MouseEvent) => {
     if (cameraAvailable) {
       // Native path - async is OK because Capacitor handles gesture internally
+      persistState();
       nativeTakePhoto().then((result) => {
         if (result) {
           setPhoto(null);
           setPhotoPreview(result.dataUrl);
+          persistState(result.dataUrl);
         }
       });
       return;
@@ -171,10 +175,12 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
 
   const handleOpenGallery = (e: React.MouseEvent) => {
     if (cameraAvailable) {
+      persistState();
       nativePickFromGallery().then((result) => {
         if (result) {
           setPhoto(null);
           setPhotoPreview(result.dataUrl);
+          persistState(result.dataUrl);
         }
       });
       return;
