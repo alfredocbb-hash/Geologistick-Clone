@@ -43,6 +43,7 @@ interface QueueEntry {
 
 interface BulkOCRScreenProps {
   onClose: () => void;
+  onPackagesReady?: (envioIds: string[]) => void;
 }
 
 async function geocodeAndUpdate(envioId: string, direccion: string, localidad: string) {
@@ -63,7 +64,7 @@ async function geocodeAndUpdate(envioId: string, direccion: string, localidad: s
   }
 }
 
-export function BulkOCRScreen({ onClose }: BulkOCRScreenProps) {
+export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -229,10 +230,14 @@ export function BulkOCRScreen({ onClose }: BulkOCRScreenProps) {
     }
     queryClient.invalidateQueries({ queryKey: ['envios'] });
     queryClient.invalidateQueries({ queryKey: ['envios-planificador'] });
-    const ids = packages.map(p => p.id).join(',');
-    navigate(`/route-planner?envio_ids=${ids}`);
-    onClose();
-  }, [packages, queryClient, navigate, onClose]);
+    const ids = packages.map(p => p.id);
+    if (onPackagesReady) {
+      onPackagesReady(ids);
+    } else {
+      navigate(`/route-planner?envio_ids=${ids.join(',')}`);
+      onClose();
+    }
+  }, [packages, queryClient, navigate, onClose, onPackagesReady]);
 
   const showPhotoError = (photo: AlbumPhoto) => {
     if (photo.error) {
