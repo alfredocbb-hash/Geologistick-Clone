@@ -175,60 +175,66 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
 
     const photosToProcess = albumPhotos.filter(p => p.status === 'pending' || p.status === 'error');
 
-    for (const photo of photosToProcess) {
-      setAlbumPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'processing', error: undefined } : p));
-
-      try {
-        const { data: ocrData, error: ocrError } = await supabase.functions.invoke('ocr-label', {
-          body: { image: photo.dataUrl }
-        });
-
-        if (ocrError) throw new Error("Error IA: Verificá conexión");
-        if (!ocrData || !ocrData.direccion) throw new Error("Sin dirección detectada");
-
-        const tracking = ocrData.trackingNumber || ocrData.mlShipmentId || `OCR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-
-        const { data: envio, error: insertError } = await supabase.from('envios').insert({
-          tracking_number: tracking,
-          direccion_entrega: ocrData.direccion,
-          ciudad_entrega: ocrData.localidad || '',
-          cp_entrega: ocrData.codigoPostal || '',
-          nombre_destinatario: ocrData.nombreDestinatario || null,
-          notas: ocrData.referencia || ocrData.barrio || null,
-          estado: 'pendiente',
-          precio_total: 0,
-          source_module: 'bulk_ocr_album',
-          tenant_id: profileData.tenant_id,
-          sucursal_origen_id: profileData.sucursal_id,
-          ml_shipment_id: ocrData.mlShipmentId ? parseInt(ocrData.mlShipmentId) : null,
-          created_by: user?.id
-        }).select().single();
-
-        if (insertError) {
-          if (insertError.code === '23505') throw new Error(`Tracking duplicado: ${tracking}`);
-          throw new Error(`DB Error: ${insertError.message}`);
-        }
-
-        // Geocode in background
-        geocodeAndUpdate(envio.id, ocrData.direccion, ocrData.localidad || '');
-
-        setPackages(prev => [...prev, {
-          id: envio.id,
-          tracking_number: tracking,
-          direccion: ocrData.direccion,
-          localidad: ocrData.localidad,
-          codigoPostal: ocrData.codigoPostal || '',
-          nombreDestinatario: ocrData.nombreDestinatario || ''
-        }]);
-
-        setAlbumPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'saved', trackingNumber: tracking } : p));
-      } catch (e: any) {
-        setAlbumPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'error', error: e.message } : p));
-      }
-      setProcessedCount(prev => prev + 1);
+    // Process in parallel chunks of 3
+    const chunkSize = 3;
+    for (let i = 0; i < photosToProcess.length; i += chunkSize) {
+      const chunk = photosToProcess.slice(i, i + chunkSize);
+      await Promise.allSettled(chunk.map(photo => processOnePhoto(photo)));
     }
     setAlbumPhase('done');
   }, [albumPhotos, user?.id, profileData]);
+
+  const processOnePhoto = async (photo: AlbumPhoto) => {
+    setAlbumPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'processing', error: undefined } : p));
+
+    try {
+      const { data: ocrData, error: ocrError } = await supabase.functions.invoke('ocr-label', {
+        body: { image: photo.dataUrl }
+      });
+
+      if (ocrError) throw new Error("Error IA: Verificá conexión");
+      if (!ocrData || !ocrData.direccion) throw new Error("Sin dirección detectada");
+
+      const tracking = ocrData.trackingNumber || ocrData.mlShipmentId || `OCR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+      const { data: envio, error: insertError } = await supabase.from('envios').insert({
+        tracking_number: tracking,
+        direccion_entrega: ocrData.direccion,
+        ciudad_entrega: ocrData.localidad || '',
+        cp_entrega: ocrData.codigoPostal || '',
+        nombre_destinatario: ocrData.nombreDestinatario || null,
+        notas: ocrData.referencia || ocrData.barrio || null,
+        estado: 'pendiente',
+        precio_total: 0,
+        source_module: 'bulk_ocr_album',
+        tenant_id: profileData!.tenant_id,
+        sucursal_origen_id: profileData!.sucursal_id,
+        ml_shipment_id: ocrData.mlShipmentId ? parseInt(ocrData.mlShipmentId) : null,
+        created_by: user?.id
+      }).select().single();
+
+      if (insertError) {
+        if (insertError.code === '23505') throw new Error(`Tracking duplicado: ${tracking}`);
+        throw new Error(`DB Error: ${insertError.message}`);
+      }
+
+      geocodeAndUpdate(envio.id, ocrData.direccion, ocrData.localidad || '');
+
+      setPackages(prev => [...prev, {
+        id: envio.id,
+        tracking_number: tracking,
+        direccion: ocrData.direccion,
+        localidad: ocrData.localidad,
+        codigoPostal: ocrData.codigoPostal || '',
+        nombreDestinatario: ocrData.nombreDestinatario || ''
+      }]);
+
+      setAlbumPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'saved', trackingNumber: tracking } : p));
+    } catch (e: any) {
+      setAlbumPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'error', error: e.message } : p));
+    }
+    setProcessedCount(prev => prev + 1);
+  };
 
   const handleGoToPlanner = useCallback(() => {
     if (packages.length === 0) {
