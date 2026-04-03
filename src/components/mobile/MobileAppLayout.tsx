@@ -304,3 +304,11 @@ function MobileAppLayoutInner() {
     </div>
   );
 }
+
+export function MobileAppLayout() {
+  return (
+    <MobileCameraProvider>
+      <MobileAppLayoutInner />
+    </MobileCameraProvider>
+  );
+}
