@@ -1,29 +1,41 @@
 
 
-## Plan: Sub-menú OCR con opción masiva
+## Plan: Fix build errors + cámara trasera automática + geocodificación + botones en modo ráfaga
 
-### Problema
-Cuando el usuario elige "Escanear etiqueta (OCR)" en el diálogo de ML no encontrado, va directo al OCR individual. El usuario quiere que se le pregunte si desea modo individual o masivo (álbum).
+### Problemas a resolver
 
-### Solución
+1. **Cámara trasera no se abre automáticamente** al entrar en modo álbum
+2. **Geocodificación faltante**: los envíos creados por OCR no tienen coordenadas, por lo que "Planificar Ruta" no puede optimizar
+3. **Modo ráfaga sin botones de acción**: cuando se usa el modo ráfaga (OCRCaptureDialog en continuousMode), no hay forma de ver paquetes guardados ni planificar ruta
+4. **3 errores de build** existentes
 
-**Modificar `src/components/scan/MLNotFoundChoiceDialog.tsx`**:
-- Agregar un callback `onChooseBulkOCR` a las props
-- Cuando el usuario toca "Escanear etiqueta (OCR)", en vez de llamar `onChooseOCR` directamente, mostrar un segundo paso dentro del mismo diálogo con dos opciones:
-  - **"Una etiqueta"** → llama `onChooseOCR` (flujo actual, OCRCaptureDialog individual)
-  - **"Modo masivo (álbum)"** → llama `onChooseBulkOCR` (abre BulkOCRScreen)
-- Usar un estado interno `step: 'choice' | 'ocr-mode'` para manejar la transición
+### Cambios por archivo
 
-**Modificar `src/components/mobile/MobileScanTab.tsx`**:
-- Agregar handler `onChooseBulkOCR` que navega a la pantalla de OCR masivo (BulkOCRScreen) o la abre inline
-- Pasar el nuevo callback al `MLNotFoundChoiceDialog`
+**`src/components/mobile/BulkOCRScreen.tsx`**:
+- `useEffect` que llama `startCamera()` automáticamente cuando `mode === 'album'`
+- Después de cada OCR exitoso (tanto álbum como ráfaga), invocar `geocode-address` con la dirección obtenida y actualizar el envío con `destinatario_lat`/`destinatario_lng`
+- Fix build: cambiar `d.trackingNumber` a `d.mlShipmentId` (línea 361)
+- **Modo ráfaga**: cuando `mode === 'burst'`, mostrar un panel flotante debajo del OCRCaptureDialog con contador de paquetes guardados y botones "PLANIFICAR RUTA" / "FINALIZAR"
+- Mostrar la lista de `packages` y `queue` como indicadores de progreso en modo ráfaga
 
-**Modificar `src/components/mobile/CollectScanScreen.tsx`**:
-- Mismo patrón: agregar handler `onChooseBulkOCR` que activa el `BulkOCRScreen` desde la colecta
-- Pasar el callback al diálogo
+**`src/components/mobile/OCRCaptureDialog.tsx`**:
+- Agregar función `handleConfirm` que construye `OCRConfirmData` desde los campos del formulario (`direccion`, `localidad`, `codigoPostal`, `nombreDestinatario`) y llama `onConfirm(data)`, luego resetea al paso de captura
+
+**`src/components/scan/CollectRouteSheetDialog.tsx`**:
+- Eliminar prop `onCollect` del `QRScanner`
+- Mover la lógica de `handleScannerCollect` al handler `onScan` (recibir un string individual y acumularlo)
+
+### Flujo ráfaga corregido
+```text
+[OCRCaptureDialog continuo]
+    ↓ cada foto procesada
+[Panel flotante inferior]
+  "3 paquetes guardados"
+  [PLANIFICAR RUTA]  [FINALIZAR]
+```
 
 ### Archivos a modificar
-- `src/components/scan/MLNotFoundChoiceDialog.tsx` — Agregar paso intermedio con opción individual/masivo
-- `src/components/mobile/MobileScanTab.tsx` — Conectar callback de OCR masivo
-- `src/components/mobile/CollectScanScreen.tsx` — Conectar callback de OCR masivo
+- `src/components/mobile/BulkOCRScreen.tsx` — Auto-cámara + geocodificación + panel ráfaga + fix tipo
+- `src/components/mobile/OCRCaptureDialog.tsx` — Agregar `handleConfirm`
+- `src/components/scan/CollectRouteSheetDialog.tsx` — Fix prop `onCollect`
 
