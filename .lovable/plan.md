@@ -1,29 +1,34 @@
 
 
-## Plan: Fix "Planificar Ruta" después de OCR masivo
+## Plan: "Planificar" en OCR masivo debe volver al módulo Flex, no al Planificador general
 
-### Problema raíz
-El botón "PLANIFICAR RUTA" navega a `/route-planner?envios=ids`, pero esa ruta **no existe**:
-- En **web**, la ruta del planificador es `/planner` (no `/route-planner`)
-- En **nativo (APK)**, no existe ninguna ruta de planificador — el wildcard `*` redirige a `MobileAppLayout`, por eso "vuelve a la pantalla anterior"
+### Problema
+Al hacer clic en "PLANIFICAR RUTA" después de procesar fotos en OCR masivo, el sistema navega a `/route-planner` — la vista de administrador. En cambio, debería agregar los paquetes a la lista Flex y volver a la pantalla FlexMixto, donde el chofer puede optimizar, colectar, crear ruta o iniciar reparto.
 
 ### Solución
 
 **`src/components/mobile/BulkOCRScreen.tsx`**:
-- Cambiar `navigate('/route-planner?envios=...')` → `navigate('/planner?envios=...')`
+- Agregar un prop `onPackagesReady?: (envioIds: string[]) => void` al componente
+- En `handleGoToPlanner`: si existe `onPackagesReady`, llamarlo con los IDs de los paquetes creados en vez de navegar a `/route-planner`. Luego llamar `onClose()`
+- Si no existe el callback (fallback), mantener la navegación actual
 
-**`src/components/scan/MLRegisterDialog.tsx`**:
-- Mismo fix: cambiar `/route-planner` → `/planner`
+**`src/components/mobile/FlexMixtoScreen.tsx`**:
+- Pasar un callback `onPackagesReady` a `BulkOCRScreen` que:
+  1. Recibe los IDs de envíos creados
+  2. Los agrega uno por uno a la lista flex usando `addPackage(envioId)` del hook `useFlexPackages`
+  3. Cierra el modal de BulkOCR
+- Esto hace que los paquetes aparezcan en la lista Flex con los botones de Optimizar, Colectar, Iniciar Reparto, Hoja de Ruta ya disponibles
 
-**`src/App.tsx`** (para soporte nativo):
-- Agregar la ruta `/planner` dentro de `NativeAppWrapper` para que funcione en la APK:
+### Flujo corregido
+```text
+OCR Masivo → Procesar fotos → "PLANIFICAR"
+    ↓
+Vuelve a FlexMixto con los paquetes cargados
+    ↓
+[OPTIMIZAR] [COLECTAR] [INICIAR REPARTO] [HOJA DE RUTA]
 ```
-<Route path="/planner" element={<RoutePlanner />} />
-```
-Esto va junto a las rutas existentes `/route-start` y `/active-route`.
 
 ### Archivos a modificar
-- `src/components/mobile/BulkOCRScreen.tsx` — Fix ruta `/route-planner` → `/planner`
-- `src/components/scan/MLRegisterDialog.tsx` — Fix ruta `/route-planner` → `/planner`
-- `src/App.tsx` — Agregar ruta `/planner` en NativeAppWrapper para que funcione desde la APK
+- `src/components/mobile/BulkOCRScreen.tsx` — Nuevo prop `onPackagesReady`, lógica condicional en `handleGoToPlanner`
+- `src/components/mobile/FlexMixtoScreen.tsx` — Pasar callback que usa `addPackage` del hook
 
