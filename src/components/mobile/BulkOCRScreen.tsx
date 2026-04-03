@@ -105,15 +105,19 @@ export function BulkOCRScreen({ onClose }: BulkOCRScreenProps) {
         audio: false
       });
       setStream(newStream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = newStream;
-        await videoRef.current.play();
-      }
       setIsCameraOpen(true);
     } catch (err) {
       toast.error("Usa la cámara del sistema (icono celular)");
     }
   };
+
+  // Attach stream to video element once both are available
+  useEffect(() => {
+    if (stream && isCameraOpen && videoRef.current) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [stream, isCameraOpen]);
 
   // Auto-open camera when entering album mode
   useEffect(() => {
