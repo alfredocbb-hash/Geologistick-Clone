@@ -29,7 +29,7 @@ export function FlexMixtoScreen() {
   const navigate = useNavigate();
   const { user, hasRole, profile } = useAuth();
   const { hasPermission } = usePermissions();
-  
+  const { setCameraActive } = useMobileCamera();
   const [showScanner, setShowScanner] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const [showTransferDialog, setShowTransferDialog] = useState(false);

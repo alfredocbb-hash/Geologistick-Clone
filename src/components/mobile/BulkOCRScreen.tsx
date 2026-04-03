@@ -33,14 +33,6 @@ interface BulkPackage {
   nombreDestinatario: string;
 }
 
-interface QueueEntry {
-  id: string;
-  status: 'processing' | 'saved' | 'error';
-  trackingNumber?: string;
-  error?: string;
-  preview?: string;
-}
-
 interface BulkOCRScreenProps {
   onClose: () => void;
   onPackagesReady?: (envioIds: string[]) => void;
