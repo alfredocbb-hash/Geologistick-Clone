@@ -42,6 +42,12 @@ export function FlexMixtoScreen() {
   const [showOCRCapture, setShowOCRCapture] = useState(false);
   const [pendingMLShipmentId, setPendingMLShipmentId] = useState<string | undefined>();
   const [showBulkOCR, setShowBulkOCR] = useState(false);
+
+  // Hide bottom nav when camera overlays are active
+  useEffect(() => {
+    const cameraOpen = showScanner || showOCRCapture || showBulkOCR;
+    setCameraActive(cameraOpen);
+  }, [showScanner, showOCRCapture, showBulkOCR, setCameraActive]);
   
   const {
     packages, isLoading, addPackageByTracking, addPackage,
