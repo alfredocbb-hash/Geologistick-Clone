@@ -64,7 +64,7 @@ async function geocodeAndUpdate(envioId: string, direccion: string, localidad: s
   }
 }
 
-export function BulkOCRScreen({ onClose }: BulkOCRScreenProps) {
+export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
