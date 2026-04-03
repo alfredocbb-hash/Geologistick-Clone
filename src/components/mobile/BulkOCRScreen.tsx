@@ -43,6 +43,7 @@ interface QueueEntry {
 
 interface BulkOCRScreenProps {
   onClose: () => void;
+  onPackagesReady?: (envioIds: string[]) => void;
 }
 
 async function geocodeAndUpdate(envioId: string, direccion: string, localidad: string) {

@@ -402,7 +402,16 @@ export function FlexMixtoScreen() {
       {/* Bulk OCR Screen */}
       {showBulkOCR && (
         <div className="fixed inset-0 z-50 bg-slate-950 p-4 overflow-auto">
-          <BulkOCRScreen onClose={() => setShowBulkOCR(false)} />
+          <BulkOCRScreen
+            onClose={() => setShowBulkOCR(false)}
+            onPackagesReady={async (ids) => {
+              setShowBulkOCR(false);
+              for (const id of ids) {
+                await addPackage(id);
+              }
+              toast.success(`${ids.length} paquete${ids.length !== 1 ? 's' : ''} agregados desde OCR`);
+            }}
+          />
         </div>
       )}
     </div>
