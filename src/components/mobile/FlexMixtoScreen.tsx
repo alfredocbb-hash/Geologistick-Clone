@@ -21,6 +21,7 @@ import { CreateRouteSheetDialog } from '@/components/scan/CreateRouteSheetDialog
 import { OCRCaptureDialog } from './OCRCaptureDialog';
 import { BulkOCRScreen } from './BulkOCRScreen';
 import { parseQRCode } from '@/lib/qrParser';
+import { useMobileCamera } from './MobileCameraContext';
 import { useNavigate } from 'react-router-dom';
 import type { FlexPackage } from '@/hooks/useFlexPackages';
 
