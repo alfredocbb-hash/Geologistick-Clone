@@ -34,6 +34,7 @@ export type UserMobileRole = 'chofer' | 'centro_logistico' | 'sucursal';
 const TAB_ORDER: MobileTab[] = ['home', 'routes', 'reception', 'deliveries', 'scan', 'earnings', 'history', 'profile'];
 
 function MobileAppLayoutInner() {
+  const { isCameraActive } = useMobileCamera();
   const [activeTab, setActiveTab] = useState<MobileTab>('home');
   const [showNotifications, setShowNotifications] = useState(false);
   const [showCheckOut, setShowCheckOut] = useState(false);
