@@ -45,6 +45,24 @@ interface BulkOCRScreenProps {
   onClose: () => void;
 }
 
+async function geocodeAndUpdate(envioId: string, direccion: string, localidad: string) {
+  try {
+    const fullAddress = `${direccion}, ${localidad}`.trim();
+    if (!fullAddress || fullAddress === ',') return;
+    const { data: geoData } = await supabase.functions.invoke('geocode-address', {
+      body: { address: fullAddress }
+    });
+    if (geoData?.location?.lat && geoData?.location?.lng) {
+      await supabase.from('envios').update({
+        destinatario_lat: geoData.location.lat,
+        destinatario_lng: geoData.location.lng
+      }).eq('id', envioId);
+    }
+  } catch {
+    // Geocoding is best-effort, don't block flow
+  }
+}
+
 export function BulkOCRScreen({ onClose }: BulkOCRScreenProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -83,7 +101,8 @@ export function BulkOCRScreen({ onClose }: BulkOCRScreenProps) {
     try {
       if (stream) stream.getTracks().forEach(t => t.stop());
       const newStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: { ideal: 1280 } }
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
       });
       setStream(newStream);
       if (videoRef.current) {
@@ -95,6 +114,14 @@ export function BulkOCRScreen({ onClose }: BulkOCRScreenProps) {
       toast.error("Usa la cámara del sistema (icono celular)");
     }
   };
+
+  // Auto-open camera when entering album mode
+  useEffect(() => {
+    if (mode === 'album' && !isCameraOpen && albumPhase === 'capturing') {
+      const timeout = setTimeout(startCamera, 200);
+      return () => clearTimeout(timeout);
+    }
+  }, [mode]);
 
   const stopCamera = () => {
     if (stream) stream.getTracks().forEach(t => t.stop());
@@ -147,7 +174,6 @@ export function BulkOCRScreen({ onClose }: BulkOCRScreenProps) {
         if (ocrError) throw new Error("Error IA: Verificá conexión");
         if (!ocrData || !ocrData.direccion) throw new Error("Sin dirección detectada");
 
-        // Prioridad al tracking Number detectado, sino ML ID, sino generado
         const tracking = ocrData.trackingNumber || ocrData.mlShipmentId || `OCR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
         const { data: envio, error: insertError } = await supabase.from('envios').insert({
@@ -170,6 +196,9 @@ export function BulkOCRScreen({ onClose }: BulkOCRScreenProps) {
           if (insertError.code === '23505') throw new Error(`Tracking duplicado: ${tracking}`);
           throw new Error(`DB Error: ${insertError.message}`);
         }
+
+        // Geocode in background
+        geocodeAndUpdate(envio.id, ocrData.direccion, ocrData.localidad || '');
 
         setPackages(prev => [...prev, {
           id: envio.id,
@@ -197,7 +226,6 @@ export function BulkOCRScreen({ onClose }: BulkOCRScreenProps) {
     queryClient.invalidateQueries({ queryKey: ['envios'] });
     queryClient.invalidateQueries({ queryKey: ['envios-planificador'] });
     const ids = packages.map(p => p.id).join(',');
-    // Fix: RoutePlanner expects 'envios' parameter, not 'envio_ids'
     navigate(`/route-planner?envios=${ids}`);
     onClose();
   }, [packages, queryClient, navigate, onClose]);
@@ -264,6 +292,97 @@ export function BulkOCRScreen({ onClose }: BulkOCRScreenProps) {
     );
   }
 
+  // Burst mode: show OCR dialog + floating action panel
+  if (mode === 'burst') {
+    const savedCount = packages.length;
+    const processingCount = queue.filter(q => q.status === 'processing').length;
+
+    return (
+      <div className="fixed inset-0 z-[10000] bg-slate-950 flex flex-col">
+        <OCRCaptureDialog
+          open={showOCR}
+          onClose={() => { setShowOCR(false); setMode('select'); }}
+          onConfirm={async (d) => {
+            if (!profileData) return;
+            const trackingNumber = d.mlShipmentId || `OCR-${Date.now()}`;
+            const { data: envio } = await supabase.from('envios').insert({
+              tracking_number: trackingNumber,
+              direccion_entrega: d.direccion,
+              ciudad_entrega: d.localidad,
+              cp_entrega: d.codigoPostal,
+              nombre_destinatario: d.nombreDestinatario || null,
+              notas: d.referencia || d.barrio || null,
+              estado: 'pendiente',
+              precio_total: 0,
+              tenant_id: profileData.tenant_id,
+              sucursal_origen_id: profileData.sucursal_id,
+              ml_shipment_id: d.mlShipmentId ? parseInt(d.mlShipmentId) : null,
+              source_module: 'bulk_ocr_burst',
+              created_by: user?.id
+            }).select().single();
+
+            if (envio) {
+              // Geocode in background
+              geocodeAndUpdate(envio.id, d.direccion, d.localidad);
+
+              setPackages(prev => [...prev, {
+                id: envio.id,
+                tracking_number: trackingNumber,
+                direccion: d.direccion,
+                localidad: d.localidad,
+                codigoPostal: d.codigoPostal || '',
+                nombreDestinatario: d.nombreDestinatario || ''
+              }]);
+            }
+          }}
+          continuousMode
+          onQueueUpdate={(item) => {
+            setQueue(prev => {
+              const idx = prev.findIndex(q => q.id === item.id);
+              if (idx >= 0) { const u = [...prev]; u[idx] = item; return u; }
+              return [...prev, item];
+            });
+          }}
+        />
+
+        {/* Floating action panel for burst mode */}
+        <div className="fixed bottom-0 left-0 right-0 z-[10002] bg-slate-900/95 backdrop-blur-xl border-t border-slate-700 p-4 pb-safe-extra shadow-2xl">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Package className="h-5 w-5 text-primary" />
+              <span className="text-white font-black text-lg">{savedCount}</span>
+              <span className="text-slate-400 text-xs font-bold uppercase">guardados</span>
+            </div>
+            {processingCount > 0 && (
+              <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 animate-pulse">
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                Procesando {processingCount}
+              </Badge>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleGoToPlanner}
+              disabled={savedCount === 0}
+              className="flex-1 h-14 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-black shadow-lg disabled:opacity-40"
+            >
+              <Route className="mr-2 h-5 w-5" />
+              PLANIFICAR ({savedCount})
+            </Button>
+            <Button
+              onClick={() => { setShowOCR(false); onClose(); }}
+              variant="outline"
+              className="h-14 rounded-2xl border-slate-600 text-white font-black px-6"
+            >
+              LISTO
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Album mode UI
   return (
     <div className="fixed inset-0 z-[10000] bg-slate-950 flex flex-col p-4 pt-safe-extra pb-safe-extra overflow-hidden">
       <div className="flex items-center justify-between mb-6 mt-10 px-2">
@@ -353,48 +472,7 @@ export function BulkOCRScreen({ onClose }: BulkOCRScreenProps) {
         )}
       </div>
 
-      <OCRCaptureDialog
-        open={showOCR}
-        onClose={() => { setShowOCR(false); setMode('select'); }}
-        onConfirm={async (d) => {
-          if (!profileData) return;
-          const trackingNumber = d.trackingNumber || d.mlShipmentId || `OCR-${Date.now()}`;
-          const { data: envio } = await supabase.from('envios').insert({
-            tracking_number: trackingNumber,
-            direccion_entrega: d.direccion,
-            ciudad_entrega: d.localidad,
-            cp_entrega: d.codigoPostal,
-            nombre_destinatario: d.nombreDestinatario || null,
-            notas: d.referencia || d.barrio || null,
-            estado: 'pendiente',
-            precio_total: 0,
-            tenant_id: profileData.tenant_id,
-            sucursal_origen_id: profileData.sucursal_id,
-            ml_shipment_id: d.mlShipmentId ? parseInt(d.mlShipmentId) : null,
-            source_module: 'bulk_ocr_burst',
-            created_by: user?.id
-          }).select().single();
-
-          if (envio) {
-            setPackages(prev => [...prev, {
-              id: envio.id,
-              tracking_number: trackingNumber,
-              direccion: d.direccion,
-              localidad: d.localidad,
-              codigoPostal: d.codigoPostal || '',
-              nombreDestinatario: d.nombreDestinatario || ''
-            }]);
-          }
-        }}
-        continuousMode
-        onQueueUpdate={(item) => {
-          setQueue(prev => {
-            const idx = prev.findIndex(q => q.id === item.id);
-            if (idx >= 0) { const u = [...prev]; u[idx] = item; return u; }
-            return [...prev, item];
-          });
-        }}
-      />
+      <canvas ref={canvasRef} className="hidden" />
     </div>
   );
 }

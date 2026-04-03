@@ -262,7 +262,27 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
                </div>
              </div>
              <div className="flex flex-col gap-3">
-               <Button onClick={handleConfirm} className="w-full h-16 bg-primary hover:bg-primary/90 text-white font-black rounded-2xl shadow-lg">
+               <Button onClick={() => {
+                 const data: OCRConfirmData = {
+                   direccion,
+                   localidad,
+                   codigoPostal,
+                   nombreDestinatario,
+                   mlShipmentId: mlShipmentId,
+                 };
+                 const result = onConfirm(data);
+                 if (result instanceof Promise) {
+                   result.then(() => {
+                     setStep('capture');
+                     setDireccion(''); setLocalidad(''); setCodigoPostal(''); setNombreDestinatario('');
+                     setCapturedImage(null);
+                   });
+                 } else {
+                   setStep('capture');
+                   setDireccion(''); setLocalidad(''); setCodigoPostal(''); setNombreDestinatario('');
+                   setCapturedImage(null);
+                 }
+               }} className="w-full h-16 bg-primary hover:bg-primary/90 text-white font-black rounded-2xl shadow-lg">
                  GUARDAR ENVÍO
                </Button>
                <Button variant="ghost" onClick={() => setStep('capture')} className="w-full text-slate-500 font-bold uppercase tracking-tighter">

@@ -259,9 +259,22 @@ export function CollectRouteSheetDialog({ hojaRutaId, onClose, onSuccess }: Coll
 
       {showScanner && (
         <QRScanner
-          onScan={() => {}}
+          onScan={(scannedData: string) => {
+            if (!hojaRuta) return;
+            const foundItem = hojaRuta.envios.find(item => item.envio.tracking_number === scannedData);
+            if (foundItem) {
+              setSelectedEnvios(prev => {
+                if (prev.includes(foundItem.envio.id)) return prev;
+                toast.success(`Paquete ${scannedData} marcado`);
+                return [...prev, foundItem.envio.id];
+              });
+            } else {
+              toast.error(`${scannedData} no pertenece a esta hoja`);
+            }
+          }}
           onClose={() => setShowScanner(false)}
-          onCollect={handleScannerCollect}
+          continuousMode
+          scannedCount={selectedEnvios.length}
         />
       )}
     </>
