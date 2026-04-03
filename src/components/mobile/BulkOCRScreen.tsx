@@ -69,15 +69,22 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { takePhoto } = useNativeCamera();
+  const { setCameraActive } = useMobileCamera();
+
+  // Hide bottom nav while this screen is open
+  useEffect(() => {
+    setCameraActive(true);
+    return () => setCameraActive(false);
+  }, [setCameraActive]);
 
   const [mode, setMode] = useState<BulkMode>('select');
   const [packages, setPackages] = useState<BulkPackage[]>([]);
-  const [queue, setQueue] = useState<QueueEntry[]>([]);
-  const [showOCR, setShowOCR] = useState(false);
   const [albumPhotos, setAlbumPhotos] = useState<AlbumPhoto[]>([]);
   const [albumPhase, setAlbumPhase] = useState<AlbumPhase>('capturing');
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [processedCount, setProcessedCount] = useState(0);
+  // Burst mode state
+  const [burstProcessing, setBurstProcessing] = useState(0);
 
   const [profileData, setProfileData] = useState<{ tenant_id: string; sucursal_id: string | null } | null>(null);
 
