@@ -10,6 +10,7 @@ interface MobileBottomNavProps {
   notificationCount?: number;
   userRole?: UserMobileRole;
   hasPermission?: (key: string) => boolean;
+  hidden?: boolean;
 }
 
 interface TabConfig {
@@ -50,18 +51,17 @@ const getTabsForRole = (role: UserMobileRole): TabConfig[] => {
   }
 };
 
-export function MobileBottomNav({ activeTab, onTabChange, notificationCount = 0, userRole = 'sucursal', hasPermission }: MobileBottomNavProps) {
+export function MobileBottomNav({ activeTab, onTabChange, notificationCount = 0, userRole = 'sucursal', hasPermission, hidden }: MobileBottomNavProps) {
   const allTabs = getTabsForRole(userRole);
   
   // Filter tabs based on permissions
   const tabs = allTabs.filter(tab => {
-    // Tabs without permissionKey are always visible (home, profile, history)
     if (!tab.permissionKey) return true;
-    // If hasPermission function is not available, show all tabs (fallback)
     if (!hasPermission) return true;
-    // Check if user has the required permission
     return hasPermission(tab.permissionKey);
   });
+
+  if (hidden) return null;
 
   return (
     <nav 

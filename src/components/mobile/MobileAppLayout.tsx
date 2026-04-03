@@ -26,13 +26,15 @@ import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { useSubscriptionBlock } from '@/hooks/useSubscriptionBlock';
 import { SubscriptionBlockScreen } from '@/components/subscription/SubscriptionBlockScreen';
 import { Progress } from '@/components/ui/progress';
+import { MobileCameraProvider, useMobileCamera } from './MobileCameraContext';
 
 export type UserMobileRole = 'chofer' | 'centro_logistico' | 'sucursal';
 
 // Tab index for animation direction
 const TAB_ORDER: MobileTab[] = ['home', 'routes', 'reception', 'deliveries', 'scan', 'earnings', 'history', 'profile'];
 
-export function MobileAppLayout() {
+function MobileAppLayoutInner() {
+  const { isCameraActive } = useMobileCamera();
   const [activeTab, setActiveTab] = useState<MobileTab>('home');
   const [showNotifications, setShowNotifications] = useState(false);
   const [showCheckOut, setShowCheckOut] = useState(false);
@@ -276,6 +278,7 @@ export function MobileAppLayout() {
         notificationCount={unreadCount}
         userRole={userRole}
         hasPermission={hasPermission}
+        hidden={isCameraActive}
       />
 
       {/* Notifications Sheet */}
@@ -299,5 +302,13 @@ export function MobileAppLayout() {
         />
       )}
     </div>
+  );
+}
+
+export function MobileAppLayout() {
+  return (
+    <MobileCameraProvider>
+      <MobileAppLayoutInner />
+    </MobileCameraProvider>
   );
 }

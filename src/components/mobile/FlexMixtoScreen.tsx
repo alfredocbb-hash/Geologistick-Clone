@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +21,7 @@ import { CreateRouteSheetDialog } from '@/components/scan/CreateRouteSheetDialog
 import { OCRCaptureDialog } from './OCRCaptureDialog';
 import { BulkOCRScreen } from './BulkOCRScreen';
 import { parseQRCode } from '@/lib/qrParser';
+import { useMobileCamera } from './MobileCameraContext';
 import { useNavigate } from 'react-router-dom';
 import type { FlexPackage } from '@/hooks/useFlexPackages';
 
@@ -28,7 +29,7 @@ export function FlexMixtoScreen() {
   const navigate = useNavigate();
   const { user, hasRole, profile } = useAuth();
   const { hasPermission } = usePermissions();
-  
+  const { setCameraActive } = useMobileCamera();
   const [showScanner, setShowScanner] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const [showTransferDialog, setShowTransferDialog] = useState(false);
@@ -41,6 +42,12 @@ export function FlexMixtoScreen() {
   const [showOCRCapture, setShowOCRCapture] = useState(false);
   const [pendingMLShipmentId, setPendingMLShipmentId] = useState<string | undefined>();
   const [showBulkOCR, setShowBulkOCR] = useState(false);
+
+  // Hide bottom nav when camera overlays are active
+  useEffect(() => {
+    const cameraOpen = showScanner || showOCRCapture || showBulkOCR;
+    setCameraActive(cameraOpen);
+  }, [showScanner, showOCRCapture, showBulkOCR, setCameraActive]);
   
   const {
     packages, isLoading, addPackageByTracking, addPackage,

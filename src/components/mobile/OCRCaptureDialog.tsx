@@ -6,6 +6,7 @@ import { Loader2, Camera, X, Check, MapPin, AlertTriangle, RefreshCw, Smartphone
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useNativeCamera } from '@/hooks/useNativeCamera';
+import { useMobileCamera } from './MobileCameraContext';
 
 export interface OCRConfirmData {
   direccion: string;
@@ -40,6 +41,13 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
   const [savedCount, setSavedCount] = useState(0);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const { takePhoto } = useNativeCamera();
+  const { setCameraActive } = useMobileCamera();
+
+  // Hide bottom nav when open
+  useEffect(() => {
+    if (open) setCameraActive(true);
+    return () => { if (open) setCameraActive(false); };
+  }, [open, setCameraActive]);
 
   const [direccion, setDireccion] = useState('');
   const [localidad, setLocalidad] = useState('');
