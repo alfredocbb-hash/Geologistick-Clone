@@ -33,7 +33,7 @@ export type UserMobileRole = 'chofer' | 'centro_logistico' | 'sucursal';
 // Tab index for animation direction
 const TAB_ORDER: MobileTab[] = ['home', 'routes', 'reception', 'deliveries', 'scan', 'earnings', 'history', 'profile'];
 
-export function MobileAppLayout() {
+function MobileAppLayoutInner() {
   const [activeTab, setActiveTab] = useState<MobileTab>('home');
   const [showNotifications, setShowNotifications] = useState(false);
   const [showCheckOut, setShowCheckOut] = useState(false);
