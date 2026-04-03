@@ -10,6 +10,7 @@ interface MobileBottomNavProps {
   notificationCount?: number;
   userRole?: UserMobileRole;
   hasPermission?: (key: string) => boolean;
+  hidden?: boolean;
 }
 
 interface TabConfig {
