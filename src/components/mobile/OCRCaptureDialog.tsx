@@ -6,6 +6,7 @@ import { Loader2, Camera, X, Check, MapPin, AlertTriangle, RefreshCw, Smartphone
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useNativeCamera } from '@/hooks/useNativeCamera';
+import { useMobileCamera } from './MobileCameraContext';
 
 export interface OCRConfirmData {
   direccion: string;
