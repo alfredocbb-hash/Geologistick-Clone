@@ -278,6 +278,7 @@ function MobileAppLayoutInner() {
         notificationCount={unreadCount}
         userRole={userRole}
         hasPermission={hasPermission}
+        hidden={isCameraActive}
       />
 
       {/* Notifications Sheet */}
