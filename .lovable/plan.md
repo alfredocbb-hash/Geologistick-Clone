@@ -1,71 +1,57 @@
 
 
-## Plan: Ocultar menú con cámara + Acelerar procesamiento + Fix modo ráfaga
+## Plan: Theme Switcher con temas personalizados (Dark, Light, Midnight, Logistics Blue)
 
-### Problema 1: Menú inferior visible con cámara abierta
-El `MobileBottomNav` (z-50) se mantiene visible debajo de los overlays de cámara. Aunque los overlays tienen z-index mayor, en algunos dispositivos Android el nav puede asomarse o causar interacciones fantasma. Se necesita ocultarlo explícitamente.
+### Situación actual
+- Ya existe `next-themes` con `ThemeProvider` en `App.tsx` (attribute="class", defaultTheme="system")
+- Ya existe `ThemeToggle.tsx` (toggle simple dark/light)
+- `index.css` define muy pocas variables CSS (solo `--background`, `--foreground`, `--primary`, `--warning`, `--radius` para `:root` y `.dark`)
+- Muchas variables referenciadas en `tailwind.config.ts` (card, muted, accent, sidebar, destructive, etc.) no están definidas
+- El perfil (`Profile.tsx`) ya tiene un selector de tema con 3 opciones (light/dark/system)
+- `TenantProvider` sobreescribe algunas variables en runtime con colores de branding
 
-### Problema 2: Procesamiento lento para 50+ imágenes
-Actualmente las imágenes se procesan **secuencialmente** (una por una). Con 50 imágenes a ~3-5 segundos cada una, son ~3-4 minutos de espera.
+### Cambios
 
-### Problema 3: Modo ráfaga no funciona
-El modo ráfaga abre `OCRCaptureDialog` (z-[10000]) que ocupa toda la pantalla con sus controles de cámara en la parte inferior. El panel flotante de acciones (PLANIFICAR/LISTO, z-[10002]) queda superpuesto debajo de los botones de captura del dialog. El usuario no puede ver ni interactuar con los botones de acción.
+**1. `src/index.css`** — Definir conjuntos completos de variables CSS para 4 temas:
+- `:root` (Light) — paleta clara completa con todos los tokens (background, foreground, card, popover, primary, secondary, muted, accent, destructive, border, input, ring, sidebar, success, warning, info, colores por modulo)
+- `.dark` — tema oscuro actual mejorado con todas las variables
+- `.midnight` — tema ultra-oscuro con tonos azul profundo (fondos slate-950, acentos azul-índigo)
+- `.logistics-blue` — tema profesional azul oscuro con acentos teal/cyan
 
----
+**2. `src/components/theme/ThemeToggle.tsx`** — Reemplazar toggle binario por dropdown con 4 opciones:
+- Usar `DropdownMenu` de shadcn para mostrar las opciones: Claro, Oscuro, Midnight, Logistics Blue, Sistema
+- Cada opción muestra un mini-preview (círculos de color representando la paleta)
+- Icono dinámico según tema activo (Sun, Moon, Star, Ship, Monitor)
 
-### Solución
+**3. `src/App.tsx`** — Actualizar `ThemeProvider`:
+- Cambiar `themes={['light', 'dark', 'midnight', 'logistics-blue', 'system']}` para registrar los temas custom
+- Mantener `attribute="class"` para que `next-themes` aplique la clase CSS correcta al `<html>`
 
-**`src/components/mobile/MobileAppLayout.tsx`** — Context para ocultar bottom nav:
-- Crear un estado `isCameraActive` y pasarlo como prop a `MobileBottomNav`
-- Exponer `setCameraActive` via un React Context (`MobileCameraContext`)
-- En `MobileBottomNav`, si `isCameraActive === true`, no renderizar nada (return null)
+**4. `src/pages/Profile.tsx`** — Actualizar selector de preferencias:
+- Agregar las 2 opciones nuevas (Midnight, Logistics Blue) al `ToggleGroup` existente
+- Iconos consistentes con el dropdown del header
 
-**`src/components/mobile/MobileBottomNav.tsx`** — Aceptar prop `hidden`:
-- Nuevo prop `hidden?: boolean`
-- Si `hidden` es `true`, retornar `null`
+**5. `src/components/mobile/MobileProfileTab.tsx`** — Actualizar selector móvil:
+- Agregar las mismas opciones de tema disponibles en la versión desktop
 
-**`src/components/mobile/BulkOCRScreen.tsx`** — Ocultar nav + procesamiento paralelo + fix ráfaga:
-- Consumir `MobileCameraContext` y llamar `setCameraActive(true)` al montar, `false` al desmontar
-- **Procesamiento paralelo**: Cambiar el loop secuencial de `processAlbum` para procesar en lotes de 3 imágenes concurrentes usando `Promise.all` con chunks
-- **Fix modo ráfaga**: No usar `OCRCaptureDialog` como componente separado. En su lugar, integrar la cámara directamente en el modo ráfaga (reusar la misma vista de cámara del modo álbum) con el panel de acciones visible debajo. Cada foto capturada se procesa en background via `ocr-label` y el contador se actualiza en tiempo real.
-
-**`src/components/mobile/FlexMixtoScreen.tsx`** — Ocultar nav al abrir scanner/OCR:
-- Consumir `MobileCameraContext` para activarlo cuando se abre `showScanner`, `showOCRCapture`, o `showBulkOCR`
-
-**`src/components/mobile/OCRCaptureDialog.tsx`** — Ocultar nav:
-- Consumir `MobileCameraContext` al abrir
-
-### Procesamiento paralelo (detalle técnico)
-
-```text
-Antes:  foto1 → foto2 → foto3 → ... → foto50  (secuencial ~4 min)
-Después: [foto1, foto2, foto3] → [foto4, foto5, foto6] → ...  (paralelo ~1.5 min)
-```
-
-Se divide `photosToProcess` en chunks de 3 y se procesan con `Promise.allSettled`.
-
-### Modo ráfaga corregido
+### Paletas de ejemplo (valores HSL)
 
 ```text
-┌─────────────────────────┐
-│     CÁMARA (video)      │
-│                         │
-│   [guías de encuadre]   │
-│                         │
-├─────────────────────────┤
-│  📦 5 guardados         │
-│  ⏳ Procesando 2        │
-│ [  📸 CAPTURAR  ]       │
-│ [PLANIFICAR] [LISTO]    │
-└─────────────────────────┘
+Light:     bg=0 0% 100%       fg=222 47% 11%    primary=217 91% 60%
+Dark:      bg=222 47% 6%      fg=210 40% 98%    primary=217 91% 60%  
+Midnight:  bg=230 35% 5%      fg=220 30% 90%    primary=250 80% 65%
+Logistics: bg=210 40% 8%      fg=200 30% 92%    primary=185 70% 50%
 ```
 
-En vez de abrir `OCRCaptureDialog` por separado, el modo ráfaga usa su propia vista de cámara integrada con los controles y el panel de acción en una sola pantalla.
+### Notas
+- `TenantProvider` sigue funcionando: sobreescribe variables en runtime después del tema base
+- `next-themes` guarda la elección en `localStorage` automáticamente
+- No se modifica `tailwind.config.ts` — ya referencia todas las variables necesarias
 
 ### Archivos a modificar
-- `src/components/mobile/MobileAppLayout.tsx` — Crear `MobileCameraContext`, estado `isCameraActive`, pasarlo al nav
-- `src/components/mobile/MobileBottomNav.tsx` — Prop `hidden`, return null si es true
-- `src/components/mobile/BulkOCRScreen.tsx` — Consumir context, procesamiento paralelo, integrar cámara en ráfaga
-- `src/components/mobile/FlexMixtoScreen.tsx` — Consumir context al abrir cámara
-- `src/components/mobile/OCRCaptureDialog.tsx` — Consumir context al abrir
+- `src/index.css` — Definir paletas completas para los 4 temas
+- `src/components/theme/ThemeToggle.tsx` — Dropdown con previews de color
+- `src/App.tsx` — Registrar temas custom en ThemeProvider
+- `src/pages/Profile.tsx` — Agregar opciones Midnight y Logistics Blue
+- `src/components/mobile/MobileProfileTab.tsx` — Mismo selector en móvil
 
