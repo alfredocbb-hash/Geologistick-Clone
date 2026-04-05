@@ -298,17 +298,34 @@ export function MobileProfileTab({ onCheckOut }: MobileProfileTabProps = {}) {
           onClick={() => navigate('/profile')}
         />
         <Separator className="bg-slate-700/50" />
-        <MenuItem
-          icon={theme === 'dark' ? Moon : Sun}
-          label="Tema oscuro"
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          rightElement={
-            <Switch
-              checked={theme === 'dark'}
-              onCheckedChange={(checked) => setTheme(checked ? 'dark' : 'light')}
-            />
-          }
-        />
+        <div className="p-4">
+          <p className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
+            <Moon className="h-4 w-4 text-muted-foreground" />
+            Tema
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { value: 'light', label: 'Claro', Icon: Sun },
+              { value: 'dark', label: 'Oscuro', Icon: Moon },
+              { value: 'midnight', label: 'Midnight', Icon: Moon },
+              { value: 'logistics-blue', label: 'Logistics', Icon: Moon },
+              { value: 'system', label: 'Sistema', Icon: Moon },
+            ].map(({ value, label, Icon }) => (
+              <button
+                key={value}
+                onClick={() => setTheme(value)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                  theme === value
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
       </Card>
 
       <Card className="bg-slate-800/30 border-slate-700 overflow-hidden">

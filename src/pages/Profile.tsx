@@ -6,7 +6,7 @@ import { SecurityCard } from '@/components/profile/SecurityCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
-import { Package, TrendingUp, Route, Sun, Moon, Monitor } from 'lucide-react';
+import { Package, TrendingUp, Route, Sun, Moon, Monitor, Star, Ship } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useTheme } from 'next-themes';
 import { Label } from '@/components/ui/label';
@@ -138,7 +138,7 @@ export default function Profile() {
                 type="single" 
                 value={theme} 
                 onValueChange={(value) => value && setTheme(value)}
-                className="justify-start"
+                className="justify-start flex-wrap"
               >
                 <ToggleGroupItem value="light" aria-label="Modo claro">
                   <Sun className="h-4 w-4 mr-2" />
@@ -147,6 +147,14 @@ export default function Profile() {
                 <ToggleGroupItem value="dark" aria-label="Modo oscuro">
                   <Moon className="h-4 w-4 mr-2" />
                   Oscuro
+                </ToggleGroupItem>
+                <ToggleGroupItem value="midnight" aria-label="Midnight">
+                  <Star className="h-4 w-4 mr-2" />
+                  Midnight
+                </ToggleGroupItem>
+                <ToggleGroupItem value="logistics-blue" aria-label="Logistics Blue">
+                  <Ship className="h-4 w-4 mr-2" />
+                  Logistics
                 </ToggleGroupItem>
                 <ToggleGroupItem value="system" aria-label="Sistema">
                   <Monitor className="h-4 w-4 mr-2" />
