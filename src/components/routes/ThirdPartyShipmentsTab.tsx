@@ -38,7 +38,10 @@ import {
   MapPin,
   Calendar,
   Clock,
+  Images,
 } from "lucide-react";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { BulkOCRScreen } from "@/components/mobile/BulkOCRScreen";
 import { format } from "date-fns";
 import { AddressAutocomplete, AddressDetails } from "@/components/maps/AddressAutocomplete";
 import ContactAutocomplete from "@/components/shipments/ContactAutocomplete";
