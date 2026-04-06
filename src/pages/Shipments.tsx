@@ -879,6 +879,41 @@ export default function Shipments() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Bulk Delete Dialog (Super Admin only) */}
+      <AlertDialog open={bulkDeleteDialogOpen} onOpenChange={setBulkDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Eliminar {selectedEnvioIds.size} envío(s) permanentemente
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  Estás a punto de eliminar permanentemente <strong>{selectedEnvioIds.size} envío(s)</strong>.
+                </p>
+                <p className="font-medium text-destructive">
+                  Se eliminarán todos los registros asociados de cada envío: historial, pagos, movimientos de caja, paradas de ruta y comisiones.
+                </p>
+                <p className="text-sm font-semibold text-foreground">
+                  Esta acción es irreversible.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => bulkDeleteMutation.mutate([...selectedEnvioIds])}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={bulkDeleteMutation.isPending}
+            >
+              {bulkDeleteMutation.isPending ? 'Eliminando...' : `Eliminar ${selectedEnvioIds.size} envío(s)`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* History Dialog */}
       <ShipmentHistoryDialog
         open={historyDialogOpen}
