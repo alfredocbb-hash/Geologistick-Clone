@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import {
@@ -83,6 +84,29 @@ export default function Shipments() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [envioToDelete, setEnvioToDelete] = useState<any>(null);
+  const [selectedEnvioIds, setSelectedEnvioIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
+
+  const toggleSelectEnvio = useCallback((id: string) => {
+    setSelectedEnvioIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    if (!filteredEnviosRef.current) return;
+    setSelectedEnvioIds(prev => {
+      const allIds = filteredEnviosRef.current!.map((e: any) => e.id);
+      const allSelected = allIds.every((id: string) => prev.has(id));
+      if (allSelected) return new Set();
+      return new Set(allIds);
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => setSelectedEnvioIds(new Set()), []);
+  const filteredEnviosRef = useRef<any[] | null>(null);
   
   useQuery({
     queryKey: ['user-sucursal-check', profile?.sucursal_id],
@@ -245,6 +269,36 @@ export default function Shipments() {
     },
   });
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      for (let i = 0; i < ids.length; i++) {
+        const envioId = ids[i];
+        toast.loading(`Eliminando ${i + 1} de ${ids.length}...`, { id: 'bulk-delete' });
+        await supabase.from('envio_historial').delete().eq('envio_id', envioId);
+        await supabase.from('envio_detalles').delete().eq('envio_id', envioId);
+        await supabase.from('comisiones').delete().eq('envio_id', envioId);
+        await supabase.from('pagos').delete().eq('envio_id', envioId);
+        await supabase.from('movimientos_caja').delete().eq('envio_id', envioId);
+        await supabase.from('ruta_paradas').delete().eq('envio_id', envioId);
+        await supabase.from('hoja_ruta_envios').delete().eq('envio_id', envioId);
+        await supabase.from('ecommerce_orders').update({ envio_id: null }).eq('envio_id', envioId);
+        const { error } = await supabase.from('envios').delete().eq('id', envioId);
+        if (error) throw error;
+      }
+    },
+    onSuccess: (_data, ids) => {
+      toast.success(`${ids.length} envío(s) eliminados permanentemente`, { id: 'bulk-delete' });
+      queryClient.invalidateQueries({ queryKey: ['envios'] });
+      queryClient.invalidateQueries({ queryKey: ['envios-stats'] });
+      setBulkDeleteDialogOpen(false);
+      clearSelection();
+    },
+    onError: (error) => {
+      toast.error('Error al eliminar envíos', { id: 'bulk-delete' });
+      console.error(error);
+    },
+  });
+
   const { data: enviosData, isLoading, refetch } = useQuery({
     queryKey: ['envios', statusFilter, dateFrom.toISOString(), dateTo.toISOString()],
     queryFn: async () => {
@@ -326,6 +380,7 @@ export default function Shipments() {
       envio.nombre_destinatario?.toLowerCase().includes(searchLower)
     );
   });
+  filteredEnviosRef.current = filteredEnvios || null;
 
   const StatusBadge = ({ status }: { status: ShipmentStatus }) => {
     const config = statusConfig[status];
@@ -487,6 +542,30 @@ export default function Shipments() {
         </CardContent>
       </Card>
 
+      {/* Bulk Actions Bar */}
+      {isSuperAdmin() && selectedEnvioIds.size > 0 && (
+        <Card className="border-destructive">
+          <CardContent className="py-3 flex items-center justify-between">
+            <span className="text-sm font-medium">
+              {selectedEnvioIds.size} envío(s) seleccionado(s)
+            </span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={clearSelection}>
+                Deseleccionar todo
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setBulkDeleteDialogOpen(true)}
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                Eliminar seleccionados
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Table */}
       <Card>
         <CardContent className="p-0">
@@ -498,6 +577,14 @@ export default function Shipments() {
             <Table>
               <TableHeader>
                 <TableRow>
+                   {isSuperAdmin() && (
+                     <TableHead className="w-10">
+                       <Checkbox
+                         checked={filteredEnvios.length > 0 && filteredEnvios.every((e: any) => selectedEnvioIds.has(e.id))}
+                         onCheckedChange={toggleSelectAll}
+                       />
+                     </TableHead>
+                   )}
                    <TableHead>Tracking</TableHead>
                    <TableHead>IDML</TableHead>
                    <TableHead>Remitente</TableHead>
@@ -516,6 +603,15 @@ export default function Shipments() {
               <TableBody>
                 {filteredEnvios.map((envio) => (
                   <TableRow key={envio.id} className="cursor-pointer hover:bg-muted/50">
+                    {isSuperAdmin() && (
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedEnvioIds.has(envio.id)}
+                          onCheckedChange={() => toggleSelectEnvio(envio.id)}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </TableCell>
+                    )}
                     <TableCell>
                       <div className="font-mono font-medium text-primary">
                         {envio.tracking_number}
@@ -778,6 +874,41 @@ export default function Shipments() {
               disabled={deleteMutation.isPending}
             >
               {deleteMutation.isPending ? 'Eliminando...' : 'Eliminar permanentemente'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Delete Dialog (Super Admin only) */}
+      <AlertDialog open={bulkDeleteDialogOpen} onOpenChange={setBulkDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Eliminar {selectedEnvioIds.size} envío(s) permanentemente
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  Estás a punto de eliminar permanentemente <strong>{selectedEnvioIds.size} envío(s)</strong>.
+                </p>
+                <p className="font-medium text-destructive">
+                  Se eliminarán todos los registros asociados de cada envío: historial, pagos, movimientos de caja, paradas de ruta y comisiones.
+                </p>
+                <p className="text-sm font-semibold text-foreground">
+                  Esta acción es irreversible.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => bulkDeleteMutation.mutate([...selectedEnvioIds])}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={bulkDeleteMutation.isPending}
+            >
+              {bulkDeleteMutation.isPending ? 'Eliminando...' : `Eliminar ${selectedEnvioIds.size} envío(s)`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
