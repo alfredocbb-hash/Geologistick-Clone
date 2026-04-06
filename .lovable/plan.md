@@ -1,26 +1,27 @@
 
 
-## Verificación: Botón "Importar con IA" en ThirdPartyShipmentsTab
+## Plan: BulkOCRScreen funcione en escritorio con selector de archivos
 
-### Estado: Implementado correctamente
+### Problema
+El componente `BulkOCRScreen` esta disenado 100% para movil (pantalla completa negra, camara, video). Cuando se abre desde el escritorio via "Importar con IA" en ThirdPartyShipmentsTab, muestra la interfaz de camara movil que no funciona en desktop.
 
-El código está bien estructurado:
-- **Botón** (línea 631-639): Visible en el header de "Agregar Envío Terciarizado" con icono `Images` y texto "Importar con IA"
-- **Estado**: `showBulkOCR` controla la apertura del Dialog
-- **Dialog** (línea 1034-1042): Monta `BulkOCRScreen` con invalidación de queries al cerrar
-- **Import**: `BulkOCRScreen` y `Dialog` importados correctamente
-- **MobileCameraContext**: Tiene valor default, no crashea sin el Provider (funciona en web)
+### Solucion
 
-### Problema detectado: Falta DialogTitle (accesibilidad)
+**`src/components/mobile/BulkOCRScreen.tsx`** — Detectar si estamos en desktop y adaptar el flujo:
 
-El console log muestra el error: `DialogContent requires a DialogTitle for screen reader users`. El Dialog que envuelve BulkOCRScreen no tiene título.
+1. **Importar `useIsMobile`** y detectar si estamos en desktop
+2. **En desktop, saltar la pantalla de seleccion de modo** ("select") y ir directo al modo album
+3. **Reemplazar el boton de camara por un `<input type="file" accept="image/*" multiple />`** que permite seleccionar multiples imagenes del sistema de archivos
+4. **Al seleccionar archivos**, convertirlos a dataUrl y agregarlos a `albumPhotos` automaticamente
+5. **Adaptar el layout**: en desktop no usar `fixed inset-0` sino un contenedor normal que funcione dentro del Dialog del padre; quitar estilos de pantalla completa oscura cuando es desktop
+6. **Mantener el resto del flujo igual**: grid de fotos, boton PROCESAR, edicion manual de errores, PLANIFICAR
 
-### Corrección necesaria
-
-**`src/components/routes/ThirdPartyShipmentsTab.tsx`** — Agregar `DialogTitle` con `VisuallyHidden` dentro del Dialog:
-- Importar `DialogHeader` y `DialogTitle` de `@/components/ui/dialog`
-- Agregar un `DialogTitle` oculto visualmente (con `className="sr-only"`) dentro del `DialogContent` para satisfacer la accesibilidad sin afectar el diseño
+### Cambios concretos en el componente:
+- Nueva funcion `handleFileSelect(e: ChangeEvent<HTMLInputElement>)` que lee archivos con FileReader y los agrega como albumPhotos
+- En desktop: el mode arranca en `'album'` directamente, no muestra la pantalla "select"
+- En la vista de album en desktop: boton "Seleccionar Imagenes" con input file en vez de boton de camara
+- El contenedor principal usa clases condicionales: `fixed inset-0 bg-slate-950` en movil, layout normal en desktop
 
 ### Archivos a modificar
-- `src/components/routes/ThirdPartyShipmentsTab.tsx` — Agregar DialogTitle oculto al Dialog de BulkOCR
+- `src/components/mobile/BulkOCRScreen.tsx` — Agregar deteccion desktop + input file + layout adaptativo
 
