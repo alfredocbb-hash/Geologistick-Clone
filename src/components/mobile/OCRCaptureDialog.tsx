@@ -256,58 +256,68 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
             </div>
           </div>
         ) : (
-          <div className="p-6 bg-slate-900 rounded-[2.5rem] border border-slate-800 space-y-6 shadow-2xl animate-in fade-in slide-in-from-bottom-4">
-             <div className="space-y-4">
+          <div className="p-5 bg-slate-900 rounded-[2.5rem] border border-slate-800 space-y-4 shadow-2xl animate-in fade-in slide-in-from-bottom-4 max-h-[70vh] overflow-y-auto">
+             <div className="space-y-3">
+               <div>
+                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-2">Destinatario</label>
+                 <input value={nombreDestinatario} onChange={e => setNombreDestinatario(e.target.value)} placeholder="Nombre destinatario" className="w-full bg-slate-800 p-3 rounded-2xl text-white border-none focus:ring-2 focus:ring-primary text-sm font-bold" />
+               </div>
                <div>
                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-2">Dirección</label>
-                 <input
-                   value={direccion}
-                   onChange={e => setDireccion(e.target.value)}
-                   placeholder="Dirección completa"
-                   className="w-full bg-slate-800 p-4 rounded-2xl text-white border-none focus:ring-2 focus:ring-primary text-sm font-bold"
-                 />
+                 <input value={direccion} onChange={e => setDireccion(e.target.value)} placeholder="Dirección completa" className="w-full bg-slate-800 p-3 rounded-2xl text-white border-none focus:ring-2 focus:ring-primary text-sm font-bold" />
                </div>
-               <div className="grid grid-cols-2 gap-4">
+               <div className="grid grid-cols-3 gap-3">
                  <div>
                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-2">Localidad</label>
-                   <input
-                     value={localidad}
-                     onChange={e => setLocalidad(e.target.value)}
-                     placeholder="Ciudad"
-                     className="w-full bg-slate-800 p-4 rounded-2xl text-white border-none focus:ring-2 focus:ring-primary text-sm font-bold"
-                   />
+                   <input value={localidad} onChange={e => setLocalidad(e.target.value)} placeholder="Ciudad" className="w-full bg-slate-800 p-3 rounded-2xl text-white border-none focus:ring-2 focus:ring-primary text-sm font-bold" />
+                 </div>
+                 <div>
+                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-2">Provincia</label>
+                   <input value={provincia} onChange={e => setProvincia(e.target.value)} placeholder="Prov." className="w-full bg-slate-800 p-3 rounded-2xl text-white border-none focus:ring-2 focus:ring-primary text-sm font-bold" />
                  </div>
                  <div>
                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-2">CP</label>
-                   <input
-                     value={codigoPostal}
-                     onChange={e => setCodigoPostal(e.target.value)}
-                     placeholder="CP"
-                     className="w-full bg-slate-800 p-4 rounded-2xl text-white border-none focus:ring-2 focus:ring-primary text-sm font-bold"
-                   />
+                   <input value={codigoPostal} onChange={e => setCodigoPostal(e.target.value)} placeholder="CP" className="w-full bg-slate-800 p-3 rounded-2xl text-white border-none focus:ring-2 focus:ring-primary text-sm font-bold" />
                  </div>
+               </div>
+               <div className="grid grid-cols-2 gap-3">
+                 <div>
+                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-2">Teléfono</label>
+                   <input value={telefonoDestinatario} onChange={e => setTelefonoDestinatario(e.target.value)} placeholder="Tel. destinatario" className="w-full bg-slate-800 p-3 rounded-2xl text-white border-none focus:ring-2 focus:ring-primary text-sm font-bold" />
+                 </div>
+                 <div>
+                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-2">DNI</label>
+                   <input value={dniDestinatario} onChange={e => setDniDestinatario(e.target.value)} placeholder="DNI" className="w-full bg-slate-800 p-3 rounded-2xl text-white border-none focus:ring-2 focus:ring-primary text-sm font-bold" />
+                 </div>
+               </div>
+               <div>
+                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-2">Remitente</label>
+                 <input value={nombreRemitente} onChange={e => setNombreRemitente(e.target.value)} placeholder="Nombre remitente" className="w-full bg-slate-800 p-3 rounded-2xl text-white border-none focus:ring-2 focus:ring-primary text-sm font-bold" />
+               </div>
+               <div>
+                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-2">Referencia / Observaciones</label>
+                 <input value={referencia} onChange={e => setReferencia(e.target.value)} placeholder="Entre calles, piso, depto..." className="w-full bg-slate-800 p-3 rounded-2xl text-white border-none focus:ring-2 focus:ring-primary text-sm font-bold" />
                </div>
              </div>
              <div className="flex flex-col gap-3">
                <Button onClick={() => {
                  const data: OCRConfirmData = {
-                   direccion,
-                   localidad,
-                   codigoPostal,
-                   nombreDestinatario,
-                   mlShipmentId: mlShipmentId,
+                   direccion, localidad, codigoPostal, nombreDestinatario,
+                   mlShipmentId, provincia, telefonoDestinatario,
+                   dniDestinatario, nombreRemitente, referencia,
                  };
                  const result = onConfirm(data);
-                 if (result instanceof Promise) {
-                   result.then(() => {
-                     setStep('capture');
-                     setDireccion(''); setLocalidad(''); setCodigoPostal(''); setNombreDestinatario('');
-                     setCapturedImage(null);
-                   });
-                 } else {
+                 const resetFields = () => {
                    setStep('capture');
                    setDireccion(''); setLocalidad(''); setCodigoPostal(''); setNombreDestinatario('');
+                   setProvincia(''); setTelefonoDestinatario(''); setNombreRemitente('');
+                   setDniDestinatario(''); setReferencia('');
                    setCapturedImage(null);
+                 };
+                 if (result instanceof Promise) {
+                   result.then(resetFields);
+                 } else {
+                   resetFields();
                  }
                }} className="w-full h-16 bg-primary hover:bg-primary/90 text-white font-black rounded-2xl shadow-lg">
                  GUARDAR ENVÍO
