@@ -542,6 +542,30 @@ export default function Shipments() {
         </CardContent>
       </Card>
 
+      {/* Bulk Actions Bar */}
+      {isSuperAdmin() && selectedEnvioIds.size > 0 && (
+        <Card className="border-destructive">
+          <CardContent className="py-3 flex items-center justify-between">
+            <span className="text-sm font-medium">
+              {selectedEnvioIds.size} envío(s) seleccionado(s)
+            </span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={clearSelection}>
+                Deseleccionar todo
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setBulkDeleteDialogOpen(true)}
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                Eliminar seleccionados
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Table */}
       <Card>
         <CardContent className="p-0">
@@ -553,6 +577,14 @@ export default function Shipments() {
             <Table>
               <TableHeader>
                 <TableRow>
+                   {isSuperAdmin() && (
+                     <TableHead className="w-10">
+                       <Checkbox
+                         checked={filteredEnvios.length > 0 && filteredEnvios.every((e: any) => selectedEnvioIds.has(e.id))}
+                         onCheckedChange={toggleSelectAll}
+                       />
+                     </TableHead>
+                   )}
                    <TableHead>Tracking</TableHead>
                    <TableHead>IDML</TableHead>
                    <TableHead>Remitente</TableHead>
