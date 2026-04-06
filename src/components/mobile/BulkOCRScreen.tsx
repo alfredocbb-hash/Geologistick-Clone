@@ -151,12 +151,26 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
     setIsCameraOpen(false);
   };
 
+  const getFingerprint = (dataUrl: string) => dataUrl.substring(200, 400);
+
+  const isDuplicate = (dataUrl: string): boolean => {
+    const fp = getFingerprint(dataUrl);
+    if (usedFingerprints.current.has(fp)) {
+      toast.warning("Imagen ya cargada, se omitió");
+      return true;
+    }
+    usedFingerprints.current.add(fp);
+    return false;
+  };
+
   const handleNativeFallback = async () => {
     const result = await takePhoto();
     if (result?.webPath || result?.dataUrl) {
+      const img = result.webPath || result.dataUrl!;
+      if (isDuplicate(img)) return;
       setAlbumPhotos(prev => [...prev, {
         id: `photo-${Date.now()}`,
-        dataUrl: result.webPath || result.dataUrl!,
+        dataUrl: img,
         status: 'pending'
       }]);
     }
@@ -170,6 +184,7 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
     canvas.height = video.videoHeight;
     canvas.getContext('2d')?.drawImage(video, 0, 0);
     const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+    if (isDuplicate(dataUrl)) return;
     setAlbumPhotos(prev => [...prev, { id: `photo-${Date.now()}`, dataUrl, status: 'pending' }]);
     toast.success("Foto añadida", { duration: 500 });
   };
