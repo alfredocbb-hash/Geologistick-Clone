@@ -75,6 +75,8 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
   const navigate = useNavigate();
   const { takePhoto } = useNativeCamera();
   const { setCameraActive } = useMobileCamera();
+  const isMobile = useIsMobile();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Hide bottom nav while this screen is open
   useEffect(() => {
@@ -82,7 +84,7 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
     return () => setCameraActive(false);
   }, [setCameraActive]);
 
-  const [mode, setMode] = useState<BulkMode>('select');
+  const [mode, setMode] = useState<BulkMode>(isMobile ? 'select' : 'album');
   const [packages, setPackages] = useState<BulkPackage[]>([]);
   const [albumPhotos, setAlbumPhotos] = useState<AlbumPhoto[]>([]);
   const [albumPhase, setAlbumPhase] = useState<AlbumPhase>('capturing');
