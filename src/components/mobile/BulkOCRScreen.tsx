@@ -3,7 +3,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
-import { X, Camera, MapPin, Package, Loader2, Route, AlertCircle, Image, Zap, RefreshCw, Trash2, Check, Smartphone, Info } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { X, Camera, MapPin, Package, Loader2, Route, AlertCircle, Image, Zap, RefreshCw, Trash2, Check, Smartphone, Info, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -11,6 +14,15 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useNativeCamera } from '@/hooks/useNativeCamera';
 import { useMobileCamera } from './MobileCameraContext';
+
+interface ManualEditData {
+  direccion: string;
+  localidad: string;
+  codigoPostal: string;
+  nombreDestinatario: string;
+  telefono: string;
+  nombreRemitente: string;
+}
 
 type BulkMode = 'select' | 'burst' | 'album';
 type AlbumPhase = 'capturing' | 'processing' | 'done';
