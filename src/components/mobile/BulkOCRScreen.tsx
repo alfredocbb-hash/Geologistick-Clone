@@ -351,20 +351,30 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
   const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
+    let skipped = 0;
     Array.from(files).forEach(file => {
       const reader = new FileReader();
       reader.onload = () => {
         const dataUrl = reader.result as string;
+        if (isDuplicate(dataUrl)) {
+          skipped++;
+          return;
+        }
         setAlbumPhotos(prev => [...prev, { id: `photo-${Date.now()}-${Math.random()}`, dataUrl, status: 'pending' }]);
       };
       reader.readAsDataURL(file);
     });
-    // Reset input so same file can be selected again
     e.target.value = '';
   };
 
   const removePhoto = (id: string) => {
-    setAlbumPhotos(prev => prev.filter(p => p.id !== id));
+    setAlbumPhotos(prev => {
+      const photo = prev.find(p => p.id === id);
+      if (photo) {
+        usedFingerprints.current.delete(getFingerprint(photo.dataUrl));
+      }
+      return prev.filter(p => p.id !== id);
+    });
   };
 
   if (isCameraOpen) {
