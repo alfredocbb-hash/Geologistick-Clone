@@ -39,25 +39,36 @@ serve(async (req) => {
             content: [
               {
                 type: "text",
-                text: `Analiza esta imagen de una etiqueta de envío. Extrae la información logística. Responde SOLO con el JSON puro.
+                text: `Analiza esta imagen de una etiqueta/comprobante de envío. Extrae TODA la información logística disponible. Responde SOLO con el JSON puro.
 
 Campos a extraer:
-- mlShipmentId: Busca números de 8-12 dígitos precedidos por "Envio:", "Envío:", "N° envio".
-- trackingNumber: Busca cualquier número de seguimiento, factura, remito o identificador (Ej: "Factura:", "Remito:", "Seguimiento:", "TRK-...", etc).
+- mlShipmentId: Números de 8-12 dígitos precedidos por "Envio:", "Envío:", "N° envio".
+- trackingNumber: Cualquier número de seguimiento, factura, remito o identificador (Ej: "Factura:", "Remito:", "Seguimiento:", "TRK-...", etc).
 - direccion: Calle y número de entrega.
 - codigoPostal: Código postal (4 dígitos).
-- localidad: Ciudad o localidad.
+- localidad: Ciudad o localidad de entrega.
 - barrio: Barrio o partido.
+- provincia: Provincia o estado.
 - nombreDestinatario: Nombre de la persona que recibe.
-- referencia: Observaciones, entre-calles, piso/depto o instrucciones.
+- telefonoDestinatario: Teléfono o celular del destinatario.
+- emailDestinatario: Email del destinatario.
+- dniDestinatario: DNI o documento del destinatario.
+- referencia: Observaciones, entre-calles, piso/depto o instrucciones de entrega.
+- nombreRemitente: Nombre del remitente/emisor/vendedor.
+- direccionRetiro: Dirección de origen/retiro del paquete.
+- cantidadBultos: Cantidad de bultos o paquetes (número).
+- pesoKg: Peso en kg (número).
+- valorDeclarado: Valor declarado en pesos (número).
+- tipoPago: Tipo de pago si se indica (ej: "contra entrega", "prepago", "a cobrar").
 
 Formato de respuesta (JSON puro):
-{"mlShipmentId":"","trackingNumber":"","direccion":"","codigoPostal":"","localidad":"","barrio":"","nombreDestinatario":"","referencia":""}
+{"mlShipmentId":"","trackingNumber":"","direccion":"","codigoPostal":"","localidad":"","barrio":"","provincia":"","nombreDestinatario":"","telefonoDestinatario":"","emailDestinatario":"","dniDestinatario":"","referencia":"","nombreRemitente":"","direccionRetiro":"","cantidadBultos":"","pesoKg":"","valorDeclarado":"","tipoPago":""}
 
 Reglas:
 - Si no encontrás un campo, dejar "".
 - NO inventar datos.
-- El trackingNumber es PRIORIDAD si no hay mlShipmentId.`
+- El trackingNumber es PRIORIDAD si no hay mlShipmentId.
+- Para cantidadBultos, pesoKg, valorDeclarado: devolver solo el número como string.`
               },
               {
                 type: "image_url",
@@ -97,8 +108,18 @@ Reglas:
       codigoPostal: String(extracted.codigoPostal || "").trim(),
       localidad: String(extracted.localidad || "").trim(),
       barrio: String(extracted.barrio || "").trim(),
+      provincia: String(extracted.provincia || "").trim(),
       nombreDestinatario: String(extracted.nombreDestinatario || "").trim(),
+      telefonoDestinatario: String(extracted.telefonoDestinatario || "").trim(),
+      emailDestinatario: String(extracted.emailDestinatario || "").trim(),
+      dniDestinatario: String(extracted.dniDestinatario || "").trim(),
       referencia: String(extracted.referencia || "").trim(),
+      nombreRemitente: String(extracted.nombreRemitente || "").trim(),
+      direccionRetiro: String(extracted.direccionRetiro || "").trim(),
+      cantidadBultos: String(extracted.cantidadBultos || "").trim(),
+      pesoKg: String(extracted.pesoKg || "").trim(),
+      valorDeclarado: String(extracted.valorDeclarado || "").trim(),
+      tipoPago: String(extracted.tipoPago || "").trim(),
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

@@ -60,6 +60,7 @@
     --routes: 142 71% 45%;
     --commissions: 262 83% 58%;
 
+    --geo-teal: 172 66% 50%;
     --shadow-colored: 0 4px 14px -3px hsl(217 91% 60% / 0.15);
   }
 
@@ -118,6 +119,7 @@
     --routes: 142 71% 45%;
     --commissions: 262 83% 58%;
 
+    --geo-teal: 172 66% 50%;
     --shadow-colored: 0 4px 14px -3px hsl(217 91% 60% / 0.25);
   }
 
@@ -176,6 +178,7 @@
     --routes: 155 70% 45%;
     --commissions: 280 75% 60%;
 
+    --geo-teal: 240 60% 55%;
     --shadow-colored: 0 4px 14px -3px hsl(250 80% 65% / 0.3);
   }
 
@@ -234,6 +237,7 @@
     --routes: 160 65% 45%;
     --commissions: 270 70% 60%;
 
+    --geo-teal: 185 65% 45%;
     --shadow-colored: 0 4px 14px -3px hsl(185 70% 50% / 0.3);
   }
 }
