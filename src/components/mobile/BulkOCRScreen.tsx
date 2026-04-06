@@ -86,6 +86,7 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
 
   const [mode, setMode] = useState<BulkMode>(isMobile ? 'select' : 'album');
   const [packages, setPackages] = useState<BulkPackage[]>([]);
+  const usedFingerprints = useRef<Set<string>>(new Set());
   const [albumPhotos, setAlbumPhotos] = useState<AlbumPhoto[]>([]);
   const [albumPhase, setAlbumPhase] = useState<AlbumPhase>('capturing');
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -150,12 +151,26 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
     setIsCameraOpen(false);
   };
 
+  const getFingerprint = (dataUrl: string) => dataUrl.substring(200, 400);
+
+  const isDuplicate = (dataUrl: string): boolean => {
+    const fp = getFingerprint(dataUrl);
+    if (usedFingerprints.current.has(fp)) {
+      toast.warning("Imagen ya cargada, se omitió");
+      return true;
+    }
+    usedFingerprints.current.add(fp);
+    return false;
+  };
+
   const handleNativeFallback = async () => {
     const result = await takePhoto();
     if (result?.webPath || result?.dataUrl) {
+      const img = result.webPath || result.dataUrl!;
+      if (isDuplicate(img)) return;
       setAlbumPhotos(prev => [...prev, {
         id: `photo-${Date.now()}`,
-        dataUrl: result.webPath || result.dataUrl!,
+        dataUrl: img,
         status: 'pending'
       }]);
     }
@@ -169,6 +184,7 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
     canvas.height = video.videoHeight;
     canvas.getContext('2d')?.drawImage(video, 0, 0);
     const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+    if (isDuplicate(dataUrl)) return;
     setAlbumPhotos(prev => [...prev, { id: `photo-${Date.now()}`, dataUrl, status: 'pending' }]);
     toast.success("Foto añadida", { duration: 500 });
   };
@@ -335,20 +351,30 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
   const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
+    let skipped = 0;
     Array.from(files).forEach(file => {
       const reader = new FileReader();
       reader.onload = () => {
         const dataUrl = reader.result as string;
+        if (isDuplicate(dataUrl)) {
+          skipped++;
+          return;
+        }
         setAlbumPhotos(prev => [...prev, { id: `photo-${Date.now()}-${Math.random()}`, dataUrl, status: 'pending' }]);
       };
       reader.readAsDataURL(file);
     });
-    // Reset input so same file can be selected again
     e.target.value = '';
   };
 
   const removePhoto = (id: string) => {
-    setAlbumPhotos(prev => prev.filter(p => p.id !== id));
+    setAlbumPhotos(prev => {
+      const photo = prev.find(p => p.id === id);
+      if (photo) {
+        usedFingerprints.current.delete(getFingerprint(photo.dataUrl));
+      }
+      return prev.filter(p => p.id !== id);
+    });
   };
 
   if (isCameraOpen) {
