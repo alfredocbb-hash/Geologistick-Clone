@@ -136,13 +136,13 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
     }
   }, [stream, isCameraOpen]);
 
-  // Auto-open camera when entering album mode
+  // Auto-open camera when entering album mode (mobile only)
   useEffect(() => {
-    if (mode === 'album' && !isCameraOpen && albumPhase === 'capturing') {
+    if (isMobile && mode === 'album' && !isCameraOpen && albumPhase === 'capturing') {
       const timeout = setTimeout(startCamera, 200);
       return () => clearTimeout(timeout);
     }
-  }, [mode]);
+  }, [mode, isMobile]);
 
   const stopCamera = () => {
     if (stream) stream.getTracks().forEach(t => t.stop());
