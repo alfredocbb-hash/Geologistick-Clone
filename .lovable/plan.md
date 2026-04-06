@@ -1,57 +1,58 @@
 
 
-## Plan: Theme Switcher con temas personalizados (Dark, Light, Midnight, Logistics Blue)
+## Plan: Sidebar respeta temas + OCR extrae todos los datos del comprobante
 
-### Situación actual
-- Ya existe `next-themes` con `ThemeProvider` en `App.tsx` (attribute="class", defaultTheme="system")
-- Ya existe `ThemeToggle.tsx` (toggle simple dark/light)
-- `index.css` define muy pocas variables CSS (solo `--background`, `--foreground`, `--primary`, `--warning`, `--radius` para `:root` y `.dark`)
-- Muchas variables referenciadas en `tailwind.config.ts` (card, muted, accent, sidebar, destructive, etc.) no están definidas
-- El perfil (`Profile.tsx`) ya tiene un selector de tema con 3 opciones (light/dark/system)
-- `TenantProvider` sobreescribe algunas variables en runtime con colores de branding
+### Parte 1: Sidebar y menú respetan los temas
 
-### Cambios
+**Problema**: El sidebar usa la variable `--geo-teal` hardcodeada para el gradiente del item activo, y posiblemente otros colores que no cambian con el tema.
 
-**1. `src/index.css`** — Definir conjuntos completos de variables CSS para 4 temas:
-- `:root` (Light) — paleta clara completa con todos los tokens (background, foreground, card, popover, primary, secondary, muted, accent, destructive, border, input, ring, sidebar, success, warning, info, colores por modulo)
-- `.dark` — tema oscuro actual mejorado con todas las variables
-- `.midnight` — tema ultra-oscuro con tonos azul profundo (fondos slate-950, acentos azul-índigo)
-- `.logistics-blue` — tema profesional azul oscuro con acentos teal/cyan
+**Solución en `src/index.css`**:
+- Agregar variable `--geo-teal` a cada tema con un valor acorde a la paleta:
+  - Light/Dark: valor actual (teal)
+  - Midnight: tono índigo/violeta
+  - Logistics Blue: tono cyan/teal
 
-**2. `src/components/theme/ThemeToggle.tsx`** — Reemplazar toggle binario por dropdown con 4 opciones:
-- Usar `DropdownMenu` de shadcn para mostrar las opciones: Claro, Oscuro, Midnight, Logistics Blue, Sistema
-- Cada opción muestra un mini-preview (círculos de color representando la paleta)
-- Icono dinámico según tema activo (Sun, Moon, Star, Ship, Monitor)
+**Solución en `src/components/layout/AppSidebar.tsx`**:
+- Verificar que el gradiente del icono activo (`from-[hsl(var(--geo-teal))] to-[hsl(var(--primary))]`) ya usa variables CSS, lo que debería funcionar automáticamente una vez que `--geo-teal` esté definida en cada tema.
 
-**3. `src/App.tsx`** — Actualizar `ThemeProvider`:
-- Cambiar `themes={['light', 'dark', 'midnight', 'logistics-blue', 'system']}` para registrar los temas custom
-- Mantener `attribute="class"` para que `next-themes` aplique la clase CSS correcta al `<html>`
+### Parte 2: OCR extrae TODOS los datos del comprobante
 
-**4. `src/pages/Profile.tsx`** — Actualizar selector de preferencias:
-- Agregar las 2 opciones nuevas (Midnight, Logistics Blue) al `ToggleGroup` existente
-- Iconos consistentes con el dropdown del header
+**Problema actual**: El prompt de la Edge Function `ocr-label` solo extrae 8 campos (mlShipmentId, trackingNumber, direccion, codigoPostal, localidad, barrio, nombreDestinatario, referencia). No extrae remitente, teléfonos, email, provincia, DNI, peso, bultos, etc.
 
-**5. `src/components/mobile/MobileProfileTab.tsx`** — Actualizar selector móvil:
-- Agregar las mismas opciones de tema disponibles en la versión desktop
+**Solución en `supabase/functions/ocr-label/index.ts`**:
+- Ampliar el prompt para extraer campos adicionales:
+  - `nombreRemitente`: Nombre del remitente/emisor
+  - `direccionRetiro`: Dirección de origen/retiro
+  - `telefonoDestinatario`: Teléfono del destinatario
+  - `emailDestinatario`: Email del destinatario
+  - `provincia`: Provincia
+  - `dniDestinatario`: DNI del destinatario
+  - `cantidadBultos`: Cantidad de bultos/paquetes
+  - `pesoKg`: Peso en kg
+  - `valorDeclarado`: Valor declarado
+  - `tipoPago`: Tipo de pago (contra entrega, etc.)
+- Actualizar el JSON de respuesta para incluir estos campos nuevos
 
-### Paletas de ejemplo (valores HSL)
+**Solución en `src/components/mobile/BulkOCRScreen.tsx`**:
+- En `processOnePhoto`: mapear los nuevos campos OCR a las columnas correspondientes de `envios`:
+  - `nombre_remitente` ← `nombreRemitente`
+  - `direccion_retiro` ← `direccionRetiro`
+  - `whatsapp_destinatario` ← `telefonoDestinatario`
+  - `email_destinatario` ← `emailDestinatario`
+  - `provincia` ← `provincia`
+  - `dni_destinatario` ← `dniDestinatario`
+  - `cantidad_bultos` ← `cantidadBultos`
+  - `peso_kg` ← `pesoKg`
+  - `valor_declarado` ← `valorDeclarado`
+- Hacer lo mismo en el bloque de inserción del modo ráfaga (burst)
 
-```text
-Light:     bg=0 0% 100%       fg=222 47% 11%    primary=217 91% 60%
-Dark:      bg=222 47% 6%      fg=210 40% 98%    primary=217 91% 60%  
-Midnight:  bg=230 35% 5%      fg=220 30% 90%    primary=250 80% 65%
-Logistics: bg=210 40% 8%      fg=200 30% 92%    primary=185 70% 50%
-```
-
-### Notas
-- `TenantProvider` sigue funcionando: sobreescribe variables en runtime después del tema base
-- `next-themes` guarda la elección en `localStorage` automáticamente
-- No se modifica `tailwind.config.ts` — ya referencia todas las variables necesarias
+**Solución en `src/components/mobile/OCRCaptureDialog.tsx`**:
+- Agregar los campos nuevos al formulario de confirmación (pantalla de edición antes de guardar)
+- Actualizar `OCRConfirmData` para incluir los nuevos campos
 
 ### Archivos a modificar
-- `src/index.css` — Definir paletas completas para los 4 temas
-- `src/components/theme/ThemeToggle.tsx` — Dropdown con previews de color
-- `src/App.tsx` — Registrar temas custom en ThemeProvider
-- `src/pages/Profile.tsx` — Agregar opciones Midnight y Logistics Blue
-- `src/components/mobile/MobileProfileTab.tsx` — Mismo selector en móvil
+- `src/index.css` — Agregar `--geo-teal` a los 4 temas
+- `supabase/functions/ocr-label/index.ts` — Ampliar prompt y respuesta con ~10 campos nuevos
+- `src/components/mobile/BulkOCRScreen.tsx` — Mapear campos nuevos en insert de envios
+- `src/components/mobile/OCRCaptureDialog.tsx` — Agregar campos al formulario y al tipo OCRConfirmData
 
