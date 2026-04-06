@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, ChangeEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -6,7 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { X, Camera, MapPin, Package, Loader2, Route, AlertCircle, Image, Zap, RefreshCw, Trash2, Check, Smartphone, Info, Pencil } from 'lucide-react';
+import { X, Camera, MapPin, Package, Loader2, Route, AlertCircle, Image, Zap, RefreshCw, Trash2, Check, Smartphone, Info, Pencil, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -14,6 +14,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useNativeCamera } from '@/hooks/useNativeCamera';
 import { useMobileCamera } from './MobileCameraContext';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface ManualEditData {
   direccion: string;
