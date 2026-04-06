@@ -1,19 +1,27 @@
 
 
-## Plan: Fix 404 al planificar desde "Importar con IA" en escritorio
+## Plan: Detección de imágenes duplicadas en BulkOCRScreen
 
 ### Problema
-Cuando el usuario procesa fotos desde el dialog "Importar con IA" en el planificador (ruta `/planner`), al hacer click en "Planificar Ruta", el componente `BulkOCRScreen` ejecuta `navigate('/route-planner')` — que es la ruta **mobile**. En desktop la ruta correcta es `/planner`, causando un 404.
+Cuando se cargan fotos iguales (mismo archivo seleccionado dos veces, o misma captura), el sistema las procesa todas y crea envíos duplicados.
 
-### Solucion
-En `BulkOCRScreen.tsx`, cuando se ejecuta desde desktop (sin `onPackagesReady`), navegar a `/planner` en vez de `/route-planner` segun `isMobile`. Mejor aun: cuando el componente se abre dentro del planificador (desktop), simplemente cerrar el dialog e invalidar queries en vez de navegar, ya que el usuario ya esta en la pagina correcta.
+### Solución
+Generar un hash simple del contenido de cada imagen (usando los primeros N caracteres del dataUrl como fingerprint) y comparar contra las fotos ya cargadas. Si ya existe, mostrar un toast de aviso y no agregarla.
 
-### Cambio concreto
+### Cambios en `src/components/mobile/BulkOCRScreen.tsx`
 
-**`src/components/mobile/BulkOCRScreen.tsx`** — En la funcion que maneja "Planificar Ruta" (linea ~269):
-- Si `onPackagesReady` no existe y estamos en desktop (`!isMobile`), usar `navigate('/planner?envio_ids=...')` en vez de `/route-planner?envio_ids=...`
-- Alternativa mas limpia: detectar con `isMobile` y usar la ruta correcta para cada plataforma
+1. **Crear función de fingerprint**: Extraer una porción representativa del dataUrl (ej: substring de 100 chars desde posición 200) como identificador único de la imagen. Esto es suficiente para detectar archivos idénticos sin overhead de hashing criptográfico.
+
+2. **Mantener un Set de fingerprints**: Nuevo estado `usedFingerprints` (Set) que acumula los fingerprints de todas las fotos ya en `albumPhotos`.
+
+3. **Validar en `handleFileSelect`** (desktop): Antes de agregar cada foto, verificar si el fingerprint ya existe. Si es duplicada, mostrar `toast.warning("Imagen ya cargada, se omitió")` y no agregarla.
+
+4. **Validar en `captureToAlbum`** (móvil cámara): Misma verificación tras capturar.
+
+5. **Validar en `handleNativeFallback`** (móvil nativa): Misma verificación.
+
+6. **Limpiar fingerprints en `removePhoto`**: Al eliminar una foto, remover su fingerprint del Set para permitir re-cargarla si el usuario lo desea.
 
 ### Archivos a modificar
-- `src/components/mobile/BulkOCRScreen.tsx` — Cambiar la ruta de navegacion segun plataforma (linea 269)
+- `src/components/mobile/BulkOCRScreen.tsx` — Agregar fingerprint Set + validación en los 3 puntos de ingreso de fotos
 
