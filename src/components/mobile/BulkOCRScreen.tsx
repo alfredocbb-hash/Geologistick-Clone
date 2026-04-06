@@ -657,37 +657,47 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
       )}
 
       {/* STICKY action buttons — always visible */}
-      <div className="shrink-0 px-6 py-4 bg-slate-950 border-t border-slate-800 space-y-2">
+      <div className={`shrink-0 px-6 py-4 space-y-2 ${isMobile ? 'bg-slate-950 border-t border-slate-800' : 'border-t border-border'}`}>
         {albumPhase === 'capturing' && (
           <>
-            <Button onClick={startCamera} className="w-full h-14 rounded-2xl bg-primary text-primary-foreground font-black text-base shadow-2xl shadow-primary/20 active:scale-95 transition-all">
-              <Camera className="mr-3 h-5 w-5" /> ABRIR CÁMARA
-            </Button>
+            {isMobile ? (
+              <Button onClick={startCamera} className="w-full h-14 rounded-2xl bg-primary text-primary-foreground font-black text-base shadow-2xl shadow-primary/20 active:scale-95 transition-all">
+                <Camera className="mr-3 h-5 w-5" /> ABRIR CÁMARA
+              </Button>
+            ) : (
+              <Button onClick={() => fileInputRef.current?.click()} className="w-full h-12 rounded-xl font-bold">
+                <Upload className="mr-2 h-5 w-5" /> Seleccionar Imágenes
+              </Button>
+            )}
             {albumPhotos.length > 0 && (
-              <Button onClick={processAlbum} className="w-full h-12 rounded-2xl bg-white text-black font-black active:scale-95 transition-all border-2 border-slate-200">
+              <Button onClick={processAlbum} className={isMobile ? "w-full h-12 rounded-2xl bg-white text-black font-black active:scale-95 transition-all border-2 border-slate-200" : "w-full h-12 rounded-xl bg-primary text-primary-foreground font-bold"}>
                 PROCESAR {pendingCount} FOTOS
               </Button>
             )}
           </>
         )}
         {albumPhase === 'processing' && (
-          <Button disabled className="w-full h-14 rounded-2xl bg-slate-800 text-white font-black">
+          <Button disabled className={isMobile ? "w-full h-14 rounded-2xl bg-slate-800 text-white font-black" : "w-full h-12 rounded-xl font-bold"}>
             <Loader2 className="mr-2 h-5 w-5 animate-spin" /> PROCESANDO...
           </Button>
         )}
         {albumPhase === 'done' && (
           <>
-            <Button onClick={handleGoToPlanner} disabled={packages.length === 0} className="w-full h-14 rounded-2xl bg-emerald-500 text-white font-black text-base shadow-xl active:scale-95 transition-all disabled:opacity-40">
+            <Button onClick={handleGoToPlanner} disabled={packages.length === 0} className="w-full h-12 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold shadow-xl disabled:opacity-40">
               <Route className="mr-3 h-5 w-5" /> PLANIFICAR RUTA ({packages.length})
             </Button>
             {errorCount > 0 && (
-              <Button onClick={processAlbum} variant="outline" className="w-full h-10 rounded-2xl border-slate-600 text-white font-bold text-xs active:scale-95">
+              <Button onClick={processAlbum} variant="outline" className="w-full h-10 rounded-xl font-bold text-xs">
                 <RefreshCw className="mr-2 h-4 w-4" /> REINTENTAR {errorCount} CON ERROR
               </Button>
             )}
-            <Button onClick={() => { setAlbumPhase('capturing'); }} variant="ghost" className="w-full text-slate-500 font-bold uppercase tracking-tighter hover:bg-white/5 rounded-xl text-xs">
-              <Camera className="h-4 w-4 mr-2" /> VOLVER A CAPTURAR
+            <Button onClick={() => { setAlbumPhase('capturing'); }} variant="ghost" className="w-full font-bold uppercase text-xs">
+              {isMobile ? <Camera className="h-4 w-4 mr-2" /> : <Upload className="h-4 w-4 mr-2" />}
+              {isMobile ? 'VOLVER A CAPTURAR' : 'AGREGAR MÁS IMÁGENES'}
             </Button>
+          </>
+        )}
+      </div>
           </>
         )}
       </div>
