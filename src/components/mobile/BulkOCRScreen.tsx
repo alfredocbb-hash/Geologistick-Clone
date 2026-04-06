@@ -266,7 +266,8 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
     if (onPackagesReady) {
       onPackagesReady(ids);
     } else {
-      navigate(`/route-planner?envio_ids=${ids.join(',')}`);
+      const targetPath = isMobile ? '/route-planner' : '/planner';
+      navigate(`${targetPath}?envio_ids=${ids.join(',')}`);
       onClose();
     }
   }, [packages, queryClient, navigate, onClose, onPackagesReady]);
