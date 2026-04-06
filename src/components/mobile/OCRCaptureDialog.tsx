@@ -16,6 +16,16 @@ export interface OCRConfirmData {
   mlShipmentId?: string;
   referencia?: string;
   barrio?: string;
+  provincia?: string;
+  telefonoDestinatario?: string;
+  emailDestinatario?: string;
+  dniDestinatario?: string;
+  nombreRemitente?: string;
+  direccionRetiro?: string;
+  cantidadBultos?: string;
+  pesoKg?: string;
+  valorDeclarado?: string;
+  tipoPago?: string;
 }
 
 export interface OCRQueueItem {
@@ -53,7 +63,11 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
   const [localidad, setLocalidad] = useState('');
   const [codigoPostal, setCodigoPostal] = useState('');
   const [nombreDestinatario, setNombreDestinatario] = useState('');
-
+  const [provincia, setProvincia] = useState('');
+  const [telefonoDestinatario, setTelefonoDestinatario] = useState('');
+  const [nombreRemitente, setNombreRemitente] = useState('');
+  const [dniDestinatario, setDniDestinatario] = useState('');
+  const [referencia, setReferencia] = useState('');
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -155,6 +169,11 @@ export function OCRCaptureDialog({ open, mlShipmentId, onClose, onConfirm, conti
       setLocalidad(data.localidad || '');
       setCodigoPostal(data.codigoPostal || '');
       setNombreDestinatario(data.nombreDestinatario || '');
+      setProvincia(data.provincia || '');
+      setTelefonoDestinatario(data.telefonoDestinatario || '');
+      setNombreRemitente(data.nombreRemitente || '');
+      setDniDestinatario(data.dniDestinatario || '');
+      setReferencia(data.referencia || '');
       setStep('confirm');
     } catch (e) {
       setStep('confirm');
