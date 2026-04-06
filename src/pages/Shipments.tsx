@@ -84,6 +84,29 @@ export default function Shipments() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [envioToDelete, setEnvioToDelete] = useState<any>(null);
+  const [selectedEnvioIds, setSelectedEnvioIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
+
+  const toggleSelectEnvio = useCallback((id: string) => {
+    setSelectedEnvioIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    if (!filteredEnviosRef.current) return;
+    setSelectedEnvioIds(prev => {
+      const allIds = filteredEnviosRef.current!.map((e: any) => e.id);
+      const allSelected = allIds.every((id: string) => prev.has(id));
+      if (allSelected) return new Set();
+      return new Set(allIds);
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => setSelectedEnvioIds(new Set()), []);
+  const filteredEnviosRef = useRef<any[] | null>(null);
   
   useQuery({
     queryKey: ['user-sucursal-check', profile?.sucursal_id],
