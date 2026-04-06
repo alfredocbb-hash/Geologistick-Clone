@@ -558,7 +558,16 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
   const errorCount = albumPhotos.filter(p => p.status === 'error').length;
 
   return (
-    <div className="fixed inset-0 z-[10000] bg-slate-950 flex flex-col pt-safe-extra pb-safe-extra overflow-hidden">
+    <div className={isMobile ? "fixed inset-0 z-[10000] bg-slate-950 flex flex-col pt-safe-extra pb-safe-extra overflow-hidden" : "flex flex-col min-h-[60vh] max-h-[80vh] overflow-hidden"}>
+      {/* Hidden file input for desktop */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={handleFileSelect}
+      />
       {/* Header */}
       <div className="flex items-center justify-between px-6 mb-4 mt-10">
         <div>
