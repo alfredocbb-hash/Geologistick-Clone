@@ -603,6 +603,15 @@ export default function Shipments() {
               <TableBody>
                 {filteredEnvios.map((envio) => (
                   <TableRow key={envio.id} className="cursor-pointer hover:bg-muted/50">
+                    {isSuperAdmin() && (
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedEnvioIds.has(envio.id)}
+                          onCheckedChange={() => toggleSelectEnvio(envio.id)}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </TableCell>
+                    )}
                     <TableCell>
                       <div className="font-mono font-medium text-primary">
                         {envio.tracking_number}
