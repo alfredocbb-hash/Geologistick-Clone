@@ -165,6 +165,7 @@ export default function ThirdPartyShipmentsTab() {
   const queryClient = useQueryClient();
   const [tempShipments, setTempShipments] = useState<TempShipment[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [showBulkOCR, setShowBulkOCR] = useState(false);
 
   // Form draft persistence
   const {
@@ -622,10 +623,21 @@ export default function ThirdPartyShipmentsTab() {
       {/* Form Card */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Truck className="h-5 w-5" />
-            Agregar Envío Terciarizado
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Truck className="h-5 w-5" />
+              Agregar Envío Terciarizado
+            </CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowBulkOCR(true)}
+              className="gap-2"
+            >
+              <Images className="h-4 w-4" />
+              Importar con IA
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Draft indicator */}
