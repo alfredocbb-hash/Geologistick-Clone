@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { QrCode, Package, Truck, History, CheckCircle2, Scan, ArrowRight, Building2 } from 'lucide-react';
+import { QrCode, Package, Truck, History, CheckCircle2, Scan, ArrowRight, Building2, Images } from 'lucide-react';
 import { CollectScanScreen } from './CollectScanScreen';
 import { Card, CardContent } from '@/components/ui/card';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -520,7 +520,7 @@ export function MobileScanTab() {
       </div>
 
       {/* Quick Actions */}
-      <div className={`grid gap-3 ${(hasRole('operador') || hasRole('bodega') || hasRole('sucursal') || hasRole('admin')) ? 'grid-cols-3' : 'grid-cols-2'}`}>
+      <div className="grid gap-3 grid-cols-2">
         <Card 
           className="bg-slate-900/60 border-slate-800/50 cursor-pointer hover:border-blue-500/50 transition-all active:scale-[0.98]"
           onClick={() => setShowCollectScreen(true)}
@@ -557,7 +557,26 @@ export function MobileScanTab() {
           </CardContent>
         </Card>
 
-        {/* Third card - Receive Route Sheet (only for admin/operator roles) */}
+        {/* Import Photos - Album OCR */}
+        <Card 
+          className="bg-slate-900/60 border-slate-800/50 cursor-pointer hover:border-amber-500/50 transition-all active:scale-[0.98]"
+          onClick={() => setShowBulkOCR(true)}
+        >
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-500/10 flex items-center justify-center">
+                <Images className="h-6 w-6 text-amber-400" />
+              </div>
+              <div>
+                <p className="font-semibold text-white">Importar Fotos</p>
+                <p className="text-xs text-slate-400">OCR desde galería</p>
+              </div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-500 absolute top-4 right-4" />
+          </CardContent>
+        </Card>
+
+        {/* Receive Route Sheet (only for admin/operator roles) */}
         {(hasRole('operador') || hasRole('bodega') || hasRole('sucursal') || hasRole('admin')) && (
           <Card 
             className="bg-slate-900/60 border-slate-800/50 cursor-pointer hover:border-purple-500/50 transition-all active:scale-[0.98]"

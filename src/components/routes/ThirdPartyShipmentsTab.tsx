@@ -38,7 +38,10 @@ import {
   MapPin,
   Calendar,
   Clock,
+  Images,
 } from "lucide-react";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { BulkOCRScreen } from "@/components/mobile/BulkOCRScreen";
 import { format } from "date-fns";
 import { AddressAutocomplete, AddressDetails } from "@/components/maps/AddressAutocomplete";
 import ContactAutocomplete from "@/components/shipments/ContactAutocomplete";
@@ -162,6 +165,7 @@ export default function ThirdPartyShipmentsTab() {
   const queryClient = useQueryClient();
   const [tempShipments, setTempShipments] = useState<TempShipment[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [showBulkOCR, setShowBulkOCR] = useState(false);
 
   // Form draft persistence
   const {
@@ -619,10 +623,21 @@ export default function ThirdPartyShipmentsTab() {
       {/* Form Card */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Truck className="h-5 w-5" />
-            Agregar Envío Terciarizado
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Truck className="h-5 w-5" />
+              Agregar Envío Terciarizado
+            </CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowBulkOCR(true)}
+              className="gap-2"
+            >
+              <Images className="h-4 w-4" />
+              Importar con IA
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Draft indicator */}
@@ -1015,6 +1030,16 @@ export default function ThirdPartyShipmentsTab() {
           )}
         </CardContent>
       </Card>
+      {/* Bulk OCR Dialog */}
+      <Dialog open={showBulkOCR} onOpenChange={setShowBulkOCR}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0">
+          <BulkOCRScreen onClose={() => {
+            setShowBulkOCR(false);
+            queryClient.invalidateQueries({ queryKey: ["envios-terciarizados-pendientes"] });
+            queryClient.invalidateQueries({ queryKey: ["envios-planificador"] });
+          }} />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
