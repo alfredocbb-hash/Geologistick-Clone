@@ -380,6 +380,7 @@ export default function Shipments() {
       envio.nombre_destinatario?.toLowerCase().includes(searchLower)
     );
   });
+  filteredEnviosRef.current = filteredEnvios || null;
 
   const StatusBadge = ({ status }: { status: ShipmentStatus }) => {
     const config = statusConfig[status];
