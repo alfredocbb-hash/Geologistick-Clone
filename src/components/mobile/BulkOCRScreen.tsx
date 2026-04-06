@@ -698,9 +698,6 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
           </>
         )}
       </div>
-          </>
-        )}
-      </div>
 
       {/* Manual edit dialog for error photos */}
       <Dialog open={!!editingPhoto} onOpenChange={(open) => !open && setEditingPhoto(null)}>
