@@ -569,12 +569,16 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
         onChange={handleFileSelect}
       />
       {/* Header */}
-      <div className="flex items-center justify-between px-6 mb-4 mt-10">
+      <div className={`flex items-center justify-between px-6 mb-4 ${isMobile ? 'mt-10' : 'mt-4'}`}>
         <div>
-          <h1 className="text-2xl font-black text-white tracking-tighter uppercase leading-none">Álbum</h1>
+          <h1 className={`font-black tracking-tighter uppercase leading-none ${isMobile ? 'text-2xl text-white' : 'text-xl text-foreground'}`}>
+            {isMobile ? 'Álbum' : 'Importar Fotos con IA'}
+          </h1>
           <p className="text-[10px] font-bold text-primary uppercase tracking-widest">{albumPhotos.length} fotos cargadas</p>
         </div>
-        <Button variant="ghost" size="icon" onClick={onClose} className="text-white/50 rounded-full bg-white/5 h-12 w-12"><X /></Button>
+        {isMobile && (
+          <Button variant="ghost" size="icon" onClick={onClose} className="text-white/50 rounded-full bg-white/5 h-12 w-12"><X /></Button>
+        )}
       </div>
 
       {/* Processing progress */}
