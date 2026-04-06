@@ -40,7 +40,7 @@ import {
   Clock,
   Images,
 } from "lucide-react";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { BulkOCRScreen } from "@/components/mobile/BulkOCRScreen";
 import { format } from "date-fns";
 import { AddressAutocomplete, AddressDetails } from "@/components/maps/AddressAutocomplete";
@@ -1033,6 +1033,7 @@ export default function ThirdPartyShipmentsTab() {
       {/* Bulk OCR Dialog */}
       <Dialog open={showBulkOCR} onOpenChange={setShowBulkOCR}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0">
+          <DialogTitle className="sr-only">Importar fotos con IA</DialogTitle>
           <BulkOCRScreen onClose={() => {
             setShowBulkOCR(false);
             queryClient.invalidateQueries({ queryKey: ["envios-terciarizados-pendientes"] });
