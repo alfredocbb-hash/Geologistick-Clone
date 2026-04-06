@@ -86,6 +86,7 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
 
   const [mode, setMode] = useState<BulkMode>(isMobile ? 'select' : 'album');
   const [packages, setPackages] = useState<BulkPackage[]>([]);
+  const usedFingerprints = useRef<Set<string>>(new Set());
   const [albumPhotos, setAlbumPhotos] = useState<AlbumPhoto[]>([]);
   const [albumPhase, setAlbumPhase] = useState<AlbumPhase>('capturing');
   const [isCameraOpen, setIsCameraOpen] = useState(false);
