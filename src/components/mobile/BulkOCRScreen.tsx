@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, ChangeEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -6,7 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { X, Camera, MapPin, Package, Loader2, Route, AlertCircle, Image, Zap, RefreshCw, Trash2, Check, Smartphone, Info, Pencil } from 'lucide-react';
+import { X, Camera, MapPin, Package, Loader2, Route, AlertCircle, Image, Zap, RefreshCw, Trash2, Check, Smartphone, Info, Pencil, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -14,6 +14,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useNativeCamera } from '@/hooks/useNativeCamera';
 import { useMobileCamera } from './MobileCameraContext';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface ManualEditData {
   direccion: string;
@@ -74,6 +75,8 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
   const navigate = useNavigate();
   const { takePhoto } = useNativeCamera();
   const { setCameraActive } = useMobileCamera();
+  const isMobile = useIsMobile();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Hide bottom nav while this screen is open
   useEffect(() => {
@@ -81,7 +84,7 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
     return () => setCameraActive(false);
   }, [setCameraActive]);
 
-  const [mode, setMode] = useState<BulkMode>('select');
+  const [mode, setMode] = useState<BulkMode>(isMobile ? 'select' : 'album');
   const [packages, setPackages] = useState<BulkPackage[]>([]);
   const [albumPhotos, setAlbumPhotos] = useState<AlbumPhoto[]>([]);
   const [albumPhase, setAlbumPhase] = useState<AlbumPhase>('capturing');
@@ -133,13 +136,13 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
     }
   }, [stream, isCameraOpen]);
 
-  // Auto-open camera when entering album mode
+  // Auto-open camera when entering album mode (mobile only)
   useEffect(() => {
-    if (mode === 'album' && !isCameraOpen && albumPhase === 'capturing') {
+    if (isMobile && mode === 'album' && !isCameraOpen && albumPhase === 'capturing') {
       const timeout = setTimeout(startCamera, 200);
       return () => clearTimeout(timeout);
     }
-  }, [mode]);
+  }, [mode, isMobile]);
 
   const stopCamera = () => {
     if (stream) stream.getTracks().forEach(t => t.stop());
@@ -326,6 +329,21 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
       setAlbumPhotos(prev => prev.map(p => p.id === editingPhoto.id ? { ...p, status: 'error', error: e.message } : p));
       toast.error("Error al guardar: " + e.message);
     }
+  };
+
+  const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        setAlbumPhotos(prev => [...prev, { id: `photo-${Date.now()}-${Math.random()}`, dataUrl, status: 'pending' }]);
+      };
+      reader.readAsDataURL(file);
+    });
+    // Reset input so same file can be selected again
+    e.target.value = '';
   };
 
   const removePhoto = (id: string) => {
@@ -540,14 +558,27 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
   const errorCount = albumPhotos.filter(p => p.status === 'error').length;
 
   return (
-    <div className="fixed inset-0 z-[10000] bg-slate-950 flex flex-col pt-safe-extra pb-safe-extra overflow-hidden">
+    <div className={isMobile ? "fixed inset-0 z-[10000] bg-slate-950 flex flex-col pt-safe-extra pb-safe-extra overflow-hidden" : "flex flex-col min-h-[60vh] max-h-[80vh] overflow-hidden"}>
+      {/* Hidden file input for desktop */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={handleFileSelect}
+      />
       {/* Header */}
-      <div className="flex items-center justify-between px-6 mb-4 mt-10">
+      <div className={`flex items-center justify-between px-6 mb-4 ${isMobile ? 'mt-10' : 'mt-4'}`}>
         <div>
-          <h1 className="text-2xl font-black text-white tracking-tighter uppercase leading-none">Álbum</h1>
+          <h1 className={`font-black tracking-tighter uppercase leading-none ${isMobile ? 'text-2xl text-white' : 'text-xl text-foreground'}`}>
+            {isMobile ? 'Álbum' : 'Importar Fotos con IA'}
+          </h1>
           <p className="text-[10px] font-bold text-primary uppercase tracking-widest">{albumPhotos.length} fotos cargadas</p>
         </div>
-        <Button variant="ghost" size="icon" onClick={onClose} className="text-white/50 rounded-full bg-white/5 h-12 w-12"><X /></Button>
+        {isMobile && (
+          <Button variant="ghost" size="icon" onClick={onClose} className="text-white/50 rounded-full bg-white/5 h-12 w-12"><X /></Button>
+        )}
       </div>
 
       {/* Processing progress */}
@@ -607,9 +638,10 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
                 ))}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center py-20 opacity-30 text-center">
-                <Image className="h-16 w-16 mb-4 text-slate-600" />
-                <p className="font-black text-[10px] uppercase tracking-widest text-white leading-none">Sin fotos cargadas</p>
+              <div className="flex flex-col items-center justify-center py-20 opacity-50 text-center">
+                <Upload className="h-16 w-16 mb-4 text-muted-foreground" />
+                <p className="font-black text-sm uppercase tracking-widest text-muted-foreground leading-none mb-2">Sin fotos cargadas</p>
+                {!isMobile && <p className="text-xs text-muted-foreground">Hacé click en "Seleccionar Imágenes" para comenzar</p>}
               </div>
             )}
           </div>
@@ -625,36 +657,43 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
       )}
 
       {/* STICKY action buttons — always visible */}
-      <div className="shrink-0 px-6 py-4 bg-slate-950 border-t border-slate-800 space-y-2">
+      <div className={`shrink-0 px-6 py-4 space-y-2 ${isMobile ? 'bg-slate-950 border-t border-slate-800' : 'border-t border-border'}`}>
         {albumPhase === 'capturing' && (
           <>
-            <Button onClick={startCamera} className="w-full h-14 rounded-2xl bg-primary text-primary-foreground font-black text-base shadow-2xl shadow-primary/20 active:scale-95 transition-all">
-              <Camera className="mr-3 h-5 w-5" /> ABRIR CÁMARA
-            </Button>
+            {isMobile ? (
+              <Button onClick={startCamera} className="w-full h-14 rounded-2xl bg-primary text-primary-foreground font-black text-base shadow-2xl shadow-primary/20 active:scale-95 transition-all">
+                <Camera className="mr-3 h-5 w-5" /> ABRIR CÁMARA
+              </Button>
+            ) : (
+              <Button onClick={() => fileInputRef.current?.click()} className="w-full h-12 rounded-xl font-bold">
+                <Upload className="mr-2 h-5 w-5" /> Seleccionar Imágenes
+              </Button>
+            )}
             {albumPhotos.length > 0 && (
-              <Button onClick={processAlbum} className="w-full h-12 rounded-2xl bg-white text-black font-black active:scale-95 transition-all border-2 border-slate-200">
+              <Button onClick={processAlbum} className={isMobile ? "w-full h-12 rounded-2xl bg-white text-black font-black active:scale-95 transition-all border-2 border-slate-200" : "w-full h-12 rounded-xl bg-primary text-primary-foreground font-bold"}>
                 PROCESAR {pendingCount} FOTOS
               </Button>
             )}
           </>
         )}
         {albumPhase === 'processing' && (
-          <Button disabled className="w-full h-14 rounded-2xl bg-slate-800 text-white font-black">
+          <Button disabled className={isMobile ? "w-full h-14 rounded-2xl bg-slate-800 text-white font-black" : "w-full h-12 rounded-xl font-bold"}>
             <Loader2 className="mr-2 h-5 w-5 animate-spin" /> PROCESANDO...
           </Button>
         )}
         {albumPhase === 'done' && (
           <>
-            <Button onClick={handleGoToPlanner} disabled={packages.length === 0} className="w-full h-14 rounded-2xl bg-emerald-500 text-white font-black text-base shadow-xl active:scale-95 transition-all disabled:opacity-40">
+            <Button onClick={handleGoToPlanner} disabled={packages.length === 0} className="w-full h-12 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold shadow-xl disabled:opacity-40">
               <Route className="mr-3 h-5 w-5" /> PLANIFICAR RUTA ({packages.length})
             </Button>
             {errorCount > 0 && (
-              <Button onClick={processAlbum} variant="outline" className="w-full h-10 rounded-2xl border-slate-600 text-white font-bold text-xs active:scale-95">
+              <Button onClick={processAlbum} variant="outline" className="w-full h-10 rounded-xl font-bold text-xs">
                 <RefreshCw className="mr-2 h-4 w-4" /> REINTENTAR {errorCount} CON ERROR
               </Button>
             )}
-            <Button onClick={() => { setAlbumPhase('capturing'); }} variant="ghost" className="w-full text-slate-500 font-bold uppercase tracking-tighter hover:bg-white/5 rounded-xl text-xs">
-              <Camera className="h-4 w-4 mr-2" /> VOLVER A CAPTURAR
+            <Button onClick={() => { setAlbumPhase('capturing'); }} variant="ghost" className="w-full font-bold uppercase text-xs">
+              {isMobile ? <Camera className="h-4 w-4 mr-2" /> : <Upload className="h-4 w-4 mr-2" />}
+              {isMobile ? 'VOLVER A CAPTURAR' : 'AGREGAR MÁS IMÁGENES'}
             </Button>
           </>
         )}
