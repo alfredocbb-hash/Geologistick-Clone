@@ -536,9 +536,13 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
   }
 
   // Album mode UI
+  const pendingCount = albumPhotos.filter(p => p.status === 'pending').length;
+  const errorCount = albumPhotos.filter(p => p.status === 'error').length;
+
   return (
-    <div className="fixed inset-0 z-[10000] bg-slate-950 flex flex-col p-4 pt-safe-extra pb-safe-extra overflow-hidden">
-      <div className="flex items-center justify-between mb-6 mt-10 px-2">
+    <div className="fixed inset-0 z-[10000] bg-slate-950 flex flex-col pt-safe-extra pb-safe-extra overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 mb-4 mt-10">
         <div>
           <h1 className="text-2xl font-black text-white tracking-tighter uppercase leading-none">Álbum</h1>
           <p className="text-[10px] font-bold text-primary uppercase tracking-widest">{albumPhotos.length} fotos cargadas</p>
@@ -546,84 +550,156 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
         <Button variant="ghost" size="icon" onClick={onClose} className="text-white/50 rounded-full bg-white/5 h-12 w-12"><X /></Button>
       </div>
 
-      <div className="flex-1 min-h-0 bg-slate-900/50 rounded-[2.5rem] border border-slate-800 overflow-hidden mb-6 shadow-inner relative">
-        <ScrollArea className="h-full p-4">
-          {albumPhotos.length > 0 ? (
-            <div className="grid grid-cols-3 gap-3 pb-32">
-              {albumPhotos.map((photo, idx) => (
-                <div
-                  key={photo.id}
-                  onClick={() => photo.status === 'error' && showPhotoError(photo)}
-                  className={`relative aspect-square rounded-2xl overflow-hidden border-2 shadow-md transition-all active:scale-95 ${photo.status === 'error' ? 'border-destructive' : 'border-slate-800'}`}
-                >
-                  <img src={photo.dataUrl} className="w-full h-full object-cover" alt="captured" />
-                  <div className="absolute top-1 left-1 bg-black/60 text-white text-[8px] font-black h-4 w-4 rounded-full flex items-center justify-center">{idx + 1}</div>
+      {/* Processing progress */}
+      {albumPhase === 'processing' && (
+        <div className="px-6 mb-2">
+          <Progress value={(processedCount / albumPhotos.length) * 100} className="h-2" />
+          <p className="text-[10px] text-slate-400 font-bold mt-1 text-center">{processedCount} / {albumPhotos.length} procesadas</p>
+        </div>
+      )}
 
-                  {photo.status === 'processing' && (
-                    <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center">
-                      <Loader2 className="h-5 w-5 text-primary animate-spin" />
-                    </div>
-                  )}
-                  {photo.status === 'saved' && (
-                    <div className="absolute inset-0 bg-emerald-500/40 flex items-center justify-center">
-                      <Check className="text-white h-8 w-8 drop-shadow-md" />
-                    </div>
-                  )}
-                  {photo.status === 'error' && (
-                    <div className="absolute inset-0 bg-destructive/40 flex flex-col items-center justify-center text-center p-1">
-                      <AlertCircle className="text-white h-6 w-6 mb-1" />
-                      <span className="text-[7px] font-black text-white uppercase leading-none">Error</span>
-                    </div>
-                  )}
+      {/* Scrollable photo grid - takes all remaining space */}
+      <div className="flex-1 min-h-0 overflow-hidden mx-4">
+        <ScrollArea className="h-full">
+          <div className="p-2">
+            {albumPhotos.length > 0 ? (
+              <div className="grid grid-cols-3 gap-3 pb-4">
+                {albumPhotos.map((photo, idx) => (
+                  <div
+                    key={photo.id}
+                    className={`relative aspect-square rounded-2xl overflow-hidden border-2 shadow-md transition-all ${photo.status === 'error' ? 'border-destructive' : 'border-slate-800'}`}
+                  >
+                    <img src={photo.dataUrl} className="w-full h-full object-cover" alt="captured" />
+                    <div className="absolute top-1 left-1 bg-black/60 text-white text-[8px] font-black h-4 w-4 rounded-full flex items-center justify-center">{idx + 1}</div>
 
-                  {albumPhase === 'capturing' && photo.status === 'pending' && (
-                    <button onClick={(e) => { e.stopPropagation(); removePhoto(photo.id); }} className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1 hover:bg-destructive transition-colors"><Trash2 className="h-3 w-3" /></button>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full py-20 opacity-30 text-center">
-              <Image className="h-16 w-16 mb-4 text-slate-600" />
-              <p className="font-black text-[10px] uppercase tracking-widest text-white leading-none">Sin fotos cargadas</p>
-            </div>
-          )}
-        </ScrollArea>
+                    {photo.status === 'processing' && (
+                      <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center">
+                        <Loader2 className="h-5 w-5 text-primary animate-spin" />
+                      </div>
+                    )}
+                    {photo.status === 'saved' && (
+                      <div className="absolute inset-0 bg-emerald-500/40 flex items-center justify-center">
+                        <Check className="text-white h-8 w-8 drop-shadow-md" />
+                      </div>
+                    )}
+                    {photo.status === 'error' && (
+                      <div className="absolute inset-0 bg-destructive/40 flex flex-col items-center justify-center text-center p-1">
+                        <AlertCircle className="text-white h-5 w-5 mb-1" />
+                        <span className="text-[7px] font-black text-white uppercase leading-none">Error</span>
+                      </div>
+                    )}
 
-        {albumPhotos.some(p => p.status === 'error') && albumPhase === 'done' && (
-          <div className="absolute bottom-4 left-4 right-4 bg-destructive text-white p-3 rounded-2xl flex items-center gap-3 shadow-2xl animate-bounce">
-            <Info className="h-5 w-5" />
-            <p className="text-[10px] font-black uppercase leading-tight">Toca las fotos rojas para ver el error</p>
+                    {/* Delete button for pending photos in capture phase */}
+                    {albumPhase === 'capturing' && photo.status === 'pending' && (
+                      <button onClick={(e) => { e.stopPropagation(); removePhoto(photo.id); }} className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1 hover:bg-destructive transition-colors"><Trash2 className="h-3 w-3" /></button>
+                    )}
+
+                    {/* Edit button for error photos */}
+                    {photo.status === 'error' && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openManualEdit(photo); }}
+                        className="absolute bottom-1 right-1 bg-primary text-white rounded-full p-1.5 shadow-lg active:scale-90 transition-transform"
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-20 opacity-30 text-center">
+                <Image className="h-16 w-16 mb-4 text-slate-600" />
+                <p className="font-black text-[10px] uppercase tracking-widest text-white leading-none">Sin fotos cargadas</p>
+              </div>
+            )}
           </div>
-        )}
+        </ScrollArea>
       </div>
 
-      <div className="space-y-3 px-2 pb-16 bg-slate-950 z-50">
+      {/* Error hint banner */}
+      {errorCount > 0 && albumPhase === 'done' && (
+        <div className="mx-6 mb-2 bg-destructive/90 text-white p-3 rounded-2xl flex items-center gap-3 shadow-2xl">
+          <Pencil className="h-4 w-4 shrink-0" />
+          <p className="text-[10px] font-black uppercase leading-tight">{errorCount} foto(s) con error — tocá el ícono ✏️ para cargar datos manual</p>
+        </div>
+      )}
+
+      {/* STICKY action buttons — always visible */}
+      <div className="shrink-0 px-6 py-4 bg-slate-950 border-t border-slate-800 space-y-2">
         {albumPhase === 'capturing' && (
           <>
-            <Button onClick={startCamera} className="w-full h-16 rounded-2xl bg-primary text-white font-black text-lg shadow-2xl shadow-primary/20 active:scale-95 transition-all">
-              <Camera className="mr-3 h-6 w-6" /> ABRIR CÁMARA
+            <Button onClick={startCamera} className="w-full h-14 rounded-2xl bg-primary text-primary-foreground font-black text-base shadow-2xl shadow-primary/20 active:scale-95 transition-all">
+              <Camera className="mr-3 h-5 w-5" /> ABRIR CÁMARA
             </Button>
             {albumPhotos.length > 0 && (
-              <Button onClick={processAlbum} className="w-full h-14 rounded-2xl bg-white text-black font-black active:scale-95 transition-all border-2 border-slate-200">
-                PROCESAR {albumPhotos.length} FOTOS
+              <Button onClick={processAlbum} className="w-full h-12 rounded-2xl bg-white text-black font-black active:scale-95 transition-all border-2 border-slate-200">
+                PROCESAR {pendingCount} FOTOS
               </Button>
             )}
           </>
         )}
-        {(albumPhase === 'done' || albumPhase === 'processing') && (
-          <div className="flex flex-col gap-2">
-            {albumPhase === 'done' && (
-              <Button onClick={handleGoToPlanner} className="w-full h-16 rounded-2xl bg-emerald-500 text-white font-black text-lg shadow-xl active:scale-95 transition-all">
-                <Route className="mr-3 h-6 w-6" /> PLANIFICAR RUTA ({packages.length})
+        {albumPhase === 'processing' && (
+          <Button disabled className="w-full h-14 rounded-2xl bg-slate-800 text-white font-black">
+            <Loader2 className="mr-2 h-5 w-5 animate-spin" /> PROCESANDO...
+          </Button>
+        )}
+        {albumPhase === 'done' && (
+          <>
+            <Button onClick={handleGoToPlanner} disabled={packages.length === 0} className="w-full h-14 rounded-2xl bg-emerald-500 text-white font-black text-base shadow-xl active:scale-95 transition-all disabled:opacity-40">
+              <Route className="mr-3 h-5 w-5" /> PLANIFICAR RUTA ({packages.length})
+            </Button>
+            {errorCount > 0 && (
+              <Button onClick={processAlbum} variant="outline" className="w-full h-10 rounded-2xl border-slate-600 text-white font-bold text-xs active:scale-95">
+                <RefreshCw className="mr-2 h-4 w-4" /> REINTENTAR {errorCount} CON ERROR
               </Button>
             )}
-            <Button onClick={() => { setAlbumPhase('capturing'); }} variant="ghost" className="text-slate-500 font-bold uppercase tracking-tighter hover:bg-white/5 rounded-xl">
-              <RefreshCw className="h-4 w-4 mr-2" /> VOLVER A CAPTURAR
+            <Button onClick={() => { setAlbumPhase('capturing'); }} variant="ghost" className="w-full text-slate-500 font-bold uppercase tracking-tighter hover:bg-white/5 rounded-xl text-xs">
+              <Camera className="h-4 w-4 mr-2" /> VOLVER A CAPTURAR
             </Button>
-          </div>
+          </>
         )}
       </div>
+
+      {/* Manual edit dialog for error photos */}
+      <Dialog open={!!editingPhoto} onOpenChange={(open) => !open && setEditingPhoto(null)}>
+        <DialogContent className="max-w-sm mx-4">
+          <DialogHeader>
+            <DialogTitle className="text-base">Cargar datos manualmente</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">Dirección *</Label>
+              <Input value={manualData.direccion} onChange={e => setManualData(d => ({ ...d, direccion: e.target.value }))} placeholder="Av. San Martín 1234" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs">Localidad</Label>
+                <Input value={manualData.localidad} onChange={e => setManualData(d => ({ ...d, localidad: e.target.value }))} placeholder="Córdoba" />
+              </div>
+              <div>
+                <Label className="text-xs">Código Postal</Label>
+                <Input value={manualData.codigoPostal} onChange={e => setManualData(d => ({ ...d, codigoPostal: e.target.value }))} placeholder="5000" />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Nombre destinatario</Label>
+              <Input value={manualData.nombreDestinatario} onChange={e => setManualData(d => ({ ...d, nombreDestinatario: e.target.value }))} placeholder="Juan Pérez" />
+            </div>
+            <div>
+              <Label className="text-xs">Teléfono</Label>
+              <Input value={manualData.telefono} onChange={e => setManualData(d => ({ ...d, telefono: e.target.value }))} placeholder="351-1234567" />
+            </div>
+            <div>
+              <Label className="text-xs">Remitente</Label>
+              <Input value={manualData.nombreRemitente} onChange={e => setManualData(d => ({ ...d, nombreRemitente: e.target.value }))} placeholder="Empresa ABC" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingPhoto(null)}>Cancelar</Button>
+            <Button onClick={saveManualEntry} disabled={!manualData.direccion.trim()}>Guardar envío</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <canvas ref={canvasRef} className="hidden" />
     </div>
