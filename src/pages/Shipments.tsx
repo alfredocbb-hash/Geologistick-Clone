@@ -269,6 +269,36 @@ export default function Shipments() {
     },
   });
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      for (let i = 0; i < ids.length; i++) {
+        const envioId = ids[i];
+        toast.loading(`Eliminando ${i + 1} de ${ids.length}...`, { id: 'bulk-delete' });
+        await supabase.from('envio_historial').delete().eq('envio_id', envioId);
+        await supabase.from('envio_detalles').delete().eq('envio_id', envioId);
+        await supabase.from('comisiones').delete().eq('envio_id', envioId);
+        await supabase.from('pagos').delete().eq('envio_id', envioId);
+        await supabase.from('movimientos_caja').delete().eq('envio_id', envioId);
+        await supabase.from('ruta_paradas').delete().eq('envio_id', envioId);
+        await supabase.from('hoja_ruta_envios').delete().eq('envio_id', envioId);
+        await supabase.from('ecommerce_orders').update({ envio_id: null }).eq('envio_id', envioId);
+        const { error } = await supabase.from('envios').delete().eq('id', envioId);
+        if (error) throw error;
+      }
+    },
+    onSuccess: (_data, ids) => {
+      toast.success(`${ids.length} envío(s) eliminados permanentemente`, { id: 'bulk-delete' });
+      queryClient.invalidateQueries({ queryKey: ['envios'] });
+      queryClient.invalidateQueries({ queryKey: ['envios-stats'] });
+      setBulkDeleteDialogOpen(false);
+      clearSelection();
+    },
+    onError: (error) => {
+      toast.error('Error al eliminar envíos', { id: 'bulk-delete' });
+      console.error(error);
+    },
+  });
+
   const { data: enviosData, isLoading, refetch } = useQuery({
     queryKey: ['envios', statusFilter, dateFrom.toISOString(), dateTo.toISOString()],
     queryFn: async () => {
