@@ -331,6 +331,21 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
     }
   };
 
+  const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        setAlbumPhotos(prev => [...prev, { id: `photo-${Date.now()}-${Math.random()}`, dataUrl, status: 'pending' }]);
+      };
+      reader.readAsDataURL(file);
+    });
+    // Reset input so same file can be selected again
+    e.target.value = '';
+  };
+
   const removePhoto = (id: string) => {
     setAlbumPhotos(prev => prev.filter(p => p.id !== id));
   };
