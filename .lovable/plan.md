@@ -1,27 +1,19 @@
 
 
-## Plan: BulkOCRScreen funcione en escritorio con selector de archivos
+## Plan: Fix 404 al planificar desde "Importar con IA" en escritorio
 
 ### Problema
-El componente `BulkOCRScreen` esta disenado 100% para movil (pantalla completa negra, camara, video). Cuando se abre desde el escritorio via "Importar con IA" en ThirdPartyShipmentsTab, muestra la interfaz de camara movil que no funciona en desktop.
+Cuando el usuario procesa fotos desde el dialog "Importar con IA" en el planificador (ruta `/planner`), al hacer click en "Planificar Ruta", el componente `BulkOCRScreen` ejecuta `navigate('/route-planner')` — que es la ruta **mobile**. En desktop la ruta correcta es `/planner`, causando un 404.
 
 ### Solucion
+En `BulkOCRScreen.tsx`, cuando se ejecuta desde desktop (sin `onPackagesReady`), navegar a `/planner` en vez de `/route-planner` segun `isMobile`. Mejor aun: cuando el componente se abre dentro del planificador (desktop), simplemente cerrar el dialog e invalidar queries en vez de navegar, ya que el usuario ya esta en la pagina correcta.
 
-**`src/components/mobile/BulkOCRScreen.tsx`** — Detectar si estamos en desktop y adaptar el flujo:
+### Cambio concreto
 
-1. **Importar `useIsMobile`** y detectar si estamos en desktop
-2. **En desktop, saltar la pantalla de seleccion de modo** ("select") y ir directo al modo album
-3. **Reemplazar el boton de camara por un `<input type="file" accept="image/*" multiple />`** que permite seleccionar multiples imagenes del sistema de archivos
-4. **Al seleccionar archivos**, convertirlos a dataUrl y agregarlos a `albumPhotos` automaticamente
-5. **Adaptar el layout**: en desktop no usar `fixed inset-0` sino un contenedor normal que funcione dentro del Dialog del padre; quitar estilos de pantalla completa oscura cuando es desktop
-6. **Mantener el resto del flujo igual**: grid de fotos, boton PROCESAR, edicion manual de errores, PLANIFICAR
-
-### Cambios concretos en el componente:
-- Nueva funcion `handleFileSelect(e: ChangeEvent<HTMLInputElement>)` que lee archivos con FileReader y los agrega como albumPhotos
-- En desktop: el mode arranca en `'album'` directamente, no muestra la pantalla "select"
-- En la vista de album en desktop: boton "Seleccionar Imagenes" con input file en vez de boton de camara
-- El contenedor principal usa clases condicionales: `fixed inset-0 bg-slate-950` en movil, layout normal en desktop
+**`src/components/mobile/BulkOCRScreen.tsx`** — En la funcion que maneja "Planificar Ruta" (linea ~269):
+- Si `onPackagesReady` no existe y estamos en desktop (`!isMobile`), usar `navigate('/planner?envio_ids=...')` en vez de `/route-planner?envio_ids=...`
+- Alternativa mas limpia: detectar con `isMobile` y usar la ruta correcta para cada plataforma
 
 ### Archivos a modificar
-- `src/components/mobile/BulkOCRScreen.tsx` — Agregar deteccion desktop + input file + layout adaptativo
+- `src/components/mobile/BulkOCRScreen.tsx` — Cambiar la ruta de navegacion segun plataforma (linea 269)
 
