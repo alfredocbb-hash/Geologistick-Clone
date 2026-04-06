@@ -638,9 +638,10 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
                 ))}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center py-20 opacity-30 text-center">
-                <Image className="h-16 w-16 mb-4 text-slate-600" />
-                <p className="font-black text-[10px] uppercase tracking-widest text-white leading-none">Sin fotos cargadas</p>
+              <div className="flex flex-col items-center justify-center py-20 opacity-50 text-center">
+                <Upload className="h-16 w-16 mb-4 text-muted-foreground" />
+                <p className="font-black text-sm uppercase tracking-widest text-muted-foreground leading-none mb-2">Sin fotos cargadas</p>
+                {!isMobile && <p className="text-xs text-muted-foreground">Hacé click en "Seleccionar Imágenes" para comenzar</p>}
               </div>
             )}
           </div>
