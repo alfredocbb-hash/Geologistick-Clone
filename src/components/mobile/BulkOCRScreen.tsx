@@ -274,6 +274,60 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
     }
   };
 
+  const openManualEdit = (photo: AlbumPhoto) => {
+    setEditingPhoto(photo);
+    setManualData({ direccion: '', localidad: '', codigoPostal: '', nombreDestinatario: '', telefono: '', nombreRemitente: '' });
+  };
+
+  const saveManualEntry = async () => {
+    if (!editingPhoto || !profileData) return;
+    if (!manualData.direccion.trim()) {
+      toast.error("La dirección es obligatoria");
+      return;
+    }
+
+    setAlbumPhotos(prev => prev.map(p => p.id === editingPhoto.id ? { ...p, status: 'processing', error: undefined } : p));
+    setEditingPhoto(null);
+
+    try {
+      const tracking = `MAN-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      const { data: envio, error: insertError } = await supabase.from('envios').insert({
+        tracking_number: tracking,
+        direccion_entrega: manualData.direccion,
+        ciudad_entrega: manualData.localidad || '',
+        cp_entrega: manualData.codigoPostal || '',
+        nombre_destinatario: manualData.nombreDestinatario || null,
+        whatsapp_destinatario: manualData.telefono || null,
+        nombre_remitente: manualData.nombreRemitente || null,
+        estado: 'pendiente',
+        precio_total: 0,
+        source_module: 'bulk_ocr_manual',
+        tenant_id: profileData.tenant_id,
+        sucursal_origen_id: profileData.sucursal_id,
+        created_by: user?.id
+      }).select().single();
+
+      if (insertError) throw new Error(insertError.message);
+
+      geocodeAndUpdate(envio.id, manualData.direccion, manualData.localidad);
+
+      setPackages(prev => [...prev, {
+        id: envio.id,
+        tracking_number: tracking,
+        direccion: manualData.direccion,
+        localidad: manualData.localidad,
+        codigoPostal: manualData.codigoPostal,
+        nombreDestinatario: manualData.nombreDestinatario
+      }]);
+
+      setAlbumPhotos(prev => prev.map(p => p.id === editingPhoto.id ? { ...p, status: 'saved', trackingNumber: tracking } : p));
+      toast.success("Envío guardado manualmente");
+    } catch (e: any) {
+      setAlbumPhotos(prev => prev.map(p => p.id === editingPhoto.id ? { ...p, status: 'error', error: e.message } : p));
+      toast.error("Error al guardar: " + e.message);
+    }
+  };
+
   const removePhoto = (id: string) => {
     setAlbumPhotos(prev => prev.filter(p => p.id !== id));
   };
