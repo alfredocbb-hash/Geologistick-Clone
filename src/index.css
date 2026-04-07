@@ -246,22 +246,28 @@
   html, body {
     height: 100%;
     width: 100%;
-    overflow: hidden;
     background-color: hsl(var(--background));
+  }
+
+  /* Solo en APK nativa: bloquear scroll del body */
+  html.native-app, html.native-app body {
+    overflow: hidden;
     position: fixed;
   }
 
   #root {
-    /* FORZAR MARGENES DE SEGURIDAD EXTREMOS */
     height: 100%;
     width: 100%;
-    padding-top: env(safe-area-inset-top, 40px) !important;
-    padding-bottom: env(safe-area-inset-bottom, 40px) !important;
     display: flex;
     flex-direction: column;
   }
 
-  /* El contenido principal debe ser flexible */
+  /* En nativa, aplicar safe-area padding */
+  html.native-app #root {
+    padding-top: env(safe-area-inset-top, 40px) !important;
+    padding-bottom: env(safe-area-inset-bottom, 40px) !important;
+  }
+
   main {
     flex: 1;
     overflow-y: auto;
