@@ -1,81 +1,39 @@
 
 
-## Plan: Fix global scroll en desktop y páginas de impresión
+## Plan: Fix actualización de coordenadas en mapa del Planificador
 
-### Causa raíz
-En `src/index.css` líneas 246-252, `html` y `body` tienen:
-- `overflow: hidden` — bloquea todo scroll
-- `position: fixed` — impide scroll nativo del documento
+### Problema
+El `EditShipmentLocationDialog` actualiza los campos `destinatario_lat`/`destinatario_lng` para entregas, pero el Planificador lee las coordenadas priorizando `entrega_lat`/`entrega_lng`:
 
-Esto fue pensado para la APK móvil (evitar bounce/overscroll), pero rompe el scroll en escritorio y en todas las páginas de impresión (PrintRouteSheet, PrintLabel, PrintInvoice, etc.).
+```
+coords: { lat: envio.entrega_lat || envio.destinatario_lat, ... }
+```
+
+Si `entrega_lat` ya tiene un valor previo (aunque sea incorrecto), el valor nuevo en `destinatario_lat` nunca se usa. Las coordenadas del mapa quedan sin cambio.
 
 ### Solución
-Aplicar `overflow: hidden` y `position: fixed` **solo en plataformas nativas** (Capacitor), no globalmente. En web desktop estas propiedades no deben existir.
+Actualizar `EditShipmentLocationDialog` para que escriba **ambos pares** de coordenadas (`entrega_lat`/`entrega_lng` + `destinatario_lat`/`destinatario_lng` para entregas, y `remitente_lat`/`remitente_lng` para retiros), así el planificador siempre toma el valor actualizado.
 
-### Cambios
+### Cambio en `src/components/routes/EditShipmentLocationDialog.tsx`
 
-**1. `src/index.css`** — Condicionar estilos al contexto nativo:
+En la función `mutationFn`, actualizar la sección de entrega (líneas ~95-101):
 
-```css
-@layer base {
-  html, body {
-    height: 100%;
-    width: 100%;
-    background-color: hsl(var(--background));
-  }
-
-  /* Solo en APK nativa: bloquear scroll del body */
-  html.native-app, html.native-app body {
-    overflow: hidden;
-    position: fixed;
-  }
-
-  #root {
-    height: 100%;
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-  }
-
-  /* En nativa, aplicar safe-area padding */
-  html.native-app #root {
-    padding-top: env(safe-area-inset-top, 40px) !important;
-    padding-bottom: env(safe-area-inset-bottom, 40px) !important;
-  }
-
-  main {
-    flex: 1;
-    overflow-y: auto;
-  }
-
-  /* FIX CÁMARA TRANSPARENTE */
-  html.barcode-scanner-active,
-  body.barcode-scanner-active {
-    background: transparent !important;
-  }
-  body.barcode-scanner-active #root {
-    visibility: hidden !important;
-  }
-}
-```
-
-**2. `src/main.tsx`** — Agregar clase `native-app` al `<html>` cuando corre en Capacitor:
-
-Agregar al inicio (antes de `ReactDOM.createRoot`):
+**Antes:**
 ```typescript
-import { Capacitor } from '@capacitor/core';
-
-if (Capacitor.isNativePlatform()) {
-  document.documentElement.classList.add('native-app');
-}
+updateData.destinatario_lat = coords.lat;
+updateData.destinatario_lng = coords.lng;
 ```
 
-### Resultado
-- **Desktop web**: scroll normal en todas las páginas, incluyendo impresión
-- **APK nativa**: mantiene el comportamiento actual (overflow hidden + safe areas)
-- **Páginas de impresión**: funcionan correctamente con scroll nativo
+**Después:**
+```typescript
+updateData.destinatario_lat = coords.lat;
+updateData.destinatario_lng = coords.lng;
+updateData.entrega_lat = coords.lat;
+updateData.entrega_lng = coords.lng;
+```
+
+Y para retiros, agregar también la dirección de entrega inversa no aplica — solo confirmar que `remitente_lat`/`remitente_lng` ya se setean (líneas ~89-92), lo cual es correcto.
 
 ### Archivos a modificar
-- `src/index.css` — Condicionar overflow/position a `.native-app`
-- `src/main.tsx` — Detectar plataforma nativa y agregar clase
+- `src/components/routes/EditShipmentLocationDialog.tsx` — Agregar `entrega_lat`/`entrega_lng` al update de entregas
 
