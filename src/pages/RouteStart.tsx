@@ -335,7 +335,7 @@ export default function RouteStart() {
   const vehiculo = isPlannedRoute ? rutaPlanificada?.vehiculo : hojaRuta?.vehiculo;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="h-screen bg-background overflow-y-auto">
       {/* Header */}
       <div className="sticky top-0 z-40 bg-card border-b">
         <div className="flex items-center justify-between p-4">

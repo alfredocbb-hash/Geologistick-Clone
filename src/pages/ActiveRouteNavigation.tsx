@@ -614,7 +614,7 @@ export default function ActiveRouteNavigation() {
       : (nextEnvio?.nombre_destinatario || `${contact?.nombre || ''} ${contact?.apellido || ''}`.trim()));
 
   return (
-    <div className="min-h-screen bg-background pb-24">
+    <div className="h-screen bg-background overflow-y-auto pb-24">
       {/* Header */}
       <div className="sticky top-0 z-40 bg-card border-b">
         <div className="flex items-center justify-between p-4">
