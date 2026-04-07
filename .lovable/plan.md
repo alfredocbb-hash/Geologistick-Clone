@@ -1,37 +1,31 @@
 
 
-## Plan: Eliminación masiva de envíos para super_admin
+## Plan: Fix de scroll en APK móvil
 
-### Resumen
-Agregar checkboxes de selección múltiple en la tabla de envíos (solo visible para super_admin) con un botón "Eliminar seleccionados" que permite borrar varios envíos a la vez, reutilizando la lógica de `deleteMutation` existente.
+### Problema
+El `<main>` en `MobileAppLayout.tsx` usa `min-h-screen` sin `overflow-y: auto`. Cuando el chofer tiene muchos envíos, el contenido excede la pantalla y no se puede hacer scroll.
 
-### Cambios en `src/pages/Shipments.tsx`
+### Solución
+Cambiar el contenedor `<main>` para que sea scrolleable con altura fija calculada entre header y bottom nav.
 
-1. **Nuevo estado de selección**:
-   - `selectedEnvioIds: Set<string>` para rastrear IDs seleccionados
-   - Helpers: `toggleSelectEnvio(id)`, `toggleSelectAll()`, `clearSelection()`
+### Cambio en `src/components/mobile/MobileAppLayout.tsx`
 
-2. **Checkbox en la tabla** (solo si `isSuperAdmin()`):
-   - Nueva columna `<TableHead>` con checkbox "seleccionar todos" (sobre los filtrados)
-   - Checkbox por fila en `<TableCell>` al inicio de cada row
+**Línea 258**: Reemplazar clases del `<main>`:
+- De: `min-h-screen` 
+- A: `overflow-y-auto` con height calculado via style
 
-3. **Barra de acciones masivas**:
-   - Visible cuando hay envíos seleccionados: muestra cantidad seleccionada + botón "Eliminar seleccionados" (destructive)
-   - Botón "Deseleccionar todo"
+**Líneas 259-261**: Actualizar style para usar height fijo en vez de padding approach:
+```
+style={{
+  paddingTop: isPulling ? '0' : 'calc(3.5rem + env(safe-area-inset-top, 0px) + 1rem)',
+  paddingBottom: 'calc(1rem)',
+  height: 'calc(100vh - 3.5rem - env(safe-area-inset-top, 0px) - 5.5rem - env(safe-area-inset-bottom, 0px))',
+  marginTop: isPulling ? '0' : 'calc(3.5rem + env(safe-area-inset-top, 0px))',
+}}
+```
 
-4. **Mutación masiva `bulkDeleteMutation`**:
-   - Itera sobre los IDs seleccionados ejecutando la misma lógica de borrado que `deleteMutation` (eliminar historial, detalles, comisiones, pagos, movimientos, paradas, hojas de ruta, desenlazar orders, y finalmente borrar envío)
-   - Muestra progreso via toast
-   - Al finalizar invalida queries y limpia selección
-
-5. **Diálogo de confirmación masiva**:
-   - `bulkDeleteDialogOpen` state
-   - Muestra cantidad de envíos a eliminar con advertencia clara de irreversibilidad
-   - Requiere confirmación antes de ejecutar
-
-### Importaciones adicionales
-- `Checkbox` de `@/components/ui/checkbox`
+Esto asegura que el `<main>` ocupe exactamente el espacio entre el header fijo y el bottom nav, y permita scroll interno.
 
 ### Archivos a modificar
-- `src/pages/Shipments.tsx`
+- `src/components/mobile/MobileAppLayout.tsx` — Corregir overflow del main container
 
