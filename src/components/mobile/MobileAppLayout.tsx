@@ -255,10 +255,12 @@ function MobileAppLayoutInner() {
       {/* Main Content with tab transitions */}
       <main 
         ref={mainRef}
-        className={`px-4 min-h-screen transition-all duration-200 ease-out ${getTransitionClass()}`}
+        className={`px-4 overflow-y-auto transition-all duration-200 ease-out ${getTransitionClass()}`}
         style={{ 
-          paddingTop: isPulling ? '0' : 'calc(3.5rem + env(safe-area-inset-top, 0px) + 1rem)',
-          paddingBottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))'
+          paddingTop: isPulling ? '0' : 'calc(1rem)',
+          paddingBottom: 'calc(1rem)',
+          height: 'calc(100vh - 3.5rem - env(safe-area-inset-top, 0px) - 5.5rem - env(safe-area-inset-bottom, 0px))',
+          marginTop: isPulling ? '0' : 'calc(3.5rem + env(safe-area-inset-top, 0px))',
         }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
