@@ -1,7 +1,13 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
+import { Capacitor } from "@capacitor/core";
 import App from "./App.tsx";
 import "./index.css";
+
+// Apply native-app class only on Capacitor (APK) — keeps scroll working on desktop/web
+if (Capacitor.isNativePlatform()) {
+  document.documentElement.classList.add("native-app");
+}
 
 const RELOAD_KEY = "chunk-reload-attempted";
 const RELOAD_TS_KEY = "chunk-reload-timestamp";
