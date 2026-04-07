@@ -275,7 +275,7 @@ export default function RoutePlanner() {
         // Rescheduled shipments always visible
         if ((envio.reprogramado_count && envio.reprogramado_count > 0) || envio.ultima_reprogramacion) return true;
         // Hide ML shipments that are still pendiente (not yet collected)
-        if (envio.ml_shipment_id && envio.estado === 'pendiente') return false;
+        if (envio.ml_shipment_id && envio.estado === 'pendiente' && !envio.source_module?.startsWith('bulk_ocr') && envio.source_module !== 'flex_mixto' && envio.source_module !== 'third_party') return false;
         // Everything else visible
         return true;
       });
