@@ -96,8 +96,10 @@ export function EditShipmentLocationDialog({
         updateData.direccion_entrega = address.trim();
         updateData.ciudad_entrega = city.trim() || null;
         if (coords) {
-          updateData.destinatario_lat = coords.lat;
+        updateData.destinatario_lat = coords.lat;
           updateData.destinatario_lng = coords.lng;
+          updateData.entrega_lat = coords.lat;
+          updateData.entrega_lng = coords.lng;
         }
       }
 
