@@ -234,8 +234,8 @@ export default function RoutePlanner() {
           remitente:clientes!envios_remitente_id_fkey(nombre, apellido, direccion, ciudad, telefono),
           destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, direccion, ciudad, telefono)
         `)
-        .in("estado", ["pendiente", "recogido", "en_sucursal", "en_reparto"])
-        .is("chofer_id", null)
+        .in("estado", ["pendiente", "recogido", "en_sucursal", "en_reparto", "reprogramado", "primera_visita", "segunda_visita"])
+        .or("chofer_id.is.null,reprogramado_count.gt.0")
         .order("created_at", { ascending: false });
 
       // Filter by sucursal if not admin
@@ -257,7 +257,7 @@ export default function RoutePlanner() {
             destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, direccion, ciudad, telefono)
           `)
           .in("id", urlEnvioIdsArray)
-          .in("estado", ["pendiente", "recogido", "en_sucursal", "en_reparto"]);
+          .in("estado", ["pendiente", "recogido", "en_sucursal", "en_reparto", "reprogramado", "primera_visita", "segunda_visita"]);
         if (urlError) throw urlError;
         urlShipments = urlData || [];
       }
