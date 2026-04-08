@@ -158,6 +158,9 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
         amountCollected,
         notes,
         paymentMethod,
+        parentesco,
+        nombreRetira,
+        dniRetira,
       }));
     } catch (e) {}
   };
