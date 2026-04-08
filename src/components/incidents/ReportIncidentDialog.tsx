@@ -237,6 +237,16 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
       if (historyError) throw historyError;
     },
     onMutate: async () => {
+      // Compute optimistic status
+      let optimisticStatus = 'incidencia';
+      if (incidentType === 'ausente') {
+        if (['en_reparto', 'pendiente', 'recogido', 'en_sucursal'].includes(shipment.estado)) {
+          optimisticStatus = 'primera_visita';
+        } else if (shipment.estado === 'primera_visita') {
+          optimisticStatus = 'segunda_visita';
+        }
+      }
+
       await queryClient.cancelQueries({ queryKey: ['my-active-route-paradas'] });
       await queryClient.cancelQueries({ queryKey: ['my-active-route-envios-hoja'] });
       
@@ -247,7 +257,7 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
         if (!old) return old;
         return old.map((p: any) => 
           p.envio?.id === shipment.id 
-            ? { ...p, envio: { ...p.envio, estado: 'incidencia' } }
+            ? { ...p, envio: { ...p.envio, estado: optimisticStatus } }
             : p
         );
       });
