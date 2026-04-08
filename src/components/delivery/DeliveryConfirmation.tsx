@@ -137,6 +137,9 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
             notes,
             amountCollected,
             paymentMethod,
+            parentesco,
+            nombreRetira,
+            dniRetira,
           }));
         } catch (e) {
           console.warn('Could not persist photo to sessionStorage:', e);
