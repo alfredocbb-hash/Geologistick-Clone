@@ -1,42 +1,23 @@
 
 
-## Plan: Reducir superposición de marcadores DeliveryStopMarker
+## Plan: Filtro de sellers con checkbox en la leyenda del mapa
 
-### Análisis previo
-Revisé todos los usos de marcadores en el proyecto:
-- **RoutePlanner**: Ya evita correctamente la duplicación (no agrega markers estándar cuando hay `selectedOption`, solo usa `DeliveryStopMarker`)
-- **LiveMap**: Usa `DeliveryStopMarker` + `DriverMarker` (OverlayView circular), sin conflicto entre tipos
-- **ActiveRouteNavigation**: Solo usa markers estándar, no `DeliveryStopMarker`
-- **RouteSheets**: Usa `DeliveryStopMarker` vía `driverRoute`
+### Cambio
 
-**Conclusión**: El único problema de superposición es entre instancias de `DeliveryStopMarker` cuando las paradas están geográficamente cerca. No hay conflicto entre tipos de marcadores distintos.
+**Archivo**: `src/pages/RoutePlanner.tsx`
 
-### Solución
+1. Agregar estado `hiddenSellers` como `Set<string>` para trackear sellers ocultos
+2. En la leyenda de sellers (línea ~1738), reemplazar el círculo de color por un `Checkbox` con el color del seller, que al hacer click toggle la visibilidad
+3. En `mapMarkers` (línea ~736), filtrar los envíos cuyo `nombre_remitente` esté en `hiddenSellers` para que no aparezcan en el mapa
+4. En `routeDeliveryStops` (si hay ruta optimizada), aplicar el mismo filtro
 
-**Archivo**: `src/components/maps/DeliveryStopMarker.tsx`
-
-Cambiar el icono de pin SVG (alto, con cola) a **círculo compacto** que ocupa menos espacio:
-
-```typescript
-icon={{
-  path: google.maps.SymbolPath.CIRCLE,
-  fillColor: colors.fill,
-  fillOpacity: 1,
-  strokeColor: colors.stroke,
-  strokeWeight: 2,
-  scale: 14,
-  labelOrigin: new google.maps.Point(0, 0),
-}}
-label={{
-  text: order.toString(),
-  color: '#ffffff',
-  fontSize: '11px',
-  fontWeight: 'bold',
-}}
+```text
+Estado actual:                    Nuevo:
+● Seller A                       ☑ Seller A
+● Seller B                       ☐ Seller B  (oculto en mapa)
+● Seller C                       ☑ Seller C
 ```
 
-El círculo reduce el área visual de ~48px (alto del pin) a ~28px (diámetro), eliminando la cola que causa la mayoría de las superposiciones.
-
 ### Archivos a modificar
-- `src/components/maps/DeliveryStopMarker.tsx` — Pin → círculo compacto
+- `src/pages/RoutePlanner.tsx` — Estado `hiddenSellers`, checkbox en leyenda, filtro en markers
 
