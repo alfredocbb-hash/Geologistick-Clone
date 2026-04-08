@@ -272,12 +272,22 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
 
       const timestamp = Date.now();
       
-      // Upload photo (from File or restored dataURL) and signature in parallel
+      // Helper to convert preview to blob (supports both dataURL and webPath/capacitor URIs)
+      const previewToBlob = async (preview: string): Promise<Blob> => {
+        if (preview.startsWith('data:')) {
+          return dataURLtoBlob(preview);
+        }
+        // webPath from Capacitor (e.g. capacitor://localhost/...)
+        const response = await fetch(preview);
+        return response.blob();
+      };
+
+      // Upload photo (from File or restored dataURL/webPath) and signature in parallel
       const [photoUrl, signatureUrl] = await Promise.all([
         photo 
           ? uploadFile(photo, `deliveries/${shipment.id}/photo_${timestamp}.jpg`)
           : photoPreview
-            ? uploadFile(dataURLtoBlob(photoPreview), `deliveries/${shipment.id}/photo_${timestamp}.jpg`)
+            ? previewToBlob(photoPreview).then(blob => uploadFile(blob, `deliveries/${shipment.id}/photo_${timestamp}.jpg`))
             : Promise.resolve(null),
         signature
           ? uploadFile(dataURLtoBlob(signature), `deliveries/${shipment.id}/signature_${timestamp}.png`)
