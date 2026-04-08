@@ -1,39 +1,35 @@
 
 
-## Plan: Fix actualización de coordenadas en mapa del Planificador
+## Plan: Mejorar detección de duplicados OCR y recuadro de cámara
 
-### Problema
-El `EditShipmentLocationDialog` actualiza los campos `destinatario_lat`/`destinatario_lng` para entregas, pero el Planificador lee las coordenadas priorizando `entrega_lat`/`entrega_lng`:
+### Problemas
+1. **Recuadro naranja muy chico** en modo álbum (`inset-10` = 40px cada lado, esquinas `w-8 h-8`)
+2. **Duplicados se bloquean al capturar** usando fingerprint de imagen (falsos positivos en cámara nativa). El usuario quiere que se permita capturar todas las fotos y detectar duplicados al procesar, comparando por tracking number, nombre destinatario o dirección
+3. **No se puede editar un duplicado** — actualmente se omite silenciosamente. El usuario quiere poder editar en cualquier caso (error o duplicado)
 
-```
-coords: { lat: envio.entrega_lat || envio.destinatario_lat, ... }
-```
+### Cambios en `src/components/mobile/BulkOCRScreen.tsx`
 
-Si `entrega_lat` ya tiene un valor previo (aunque sea incorrecto), el valor nuevo en `destinatario_lat` nunca se usa. Las coordenadas del mapa quedan sin cambio.
+**1. Recuadro más grande** (línea 389):
+- `inset-10` → `inset-4`
+- Esquinas `w-8 h-8` → `w-12 h-12`
 
-### Solución
-Actualizar `EditShipmentLocationDialog` para que escriba **ambos pares** de coordenadas (`entrega_lat`/`entrega_lng` + `destinatario_lat`/`destinatario_lng` para entregas, y `remitente_lat`/`remitente_lng` para retiros), así el planificador siempre toma el valor actualizado.
+**2. Eliminar chequeo de duplicados al capturar**:
+- Quitar llamada `isDuplicate()` de `handleNativeFallback` (línea 170), `captureToAlbum` (línea 187) y `handleFileSelect` (línea 359)
+- Se puede eliminar `getFingerprint`, `isDuplicate` y `usedFingerprints` ref
 
-### Cambio en `src/components/routes/EditShipmentLocationDialog.tsx`
+**3. Detección de duplicados al procesar** (`processOnePhoto`, línea 212):
+- Después de obtener los datos OCR y antes de insertar, comparar contra envíos ya procesados en esta sesión (`packages` state) por:
+  - Mismo `trackingNumber` o `mlShipmentId`
+  - Mismo `nombreDestinatario` + misma `direccion`
+- Si se detecta duplicado: marcar la foto con status `'duplicate'` (nuevo status) y guardar los datos OCR extraídos en la foto para permitir edición
+- NO insertar automáticamente
 
-En la función `mutationFn`, actualizar la sección de entrega (líneas ~95-101):
-
-**Antes:**
-```typescript
-updateData.destinatario_lat = coords.lat;
-updateData.destinatario_lng = coords.lng;
-```
-
-**Después:**
-```typescript
-updateData.destinatario_lat = coords.lat;
-updateData.destinatario_lng = coords.lng;
-updateData.entrega_lat = coords.lat;
-updateData.entrega_lng = coords.lng;
-```
-
-Y para retiros, agregar también la dirección de entrega inversa no aplica — solo confirmar que `remitente_lat`/`remitente_lng` ya se setean (líneas ~89-92), lo cual es correcto.
+**4. UI para duplicados**:
+- Agregar status `'duplicate'` al tipo `PhotoStatus` (junto a pending/processing/saved/error)
+- En la grilla de fotos, mostrar duplicados con badge naranja "Duplicado"
+- Botón "Editar" en fotos duplicadas que abra el diálogo de edición manual, pre-llenado con los datos OCR extraídos
+- Botón "Guardar igual" para forzar la inserción si el usuario confirma que no es duplicado
 
 ### Archivos a modificar
-- `src/components/routes/EditShipmentLocationDialog.tsx` — Agregar `entrega_lat`/`entrega_lng` al update de entregas
+- `src/components/mobile/BulkOCRScreen.tsx` — Todo lo descrito arriba
 
