@@ -1,24 +1,29 @@
 
 
-## Plan: Bloquear cambio de estado de envíos cancelados (excepto super admin)
+## Plan: Mostrar botón "Cambiar estado" para envíos cancelados (super admin)
 
-### Situación actual
-El diálogo `ChangeStatusDialog` bloquea cambios de estado solo para envíos `entregado` (usuarios no super admin). Los envíos `cancelado` no tienen esta protección, lo cual permite que cualquier usuario revierta una cancelación.
+### Problema
 
-### Cambio propuesto
+En `src/pages/Shipments.tsx` línea 721, la condición que muestra el botón "Cambiar estado" excluye explícitamente `cancelado`:
 
-**Archivo**: `src/components/shipments/ChangeStatusDialog.tsx`
+```typescript
+{canChangeStatus && envio.estado !== 'cancelado' && (envio.estado !== 'entregado' || isSuperAdmin()) && (
+```
 
-1. Ampliar `blockedByFinalState` para incluir `cancelado` además de `entregado`:
-   ```
-   const isFinalState = currentStatus === 'entregado' || currentStatus === 'cancelado';
-   const blockedByFinalState = isFinalState && !isSuperAdmin();
-   ```
+Esto impide que incluso el super admin vea el botón para envíos cancelados, contradiciendo la lógica ya implementada en `ChangeStatusDialog`.
 
-2. Actualizar los mensajes de advertencia para reflejar ambos estados finales:
-   - Mensaje de bloqueo: "Este envío ya fue **entregado/cancelado**. Solo un super administrador puede modificar su estado."
-   - Mensaje de advertencia para super admin: "Estás modificando un envío en estado final (**entregado/cancelado**). Este cambio quedará registrado en el historial."
+### Solución
+
+**Archivo**: `src/pages/Shipments.tsx` — Línea 721
+
+Unificar la lógica de estados finales (`entregado` y `cancelado`) con el mismo bypass para super admin:
+
+```typescript
+{canChangeStatus && ((envio.estado !== 'entregado' && envio.estado !== 'cancelado') || isSuperAdmin()) && (
+```
+
+Esto permite al super admin ver y usar el botón en ambos estados finales, mientras que los demás roles lo siguen viendo bloqueado.
 
 ### Archivos a modificar
-- `src/components/shipments/ChangeStatusDialog.tsx` — Ampliar bloqueo de estados finales a `cancelado`
+- `src/pages/Shipments.tsx` — Actualizar condición de visibilidad del botón "Cambiar estado"
 
