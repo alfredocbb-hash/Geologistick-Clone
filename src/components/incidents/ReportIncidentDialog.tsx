@@ -204,10 +204,20 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
 
       if (incidentError) throw incidentError;
 
-      // Update shipment status to 'incidencia'
+      // Determine new status based on incident type
+      let newStatus: string = 'incidencia';
+      if (incidentType === 'ausente') {
+        if (shipment.estado === 'en_reparto' || shipment.estado === 'pendiente' || shipment.estado === 'recogido' || shipment.estado === 'en_sucursal') {
+          newStatus = 'primera_visita';
+        } else if (shipment.estado === 'primera_visita') {
+          newStatus = 'segunda_visita';
+        }
+      }
+
+      // Update shipment status
       const { error: updateError } = await supabase
         .from('envios')
-        .update({ estado: 'incidencia' })
+        .update({ estado: newStatus as any })
         .eq('id', shipment.id);
 
       if (updateError) throw updateError;
@@ -219,7 +229,7 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
         .insert({
           envio_id: shipment.id,
           estado_anterior: shipment.estado as any,
-          estado_nuevo: 'incidencia',
+          estado_nuevo: newStatus as any,
           notas: `Incidente reportado: ${incidentLabel}. ${description || ''}`.trim(),
           created_by: user.id,
         });
