@@ -92,6 +92,9 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
         if (parsed.notes) setNotes(parsed.notes);
         if (parsed.amountCollected) setAmountCollected(parsed.amountCollected);
         if (parsed.paymentMethod) setPaymentMethod(parsed.paymentMethod);
+        if (parsed.parentesco) setParentesco(parsed.parentesco);
+        if (parsed.nombreRetira) setNombreRetira(parsed.nombreRetira);
+        if (parsed.dniRetira) setDniRetira(parsed.dniRetira);
       } catch (e) {
         console.error('Error restoring delivery state:', e);
       }
