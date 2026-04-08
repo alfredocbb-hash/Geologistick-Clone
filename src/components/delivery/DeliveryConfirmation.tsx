@@ -75,6 +75,9 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>('efectivo');
   const [mpPayment, setMpPayment] = useState<MpPaymentData | null>(null);
   const [isCreatingMpPayment, setIsCreatingMpPayment] = useState(false);
+  const [parentesco, setParentesco] = useState<string>('destinatario');
+  const [nombreRetira, setNombreRetira] = useState('');
+  const [dniRetira, setDniRetira] = useState('');
 
   const { isConfigured: isMpConfigured, environment: mpEnvironment } = useMercadoPagoConfig();
 
