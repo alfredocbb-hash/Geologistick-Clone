@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, CheckCircle2, Package, MapPin, User, Camera, X, Banknote, Smartphone, Building2, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import SignatureCanvas from './SignatureCanvas';
@@ -74,6 +75,9 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>('efectivo');
   const [mpPayment, setMpPayment] = useState<MpPaymentData | null>(null);
   const [isCreatingMpPayment, setIsCreatingMpPayment] = useState(false);
+  const [parentesco, setParentesco] = useState<string>('destinatario');
+  const [nombreRetira, setNombreRetira] = useState('');
+  const [dniRetira, setDniRetira] = useState('');
 
   const { isConfigured: isMpConfigured, environment: mpEnvironment } = useMercadoPagoConfig();
 
@@ -88,6 +92,9 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
         if (parsed.notes) setNotes(parsed.notes);
         if (parsed.amountCollected) setAmountCollected(parsed.amountCollected);
         if (parsed.paymentMethod) setPaymentMethod(parsed.paymentMethod);
+        if (parsed.parentesco) setParentesco(parsed.parentesco);
+        if (parsed.nombreRetira) setNombreRetira(parsed.nombreRetira);
+        if (parsed.dniRetira) setDniRetira(parsed.dniRetira);
       } catch (e) {
         console.error('Error restoring delivery state:', e);
       }
@@ -130,6 +137,9 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
             notes,
             amountCollected,
             paymentMethod,
+            parentesco,
+            nombreRetira,
+            dniRetira,
           }));
         } catch (e) {
           console.warn('Could not persist photo to sessionStorage:', e);
@@ -148,6 +158,9 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
         amountCollected,
         notes,
         paymentMethod,
+        parentesco,
+        nombreRetira,
+        dniRetira,
       }));
     } catch (e) {}
   };
@@ -158,9 +171,10 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
       persistState();
       nativeTakePhoto().then((result) => {
         if (result) {
+          const preview = result.webPath || result.dataUrl || null;
           setPhoto(null);
-          setPhotoPreview(result.dataUrl);
-          persistState(result.dataUrl);
+          setPhotoPreview(preview);
+          persistState(preview || undefined);
         }
       });
       return;
@@ -178,9 +192,10 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
       persistState();
       nativePickFromGallery().then((result) => {
         if (result) {
+          const preview = result.webPath || result.dataUrl || null;
           setPhoto(null);
-          setPhotoPreview(result.dataUrl);
-          persistState(result.dataUrl);
+          setPhotoPreview(preview);
+          persistState(preview || undefined);
         }
       });
       return;
@@ -257,12 +272,22 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
 
       const timestamp = Date.now();
       
-      // Upload photo (from File or restored dataURL) and signature in parallel
+      // Helper to convert preview to blob (supports both dataURL and webPath/capacitor URIs)
+      const previewToBlob = async (preview: string): Promise<Blob> => {
+        if (preview.startsWith('data:')) {
+          return dataURLtoBlob(preview);
+        }
+        // webPath from Capacitor (e.g. capacitor://localhost/...)
+        const response = await fetch(preview);
+        return response.blob();
+      };
+
+      // Upload photo (from File or restored dataURL/webPath) and signature in parallel
       const [photoUrl, signatureUrl] = await Promise.all([
         photo 
           ? uploadFile(photo, `deliveries/${shipment.id}/photo_${timestamp}.jpg`)
           : photoPreview
-            ? uploadFile(dataURLtoBlob(photoPreview), `deliveries/${shipment.id}/photo_${timestamp}.jpg`)
+            ? previewToBlob(photoPreview).then(blob => uploadFile(blob, `deliveries/${shipment.id}/photo_${timestamp}.jpg`))
             : Promise.resolve(null),
         signature
           ? uploadFile(dataURLtoBlob(signature), `deliveries/${shipment.id}/signature_${timestamp}.png`)
@@ -281,6 +306,9 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
         entrega_lat: deliveryLocation?.lat || null,
         entrega_lng: deliveryLocation?.lng || null,
         sucursal_entrega_id: profile?.sucursal_id || null,
+        parentesco_retira: parentesco || 'destinatario',
+        nombre_retira: nombreRetira || null,
+        dni_retira: dniRetira || null,
       };
 
       if (photoUrl) updateData.foto_entrega = photoUrl;
@@ -682,6 +710,43 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
           <div className="space-y-2">
             <Label>✍️ Firma del Destinatario</Label>
             <SignatureCanvas onSignatureChange={setSignature} />
+          </div>
+
+          {/* Receptor info */}
+          <div className="space-y-3">
+            <Label>👤 ¿Quién recibe?</Label>
+            <Select value={parentesco} onValueChange={setParentesco}>
+              <SelectTrigger>
+                <SelectValue placeholder="Seleccionar..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="destinatario">Destinatario (titular)</SelectItem>
+                <SelectItem value="familiar">Familiar</SelectItem>
+                <SelectItem value="otro">Otra persona</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {parentesco !== 'destinatario' && (
+              <div className="space-y-2">
+                <Label htmlFor="nombreRetira">Nombre de quien recibe (opcional)</Label>
+                <Input
+                  id="nombreRetira"
+                  placeholder="Nombre y apellido"
+                  value={nombreRetira}
+                  onChange={(e) => setNombreRetira(e.target.value)}
+                />
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="dniRetira">DNI (opcional)</Label>
+              <Input
+                id="dniRetira"
+                placeholder="Número de documento"
+                value={dniRetira}
+                onChange={(e) => setDniRetira(e.target.value)}
+              />
+            </div>
           </div>
 
           {/* Amount collected (if COD or pago en destino) */}
