@@ -192,9 +192,10 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
       persistState();
       nativePickFromGallery().then((result) => {
         if (result) {
+          const preview = result.webPath || result.dataUrl || null;
           setPhoto(null);
-          setPhotoPreview(result.dataUrl);
-          persistState(result.dataUrl);
+          setPhotoPreview(preview);
+          persistState(preview || undefined);
         }
       });
       return;
