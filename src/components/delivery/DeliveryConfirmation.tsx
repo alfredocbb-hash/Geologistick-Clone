@@ -306,6 +306,9 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
         entrega_lat: deliveryLocation?.lat || null,
         entrega_lng: deliveryLocation?.lng || null,
         sucursal_entrega_id: profile?.sucursal_id || null,
+        parentesco_retira: parentesco || 'destinatario',
+        nombre_retira: nombreRetira || null,
+        dni_retira: dniRetira || null,
       };
 
       if (photoUrl) updateData.foto_entrega = photoUrl;
