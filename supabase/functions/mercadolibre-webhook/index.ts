@@ -207,6 +207,15 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Extract time_frame for delivery schedule
+      const timeFrame = shipment.lead_time?.estimated_delivery_time?.time_frame;
+      let horarioPreferido = 'cualquier_hora';
+      if (timeFrame?.from != null && timeFrame?.to != null) {
+        if (timeFrame.to <= 13) horarioPreferido = 'manana';
+        else if (timeFrame.from >= 17) horarioPreferido = 'noche';
+        else if (timeFrame.from >= 12) horarioPreferido = 'tarde';
+      }
+
       // Create envio
       const { data: envio, error: envioError } = await supabase
         .from('envios')
@@ -227,7 +236,7 @@ Deno.serve(async (req) => {
           destinatario_lat: receiver.latitude || null,
           destinatario_lng: receiver.longitude || null,
           whatsapp_destinatario: receiverPhone,
-          precio_total: 0, // Will be calculated based on tarifa
+          precio_total: 0,
           precio_tarifa_vigente: 0,
           tipo_servicio: 'express',
           tipo_servicio_detalle: 'ML Flex',
@@ -236,6 +245,7 @@ Deno.serve(async (req) => {
           notas: `MercadoLibre Flex - Order #${orderId || shipment.id}`,
           nombre_remitente: seller.nombre,
           remitente_id: seller.cliente_id || null,
+          horario_preferido_entrega: horarioPreferido,
         })
         .select()
         .single();
@@ -401,7 +411,7 @@ Deno.serve(async (req) => {
 
         await supabase.from('envios').update({
           estado: mapping.estado_interno,
-          estado_ml: shipment.status,
+          estado_ml: mapping.estado_interno,
           ml_sync_status: 'synced',
           ml_last_sync_at: now,
         }).eq('id', existingEnvio.id);
@@ -435,7 +445,7 @@ Deno.serve(async (req) => {
       } else {
         // No mapping or same status, just update sync timestamp
         await supabase.from('envios').update({
-          estado_ml: shipment.status,
+          estado_ml: mapping?.estado_interno || shipment.status,
           ml_sync_status: 'synced',
           ml_last_sync_at: now,
         }).eq('id', existingEnvio.id);

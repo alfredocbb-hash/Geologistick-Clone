@@ -52,15 +52,15 @@ function DeliveryStopMarkerComponent({
           fillColor: colors.fill,
           fillOpacity: 1,
           strokeColor: colors.stroke,
-          strokeWeight: 1,
-          scale: 1.5,
+          strokeWeight: 2,
+          scale: 2.0,
           anchor: new google.maps.Point(12, 24),
-          labelOrigin: new google.maps.Point(12, 9),
+          labelOrigin: new google.maps.Point(12, 10),
         }}
         label={{
           text: order.toString(),
           color: '#ffffff',
-          fontSize: '10px',
+          fontSize: '13px',
           fontWeight: 'bold',
         }}
         title={`${label} #${order} - ${trackingNumber}`}

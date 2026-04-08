@@ -119,8 +119,17 @@ export function OrderDetailsDialog({ open, onOpenChange, order }: OrderDetailsDi
                   {/* QR Code */}
                   {mlSenderId && (
                     <div className="flex flex-col items-center gap-1">
-                      <QRCodeSVG
-                        value={JSON.stringify({ id: String(mlShipmentId), sender_id: String(mlSenderId) })}
+                     <QRCodeSVG
+                        value={JSON.stringify({
+                          id: String(mlShipmentId),
+                          sender_id: mlSenderId ? Number(mlSenderId) : undefined,
+                          ...(order.raw_data?.hash_code || order.raw_data?.security_code
+                            ? { hash_code: order.raw_data.hash_code || order.raw_data.security_code }
+                            : {}),
+                          ...(order.raw_data?.security_digit != null
+                            ? { security_digit: String(order.raw_data.security_digit) }
+                            : {}),
+                        })}
                         size={120}
                         level="M"
                       />

@@ -1520,6 +1520,7 @@ export default function RoutePlanner() {
                           <TableHead>Tracking</TableHead>
                           <TableHead>Tipo</TableHead>
                           <TableHead>Localidad</TableHead>
+                          <TableHead>Horario</TableHead>
                           <TableHead>Dirección</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -1550,6 +1551,15 @@ export default function RoutePlanner() {
                               </TableCell>
                               <TableCell className="text-xs font-medium">
                                 {localidad}
+                              </TableCell>
+                              <TableCell>
+                                {envio.horario_preferido_entrega && envio.horario_preferido_entrega !== 'cualquier_hora' && (
+                                  <Badge variant="outline" className="text-[10px]">
+                                    {envio.horario_preferido_entrega === 'manana' ? '🌅 Mañana' :
+                                     envio.horario_preferido_entrega === 'tarde' ? '☀️ Tarde' :
+                                     envio.horario_preferido_entrega === 'noche' ? '🌙 Noche' : ''}
+                                  </Badge>
+                                )}
                               </TableCell>
                               <TableCell className="text-xs max-w-[150px] truncate">
                                 {envio.tipo === "retiro" 
