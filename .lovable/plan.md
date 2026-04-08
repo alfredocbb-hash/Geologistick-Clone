@@ -1,39 +1,33 @@
 
 
-## Plan: Envíos reprogramados/incidencia en planificador + flujo "cliente ausente" → primera_visita
+## Plan: Fix foto en APK + agregar receptor/DNI en confirmación de entrega
 
-### Problema 1: Envíos con estado `reprogramado`, `primera_visita`, `segunda_visita` no aparecen en la lista principal del planificador
+### Problema 1: Foto no funciona en APK
+**Causa**: `useNativeCamera` devuelve `webPath` (usa `CameraResultType.Uri`) pero `DeliveryConfirmation.tsx` solo lee `result.dataUrl` (que es `undefined`).
 
-**Causa**: La query principal (línea 237) filtra solo `["pendiente", "recogido", "en_sucursal", "en_reparto"]` y requiere `chofer_id IS NULL`. Los envíos reprogramados ya tienen estado `pendiente` (el RPC `reschedule_envio` los resetea), pero si conservan `chofer_id` o tienen estado `primera_visita`/`segunda_visita`/`reprogramado`, no aparecen.
+**Solución** en `src/components/delivery/DeliveryConfirmation.tsx`:
+- Líneas 162 y 182: cambiar `result.dataUrl` → `result.webPath || result.dataUrl`
+- En la mutación de upload (línea 264): si `photoPreview` no empieza con `data:`, usar `fetch(photoPreview).then(r => r.blob())` en vez de `dataURLtoBlob()`
 
-**Solución** en `src/pages/RoutePlanner.tsx`:
-- Ampliar el filtro de estados a `["pendiente", "recogido", "en_sucursal", "en_reparto", "reprogramado", "primera_visita", "segunda_visita"]`
-- Quitar el `.is("chofer_id", null)` estricto y reemplazarlo por un `.or("chofer_id.is.null,reprogramado_count.gt.0")` para que envíos reprogramados (que ya tuvieron chofer) sean visibles
-- Misma lógica para la query de URL shipments (línea 260)
+### Problema 2: Falta quién recibe y DNI
+Los campos `nombre_retira`, `dni_retira`, `parentesco_retira` ya existen en la tabla `envios` y se usan en `BranchDeliveryDialog`, pero no en `DeliveryConfirmation` (entrega del chofer).
 
-### Problema 2: "Cliente ausente" debería poner el envío en `primera_visita` (no `incidencia`)
+**Solución** en `src/components/delivery/DeliveryConfirmation.tsx`:
+- Agregar estados: `parentesco` (default `'destinatario'`), `nombreRetira`, `dniRetira` — todos opcionales
+- Agregar un `Select` con opciones: Destinatario / Familiar / Otro, y campos de texto para nombre y DNI que aparecen cuando se selecciona algo distinto de "Destinatario"
+- El campo DNI siempre visible pero opcional
+- En la mutación, incluir `nombre_retira`, `dni_retira`, `parentesco_retira` en el `updateData`
+- Persistir estos campos en `sessionStorage` junto con el resto del estado
 
-**Flujo propuesto**: Cuando el chofer reporta "ausente" y tiene evidencia de que fue al domicilio (GPS o foto), el estado debería ser `primera_visita` en vez de `incidencia` genérica. Si ya está en `primera_visita`, debería pasar a `segunda_visita`.
+### UI propuesta (después de la firma, antes del cobro)
+```text
+Recibió:  [Destinatario ▼]    ← Select, default "Destinatario"
 
-**Solución** en `src/components/incidents/ReportIncidentDialog.tsx`:
-- En la mutación (línea 207-211), si `incidentType === 'ausente'`:
-  - Si `shipment.estado === 'en_reparto'` → cambiar a `primera_visita`
-  - Si `shipment.estado === 'primera_visita'` → cambiar a `segunda_visita`
-  - Cualquier otro caso → mantener `incidencia`
-- Para otros tipos de incidente → mantener `incidencia` como está
-- Actualizar el historial con el estado correcto
+(si no es Destinatario)
+Nombre de quien recibe: [____________]   ← opcional
+DNI (opcional):         [____________]   ← siempre visible, opcional
+```
 
-### Problema 3: Estos envíos deben verse en la solapa "Reprogramados" e "Incidencias"
-
-La solapa "Reprogramados" (`RescheduledShipmentsList.tsx`) ya incluye `primera_visita` y `segunda_visita` en su query (línea 49), pero solo filtra por `reprogramado_count > 0`. Envíos con `primera_visita` que aún no fueron reprogramados no aparecen.
-
-**Solución** en `src/components/routes/RescheduledShipmentsList.tsx`:
-- Cambiar el filtro de `.gt('reprogramado_count', 0)` a un `.or()` que incluya también envíos con estado `primera_visita` o `segunda_visita` aunque no tengan `reprogramado_count > 0`
-- Renombrar la solapa a "Reprogramados / Visitas" para claridad
-
-### Resumen de archivos a modificar
-
-1. **`src/pages/RoutePlanner.tsx`** — Ampliar filtro de estados + relajar filtro `chofer_id` para reprogramados
-2. **`src/components/incidents/ReportIncidentDialog.tsx`** — "ausente" → `primera_visita` / `segunda_visita` según estado actual
-3. **`src/components/routes/RescheduledShipmentsList.tsx`** — Incluir envíos en `primera_visita`/`segunda_visita` sin `reprogramado_count`
+### Archivos a modificar
+- `src/components/delivery/DeliveryConfirmation.tsx` — Fix foto + agregar campos receptor/DNI
 
