@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, CheckCircle2, Package, MapPin, User, Camera, X, Banknote, Smartphone, Building2, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import SignatureCanvas from './SignatureCanvas';
