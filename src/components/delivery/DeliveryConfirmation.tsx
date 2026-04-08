@@ -712,6 +712,43 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
             <SignatureCanvas onSignatureChange={setSignature} />
           </div>
 
+          {/* Receptor info */}
+          <div className="space-y-3">
+            <Label>👤 ¿Quién recibe?</Label>
+            <Select value={parentesco} onValueChange={setParentesco}>
+              <SelectTrigger>
+                <SelectValue placeholder="Seleccionar..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="destinatario">Destinatario (titular)</SelectItem>
+                <SelectItem value="familiar">Familiar</SelectItem>
+                <SelectItem value="otro">Otra persona</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {parentesco !== 'destinatario' && (
+              <div className="space-y-2">
+                <Label htmlFor="nombreRetira">Nombre de quien recibe (opcional)</Label>
+                <Input
+                  id="nombreRetira"
+                  placeholder="Nombre y apellido"
+                  value={nombreRetira}
+                  onChange={(e) => setNombreRetira(e.target.value)}
+                />
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="dniRetira">DNI (opcional)</Label>
+              <Input
+                id="dniRetira"
+                placeholder="Número de documento"
+                value={dniRetira}
+                onChange={(e) => setDniRetira(e.target.value)}
+              />
+            </div>
+          </div>
+
           {/* Amount collected (if COD or pago en destino) */}
           {requiresPayment && (
             <div className="space-y-3">
