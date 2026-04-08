@@ -6,7 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { X, Camera, MapPin, Package, Loader2, Route, AlertCircle, Image, Zap, RefreshCw, Trash2, Check, Smartphone, Info, Pencil, Upload } from 'lucide-react';
+import { X, Camera, MapPin, Package, Loader2, Route, AlertCircle, Image, Zap, RefreshCw, Trash2, Check, Smartphone, Info, Pencil, Upload, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -27,7 +27,7 @@ interface ManualEditData {
 
 type BulkMode = 'select' | 'burst' | 'album';
 type AlbumPhase = 'capturing' | 'processing' | 'done';
-type PhotoStatus = 'pending' | 'processing' | 'saved' | 'error';
+type PhotoStatus = 'pending' | 'processing' | 'saved' | 'error' | 'duplicate';
 
 interface AlbumPhoto {
   id: string;
@@ -35,6 +35,7 @@ interface AlbumPhoto {
   status: PhotoStatus;
   trackingNumber?: string;
   error?: string;
+  ocrData?: any; // Store extracted OCR data for duplicates
 }
 
 interface BulkPackage {
@@ -86,7 +87,6 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
 
   const [mode, setMode] = useState<BulkMode>(isMobile ? 'select' : 'album');
   const [packages, setPackages] = useState<BulkPackage[]>([]);
-  const usedFingerprints = useRef<Set<string>>(new Set());
   const [albumPhotos, setAlbumPhotos] = useState<AlbumPhoto[]>([]);
   const [albumPhase, setAlbumPhase] = useState<AlbumPhase>('capturing');
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -151,23 +151,10 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
     setIsCameraOpen(false);
   };
 
-  const getFingerprint = (dataUrl: string) => dataUrl.substring(200, 400);
-
-  const isDuplicate = (dataUrl: string): boolean => {
-    const fp = getFingerprint(dataUrl);
-    if (usedFingerprints.current.has(fp)) {
-      toast.warning("Imagen ya cargada, se omitió");
-      return true;
-    }
-    usedFingerprints.current.add(fp);
-    return false;
-  };
-
   const handleNativeFallback = async () => {
     const result = await takePhoto();
     if (result?.webPath || result?.dataUrl) {
       const img = result.webPath || result.dataUrl!;
-      if (isDuplicate(img)) return;
       setAlbumPhotos(prev => [...prev, {
         id: `photo-${Date.now()}`,
         dataUrl: img,
@@ -184,9 +171,23 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
     canvas.height = video.videoHeight;
     canvas.getContext('2d')?.drawImage(video, 0, 0);
     const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
-    if (isDuplicate(dataUrl)) return;
     setAlbumPhotos(prev => [...prev, { id: `photo-${Date.now()}`, dataUrl, status: 'pending' }]);
     toast.success("Foto añadida", { duration: 500 });
+  };
+
+  /** Check if OCR data matches an already-processed package */
+  const checkDuplicate = (ocrData: any): boolean => {
+    const tracking = ocrData.trackingNumber || ocrData.mlShipmentId;
+    const nombre = ocrData.nombreDestinatario?.trim().toLowerCase();
+    const dir = ocrData.direccion?.trim().toLowerCase();
+
+    return packages.some(p => {
+      // Match by tracking number
+      if (tracking && (p.tracking_number === tracking || p.tracking_number === String(tracking))) return true;
+      // Match by name + address
+      if (nombre && dir && p.nombreDestinatario?.trim().toLowerCase() === nombre && p.direccion?.trim().toLowerCase() === dir) return true;
+      return false;
+    });
   };
 
   const processAlbum = useCallback(async () => {
@@ -207,7 +208,7 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
       await Promise.allSettled(chunk.map(photo => processOnePhoto(photo)));
     }
     setAlbumPhase('done');
-  }, [albumPhotos, user?.id, profileData]);
+  }, [albumPhotos, user?.id, profileData, packages]);
 
   const processOnePhoto = async (photo: AlbumPhoto) => {
     setAlbumPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'processing', error: undefined } : p));
@@ -219,6 +220,18 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
 
       if (ocrError) throw new Error("Error IA: Verificá conexión");
       if (!ocrData || !ocrData.direccion) throw new Error("Sin dirección detectada");
+
+      // Check for duplicates by tracking, name+address
+      if (checkDuplicate(ocrData)) {
+        setAlbumPhotos(prev => prev.map(p => p.id === photo.id ? {
+          ...p,
+          status: 'duplicate' as PhotoStatus,
+          ocrData,
+          error: 'Posible duplicado detectado'
+        } : p));
+        setProcessedCount(prev => prev + 1);
+        return;
+      }
 
       const tracking = ocrData.trackingNumber || ocrData.mlShipmentId || `OCR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
@@ -271,6 +284,59 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
     setProcessedCount(prev => prev + 1);
   };
 
+  /** Force-save a duplicate photo */
+  const forceSaveDuplicate = async (photo: AlbumPhoto) => {
+    if (!profileData || !photo.ocrData) return;
+    const ocrData = photo.ocrData;
+    setAlbumPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'processing', error: undefined } : p));
+
+    try {
+      const tracking = ocrData.trackingNumber || ocrData.mlShipmentId || `OCR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      const { data: envio, error: insertError } = await supabase.from('envios').insert({
+        tracking_number: tracking,
+        direccion_entrega: ocrData.direccion,
+        ciudad_entrega: ocrData.localidad || '',
+        cp_entrega: ocrData.codigoPostal || '',
+        nombre_destinatario: ocrData.nombreDestinatario || null,
+        notas: ocrData.referencia || ocrData.barrio || null,
+        provincia: ocrData.provincia || null,
+        whatsapp_destinatario: ocrData.telefonoDestinatario || null,
+        email_destinatario: ocrData.emailDestinatario || null,
+        dni_destinatario: ocrData.dniDestinatario || null,
+        nombre_remitente: ocrData.nombreRemitente || null,
+        direccion_retiro: ocrData.direccionRetiro || null,
+        cantidad_bultos: ocrData.cantidadBultos ? parseInt(ocrData.cantidadBultos) || null : null,
+        peso_kg: ocrData.pesoKg ? parseFloat(ocrData.pesoKg) || null : null,
+        valor_declarado: ocrData.valorDeclarado ? parseFloat(ocrData.valorDeclarado) || null : null,
+        tipo_pago: ocrData.tipoPago || null,
+        estado: 'pendiente',
+        precio_total: 0,
+        source_module: 'bulk_ocr_album',
+        tenant_id: profileData.tenant_id,
+        sucursal_origen_id: profileData.sucursal_id,
+        ml_shipment_id: ocrData.mlShipmentId ? parseInt(ocrData.mlShipmentId) : null,
+        created_by: user?.id
+      }).select().single();
+
+      if (insertError) throw new Error(insertError.message);
+
+      geocodeAndUpdate(envio.id, ocrData.direccion, ocrData.localidad || '');
+      setPackages(prev => [...prev, {
+        id: envio.id,
+        tracking_number: tracking,
+        direccion: ocrData.direccion,
+        localidad: ocrData.localidad,
+        codigoPostal: ocrData.codigoPostal || '',
+        nombreDestinatario: ocrData.nombreDestinatario || ''
+      }]);
+      setAlbumPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'saved', trackingNumber: tracking } : p));
+      toast.success("Guardado correctamente");
+    } catch (e: any) {
+      setAlbumPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'error', error: e.message } : p));
+      toast.error("Error: " + e.message);
+    }
+  };
+
   const handleGoToPlanner = useCallback(() => {
     if (packages.length === 0) {
       toast.error("No hay paquetes guardados para planificar");
@@ -296,7 +362,19 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
 
   const openManualEdit = (photo: AlbumPhoto) => {
     setEditingPhoto(photo);
-    setManualData({ direccion: '', localidad: '', codigoPostal: '', nombreDestinatario: '', telefono: '', nombreRemitente: '' });
+    // Pre-fill with OCR data if available (for duplicates)
+    if (photo.ocrData) {
+      setManualData({
+        direccion: photo.ocrData.direccion || '',
+        localidad: photo.ocrData.localidad || '',
+        codigoPostal: photo.ocrData.codigoPostal || '',
+        nombreDestinatario: photo.ocrData.nombreDestinatario || '',
+        telefono: photo.ocrData.telefonoDestinatario || '',
+        nombreRemitente: photo.ocrData.nombreRemitente || '',
+      });
+    } else {
+      setManualData({ direccion: '', localidad: '', codigoPostal: '', nombreDestinatario: '', telefono: '', nombreRemitente: '' });
+    }
   };
 
   const saveManualEntry = async () => {
@@ -351,15 +429,10 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
   const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
-    let skipped = 0;
     Array.from(files).forEach(file => {
       const reader = new FileReader();
       reader.onload = () => {
         const dataUrl = reader.result as string;
-        if (isDuplicate(dataUrl)) {
-          skipped++;
-          return;
-        }
         setAlbumPhotos(prev => [...prev, { id: `photo-${Date.now()}-${Math.random()}`, dataUrl, status: 'pending' }]);
       };
       reader.readAsDataURL(file);
@@ -368,13 +441,7 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
   };
 
   const removePhoto = (id: string) => {
-    setAlbumPhotos(prev => {
-      const photo = prev.find(p => p.id === id);
-      if (photo) {
-        usedFingerprints.current.delete(getFingerprint(photo.dataUrl));
-      }
-      return prev.filter(p => p.id !== id);
-    });
+    setAlbumPhotos(prev => prev.filter(p => p.id !== id));
   };
 
   if (isCameraOpen) {
@@ -386,11 +453,11 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
         </div>
         <div className="flex-1 relative overflow-hidden rounded-[2.5rem] mx-4 border-2 border-slate-800 shadow-2xl">
           <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-          <div className="absolute inset-10 border-2 border-warning/20 rounded-2xl pointer-events-none">
-             <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-warning rounded-tl-xl shadow-[0_0_10px_orange]" />
-             <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-warning rounded-tr-xl shadow-[0_0_10px_orange]" />
-             <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-warning rounded-bl-xl shadow-[0_0_10px_orange]" />
-             <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-warning rounded-br-xl shadow-[0_0_10px_orange]" />
+          <div className="absolute inset-4 border-2 border-warning/20 rounded-2xl pointer-events-none">
+             <div className="absolute top-0 left-0 w-12 h-12 border-t-4 border-l-4 border-warning rounded-tl-xl shadow-[0_0_10px_orange]" />
+             <div className="absolute top-0 right-0 w-12 h-12 border-t-4 border-r-4 border-warning rounded-tr-xl shadow-[0_0_10px_orange]" />
+             <div className="absolute bottom-0 left-0 w-12 h-12 border-b-4 border-l-4 border-warning rounded-bl-xl shadow-[0_0_10px_orange]" />
+             <div className="absolute bottom-0 right-0 w-12 h-12 border-b-4 border-r-4 border-warning rounded-br-xl shadow-[0_0_10px_orange]" />
           </div>
         </div>
         <div className="p-10 flex flex-col items-center gap-4 mb-8">
@@ -527,11 +594,11 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           )}
-          <div className="absolute inset-10 border-2 border-warning/20 rounded-2xl pointer-events-none">
-            <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-warning rounded-tl-xl shadow-[0_0_10px_orange]" />
-            <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-warning rounded-tr-xl shadow-[0_0_10px_orange]" />
-            <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-warning rounded-bl-xl shadow-[0_0_10px_orange]" />
-            <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-warning rounded-br-xl shadow-[0_0_10px_orange]" />
+          <div className="absolute inset-4 border-2 border-warning/20 rounded-2xl pointer-events-none">
+            <div className="absolute top-0 left-0 w-12 h-12 border-t-4 border-l-4 border-warning rounded-tl-xl shadow-[0_0_10px_orange]" />
+            <div className="absolute top-0 right-0 w-12 h-12 border-t-4 border-r-4 border-warning rounded-tr-xl shadow-[0_0_10px_orange]" />
+            <div className="absolute bottom-0 left-0 w-12 h-12 border-b-4 border-l-4 border-warning rounded-bl-xl shadow-[0_0_10px_orange]" />
+            <div className="absolute bottom-0 right-0 w-12 h-12 border-b-4 border-r-4 border-warning rounded-br-xl shadow-[0_0_10px_orange]" />
           </div>
         </div>
 
@@ -583,6 +650,7 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
   // Album mode UI
   const pendingCount = albumPhotos.filter(p => p.status === 'pending').length;
   const errorCount = albumPhotos.filter(p => p.status === 'error').length;
+  const duplicateCount = albumPhotos.filter(p => p.status === 'duplicate').length;
 
   return (
     <div className={isMobile ? "fixed inset-0 z-[10000] bg-slate-950 flex flex-col pt-safe-extra pb-safe-extra overflow-hidden" : "flex flex-col min-h-[60vh] max-h-[80vh] overflow-hidden"}>
@@ -625,7 +693,11 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
                 {albumPhotos.map((photo, idx) => (
                   <div
                     key={photo.id}
-                    className={`relative aspect-square rounded-2xl overflow-hidden border-2 shadow-md transition-all ${photo.status === 'error' ? 'border-destructive' : 'border-slate-800'}`}
+                    className={`relative aspect-square rounded-2xl overflow-hidden border-2 shadow-md transition-all ${
+                      photo.status === 'error' ? 'border-destructive' :
+                      photo.status === 'duplicate' ? 'border-amber-500' :
+                      'border-slate-800'
+                    }`}
                   >
                     <img src={photo.dataUrl} className="w-full h-full object-cover" alt="captured" />
                     <div className="absolute top-1 left-1 bg-black/60 text-white text-[8px] font-black h-4 w-4 rounded-full flex items-center justify-center">{idx + 1}</div>
@@ -646,19 +718,36 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
                         <span className="text-[7px] font-black text-white uppercase leading-none">Error</span>
                       </div>
                     )}
+                    {photo.status === 'duplicate' && (
+                      <div className="absolute inset-0 bg-amber-500/40 flex flex-col items-center justify-center text-center p-1">
+                        <Copy className="text-white h-5 w-5 mb-1" />
+                        <span className="text-[7px] font-black text-white uppercase leading-none">Duplicado</span>
+                      </div>
+                    )}
 
                     {/* Delete button for pending photos in capture phase */}
                     {albumPhase === 'capturing' && photo.status === 'pending' && (
                       <button onClick={(e) => { e.stopPropagation(); removePhoto(photo.id); }} className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1 hover:bg-destructive transition-colors"><Trash2 className="h-3 w-3" /></button>
                     )}
 
-                    {/* Edit button for error photos */}
-                    {photo.status === 'error' && (
+                    {/* Edit button for error and duplicate photos */}
+                    {(photo.status === 'error' || photo.status === 'duplicate') && (
                       <button
                         onClick={(e) => { e.stopPropagation(); openManualEdit(photo); }}
                         className="absolute bottom-1 right-1 bg-primary text-white rounded-full p-1.5 shadow-lg active:scale-90 transition-transform"
                       >
                         <Pencil className="h-3 w-3" />
+                      </button>
+                    )}
+
+                    {/* Force save button for duplicates */}
+                    {photo.status === 'duplicate' && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); forceSaveDuplicate(photo); }}
+                        className="absolute bottom-1 left-1 bg-emerald-500 text-white rounded-full p-1.5 shadow-lg active:scale-90 transition-transform"
+                        title="Guardar igual"
+                      >
+                        <Check className="h-3 w-3" />
                       </button>
                     )}
                   </div>
@@ -675,11 +764,17 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
         </ScrollArea>
       </div>
 
-      {/* Error hint banner */}
+      {/* Error/duplicate hint banners */}
       {errorCount > 0 && albumPhase === 'done' && (
         <div className="mx-6 mb-2 bg-destructive/90 text-white p-3 rounded-2xl flex items-center gap-3 shadow-2xl">
           <Pencil className="h-4 w-4 shrink-0" />
           <p className="text-[10px] font-black uppercase leading-tight">{errorCount} foto(s) con error — tocá el ícono ✏️ para cargar datos manual</p>
+        </div>
+      )}
+      {duplicateCount > 0 && albumPhase === 'done' && (
+        <div className="mx-6 mb-2 bg-amber-500/90 text-white p-3 rounded-2xl flex items-center gap-3 shadow-2xl">
+          <Copy className="h-4 w-4 shrink-0" />
+          <p className="text-[10px] font-black uppercase leading-tight">{duplicateCount} posible(s) duplicado(s) — ✏️ editar o ✅ guardar igual</p>
         </div>
       )}
 
@@ -713,7 +808,7 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
             <Button onClick={handleGoToPlanner} disabled={packages.length === 0} className="w-full h-12 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold shadow-xl disabled:opacity-40">
               <Route className="mr-3 h-5 w-5" /> PLANIFICAR RUTA ({packages.length})
             </Button>
-            {errorCount > 0 && (
+            {(errorCount > 0 || duplicateCount > 0) && (
               <Button onClick={processAlbum} variant="outline" className="w-full h-10 rounded-xl font-bold text-xs">
                 <RefreshCw className="mr-2 h-4 w-4" /> REINTENTAR {errorCount} CON ERROR
               </Button>
@@ -726,11 +821,13 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
         )}
       </div>
 
-      {/* Manual edit dialog for error photos */}
+      {/* Manual edit dialog for error/duplicate photos */}
       <Dialog open={!!editingPhoto} onOpenChange={(open) => !open && setEditingPhoto(null)}>
         <DialogContent className="max-w-sm mx-4">
           <DialogHeader>
-            <DialogTitle className="text-base">Cargar datos manualmente</DialogTitle>
+            <DialogTitle className="text-base">
+              {editingPhoto?.status === 'duplicate' ? 'Editar datos (posible duplicado)' : 'Cargar datos manualmente'}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div>
