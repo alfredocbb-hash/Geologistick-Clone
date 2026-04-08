@@ -266,7 +266,7 @@ export default function ReportIncidentDialog({ shipment, onClose, onSuccess }: R
         if (!old) return old;
         return old.map((e: any) => 
           e.envio?.id === shipment.id 
-            ? { ...e, envio: { ...e.envio, estado: 'incidencia' } }
+            ? { ...e, envio: { ...e.envio, estado: optimisticStatus } }
             : e
         );
       });
