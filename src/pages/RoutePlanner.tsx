@@ -161,6 +161,7 @@ export default function RoutePlanner() {
   const [closingRoute, setClosingRoute] = useState<any | null>(null);
   const [realRoutePolyline, setRealRoutePolyline] = useState<{ lat: number; lng: number }[]>([]);
   const [isClosingRoute, setIsClosingRoute] = useState(false);
+  const [hiddenSellers, setHiddenSellers] = useState<Set<string>>(new Set());
   
   // History tab state
   const [historyDateFrom, setHistoryDateFrom] = useState<Date | undefined>(undefined);
@@ -727,7 +728,12 @@ export default function RoutePlanner() {
       // Only routeDeliveryStops will render the numbered markers
     } else {
       // 4. Show all selected shipments (with and without coords)
-      selectedEnviosData.forEach((envio, index) => {
+      selectedEnviosData
+        .filter(envio => {
+          const sellerName = envio.nombre_remitente || '';
+          return !sellerName || !hiddenSellers.has(sellerName);
+        })
+        .forEach((envio, index) => {
         const hasCoords = envio.coords?.lat && envio.coords?.lng;
         
         if (hasCoords) {
@@ -749,7 +755,7 @@ export default function RoutePlanner() {
     }
     
     return markers;
-  }, [selectedEnviosData, selectedOption, sucursalOrigen, sucursalesConEnvios, sellerColorMap]);
+  }, [selectedEnviosData, selectedOption, sucursalOrigen, sucursalesConEnvios, sellerColorMap, hiddenSellers]);
 
   // Polyline path for drawing route on map
   const routePolyline = useMemo(() => {
@@ -1731,16 +1737,34 @@ export default function RoutePlanner() {
                     <span>Entregas</span>
                   </div>
                 </div>
-                {/* Seller color legend */}
+                {/* Seller color legend with toggle */}
                 {Object.keys(sellerColorMap).length > 1 && (
-                  <div className="flex flex-wrap gap-3 text-xs">
+                  <div className="flex flex-wrap gap-3 text-xs items-center">
                     <span className="text-muted-foreground font-medium">Sellers:</span>
-                    {Object.entries(sellerColorMap).map(([seller, color]) => (
-                      <div key={seller} className="flex items-center gap-1">
-                        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: color }}></span>
-                        <span>{seller}</span>
-                      </div>
-                    ))}
+                    {Object.entries(sellerColorMap).map(([seller, color]) => {
+                      const isVisible = !hiddenSellers.has(seller);
+                      return (
+                        <label key={seller} className="flex items-center gap-1.5 cursor-pointer select-none">
+                          <Checkbox
+                            checked={isVisible}
+                            onCheckedChange={() => {
+                              setHiddenSellers(prev => {
+                                const next = new Set(prev);
+                                if (next.has(seller)) next.delete(seller);
+                                else next.add(seller);
+                                return next;
+                              });
+                            }}
+                            className="h-3.5 w-3.5 border-2 rounded-sm"
+                            style={{
+                              borderColor: color,
+                              backgroundColor: isVisible ? color : 'transparent',
+                            }}
+                          />
+                          <span className={isVisible ? '' : 'line-through text-muted-foreground'}>{seller}</span>
+                        </label>
+                      );
+                    })}
                   </div>
                 )}
 
