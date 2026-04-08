@@ -98,11 +98,22 @@ export function ShipmentDetailsDialog({
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
+  const ML_TO_INTERNAL: Record<string, string> = {
+    ready_to_ship: 'pendiente',
+    shipped: 'en_reparto',
+    delivered: 'entregado',
+    not_delivered: 'no_entregado',
+    cancelled: 'cancelado',
+  };
+
   const applyMLStatusMutation = useMutation({
     mutationFn: async ({ envioId, estadoML, estadoActual }: { envioId: string; estadoML: string; estadoActual: string }) => {
+      // Map ML raw status to internal enum, fallback to value itself if already internal
+      const mappedStatus = ML_TO_INTERNAL[estadoML] || estadoML;
+      
       const { error: updateError } = await supabase
         .from('envios')
-        .update({ estado: estadoML as any })
+        .update({ estado: mappedStatus as any })
         .eq('id', envioId);
       if (updateError) throw updateError;
 
@@ -111,8 +122,8 @@ export function ShipmentDetailsDialog({
         .insert({
           envio_id: envioId,
           estado_anterior: estadoActual as any,
-          estado_nuevo: estadoML as any,
-          notas: 'Estado aplicado desde Mercado Libre',
+          estado_nuevo: mappedStatus as any,
+          notas: `Estado aplicado desde Mercado Libre (${estadoML} → ${mappedStatus})`,
           created_by: user?.id,
         });
       if (historyError) throw historyError;
@@ -407,9 +418,16 @@ export function ShipmentDetailsDialog({
                     <div className="flex items-center gap-3">
                       <div>
                         <p className="text-xs font-semibold text-muted-foreground mb-1">ESTADO MERCADO LIBRE</p>
-                        <Badge className={`${(statusConfig[envio.estado_ml as ShipmentStatus] || statusConfig.pendiente).color} text-white`}>
-                          {(statusConfig[envio.estado_ml as ShipmentStatus] || { label: envio.estado_ml }).label}
-                        </Badge>
+                        {(() => {
+                          const mlStatus = envio.estado_ml as string;
+                          const mappedKey = ML_TO_INTERNAL[mlStatus] || mlStatus;
+                          const config = statusConfig[mappedKey as ShipmentStatus] || statusConfig[mlStatus as ShipmentStatus] || statusConfig.pendiente;
+                          return (
+                            <Badge className={`${config.color} text-white`}>
+                              {config.label}
+                            </Badge>
+                          );
+                        })()}
                       </div>
                       {envio.estado_ml !== envio.estado && (
                         <div className="flex items-center gap-1 text-yellow-600">
