@@ -255,6 +255,8 @@ Deno.serve(async (req) => {
           nombre_remitente: seller.nombre,
           remitente_id: seller.cliente_id || null,
           horario_preferido_entrega: horarioPreferido,
+          horario_entrega_desde: horarioEntregaDesde,
+          horario_entrega_hasta: horarioEntregaHasta,
         })
         .select()
         .single();

@@ -446,6 +446,8 @@ serve(async (req) => {
         tipo_servicio: 'express',
         tipo_servicio_detalle: 'ML Flex',
         horario_preferido_entrega: horarioPreferido,
+        horario_entrega_desde: horarioEntregaDesde,
+        horario_entrega_hasta: horarioEntregaHasta,
         pago_contra_entrega: false,
         descripcion: `Pedido MercadoLibre Flex #${mlShipment.order_id || ml_shipment_id}${isLogisticsAccount ? ' (cuenta logística)' : ''}`,
         sucursal_origen_id: sucursalOrigenId,
