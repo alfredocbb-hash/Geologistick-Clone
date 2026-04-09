@@ -114,7 +114,7 @@ export function useCollectPackages() {
     sessionStorage.removeItem(STORAGE_KEY);
   }, []);
 
-  const confirmCollection = useCallback(async (): Promise<boolean> => {
+  const confirmCollection = useCallback(async (source: string = 'scan'): Promise<boolean> => {
     if (!user?.id || packages.length === 0) {
       toast.error('No hay paquetes para confirmar');
       return false;
@@ -143,7 +143,22 @@ export function useCollectPackages() {
         return false;
       }
 
-      // The trigger log_envio_estado_change handles history automatically
+      // Log colecta record
+      const tenantId = (profile as any)?.tenant_id;
+      if (tenantId) {
+        const { error: colectaError } = await supabase
+          .from('colectas' as any)
+          .insert({
+            chofer_id: user.id,
+            tenant_id: tenantId,
+            cantidad_envios: envioIds.length,
+            envio_ids: envioIds,
+            source,
+          });
+        if (colectaError) {
+          console.error('Error logging colecta:', colectaError);
+        }
+      }
 
       const count = packages.length;
       clearPackages();
@@ -158,7 +173,7 @@ export function useCollectPackages() {
     } finally {
       setIsLoading(false);
     }
-  }, [user?.id, packages, clearPackages]);
+  }, [user?.id, profile, packages, clearPackages]);
 
   return {
     packages,

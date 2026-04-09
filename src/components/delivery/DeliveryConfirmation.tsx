@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, lazy, Suspense } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -23,6 +23,8 @@ import { toast } from 'sonner';
 import SignatureCanvas from './SignatureCanvas';
 import { QRCodeSVG } from 'qrcode.react';
 import { useMercadoPagoConfig } from '@/hooks/useIntegrationConfig';
+
+const ExchangeDialog = lazy(() => import('./ExchangeDialog'));
 
 interface Shipment {
   id: string;
@@ -78,6 +80,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
   const [parentesco, setParentesco] = useState<string>('destinatario');
   const [nombreRetira, setNombreRetira] = useState('');
   const [dniRetira, setDniRetira] = useState('');
+  const [showExchangeDialog, setShowExchangeDialog] = useState(false);
 
   const { isConfigured: isMpConfigured, environment: mpEnvironment } = useMercadoPagoConfig();
 
@@ -546,7 +549,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
       
       toast.success('¡Entrega confirmada exitosamente!');
       onSuccess();
-      onClose();
+      setShowExchangeDialog(true);
     },
     onError: (error, _, context) => {
       // Rollback using snapshots
@@ -604,6 +607,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
   };
 
   return (
+    <>
     <Dialog open onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -872,5 +876,25 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+      <Suspense fallback={null}>
+        {showExchangeDialog && (
+          <ExchangeDialog
+            open={showExchangeDialog}
+            onClose={() => {
+              setShowExchangeDialog(false);
+              onClose();
+            }}
+            shipment={{
+              id: shipment.id,
+              tracking_number: shipment.tracking_number,
+              direccion_entrega: shipment.direccion_entrega,
+              ciudad_entrega: shipment.ciudad_entrega,
+              nombre_destinatario: shipment.destinatario?.nombre || null,
+            }}
+          />
+        )}
+      </Suspense>
+    </>
   );
 }

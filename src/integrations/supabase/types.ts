@@ -232,6 +232,36 @@ export type Database = {
           },
         ]
       }
+      colectas: {
+        Row: {
+          cantidad_envios: number
+          chofer_id: string
+          created_at: string | null
+          envio_ids: string[]
+          id: string
+          source: string | null
+          tenant_id: string
+        }
+        Insert: {
+          cantidad_envios?: number
+          chofer_id: string
+          created_at?: string | null
+          envio_ids?: string[]
+          id?: string
+          source?: string | null
+          tenant_id: string
+        }
+        Update: {
+          cantidad_envios?: number
+          chofer_id?: string
+          created_at?: string | null
+          envio_ids?: string[]
+          id?: string
+          source?: string | null
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       comisiones: {
         Row: {
           chofer_id: string
@@ -1036,6 +1066,8 @@ export type Database = {
           entrega_lng: number | null
           entregado_en_sucursal: boolean | null
           entregado_por: string | null
+          envio_cambio_id: string | null
+          es_cambio: boolean | null
           es_terciarizado: boolean | null
           estado: Database["public"]["Enums"]["shipment_status"] | null
           estado_ml: string | null
@@ -1139,6 +1171,8 @@ export type Database = {
           entrega_lng?: number | null
           entregado_en_sucursal?: boolean | null
           entregado_por?: string | null
+          envio_cambio_id?: string | null
+          es_cambio?: boolean | null
           es_terciarizado?: boolean | null
           estado?: Database["public"]["Enums"]["shipment_status"] | null
           estado_ml?: string | null
@@ -1242,6 +1276,8 @@ export type Database = {
           entrega_lng?: number | null
           entregado_en_sucursal?: boolean | null
           entregado_por?: string | null
+          envio_cambio_id?: string | null
+          es_cambio?: boolean | null
           es_terciarizado?: boolean | null
           estado?: Database["public"]["Enums"]["shipment_status"] | null
           estado_ml?: string | null
@@ -1322,6 +1358,13 @@ export type Database = {
             columns: ["empresa_terciarizada_id"]
             isOneToOne: false
             referencedRelation: "empresas_terciarizadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "envios_envio_cambio_id_fkey"
+            columns: ["envio_cambio_id"]
+            isOneToOne: false
+            referencedRelation: "envios"
             referencedColumns: ["id"]
           },
           {

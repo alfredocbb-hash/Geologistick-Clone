@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
-import { Package, TrendingUp, MapPin, Clock, ChevronRight, Truck, Navigation, Zap, ExternalLink, Flame } from 'lucide-react';
+import { Package, TrendingUp, MapPin, Clock, ChevronRight, Truck, Navigation, Zap, ExternalLink, Flame, PackageCheck } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -76,6 +76,23 @@ export function MobileHomeTab({ onNavigateToRoutes, onNavigateToHistory }: Mobil
       const total = deliveries?.length || 0;
       const earnings = deliveries?.reduce((sum, d) => sum + (d.precio_total || 0), 0) || 0;
       return { completed, total, earnings };
+    },
+    enabled: !!user?.id
+  });
+
+  // Fetch today's colectas
+  const { data: todayColectas } = useQuery({
+    queryKey: ['mobile-colectas-today', user?.id],
+    queryFn: async () => {
+      const today = getTodayString();
+      const { data, error } = await supabase
+        .from('colectas' as any)
+        .select('cantidad_envios')
+        .eq('chofer_id', user?.id)
+        .gte('created_at', today);
+      if (error) throw error;
+      const totalPaquetes = (data || []).reduce((sum: number, c: any) => sum + (c.cantidad_envios || 0), 0);
+      return { count: (data || []).length, totalPaquetes };
     },
     enabled: !!user?.id
   });
@@ -224,9 +241,14 @@ export function MobileHomeTab({ onNavigateToRoutes, onNavigateToHistory }: Mobil
       {activeRoute && (
         <button
           onClick={() => {
-            const address = 'sucursal_destino' in activeRoute
-              ? (activeRoute as any).sucursal_destino?.ciudad || ''
-              : (activeRoute as any).direccion_inicio || '';
+            let address = '';
+            if ('sucursal_destino' in activeRoute) {
+              const dest = (activeRoute as any).sucursal_destino;
+              address = [dest?.nombre, dest?.direccion || dest?.ciudad].filter(Boolean).join(', ');
+            } else {
+              // For planned routes, use first stop address or direccion_inicio
+              address = (activeRoute as any).direccion_inicio || '';
+            }
             if (address) {
               window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`, '_blank');
             } else {
@@ -240,7 +262,24 @@ export function MobileHomeTab({ onNavigateToRoutes, onNavigateToHistory }: Mobil
         </button>
       )}
 
-      {/* Achievements Row */}
+      {/* Colectas hoy */}
+      {(todayColectas?.totalPaquetes ?? 0) > 0 && (
+        <Card className="bg-slate-900/60 border-slate-800/50 backdrop-blur-xl overflow-hidden">
+          <CardContent className="p-4 relative">
+            <div className="absolute top-0 right-0 w-20 h-20 bg-purple-500/10 rounded-full blur-2xl" />
+            <div className="relative flex items-start gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500/20 to-purple-500/10 flex items-center justify-center">
+                <PackageCheck className="h-6 w-6 text-purple-400" />
+              </div>
+              <div className="flex-1">
+                <p className="text-slate-400 text-xs font-medium">Colectas hoy</p>
+                <p className="text-white font-bold text-xl mt-0.5">{todayColectas?.totalPaquetes || 0} paquetes</p>
+                <p className="text-slate-500 text-xs">{todayColectas?.count || 0} colecta{(todayColectas?.count || 0) !== 1 ? 's' : ''}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       {unlockedAchievements.length > 0 && (
         <div className="space-y-2">
           <h2 className="text-sm font-semibold text-slate-400">Logros</h2>

@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
-import { Package, CheckCircle, XCircle, Clock, Search } from 'lucide-react';
+import { Package, CheckCircle, XCircle, Clock, Search, PackageCheck } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useState } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -45,6 +46,23 @@ export function MobileHistoryTab() {
     enabled: !!profile?.user_id
   });
 
+  // Fetch colectas
+  const { data: colectas, isLoading: loadingColectas } = useQuery({
+    queryKey: ['mobile-colectas-history', profile?.user_id],
+    queryFn: async () => {
+      if (!profile?.user_id) return [];
+      const { data, error } = await supabase
+        .from('colectas' as any)
+        .select('*')
+        .eq('chofer_id', profile.user_id)
+        .order('created_at', { ascending: false })
+        .limit(30);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!profile?.user_id
+  });
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'entregado':
@@ -72,15 +90,20 @@ export function MobileHistoryTab() {
     return labels[status] || status;
   };
 
+  const sourceLabel = (s: string) => {
+    const map: Record<string, string> = { scan: 'Escaneo', bulk_ocr: 'Album OCR', manual: 'Manual' };
+    return map[s] || s;
+  };
+
   const filteredHistory = history?.filter((item: any) => 
     item.envio?.tracking_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.envio?.direccion_entrega?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  if (isLoading) {
+  if (isLoading && loadingColectas) {
     return (
       <div className="space-y-4">
-        <h2 className="text-xl font-semibold text-white mb-4">Historial de Escaneos</h2>
+        <h2 className="text-xl font-semibold text-white mb-4">Historial</h2>
         {[1, 2, 3, 4].map((i) => (
           <Skeleton key={i} className="h-20 bg-slate-800" />
         ))}
@@ -90,74 +113,99 @@ export function MobileHistoryTab() {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="mb-4">
-        <h2 className="text-xl font-semibold text-white mb-3">Historial de Escaneos</h2>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-          <Input
-            placeholder="Buscar por tracking o dirección..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
-          />
-        </div>
-      </div>
+      <h2 className="text-xl font-semibold text-white mb-3">Historial</h2>
 
-      {/* History list */}
-      {filteredHistory && filteredHistory.length > 0 ? (
-        <div className="space-y-3">
-          {filteredHistory.map((item: any) => (
-            <Card 
-              key={item.id} 
-              className="bg-slate-800/50 border-slate-700 p-4"
-            >
-              <div className="flex items-start gap-3">
-                <div className="mt-1">
-                  {getStatusIcon(item.estado_nuevo)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Package className="w-3 h-3 text-slate-500" />
-                    <span className="font-mono text-sm text-white">
-                      {item.envio?.tracking_number || 'N/A'}
-                    </span>
+      <Tabs defaultValue="escaneos" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 bg-slate-800/50">
+          <TabsTrigger value="escaneos" className="text-xs">Escaneos</TabsTrigger>
+          <TabsTrigger value="colectas" className="text-xs">Colectas</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="escaneos" className="space-y-3 mt-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+            <Input
+              placeholder="Buscar por tracking o dirección..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
+            />
+          </div>
+
+          {filteredHistory && filteredHistory.length > 0 ? (
+            <div className="space-y-3">
+              {filteredHistory.map((item: any) => (
+                <Card key={item.id} className="bg-slate-800/50 border-slate-700 p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-1">{getStatusIcon(item.estado_nuevo)}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Package className="w-3 h-3 text-slate-500" />
+                        <span className="font-mono text-sm text-white">
+                          {item.envio?.tracking_number || 'N/A'}
+                        </span>
+                      </div>
+                      <p className="text-sm text-slate-400 truncate mb-2">
+                        {item.envio?.direccion_entrega}, {item.envio?.ciudad_entrega}
+                      </p>
+                      <div className="flex items-center justify-between">
+                        <Badge variant="outline" className="text-xs bg-slate-700/50 border-slate-600">
+                          {getStatusLabel(item.estado_nuevo)}
+                        </Badge>
+                        <span className="text-xs text-slate-500">
+                          {format(parseDateString(item.created_at), "dd MMM", { locale: es })}
+                        </span>
+                      </div>
+                      {item.notas && (
+                        <p className="text-xs text-slate-500 mt-2 italic">"{item.notas}"</p>
+                      )}
+                    </div>
                   </div>
-                  
-                  <p className="text-sm text-slate-400 truncate mb-2">
-                    {item.envio?.direccion_entrega}, {item.envio?.ciudad_entrega}
-                  </p>
-
-                  <div className="flex items-center justify-between">
-                    <Badge 
-                      variant="outline" 
-                      className="text-xs bg-slate-700/50 border-slate-600"
-                    >
-                      {getStatusLabel(item.estado_nuevo)}
-                    </Badge>
-                    <span className="text-xs text-slate-500">
-                      {format(parseDateString(item.created_at), "dd MMM", { locale: es })}
-                    </span>
-                  </div>
-
-                  {item.notas && (
-                    <p className="text-xs text-slate-500 mt-2 italic">
-                      "{item.notas}"
-                    </p>
-                  )}
-                </div>
-              </div>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <Card className="bg-slate-800/50 border-slate-700 p-8 text-center">
+              <Clock className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+              <p className="text-slate-400">
+                {searchTerm ? 'No se encontraron resultados' : 'No hay historial de escaneos'}
+              </p>
             </Card>
-          ))}
-        </div>
-      ) : (
-        <Card className="bg-slate-800/50 border-slate-700 p-8 text-center">
-          <Clock className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-          <p className="text-slate-400">
-            {searchTerm ? 'No se encontraron resultados' : 'No hay historial de escaneos'}
-          </p>
-        </Card>
-      )}
+          )}
+        </TabsContent>
+
+        <TabsContent value="colectas" className="space-y-3 mt-3">
+          {colectas && colectas.length > 0 ? (
+            <div className="space-y-3">
+              {colectas.map((c: any) => (
+                <Card key={c.id} className="bg-slate-800/50 border-slate-700 p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center">
+                      <PackageCheck className="w-5 h-5 text-purple-400" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-white font-semibold">{c.cantidad_envios} paquetes</span>
+                        <span className="text-xs text-slate-500">
+                          {format(parseDateString(c.created_at), "dd MMM HH:mm", { locale: es })}
+                        </span>
+                      </div>
+                      <Badge variant="outline" className="text-xs bg-slate-700/50 border-slate-600">
+                        {sourceLabel(c.source || 'scan')}
+                      </Badge>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <Card className="bg-slate-800/50 border-slate-700 p-8 text-center">
+              <PackageCheck className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+              <p className="text-slate-400">No hay colectas registradas</p>
+            </Card>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
