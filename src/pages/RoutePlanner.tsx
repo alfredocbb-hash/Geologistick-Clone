@@ -269,10 +269,22 @@ export default function RoutePlanner() {
         ...urlShipments.filter(e => !existingIds.has(e.id)),
       ];
 
-      // Filter out ML shipments still in 'pendiente' (not yet collected)
+      // Query active route stops to exclude shipments already in active routes
+      const { data: paradasActivas } = await supabase
+        .from('ruta_paradas')
+        .select('envio_id, ruta:rutas_planificadas!inner(estado)')
+        .in('ruta.estado', ['pendiente', 'confirmada', 'en_curso']);
+
+      const enviosEnRutaActiva = new Set(
+        (paradasActivas || []).map((p: any) => p.envio_id).filter(Boolean)
+      );
+
+      // Filter out ML shipments still in 'pendiente' and shipments already in active routes
       const filtered = merged.filter(envio => {
         // URL-specified shipments always visible
         if (urlEnvioIds.has(envio.id)) return true;
+        // Exclude shipments already assigned to active routes
+        if (enviosEnRutaActiva.has(envio.id)) return false;
         // Rescheduled shipments always visible
         if ((envio.reprogramado_count && envio.reprogramado_count > 0) || envio.ultima_reprogramacion) return true;
         // Hide ML shipments that are still pendiente (not yet collected)
