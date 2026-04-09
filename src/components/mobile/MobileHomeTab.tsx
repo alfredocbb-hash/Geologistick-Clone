@@ -80,6 +80,23 @@ export function MobileHomeTab({ onNavigateToRoutes, onNavigateToHistory }: Mobil
     enabled: !!user?.id
   });
 
+  // Fetch today's colectas
+  const { data: todayColectas } = useQuery({
+    queryKey: ['mobile-colectas-today', user?.id],
+    queryFn: async () => {
+      const today = getTodayString();
+      const { data, error } = await supabase
+        .from('colectas' as any)
+        .select('cantidad_envios')
+        .eq('chofer_id', user?.id)
+        .gte('created_at', today);
+      if (error) throw error;
+      const totalPaquetes = (data || []).reduce((sum: number, c: any) => sum + (c.cantidad_envios || 0), 0);
+      return { count: (data || []).length, totalPaquetes };
+    },
+    enabled: !!user?.id
+  });
+
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) return '¡Buenos días';
