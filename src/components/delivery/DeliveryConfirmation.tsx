@@ -549,7 +549,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
       
       toast.success('¡Entrega confirmada exitosamente!');
       onSuccess();
-      onClose();
+      setShowExchangeDialog(true);
     },
     onError: (error, _, context) => {
       // Rollback using snapshots
