@@ -40,6 +40,7 @@ import {
   Receipt,
   Share2,
   CalendarClock,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
