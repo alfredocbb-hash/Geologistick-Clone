@@ -1,35 +1,34 @@
 
 
-## Plan: Excluir envíos ya asignados a rutas activas del planificador
+## Plan: Agregar rango horario exacto de entrega en el planificador
 
 ### Problema
-La query del planificador (línea 238) usa `.or("chofer_id.is.null,reprogramado_count.gt.0")`, lo que permite que envíos con `chofer_id` asignado y `reprogramado_count > 0` aparezcan. Pero incluso envíos sin `reprogramado_count` podrían filtrarse mal. El problema real: no se verifica si el envío ya pertenece a una `ruta_parada` de una ruta activa.
+Actualmente solo se guarda `horario_preferido_entrega` como texto genérico ("manana", "tarde", "noche"), pero ML provee el rango exacto (ej: 09:00-20:30 para comercial). No hay columnas en la DB para ese rango y el planificador solo muestra la franja genérica.
 
-### Solución
+### Cambios
 
-**Archivo**: `src/pages/RoutePlanner.tsx`
-
-1. **Después de obtener los envíos pendientes**, consultar `ruta_paradas` de rutas activas (`pendiente`, `confirmada`, `en_curso`) para obtener todos los `envio_id` ya asignados a rutas.
-
-2. **Filtrar** en el frontend: excluir del listado cualquier envío cuyo `id` esté en ese set de IDs de paradas activas (excepto los que vengan por URL).
-
-Cambio concreto en la `queryFn` (después de línea 270):
-- Consultar `ruta_paradas` con join a `rutas_planificadas` donde estado IN (`pendiente`, `confirmada`, `en_curso`), obtener los `envio_id`.
-- En el filtro de línea 273, agregar condición: si `envio.id` está en el set de envíos en rutas activas, excluirlo (salvo URL-specified).
-
-```text
-// Pseudocódigo del cambio:
-const { data: paradasActivas } = await supabase
-  .from('ruta_paradas')
-  .select('envio_id, ruta:rutas_planificadas!inner(estado)')
-  .in('ruta.estado', ['pendiente', 'confirmada', 'en_curso']);
-
-const enviosEnRutaActiva = new Set(paradasActivas?.map(p => p.envio_id));
-
-// En el filtro (línea 273):
-if (enviosEnRutaActiva.has(envio.id) && !urlEnvioIds.has(envio.id)) return false;
+**1. Migración de base de datos** — Agregar 2 columnas a `envios`:
+```sql
+ALTER TABLE public.envios 
+  ADD COLUMN horario_entrega_desde text,
+  ADD COLUMN horario_entrega_hasta text;
 ```
 
+**2. Edge Functions** — Guardar el rango exacto al crear envíos desde ML:
+- `supabase/functions/register-ml-shipment/index.ts`: extraer `time_frame.from` y `time_frame.to`, convertir a formato "HH:MM", y guardar en `horario_entrega_desde` / `horario_entrega_hasta`.
+- `supabase/functions/mercadolibre-webhook/index.ts`: mismo cambio al procesar webhooks.
+
+**3. Formulario de nuevo envío** (`src/pages/NewShipment.tsx`):
+- Agregar campos opcionales "Desde" y "Hasta" (inputs tipo time) cuando se selecciona un horario preferido, para que el usuario pueda ingresar el rango manualmente también.
+
+**4. Planificador** (`src/pages/RoutePlanner.tsx`):
+- En la columna "Horario", mostrar el rango exacto si existe (ej: "09:00 - 20:30"), y debajo/al lado la franja genérica como badge secundario.
+- Incluir los nuevos campos en la query de envíos.
+
 ### Archivos a modificar
-- `src/pages/RoutePlanner.tsx` — Agregar consulta de paradas activas y filtrar envíos ya en ruta
+- **Migración SQL** — Agregar columnas `horario_entrega_desde` y `horario_entrega_hasta`
+- `supabase/functions/register-ml-shipment/index.ts` — Persistir rango horario de ML
+- `supabase/functions/mercadolibre-webhook/index.ts` — Persistir rango horario de ML
+- `src/pages/RoutePlanner.tsx` — Mostrar rango horario en columna "Horario"
+- `src/pages/NewShipment.tsx` — Campos opcionales para rango horario manual
 
