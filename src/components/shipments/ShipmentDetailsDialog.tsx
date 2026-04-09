@@ -406,6 +406,24 @@ export function ShipmentDetailsDialog({
                     )}
                   </div>
                 )}
+
+                {/* Exchange badge */}
+                {(envio.es_cambio || envio.envio_cambio_id) && (
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-indigo-500 text-white">
+                        <ArrowLeftRight className="h-3 w-3 mr-1" />
+                        Cambio
+                      </Badge>
+                      <span className="text-sm text-muted-foreground">
+                        {envio.es_cambio
+                          ? `Envío de cambio (original: ${envio.envio_cambio_id ? '...' : 'N/A'})`
+                          : 'Este envío tiene un paquete de cambio asociado'
+                        }
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* ML Dual Status Section - only for ML shipments */}
