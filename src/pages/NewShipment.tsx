@@ -265,6 +265,8 @@ export default function NewShipment() {
     notas_retiro: '',
     // Entrega a domicilio
     horario_preferido_entrega: 'cualquier_hora',
+    horario_entrega_desde: '',
+    horario_entrega_hasta: '',
   };
 
   const {

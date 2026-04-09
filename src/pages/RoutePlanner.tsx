@@ -1571,6 +1571,11 @@ export default function RoutePlanner() {
                                 {localidad}
                               </TableCell>
                               <TableCell>
+                                {envio.horario_entrega_desde && envio.horario_entrega_hasta && (
+                                  <div className="text-xs font-medium">
+                                    {envio.horario_entrega_desde} - {envio.horario_entrega_hasta}
+                                  </div>
+                                )}
                                 {envio.horario_preferido_entrega && envio.horario_preferido_entrega !== 'cualquier_hora' && (
                                   <Badge variant="outline" className="text-[10px]">
                                     {envio.horario_preferido_entrega === 'manana' ? '🌅 Mañana' :
