@@ -607,6 +607,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
   };
 
   return (
+    <>
     <Dialog open onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
