@@ -1,29 +1,35 @@
 
 
-## Plan: Mostrar botón "Cambiar estado" para envíos cancelados (super admin)
+## Plan: Excluir envíos ya asignados a rutas activas del planificador
 
 ### Problema
-
-En `src/pages/Shipments.tsx` línea 721, la condición que muestra el botón "Cambiar estado" excluye explícitamente `cancelado`:
-
-```typescript
-{canChangeStatus && envio.estado !== 'cancelado' && (envio.estado !== 'entregado' || isSuperAdmin()) && (
-```
-
-Esto impide que incluso el super admin vea el botón para envíos cancelados, contradiciendo la lógica ya implementada en `ChangeStatusDialog`.
+La query del planificador (línea 238) usa `.or("chofer_id.is.null,reprogramado_count.gt.0")`, lo que permite que envíos con `chofer_id` asignado y `reprogramado_count > 0` aparezcan. Pero incluso envíos sin `reprogramado_count` podrían filtrarse mal. El problema real: no se verifica si el envío ya pertenece a una `ruta_parada` de una ruta activa.
 
 ### Solución
 
-**Archivo**: `src/pages/Shipments.tsx` — Línea 721
+**Archivo**: `src/pages/RoutePlanner.tsx`
 
-Unificar la lógica de estados finales (`entregado` y `cancelado`) con el mismo bypass para super admin:
+1. **Después de obtener los envíos pendientes**, consultar `ruta_paradas` de rutas activas (`pendiente`, `confirmada`, `en_curso`) para obtener todos los `envio_id` ya asignados a rutas.
 
-```typescript
-{canChangeStatus && ((envio.estado !== 'entregado' && envio.estado !== 'cancelado') || isSuperAdmin()) && (
+2. **Filtrar** en el frontend: excluir del listado cualquier envío cuyo `id` esté en ese set de IDs de paradas activas (excepto los que vengan por URL).
+
+Cambio concreto en la `queryFn` (después de línea 270):
+- Consultar `ruta_paradas` con join a `rutas_planificadas` donde estado IN (`pendiente`, `confirmada`, `en_curso`), obtener los `envio_id`.
+- En el filtro de línea 273, agregar condición: si `envio.id` está en el set de envíos en rutas activas, excluirlo (salvo URL-specified).
+
+```text
+// Pseudocódigo del cambio:
+const { data: paradasActivas } = await supabase
+  .from('ruta_paradas')
+  .select('envio_id, ruta:rutas_planificadas!inner(estado)')
+  .in('ruta.estado', ['pendiente', 'confirmada', 'en_curso']);
+
+const enviosEnRutaActiva = new Set(paradasActivas?.map(p => p.envio_id));
+
+// En el filtro (línea 273):
+if (enviosEnRutaActiva.has(envio.id) && !urlEnvioIds.has(envio.id)) return false;
 ```
 
-Esto permite al super admin ver y usar el botón en ambos estados finales, mientras que los demás roles lo siguen viendo bloqueado.
-
 ### Archivos a modificar
-- `src/pages/Shipments.tsx` — Actualizar condición de visibilidad del botón "Cambiar estado"
+- `src/pages/RoutePlanner.tsx` — Agregar consulta de paradas activas y filtrar envíos ya en ruta
 
