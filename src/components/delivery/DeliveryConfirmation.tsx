@@ -80,6 +80,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
   const [parentesco, setParentesco] = useState<string>('destinatario');
   const [nombreRetira, setNombreRetira] = useState('');
   const [dniRetira, setDniRetira] = useState('');
+  const [showExchangeDialog, setShowExchangeDialog] = useState(false);
 
   const { isConfigured: isMpConfigured, environment: mpEnvironment } = useMercadoPagoConfig();
 
