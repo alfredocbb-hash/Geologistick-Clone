@@ -1,34 +1,36 @@
 
 
-## Plan: Agregar rango horario exacto de entrega en el planificador
+## Plan: Fix foto APK + mostrar receptor/DNI en evidencia y EPOD
 
-### Problema
-Actualmente solo se guarda `horario_preferido_entrega` como texto genérico ("manana", "tarde", "noche"), pero ML provee el rango exacto (ej: 09:00-20:30 para comercial). No hay columnas en la DB para ese rango y el planificador solo muestra la franja genérica.
+### Problema 1: Foto no se guarda en APK
+**Causa raíz**: `useNativeCamera` usa `CameraResultType.Uri` que devuelve un `webPath` (ej: `capacitor://localhost/...`). Cuando Android recicla el WebView al abrir la cámara, esa URI queda inválida. Además, al persistir en `sessionStorage` se guarda la URI en vez de los datos reales de la imagen.
 
-### Cambios
+**Solución** en `src/hooks/useNativeCamera.ts`:
+- Cambiar `CameraResultType.Uri` a `CameraResultType.DataUrl` tanto en `takePhoto` como en `pickFromGallery`
+- Esto devuelve `result.dataUrl` directamente como base64, que sobrevive reloads del WebView
+- Reducir `width` a 800 y `quality` a 40 para mantener tamaño manejable en memoria
 
-**1. Migración de base de datos** — Agregar 2 columnas a `envios`:
-```sql
-ALTER TABLE public.envios 
-  ADD COLUMN horario_entrega_desde text,
-  ADD COLUMN horario_entrega_hasta text;
-```
+**Solución** en `src/components/delivery/DeliveryConfirmation.tsx`:
+- En `handleOpenCamera` y `handleOpenGallery`: priorizar `result.dataUrl` sobre `result.webPath` (invertir orden actual en líneas 174 y 195)
 
-**2. Edge Functions** — Guardar el rango exacto al crear envíos desde ML:
-- `supabase/functions/register-ml-shipment/index.ts`: extraer `time_frame.from` y `time_frame.to`, convertir a formato "HH:MM", y guardar en `horario_entrega_desde` / `horario_entrega_hasta`.
-- `supabase/functions/mercadolibre-webhook/index.ts`: mismo cambio al procesar webhooks.
+### Problema 2: Receptor/DNI no visible en evidencia
+Los campos `parentesco_retira`, `nombre_retira`, `dni_retira` se guardan en la DB pero no se muestran.
 
-**3. Formulario de nuevo envío** (`src/pages/NewShipment.tsx`):
-- Agregar campos opcionales "Desde" y "Hasta" (inputs tipo time) cuando se selecciona un horario preferido, para que el usuario pueda ingresar el rango manualmente también.
+**Cambio en `src/components/shipments/ShipmentDetailsDialog.tsx`** (tab Evidencia, después del bloque de geolocalización ~línea 800):
+- Agregar sección "RECEPTOR DE ENTREGA" que muestre:
+  - Parentesco/relación (Destinatario, Familiar, Otro)
+  - Nombre de quien recibió (si no es destinatario)
+  - DNI (si fue registrado)
+- Usar `(envio as any).parentesco_retira`, `(envio as any).nombre_retira`, `(envio as any).dni_retira`
 
-**4. Planificador** (`src/pages/RoutePlanner.tsx`):
-- En la columna "Horario", mostrar el rango exacto si existe (ej: "09:00 - 20:30"), y debajo/al lado la franja genérica como badge secundario.
-- Incluir los nuevos campos en la query de envíos.
+### Problema 3: EPOD sin datos del receptor
+**Cambio en `src/lib/generateEPODPDF.ts`**:
+- Agregar los campos `parentesco_retira`, `nombre_retira`, `dni_retira` a la interfaz `Envio`
+- En la sección "EVIDENCIA DE ENTREGA" (~línea 487), agregar un bloque "Recibido por" que muestre relación, nombre y DNI del receptor
 
 ### Archivos a modificar
-- **Migración SQL** — Agregar columnas `horario_entrega_desde` y `horario_entrega_hasta`
-- `supabase/functions/register-ml-shipment/index.ts` — Persistir rango horario de ML
-- `supabase/functions/mercadolibre-webhook/index.ts` — Persistir rango horario de ML
-- `src/pages/RoutePlanner.tsx` — Mostrar rango horario en columna "Horario"
-- `src/pages/NewShipment.tsx` — Campos opcionales para rango horario manual
+- `src/hooks/useNativeCamera.ts` — Cambiar a DataUrl para fotos
+- `src/components/delivery/DeliveryConfirmation.tsx` — Priorizar dataUrl sobre webPath
+- `src/components/shipments/ShipmentDetailsDialog.tsx` — Sección receptor en evidencia
+- `src/lib/generateEPODPDF.ts` — Datos receptor en PDF EPOD
 
