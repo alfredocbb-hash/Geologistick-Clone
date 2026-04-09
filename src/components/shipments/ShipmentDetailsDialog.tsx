@@ -799,6 +799,36 @@ export function ShipmentDetailsDialog({
                     </div>
                   )}
 
+                  {/* Receptor de entrega */}
+                  {((envio as any).nombre_retira || (envio as any).dni_retira || (envio as any).parentesco_retira) && (
+                    <div className="p-4 border rounded-lg">
+                      <p className="text-xs font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+                        <User className="h-4 w-4" />
+                        RECEPTOR DE ENTREGA
+                      </p>
+                      <div className="space-y-2 text-sm">
+                        {(envio as any).parentesco_retira && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Relacion:</span>
+                            <span className="font-medium capitalize">{(envio as any).parentesco_retira === 'destinatario' ? 'Destinatario (titular)' : (envio as any).parentesco_retira}</span>
+                          </div>
+                        )}
+                        {(envio as any).nombre_retira && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Nombre:</span>
+                            <span className="font-medium">{(envio as any).nombre_retira}</span>
+                          </div>
+                        )}
+                        {(envio as any).dni_retira && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">DNI:</span>
+                            <span className="font-medium">{(envio as any).dni_retira}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Foto de entrega */}
                   <div className="p-4 border rounded-lg">
                     <p className="text-xs font-semibold text-muted-foreground mb-3 flex items-center gap-2">

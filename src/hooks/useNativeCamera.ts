@@ -41,12 +41,12 @@ export function useNativeCamera() {
 
       // OPTIMIZACIÓN EXTREMA PARA ANDROID
       const result = await Camera.getPhoto({
-        quality: 40, // Muy baja para evitar reinicios, suficiente para OCR
+        quality: 40,
         allowEditing: false,
-        resultType: CameraResultType.Uri, // USAR URI ES VITAL
+        resultType: CameraResultType.DataUrl, // DataUrl sobrevive reciclado de WebView
         source: CameraSource.Camera,
-        direction: CameraDirection.Rear, // FORZAR TRASERA
-        width: 800, // Tamaño ideal para OCR y memoria
+        direction: CameraDirection.Rear,
+        width: 800,
         correctOrientation: true,
         saveToGallery: false
       });
@@ -68,11 +68,11 @@ export function useNativeCamera() {
       const { Camera, CameraResultType, CameraSource } = mod;
       const result = await Camera.getPhoto({
         quality: 50,
-        resultType: CameraResultType.Uri,
+        resultType: CameraResultType.DataUrl,
         source: CameraSource.Photos,
         width: 1000,
       });
-      return { webPath: result.webPath };
+      return { dataUrl: result.dataUrl };
     } catch (e) { return null; }
   }, []);
 
