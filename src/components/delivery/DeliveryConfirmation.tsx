@@ -24,6 +24,8 @@ import SignatureCanvas from './SignatureCanvas';
 import { QRCodeSVG } from 'qrcode.react';
 import { useMercadoPagoConfig } from '@/hooks/useIntegrationConfig';
 
+const ExchangeDialog = lazy(() => import('./ExchangeDialog'));
+
 interface Shipment {
   id: string;
   tracking_number: string;
