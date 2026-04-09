@@ -171,7 +171,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
       persistState();
       nativeTakePhoto().then((result) => {
         if (result) {
-          const preview = result.webPath || result.dataUrl || null;
+          const preview = result.dataUrl || result.webPath || null;
           setPhoto(null);
           setPhotoPreview(preview);
           persistState(preview || undefined);
@@ -192,7 +192,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
       persistState();
       nativePickFromGallery().then((result) => {
         if (result) {
-          const preview = result.webPath || result.dataUrl || null;
+          const preview = result.dataUrl || result.webPath || null;
           setPhoto(null);
           setPhotoPreview(preview);
           persistState(preview || undefined);

@@ -31,6 +31,9 @@ interface Envio {
   tracking_externo?: string | null;
   empresa_terciarizada?: string | null;
   es_terciarizado?: boolean | null;
+  parentesco_retira?: string | null;
+  nombre_retira?: string | null;
+  dni_retira?: string | null;
   remitente?: {
     nombre: string;
     apellido: string | null;
@@ -485,6 +488,23 @@ export async function generateEPODPDF(
   }
 
   yPosition = evidenceStartY + 55;
+
+  // ===== RECEPTOR INFO =====
+  if (envio.parentesco_retira || envio.nombre_retira || envio.dni_retira) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text('Recibido por:', margin, yPosition);
+    doc.setFont('helvetica', 'normal');
+
+    const parentescoLabel = envio.parentesco_retira === 'destinatario' ? 'Destinatario (titular)' : sanitizeText(envio.parentesco_retira || '');
+    const receptorParts: string[] = [];
+    if (parentescoLabel) receptorParts.push(parentescoLabel);
+    if (envio.nombre_retira) receptorParts.push(sanitizeText(envio.nombre_retira));
+    if (envio.dni_retira) receptorParts.push(`DNI: ${sanitizeText(envio.dni_retira)}`);
+
+    doc.text(receptorParts.join('  |  '), margin + 28, yPosition);
+    yPosition += 8;
+  }
 
   // ===== HISTORY =====
   if (historial.length > 0) {
