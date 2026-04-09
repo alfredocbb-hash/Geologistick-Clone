@@ -875,5 +875,25 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+      <Suspense fallback={null}>
+        {showExchangeDialog && (
+          <ExchangeDialog
+            open={showExchangeDialog}
+            onClose={() => {
+              setShowExchangeDialog(false);
+              onClose();
+            }}
+            shipment={{
+              id: shipment.id,
+              tracking_number: shipment.tracking_number,
+              direccion_entrega: shipment.direccion_entrega,
+              ciudad_entrega: shipment.ciudad_entrega,
+              nombre_destinatario: shipment.destinatario?.nombre || null,
+            }}
+          />
+        )}
+      </Suspense>
+    </>
   );
 }
