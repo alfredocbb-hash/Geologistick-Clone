@@ -265,6 +265,8 @@ export default function NewShipment() {
     notas_retiro: '',
     // Entrega a domicilio
     horario_preferido_entrega: 'cualquier_hora',
+    horario_entrega_desde: '',
+    horario_entrega_hasta: '',
   };
 
   const {
@@ -1223,6 +1225,8 @@ export default function NewShipment() {
           cp_entrega: tieneEntrega ? formData.destinatario_codigo_postal : null,
           dias_preferidos_entrega: diasPreferidos.length > 0 ? diasPreferidos : null,
           horario_preferido_entrega: formData.horario_preferido_entrega,
+          horario_entrega_desde: formData.horario_entrega_desde || null,
+          horario_entrega_hasta: formData.horario_entrega_hasta || null,
           destinatario_lat: destinoCoords?.lat || null,
           destinatario_lng: destinoCoords?.lng || null,
           // Distance
@@ -2283,6 +2287,16 @@ export default function NewShipment() {
                               {HORARIOS_ENTREGA.map((h) => (<SelectItem key={h.value} value={h.value} className="text-xs">{h.label}</SelectItem>))}
                             </SelectContent>
                           </Select>
+                          {formData.horario_preferido_entrega !== 'cualquier_hora' && (
+                            <div className="flex gap-1 mt-1">
+                              <Input type="time" className="h-7 text-xs" placeholder="Desde"
+                                value={formData.horario_entrega_desde}
+                                onChange={(e) => handleChange('horario_entrega_desde', e.target.value)} />
+                              <Input type="time" className="h-7 text-xs" placeholder="Hasta"
+                                value={formData.horario_entrega_hasta}
+                                onChange={(e) => handleChange('horario_entrega_hasta', e.target.value)} />
+                            </div>
+                          )}
                         </div>
                         <div>
                           <Label className="text-xs text-muted-foreground">Días preferidos</Label>

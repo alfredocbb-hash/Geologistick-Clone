@@ -189,7 +189,17 @@ serve(async (req) => {
     // Extract delivery time frame and map to horario_preferido_entrega
     const timeFrame = mlShipment.lead_time?.estimated_delivery_time?.time_frame;
     let horarioPreferido = 'cualquier_hora';
+    let horarioEntregaDesde: string | null = null;
+    let horarioEntregaHasta: string | null = null;
     if (timeFrame && typeof timeFrame.from === 'number' && typeof timeFrame.to === 'number') {
+      // Store exact time range as HH:MM
+      const fromHours = Math.floor(timeFrame.from);
+      const fromMinutes = Math.round((timeFrame.from - fromHours) * 60);
+      const toHours = Math.floor(timeFrame.to);
+      const toMinutes = Math.round((timeFrame.to - toHours) * 60);
+      horarioEntregaDesde = `${String(fromHours).padStart(2, '0')}:${String(fromMinutes).padStart(2, '0')}`;
+      horarioEntregaHasta = `${String(toHours).padStart(2, '0')}:${String(toMinutes).padStart(2, '0')}`;
+
       if (timeFrame.to <= 13) {
         horarioPreferido = 'manana';
       } else if (timeFrame.from >= 17) {
@@ -198,7 +208,7 @@ serve(async (req) => {
         horarioPreferido = 'tarde';
       }
     }
-    console.log('[register-ml-shipment] Delivery time_frame:', JSON.stringify(timeFrame), '-> horario:', horarioPreferido);
+    console.log('[register-ml-shipment] Delivery time_frame:', JSON.stringify(timeFrame), '-> horario:', horarioPreferido, 'range:', horarioEntregaDesde, '-', horarioEntregaHasta);
 
     console.log('[register-ml-shipment] ML Shipment data:', {
       id: mlShipment.id,
@@ -436,6 +446,8 @@ serve(async (req) => {
         tipo_servicio: 'express',
         tipo_servicio_detalle: 'ML Flex',
         horario_preferido_entrega: horarioPreferido,
+        horario_entrega_desde: horarioEntregaDesde,
+        horario_entrega_hasta: horarioEntregaHasta,
         pago_contra_entrega: false,
         descripcion: `Pedido MercadoLibre Flex #${mlShipment.order_id || ml_shipment_id}${isLogisticsAccount ? ' (cuenta logística)' : ''}`,
         sucursal_origen_id: sucursalOrigenId,

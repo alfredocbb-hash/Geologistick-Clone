@@ -1050,6 +1050,8 @@ export type Database = {
           fecha_retiro: string | null
           firma_destinatario: string | null
           foto_entrega: string | null
+          horario_entrega_desde: string | null
+          horario_entrega_hasta: string | null
           horario_preferido_entrega: string | null
           horario_retiro: string | null
           id: string
@@ -1151,6 +1153,8 @@ export type Database = {
           fecha_retiro?: string | null
           firma_destinatario?: string | null
           foto_entrega?: string | null
+          horario_entrega_desde?: string | null
+          horario_entrega_hasta?: string | null
           horario_preferido_entrega?: string | null
           horario_retiro?: string | null
           id?: string
@@ -1252,6 +1256,8 @@ export type Database = {
           fecha_retiro?: string | null
           firma_destinatario?: string | null
           foto_entrega?: string | null
+          horario_entrega_desde?: string | null
+          horario_entrega_hasta?: string | null
           horario_preferido_entrega?: string | null
           horario_retiro?: string | null
           id?: string
