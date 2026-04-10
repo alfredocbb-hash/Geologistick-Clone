@@ -548,7 +548,6 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
       }
       
       toast.success('¡Entrega confirmada exitosamente!');
-      onSuccess();
       setShowExchangeDialog(true);
     },
     onError: (error, _, context) => {
@@ -883,6 +882,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
             open={showExchangeDialog}
             onClose={() => {
               setShowExchangeDialog(false);
+              onSuccess();
               onClose();
             }}
             shipment={{
