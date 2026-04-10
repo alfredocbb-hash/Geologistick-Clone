@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useState } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { parseDateString } from '@/lib/dateUtils';
+import { parseDateString, parseTimestamp } from '@/lib/dateUtils';
 
 export function MobileHistoryTab() {
   const { profile } = useAuth();
@@ -56,7 +56,7 @@ export function MobileHistoryTab() {
         .select('*')
         .eq('chofer_id', profile.user_id)
         .order('created_at', { ascending: false })
-        .limit(30);
+        .limit(100);
       if (error) throw error;
       return data || [];
     },
@@ -176,27 +176,49 @@ export function MobileHistoryTab() {
 
         <TabsContent value="colectas" className="space-y-3 mt-3">
           {colectas && colectas.length > 0 ? (
-            <div className="space-y-3">
-              {colectas.map((c: any) => (
-                <Card key={c.id} className="bg-slate-800/50 border-slate-700 p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center">
-                      <PackageCheck className="w-5 h-5 text-purple-400" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-white font-semibold">{c.cantidad_envios} paquetes</span>
-                        <span className="text-xs text-slate-500">
-                          {format(parseDateString(c.created_at), "dd MMM HH:mm", { locale: es })}
-                        </span>
-                      </div>
-                      <Badge variant="outline" className="text-xs bg-slate-700/50 border-slate-600">
-                        {sourceLabel(c.source || 'scan')}
+            <div className="space-y-4">
+              {Object.entries(
+                (colectas as any[]).reduce((acc: Record<string, any[]>, c: any) => {
+                  const dateKey = format(parseDateString(c.created_at), 'yyyy-MM-dd');
+                  if (!acc[dateKey]) acc[dateKey] = [];
+                  acc[dateKey].push(c);
+                  return acc;
+                }, {} as Record<string, any[]>)
+              ).map(([dateKey, items]) => {
+                const dayTotal = (items as any[]).reduce((sum: number, c: any) => sum + (c.cantidad_envios || 0), 0);
+                return (
+                  <div key={dateKey} className="space-y-2">
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-sm font-semibold text-slate-300 capitalize">
+                        {format(parseDateString(dateKey), "EEEE d 'de' MMMM", { locale: es })}
+                      </span>
+                      <Badge variant="outline" className="text-xs bg-purple-500/20 border-purple-500/40 text-purple-300">
+                        {dayTotal} paquetes
                       </Badge>
                     </div>
+                    {(items as any[]).map((c: any) => (
+                      <Card key={c.id} className="bg-slate-800/50 border-slate-700 p-4">
+                        <div className="flex items-start gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center">
+                            <PackageCheck className="w-5 h-5 text-purple-400" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-white font-semibold">{c.cantidad_envios} paquetes</span>
+                              <span className="text-xs text-slate-500">
+                                {format(parseTimestamp(c.created_at), "HH:mm", { locale: es })}
+                              </span>
+                            </div>
+                            <Badge variant="outline" className="text-xs bg-slate-700/50 border-slate-600">
+                              {sourceLabel(c.source || 'scan')}
+                            </Badge>
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
                   </div>
-                </Card>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <Card className="bg-slate-800/50 border-slate-700 p-8 text-center">
