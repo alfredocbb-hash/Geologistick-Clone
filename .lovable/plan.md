@@ -1,76 +1,38 @@
 
 
-## Plan: Correcciones del sistema (4 cambios)
+## Plan: Fix tracking back button + optimizar velocidad del dashboard
 
-### 0. WhatsApp de Geologistick
-Actualizar el numero de WhatsApp hardcodeado en `Hero.tsx` de `5491112345678` a `5491151767139`.
+### 1. Tracking: Botón volver al dashboard
 
-**Archivo**: `src/components/landing/Hero.tsx` linea 20
+Cambiar el link de `/` a `/dashboard` en `src/pages/Tracking.tsx` linea 168.
 
----
+### 2. Optimizar velocidad de carga del Dashboard
 
-### 1. Tracking: Agregar boton "Volver"
-La pagina `/tracking` no tiene forma de volver a la landing o al inicio. Agregar un boton "Volver al inicio" en el header que use `navigate(-1)` o link a `/`.
+El problema principal: cada componente del dashboard hace **multiples queries secuenciales** (una tras otra con `await`). Por ejemplo, `DashboardWeeklyChart` hace **14 queries en serie** (2 por dia x 7 dias). Esto significa que si cada query tarda 100ms, el chart tarda 1.4 segundos solo en queries.
 
-**Archivo**: `src/pages/Tracking.tsx` -- agregar un boton con icono ArrowLeft arriba del titulo, linkeando a `/`
+**Solucion: Paralelizar queries con `Promise.all`** en cada componente:
 
----
+| Componente | Queries actuales (secuenciales) | Mejora |
+|---|---|---|
+| `DashboardStatsCards` | 6 awaits en serie | 1 `Promise.all` con 6 queries |
+| `DashboardWeeklyChart` | 14 awaits en serie (loop de 7 dias) | 1 `Promise.all` con 14 queries |
+| `DashboardDaySummary` | 3 awaits en serie | 1 `Promise.all` con 3 queries |
+| `DashboardTopDrivers` | 2 awaits en serie | 1 `Promise.all` con 2 queries |
+| `DashboardRecentShipments` | 1 query | Sin cambio |
+| `DashboardMiniMap` | 1 query | Sin cambio |
 
-### 2. Shipments: Total muestra siempre 1000
-El problema esta en lineas 354-356 de `Shipments.tsx`. La query hace `.select('estado')` sin especificar count, y Supabase retorna maximo 1000 rows por defecto. Luego usa `data.length` que siempre sera <= 1000.
-
-**Solucion**: Cambiar a queries con `{ count: 'exact', head: true }` para cada estado, eliminando el limite de 1000. Hacer un count por estado individual:
-
-```typescript
-const { count: total } = await supabase
-  .from('envios')
-  .select('*', { count: 'exact', head: true });
-
-const { count: pendiente } = await supabase
-  .from('envios')
-  .select('*', { count: 'exact', head: true })
-  .eq('estado', 'pendiente');
-// ... etc para cada estado
-```
-
-**Archivo**: `src/pages/Shipments.tsx` lineas 351-369
-
----
-
-### 3. OAuth Result pages: Logo del tenant + diseño profesional
-Actualmente las paginas `TiendanubeOAuthResult.tsx` y `MercadoLibreOAuthResult.tsx` muestran logos hardcodeados de las plataformas. El usuario quiere que muestren el logo del tenant (la empresa logistica).
-
-**Solucion**: Las edge functions ya tienen acceso al `seller.tenant_id`. Pasar `tenant_id` como query param adicional en el redirect de exito. En las paginas OAuth result, usar ese `tenant_id` para hacer un fetch a `tenant_branding` y mostrar el logo del tenant junto al de la plataforma.
-
-**Archivos**:
-- `supabase/functions/tiendanube-oauth/index.ts`: modificar `redirectSuccess()` para incluir `tenant_id` en los params
-- `supabase/functions/mercadolibre-oauth/index.ts`: idem
-- `src/pages/TiendanubeOAuthResult.tsx`: agregar fetch de branding con el tenant_id, mostrar logo del tenant, mejorar diseño
-- `src/pages/MercadoLibreOAuthResult.tsx`: idem
-
-El diseño mejorado mostrara:
-- Logo del tenant (empresa logistica) arriba
-- Check animado
-- Nombre de la empresa + plataforma conectada
-- Card informativa con pasos siguientes
-- Aspecto mas corporativo/profesional
-
----
+Esto reducira el tiempo de carga del dashboard de ~3-4 segundos a ~0.5-1 segundo (todas las queries corren en paralelo en lugar de una tras otra).
 
 ### Archivos a modificar
 
 | Archivo | Cambio |
 |---|---|
-| `src/components/landing/Hero.tsx` | WhatsApp correcto |
-| `src/pages/Tracking.tsx` | Boton volver |
-| `src/pages/Shipments.tsx` | Fix count con head:true |
-| `supabase/functions/tiendanube-oauth/index.ts` | Pasar tenant_id en redirect |
-| `supabase/functions/mercadolibre-oauth/index.ts` | Pasar tenant_id en redirect |
-| `src/pages/TiendanubeOAuthResult.tsx` | Logo tenant + diseño profesional |
-| `src/pages/MercadoLibreOAuthResult.tsx` | Logo tenant + diseño profesional |
+| `src/pages/Tracking.tsx` | Link de `/` a `/dashboard` |
+| `src/components/dashboard/DashboardStatsCards.tsx` | Paralelizar 6 queries |
+| `src/components/dashboard/DashboardWeeklyChart.tsx` | Paralelizar 14 queries |
+| `src/components/dashboard/DashboardDaySummary.tsx` | Paralelizar 3 queries |
+| `src/components/dashboard/DashboardTopDrivers.tsx` | Paralelizar 2 queries |
 
 ### Seguridad
-- El `tenant_id` en la URL del OAuth result es solo para mostrar branding (datos publicos de `tenant_branding`)
-- No se modifican RLS policies ni logica de negocio
-- Los counts usan `head: true` que es mas eficiente que traer todos los rows
+No se modifican RLS, tablas ni logica de negocio. Solo se cambia el orden de ejecucion de las mismas queries existentes.
 
