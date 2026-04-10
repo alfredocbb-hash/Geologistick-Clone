@@ -9,6 +9,7 @@ import { Loader2 } from 'lucide-react';
 import { useSubscriptionBlock } from '@/hooks/useSubscriptionBlock';
 import { SubscriptionBlockScreen } from '@/components/subscription/SubscriptionBlockScreen';
 import { AdminAssistant } from '@/components/assistant/AdminAssistant';
+import { GoogleMapsProvider } from '@/components/maps';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -43,20 +44,22 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   return (
-    <SidebarProvider defaultOpen={getSidebarCookieState()}>
-      <div className="flex min-h-screen w-full overflow-hidden">
-        <AppSidebar />
-        <div className="flex-1 flex flex-col min-w-0">
-          <TrialBanner />
-          <AppHeader />
-          <main className="flex-1 overflow-auto p-3 sm:p-4 md:p-6 lg:p-8">
-            <div className="max-w-full">
-              {children}
-            </div>
-          </main>
+    <GoogleMapsProvider>
+      <SidebarProvider defaultOpen={getSidebarCookieState()}>
+        <div className="flex min-h-screen w-full overflow-hidden">
+          <AppSidebar />
+          <div className="flex-1 flex flex-col min-w-0">
+            <TrialBanner />
+            <AppHeader />
+            <main className="flex-1 overflow-auto p-3 sm:p-4 md:p-6 lg:p-8">
+              <div className="max-w-full">
+                {children}
+              </div>
+            </main>
+          </div>
         </div>
-      </div>
-      <AdminAssistant />
-    </SidebarProvider>
+        <AdminAssistant />
+      </SidebarProvider>
+    </GoogleMapsProvider>
   );
 }
