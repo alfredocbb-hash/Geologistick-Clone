@@ -286,7 +286,22 @@ export function CollectScanScreen({ onClose }: CollectScanScreenProps) {
       {/* Bulk OCR Screen */}
       {showBulkOCR && (
         <div className="fixed inset-0 z-50 bg-slate-950 p-4 overflow-auto">
-          <BulkOCRScreen onClose={() => setShowBulkOCR(false)} />
+          <BulkOCRScreen
+            onClose={() => setShowBulkOCR(false)}
+            onPackagesReady={async (ids: string[]) => {
+              setShowBulkOCR(false);
+              for (const id of ids) {
+                const { data } = await supabase
+                  .from('envios')
+                  .select('tracking_number')
+                  .eq('id', id)
+                  .single();
+                if (data?.tracking_number) {
+                  await addPackageByTracking(data.tracking_number);
+                }
+              }
+            }}
+          />
         </div>
       )}
     </div>

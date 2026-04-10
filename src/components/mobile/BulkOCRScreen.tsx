@@ -630,8 +630,8 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
               disabled={savedCount === 0}
               className="flex-1 h-12 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-black shadow-lg disabled:opacity-40"
             >
-              <Route className="mr-2 h-5 w-5" />
-              PLANIFICAR ({savedCount})
+              {onPackagesReady ? <Package className="mr-2 h-5 w-5" /> : <Route className="mr-2 h-5 w-5" />}
+              {onPackagesReady ? `COLECTAR (${savedCount})` : `PLANIFICAR (${savedCount})`}
             </Button>
             <Button
               onClick={() => { stopCamera(); onClose(); }}
@@ -806,7 +806,7 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
         {albumPhase === 'done' && (
           <>
             <Button onClick={handleGoToPlanner} disabled={packages.length === 0} className="w-full h-12 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold shadow-xl disabled:opacity-40">
-              <Route className="mr-3 h-5 w-5" /> PLANIFICAR RUTA ({packages.length})
+              {onPackagesReady ? <Package className="mr-3 h-5 w-5" /> : <Route className="mr-3 h-5 w-5" />} {onPackagesReady ? `COLECTAR (${packages.length})` : `PLANIFICAR RUTA (${packages.length})`}
             </Button>
             {(errorCount > 0 || duplicateCount > 0) && (
               <Button onClick={processAlbum} variant="outline" className="w-full h-10 rounded-xl font-bold text-xs">
