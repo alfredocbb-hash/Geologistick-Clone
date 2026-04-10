@@ -50,7 +50,7 @@ const Hero = () => {
               style={{ animationDelay: "0.1s" }}
             >
               <span className="block text-foreground dark:text-white mb-2">Software de</span>
-              <span className="block bg-gradient-to-r from-[hsl(var(--geo-teal))] via-[hsl(var(--geo-cyan))] to-[hsl(var(--geo-blue))] bg-clip-text text-transparent">
+              <span className="block bg-gradient-to-r from-[hsl(var(--geo-teal))] via-[hsl(var(--geo-cyan))] to-[hsl(var(--geo-blue))] bg-clip-text text-secondary-foreground">
                 logística inteligente
               </span>
             </h1>
