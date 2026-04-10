@@ -1,51 +1,45 @@
 
 
-## Plan: Conectar OCR Masivo con Colecta del chofer
+## Plan: Fix ExchangeDialog not appearing + Photo stability
 
-### Problema
-Cuando el chofer abre "OCR Masivo" desde Colecta Rapida, el `BulkOCRScreen` se monta sin `onPackagesReady`. Al terminar el OCR y pulsar "PLANIFICAR", navega al route-planner en vez de agregar los paquetes a la lista de colecta. No hay boton "Colectar" visible.
+### Issue 1: ExchangeDialog (devolución) never appears after delivery
 
-### Solucion
+**Root cause**: In `DeliveryConfirmation.tsx` line 551-552, `onSuccess()` is called BEFORE `setShowExchangeDialog(true)`. The `onSuccess` callback in `ActiveRouteNavigation.tsx` (line 1042) calls `closeDialog()`, which sets `selectedShipment = null` and `dialogType = null`. This **unmounts** `DeliveryConfirmation` entirely (because of the conditional `selectedShipment && dialogType === 'delivery'` on line 1037). So `showExchangeDialog` never renders because the component is already gone.
 
-**Archivo: `src/components/mobile/CollectScanScreen.tsx`** (linea 289)
+**Fix**: In `DeliveryConfirmation.tsx`, don't call `onSuccess()` immediately. Instead, show the ExchangeDialog first, and only call `onSuccess()` + `onClose()` when the ExchangeDialog closes.
 
-Pasar `onPackagesReady` al `BulkOCRScreen` para que cuando el chofer termine el OCR y pulse el boton, los paquetes se agreguen a la lista de colecta:
+```
+// Line 550-552 currently:
+toast.success('¡Entrega confirmada exitosamente!');
+onSuccess();                        // ← unmounts component!
+setShowExchangeDialog(true);        // ← never renders
 
-```tsx
-<BulkOCRScreen 
-  onClose={() => setShowBulkOCR(false)}
-  onPackagesReady={async (ids: string[]) => {
-    setShowBulkOCR(false);
-    for (const id of ids) {
-      const { data } = await supabase
-        .from('envios')
-        .select('tracking_number')
-        .eq('id', id)
-        .single();
-      if (data?.tracking_number) {
-        await addPackageByTracking(data.tracking_number);
-      }
-    }
-  }}
-/>
+// Fix:
+toast.success('¡Entrega confirmada exitosamente!');
+setShowExchangeDialog(true);        // ← show exchange dialog first
+// onSuccess() will be called when ExchangeDialog closes
 ```
 
-**Archivo: `src/components/mobile/BulkOCRScreen.tsx`**
+And update the ExchangeDialog `onClose` callback (line 884-886) to also call `onSuccess()`:
+```tsx
+onClose={() => {
+  setShowExchangeDialog(false);
+  onSuccess();  // ← notify parent AFTER exchange flow completes
+  onClose();
+}}
+```
 
-Cuando `onPackagesReady` esta presente (viene de Colecta), cambiar el texto del boton de "PLANIFICAR" a "COLECTAR" para que el chofer entienda que esta confirmando colecta, no planificando ruta. Cambios en 3 lugares donde aparece el boton:
-- Linea ~634: `PLANIFICAR ({savedCount})` → `COLECTAR ({savedCount})`
-- Linea ~809: `PLANIFICAR RUTA ({packages.length})` → `COLECTAR ({packages.length})`
-- Icono: cambiar `Route` por `Package` cuando hay `onPackagesReady`
+### Issue 2: Photo "se sale" after preview
 
-### Resultado
-1. Chofer abre Colecta Rapida → OCR Masivo → toma fotos → se procesan
-2. Pulsa "COLECTAR (N)" → los paquetes aparecen en la lista de colecta
-3. Pulsa "CONFIRMAR COLECTA" → se actualizan a `recogido` con `chofer_id` y se crea registro en `colectas`
+This is likely caused by the Android WebView reload when opening the native camera. The `sessionStorage` persistence is in place but the dialog gets re-rendered. The current code on line 104 removes the storage key immediately after restoring (`sessionStorage.removeItem(STORAGE_KEY)`), which is correct. However, if the component unmounts and remounts during the WebView reload cycle, the state may not survive. This should be stable with the existing persistence logic but I'll verify the flow isn't being interrupted by a parent re-render.
 
-### Archivos a modificar
+### Files to modify
 
-| Archivo | Cambio |
+| File | Change |
 |---|---|
-| `src/components/mobile/CollectScanScreen.tsx` | Pasar `onPackagesReady` al `BulkOCRScreen` |
-| `src/components/mobile/BulkOCRScreen.tsx` | Texto del boton condicional: "COLECTAR" vs "PLANIFICAR" |
+| `src/components/delivery/DeliveryConfirmation.tsx` | Don't call `onSuccess()` before ExchangeDialog; call it when ExchangeDialog closes |
+
+### Impact
+- No DB, RLS, or security changes
+- Only changes the order of callbacks in the delivery confirmation flow
 
