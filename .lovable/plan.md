@@ -1,45 +1,29 @@
 
 
-## Plan: Fix ExchangeDialog not appearing + Photo stability
+## Plan: Card de Colectas siempre visible + Historial por fecha
 
-### Issue 1: ExchangeDialog (devolución) never appears after delivery
+### Diagnóstico
+El envío `MDC-1145-R-00000208` sigue en estado `pendiente` sin `chofer_id` — la colecta no se confirmó. Esto es porque la APK aún no tiene el fix que conecta el OCR masivo con la lista de colecta (el cambio de `onPackagesReady` que aprobaste antes). Una vez actualizada la APK, el flujo funcionará correctamente.
 
-**Root cause**: In `DeliveryConfirmation.tsx` line 551-552, `onSuccess()` is called BEFORE `setShowExchangeDialog(true)`. The `onSuccess` callback in `ActiveRouteNavigation.tsx` (line 1042) calls `closeDialog()`, which sets `selectedShipment = null` and `dialogType = null`. This **unmounts** `DeliveryConfirmation` entirely (because of the conditional `selectedShipment && dialogType === 'delivery'` on line 1037). So `showExchangeDialog` never renders because the component is already gone.
+### Cambios solicitados
 
-**Fix**: In `DeliveryConfirmation.tsx`, don't call `onSuccess()` immediately. Instead, show the ExchangeDialog first, and only call `onSuccess()` + `onClose()` when the ExchangeDialog closes.
+**1. Card de Colectas siempre visible en Home (`MobileHomeTab.tsx`)**
+- Quitar la condición `(todayColectas?.totalPaquetes ?? 0) > 0` que oculta la card
+- Mostrar siempre la card con "0 paquetes" si no hay colectas hoy
 
-```
-// Line 550-552 currently:
-toast.success('¡Entrega confirmada exitosamente!');
-onSuccess();                        // ← unmounts component!
-setShowExchangeDialog(true);        // ← never renders
+**2. Historial de Colectas por fecha (`MobileHistoryTab.tsx`)**
+- En la pestaña "Colectas", agrupar las colectas por fecha (día)
+- Mostrar un encabezado con la fecha y la cantidad total de paquetes ese día
+- Debajo, listar cada colecta individual con hora, cantidad y fuente
+- Aumentar el límite de 30 a 100 para tener más historial
 
-// Fix:
-toast.success('¡Entrega confirmada exitosamente!');
-setShowExchangeDialog(true);        // ← show exchange dialog first
-// onSuccess() will be called when ExchangeDialog closes
-```
+### Archivos a modificar
 
-And update the ExchangeDialog `onClose` callback (line 884-886) to also call `onSuccess()`:
-```tsx
-onClose={() => {
-  setShowExchangeDialog(false);
-  onSuccess();  // ← notify parent AFTER exchange flow completes
-  onClose();
-}}
-```
-
-### Issue 2: Photo "se sale" after preview
-
-This is likely caused by the Android WebView reload when opening the native camera. The `sessionStorage` persistence is in place but the dialog gets re-rendered. The current code on line 104 removes the storage key immediately after restoring (`sessionStorage.removeItem(STORAGE_KEY)`), which is correct. However, if the component unmounts and remounts during the WebView reload cycle, the state may not survive. This should be stable with the existing persistence logic but I'll verify the flow isn't being interrupted by a parent re-render.
-
-### Files to modify
-
-| File | Change |
+| Archivo | Cambio |
 |---|---|
-| `src/components/delivery/DeliveryConfirmation.tsx` | Don't call `onSuccess()` before ExchangeDialog; call it when ExchangeDialog closes |
+| `src/components/mobile/MobileHomeTab.tsx` | Quitar condición que oculta la card de colectas |
+| `src/components/mobile/MobileHistoryTab.tsx` | Agrupar colectas por fecha con totales diarios |
 
-### Impact
-- No DB, RLS, or security changes
-- Only changes the order of callbacks in the delivery confirmation flow
+### Nota
+Para que las colectas realmente se registren, necesitás actualizar la APK con los cambios anteriores del `onPackagesReady`.
 
