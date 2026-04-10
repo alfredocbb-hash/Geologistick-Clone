@@ -4,7 +4,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Users } from 'lucide-react';
-import { getTodayString } from '@/lib/dateUtils';
 import { subDays } from 'date-fns';
 import { formatDateString } from '@/lib/dateUtils';
 

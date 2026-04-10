@@ -18,36 +18,40 @@ export default function DashboardWeeklyChart({ tenantId }: Props) {
     queryFn: async () => {
       if (!tenantId) return [];
 
-      const days = [];
-      for (let i = 6; i >= 0; i--) {
-        const date = subDays(new Date(), i);
-        const dateStr = formatDateString(date);
+      const dayIndices = [6, 5, 4, 3, 2, 1, 0];
+      const queries = dayIndices.flatMap((i) => {
+        const dateStr = formatDateString(subDays(new Date(), i));
         const nextDateStr = formatDateString(subDays(new Date(), i - 1));
 
-        const { count: envios } = await supabase
-          .from('envios')
-          .select('*', { count: 'exact', head: true })
-          .eq('tenant_id', tenantId)
-          .gte('created_at', dateStr)
-          .lt('created_at', i === 0 ? formatDateString(subDays(new Date(), -1)) : nextDateStr)
-          .not('estado', 'in', '(cancelado,devuelto)');
+        return [
+          supabase
+            .from('envios')
+            .select('*', { count: 'exact', head: true })
+            .eq('tenant_id', tenantId)
+            .gte('created_at', dateStr)
+            .lt('created_at', nextDateStr)
+            .not('estado', 'in', '(cancelado,devuelto)'),
+          supabase
+            .from('envios')
+            .select('*', { count: 'exact', head: true })
+            .eq('tenant_id', tenantId)
+            .eq('estado', 'entregado')
+            .gte('fecha_entrega', dateStr)
+            .lt('fecha_entrega', nextDateStr),
+        ];
+      });
 
-        const { count: entregados } = await supabase
-          .from('envios')
-          .select('*', { count: 'exact', head: true })
-          .eq('tenant_id', tenantId)
-          .eq('estado', 'entregado')
-          .gte('fecha_entrega', dateStr)
-          .lt('fecha_entrega', i === 0 ? formatDateString(subDays(new Date(), -1)) : nextDateStr);
+      const results = await Promise.all(queries);
 
-        days.push({
+      return dayIndices.map((i, idx) => {
+        const date = subDays(new Date(), i);
+        return {
           day: format(date, 'EEE', { locale: es }),
           date: format(date, 'dd/MM'),
-          envios: envios || 0,
-          entregados: entregados || 0,
-        });
-      }
-      return days;
+          envios: results[idx * 2].count || 0,
+          entregados: results[idx * 2 + 1].count || 0,
+        };
+      });
     },
     enabled: !!tenantId,
   });
