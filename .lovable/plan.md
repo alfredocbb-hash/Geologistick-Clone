@@ -1,68 +1,112 @@
 
 
-## Plan: Optimización de velocidad (Escritorio y Móvil)
+## Plan: Rediseño Landing inspirado en LightData
 
-### Problema principal identificado
+### Enfoque
 
-El archivo `App.tsx` importa **las 70+ páginas de forma estática** (eager imports). Esto significa que al cargar **cualquier** ruta (incluso la landing `/`), el navegador descarga y parsea **todo** el código de la aplicación: Dashboard, LiveMap, RoutePlanner, Shipments, eCommerce, etc. En móvil esto es especialmente grave por el ancho de banda y CPU limitados.
+Tomar de LightData lo que funciona: **contenido informativo claro** (quiénes somos, funcionalidades con descripción detallada, circuito operativo visual, estadísticas reales, contacto directo por WhatsApp). Pero mantener el diseño moderno de Geologistick y sus herramientas reales.
 
-Además, `GoogleMapsProvider` envuelve **toda** la app, disparando una llamada a la edge function `get-maps-config` incluso en rutas públicas que no necesitan mapa.
-
-### Cambios propuestos
-
-#### 1. Code splitting con React.lazy (App.tsx)
-
-Convertir todas las importaciones de páginas a `React.lazy()` para que cada página se descargue solo cuando el usuario navega a ella. Se mantienen como imports directos solo: `Index`, `Login`, `NotFound` (las más frecuentes de entrada).
+### Estructura nueva de la landing
 
 ```text
-Antes:  import Dashboard from "./pages/Dashboard";
-Después: const Dashboard = lazy(() => import("./pages/Dashboard"));
+Navbar (actualizado)
+Hero (reescrito - más directo, con tracking inline + WhatsApp)
+Clients (mantener marquee de logos)
+QuienesSomos (NUEVO - misión/visión como LightData)
+Funcionalidades (reescrito - cards grandes con ícono + descripción detallada)
+Circuito (NUEVO - flujo visual del proceso operativo)
+Stats (NUEVO - contadores animados reales desde DB)
+Pricing (mantener)
+Contacto/Footer (mejorado con WhatsApp + formulario)
 ```
 
-Envolver las rutas con `<Suspense fallback={<PageLoader />}>` que muestra un spinner centrado.
+### Cambios por archivo
 
-#### 2. Mover GoogleMapsProvider dentro de DashboardLayout
+#### 1. `src/components/landing/Hero.tsx` -- Reescribir
+- Quitar el dashboard preview decorativo y stats falsos
+- Layout split: texto izquierda + imagen/mockup derecha (como LightData)
+- Headline directo: "Software de logística inteligente"
+- Input de tracking inline: campo + botón que redirige a `/tracking?code=XXX`
+- Botón WhatsApp prominente (como LightData) + botón "Comenzar gratis"
+- Mantener el badge editable del CMS
 
-Solo las rutas autenticadas (dashboard, live-map, planner, etc.) necesitan Google Maps. Moverlo desde `App.tsx` a `DashboardLayout.tsx` evita cargar la API de Maps y la llamada a `get-maps-config` en rutas públicas (landing, login, tracking, terms, etc.).
+#### 2. `src/components/landing/QuienesSomos.tsx` -- NUEVO
+- Sección "¿Quiénes somos?" con texto descriptivo del servicio
+- Cards de Misión y Visión con íconos
+- Contenido editable desde `landing_content` (nueva sección `about`)
 
-#### 3. Configurar Vite para mejor chunking
+#### 3. `src/components/landing/Features.tsx` -- Reescribir
+- Cambiar de bento grid genérico a **cards grandes** tipo LightData
+- Cada feature ocupa más espacio con descripción detallada
+- Features mapeados a las funcionalidades reales de Geologistick:
+  - Hojas de ruta y asignación de envíos
+  - Seguimiento GPS de choferes en tiempo real
+  - Liquidaciones automáticas (choferes, sucursales, clientes)
+  - Integración con Mercado Libre y Tiendanube
+  - Escaneo QR y digitalización de paquetes
+  - Generación de etiquetas y rótulos
+  - Analytics y reportes
+  - App móvil para choferes
 
-Agregar `build.rollupOptions.output.manualChunks` en `vite.config.ts` para separar vendor libs grandes (react, tanstack-query, date-fns, recharts, supabase) del código de la app:
+#### 4. `src/components/landing/Circuito.tsx` -- NUEVO
+- Diagrama visual del circuito operativo (como LightData pero moderno)
+- Pasos: Recepción -> Digitalización -> Asignación -> Ruta -> Entrega -> Liquidación
+- Línea conectora animada entre pasos
+- Responsive: horizontal en desktop, vertical en mobile
 
-```typescript
-build: {
-  rollupOptions: {
-    output: {
-      manualChunks: {
-        vendor: ['react', 'react-dom', 'react-router-dom'],
-        query: ['@tanstack/react-query'],
-        supabase: ['@supabase/supabase-js'],
-        ui: ['date-fns', 'lucide-react'],
-      }
-    }
-  }
-}
+#### 5. `src/components/landing/StatsCounter.tsx` -- NUEVO
+- Contadores animados que cuentan desde 0 hasta el valor real
+- Datos reales vía RPC: choferes activos, envíos último mes, empresas, etc.
+- Usa el RPC existente `get_public_active_tenant_count` + nuevos RPCs simples
+- Diseño con íconos como LightData (camión, persona, caja, mundo)
+
+#### 6. `src/components/landing/Navbar.tsx` -- Actualizar
+- Links: "Funcionalidades" | "Circuito" | "Precios" | "Tracking" | "Contacto"
+- Agregar badge "Certificado ML" si el tenant tiene integración ML
+
+#### 7. `src/components/landing/Footer.tsx` -- Mejorar
+- Agregar botón WhatsApp flotante
+- Sección de contacto más completa (dirección, email, teléfono, redes)
+
+#### 8. `src/pages/Index.tsx` -- Reordenar secciones
+```tsx
+<Navbar />
+<Hero />          // Reescrito
+<Clients />       // Mantener
+<QuienesSomos />  // Nuevo
+<Features />      // Reescrito
+<Circuito />      // Nuevo
+<StatsCounter />  // Nuevo
+<Pricing />       // Mantener
+<CTASection />    // Mantener
+<Footer />        // Mejorado
 ```
 
-#### 4. Cache headers en index.html
+#### 9. `src/hooks/useLandingContent.ts` -- Agregar secciones
+- Nueva sección `about` (quiénes somos, misión, visión)
+- Nueva sección `circuit` (textos de los pasos del circuito)
+- Nueva sección `contact` (WhatsApp, email, dirección, redes)
 
-Eliminar las meta tags `no-cache, no-store, must-revalidate` del `index.html`. Vite ya genera hashes en los nombres de archivos JS/CSS, así que el caching es seguro y acelera recargas.
+#### 10. Eliminar `src/components/landing/HowItWorks.tsx`
+- Reemplazado por `Circuito.tsx` que es más completo y específico
 
-### Archivos a modificar
+### Lo que NO se toca
+- Pricing, lógica de autenticación, edge functions, base de datos (excepto agregar rows a `landing_content`)
+- Componentes internos del dashboard
+- Tracking page existente (solo se linka desde el hero)
 
-- **`src/App.tsx`** — Convertir ~65 imports a `React.lazy`, agregar `Suspense`, mover `GoogleMapsProvider` fuera
-- **`src/components/layout/DashboardLayout.tsx`** — Envolver children con `GoogleMapsProvider`
-- **`vite.config.ts`** — Agregar manual chunks
-- **`index.html`** — Eliminar meta tags anti-cache
+### Archivos a crear/modificar
 
-### Impacto estimado
-
-- **Landing page**: de cargar ~2-3MB de JS a ~200-400KB (solo lo necesario)
-- **Navegación interna**: cada página se descarga bajo demanda (~50-150KB cada una)
-- **Móvil**: mejora significativa en tiempo de carga inicial y consumo de datos
-- **Escritorio**: mejora en TTI (Time to Interactive) y FCP (First Contentful Paint)
-
-### Seguridad
-
-No se modifican queries, RLS, ni lógica de negocio. Solo se cambia **cuándo** se carga el código, no **qué** código se ejecuta.
+| Archivo | Accion |
+|---|---|
+| `src/components/landing/Hero.tsx` | Reescribir |
+| `src/components/landing/QuienesSomos.tsx` | Crear |
+| `src/components/landing/Features.tsx` | Reescribir |
+| `src/components/landing/Circuito.tsx` | Crear |
+| `src/components/landing/StatsCounter.tsx` | Crear |
+| `src/components/landing/Navbar.tsx` | Actualizar links |
+| `src/components/landing/Footer.tsx` | Mejorar contacto + WhatsApp |
+| `src/pages/Index.tsx` | Reordenar secciones |
+| `src/hooks/useLandingContent.ts` | Agregar secciones about/circuit/contact |
+| `src/components/landing/HowItWorks.tsx` | Eliminar |
 
