@@ -1,29 +1,36 @@
 
 
-## Plan: Card de Colectas siempre visible + Historial por fecha
+## Plan: Corregir ExchangeDialog — condición invertida + campos faltantes para ML
 
-### Diagnóstico
-El envío `MDC-1145-R-00000208` sigue en estado `pendiente` sin `chofer_id` — la colecta no se confirmó. Esto es porque la APK aún no tiene el fix que conecta el OCR masivo con la lista de colecta (el cambio de `onPackagesReady` que aprobaste antes). Una vez actualizada la APK, el flujo funcionará correctamente.
+### Problemas encontrados
 
-### Cambios solicitados
+**1. Condición invertida (línea 552 de DeliveryConfirmation.tsx)**
+```typescript
+// ACTUAL (incorrecto):
+if (shipment.es_cambio) { setShowExchangeDialog(true); }
+// CORRECTO:
+if (!shipment.es_cambio) { setShowExchangeDialog(true); }
+```
+El diálogo solo aparece cuando el envío YA es un cambio, en vez de aparecer en entregas normales.
 
-**1. Card de Colectas siempre visible en Home (`MobileHomeTab.tsx`)**
-- Quitar la condición `(todayColectas?.totalPaquetes ?? 0) > 0` que oculta la card
-- Mostrar siempre la card con "0 paquetes" si no hay colectas hoy
+**2. Campos faltantes para ExchangeDialog**
+La prop `shipment` que se pasa al `ExchangeDialog` (línea 894) solo incluye `id`, `tracking_number`, `direccion_entrega`, `ciudad_entrega` y `nombre_destinatario`. Faltan los campos necesarios para:
+- Detectar si es ML (`ml_shipment_id`)
+- Crear el envío inverso (`tenant_id`, `remitente_id`, `destinatario_id`, `sucursal_origen_id`, `nombre_remitente`, `direccion_retiro`, `ciudad_retiro`)
 
-**2. Historial de Colectas por fecha (`MobileHistoryTab.tsx`)**
-- En la pestaña "Colectas", agrupar las colectas por fecha (día)
-- Mostrar un encabezado con la fecha y la cantidad total de paquetes ese día
-- Debajo, listar cada colecta individual con hora, cantidad y fuente
-- Aumentar el límite de 30 a 100 para tener más historial
+**3. Queries sin campos ML**
+Las queries en `ActiveRouteNavigation.tsx` (líneas 164-189 y 210-235) no incluyen `ml_shipment_id`, `tenant_id`, `remitente_id`, `destinatario_id`, ni `sucursal_origen_id`.
 
-### Archivos a modificar
+### Cambios
 
 | Archivo | Cambio |
 |---|---|
-| `src/components/mobile/MobileHomeTab.tsx` | Quitar condición que oculta la card de colectas |
-| `src/components/mobile/MobileHistoryTab.tsx` | Agrupar colectas por fecha con totales diarios |
+| `src/components/delivery/DeliveryConfirmation.tsx` | Invertir condición a `!shipment.es_cambio`. Agregar campos ML al interface `Shipment`. Pasar todos los campos necesarios al `ExchangeDialog`. |
+| `src/pages/ActiveRouteNavigation.tsx` | Agregar `ml_shipment_id, tenant_id, remitente_id, destinatario_id, sucursal_origen_id` a ambas queries (hoja_ruta_envios y ruta_paradas). |
 
-### Nota
-Para que las colectas realmente se registren, necesitás actualizar la APK con los cambios anteriores del `onPackagesReady`.
+### Flujo resultante
+1. Chofer confirma entrega normal → aparece ExchangeDialog → "¿Hay devolución?"
+2. Si ML: el envío inverso va al seller de origen (busca en `ecommerce_orders` → `ecommerce_sellers`)
+3. Si manual: va al remitente/sucursal de origen
+4. Si el envío ya es un cambio (`es_cambio: true`): cierra directo sin preguntar
 
