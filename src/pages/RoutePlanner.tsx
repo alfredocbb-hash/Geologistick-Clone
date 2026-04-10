@@ -148,6 +148,7 @@ export default function RoutePlanner() {
     data: any;
   } | null>(null);
   const [isGeolocating, setIsGeolocating] = useState(false);
+  const [geocodingProgress, setGeocodingProgress] = useState<{ current: number; total: number; success: number; failed: number } | null>(null);
   const [editingRoute, setEditingRoute] = useState<any | null>(null);
   const [selectedReprogramados, setSelectedReprogramados] = useState<string[]>([]);
   const [showImportDialog, setShowImportDialog] = useState(false);
@@ -625,6 +626,73 @@ export default function RoutePlanner() {
       setSelectedMapItem(null);
     }
   }, [queryClient]);
+
+  // Geocode all pending shipments
+  const geocodeAllEnvios = useCallback(async () => {
+    const pending = selectedEnviosData.filter(e => !e.coords?.lat || !e.coords?.lng);
+    if (pending.length === 0) return;
+
+    const progress = { current: 0, total: pending.length, success: 0, failed: 0 };
+    setGeocodingProgress({ ...progress });
+
+    for (const envio of pending) {
+      try {
+        const direccion = envio.tipo === "retiro"
+          ? envio.direccion_retiro || envio.remitente?.direccion
+          : envio.direccion_entrega || envio.destinatario?.direccion;
+        const ciudad = envio.tipo === "retiro"
+          ? envio.ciudad_retiro || envio.remitente?.ciudad
+          : envio.ciudad_entrega || envio.destinatario?.ciudad;
+
+        if (!direccion) {
+          progress.failed++;
+          progress.current++;
+          setGeocodingProgress({ ...progress });
+          continue;
+        }
+
+        const response = await supabase.functions.invoke('geocode-address', {
+          body: { address: direccion, city: ciudad }
+        });
+
+        if (response.data?.lat && response.data?.lng) {
+          const isRetiro = envio.tipo === "retiro";
+          const updateFields: Record<string, number> = isRetiro
+            ? { remitente_lat: response.data.lat, remitente_lng: response.data.lng }
+            : {
+                destinatario_lat: response.data.lat,
+                destinatario_lng: response.data.lng,
+                entrega_lat: response.data.lat,
+                entrega_lng: response.data.lng,
+              };
+
+          const { error } = await supabase
+            .from("envios")
+            .update(updateFields)
+            .eq("id", envio.id);
+
+          if (error) throw error;
+          progress.success++;
+        } else {
+          progress.failed++;
+        }
+      } catch {
+        progress.failed++;
+      }
+
+      progress.current++;
+      setGeocodingProgress({ ...progress });
+
+      // Delay between calls to avoid rate limiting
+      if (progress.current < progress.total) {
+        await new Promise(r => setTimeout(r, 300));
+      }
+    }
+
+    setGeocodingProgress(null);
+    queryClient.invalidateQueries({ queryKey: ["envios-planificador"] });
+    toast.success(`Geolocalización completada: ${progress.success} exitosos, ${progress.failed} fallidos`);
+  }, [selectedEnviosData, queryClient]);
 
   // Geocode a branch
   const geocodeSucursal = useCallback(async (sucursal: any) => {
@@ -1816,10 +1884,39 @@ export default function RoutePlanner() {
                 {/* Shipments without coordinates list */}
                 {selectedEnviosData.filter(e => !e.coords?.lat || !e.coords?.lng).length > 0 && (
                   <div className="p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 space-y-2">
-                    <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200 flex items-center gap-2">
-                      <AlertTriangle className="h-4 w-4" />
-                      Envíos sin geolocalizar
-                    </p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200 flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4" />
+                        Envíos sin geolocalizar
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs border-yellow-400 text-yellow-800 dark:text-yellow-200 hover:bg-yellow-100 dark:hover:bg-yellow-900/40"
+                        onClick={geocodeAllEnvios}
+                        disabled={!!geocodingProgress}
+                      >
+                        {geocodingProgress ? (
+                          <>
+                            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                            {geocodingProgress.current}/{geocodingProgress.total}
+                          </>
+                        ) : (
+                          <>
+                            <Navigation className="mr-1 h-3 w-3" />
+                            Geolocalizar Todos ({selectedEnviosData.filter(e => !e.coords?.lat || !e.coords?.lng).length})
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    {geocodingProgress && (
+                      <div className="w-full bg-yellow-200 dark:bg-yellow-800 rounded-full h-2">
+                        <div
+                          className="bg-primary h-2 rounded-full transition-all"
+                          style={{ width: `${(geocodingProgress.current / geocodingProgress.total) * 100}%` }}
+                        />
+                      </div>
+                    )}
                     <div className="space-y-1">
                       {selectedEnviosData
                         .filter(e => !e.coords?.lat || !e.coords?.lng)
