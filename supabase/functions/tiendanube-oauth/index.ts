@@ -311,7 +311,7 @@ Deno.serve(async (req) => {
       }
 
       // Redirect to success page
-      return redirectSuccess(sellerId);
+      return redirectSuccess(sellerId, seller.tenant_id);
     }
 
     return new Response(
