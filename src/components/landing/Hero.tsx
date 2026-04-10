@@ -24,13 +24,13 @@ const Hero = () => {
     <section className="relative min-h-screen flex items-center overflow-hidden bg-gradient-to-b from-background to-muted dark:bg-[#050507]">
       {/* Background effects */}
       <div className="absolute inset-0">
-        <div 
+        <div
           className="absolute top-1/3 left-1/4 w-[800px] h-[500px] rounded-full blur-[150px] opacity-20 dark:opacity-40"
-          style={{ background: 'radial-gradient(ellipse, hsl(174 50% 50% / 0.2) 0%, transparent 70%)' }}
+          style={{ background: "radial-gradient(ellipse, hsl(174 50% 50% / 0.2) 0%, transparent 70%)" }}
         />
-        <div 
+        <div
           className="absolute bottom-1/4 right-1/4 w-[600px] h-[400px] rounded-full blur-[120px] opacity-20 dark:opacity-30"
-          style={{ background: 'radial-gradient(ellipse, hsl(207 50% 35% / 0.15) 0%, transparent 70%)' }}
+          style={{ background: "radial-gradient(ellipse, hsl(207 50% 35% / 0.15) 0%, transparent 70%)" }}
         />
       </div>
 
@@ -45,7 +45,10 @@ const Hero = () => {
             </div>
 
             {/* Headline */}
-            <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight animate-fade-in" style={{ animationDelay: '0.1s' }}>
+            <h1
+              className="text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight animate-fade-in"
+              style={{ animationDelay: "0.1s" }}
+            >
               <span className="block text-foreground dark:text-white mb-2">Software de</span>
               <span className="block bg-gradient-to-r from-[hsl(var(--geo-teal))] via-[hsl(var(--geo-cyan))] to-[hsl(var(--geo-blue))] bg-clip-text text-transparent">
                 logística inteligente
@@ -53,15 +56,18 @@ const Hero = () => {
             </h1>
 
             {/* Description */}
-            <p className="text-lg md:text-xl text-muted-foreground dark:text-gray-400 max-w-lg leading-relaxed animate-fade-in" style={{ animationDelay: '0.2s' }}>
+            <p
+              className="text-lg md:text-xl text-muted-foreground dark:text-gray-400 max-w-lg leading-relaxed animate-fade-in"
+              style={{ animationDelay: "0.2s" }}
+            >
               {hero.description}
             </p>
 
             {/* CTA Buttons */}
-            <div className="flex flex-wrap items-center gap-4 animate-fade-in" style={{ animationDelay: '0.3s' }}>
-              <Button 
-                asChild 
-                size="lg" 
+            <div className="flex flex-wrap items-center gap-4 animate-fade-in" style={{ animationDelay: "0.3s" }}>
+              <Button
+                asChild
+                size="lg"
                 className="text-lg px-8 py-6 bg-foreground dark:bg-white text-background dark:text-black hover:bg-foreground/90 dark:hover:bg-gray-100 rounded-full font-semibold transition-all duration-300 hover:scale-105"
               >
                 <Link to="/login">
@@ -69,9 +75,9 @@ const Hero = () => {
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Link>
               </Button>
-              <Button 
-                asChild 
-                size="lg" 
+              <Button
+                asChild
+                size="lg"
                 className="text-lg px-8 py-6 bg-green-600 hover:bg-green-700 text-white rounded-full font-semibold transition-all duration-300 hover:scale-105"
               >
                 <a href={whatsappUrl} target="_blank" rel="noopener noreferrer">
@@ -82,7 +88,10 @@ const Hero = () => {
             </div>
 
             {/* Trust indicators */}
-            <div className="flex flex-wrap items-center gap-6 text-sm text-muted-foreground dark:text-gray-500 animate-fade-in" style={{ animationDelay: '0.4s' }}>
+            <div
+              className="flex flex-wrap items-center gap-6 text-sm text-muted-foreground dark:text-gray-500 animate-fade-in"
+              style={{ animationDelay: "0.4s" }}
+            >
               <div className="flex items-center gap-2">
                 <Shield className="h-4 w-4 text-green-500" />
                 <span>14 días gratis</span>
@@ -99,7 +108,7 @@ const Hero = () => {
           </div>
 
           {/* Right: Tracking + Visual */}
-          <div className="space-y-8 animate-fade-in" style={{ animationDelay: '0.3s' }}>
+          <div className="space-y-8 animate-fade-in" style={{ animationDelay: "0.3s" }}>
             {/* Tracking card */}
             <div className="bg-card dark:bg-white/[0.03] backdrop-blur-xl rounded-2xl border border-border dark:border-white/10 p-8 shadow-xl">
               <div className="flex items-center gap-3 mb-6">
@@ -119,8 +128,8 @@ const Hero = () => {
                   onChange={(e) => setTrackingCode(e.target.value)}
                   className="flex-1 h-12 rounded-xl border border-input bg-background px-4 text-base placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   size="lg"
                   className="h-12 px-6 rounded-xl bg-[hsl(var(--geo-teal))] hover:bg-[hsl(var(--geo-teal)/0.9)] text-white"
                 >
@@ -137,12 +146,14 @@ const Hero = () => {
                 { icon: "📊", title: "Liquidaciones", desc: "Cálculo automático" },
                 { icon: "🔗", title: "Integraciones", desc: "ML, Tiendanube, API" },
               ].map((item, i) => (
-                <div 
+                <div
                   key={i}
                   className="group p-5 rounded-xl bg-card dark:bg-white/[0.02] border border-border dark:border-white/5 hover:border-[hsl(var(--geo-teal)/0.3)] transition-all duration-300"
                 >
                   <div className="text-2xl mb-3">{item.icon}</div>
-                  <h4 className="font-semibold text-foreground dark:text-white text-sm mb-1 group-hover:text-[hsl(var(--geo-teal))] transition-colors">{item.title}</h4>
+                  <h4 className="font-semibold text-foreground dark:text-white text-sm mb-1 group-hover:text-[hsl(var(--geo-teal))] transition-colors">
+                    {item.title}
+                  </h4>
                   <p className="text-xs text-muted-foreground dark:text-gray-500">{item.desc}</p>
                 </div>
               ))}
