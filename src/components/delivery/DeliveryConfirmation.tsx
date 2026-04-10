@@ -36,6 +36,14 @@ interface Shipment {
   direccion_entrega: string | null;
   ciudad_entrega: string | null;
   es_cambio?: boolean | null;
+  ml_shipment_id?: number | null;
+  tenant_id?: string | null;
+  remitente_id?: string | null;
+  destinatario_id?: string | null;
+  sucursal_origen_id?: string | null;
+  nombre_remitente?: string | null;
+  direccion_retiro?: string | null;
+  ciudad_retiro?: string | null;
   destinatario?: {
     nombre: string;
     apellido: string | null;
@@ -549,7 +557,7 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
       }
       
       toast.success('¡Entrega confirmada exitosamente!');
-      if (shipment.es_cambio) {
+      if (!shipment.es_cambio) {
         setShowExchangeDialog(true);
       } else {
         onSuccess();
@@ -897,6 +905,14 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
               direccion_entrega: shipment.direccion_entrega,
               ciudad_entrega: shipment.ciudad_entrega,
               nombre_destinatario: shipment.destinatario?.nombre || null,
+              ml_shipment_id: shipment.ml_shipment_id,
+              tenant_id: shipment.tenant_id,
+              remitente_id: shipment.remitente_id,
+              destinatario_id: shipment.destinatario_id,
+              sucursal_origen_id: shipment.sucursal_origen_id,
+              nombre_remitente: shipment.nombre_remitente,
+              direccion_retiro: shipment.direccion_retiro,
+              ciudad_retiro: shipment.ciudad_retiro,
             }}
           />
         )}

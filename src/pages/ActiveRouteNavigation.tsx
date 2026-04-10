@@ -184,6 +184,11 @@ export default function ActiveRouteNavigation() {
             nombre_destinatario,
             nombre_remitente,
             whatsapp_destinatario,
+            ml_shipment_id,
+            tenant_id,
+            remitente_id,
+            destinatario_id,
+            sucursal_origen_id,
             destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, telefono, direccion, ciudad),
             remitente:clientes!envios_remitente_id_fkey(nombre, apellido, telefono, direccion, ciudad)
           )
@@ -230,6 +235,11 @@ export default function ActiveRouteNavigation() {
             nombre_destinatario,
             nombre_remitente,
             whatsapp_destinatario,
+            ml_shipment_id,
+            tenant_id,
+            remitente_id,
+            destinatario_id,
+            sucursal_origen_id,
             destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, telefono, direccion, ciudad),
             remitente:clientes!envios_remitente_id_fkey(nombre, apellido, telefono, direccion, ciudad)
           )
