@@ -1340,15 +1340,26 @@ export default function RoutePlanner() {
   const retirosCount = filteredEnvios.filter(e => e.tipo === "retiro").length;
   const entregasCount = filteredEnvios.filter(e => e.tipo === "entrega").length;
 
-  // Group envios by city
+  // Normalize city names to group variants together
+  const normalizeCityName = (city: string): string => {
+    let normalized = city.trim().toUpperCase();
+    normalized = normalized.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    normalized = normalized
+      .replace(/\s+(NORTE|SUR|ESTE|OESTE|CENTRO|CITY|CASCO)$/, '')
+      .trim();
+    return normalized || 'SIN LOCALIDAD';
+  };
+
+  // Group envios by normalized city
   const groupedEnvios = useMemo(() => {
     const groups: Record<string, typeof filteredEnvios> = {};
     filteredEnvios.forEach(envio => {
-      const city = envio.tipo === "retiro"
+      const rawCity = envio.tipo === "retiro"
         ? (envio.ciudad_retiro || envio.remitente?.ciudad || 'Sin localidad')
         : (envio.ciudad_entrega || envio.destinatario?.ciudad || 'Sin localidad');
-      if (!groups[city]) groups[city] = [];
-      groups[city].push(envio);
+      const normalizedCity = normalizeCityName(rawCity);
+      if (!groups[normalizedCity]) groups[normalizedCity] = [];
+      groups[normalizedCity].push(envio);
     });
     // Sort groups by count descending
     return Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
