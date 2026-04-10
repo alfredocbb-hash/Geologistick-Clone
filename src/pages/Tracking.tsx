@@ -5,8 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Package, Search, MapPin, Clock, CheckCircle, Truck, AlertCircle, Loader2, CalendarClock, Copy, Check, Route } from 'lucide-react';
+import { Package, Search, MapPin, Clock, CheckCircle, Truck, AlertCircle, Loader2, CalendarClock, Copy, Check, Route, ArrowLeft } from 'lucide-react';
 import { format } from 'date-fns';
+import { Link } from 'react-router-dom';
 import { es } from 'date-fns/locale';
 import LiveDriverMap from '@/components/tracking/LiveDriverMap';
 
@@ -163,6 +164,11 @@ export default function Tracking() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-accent/5">
       <div className="max-w-4xl mx-auto px-4 py-12 space-y-8">
+        {/* Back button */}
+        <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+          <ArrowLeft className="h-4 w-4" />
+          Volver al inicio
+        </Link>
         {/* Header with dynamic branding */}
         <div className="text-center space-y-4">
           {envio?.branding?.logo ? (

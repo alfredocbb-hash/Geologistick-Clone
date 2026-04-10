@@ -11,8 +11,9 @@ const ML_TOKEN_URL = 'https://api.mercadolibre.com/oauth/token';
 const ML_USER_URL = 'https://api.mercadolibre.com/users/me';
 const FRONTEND_URL = 'https://geologic.lovable.app';
 
-function redirectSuccess(sellerId: string) {
-  const url = `${FRONTEND_URL}/oauth/mercadolibre/result?status=success&seller_id=${encodeURIComponent(sellerId)}`;
+function redirectSuccess(sellerId: string, tenantId?: string) {
+  let url = `${FRONTEND_URL}/oauth/mercadolibre/result?status=success&seller_id=${encodeURIComponent(sellerId)}`;
+  if (tenantId) url += `&tenant_id=${encodeURIComponent(tenantId)}`;
   return Response.redirect(url, 302);
 }
 
@@ -206,7 +207,7 @@ Deno.serve(async (req) => {
 
       console.log('[ML OAuth] Seller updated successfully');
 
-      return redirectSuccess(sellerId);
+      return redirectSuccess(sellerId, seller.tenant_id);
     }
 
     // =====================================================

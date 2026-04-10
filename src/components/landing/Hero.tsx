@@ -17,7 +17,7 @@ const Hero = () => {
     }
   };
 
-  const whatsappNumber = content?.general?.contact_email ? "" : "5491112345678";
+  const whatsappNumber = "5491151767139";
   const whatsappUrl = `https://wa.me/${whatsappNumber}?text=Hola,%20me%20interesa%20conocer%20más%20sobre%20Geologistick`;
 
   return (
