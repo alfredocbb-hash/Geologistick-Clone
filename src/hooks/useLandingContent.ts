@@ -28,21 +28,30 @@ export interface GeneralContent {
   contact_email: string;
 }
 
+export interface AboutContent {
+  title: string;
+  description: string;
+  who_we_are: string;
+  mission: string;
+  vision: string;
+}
+
 export interface LandingContent {
   hero?: HeroContent;
   features?: FeaturesContent;
   general?: GeneralContent;
+  about?: AboutContent;
 }
 
 // Default values for fallback
 export const defaultLandingContent: LandingContent = {
   hero: {
     badge_text: "Plataforma #1 de Logística en Argentina",
-    title_line1: "El futuro de la",
+    title_line1: "Software de",
     title_line2: "logística inteligente",
-    description: "Transforma tu operación con tecnología de punta. Optimización de rutas con IA, tracking en tiempo real y automatización total.",
+    description: "Gestioná envíos, choferes, rutas y liquidaciones desde un solo lugar. Tracking en tiempo real, integración con Mercado Libre y Tiendanube, y app móvil para choferes.",
     cta_primary: "Comenzar gratis",
-    cta_secondary: "Explorar features",
+    cta_secondary: "Ver demo",
     stats: [
       { value: "+50K", label: "Envíos/mes", icon: "Package" },
       { value: "99.9%", label: "Uptime", icon: "Shield" },
@@ -51,8 +60,8 @@ export const defaultLandingContent: LandingContent = {
   },
   features: {
     badge_text: "Potenciado por tecnología de punta",
-    title: "Todo lo que necesitas para escalar tu operación",
-    subtitle: "Herramientas profesionales diseñadas para empresas que quieren dominar la logística del futuro.",
+    title: "Funcionalidades completas",
+    subtitle: "Herramientas profesionales diseñadas para empresas de logística que quieren digitalizar y escalar su operación.",
     contact_text: "¿Necesitas una integración especial?",
     contact_cta: "Hablemos de tu caso"
   },
@@ -62,7 +71,14 @@ export const defaultLandingContent: LandingContent = {
     pricing_title: "Precios transparentes",
     pricing_subtitle: "Sin sorpresas ni costos ocultos. Escala cuando lo necesites.",
     currency_label: "ARS",
-    contact_email: "soporte@tuapp.com"
+    contact_email: "soporte@geologistick.com"
+  },
+  about: {
+    title: "¿Quiénes somos?",
+    description: "Somos una empresa de tecnología especializada en soluciones logísticas. Desarrollamos software que simplifica la gestión de envíos, optimiza rutas y automatiza procesos para empresas de courier y distribución.",
+    who_we_are: "Geologistick nació de la necesidad de digitalizar la logística de última milla en Argentina. Combinamos tecnología de punta con experiencia operativa real para ofrecer una plataforma integral que resuelve los desafíos diarios de las empresas de distribución.",
+    mission: "Simplificar la logística para que las empresas puedan enfocarse en crecer. Creemos que la tecnología debe ser accesible, intuitiva y generar resultados reales desde el primer día.",
+    vision: "Ser la plataforma de referencia para la gestión logística en Latinoamérica, impulsando la transformación digital del sector con innovación continua y un enfoque centrado en el usuario.",
   }
 };
 
@@ -86,7 +102,8 @@ export function useLandingContent() {
       return {
         hero: { ...defaultLandingContent.hero, ...content.hero },
         features: { ...defaultLandingContent.features, ...content.features },
-        general: { ...defaultLandingContent.general, ...content.general }
+        general: { ...defaultLandingContent.general, ...content.general },
+        about: { ...defaultLandingContent.about, ...content.about },
       } as LandingContent;
     },
     staleTime: 5 * 60 * 1000, // Cache 5 minutes

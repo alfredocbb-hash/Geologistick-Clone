@@ -18,10 +18,11 @@ const Navbar = () => {
   }, []);
 
   const navLinks = [
-    { label: "Características", href: "#features" },
-    { label: "Cómo funciona", href: "#clients" },
+    { label: "Funcionalidades", href: "#features" },
+    { label: "Circuito", href: "#circuit" },
     { label: "Precios", href: "#pricing" },
     { label: "Tracking", href: "/tracking" },
+    { label: "Contacto", href: "#contact" },
   ];
 
   return (
