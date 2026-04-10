@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useState } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { parseDateString } from '@/lib/dateUtils';
+import { parseDateString, parseTimestamp } from '@/lib/dateUtils';
 
 export function MobileHistoryTab() {
   const { profile } = useAuth();

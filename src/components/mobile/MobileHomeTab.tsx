@@ -263,7 +263,7 @@ export function MobileHomeTab({ onNavigateToRoutes, onNavigateToHistory }: Mobil
       )}
 
       {/* Colectas hoy */}
-      {(todayColectas?.totalPaquetes ?? 0) > 0 && (
+      {(
         <Card className="bg-slate-900/60 border-slate-800/50 backdrop-blur-xl overflow-hidden">
           <CardContent className="p-4 relative">
             <div className="absolute top-0 right-0 w-20 h-20 bg-purple-500/10 rounded-full blur-2xl" />
