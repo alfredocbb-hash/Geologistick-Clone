@@ -1,63 +1,68 @@
 
 
-## Plan: Registro de colectas + Flujo de cambio post-entrega + Fix Google Maps
+## Plan: Optimización de velocidad (Escritorio y Móvil)
 
-### Parte 1: Tabla de colectas y registro
+### Problema principal identificado
 
-**Migración SQL** — Crear tabla `colectas` + columnas de cambio en `envios`:
-```sql
-CREATE TABLE public.colectas (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  chofer_id uuid NOT NULL,
-  tenant_id uuid NOT NULL,
-  cantidad_envios integer NOT NULL DEFAULT 0,
-  envio_ids uuid[] NOT NULL DEFAULT '{}',
-  source text DEFAULT 'scan',
-  created_at timestamptz DEFAULT now()
-);
-ALTER TABLE public.colectas ENABLE ROW LEVEL SECURITY;
--- RLS: chofer ve sus propias, admin ve todas del tenant
+El archivo `App.tsx` importa **las 70+ páginas de forma estática** (eager imports). Esto significa que al cargar **cualquier** ruta (incluso la landing `/`), el navegador descarga y parsea **todo** el código de la aplicación: Dashboard, LiveMap, RoutePlanner, Shipments, eCommerce, etc. En móvil esto es especialmente grave por el ancho de banda y CPU limitados.
 
-ALTER TABLE public.envios
-  ADD COLUMN es_cambio boolean DEFAULT false,
-  ADD COLUMN envio_cambio_id uuid REFERENCES envios(id);
+Además, `GoogleMapsProvider` envuelve **toda** la app, disparando una llamada a la edge function `get-maps-config` incluso en rutas públicas que no necesitan mapa.
+
+### Cambios propuestos
+
+#### 1. Code splitting con React.lazy (App.tsx)
+
+Convertir todas las importaciones de páginas a `React.lazy()` para que cada página se descargue solo cuando el usuario navega a ella. Se mantienen como imports directos solo: `Index`, `Login`, `NotFound` (las más frecuentes de entrada).
+
+```text
+Antes:  import Dashboard from "./pages/Dashboard";
+Después: const Dashboard = lazy(() => import("./pages/Dashboard"));
 ```
 
-**`src/hooks/useCollectPackages.ts`** — En `confirmCollection()`, después del update exitoso, insertar un registro en `colectas`.
+Envolver las rutas con `<Suspense fallback={<PageLoader />}>` que muestra un spinner centrado.
 
-### Parte 2: Mostrar colectas en APK
+#### 2. Mover GoogleMapsProvider dentro de DashboardLayout
 
-**`src/components/mobile/MobileHomeTab.tsx`** — Agregar un card "Colectas hoy" con query a `colectas` filtrando por chofer y fecha de hoy. Muestra cantidad total de paquetes colectados.
+Solo las rutas autenticadas (dashboard, live-map, planner, etc.) necesitan Google Maps. Moverlo desde `App.tsx` a `DashboardLayout.tsx` evita cargar la API de Maps y la llamada a `get-maps-config` en rutas públicas (landing, login, tracking, terms, etc.).
 
-**`src/components/mobile/MobileHistoryTab.tsx`** — Agregar una sección/tab "Colectas" que muestre la lista detallada de colectas con fecha, cantidad, source y tracking numbers de los envíos colectados.
+#### 3. Configurar Vite para mejor chunking
 
-### Parte 3: Flujo de cambio post-entrega
+Agregar `build.rollupOptions.output.manualChunks` en `vite.config.ts` para separar vendor libs grandes (react, tanstack-query, date-fns, recharts, supabase) del código de la app:
 
-**Nuevo `src/components/delivery/ExchangeDialog.tsx`** — Dialog que se muestra después de confirmar entrega exitosamente:
-- Pregunta "¿El destinatario devuelve un paquete?"
-- Si confirma: crea envío inverso automáticamente
-  - **Si ML** (`ml_shipment_id` presente): destino = dirección del seller (via `ecommerce_sellers`)
-  - **Si manual**: destino = remitente original (dirección de retiro / sucursal origen)
-- Estado: `recogido`, `es_cambio: true`, `envio_cambio_id: envio_original.id`
+```typescript
+build: {
+  rollupOptions: {
+    output: {
+      manualChunks: {
+        vendor: ['react', 'react-dom', 'react-router-dom'],
+        query: ['@tanstack/react-query'],
+        supabase: ['@supabase/supabase-js'],
+        ui: ['date-fns', 'lucide-react'],
+      }
+    }
+  }
+}
+```
 
-**`src/components/delivery/DeliveryConfirmation.tsx`** — En `onSuccess`, mostrar el `ExchangeDialog` antes de cerrar.
+#### 4. Cache headers en index.html
 
-**`src/components/shipments/ShipmentDetailsDialog.tsx`** — Si el envío tiene `envio_cambio_id` o `es_cambio`, mostrar badge y link al envío vinculado.
-
-### Parte 4: Fix botón Google Maps en Home
-
-**`src/components/mobile/MobileHomeTab.tsx`** (líneas 224-241) — El botón "Navegar con Google Maps" falla porque:
-- Para `hoja_ruta`: usa solo `ciudad` de sucursal destino (demasiado genérico)
-- Para `ruta_planificada`: usa `direccion_inicio` que puede ser null
-
-**Fix**: Construir la dirección completa incluyendo `nombre + dirección + ciudad` de la sucursal destino para hojas, y para rutas planificadas consultar la primera parada pendiente con su dirección de entrega.
+Eliminar las meta tags `no-cache, no-store, must-revalidate` del `index.html`. Vite ya genera hashes en los nombres de archivos JS/CSS, así que el caching es seguro y acelera recargas.
 
 ### Archivos a modificar
-- **Migración SQL** — Tabla `colectas` + columnas `es_cambio`/`envio_cambio_id`
-- `src/hooks/useCollectPackages.ts` — Insertar registro en `colectas`
-- `src/components/mobile/MobileHomeTab.tsx` — Card colectas + fix Google Maps
-- `src/components/mobile/MobileHistoryTab.tsx` — Sección de colectas con detalle
-- **Nuevo** `src/components/delivery/ExchangeDialog.tsx` — Dialog post-entrega
-- `src/components/delivery/DeliveryConfirmation.tsx` — Integrar ExchangeDialog
-- `src/components/shipments/ShipmentDetailsDialog.tsx` — Badge y link de cambio
+
+- **`src/App.tsx`** — Convertir ~65 imports a `React.lazy`, agregar `Suspense`, mover `GoogleMapsProvider` fuera
+- **`src/components/layout/DashboardLayout.tsx`** — Envolver children con `GoogleMapsProvider`
+- **`vite.config.ts`** — Agregar manual chunks
+- **`index.html`** — Eliminar meta tags anti-cache
+
+### Impacto estimado
+
+- **Landing page**: de cargar ~2-3MB de JS a ~200-400KB (solo lo necesario)
+- **Navegación interna**: cada página se descarga bajo demanda (~50-150KB cada una)
+- **Móvil**: mejora significativa en tiempo de carga inicial y consumo de datos
+- **Escritorio**: mejora en TTI (Time to Interactive) y FCP (First Contentful Paint)
+
+### Seguridad
+
+No se modifican queries, RLS, ni lógica de negocio. Solo se cambia **cuándo** se carga el código, no **qué** código se ejecuta.
 
