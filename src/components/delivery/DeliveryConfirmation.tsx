@@ -35,6 +35,7 @@ interface Shipment {
   tipo_pago?: string | null;
   direccion_entrega: string | null;
   ciudad_entrega: string | null;
+  es_cambio?: boolean | null;
   destinatario?: {
     nombre: string;
     apellido: string | null;
@@ -548,7 +549,12 @@ export default function DeliveryConfirmation({ shipment, onClose, onSuccess }: D
       }
       
       toast.success('¡Entrega confirmada exitosamente!');
-      setShowExchangeDialog(true);
+      if (shipment.es_cambio) {
+        setShowExchangeDialog(true);
+      } else {
+        onSuccess();
+        onClose();
+      }
     },
     onError: (error, _, context) => {
       // Rollback using snapshots
