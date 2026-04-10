@@ -17,8 +17,9 @@ function redirectError(title: string, message: string, status = 302) {
   });
 }
 
-function redirectSuccess(sellerId: string) {
+function redirectSuccess(sellerId: string, tenantId?: string) {
   const params = new URLSearchParams({ status: "success", seller_id: sellerId });
+  if (tenantId) params.set("tenant_id", tenantId);
   return new Response(null, {
     status: 302,
     headers: { Location: `${FRONTEND_URL}/oauth/tiendanube/result?${params.toString()}` },

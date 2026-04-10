@@ -351,21 +351,21 @@ export default function Shipments() {
   const { data: stats } = useQuery({
     queryKey: ['envios-stats'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('envios')
-        .select('estado');
-      
-      if (error) throw error;
+      const [totalRes, pendienteRes, transitoRes, entregadoRes, problemasRes] = await Promise.all([
+        supabase.from('envios').select('*', { count: 'exact', head: true }),
+        supabase.from('envios').select('*', { count: 'exact', head: true }).eq('estado', 'pendiente'),
+        supabase.from('envios').select('*', { count: 'exact', head: true }).in('estado', ['en_transito', 'en_reparto', 'recogido']),
+        supabase.from('envios').select('*', { count: 'exact', head: true }).eq('estado', 'entregado'),
+        supabase.from('envios').select('*', { count: 'exact', head: true }).in('estado', ['devuelto', 'cancelado']),
+      ]);
 
-      const counts = {
-        total: data.length,
-        pendiente: data.filter(e => e.estado === 'pendiente').length,
-        en_transito: data.filter(e => ['en_transito', 'en_reparto', 'recogido'].includes(e.estado || '')).length,
-        entregado: data.filter(e => e.estado === 'entregado').length,
-        problemas: data.filter(e => ['devuelto', 'cancelado'].includes(e.estado || '')).length,
+      return {
+        total: totalRes.count ?? 0,
+        pendiente: pendienteRes.count ?? 0,
+        en_transito: transitoRes.count ?? 0,
+        entregado: entregadoRes.count ?? 0,
+        problemas: problemasRes.count ?? 0,
       };
-
-      return counts;
     },
   });
 
