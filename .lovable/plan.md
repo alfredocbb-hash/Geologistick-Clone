@@ -1,112 +1,76 @@
 
 
-## Plan: Rediseño Landing inspirado en LightData
+## Plan: Correcciones del sistema (4 cambios)
 
-### Enfoque
+### 0. WhatsApp de Geologistick
+Actualizar el numero de WhatsApp hardcodeado en `Hero.tsx` de `5491112345678` a `5491151767139`.
 
-Tomar de LightData lo que funciona: **contenido informativo claro** (quiénes somos, funcionalidades con descripción detallada, circuito operativo visual, estadísticas reales, contacto directo por WhatsApp). Pero mantener el diseño moderno de Geologistick y sus herramientas reales.
+**Archivo**: `src/components/landing/Hero.tsx` linea 20
 
-### Estructura nueva de la landing
+---
 
-```text
-Navbar (actualizado)
-Hero (reescrito - más directo, con tracking inline + WhatsApp)
-Clients (mantener marquee de logos)
-QuienesSomos (NUEVO - misión/visión como LightData)
-Funcionalidades (reescrito - cards grandes con ícono + descripción detallada)
-Circuito (NUEVO - flujo visual del proceso operativo)
-Stats (NUEVO - contadores animados reales desde DB)
-Pricing (mantener)
-Contacto/Footer (mejorado con WhatsApp + formulario)
+### 1. Tracking: Agregar boton "Volver"
+La pagina `/tracking` no tiene forma de volver a la landing o al inicio. Agregar un boton "Volver al inicio" en el header que use `navigate(-1)` o link a `/`.
+
+**Archivo**: `src/pages/Tracking.tsx` -- agregar un boton con icono ArrowLeft arriba del titulo, linkeando a `/`
+
+---
+
+### 2. Shipments: Total muestra siempre 1000
+El problema esta en lineas 354-356 de `Shipments.tsx`. La query hace `.select('estado')` sin especificar count, y Supabase retorna maximo 1000 rows por defecto. Luego usa `data.length` que siempre sera <= 1000.
+
+**Solucion**: Cambiar a queries con `{ count: 'exact', head: true }` para cada estado, eliminando el limite de 1000. Hacer un count por estado individual:
+
+```typescript
+const { count: total } = await supabase
+  .from('envios')
+  .select('*', { count: 'exact', head: true });
+
+const { count: pendiente } = await supabase
+  .from('envios')
+  .select('*', { count: 'exact', head: true })
+  .eq('estado', 'pendiente');
+// ... etc para cada estado
 ```
 
-### Cambios por archivo
+**Archivo**: `src/pages/Shipments.tsx` lineas 351-369
 
-#### 1. `src/components/landing/Hero.tsx` -- Reescribir
-- Quitar el dashboard preview decorativo y stats falsos
-- Layout split: texto izquierda + imagen/mockup derecha (como LightData)
-- Headline directo: "Software de logística inteligente"
-- Input de tracking inline: campo + botón que redirige a `/tracking?code=XXX`
-- Botón WhatsApp prominente (como LightData) + botón "Comenzar gratis"
-- Mantener el badge editable del CMS
+---
 
-#### 2. `src/components/landing/QuienesSomos.tsx` -- NUEVO
-- Sección "¿Quiénes somos?" con texto descriptivo del servicio
-- Cards de Misión y Visión con íconos
-- Contenido editable desde `landing_content` (nueva sección `about`)
+### 3. OAuth Result pages: Logo del tenant + diseño profesional
+Actualmente las paginas `TiendanubeOAuthResult.tsx` y `MercadoLibreOAuthResult.tsx` muestran logos hardcodeados de las plataformas. El usuario quiere que muestren el logo del tenant (la empresa logistica).
 
-#### 3. `src/components/landing/Features.tsx` -- Reescribir
-- Cambiar de bento grid genérico a **cards grandes** tipo LightData
-- Cada feature ocupa más espacio con descripción detallada
-- Features mapeados a las funcionalidades reales de Geologistick:
-  - Hojas de ruta y asignación de envíos
-  - Seguimiento GPS de choferes en tiempo real
-  - Liquidaciones automáticas (choferes, sucursales, clientes)
-  - Integración con Mercado Libre y Tiendanube
-  - Escaneo QR y digitalización de paquetes
-  - Generación de etiquetas y rótulos
-  - Analytics y reportes
-  - App móvil para choferes
+**Solucion**: Las edge functions ya tienen acceso al `seller.tenant_id`. Pasar `tenant_id` como query param adicional en el redirect de exito. En las paginas OAuth result, usar ese `tenant_id` para hacer un fetch a `tenant_branding` y mostrar el logo del tenant junto al de la plataforma.
 
-#### 4. `src/components/landing/Circuito.tsx` -- NUEVO
-- Diagrama visual del circuito operativo (como LightData pero moderno)
-- Pasos: Recepción -> Digitalización -> Asignación -> Ruta -> Entrega -> Liquidación
-- Línea conectora animada entre pasos
-- Responsive: horizontal en desktop, vertical en mobile
+**Archivos**:
+- `supabase/functions/tiendanube-oauth/index.ts`: modificar `redirectSuccess()` para incluir `tenant_id` en los params
+- `supabase/functions/mercadolibre-oauth/index.ts`: idem
+- `src/pages/TiendanubeOAuthResult.tsx`: agregar fetch de branding con el tenant_id, mostrar logo del tenant, mejorar diseño
+- `src/pages/MercadoLibreOAuthResult.tsx`: idem
 
-#### 5. `src/components/landing/StatsCounter.tsx` -- NUEVO
-- Contadores animados que cuentan desde 0 hasta el valor real
-- Datos reales vía RPC: choferes activos, envíos último mes, empresas, etc.
-- Usa el RPC existente `get_public_active_tenant_count` + nuevos RPCs simples
-- Diseño con íconos como LightData (camión, persona, caja, mundo)
+El diseño mejorado mostrara:
+- Logo del tenant (empresa logistica) arriba
+- Check animado
+- Nombre de la empresa + plataforma conectada
+- Card informativa con pasos siguientes
+- Aspecto mas corporativo/profesional
 
-#### 6. `src/components/landing/Navbar.tsx` -- Actualizar
-- Links: "Funcionalidades" | "Circuito" | "Precios" | "Tracking" | "Contacto"
-- Agregar badge "Certificado ML" si el tenant tiene integración ML
+---
 
-#### 7. `src/components/landing/Footer.tsx` -- Mejorar
-- Agregar botón WhatsApp flotante
-- Sección de contacto más completa (dirección, email, teléfono, redes)
+### Archivos a modificar
 
-#### 8. `src/pages/Index.tsx` -- Reordenar secciones
-```tsx
-<Navbar />
-<Hero />          // Reescrito
-<Clients />       // Mantener
-<QuienesSomos />  // Nuevo
-<Features />      // Reescrito
-<Circuito />      // Nuevo
-<StatsCounter />  // Nuevo
-<Pricing />       // Mantener
-<CTASection />    // Mantener
-<Footer />        // Mejorado
-```
-
-#### 9. `src/hooks/useLandingContent.ts` -- Agregar secciones
-- Nueva sección `about` (quiénes somos, misión, visión)
-- Nueva sección `circuit` (textos de los pasos del circuito)
-- Nueva sección `contact` (WhatsApp, email, dirección, redes)
-
-#### 10. Eliminar `src/components/landing/HowItWorks.tsx`
-- Reemplazado por `Circuito.tsx` que es más completo y específico
-
-### Lo que NO se toca
-- Pricing, lógica de autenticación, edge functions, base de datos (excepto agregar rows a `landing_content`)
-- Componentes internos del dashboard
-- Tracking page existente (solo se linka desde el hero)
-
-### Archivos a crear/modificar
-
-| Archivo | Accion |
+| Archivo | Cambio |
 |---|---|
-| `src/components/landing/Hero.tsx` | Reescribir |
-| `src/components/landing/QuienesSomos.tsx` | Crear |
-| `src/components/landing/Features.tsx` | Reescribir |
-| `src/components/landing/Circuito.tsx` | Crear |
-| `src/components/landing/StatsCounter.tsx` | Crear |
-| `src/components/landing/Navbar.tsx` | Actualizar links |
-| `src/components/landing/Footer.tsx` | Mejorar contacto + WhatsApp |
-| `src/pages/Index.tsx` | Reordenar secciones |
-| `src/hooks/useLandingContent.ts` | Agregar secciones about/circuit/contact |
-| `src/components/landing/HowItWorks.tsx` | Eliminar |
+| `src/components/landing/Hero.tsx` | WhatsApp correcto |
+| `src/pages/Tracking.tsx` | Boton volver |
+| `src/pages/Shipments.tsx` | Fix count con head:true |
+| `supabase/functions/tiendanube-oauth/index.ts` | Pasar tenant_id en redirect |
+| `supabase/functions/mercadolibre-oauth/index.ts` | Pasar tenant_id en redirect |
+| `src/pages/TiendanubeOAuthResult.tsx` | Logo tenant + diseño profesional |
+| `src/pages/MercadoLibreOAuthResult.tsx` | Logo tenant + diseño profesional |
+
+### Seguridad
+- El `tenant_id` en la URL del OAuth result es solo para mostrar branding (datos publicos de `tenant_branding`)
+- No se modifican RLS policies ni logica de negocio
+- Los counts usan `head: true` que es mas eficiente que traer todos los rows
 
