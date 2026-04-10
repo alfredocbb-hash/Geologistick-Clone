@@ -165,9 +165,9 @@ export default function Tracking() {
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-accent/5">
       <div className="max-w-4xl mx-auto px-4 py-12 space-y-8">
         {/* Back button */}
-        <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+        <Link to="/dashboard" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="h-4 w-4" />
-          Volver al inicio
+          Volver al dashboard
         </Link>
         {/* Header with dynamic branding */}
         <div className="text-center space-y-4">

@@ -19,46 +19,50 @@ export default function DashboardStatsCards({ tenantId }: Props) {
       const today = getTodayString();
       const yesterday = formatDateString(subDays(new Date(), 1));
 
-      const { count: todayShipments } = await supabase
-        .from('envios')
-        .select('*', { count: 'exact', head: true })
-        .eq('tenant_id', tenantId)
-        .gte('created_at', today)
-        .not('estado', 'in', '(cancelado,devuelto)');
+      const [
+        { count: todayShipments },
+        { count: yesterdayShipments },
+        { count: inTransit },
+        { data: revenueResult },
+        { data: revenueYesterdayResult },
+        { data: activeDrivers },
+      ] = await Promise.all([
+        supabase
+          .from('envios')
+          .select('*', { count: 'exact', head: true })
+          .eq('tenant_id', tenantId)
+          .gte('created_at', today)
+          .not('estado', 'in', '(cancelado,devuelto)'),
+        supabase
+          .from('envios')
+          .select('*', { count: 'exact', head: true })
+          .eq('tenant_id', tenantId)
+          .gte('created_at', yesterday)
+          .lt('created_at', today)
+          .not('estado', 'in', '(cancelado,devuelto)'),
+        supabase
+          .from('envios')
+          .select('*', { count: 'exact', head: true })
+          .eq('tenant_id', tenantId)
+          .in('estado', ['en_transito', 'en_reparto']),
+        (supabase.rpc as any)('get_daily_revenue', {
+          p_tenant_id: tenantId,
+          p_date: today,
+        }),
+        (supabase.rpc as any)('get_daily_revenue', {
+          p_tenant_id: tenantId,
+          p_date: yesterday,
+        }),
+        supabase
+          .from('rutas_planificadas')
+          .select('chofer_id')
+          .eq('tenant_id', tenantId)
+          .eq('fecha', today)
+          .eq('estado', 'en_curso'),
+      ]);
 
-      const { count: yesterdayShipments } = await supabase
-        .from('envios')
-        .select('*', { count: 'exact', head: true })
-        .eq('tenant_id', tenantId)
-        .gte('created_at', yesterday)
-        .lt('created_at', today)
-        .not('estado', 'in', '(cancelado,devuelto)');
-
-      const { count: inTransit } = await supabase
-        .from('envios')
-        .select('*', { count: 'exact', head: true })
-        .eq('tenant_id', tenantId)
-        .in('estado', ['en_transito', 'en_reparto']);
-
-      const { data: revenueResult } = await (supabase.rpc as any)('get_daily_revenue', {
-        p_tenant_id: tenantId,
-        p_date: today,
-      });
       const revenue = Number(revenueResult) || 0;
-
-      const { data: revenueYesterdayResult } = await (supabase.rpc as any)('get_daily_revenue', {
-        p_tenant_id: tenantId,
-        p_date: yesterday,
-      });
       const revenueYesterday = Number(revenueYesterdayResult) || 0;
-
-      const { data: activeDrivers } = await supabase
-        .from('rutas_planificadas')
-        .select('chofer_id')
-        .eq('tenant_id', tenantId)
-        .eq('fecha', today)
-        .eq('estado', 'en_curso');
-
       const uniqueDrivers = new Set(activeDrivers?.map((r) => r.chofer_id).filter(Boolean)).size;
 
       return {

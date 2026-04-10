@@ -15,24 +15,28 @@ export default function DashboardDaySummary({ tenantId }: Props) {
       if (!tenantId) return null;
       const today = getTodayString();
 
-      const { count: deliveredToday } = await supabase
-        .from('envios')
-        .select('*', { count: 'exact', head: true })
-        .eq('tenant_id', tenantId)
-        .eq('estado', 'entregado')
-        .gte('fecha_entrega', today);
-
-      const { count: pending } = await supabase
-        .from('envios')
-        .select('*', { count: 'exact', head: true })
-        .eq('tenant_id', tenantId)
-        .eq('estado', 'pendiente');
-
-      const { count: incidents } = await supabase
-        .from('incidentes')
-        .select('*', { count: 'exact', head: true })
-        .eq('tenant_id', tenantId)
-        .eq('estado', 'abierto');
+      const [
+        { count: deliveredToday },
+        { count: pending },
+        { count: incidents },
+      ] = await Promise.all([
+        supabase
+          .from('envios')
+          .select('*', { count: 'exact', head: true })
+          .eq('tenant_id', tenantId)
+          .eq('estado', 'entregado')
+          .gte('fecha_entrega', today),
+        supabase
+          .from('envios')
+          .select('*', { count: 'exact', head: true })
+          .eq('tenant_id', tenantId)
+          .eq('estado', 'pendiente'),
+        supabase
+          .from('incidentes')
+          .select('*', { count: 'exact', head: true })
+          .eq('tenant_id', tenantId)
+          .eq('estado', 'abierto'),
+      ]);
 
       return {
         delivered: deliveredToday || 0,
