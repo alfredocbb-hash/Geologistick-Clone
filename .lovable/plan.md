@@ -1,38 +1,51 @@
 
 
-## Plan: Fix tracking back button + optimizar velocidad del dashboard
+## Plan: Conectar OCR Masivo con Colecta del chofer
 
-### 1. Tracking: Botón volver al dashboard
+### Problema
+Cuando el chofer abre "OCR Masivo" desde Colecta Rapida, el `BulkOCRScreen` se monta sin `onPackagesReady`. Al terminar el OCR y pulsar "PLANIFICAR", navega al route-planner en vez de agregar los paquetes a la lista de colecta. No hay boton "Colectar" visible.
 
-Cambiar el link de `/` a `/dashboard` en `src/pages/Tracking.tsx` linea 168.
+### Solucion
 
-### 2. Optimizar velocidad de carga del Dashboard
+**Archivo: `src/components/mobile/CollectScanScreen.tsx`** (linea 289)
 
-El problema principal: cada componente del dashboard hace **multiples queries secuenciales** (una tras otra con `await`). Por ejemplo, `DashboardWeeklyChart` hace **14 queries en serie** (2 por dia x 7 dias). Esto significa que si cada query tarda 100ms, el chart tarda 1.4 segundos solo en queries.
+Pasar `onPackagesReady` al `BulkOCRScreen` para que cuando el chofer termine el OCR y pulse el boton, los paquetes se agreguen a la lista de colecta:
 
-**Solucion: Paralelizar queries con `Promise.all`** en cada componente:
+```tsx
+<BulkOCRScreen 
+  onClose={() => setShowBulkOCR(false)}
+  onPackagesReady={async (ids: string[]) => {
+    setShowBulkOCR(false);
+    for (const id of ids) {
+      const { data } = await supabase
+        .from('envios')
+        .select('tracking_number')
+        .eq('id', id)
+        .single();
+      if (data?.tracking_number) {
+        await addPackageByTracking(data.tracking_number);
+      }
+    }
+  }}
+/>
+```
 
-| Componente | Queries actuales (secuenciales) | Mejora |
-|---|---|---|
-| `DashboardStatsCards` | 6 awaits en serie | 1 `Promise.all` con 6 queries |
-| `DashboardWeeklyChart` | 14 awaits en serie (loop de 7 dias) | 1 `Promise.all` con 14 queries |
-| `DashboardDaySummary` | 3 awaits en serie | 1 `Promise.all` con 3 queries |
-| `DashboardTopDrivers` | 2 awaits en serie | 1 `Promise.all` con 2 queries |
-| `DashboardRecentShipments` | 1 query | Sin cambio |
-| `DashboardMiniMap` | 1 query | Sin cambio |
+**Archivo: `src/components/mobile/BulkOCRScreen.tsx`**
 
-Esto reducira el tiempo de carga del dashboard de ~3-4 segundos a ~0.5-1 segundo (todas las queries corren en paralelo en lugar de una tras otra).
+Cuando `onPackagesReady` esta presente (viene de Colecta), cambiar el texto del boton de "PLANIFICAR" a "COLECTAR" para que el chofer entienda que esta confirmando colecta, no planificando ruta. Cambios en 3 lugares donde aparece el boton:
+- Linea ~634: `PLANIFICAR ({savedCount})` → `COLECTAR ({savedCount})`
+- Linea ~809: `PLANIFICAR RUTA ({packages.length})` → `COLECTAR ({packages.length})`
+- Icono: cambiar `Route` por `Package` cuando hay `onPackagesReady`
+
+### Resultado
+1. Chofer abre Colecta Rapida → OCR Masivo → toma fotos → se procesan
+2. Pulsa "COLECTAR (N)" → los paquetes aparecen en la lista de colecta
+3. Pulsa "CONFIRMAR COLECTA" → se actualizan a `recogido` con `chofer_id` y se crea registro en `colectas`
 
 ### Archivos a modificar
 
 | Archivo | Cambio |
 |---|---|
-| `src/pages/Tracking.tsx` | Link de `/` a `/dashboard` |
-| `src/components/dashboard/DashboardStatsCards.tsx` | Paralelizar 6 queries |
-| `src/components/dashboard/DashboardWeeklyChart.tsx` | Paralelizar 14 queries |
-| `src/components/dashboard/DashboardDaySummary.tsx` | Paralelizar 3 queries |
-| `src/components/dashboard/DashboardTopDrivers.tsx` | Paralelizar 2 queries |
-
-### Seguridad
-No se modifican RLS, tablas ni logica de negocio. Solo se cambia el orden de ejecucion de las mismas queries existentes.
+| `src/components/mobile/CollectScanScreen.tsx` | Pasar `onPackagesReady` al `BulkOCRScreen` |
+| `src/components/mobile/BulkOCRScreen.tsx` | Texto del boton condicional: "COLECTAR" vs "PLANIFICAR" |
 
