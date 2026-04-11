@@ -14,18 +14,20 @@ const ECOMMERCE_GUIDE_CONTENT = {
     {
       title: '1. INTRODUCCION AL MODULO E-COMMERCE',
       content: `Que es el Modulo e-Commerce
-El modulo e-Commerce permite a empresas logisticas ofrecer servicios de fulfillment a tiendas online. Conecta plataformas como Tiendanube directamente con el sistema de gestion, automatizando la recepcion de pedidos y el calculo de envios.
+El modulo e-Commerce permite a empresas logisticas ofrecer servicios de fulfillment a tiendas online. Conecta plataformas como Tiendanube y Mercado Libre directamente con el sistema de gestion, automatizando la recepcion de pedidos y el calculo de envios.
 
 Publico Objetivo
 • Tiendas online que necesitan logistica tercerizada
 • Emprendedores con ventas por internet
 • Empresas con multiples canales de venta
+• Operadores logisticos Flex de Mercado Libre
 
 Beneficios Principales
 • Automatizacion: Los pedidos llegan automaticamente al sistema
 • Visibilidad: Los sellers pueden rastrear sus envios en tiempo real
 • Liquidaciones: Sistema integrado de cuenta corriente y facturacion
-• Cotizacion: Precios de envio calculados en el checkout de la tienda`
+• Cotizacion: Precios de envio calculados en el checkout de la tienda
+• Multi-plataforma: Soporte para Tiendanube y Mercado Libre`
     },
     {
       title: '2. GESTION DE SELLERS',
@@ -55,7 +57,19 @@ Vincular Usuario
 Permite que el seller acceda al Portal (/seller) para:
 • Ver sus pedidos
 • Rastrear envios
-• Consultar su estado financiero`
+• Consultar su estado financiero
+
+Conceptos Editables por Seller
+Cada seller puede tener recargos personalizados:
+• Editar montos de conceptos especificos
+• Configurar logica de aplicacion por dia de la semana
+• Los recargos se desglosan en la columna "Adicional" de liquidaciones
+
+Tarifas Exclusivas
+Se pueden crear tarifas exclusivas para un seller especifico:
+• Wizard de creacion multi-zona
+• Estructura de precios independiente
+• Prioridad sobre tarifas generales en liquidaciones`
     },
     {
       title: '3. INTEGRACION CON TIENDANUBE',
@@ -84,10 +98,60 @@ Cotizacion en Checkout
 El sistema responde automaticamente las consultas de tarifa:
 • Cuando el comprador ingresa su direccion
 • Se calcula usando la tarifa asignada al seller
-• El precio aparece como opcion de envio en Tiendanube`
+• El precio aparece como opcion de envio en Tiendanube
+
+Fulfillment Automatico
+Al cambiar el estado del envio a "entregado":
+• El sistema actualiza el fulfillment en Tiendanube
+• El comprador recibe notificacion de entrega`
     },
     {
-      title: '4. RELACION CON SUCURSALES',
+      title: '4. INTEGRACION CON MERCADO LIBRE',
+      content: `Conexion OAuth
+1. Ir a e-Commerce > Sellers
+2. Seleccionar seller de tipo Mercado Libre
+3. Iniciar proceso de autorizacion OAuth
+4. El seller autoriza acceso a su cuenta ML
+5. El sistema recibe tokens y los almacena de forma segura
+
+Sincronizacion de Envios
+• Los envios Flex y Full se sincronizan automaticamente
+• El webhook de ML notifica cambios de estado
+• Se aplica corte por fecha de entrega estimada (12h)
+
+Estados Duales
+El sistema maneja dos estados para envios ML:
+• Estado Interno: Gestionado por la operacion logistica
+• Estado ML: Actualizado por sincronizacion con Mercado Libre
+• Cuando hay discrepancia, se muestra un icono de advertencia
+• Boton "Aplicar estado de ML" para sincronizar manualmente
+
+Mapeo de Estados ML
+• shipped → en_reparto
+• delivered → entregado
+• not_delivered → devuelto
+• Otros estados se mapean segun tabla determinista
+
+Etiquetas de Mercado Libre
+• Descargar etiquetas ML directamente desde el sistema
+• Se accede desde el detalle del envio
+• Formato compatible con impresoras termicas
+
+Cuenta Logistica
+Para envios donde el seller no esta registrado:
+• Se usa la cuenta logistica del tenant como fallback
+• Configurar un seller con "es_cuenta_logistica" activo
+• Los envios se crean sin cargo en cuenta corriente
+• Solo se usa para recuperar datos de entrega
+
+Proteccion contra Retroceso de Estado
+El sistema previene retrocesos de estado (downgrades):
+• Se asignan prioridades a cada estado
+• Un envio "entregado" no puede volver a "en_reparto"
+• Se verifican prioridades antes de cada actualizacion`
+    },
+    {
+      title: '5. RELACION CON SUCURSALES',
       content: `Sucursal de Pickup
 Cada seller tiene asignada una sucursal de pickup. Esta es la sucursal desde donde:
 • Se retiran los paquetes del seller
@@ -105,7 +169,7 @@ Paso 1: Configuracion
 El administrador asigna "Casa Central" como sucursal de pickup de "Mi Tienda".
 
 Paso 2: Llega Pedido
-Comprador paga en Tiendanube. El webhook registra el pedido en el sistema.
+Comprador paga en la plataforma. El webhook registra el pedido en el sistema.
 
 Paso 3: Operador Ve Pedido
 El operador de "Casa Central" ve el pedido en e-Commerce > Pedidos.
@@ -117,7 +181,7 @@ Paso 5: Operatoria Normal
 El envio entra en el flujo normal: puede incluirse en hojas de ruta o rutas de reparto.`
     },
     {
-      title: '5. GESTION DE PEDIDOS',
+      title: '6. GESTION DE PEDIDOS',
       content: `Acceso
 e-Commerce > Pedidos
 
@@ -127,6 +191,7 @@ Muestra todos los pedidos sincronizados con:
 • Nombre del comprador
 • Direccion de envio
 • Estado del pedido
+• Plataforma de origen (Tiendanube, Mercado Libre)
 • Fecha de creacion
 
 Estados de Pedido
@@ -143,10 +208,11 @@ Estados de Fulfillment
 Acciones Disponibles
 • Ver Detalles: Informacion completa del pedido
 • Crear Envio: Genera envio desde este pedido
-• Ver Envio: Si ya tiene envio, ver su tracking`
+• Ver Envio: Si ya tiene envio, ver su tracking
+• Editar Direccion: Corregir direccion de entrega antes de crear envio`
     },
     {
-      title: '6. CREACION DE ENVIOS DESDE PEDIDOS',
+      title: '7. CREACION DE ENVIOS DESDE PEDIDOS',
       content: `Proceso Paso a Paso
 
 1. Seleccionar Pedido
@@ -181,10 +247,16 @@ Resultado
 • Envio creado con tracking unico
 • Pedido marcado como "Enviado"
 • Cargo registrado en cuenta del seller
-• Listo para incluir en ruta`
+• Listo para incluir en ruta
+
+Eliminacion de Envio con Rollback
+Si se elimina un envio creado desde un pedido:
+• El cargo en cuenta corriente se revierte automaticamente
+• El saldo del seller se actualiza
+• El pedido vuelve a estado disponible para crear nuevo envio`
     },
     {
-      title: '7. CUENTA CORRIENTE DE SELLERS',
+      title: '8. CUENTA CORRIENTE DE SELLERS',
       content: `Como Funciona
 Similar a la cuenta corriente de clientes, pero para sellers:
 • Acumula cargos por envios creados
@@ -214,6 +286,11 @@ Ajuste
 • Puede ser positivo o negativo
 • Requiere descripcion
 
+Rollback por Eliminacion
+• Si se elimina un envio, el cargo se revierte
+• El saldo vuelve al estado anterior
+• Se registra como movimiento de ajuste automatico
+
 Ver Estado de Cuenta
 En el detalle del seller:
 • Saldo actual
@@ -221,7 +298,7 @@ En el detalle del seller:
 • Limite de credito disponible`
     },
     {
-      title: '8. LIQUIDACIONES DE SELLERS',
+      title: '9. LIQUIDACIONES DE SELLERS',
       content: `Que es una Liquidacion
 Es el cierre periodico de la cuenta corriente, donde se totalizan los movimientos de un periodo.
 
@@ -235,6 +312,7 @@ Generar Liquidacion
    • Total de cargos del periodo
    • Total de pagos del periodo
    • Saldo final
+   • Desglose por concepto (flete, retiro, entrega, adicionales)
 
 Estados de Liquidacion
 • Generada: Calculada, pendiente de aprobacion
@@ -255,11 +333,12 @@ Descargar PDF
 Cada liquidacion genera un PDF oficial con:
 • Datos del seller
 • Detalle de movimientos
+• Desglose de conceptos
 • Totales
 • Estado de pago`
     },
     {
-      title: '9. PORTAL DE SELLERS',
+      title: '10. PORTAL DE SELLERS',
       content: `Acceso
 Los sellers acceden en: /seller
 Con su usuario y contrasena vinculados.
@@ -298,7 +377,7 @@ Beneficios del Portal
 • Transparencia financiera`
     },
     {
-      title: '10. TARIFAS PARA E-COMMERCE',
+      title: '11. TARIFAS PARA E-COMMERCE',
       content: `Asignar Tarifa a Seller
 1. Editar seller
 2. Seleccionar tarifa en "Tarifa Asignada"
@@ -320,17 +399,8 @@ Precio base de la tarifa
 • Precio por kg excedente
 • Se calcula sobre peso declarado
 
-Ejemplo de Calculo
-Tarifa "E-Commerce Standard":
-• Flete base: $500
-• Puerta a Puerta: $300
-• Precio por kg: $50
-
-Envio de 5kg:
-• Base: $500
-• Servicio: $300
-• Peso (5kg x $50): $250
-• Total: $1,050
+Tarifas Exclusivas
+Para sellers con condiciones especiales, se pueden crear tarifas exclusivas con precios diferenciados.
 
 Uso en Tiendanube
 Cuando un comprador ve opciones de envio:
@@ -339,11 +409,11 @@ Cuando un comprador ve opciones de envio:
 • El precio se muestra en el checkout`
     },
     {
-      title: '11. FLUJO COMPLETO DE UN PEDIDO',
+      title: '12. FLUJO COMPLETO DE UN PEDIDO',
       content: `CICLO DE VIDA COMPLETO
 
 Paso 1: Compra
-Comprador paga en Tiendanube.
+Comprador paga en Tiendanube o Mercado Libre.
 
 Paso 2: Webhook
 Sistema recibe notificacion.
@@ -361,6 +431,7 @@ Si seller tiene cta. cte., se registra cargo automatico.
 
 Paso 6: Etiqueta
 Operador imprime etiqueta y pega en paquete.
+Para envios ML, se puede descargar la etiqueta de Mercado Libre.
 
 Paso 7: Operatoria
 Envio entra en flujo normal:
@@ -370,27 +441,31 @@ Envio entra en flujo normal:
 Paso 8: Entrega
 Chofer entrega y confirma.
 Estado cambia a "entregado".
+Se actualiza automaticamente en la plataforma de origen.
 
 Paso 9: Liquidacion
 Fin de mes: se genera liquidacion del seller.
 Seller paga el total adeudado.`
     },
     {
-      title: '12. CONSEJOS OPERATIVOS',
+      title: '13. CONSEJOS OPERATIVOS',
       content: `Configuracion Inicial
 • Configurar sucursal de pickup correctamente antes de conectar
 • Asignar tarifa antes de activar integracion
 • Probar con un pedido de prueba
+• Para ML: configurar cuenta logistica como fallback
 
 Operacion Diaria
 • Revisar pedidos pagados cada manana
 • Crear envios y despachar el mismo dia
 • Mantener comunicacion con sellers
+• Verificar discrepancias de estado ML periodicamente
 
 Gestion Financiera
 • Generar liquidaciones semanales o quincenales
 • No acumular saldos muy grandes
 • Registrar pagos inmediatamente
+• Al eliminar envios, verificar que el rollback de cta. cte. sea correcto
 
 Uso del Portal
 • Capacitar sellers para usar el portal
@@ -404,11 +479,11 @@ Mejores Practicas
 • Resolver incidentes rapidamente`
     },
     {
-      title: '13. PREGUNTAS FRECUENTES',
+      title: '14. PREGUNTAS FRECUENTES',
       content: `El pedido no llega al sistema
 Posibles causas:
-• Conexion OAuth vencida: reconectar Tiendanube
-• Webhook no configurado: verificar en Tiendanube
+• Conexion OAuth vencida: reconectar la plataforma
+• Webhook no configurado: verificar en Tiendanube o ML
 • Error de sincronizacion: usar boton "Sincronizar"
 
 El precio es incorrecto
@@ -416,6 +491,7 @@ Verificar:
 • Tarifa asignada al seller
 • Conceptos habilitados en la tarifa
 • Precio por kg configurado
+• Tarifas exclusivas que puedan estar sobrescribiendo
 
 El seller no puede acceder al portal
 Pasos:
@@ -430,15 +506,21 @@ Causas posibles:
 • Token de acceso expirado
 • Error en la actualizacion de estado
 
-Como desconectar Tiendanube
+El estado ML no coincide con el interno
+• Es normal: el sistema maneja estados duales
+• Usar "Aplicar estado de ML" para sincronizar
+• El icono de advertencia indica la discrepancia
+
+Como desconectar una plataforma
 1. Editar seller
 2. Borrar tokens de acceso
-3. El seller debe revocar acceso desde Tiendanube
+3. El seller debe revocar acceso desde la plataforma
 
 El saldo de cuenta corriente no cuadra
 Acciones:
 • Revisar historial de movimientos
 • Verificar que todos los envios generaron cargo
+• Verificar rollbacks por envios eliminados
 • Crear ajuste manual si es necesario
 • Documentar el ajuste con descripcion`
     }
