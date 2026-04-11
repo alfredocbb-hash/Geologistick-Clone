@@ -36,7 +36,13 @@ Lista de los últimos envíos con su estado y destino
 Resumen Diario
 • Entregas completadas
 • Envíos pendientes
-• Incidentes reportados`
+• Incidentes reportados
+
+Gráfico Semanal
+Visualización de envíos por día de la semana actual con tendencia
+
+Top Choferes
+Ranking de los choferes con mejor desempeño del período`
     },
     {
       title: '3. GESTIÓN DE ENVÍOS',
@@ -52,6 +58,7 @@ Paso 2: Datos del Remitente
 • Nombre, apellido, teléfono
 • DNI/CUIT (para cuenta corriente)
 • Dirección (si es retiro a domicilio)
+• Autocompletado de contactos frecuentes
 
 Paso 3: Datos del Destinatario
 • Nombre, apellido, teléfono
@@ -60,19 +67,19 @@ Paso 3: Datos del Destinatario
 
 Paso 4: Información del Paquete
 • Descripción del contenido
-• Peso (kg), Dimensiones
+• Peso (kg), Dimensiones (alto, ancho, largo)
 • Valor declarado, Cantidad de bultos
 
 Paso 5: Forma de Pago
 • Contado
 • Cuenta Corriente
-• Pago Contra Entrega
+• Pago Contra Entrega (COD)
 
 3.2 Lista de Envíos (/shipments)
 
 Funciones disponibles:
 • Buscar por tracking, remitente o destinatario
-• Filtrar por estado
+• Filtrar por estado, fecha, sucursal
 • Ver detalles y historial del envío
 • Imprimir etiqueta
 • Cambiar estado (solo admin/supervisor)
@@ -95,8 +102,9 @@ Página pública para que clientes rastreen sus envíos:
 • Ver historial de movimientos`
     },
     {
-      title: '4. ESCANEO QR',
-      content: `Acciones Rápidas según rol:
+      title: '4. ESCANEO QR Y OCR',
+      content: `Escaneo QR
+Acciones Rápidas según rol:
 
 Para Choferes:
 • Colectar: Escanear para confirmar retiro en domicilio
@@ -112,7 +120,35 @@ Escaneo General
 • Escanear cualquier QR y el sistema determina la acción según el estado
 
 Búsqueda Manual
-• Ingresar tracking manualmente si el QR no funciona`
+• Ingresar tracking manualmente si el QR no funciona
+
+OCR Masivo (Ingreso con IA)
+Permite ingresar paquetes escaneando etiquetas impresas con la cámara, sin necesidad de código QR.
+
+Modos de OCR:
+• Modo Ráfaga: Captura continua foto tras foto. Ideal para escanear muchas etiquetas rápidamente.
+• Modo Álbum: Seleccionar fotos ya tomadas de la galería del dispositivo.
+
+Cómo Funciona:
+1. Abrir el escáner y seleccionar "OCR Masivo"
+2. Capturar fotos de las etiquetas (una por foto)
+3. El sistema procesa todas las fotos en paralelo usando IA
+4. Se extraen: tracking, remitente, destinatario, dirección, bultos
+5. Si los datos esenciales se detectan correctamente, se auto-confirma
+6. Si hay errores, se muestra un formulario de edición manual
+7. Al finalizar, los envíos quedan creados y listos para colectar
+
+Auto-confirmación
+Si la IA detecta tracking + dirección + destinatario, el envío se crea automáticamente sin intervención. Los envíos con datos incompletos pasan a edición manual.
+
+Geocodificación Automática
+Las direcciones extraídas se geocodifican automáticamente para obtener coordenadas GPS.
+
+Disponibilidad
+El OCR está disponible en:
+• App móvil del chofer (escáner)
+• Planificador de rutas (administración)
+• Módulo Flex`
     },
     {
       title: '5. HOJAS DE RUTA',
@@ -146,6 +182,27 @@ Mapa Interactivo
 • Ver envíos seleccionados en el mapa
 • Geolocalizar direcciones sin coordenadas
 
+Geolocalización Masiva
+El botón "Geolocalizar Todos (N)" permite geolocalizar todos los envíos sin coordenadas en un solo clic:
+• Procesa los envíos de a uno, con pausa entre cada uno para no saturar la API
+• Muestra barra de progreso en tiempo real
+• Al finalizar, muestra resumen: X exitosos, Y fallidos
+• Los envíos geolocalizados aparecen inmediatamente en el mapa
+
+Normalización de Ciudades
+El planificador agrupa envíos por ciudad con normalización inteligente:
+• Variantes como "La Plata", "LA PLATA NORTE", "LA PLATA OESTE" se agrupan bajo "LA PLATA"
+• Se eliminan sufijos comunes (norte, sur, este, oeste, centro)
+• El conteo refleja el total real de envíos por ciudad base
+
+Importación CSV
+Desde el planificador se pueden importar envíos masivamente:
+1. Clic en "Importar CSV"
+2. Seleccionar archivo Excel o CSV
+3. Mapear columnas del archivo a campos del sistema
+4. Previsualizar datos antes de importar
+5. Confirmar importación
+
 Optimización de Ruta
 El sistema sugiere el mejor orden considerando:
 • Distancia total
@@ -158,7 +215,10 @@ Rutas Frecuentes
 El planificador incluye un tab de "Rutas Frecuentes" donde puedes:
 • Ver plantillas guardadas
 • Usar una ruta para pre-cargar envíos pendientes
-• Crear nuevas plantillas desde rutas exitosas`
+• Crear nuevas plantillas desde rutas exitosas
+
+Envíos Terciarizados
+Tab dedicado para derivar envíos a empresas externas (Correo Argentino, OCA, etc.)`
     },
     {
       title: '7. MIS RUTAS (Para Choferes)',
@@ -220,6 +280,24 @@ El EPOD (Electronic Proof of Delivery) incluye:
 • Coordenadas GPS de entrega
 • Nombre del receptor
 
+Cobro Contra Entrega (COD)
+Si el envío tiene pago contra entrega:
+1. Seleccionar método de pago (efectivo, transferencia, etc.)
+2. Confirmar monto cobrado
+3. El sistema registra el cobro para rendición posterior
+
+Devoluciones y Cambios
+Al confirmar una entrega exitosa, el sistema pregunta si hay devolución:
+1. Seleccionar "Sí, hay devolución" en el diálogo de cambio
+2. Se crea automáticamente un envío inverso en estado "recogido"
+3. El envío inverso se vincula al original vía envio_cambio_id
+4. El destino se determina automáticamente:
+   • Envíos Mercado Libre: dirección del vendedor
+   • Envíos manuales: remitente o sucursal de origen
+5. El chofer ve el nuevo envío de devolución en su lista
+
+Nota: El diálogo de cambio solo aparece en entregas de envíos estándar, no en envíos que ya son devoluciones (es_cambio: true).
+
 Reportar Problema
 • Ausente en domicilio
 • Dirección incorrecta
@@ -237,7 +315,32 @@ Reprogramar Entrega
 • Ver ubicación en tiempo real de choferes
 • Ver sucursales en el mapa
 • Filtrar por estado de envío
-• Ver rutas activas`
+• Ver rutas activas
+
+Filtros de Choferes
+• Filtrar por nombre, estado (activo/inactivo), zona
+• Ver solo choferes con ruta activa
+• Buscar chofer específico
+
+Panel de Detalle de Chofer
+Al seleccionar un chofer en el mapa:
+• Información personal y vehículo asignado
+• Ruta activa con paradas pendientes/completadas
+• Último check-in y ubicación actualizada
+• Historial de entregas del día
+
+Mapa de Calor (Heatmap)
+Visualización de densidad de envíos por zona:
+• Muestra concentración de entregas/retiros en el mapa
+• Útil para identificar zonas de alta demanda
+• Ayuda a planificar rutas más eficientes
+• Activar/desactivar desde los controles del mapa
+
+Análisis de Ruta con IA
+Desde el panel de detalle del chofer:
+• Analizar el rendimiento de la ruta actual
+• Obtener sugerencias de optimización
+• Ver métricas: distancia recorrida, tiempo promedio por parada`
     },
     {
       title: '10. FINANZAS',
@@ -250,20 +353,30 @@ Liquidaciones
 
 Sucursales (/settlements/branches):
 • Ver ingresos por sucursal
-• Generar liquidaciones
+• Generar liquidaciones por período
+• Desglose de conceptos (flete, retiro, entrega, adicionales)
 
 Choferes (/settlements/drivers):
-• Calcular comisiones
+• Calcular comisiones por entrega
 • Registrar pagos
+• Ver resumen de envíos entregados y montos
 
 Clientes (/settlements/clients):
 • Gestionar cuentas corrientes
 • Ver saldos pendientes
+• Registrar pagos
 
 Terciarizados (/third-party-settlements):
 • Gestionar cuentas con proveedores externos
 • Registrar pagos a Correo Argentino, OCA, etc.
 • Ver historial de movimientos por empresa
+
+Rendiciones de Choferes (COD)
+Cuando el chofer cobra contra entrega:
+• Los cobros se registran automáticamente
+• El supervisor puede ver el total a rendir por chofer
+• Se registra la rendición cuando el chofer entrega el dinero
+• Detalle de cada cobro con método de pago
 
 Mis Comisiones (/my-commissions)
 • Ver comisiones ganadas
@@ -275,11 +388,13 @@ Mis Comisiones (/my-commissions)
 • Crear/editar sucursales
 • Configurar permisos de despacho/recepción
 • Marcar como centro logístico
+• Configurar zonas de cobertura en el mapa
 
 Tarifas (/admin/rates)
 • Crear tarifas base
 • Configurar conceptos adicionales
-• Precio por kg
+• Precio por kg, volumen, distancia, zona o código postal
+• Configurar seguro (base, porcentaje, topes)
 
 Usuarios (/admin/users)
 • Crear usuarios
@@ -288,12 +403,12 @@ Usuarios (/admin/users)
 
 Gestión de Roles (/admin/roles)
 • Configurar permisos por rol
-• Crear roles personalizados
+• Permisos granulares por categoría
 
 Choferes (/drivers)
 • Ver lista de choferes
 • Asignar vehículos
-• Ver disponibilidad
+• Ver disponibilidad y último check-in
 
 Vehículos (/vehicles)
 • Registrar vehículos
@@ -306,10 +421,62 @@ Vehículos (/vehicles)
 • Crear clientes con datos de contacto
 • Habilitar cuenta corriente
 • Configurar límite de crédito
-• Ver historial de envíos`
+• Ver historial de envíos
+• Autocompletado al crear envíos`
     },
     {
-      title: '13. FLUJO COMPLETO DE UN ENVÍO',
+      title: '13. CHECK-IN / CHECK-OUT DE CHOFERES',
+      content: `Inicio de Jornada (Check-In)
+Al abrir la app móvil, el chofer debe iniciar su jornada:
+1. Se muestra la pantalla de "Iniciar Jornada"
+2. El chofer presiona el botón de inicio
+3. Se registra automáticamente:
+   • Fecha y hora del check-in
+   • Ubicación GPS
+   • Precisión del GPS
+   • Información del dispositivo
+4. Se sincroniza la ubicación en driver_locations
+
+Fin de Jornada (Check-Out)
+Al finalizar el día:
+1. Ir a Perfil > "Finalizar Jornada"
+2. Confirmar el cierre
+3. Se registra la hora de check-out
+
+Consideraciones
+• El check-in es obligatorio antes de poder operar en la app
+• Si ya hizo check-in hoy, se salta automáticamente la pantalla
+• Los supervisores pueden ver los check-ins de todos los choferes
+• El registro queda asociado al tenant del chofer`
+    },
+    {
+      title: '14. COLECTAS',
+      content: `Qué es una Colecta
+Proceso de recoger múltiples paquetes de forma masiva, generalmente al inicio de la jornada o en un punto de recolección.
+
+Flujo de Colecta
+1. Desde el escáner, seleccionar modo "Colectar"
+2. Escanear los paquetes uno a uno (QR o OCR)
+3. Cada paquete se agrega a la lista de colecta
+4. Al finalizar, presionar "Confirmar Colecta"
+5. Todos los envíos cambian a estado "recogido"
+6. Se asigna el chofer actual como chofer_id
+7. Se crea un registro en la tabla de colectas
+
+Colecta desde OCR Masivo
+1. Usar OCR Masivo para escanear todas las etiquetas
+2. Al procesar las fotos, los envíos se crean automáticamente
+3. Presionar "COLECTAR" para agregar todos a la colecta
+4. Confirmar la colecta masiva
+5. El chofer ve los paquetes colectados en su pantalla principal
+
+Visibilidad del Chofer
+Los paquetes colectados aparecen en:
+• Pantalla principal: sección "Colectas hoy" con el total
+• Tab de entregas: filtrados por estado "recogido" y chofer asignado`
+    },
+    {
+      title: '15. FLUJO COMPLETO DE UN ENVÍO',
       content: `Escenario 1: Sucursal a Sucursal
 1. Cliente trae paquete a Sucursal A → Estado: en_sucursal
 2. Operador crea hoja de ruta hacia Sucursal B
@@ -325,32 +492,63 @@ Escenario 2: Puerta a Puerta
 5. Se crea hoja de ruta hacia destino → Estado: en_transito
 6. Llegada a sucursal destino → Estado: en_sucursal
 7. Planificador crea ruta de entregas
-8. Chofer entrega en domicilio → Estado: entregado`
+8. Chofer entrega en domicilio → Estado: entregado
+
+Escenario 3: Entrega con Devolución
+1. Chofer llega al domicilio y entrega el paquete
+2. El destinatario tiene un paquete para devolver
+3. El chofer confirma la entrega y marca "hay devolución"
+4. Se crea automáticamente un envío inverso (recogido)
+5. El envío de devolución se incluye en la siguiente ruta hacia el origen`
     },
     {
-      title: '14. ATAJOS Y TIPS',
+      title: '16. ATAJOS Y TIPS',
       content: `Para Choferes
-• Usa el escáner QR para confirmar retiros/entregas
+• Usa el escáner QR o OCR para confirmar retiros/entregas
 • El botón "Navegar" abre Google Maps
 • Puedes llamar o enviar WhatsApp desde la app
 • Siempre toma foto del comprobante de entrega
+• Iniciá la jornada (Check-In) al comenzar el día
 
 Para Operadores
 • Usa "Recibir Hoja de Ruta" para recibir múltiples envíos
 • Revisa el historial de envíos si hay dudas
-• Geolocaliza direcciones desde el planificador
+• Usa "Geolocalizar Todos" en el planificador para ahorrar tiempo
+• Importá envíos masivamente desde CSV
 
 Para Administradores
 • Revisa las liquidaciones pendientes regularmente
 • Mantén actualizadas las tarifas
-• Usa el mapa en vivo para monitorear operaciones`
+• Usa el mapa en vivo para monitorear operaciones
+• Consultá el mapa de calor para identificar zonas de alta demanda`
     },
     {
-      title: '15. SOLUCIÓN DE PROBLEMAS',
+      title: '17. REPORTES Y ANÁLISIS',
+      content: `Reportes Disponibles (/reports)
+
+Productividad
+• Envíos por chofer, por sucursal, por período
+• Tasa de entrega exitosa
+• Tiempo promedio de entrega
+
+Costos
+• Análisis de costos operativos
+• Comparativa de gastos por período
+• Desglose por categoría
+
+Predicción de Demanda con IA
+Tab especial en Reportes que utiliza inteligencia artificial:
+• Predice el volumen de envíos para los próximos días/semanas
+• Basado en datos históricos del tenant
+• Ayuda a planificar recursos (choferes, vehículos)
+• Muestra tendencias y estacionalidad`
+    },
+    {
+      title: '18. SOLUCIÓN DE PROBLEMAS',
       content: `QR no escanea
 • Verificar permisos de cámara en el dispositivo
 • Probar con buena iluminación
-• Usar búsqueda manual como alternativa
+• Usar búsqueda manual o OCR como alternativa
 
 Envío no aparece
 • Verificar filtros activos
@@ -363,10 +561,15 @@ No puedo cambiar estado
 
 Mapa no carga
 • Verificar conexión a internet
-• Revisar configuración de API Key de Google Maps`
+• Revisar configuración de API Key de Google Maps
+
+OCR no detecta la etiqueta
+• Asegurar buena iluminación y enfoque
+• La etiqueta debe estar completa y legible
+• Probar con otra foto o usar edición manual`
     },
     {
-      title: '16. RUTAS FRECUENTES',
+      title: '19. RUTAS FRECUENTES',
       content: `Qué son las Rutas Frecuentes
 Plantillas de rutas guardadas que agilizan la planificación diaria.
 El sistema identifica automáticamente envíos pendientes de los clientes habituales.
@@ -390,7 +593,7 @@ Beneficios
 • Reduce errores de asignación`
     },
     {
-      title: '17. EMPRESAS TERCIARIZADAS (3PL)',
+      title: '20. EMPRESAS TERCIARIZADAS (3PL)',
       content: `Qué son las Empresas Terciarizadas
 Proveedores logísticos externos (ej: Correo Argentino, OCA) para envíos fuera de la zona de cobertura.
 
@@ -419,7 +622,7 @@ Liquidaciones de Terciarizados (/third-party-settlements)
 • Consultar historial de movimientos`
     },
     {
-      title: '18. WIDGET DE TRACKING EMBEBIBLE',
+      title: '21. WIDGET DE TRACKING EMBEBIBLE',
       content: `Qué es el Widget de Tracking
 Página minimalista para integrar en sitios web de clientes vía iframe.
 Permite a los compradores rastrear sus envíos sin salir del sitio del vendedor.
@@ -442,19 +645,27 @@ Características
 • Búsqueda por código de tracking`
     },
     {
-      title: '19. MÓDULO E-COMMERCE (Referencia)',
+      title: '22. MÓDULO E-COMMERCE',
       content: `Acceso
 El módulo completo se encuentra en e-Commerce en el menú lateral.
 
 Funciones Principales
 • Sellers: Gestionar tiendas online conectadas
-• Pedidos: Ver órdenes sincronizadas de Tiendanube
+• Pedidos: Ver órdenes sincronizadas
 • Liquidaciones: Cierre periódico de cuentas de sellers
 
 Integración con Tiendanube
-• Sincronización automática de pedidos
+• Sincronización automática de pedidos via webhook
 • Cotización de envíos en el checkout
 • Actualización de estados de fulfillment
+
+Integración con Mercado Libre
+• Conexión OAuth con cuentas de sellers
+• Sincronización de envíos Flex y Full
+• Descarga de etiquetas ML desde el sistema
+• Estados duales: estado interno + estado ML sincronizado
+• Detección automática de discrepancias entre estados
+• Cuenta Logística: fallback automático para envíos sin seller registrado
 
 Portal de Sellers
 Los vendedores acceden en /seller con dashboard, pedidos, envíos y cuenta.

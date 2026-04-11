@@ -533,6 +533,7 @@ El historial permite auditar cambios y entender la evolucion de precios.`
 Los sellers de tiendas online necesitan una tarifa asignada para:
 • Calcular precio al crear envio desde pedido
 • Cotizar automaticamente en el checkout de Tiendanube
+• Calcular costos de envios sincronizados de Mercado Libre
 
 Pasos:
 1. Ir a e-Commerce > Sellers
@@ -554,6 +555,21 @@ Configuracion de Tiempos:
 • min_delivery_days: Dias minimos para entrega standard
 • max_delivery_days: Dias maximos para entrega standard
 • express_delivery_days: Dias para entrega express
+
+---
+
+TARIFAS EXCLUSIVAS POR SELLER
+
+Para sellers con condiciones especiales:
+• Crear tarifa con "seller_exclusivo_id" asignado
+• Solo aplica para envios de ese seller
+• Permite conceptos y recargos personalizados por dia
+• En liquidaciones, los recargos se desglosan en columna "Adicional"
+
+Jerarquia de tarifas en liquidaciones:
+1. Tarifa exclusiva del seller (si existe)
+2. Tarifa asignada por defecto al seller
+3. Tarifas generales de zona
 
 ---
 
@@ -581,7 +597,33 @@ CONSIDERACIONES IMPORTANTES
 • Revisar que los conceptos basicos esten bien configurados`
     },
     {
-      title: '10. PREGUNTAS FRECUENTES',
+      title: '10. COMISIONES POR SUCURSAL',
+      content: `Que son las Comisiones por Sucursal
+Permiten configurar porcentajes de comision diferenciados para cada sucursal, tanto en emision como en recepcion de envios.
+
+Tipos de Comisiones
+• Comision de Emision: Porcentaje que cobra la sucursal que despacha el envio
+• Comision de Recepcion: Porcentaje que cobra la sucursal que recibe/entrega el envio
+
+Configuracion
+1. Ir a Sucursales > Editar sucursal
+2. Configurar porcentaje de comision de emision
+3. Configurar porcentaje de comision de recepcion
+4. Guardar cambios
+
+Calculo en Liquidaciones
+Las comisiones se aplican automaticamente al generar liquidaciones:
+• La sucursal de origen recibe su comision de emision sobre el flete
+• La sucursal de destino recibe su comision de recepcion sobre el flete
+• Los conceptos adicionales pueden o no incluirse segun configuracion
+
+Ejemplo
+Envio con flete de $1,500:
+• Sucursal A (emision, comision 20%): $300
+• Sucursal B (recepcion, comision 15%): $225`
+    },
+    {
+      title: '11. PREGUNTAS FRECUENTES',
       content: `POR QUE NO APARECE MI TARIFA AL CREAR ENVIO?
 
 Posibles causas:

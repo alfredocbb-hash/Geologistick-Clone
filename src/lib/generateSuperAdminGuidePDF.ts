@@ -25,6 +25,9 @@ Editar Empresa
 • Modificar nombre, slug, plan y límites
 • Activar o desactivar una empresa
 • Al desactivar, los usuarios de esa empresa no pueden acceder
+• Habilitar e-Commerce (ecommerce_enabled) para el módulo de tiendas online
+• Configurar Modo Flex para habilitar escaneo Flex/OCR en la app móvil
+• Ajustar configuración avanzada (JSONB) para opciones específicas del tenant
 
 Detalle de Empresa
 • Ver información completa del tenant
@@ -144,14 +147,20 @@ Planes Disponibles
 
 Gestión de Planes
 1. Crear planes con nombre, precio y límites
-2. Asignar Stripe Product ID y Price ID para cobro automático
+2. Asignar Stripe Product ID / Price ID o Mercado Pago Plan ID para cobro automático
 3. Activar/desactivar planes
 
 Suscripciones de Tenants
 • Cada tenant tiene una suscripción activa
-• Se controla automáticamente via Mercado Pago o Stripe
+• Se controla automáticamente vía Mercado Pago o Stripe
 • Al vencer el trial, se restringe la creación de envíos
 • El super admin puede extender trials manualmente
+
+Integración con Mercado Pago
+• Crear suscripciones recurrentes desde el sistema
+• Verificación automática de estado de pago
+• Webhooks para actualización en tiempo real
+• Cancelación desde el panel de administración
 
 Monitoreo
 • Ver uso actual vs límites del plan (envíos, usuarios, sucursales)
@@ -216,7 +225,127 @@ Después de Aprobar
 • Puede comenzar a configurar sucursales y crear envíos`
     },
     {
-      title: '9. MONITOREO Y REPORTES',
+      title: '9. CONFIGURACIÓN DE INTEGRACIONES',
+      content: `Acceso: Menú lateral > Configuración > Integraciones
+
+Integraciones Disponibles por Tenant
+
+Google Maps
+• API Key para geocodificación, rutas y mapas
+• Ambiente: sandbox o producción
+• Se usa en: planificador, mapa en vivo, tracking, navegación
+
+WhatsApp
+• Configuración de mensajería automática
+• Notificaciones a destinatarios sobre estado de envío
+
+Email SMTP
+• Servidor SMTP personalizado por tenant
+• Para notificaciones, liquidaciones y comunicaciones
+
+SMS
+• Proveedor de SMS para notificaciones
+• Alertas de entrega y retiro
+
+ARCA / AFIP
+• CUIT, razón social, condición IVA
+• Punto de venta para facturación electrónica
+• Ambiente: homologación o producción
+• Tipos de factura habilitados (A, B, C)
+
+Tiendanube
+• Conexión OAuth por seller
+• Webhooks automáticos para pedidos
+• Cotización de envíos en checkout
+
+Mercado Libre
+• Conexión OAuth por seller
+• Sincronización de envíos Flex y Full
+• Webhook para actualizaciones de estado
+• Cuenta Logística como fallback
+
+Configurar una Integración
+1. Ir a Configuración > Integraciones
+2. Seleccionar el tipo de integración
+3. Completar los datos requeridos (API Keys, tokens, etc.)
+4. Elegir ambiente (sandbox/producción)
+5. Activar la integración
+6. El sistema valida la conexión automáticamente`
+    },
+    {
+      title: '10. MODO FLEX Y FLEX MIXTO',
+      content: `Qué es el Modo Flex
+Permite a los choferes ingresar paquetes directamente desde la app móvil, escaneando etiquetas de Mercado Libre u otras plataformas.
+
+Activar Modo Flex
+1. Ir a Tenants > Editar Tenant
+2. Activar "Modo Flex"
+3. Guardar cambios
+
+Modo Flex Puro
+• El chofer escanea QR de etiquetas ML
+• El sistema busca datos del envío en Mercado Libre
+• Se crea el envío automáticamente con datos de entrega
+
+Modo Flex Mixto
+• Combina escaneo QR con fallback OCR
+• Si el QR no contiene datos ML, se activa OCR automáticamente
+• La IA lee la etiqueta y extrae la información
+• Ideal para empresas que manejan paquetes de múltiples orígenes
+
+Cuenta Logística
+• Para envíos donde el seller no está registrado
+• El sistema usa la cuenta logística del tenant como fallback
+• Se configuran credenciales ML en un seller con "es_cuenta_logistica"
+• Los envíos se crean sin cargo en cuenta corriente`
+    },
+    {
+      title: '11. ACTIVIDAD DE USUARIOS',
+      content: `Acceso: Menú lateral > Actividad de Usuarios
+
+Log de Actividad
+Registro completo de acciones por usuario y por tenant:
+• Fecha y hora de cada inicio de sesión
+• Dispositivo utilizado (web, móvil)
+• Acciones realizadas en el sistema
+• Último login de cada usuario
+
+Filtros Disponibles
+• Por tenant
+• Por usuario
+• Por rango de fechas
+• Por tipo de acción
+
+Uso del Log
+• Auditoría de seguridad
+• Detectar cuentas inactivas
+• Verificar operaciones realizadas
+• Soporte técnico ante reclamos`
+    },
+    {
+      title: '12. LANDING Y CONTENIDO EDITABLE',
+      content: `Acceso: Menú lateral > Contenido Landing
+
+Gestión de la Página Pública
+La landing page de Geologistick tiene contenido editable:
+
+Secciones Editables
+• Hero: Título principal, subtítulo y botones de acción
+• Características: Features destacadas del sistema
+• Estadísticas: Números y métricas públicas
+• Clientes: Logos y testimonios
+• Precios: Planes y precios visibles
+• CTA: Llamada a la acción final
+
+Cómo Editar
+1. Ir a Contenido Landing
+2. Seleccionar la sección a modificar
+3. Editar textos, imágenes o configuraciones
+4. Guardar cambios
+5. Los cambios se reflejan inmediatamente en la landing pública`
+    },
+    {
+      title: '13. MONITOREO Y REPORTES',
       content: `Dashboard General
 • Total de tenants activos
 • Envíos procesados en el período
@@ -236,7 +365,7 @@ Auditoría
 • Eventos de federación entre partners`
     },
     {
-      title: '10. BUENAS PRÁCTICAS',
+      title: '14. BUENAS PRÁCTICAS',
       content: `Seguridad
 • Cambiar contraseña regularmente
 • No compartir credenciales de super admin
