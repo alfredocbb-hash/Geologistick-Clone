@@ -273,6 +273,16 @@ export function useFlexPackages(): UseFlexPackagesReturn {
         return null;
       }
 
+      // Block packages in final states
+      const FINAL_STATES = ['entregado', 'cancelado'];
+      if (envio.estado && FINAL_STATES.includes(envio.estado)) {
+        toast.warning(`Este envío ya fue ${envio.estado}`, {
+          description: envio.tracking_number,
+        });
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+        return null;
+      }
+
       // Handle automatic transfer
       const { wasTransferred, previousDriver } = await handleAutoTransfer(envio);
 
