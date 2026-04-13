@@ -258,12 +258,42 @@ Deno.serve(async (req) => {
 
           const currentEstado = envioActual?.estado || 'pendiente';
 
-          // DUAL STATUS: Only update estado_ml, never touch estado directly
-          await supabase.from('envios').update({
+          // Prioridades de estado (mayor = más avanzado en el flujo)
+          const STATE_PRIORITY: Record<string, number> = {
+            pendiente: 1, recogido: 2, en_sucursal: 3,
+            en_transito: 4, en_reparto: 5,
+            primera_visita: 6, segunda_visita: 6,
+            devuelto: 9, cancelado: 9, entregado: 10,
+          };
+
+          const newPriority = STATE_PRIORITY[newEnvioEstado] || 0;
+          const currentPriority = STATE_PRIORITY[currentEstado] || 0;
+
+          const updatePayload: Record<string, any> = {
             estado_ml: newEnvioEstado,
             ml_sync_status: 'synced',
             ml_last_sync_at: new Date().toISOString(),
-          }).eq('id', existingEnvioId);
+          };
+
+          // Auto-aplicar estado ML si es más avanzado que el interno
+          const shouldAutoApply = newPriority > currentPriority;
+          if (shouldAutoApply) {
+            updatePayload.estado = newEnvioEstado;
+            console.log('[ML Sync] Auto-applying ML status:', existingEnvioId, currentEstado, '->', newEnvioEstado);
+          }
+
+          await supabase.from('envios').update(updatePayload).eq('id', existingEnvioId);
+
+          // Registrar en historial si se aplicó el cambio de estado interno
+          if (shouldAutoApply) {
+            await supabase.from('envio_historial').insert({
+              envio_id: existingEnvioId,
+              estado_anterior: currentEstado,
+              estado_nuevo: newEnvioEstado,
+              notas: 'Estado actualizado automáticamente por sincronización MercadoLibre',
+              ubicacion: 'ML Sync',
+            });
+          }
 
           if (envioActual && envioActual.estado_ml !== newEnvioEstado) {
             console.log('[ML Sync] estado_ml updated:', existingEnvioId, envioActual.estado_ml, '->', newEnvioEstado, '(estado interno:', currentEstado, ')');
