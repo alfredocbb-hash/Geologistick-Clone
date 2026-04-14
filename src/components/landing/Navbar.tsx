@@ -4,11 +4,13 @@ import { Menu, X, ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { LanguageSelector } from "@/components/i18n/LanguageSelector";
+import { useTranslation } from "react-i18next";
 import geologistickLogo from "@/assets/geologistick-logo.png";
 
 const Navbar = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { t } = useTranslation('landing');
 
   useEffect(() => {
     const handleScroll = () => {
@@ -19,11 +21,11 @@ const Navbar = () => {
   }, []);
 
   const navLinks = [
-    { label: "Funcionalidades", href: "#features" },
-    { label: "Circuito", href: "#circuit" },
-    { label: "Precios", href: "#pricing" },
-    { label: "Tracking", href: "/tracking" },
-    { label: "Contacto", href: "#contact" },
+    { label: t('nav.features'), href: "#features" },
+    { label: t('nav.circuit'), href: "#circuit" },
+    { label: t('nav.pricing'), href: "#pricing" },
+    { label: t('nav.tracking'), href: "/tracking" },
+    { label: t('nav.contact'), href: "#contact" },
   ];
 
   return (
@@ -49,7 +51,7 @@ const Navbar = () => {
             {navLinks.map((link) => (
               link.href.startsWith("/") ? (
                 <Link 
-                  key={link.label}
+                  key={link.href}
                   to={link.href}
                   className="text-muted-foreground dark:text-gray-400 hover:text-foreground dark:hover:text-white transition-colors font-medium text-sm"
                 >
@@ -57,7 +59,7 @@ const Navbar = () => {
                 </Link>
               ) : (
                 <a 
-                  key={link.label}
+                  key={link.href}
                   href={link.href}
                   className="text-muted-foreground dark:text-gray-400 hover:text-foreground dark:hover:text-white transition-colors font-medium text-sm"
                 >
@@ -72,11 +74,11 @@ const Navbar = () => {
             <LanguageSelector variant="ghost" />
             <ThemeToggle />
             <Button asChild variant="ghost" className="text-muted-foreground dark:text-gray-400 hover:text-foreground dark:hover:text-white hover:bg-muted dark:hover:bg-white/5 rounded-full px-6">
-              <Link to="/login">Iniciar sesión</Link>
+              <Link to="/login">{t('nav.login')}</Link>
             </Button>
             <Button asChild className="bg-foreground dark:bg-white text-background dark:text-black hover:bg-foreground/90 dark:hover:bg-gray-100 rounded-full px-6 font-medium">
               <Link to="/login">
-                Comenzar
+                {t('nav.getStarted')}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>
@@ -98,7 +100,7 @@ const Navbar = () => {
               {navLinks.map((link) => (
                 link.href.startsWith("/") ? (
                   <Link 
-                    key={link.label}
+                    key={link.href}
                     to={link.href}
                     className="text-muted-foreground dark:text-gray-300 hover:text-foreground dark:hover:text-white transition-colors font-medium py-2"
                     onClick={() => setIsMobileMenuOpen(false)}
@@ -107,7 +109,7 @@ const Navbar = () => {
                   </Link>
                 ) : (
                   <a 
-                    key={link.label}
+                    key={link.href}
                     href={link.href}
                     className="text-muted-foreground dark:text-gray-300 hover:text-foreground dark:hover:text-white transition-colors font-medium py-2"
                     onClick={() => setIsMobileMenuOpen(false)}
@@ -122,10 +124,10 @@ const Navbar = () => {
                   <ThemeToggle />
                 </div>
                 <Button asChild variant="ghost" className="justify-center text-foreground dark:text-white hover:bg-muted dark:hover:bg-white/5">
-                  <Link to="/login" onClick={() => setIsMobileMenuOpen(false)}>Iniciar sesión</Link>
+                  <Link to="/login" onClick={() => setIsMobileMenuOpen(false)}>{t('nav.login')}</Link>
                 </Button>
                 <Button asChild className="bg-foreground dark:bg-white text-background dark:text-black hover:bg-foreground/90 dark:hover:bg-gray-100 justify-center">
-                  <Link to="/login" onClick={() => setIsMobileMenuOpen(false)}>Comenzar gratis</Link>
+                  <Link to="/login" onClick={() => setIsMobileMenuOpen(false)}>{t('nav.getStartedFree')}</Link>
                 </Button>
               </div>
             </div>

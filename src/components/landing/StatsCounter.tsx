@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Truck, Building2, Package, Users } from "lucide-react";
 import { type LucideIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 function CountUpItem({ icon: Icon, value, label, suffix }: { icon: LucideIcon; value: number; label: string; suffix: string }) {
   const [count, setCount] = useState(0);
@@ -46,6 +47,8 @@ function CountUpItem({ icon: Icon, value, label, suffix }: { icon: LucideIcon; v
 }
 
 const StatsCounter = () => {
+  const { t } = useTranslation('landing');
+
   const { data: tenantCount } = useQuery({
     queryKey: ['public-stats-tenants'],
     queryFn: async () => {
@@ -56,10 +59,10 @@ const StatsCounter = () => {
   });
 
   const stats = [
-    { icon: Building2, value: tenantCount || 10, label: "Empresas activas", suffix: "+" },
-    { icon: Package, value: 50000, label: "Envíos gestionados", suffix: "+" },
-    { icon: Users, value: 200, label: "Choferes conectados", suffix: "+" },
-    { icon: Truck, value: 99, label: "Uptime garantizado", suffix: "%" },
+    { icon: Building2, value: tenantCount || 10, label: t('stats.activeCompanies'), suffix: "+" },
+    { icon: Package, value: 50000, label: t('stats.shipmentsManaged'), suffix: "+" },
+    { icon: Users, value: 200, label: t('stats.driversConnected'), suffix: "+" },
+    { icon: Truck, value: 99, label: t('stats.uptimeGuaranteed'), suffix: "%" },
   ];
 
   return (

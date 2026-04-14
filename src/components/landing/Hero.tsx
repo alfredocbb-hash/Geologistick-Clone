@@ -3,12 +3,14 @@ import { ArrowRight, Search, MessageCircle, Package, MapPin, Shield } from "luci
 import { Link, useNavigate } from "react-router-dom";
 import { useLandingContent, defaultLandingContent } from "@/hooks/useLandingContent";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 const Hero = () => {
   const { data: content } = useLandingContent();
   const hero = content?.hero || defaultLandingContent.hero!;
   const [trackingCode, setTrackingCode] = useState("");
   const navigate = useNavigate();
+  const { t } = useTranslation('landing');
 
   const handleTracking = (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,9 +51,9 @@ const Hero = () => {
               className="text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight animate-fade-in"
               style={{ animationDelay: "0.1s" }}
             >
-              <span className="block text-foreground dark:text-white mb-2">Software de</span>
+              <span className="block text-foreground dark:text-white mb-2">{t('headline1')}</span>
               <span className="block bg-gradient-to-r from-[hsl(var(--geo-teal))] via-[hsl(var(--geo-cyan))] to-[hsl(var(--geo-blue))] bg-clip-text text-secondary-foreground">
-                logística inteligente
+                {t('headline2')}
               </span>
             </h1>
 
@@ -94,15 +96,15 @@ const Hero = () => {
             >
               <div className="flex items-center gap-2">
                 <Shield className="h-4 w-4 text-green-500" />
-                <span>14 días gratis</span>
+                <span>{t('freeTrial')}</span>
               </div>
               <div className="flex items-center gap-2">
                 <Shield className="h-4 w-4 text-green-500" />
-                <span>Sin tarjeta</span>
+                <span>{t('noCard')}</span>
               </div>
               <div className="flex items-center gap-2">
                 <Shield className="h-4 w-4 text-green-500" />
-                <span>Soporte incluido</span>
+                <span>{t('supportIncluded')}</span>
               </div>
             </div>
           </div>
@@ -116,14 +118,14 @@ const Hero = () => {
                   <MapPin className="h-5 w-5 text-[hsl(var(--geo-teal))]" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-foreground dark:text-white">Seguí tu envío</h3>
-                  <p className="text-sm text-muted-foreground dark:text-gray-500">Ingresá el código de tracking</p>
+                  <h3 className="font-semibold text-foreground dark:text-white">{t('trackYourShipment')}</h3>
+                  <p className="text-sm text-muted-foreground dark:text-gray-500">{t('enterTrackingCode')}</p>
                 </div>
               </div>
               <form onSubmit={handleTracking} className="flex gap-3">
                 <input
                   type="text"
-                  placeholder="Ej: ENV-A3K9P2"
+                  placeholder={t('trackingPlaceholder')}
                   value={trackingCode}
                   onChange={(e) => setTrackingCode(e.target.value)}
                   className="flex-1 h-12 rounded-xl border border-input bg-background px-4 text-base placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -141,10 +143,10 @@ const Hero = () => {
             {/* Mini feature cards */}
             <div className="grid grid-cols-2 gap-4">
               {[
-                { icon: "📦", title: "Gestión de envíos", desc: "Crea, rastrea y entrega" },
-                { icon: "🗺️", title: "GPS en tiempo real", desc: "Seguí a tus choferes" },
-                { icon: "📊", title: "Liquidaciones", desc: "Cálculo automático" },
-                { icon: "🔗", title: "Integraciones", desc: "ML, Tiendanube, API" },
+                { icon: "📦", titleKey: "featureShipments", descKey: "featureShipmentsDesc" },
+                { icon: "🗺️", titleKey: "featureGPS", descKey: "featureGPSDesc" },
+                { icon: "📊", titleKey: "featureSettlements", descKey: "featureSettlementsDesc" },
+                { icon: "🔗", titleKey: "featureIntegrations", descKey: "featureIntegrationsDesc" },
               ].map((item, i) => (
                 <div
                   key={i}
@@ -152,9 +154,9 @@ const Hero = () => {
                 >
                   <div className="text-2xl mb-3">{item.icon}</div>
                   <h4 className="font-semibold text-foreground dark:text-white text-sm mb-1 group-hover:text-[hsl(var(--geo-teal))] transition-colors">
-                    {item.title}
+                    {t(item.titleKey)}
                   </h4>
-                  <p className="text-xs text-muted-foreground dark:text-gray-500">{item.desc}</p>
+                  <p className="text-xs text-muted-foreground dark:text-gray-500">{t(item.descKey)}</p>
                 </div>
               ))}
             </div>

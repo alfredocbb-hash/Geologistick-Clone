@@ -1,36 +1,33 @@
-import { Package, ScanLine, UserCheck, Route, CheckCircle2, Calculator, ArrowRight } from "lucide-react";
+import { Package, ScanLine, UserCheck, Route, CheckCircle2, Calculator } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
-const steps = [
-  { icon: Package, label: "Recepción", desc: "Ingreso del paquete en sucursal o retiro del remitente" },
-  { icon: ScanLine, label: "Digitalización", desc: "Escaneo QR, generación de etiquetas y registro en sistema" },
-  { icon: UserCheck, label: "Asignación", desc: "Asignación a chofer y creación de hoja de ruta" },
-  { icon: Route, label: "Ruta", desc: "Optimización de recorrido con IA y navegación GPS" },
-  { icon: CheckCircle2, label: "Entrega", desc: "Confirmación con firma, foto y notificación al cliente" },
-  { icon: Calculator, label: "Liquidación", desc: "Cálculo automático de comisiones y rendiciones" },
-];
+const stepIcons = [Package, ScanLine, UserCheck, Route, CheckCircle2, Calculator];
 
 const Circuito = () => {
+  const { t } = useTranslation('landing');
+
+  const steps = stepIcons.map((icon, i) => ({
+    icon,
+    label: t(`circuit.s${i + 1}Label`),
+    desc: t(`circuit.s${i + 1}Desc`),
+  }));
+
   return (
     <section id="circuit" className="relative py-28 overflow-hidden bg-muted dark:bg-[#050507]">
       <div className="container mx-auto px-4">
-        {/* Header */}
         <div className="max-w-3xl mx-auto text-center mb-20">
           <h2 className="text-4xl lg:text-5xl font-bold text-foreground dark:text-white mb-6 tracking-tight">
-            Circuito
-            <span className="bg-gradient-to-r from-[hsl(var(--geo-teal))] to-[hsl(var(--geo-cyan))] bg-clip-text text-transparent"> operativo</span>
+            {t('circuit.title')}
+            <span className="bg-gradient-to-r from-[hsl(var(--geo-teal))] to-[hsl(var(--geo-cyan))] bg-clip-text text-transparent">{t('circuit.titleHighlight')}</span>
           </h2>
           <p className="text-lg text-muted-foreground dark:text-gray-400">
-            Desde que el paquete ingresa hasta que se liquida, todo en un solo sistema.
+            {t('circuit.subtitle')}
           </p>
         </div>
 
-        {/* Steps - horizontal on desktop, vertical on mobile */}
         <div className="max-w-6xl mx-auto">
-          {/* Desktop: horizontal */}
           <div className="hidden lg:flex items-start justify-between relative">
-            {/* Connector line */}
             <div className="absolute top-10 left-[8%] right-[8%] h-0.5 bg-gradient-to-r from-[hsl(var(--geo-teal)/0.3)] via-[hsl(var(--geo-cyan)/0.3)] to-[hsl(var(--geo-blue)/0.3)]" />
-            
             {steps.map((step, i) => (
               <div key={i} className="relative flex flex-col items-center text-center w-1/6 group">
                 <div className="relative z-10 h-20 w-20 rounded-2xl bg-card dark:bg-white/[0.03] border-2 border-[hsl(var(--geo-teal)/0.2)] flex items-center justify-center mb-5 group-hover:border-[hsl(var(--geo-teal))] group-hover:scale-110 transition-all duration-300 shadow-lg">
@@ -45,7 +42,6 @@ const Circuito = () => {
             ))}
           </div>
 
-          {/* Mobile: vertical */}
           <div className="lg:hidden space-y-6">
             {steps.map((step, i) => (
               <div key={i} className="flex gap-5 items-start group">
