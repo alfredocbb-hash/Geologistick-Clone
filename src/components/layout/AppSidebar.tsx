@@ -436,7 +436,7 @@ export function AppSidebar() {
                             )}>
                               <item.icon className="h-4 w-4" />
                             </div>
-                            {!collapsed && <span>{item.title}</span>}
+                            {!collapsed && <span>{t(item.title)}</span>}
                           </NavLink>
                         </SidebarMenuButton>
                       </SidebarMenuItem>;
@@ -451,7 +451,7 @@ export function AppSidebar() {
         {/* Collapse Toggle */}
         <Button variant="ghost" size="sm" onClick={toggleSidebar} className="w-full justify-center mb-4 text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent">
           {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-          {!collapsed && <span className="ml-2">Cerrar Menú</span>}
+          {!collapsed && <span className="ml-2">{t('mobile.closeMenu')}</span>}
         </Button>
 
         {/* User Info */}
