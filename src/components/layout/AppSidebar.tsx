@@ -27,88 +27,88 @@ interface NavGroup {
   requiresEcommerce?: boolean;
 }
 const navigation: NavGroup[] = [{
-  label: 'Principal',
+  label: 'nav.principal',
   items: [{
-    title: 'Dashboard',
+    title: 'nav.dashboard',
     url: '/dashboard',
     icon: LayoutDashboard,
     permissionKey: 'dashboard.view'
   }, {
-    title: 'Reportes',
+    title: 'nav.reports',
     url: '/reports',
     icon: BarChart3,
     permissionKey: 'reports.view'
   }],
   permissionKeys: ['dashboard.view', 'reports.view']
 }, {
-  label: 'Envíos',
+  label: 'nav.shipments',
   items: [{
-    title: 'Todos los Envíos',
+    title: 'nav.allShipments',
     url: '/shipments',
     icon: Package,
     permissionKey: 'shipments.view'
   }, {
-    title: 'Nuevo Envío',
+    title: 'nav.newShipment',
     url: '/shipments/new',
     icon: PackagePlus,
     permissionKey: 'shipments.create'
   }, {
-    title: 'Tracking',
+    title: 'nav.tracking',
     url: '/tracking',
     icon: MapPin,
     permissionKey: 'tracking.view'
   }],
   permissionKeys: ['shipments.view', 'shipments.create', 'tracking.view']
 }, {
-  label: 'Operaciones',
+  label: 'nav.operations',
   items: [{
-    title: 'Entrega en Sucursal',
+    title: 'nav.branchDelivery',
     url: '/scan',
     icon: QrCode,
     permissionKey: 'shipments.scan'
   }, {
-    title: 'Mis Rutas',
+    title: 'nav.myRoutes',
     url: '/my-routes',
     icon: Route,
     permissionKey: 'my_routes.view'
   }, {
-    title: 'Entrega a Domicilio',
+    title: 'nav.homeDelivery',
     url: '/my-routes',
     icon: Home,
     permissionKey: 'my_routes.view',
     requiresBranchDelivery: true
   }, {
-    title: 'Planificador',
+    title: 'nav.planner',
     url: '/planner',
     icon: Route,
     permissionKey: 'routes.plan'
   }, {
-    title: 'Incidencias',
+    title: 'nav.incidents',
     url: '/incidents',
     icon: AlertTriangle,
     permissionKey: 'routes.plan'
   }, {
-    title: 'Hojas de Ruta',
+    title: 'nav.routeSheets',
     url: '/route-sheets',
     icon: FileText,
     permissionKey: 'route_sheets.view'
   }, {
-    title: 'Mapa en Vivo',
+    title: 'nav.liveMap',
     url: '/live-map',
     icon: Map,
     permissionKey: 'live_map.view'
   }, {
-    title: 'Choferes',
+    title: 'nav.drivers',
     url: '/drivers',
     icon: Truck,
     permissionKey: 'drivers.manage'
   }, {
-    title: 'Vehículos',
+    title: 'nav.vehicles',
     url: '/vehicles',
     icon: Car,
     permissionKey: 'vehicles.manage'
   }, {
-    title: 'Rutas de Entrega',
+    title: 'nav.routes',
     url: '/routes',
     icon: MapPin,
     permissionKey: 'my_routes.view',
@@ -116,72 +116,72 @@ const navigation: NavGroup[] = [{
   }],
   permissionKeys: ['shipments.scan', 'routes.plan', 'route_sheets.view', 'live_map.view', 'drivers.manage', 'vehicles.manage', 'my_routes.view']
 }, {
-  label: 'Finanzas',
+  label: 'nav.finance',
   items: [{
-    title: 'Control de Caja',
+    title: 'nav.cash',
     url: '/cash',
     icon: Wallet,
     permissionKey: 'cash.manage'
   }, {
-    title: 'Liq. Sucursales',
+    title: 'nav.branchSettlements',
     url: '/settlements/branches',
     icon: FileText,
     permissionKey: 'settlements.branch.view'
   }, {
-    title: 'Liq. Choferes',
+    title: 'nav.driverSettlements',
     url: '/settlements/drivers',
     icon: FileText,
     permissionKey: 'settlements.driver.view'
   }, {
-    title: 'Liq. Clientes',
+    title: 'nav.clientSettlements',
     url: '/settlements/clients',
     icon: FileText,
     permissionKey: 'settlements.client.view'
   }, {
-    title: 'Liq. Terciarizados',
+    title: 'nav.thirdPartySettlements',
     url: '/settlements/third-party',
     icon: FileText,
     permissionKey: 'third_party.settlements'
   }, {
-    title: 'Mis Comisiones',
+    title: 'nav.myCommissions',
     url: '/my-commissions',
     icon: DollarSign,
     permissionKey: 'commissions.view'
   }, {
-    title: 'Pagos',
+    title: 'nav.payments',
     url: '/payments',
     icon: CreditCard,
     permissionKey: 'settlements.driver.manage'
   }],
   permissionKeys: ['cash.manage', 'settlements.branch.view', 'settlements.driver.view', 'settlements.client.view', 'commissions.view']
 }, {
-  label: 'Clientes',
+  label: 'nav.clients',
   items: [{
-    title: 'Todos los Clientes',
+    title: 'nav.clients',
     url: '/clients',
     icon: Users,
     permissionKey: 'clients.view'
   }],
   permissionKeys: ['clients.view', 'clients.manage']
 }, {
-  label: 'e-Commerce',
+  label: 'nav.ecommerce',
   items: [{
-    title: 'Dashboard',
+    title: 'nav.dashboard',
     url: '/ecommerce/dashboard',
     icon: LayoutDashboard,
     permissionKey: 'ecommerce.sellers.view'
   }, {
-    title: 'Tiendas',
+    title: 'nav.sellers',
     url: '/ecommerce/sellers',
     icon: Store,
     permissionKey: 'ecommerce.sellers.view'
   }, {
-    title: 'Pedidos',
+    title: 'nav.orders',
     url: '/ecommerce/orders',
     icon: ShoppingBag,
     permissionKey: 'ecommerce.orders.view'
   }, {
-    title: 'Liquidaciones',
+    title: 'nav.ecommerceSettlements',
     url: '/ecommerce/settlements',
     icon: Receipt,
     permissionKey: 'ecommerce.settlements.view'
@@ -189,87 +189,87 @@ const navigation: NavGroup[] = [{
   permissionKeys: ['ecommerce.sellers.view', 'ecommerce.orders.view', 'ecommerce.settlements.view'],
   requiresEcommerce: true
 }, {
-  label: 'Terciarizados',
+  label: 'nav.outsourced',
   items: [{
-    title: 'Empresas',
+    title: 'nav.thirdPartyCompanies',
     url: '/admin/third-party-companies',
     icon: Truck,
     permissionKey: 'third_party.view'
   }],
   permissionKeys: ['third_party.view', 'third_party.manage']
 }, {
-  label: 'Administración',
+  label: 'nav.management',
   items: [{
-    title: 'Sucursales',
+    title: 'nav.branches',
     url: '/admin/branches',
     icon: Building2,
     permissionKey: 'branches.manage'
   }, {
-    title: 'Tarifas',
+    title: 'nav.rates',
     url: '/admin/rates',
     icon: Tags,
     permissionKey: 'rates.manage'
   }, {
-    title: 'Usuarios',
+    title: 'nav.users',
     url: '/admin/users',
     icon: UserCog,
     permissionKey: 'users.manage'
   }, {
-    title: 'Gestión de Roles',
+    title: 'nav.rolePermissions',
     url: '/admin/roles',
     icon: Settings,
     permissionKey: 'roles.manage'
   }, {
-    title: 'Integraciones',
+    title: 'nav.integrations',
     url: '/admin/integrations',
     icon: Plug,
     permissionKey: 'integrations.manage'
   }, {
-    title: 'Suscripción',
+    title: 'nav.subscription',
     url: '/subscription',
     icon: Crown,
     permissionKey: 'integrations.manage'
   }, {
-    title: 'Guía de Estados',
+    title: 'nav.statusGuide',
     url: '/admin/status-guide',
     icon: GitBranch,
     permissionKey: 'users.manage'
   }, {
-    title: 'Empresas Asociadas',
+    title: 'nav.partners',
     url: '/admin/partners',
     icon: Handshake,
     permissionKey: 'integrations.manage'
   }],
   permissionKeys: ['branches.manage', 'rates.manage', 'users.manage', 'roles.manage', 'integrations.manage']
 }, {
-  label: 'Super Admin',
+  label: 'nav.superAdmin',
   items: [{
-    title: 'Empresas',
+    title: 'nav.tenants',
     url: '/admin/tenants',
     icon: Building2,
     permissionKey: 'tenants.view'
   }, {
-    title: 'Planes',
+    title: 'nav.subscriptionPlans',
     url: '/admin/plans',
     icon: Crown,
     permissionKey: 'subscription_plans.manage'
   }, {
-    title: 'Landing Page',
+    title: 'nav.landingContent',
     url: '/admin/landing',
     icon: Globe,
     permissionKey: 'tenants.manage'
   }, {
-    title: 'Personalización',
+    title: 'nav.branding',
     url: '/admin/branding',
     icon: Palette,
     permissionKey: 'tenants.manage'
   }, {
-    title: 'API Pública',
+    title: 'nav.apiDocs',
     url: '/admin/api-docs',
     icon: Key,
     permissionKey: 'tenants.manage'
   }, {
-    title: 'Actividad y Logs',
+    title: 'nav.userActivity',
     url: '/admin/activity',
     icon: Activity,
     permissionKey: 'tenants.manage'
