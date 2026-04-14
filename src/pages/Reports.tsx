@@ -68,6 +68,8 @@ function TrendBadge({ value, suffix = '%' }: { value: number; suffix?: string })
 
 export default function Reports() {
   const [datePreset, setDatePreset] = useState('Último Mes');
+  const [customFrom, setCustomFrom] = useState<Date | undefined>(undefined);
+  const [customTo, setCustomTo] = useState<Date | undefined>(undefined);
   const [sucursalId, setSucursalId] = useState<string>('all');
   const [exporting, setExporting] = useState(false);
   const [exportingOCR, setExportingOCR] = useState(false);
