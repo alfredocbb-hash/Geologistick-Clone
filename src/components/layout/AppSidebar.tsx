@@ -11,19 +11,20 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import geologistickLogo from '@/assets/geologistick-logo.png';
+import { useTranslation } from 'react-i18next';
 interface NavItem {
-  title: string;
+  title: string; // i18n key
   url: string;
   icon: React.ElementType;
-  permissionKey?: string; // Dynamic permission key
-  requiresBranchDelivery?: boolean; // Only show if branch has home delivery enabled
+  permissionKey?: string;
+  requiresBranchDelivery?: boolean;
 }
 interface NavGroup {
-  label: string;
+  label: string; // i18n key
   items: NavItem[];
-  permissionKeys?: string[]; // Any of these permissions shows the group
-  superAdminOnly?: boolean; // Only show to super_admin users
-  requiresEcommerce?: boolean; // Only show if tenant has ecommerce_enabled = true
+  permissionKeys?: string[];
+  superAdminOnly?: boolean;
+  requiresEcommerce?: boolean;
 }
 const navigation: NavGroup[] = [{
   label: 'Principal',
