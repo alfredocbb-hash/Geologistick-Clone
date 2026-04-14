@@ -53,8 +53,13 @@
     "landingContent": "Contenido Landing",
     "marketingAssets": "Marketing",
     "userActivity": "Actividad",
-    "apiDocs": "API Docs",
-    "apiKeys": "API Keys"
+    "apiDocs": "API Pública",
+    "apiKeys": "API Keys",
+    "statusGuide": "Guía de Estados",
+    "partners": "Empresas Asociadas",
+    "management": "Administración",
+    "operations": "Operaciones",
+    "fleet": "Flota"
   },
   "header": {
     "profile": "Mi Perfil",

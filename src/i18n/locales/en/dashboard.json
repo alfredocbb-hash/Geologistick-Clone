@@ -1,0 +1,6 @@
+{
+  "title": "Dashboard",
+  "greeting": "Hello, {{name}}!",
+  "summary": "Here's your logistics operation summary for today.",
+  "sendNotification": "Send Notification"
+}

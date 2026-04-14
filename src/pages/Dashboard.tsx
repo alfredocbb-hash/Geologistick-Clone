@@ -11,33 +11,33 @@ import DashboardRecentShipments from '@/components/dashboard/DashboardRecentShip
 import DashboardDaySummary from '@/components/dashboard/DashboardDaySummary';
 import DashboardTopDrivers from '@/components/dashboard/DashboardTopDrivers';
 import DashboardMiniMap from '@/components/dashboard/DashboardMiniMap';
+import { useTranslation } from 'react-i18next';
 
 export default function Dashboard() {
   const { profile, roles } = useAuth();
   const { tenantId } = useTenant();
   const [notifDialogOpen, setNotifDialogOpen] = useState(false);
   const isAdmin = roles.includes('admin') || roles.includes('super_admin');
+  const { t } = useTranslation('dashboard');
 
   return (
     <div className="space-y-8">
-      {/* Decorative background blob */}
       <div className="absolute top-0 right-0 w-[500px] h-[500px] rounded-full bg-gradient-to-br from-[hsl(var(--primary)/0.05)] to-[hsl(var(--accent)/0.05)] blur-3xl -z-10 pointer-events-none" />
 
-      {/* Welcome Section */}
       <div className="flex flex-col gap-2 animate-slide-up">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold tracking-tight gradient-text">
-            ¡Hola, {profile?.nombre || 'Usuario'}! 👋
+            {t('greeting', { name: profile?.nombre || 'Usuario' })} 👋
           </h1>
           {isAdmin && (
             <Button variant="outline" size="sm" onClick={() => setNotifDialogOpen(true)} className="glow-hover">
               <Bell className="h-4 w-4 mr-2" />
-              Enviar Notificación
+              {t('sendNotification')}
             </Button>
           )}
         </div>
         <p className="text-muted-foreground">
-          Aquí está el resumen de tu operación logística de hoy.
+          {t('summary')}
         </p>
         <div className="flex gap-2 mt-2">
           {roles.map((role) => (
@@ -49,11 +49,8 @@ export default function Dashboard() {
       </div>
 
       <SendBranchNotificationDialog open={notifDialogOpen} onOpenChange={setNotifDialogOpen} />
-
-      {/* Stats Grid with trends */}
       <DashboardStatsCards tenantId={tenantId} />
 
-      {/* Weekly Chart + Top Drivers */}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <DashboardWeeklyChart tenantId={tenantId} />
@@ -61,7 +58,6 @@ export default function Dashboard() {
         <DashboardTopDrivers tenantId={tenantId} />
       </div>
 
-      {/* Recent Shipments + Day Summary + Mini Map */}
       <div className="grid gap-6 lg:grid-cols-3">
         <DashboardRecentShipments tenantId={tenantId} />
         <DashboardDaySummary tenantId={tenantId} />

@@ -1,0 +1,19 @@
+{
+  "searchTitle": "Rastreie seu Envio",
+  "searchSubtitle": "Digite seu número de rastreamento para verificar o status do seu pacote",
+  "searchPlaceholder": "Ex: ENV-20240115-A1B2C3",
+  "searchButton": "Buscar",
+  "searching": "Buscando envio...",
+  "notFound": "Envio não encontrado",
+  "notFoundDesc": "Não encontramos um envio com o rastreamento:",
+  "backToDashboard": "Voltar ao dashboard",
+  "origin": "Origem",
+  "destination": "Destino",
+  "noSender": "Sem remetente",
+  "noRecipient": "Sem destinatário",
+  "standardPackage": "Pacote padrão",
+  "routeSheets": "Folhas de Rota",
+  "departure": "Saída",
+  "movementHistory": "Histórico de Movimentos",
+  "copyright": "Sistema de Gestão Logística."
+}

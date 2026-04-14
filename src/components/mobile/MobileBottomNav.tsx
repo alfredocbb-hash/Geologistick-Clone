@@ -1,6 +1,7 @@
 import { Home, Route, QrCode, Wallet, User, Package, Clock, Truck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { UserMobileRole } from './MobileAppLayout';
+import { useTranslation } from 'react-i18next';
 
 export type MobileTab = 'home' | 'routes' | 'scan' | 'earnings' | 'profile' | 'reception' | 'deliveries' | 'history';
 
@@ -15,7 +16,7 @@ interface MobileBottomNavProps {
 
 interface TabConfig {
   id: MobileTab;
-  label: string;
+  labelKey: string;
   icon: typeof Home;
   isCenter?: boolean;
   permissionKey?: string;
@@ -25,34 +26,35 @@ const getTabsForRole = (role: UserMobileRole): TabConfig[] => {
   switch (role) {
     case 'chofer':
       return [
-        { id: 'home', label: 'Inicio', icon: Home },
-        { id: 'routes', label: 'Rutas', icon: Route, permissionKey: 'my_routes.view' },
-        { id: 'scan', label: 'Scan', icon: QrCode, isCenter: true, permissionKey: 'shipments.scan' },
-        { id: 'earnings', label: 'Dinero', icon: Wallet, permissionKey: 'commissions.view' },
-        { id: 'profile', label: 'Perfil', icon: User },
+        { id: 'home', labelKey: 'mobile.home', icon: Home },
+        { id: 'routes', labelKey: 'mobile.routes', icon: Route, permissionKey: 'my_routes.view' },
+        { id: 'scan', labelKey: 'mobile.scan', icon: QrCode, isCenter: true, permissionKey: 'shipments.scan' },
+        { id: 'earnings', labelKey: 'mobile.earnings', icon: Wallet, permissionKey: 'commissions.view' },
+        { id: 'profile', labelKey: 'mobile.profile', icon: User },
       ];
     case 'centro_logistico':
       return [
-        { id: 'home', label: 'Inicio', icon: Home },
-        { id: 'reception', label: 'Recepción', icon: Package, permissionKey: 'route_sheets.view' },
-        { id: 'scan', label: 'Scan', icon: QrCode, isCenter: true, permissionKey: 'shipments.scan' },
-        { id: 'history', label: 'Historial', icon: Clock },
-        { id: 'profile', label: 'Perfil', icon: User },
+        { id: 'home', labelKey: 'mobile.home', icon: Home },
+        { id: 'reception', labelKey: 'mobile.reception', icon: Package, permissionKey: 'route_sheets.view' },
+        { id: 'scan', labelKey: 'mobile.scan', icon: QrCode, isCenter: true, permissionKey: 'shipments.scan' },
+        { id: 'history', labelKey: 'mobile.history', icon: Clock },
+        { id: 'profile', labelKey: 'mobile.profile', icon: User },
       ];
     case 'sucursal':
     default:
       return [
-        { id: 'home', label: 'Inicio', icon: Home },
-        { id: 'deliveries', label: 'Entregas', icon: Truck, permissionKey: 'delivery.confirm' },
-        { id: 'scan', label: 'Scan', icon: QrCode, isCenter: true, permissionKey: 'shipments.scan' },
-        { id: 'history', label: 'Historial', icon: Clock },
-        { id: 'profile', label: 'Perfil', icon: User },
+        { id: 'home', labelKey: 'mobile.home', icon: Home },
+        { id: 'deliveries', labelKey: 'mobile.deliveries', icon: Truck, permissionKey: 'delivery.confirm' },
+        { id: 'scan', labelKey: 'mobile.scan', icon: QrCode, isCenter: true, permissionKey: 'shipments.scan' },
+        { id: 'history', labelKey: 'mobile.history', icon: Clock },
+        { id: 'profile', labelKey: 'mobile.profile', icon: User },
       ];
   }
 };
 
 export function MobileBottomNav({ activeTab, onTabChange, notificationCount = 0, userRole = 'sucursal', hasPermission, hidden }: MobileBottomNavProps) {
   const allTabs = getTabsForRole(userRole);
+  const { t } = useTranslation();
   
   // Filter tabs based on permissions
   const tabs = allTabs.filter(tab => {
@@ -72,6 +74,7 @@ export function MobileBottomNav({ activeTab, onTabChange, notificationCount = 0,
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
           const Icon = tab.icon;
+          const label = t(tab.labelKey);
           
           if (tab.isCenter) {
             return (
@@ -80,14 +83,12 @@ export function MobileBottomNav({ activeTab, onTabChange, notificationCount = 0,
                 onClick={() => onTabChange(tab.id)}
                 className="relative -mt-8 group"
               >
-                {/* Glow effect */}
                 <div className={cn(
                   "absolute inset-0 rounded-full blur-xl transition-opacity duration-300",
                   "bg-gradient-to-r from-primary to-emerald-500",
                   isActive ? "opacity-50" : "opacity-20 group-hover:opacity-40"
                 )} />
                 
-                {/* Button */}
                 <div className={cn(
                   "relative flex flex-col items-center justify-center",
                   "w-16 h-16 rounded-full transition-all duration-300",
@@ -99,9 +100,8 @@ export function MobileBottomNav({ activeTab, onTabChange, notificationCount = 0,
                   <Icon className="h-7 w-7 text-white" strokeWidth={2} />
                 </div>
                 
-                {/* Label below */}
                 <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] font-semibold text-primary whitespace-nowrap">
-                  {tab.label}
+                  {label}
                 </span>
               </button>
             );
@@ -118,14 +118,12 @@ export function MobileBottomNav({ activeTab, onTabChange, notificationCount = 0,
                 isActive && "bg-slate-800/60"
               )}
             >
-              {/* Notification badge */}
               {tab.id === 'home' && notificationCount > 0 && (
                 <span className="absolute top-0 right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-lg shadow-red-500/30">
                   {notificationCount > 9 ? '9+' : notificationCount}
                 </span>
               )}
               
-              {/* Icon with animated indicator */}
               <div className="relative">
                 <Icon 
                   className={cn(
@@ -138,17 +136,15 @@ export function MobileBottomNav({ activeTab, onTabChange, notificationCount = 0,
                 />
               </div>
               
-              {/* Label */}
               <span 
                 className={cn(
                   "text-[10px] mt-1 font-medium transition-all duration-200",
                   isActive ? "text-primary" : "text-slate-500"
                 )}
               >
-                {tab.label}
+                {label}
               </span>
               
-              {/* Active indicator dot */}
               {isActive && (
                 <span className="absolute -bottom-0.5 w-1 h-1 rounded-full bg-primary shadow-sm shadow-primary" />
               )}
