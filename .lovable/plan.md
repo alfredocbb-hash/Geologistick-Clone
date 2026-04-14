@@ -1,33 +1,28 @@
 
 
-## Plan: Corregir visualización y bloqueo de suscripciones vencidas
+## Plan: Hacer visible el diálogo de cambio/devolución en la APK
 
 ### Problema
-BlackBox tiene `current_period_end = 2026-04-13` (ayer) pero `status = active` en la DB. Dos problemas:
-
-1. **Visual**: En la tabla de "Gestión de Suscripciones" (SuperAdminSubscriptionManager), el badge muestra "Activo" porque lee el campo `status` sin verificar si `current_period_end` ya pasó.
-2. **Funcional**: El bloqueo del hook `useSubscriptionBlock` sí funciona correctamente (compara la fecha), pero el estado en DB queda desincronizado.
+Después de confirmar una entrega, el `ExchangeDialog` se activa (`showExchangeDialog = true`) pero el `Dialog` principal de confirmación sigue abierto con `open={true}` (línea 624). Esto hace que el ExchangeDialog quede detrás o tapado por el overlay del Dialog principal, y el chofer nunca lo ve.
 
 ### Solución
+En `DeliveryConfirmation.tsx`, cambiar la prop `open` del Dialog principal para que se cierre cuando `showExchangeDialog` es `true`:
 
-#### 1. `src/components/subscriptions/SuperAdminSubscriptionManager.tsx`
-En la tabla de empresas, al mostrar el badge de estado, verificar si `current_period_end < now()`. Si la fecha ya pasó aunque `status === 'active'`, mostrar badge "Vencido" en rojo en lugar de "Activo" en verde.
+```tsx
+// Antes (línea 624):
+<Dialog open onOpenChange={handleClose}>
 
-#### 2. Migración SQL (opcional pero recomendada)
-Actualizar el registro de BlackBox para reflejar la realidad:
-```sql
-UPDATE tenant_subscriptions 
-SET status = 'expired' 
-WHERE tenant_id = '81be07a7-73a0-4986-994e-5365478343eb' 
-AND current_period_end < now();
+// Después:
+<Dialog open={!showExchangeDialog} onOpenChange={handleClose}>
 ```
+
+Así, cuando la entrega se confirma y `showExchangeDialog = true`, el Dialog principal se cierra y el ExchangeDialog queda visible al frente.
 
 ### Archivos a modificar
 | Archivo | Cambio |
 |---------|--------|
-| `src/components/subscriptions/SuperAdminSubscriptionManager.tsx` | Agregar lógica para mostrar "Vencido" cuando `current_period_end < now` |
+| `src/components/delivery/DeliveryConfirmation.tsx` | Línea 624: `open={!showExchangeDialog}` |
 
-### Notas
-- El bloqueo para usuarios de BlackBox **ya funciona** — ellos ven la pantalla de bloqueo. Solo el super_admin ve "Activo" porque: (a) está exento del bloqueo y (b) la tabla lee `status` sin chequear fecha.
-- La corrección es puramente visual en el panel de super admin.
+### Nota sobre la APK
+Este cambio es en código web. Como la APK carga desde `dist/`, será necesario reconstruir y sincronizar (`npm run build && npx cap sync`) para que el cambio se refleje en el dispositivo.
 
