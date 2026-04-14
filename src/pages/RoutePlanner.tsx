@@ -2580,8 +2580,7 @@ export default function RoutePlanner() {
 
           <div className="space-y-4 py-4">
             {/* Map */}
-            <GoogleMapsProvider>
-              {driverRoute.isLoading ? (
+            {driverRoute.isLoading ? (
                 <div className="flex items-center justify-center h-[400px] bg-muted rounded-lg">
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
                     <Loader2 className="h-8 w-8 animate-spin" />
@@ -2604,7 +2603,6 @@ export default function RoutePlanner() {
                   </div>
                 </div>
               )}
-            </GoogleMapsProvider>
 
             {/* Route Stats */}
             {driverRoute.polylinePath.length > 0 && (

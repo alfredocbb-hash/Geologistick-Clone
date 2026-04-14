@@ -976,8 +976,7 @@ export default function RouteSheets() {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            <GoogleMapsProvider>
-              {driverRoute.isLoading ? (
+            {driverRoute.isLoading ? (
                 <div className="flex items-center justify-center h-[400px] bg-muted rounded-lg">
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
                     <Loader2 className="h-8 w-8 animate-spin" />
@@ -1000,7 +999,6 @@ export default function RouteSheets() {
                   </div>
                 </div>
               )}
-            </GoogleMapsProvider>
 
             {driverRoute.polylinePath.length > 0 && (
               <RouteStatsPanel
