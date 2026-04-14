@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Menu, X, ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { LanguageSelector } from "@/components/i18n/LanguageSelector";
 import geologistickLogo from "@/assets/geologistick-logo.png";
 
 const Navbar = () => {
@@ -68,6 +69,7 @@ const Navbar = () => {
 
           {/* Desktop CTA */}
           <div className="hidden md:flex items-center gap-3">
+            <LanguageSelector variant="ghost" />
             <ThemeToggle />
             <Button asChild variant="ghost" className="text-muted-foreground dark:text-gray-400 hover:text-foreground dark:hover:text-white hover:bg-muted dark:hover:bg-white/5 rounded-full px-6">
               <Link to="/login">Iniciar sesión</Link>
@@ -115,7 +117,8 @@ const Navbar = () => {
                 )
               ))}
               <div className="flex flex-col gap-3 pt-4 border-t border-border dark:border-white/5">
-                <div className="flex items-center justify-center py-2">
+                <div className="flex items-center justify-center gap-2 py-2">
+                  <LanguageSelector variant="ghost" />
                   <ThemeToggle />
                 </div>
                 <Button asChild variant="ghost" className="justify-center text-foreground dark:text-white hover:bg-muted dark:hover:bg-white/5">
