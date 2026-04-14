@@ -23,6 +23,7 @@ export function AppHeader() {
   const { profile, roles, signOut } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   const getInitials = () => {
     if (!profile) return 'U';
@@ -63,6 +64,9 @@ export function AppHeader() {
 
       {/* Spacer */}
       <div className="flex-1" />
+
+      {/* Language Selector */}
+      <LanguageSelector persist variant="ghost" />
 
       {/* Theme Toggle */}
       <ThemeToggle />
@@ -110,22 +114,22 @@ export function AppHeader() {
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => navigate('/profile')}>
             <User className="mr-2 h-4 w-4" />
-            Mi Perfil
+            {t('header.profile')}
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => navigate('/admin/settings')}>
             <Settings className="mr-2 h-4 w-4" />
-            Configuración
+            {t('header.settings')}
           </DropdownMenuItem>
           {profile?.sucursal_id && (
             <DropdownMenuItem onClick={() => navigate('/admin/branches')}>
               <Building2 className="mr-2 h-4 w-4" />
-              Mi Sucursal
+              {t('header.myBranch')}
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={handleSignOut} className="text-destructive focus:text-destructive">
             <LogOut className="mr-2 h-4 w-4" />
-            Cerrar Sesión
+            {t('header.signOut')}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
