@@ -1,41 +1,38 @@
 
 
-## Plan: Traducir la landing page completa con i18n
+## Plan: Reporte Excel de envíos OCR con chofer y estado
 
-### Problema
-Los componentes de la landing (Navbar, Hero, Features, CTASection, Pricing) tienen textos hardcodeados en español. Aunque los archivos JSON de traducción existen (`landing.json`), los componentes no usan `useTranslation()` — por eso cambiar el idioma no tiene efecto visual.
-
-### Solución
-Reemplazar todos los strings hardcodeados en los componentes de la landing con llamadas a `t()` usando el namespace `landing`, y expandir los archivos JSON con las claves faltantes.
+### Cambio
+Agregar un botón "Exportar OCR" en la página de Reportes que descargue un Excel con todos los envíos creados por OCR, incluyendo chofer asignado y estado actual.
 
 ### Archivos a modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/i18n/locales/es/landing.json` | Agregar claves para Navbar, Features, CTASection, Pricing |
-| `src/i18n/locales/en/landing.json` | Ídem en inglés |
-| `src/i18n/locales/pt/landing.json` | Ídem en portugués |
-| `src/components/landing/Navbar.tsx` | Usar `t('landing:...')` para navLinks y botones |
-| `src/components/landing/Hero.tsx` | Usar `t('landing:...')` para headline, trust indicators, mini features |
-| `src/components/landing/Features.tsx` | Usar `t('landing:...')` para títulos y descripciones de features |
-| `src/components/landing/CTASection.tsx` | Usar `t('landing:...')` para headline, subtítulo, botones, trust indicators |
-| `src/components/landing/Pricing.tsx` | Usar `t('landing:...')` para encabezado y botones |
+| `src/pages/Reports.tsx` | Agregar botón "Exportar OCR" + lógica de query y exportación |
 
-### Ejemplo de cambio (Hero.tsx)
-```tsx
-// Antes:
-<span className="block text-foreground">Software de</span>
+### Columnas del Excel
+1. Tracking Number
+2. Fecha de creación
+3. Módulo origen (album/burst/manual)
+4. **Estado actual**
+5. ML Shipment ID
+6. Nombre destinatario
+7. Dirección de entrega
+8. Ciudad
+9. Código Postal
+10. Provincia
+11. Teléfono destinatario
+12. Nombre remitente
+13. **Chofer asignado** (nombre + apellido del profile)
+14. Cantidad bultos
+15. Peso (kg)
+16. Valor declarado
+17. Precio total
 
-// Después:
-const { t } = useTranslation('landing');
-<span className="block text-foreground">{t('headline1')}</span>
-```
-
-### Claves a agregar (ejemplo parcial)
-- `nav.features`, `nav.circuit`, `nav.pricing`, `nav.tracking`, `nav.contact`
-- `nav.login`, `nav.getStarted`, `nav.getStartedFree`
-- `cta.readyTo`, `cta.transformLogistics`, `cta.subtitle`, `cta.startNow`, `cta.viewPlans`
-- `cta.setupTime`, `cta.noCard`, `cta.support247`
-- `features.title`, `features.titleHighlight`, + 8 feature titles/descriptions
-- `pricing.title`, `pricing.popular`, `pricing.requestTrial`
+### Lógica
+1. Query `envios` filtrando `source_module LIKE 'bulk_ocr%'` + rango de fechas + tenant
+2. Obtener IDs de choferes únicos y hacer query a `profiles` para nombres
+3. Mapear chofer_id → nombre completo
+4. Exportar con `exportToExcel()` existente
 
