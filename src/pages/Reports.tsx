@@ -230,6 +230,15 @@ export default function Reports() {
           <h1 className="text-2xl font-bold text-foreground">Reportes y Análisis</h1>
           <p className="text-muted-foreground text-sm">Métricas y estadísticas de tu operación logística</p>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={exportingOCR}
+          onClick={handleExportOCR}
+        >
+          {exportingOCR ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ScanLine className="h-4 w-4 mr-2" />}
+          Exportar OCR
+        </Button>
       </div>
 
       {/* Global Filters */}
