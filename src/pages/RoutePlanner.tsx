@@ -88,7 +88,7 @@ import { useNavigate } from "react-router-dom";
 import MapView, { MarkerInfo } from "@/components/maps/MapView";
 import { ShipmentMapPopup, EnvioData } from "@/components/maps/ShipmentMapPopup";
 import { BranchMapPopup } from "@/components/maps/BranchMapPopup";
-import { GoogleMapsProvider } from "@/components/maps/GoogleMapsProvider";
+
 import { RouteStatsPanel } from "@/components/maps/RouteStatsPanel";
 import { useDriverRoute } from "@/hooks/useDriverRoute";
 import EditRouteDialog from "@/components/routes/EditRouteDialog";
