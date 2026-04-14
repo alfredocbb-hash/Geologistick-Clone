@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Menu, X, ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { LanguageSelector } from "@/components/i18n/LanguageSelector";
 import geologistickLogo from "@/assets/geologistick-logo.png";
 
 const Navbar = () => {
