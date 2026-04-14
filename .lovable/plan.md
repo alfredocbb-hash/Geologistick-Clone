@@ -1,40 +1,38 @@
 
 
-## Plan: Corregir carga de mapas en todos los módulos (incluida APK) y optimizar rendimiento
+## Plan: Corregir bloqueo de suscripción para TODOS los usuarios de un tenant
 
-### Problemas identificados
+### Problema encontrado
 
-1. **APK sin GoogleMapsProvider**: En `NativeAppWrapper` (líneas 157-166 de `App.tsx`), las rutas `/active-route`, `/route-start`, `/route-planner` y `MobileAppLayout` se renderizan **sin** `GoogleMapsProvider`. Como no están envueltas en `DashboardLayout`, los mapas no cargan en la APK.
+La tabla `tenant_subscriptions` tiene una política RLS que solo permite lectura a **admins**:
 
-2. **GoogleMapsProvider duplicados**: `DashboardLayout` ya envuelve todo en `GoogleMapsProvider`, pero `RoutePlanner.tsx` (línea 2583), `RouteSheets.tsx` (línea 979) y `EditOrderAddressDialog.tsx` (línea 127) crean instancias **anidadas** adicionales, lo que puede causar re-fetches de la API key y reinicios innecesarios del SDK de Google Maps.
+```sql
+-- Policy actual: "Tenant admins can view subscription"
+(tenant_id = current_user_tenant()) AND (is_admin(auth.uid()) OR is_super_admin(auth.uid()))
+```
 
-3. **Ruta por calles lenta en Planificador**: Cuando el chofer selecciona envíos, el `useEffect` de `realRoutePolyline` (líneas 863-965 de `RoutePlanner.tsx`) hace requests de Directions API **secuenciales** (chunked de 23 waypoints). Con 69 paradas, son ~3 requests en serie. Esto bloquea la visualización del mapa.
+Esto significa que los usuarios con rol `chofer`, `sucursal` o `despachador` no pueden leer la suscripción. Cuando la query no devuelve datos, el hook lo interpreta como "sin suscripción configurada" y **permite el acceso** (línea 55 de `useSubscriptionBlock.ts`).
+
+### BlackBox actualmente
+- Plan: `professional`, suscripción con status `expired`, vencida el 13/04/2026
+- 16 usuarios activos (1 admin, 1 chofer, 14 sucursal/despachador)
+- Solo el admin `blackboxcargas@gmail.com` estaría siendo bloqueado; el resto pasa sin bloqueo
 
 ### Solución
 
-| Archivo | Cambio |
-|---------|--------|
-| `src/App.tsx` | Envolver `NativeAppWrapper` en `GoogleMapsProvider` para que todas las rutas móviles tengan acceso a mapas |
-| `src/pages/RoutePlanner.tsx` | Eliminar el `GoogleMapsProvider` anidado (línea 2583-2607). Paralelizar los requests de Directions API en el useEffect de `realRoutePolyline` usando `Promise.all` en vez de secuencial |
-| `src/pages/RouteSheets.tsx` | Eliminar el `GoogleMapsProvider` anidado (línea 979-1003) |
-| `src/components/ecommerce/EditOrderAddressDialog.tsx` | Eliminar el `GoogleMapsProvider` anidado (línea 127-136), ya está disponible desde `DashboardLayout` |
+| Cambio | Detalle |
+|--------|---------|
+| **Migración SQL** | Agregar política RLS para que **cualquier usuario autenticado** pueda leer la suscripción de **su propio tenant** (solo SELECT, solo columnas `status` y `current_period_end`) |
 
-### Detalle de optimización de rendimiento
-
-**Antes** (secuencial):
-```
-Chunk 1 → esperar → Chunk 2 → esperar → Chunk 3 → render
+```sql
+CREATE POLICY "All users can view own tenant subscription"
+ON public.tenant_subscriptions
+FOR SELECT
+TO authenticated
+USING (tenant_id = current_user_tenant());
 ```
 
-**Después** (paralelo):
-```
-Chunk 1 ─┐
-Chunk 2 ─┼→ Promise.all → render
-Chunk 3 ─┘
-```
+Esto permite que chofer, sucursal, despachador lean el status de suscripción y sean bloqueados correctamente cuando está vencida.
 
-Esto reduce el tiempo de ~3x latencia a ~1x latencia para rutas con muchas paradas.
-
-### Sobre la APK
-Al agregar `GoogleMapsProvider` en `NativeAppWrapper`, los mapas en `FlexMapPreview`, `ActiveRouteNavigation` y cualquier otro componente mobile cargarán correctamente sin necesidad de cambios adicionales.
+No se requieren cambios en el código frontend: el hook `useSubscriptionBlock.ts` ya tiene la lógica correcta, solo faltaba que la query pudiera ejecutarse para usuarios no-admin.
 
