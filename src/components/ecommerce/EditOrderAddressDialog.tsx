@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Loader2 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { AddressAutocomplete, AddressDetails } from '@/components/maps/AddressAutocomplete';
-import { GoogleMapsProvider } from '@/components/maps/GoogleMapsProvider';
+
 
 interface Order {
   id: string;
@@ -124,16 +124,14 @@ export function EditOrderAddressDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <GoogleMapsProvider>
-            <AddressAutocomplete
-              label="Dirección de Entrega"
-              value={address}
-              onChange={setAddress}
-              onSelect={handleAddressSelect}
-              placeholder="Buscar dirección..."
-              required
-            />
-          </GoogleMapsProvider>
+          <AddressAutocomplete
+            label="Dirección de Entrega"
+            value={address}
+            onChange={setAddress}
+            onSelect={handleAddressSelect}
+            placeholder="Buscar dirección..."
+            required
+          />
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">

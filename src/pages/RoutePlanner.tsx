@@ -88,7 +88,7 @@ import { useNavigate } from "react-router-dom";
 import MapView, { MarkerInfo } from "@/components/maps/MapView";
 import { ShipmentMapPopup, EnvioData } from "@/components/maps/ShipmentMapPopup";
 import { BranchMapPopup } from "@/components/maps/BranchMapPopup";
-import { GoogleMapsProvider } from "@/components/maps/GoogleMapsProvider";
+
 import { RouteStatsPanel } from "@/components/maps/RouteStatsPanel";
 import { useDriverRoute } from "@/hooks/useDriverRoute";
 import EditRouteDialog from "@/components/routes/EditRouteDialog";
@@ -891,37 +891,48 @@ export default function RoutePlanner() {
 
     const fetchDirections = async () => {
       try {
+        // Build chunks first
+        const chunks: { origin: typeof allPoints[0]; dest: typeof allPoints[0]; waypoints: typeof allPoints }[] = [];
+        let startIdx = 0;
+        while (startIdx < allPoints.length - 1) {
+          const endIdx = Math.min(startIdx + MAX_WAYPOINTS + 1, allPoints.length - 1);
+          chunks.push({
+            origin: allPoints[startIdx],
+            dest: allPoints[endIdx],
+            waypoints: allPoints.slice(startIdx + 1, endIdx),
+          });
+          startIdx = endIdx;
+        }
+
+        // Fetch all chunks in parallel
+        const results = await Promise.all(
+          chunks.map(chunk =>
+            new Promise<google.maps.DirectionsResult | null>((resolve) => {
+              directionsService.route(
+                {
+                  origin: new google.maps.LatLng(chunk.origin.lat, chunk.origin.lng),
+                  destination: new google.maps.LatLng(chunk.dest.lat, chunk.dest.lng),
+                  waypoints: chunk.waypoints.map(p => ({
+                    location: new google.maps.LatLng(p.lat, p.lng),
+                    stopover: true,
+                  })),
+                  optimizeWaypoints: false,
+                  travelMode: google.maps.TravelMode.DRIVING,
+                },
+                (res, status) => {
+                  resolve(status === google.maps.DirectionsStatus.OK && res ? res : null);
+                }
+              );
+            })
+          )
+        );
+
+        // Stitch results together
         const fullPath: google.maps.LatLng[] = [];
         let totalDistMeters = 0;
         let totalDurSeconds = 0;
 
-        let startIdx = 0;
-        while (startIdx < allPoints.length - 1) {
-          const chunkOrigin = allPoints[startIdx];
-          const endIdx = Math.min(startIdx + MAX_WAYPOINTS + 1, allPoints.length - 1);
-          const chunkDest = allPoints[endIdx];
-          const waypointPoints = allPoints.slice(startIdx + 1, endIdx);
-
-          const waypoints = waypointPoints.map(p => ({
-            location: new google.maps.LatLng(p.lat, p.lng),
-            stopover: true,
-          }));
-
-          const result = await new Promise<google.maps.DirectionsResult | null>((resolve) => {
-            directionsService.route(
-              {
-                origin: new google.maps.LatLng(chunkOrigin.lat, chunkOrigin.lng),
-                destination: new google.maps.LatLng(chunkDest.lat, chunkDest.lng),
-                waypoints,
-                optimizeWaypoints: false,
-                travelMode: google.maps.TravelMode.DRIVING,
-              },
-              (res, status) => {
-                resolve(status === google.maps.DirectionsStatus.OK && res ? res : null);
-              }
-            );
-          });
-
+        results.forEach((result, i) => {
           if (result?.routes?.[0]) {
             const route = result.routes[0];
             const path = route.overview_path;
@@ -937,13 +948,14 @@ export default function RoutePlanner() {
               });
             }
           } else {
-            for (let i = startIdx; i <= endIdx; i++) {
-              fullPath.push(new google.maps.LatLng(allPoints[i].lat, allPoints[i].lng));
+            // Fallback: straight lines for this chunk
+            const chunk = chunks[i];
+            const fallbackPoints = [chunk.origin, ...chunk.waypoints, chunk.dest];
+            for (const p of fallbackPoints) {
+              fullPath.push(new google.maps.LatLng(p.lat, p.lng));
             }
           }
-
-          startIdx = endIdx;
-        }
+        });
 
         setRealRoutePolyline(fullPath.map(p => ({ lat: p.lat(), lng: p.lng() })));
 
@@ -2580,8 +2592,7 @@ export default function RoutePlanner() {
 
           <div className="space-y-4 py-4">
             {/* Map */}
-            <GoogleMapsProvider>
-              {driverRoute.isLoading ? (
+            {driverRoute.isLoading ? (
                 <div className="flex items-center justify-center h-[400px] bg-muted rounded-lg">
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
                     <Loader2 className="h-8 w-8 animate-spin" />
@@ -2604,7 +2615,6 @@ export default function RoutePlanner() {
                   </div>
                 </div>
               )}
-            </GoogleMapsProvider>
 
             {/* Route Stats */}
             {driverRoute.polylinePath.length > 0 && (
