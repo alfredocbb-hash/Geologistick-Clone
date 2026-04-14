@@ -300,6 +300,7 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const collapsed = state === 'collapsed';
+  const { t } = useTranslation();
 
   const handleSignOut = async () => {
     try {
