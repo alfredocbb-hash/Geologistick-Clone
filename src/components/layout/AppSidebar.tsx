@@ -451,7 +451,7 @@ export function AppSidebar() {
         {/* Collapse Toggle */}
         <Button variant="ghost" size="sm" onClick={toggleSidebar} className="w-full justify-center mb-4 text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent">
           {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-          {!collapsed && <span className="ml-2">{t('mobile.closeMenu')}</span>}
+          {!collapsed && <span className="ml-2">Menu</span>}
         </Button>
 
         {/* User Info */}
