@@ -401,7 +401,7 @@ export function AppSidebar() {
               />
               {!collapsed && <div className="flex flex-col">
                   <span className="text-lg font-bold text-sidebar-foreground">{branding?.nombre_app || 'Geologistick'}</span>
-                  <span className="text-xs text-sidebar-foreground/60">Gestión Logística</span>
+                  <span className="text-xs text-sidebar-foreground/60">{t('mobile.logisticsManagement')}</span>
                 </div>}
             </>
           )}
@@ -414,7 +414,7 @@ export function AppSidebar() {
         if (accessibleItems.length === 0) return null;
         return <SidebarGroup key={group.label}>
               {!collapsed && <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/50 px-3 mb-2">
-                  {group.label}
+                   {t(group.label)}
                 </SidebarGroupLabel>}
               <SidebarGroupContent>
                 <SidebarMenu>
