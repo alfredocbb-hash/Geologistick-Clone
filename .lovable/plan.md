@@ -1,34 +1,36 @@
 
 
-## Plan: Extraer horario de entrega de ML en la sincronización
+## Plan: Re-sincronizar horarios de entrega para envíos ML existentes
 
 ### Problema
-El envío ML-46848602811 tiene horario comercial en Mercado Libre, pero los campos `horario_entrega_desde`, `horario_entrega_hasta` y `horario_preferido_entrega` están vacíos en la base de datos. Esto ocurre porque la función `mercadolibre-sync` **no extrae el `time_frame`** de la API de ML al crear envíos — solo lo hacen `mercadolibre-webhook` y `register-ml-shipment`.
+Hay **116 envíos ML activos** sin horario de entrega (`horario_entrega_desde`, `horario_entrega_hasta` son NULL). Estos fueron creados antes de que la función de sync extrajera el `time_frame`.
 
 ### Solución
-Replicar la lógica de extracción de `time_frame` (que ya existe en el webhook) dentro de `mercadolibre-sync`, para que los envíos creados por sincronización también tengan sus horarios de entrega.
+Crear una edge function `recover-ml-timeframes` que:
+1. Busque envíos ML activos sin horario de entrega
+2. Para cada uno, consulte la API de ML (`/shipments/{id}`) usando el access token del seller correspondiente
+3. Extraiga `lead_time.estimated_delivery_time.time_frame`
+4. Actualice los campos `horario_entrega_desde`, `horario_entrega_hasta` y `horario_preferido_entrega`
 
-### Archivo a modificar
+### Archivo a crear
 
-| Archivo | Cambio |
-|---------|--------|
-| `supabase/functions/mercadolibre-sync/index.ts` | Extraer `lead_time.estimated_delivery_time.time_frame` del shipment y guardar `horario_preferido_entrega`, `horario_entrega_desde`, `horario_entrega_hasta` en el insert de `envios` |
+| Archivo | Descripción |
+|---------|-------------|
+| `supabase/functions/recover-ml-timeframes/index.ts` | Edge function que re-consulta ML y actualiza horarios |
+
+### Flujo
+1. Recibe POST con `tenant_id` (o lo obtiene del usuario autenticado)
+2. Busca sellers ML del tenant con access token válido
+3. Busca envíos sin horario vinculados a cada seller (via `ecommerce_orders`)
+4. Para cada envío, llama a `/shipments/{ml_shipment_id}` de ML
+5. Extrae `time_frame` y actualiza el envío en la DB
+6. Retorna conteo de actualizados/errores
+
+### Ejecución
+Una vez creada, la invocaré directamente para actualizar los 116 envíos del tenant `94a9ea85-43c5-49ac-9bfa-86843072c2ce`.
 
 ### Detalle técnico
-Se agregará el mismo bloque que usa el webhook (líneas 210-225 de `mercadolibre-webhook/index.ts`):
-
-```typescript
-const timeFrame = shipment.lead_time?.estimated_delivery_time?.time_frame;
-let horarioPreferido = 'cualquier_hora';
-let horarioEntregaDesde = null;
-let horarioEntregaHasta = null;
-if (timeFrame?.from != null && timeFrame?.to != null) {
-  // Convertir a HH:MM y determinar preferencia
-}
-```
-
-Y se incluirán los 3 campos en el `insert` de envíos (línea ~503).
-
-### Nota
-Los envíos **ya existentes** que se sincronizaron sin estos datos no se corregirán automáticamente. Si se desea actualizar los existentes, se podría hacer una re-sincronización o un script puntual.
+- Reutiliza la función `getValidAccessToken` del sync existente
+- Agrupa envíos por seller para usar un solo token por seller
+- Procesa en lotes para no exceder rate limits de ML
 
