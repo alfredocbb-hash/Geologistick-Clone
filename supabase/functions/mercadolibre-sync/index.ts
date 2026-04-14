@@ -498,6 +498,24 @@ Deno.serve(async (req) => {
           }
         }
 
+        // Extract time_frame for delivery schedule (same logic as webhook)
+        const timeFrame = shipment.lead_time?.estimated_delivery_time?.time_frame;
+        let horarioPreferido = 'cualquier_hora';
+        let horarioEntregaDesde: string | null = null;
+        let horarioEntregaHasta: string | null = null;
+        if (timeFrame?.from != null && timeFrame?.to != null) {
+          const fromH = Math.floor(timeFrame.from);
+          const fromM = Math.round((timeFrame.from - fromH) * 60);
+          const toH = Math.floor(timeFrame.to);
+          const toM = Math.round((timeFrame.to - toH) * 60);
+          horarioEntregaDesde = `${String(fromH).padStart(2, '0')}:${String(fromM).padStart(2, '0')}`;
+          horarioEntregaHasta = `${String(toH).padStart(2, '0')}:${String(toM).padStart(2, '0')}`;
+
+          if (timeFrame.to <= 13) horarioPreferido = 'manana';
+          else if (timeFrame.from >= 17) horarioPreferido = 'noche';
+          else if (timeFrame.from >= 12) horarioPreferido = 'tarde';
+        }
+
         const { data: envio, error: envioError } = await supabase
           .from('envios')
           .insert({
@@ -529,6 +547,9 @@ Deno.serve(async (req) => {
             nombre_remitente: seller.nombre,
             remitente_id: seller.cliente_id || null,
             estado_ml: envioEstado,
+            horario_preferido_entrega: horarioPreferido,
+            horario_entrega_desde: horarioEntregaDesde,
+            horario_entrega_hasta: horarioEntregaHasta,
           })
           .select()
           .single();
