@@ -334,9 +334,12 @@ export default function SuperAdminSubscriptionManager() {
 
   // Stats
   const totalTenants = tenants?.length || 0;
-  const activeSubscriptions = tenants?.filter(t =>
-    t.tenant_subscriptions?.[0]?.status === "active"
-  ).length || 0;
+  const activeSubscriptions = tenants?.filter(t => {
+    const sub = t.tenant_subscriptions?.[0];
+    if (sub?.status !== "active") return false;
+    if (sub.current_period_end && new Date(sub.current_period_end) < new Date()) return false;
+    return true;
+  }).length || 0;
   const noplan = totalTenants - activeSubscriptions;
   const pendingPayments = payments?.filter(p => p.status === "pending").length || 0;
 
