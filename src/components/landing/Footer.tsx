@@ -1,22 +1,24 @@
 import { Link } from "react-router-dom";
-import { MessageCircle, Mail, Phone, MapPin } from "lucide-react";
+import { MessageCircle, Mail } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import geologistickLogo from "@/assets/geologistick-logo.png";
 
 const Footer = () => {
   const currentYear = new Date().getFullYear();
   const whatsappUrl = "https://wa.me/5491112345678?text=Hola,%20me%20interesa%20conocer%20más%20sobre%20Geologistick";
+  const { t } = useTranslation('landing');
 
   const links = {
     producto: [
-      { label: "Funcionalidades", href: "#features" },
-      { label: "Circuito operativo", href: "#circuit" },
-      { label: "Precios", href: "#pricing" },
-      { label: "Tracking", href: "/tracking" },
+      { label: t('footer.features'), href: "#features" },
+      { label: t('footer.operativeCircuit'), href: "#circuit" },
+      { label: t('footer.pricing'), href: "#pricing" },
+      { label: t('footer.tracking'), href: "/tracking" },
     ],
     legal: [
-      { label: "Términos", href: "/terms" },
-      { label: "Privacidad", href: "/privacy" },
-      { label: "Cookies", href: "/cookies" },
+      { label: t('footer.terms'), href: "/terms" },
+      { label: t('footer.privacy'), href: "/privacy" },
+      { label: t('footer.cookies'), href: "/cookies" },
     ],
     contacto: [
       { label: "soporte@geologistick.com", href: "mailto:soporte@geologistick.com", icon: Mail },
@@ -28,7 +30,6 @@ const Footer = () => {
     <footer id="contact" className="relative bg-background dark:bg-[#050507] border-t border-border dark:border-white/5">
       <div className="container mx-auto px-4 py-16">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-12">
-          {/* Brand */}
           <div className="col-span-2">
             <Link to="/" className="flex items-center gap-3 mb-6">
               <img 
@@ -39,9 +40,8 @@ const Footer = () => {
               <span className="text-xl font-bold text-foreground dark:text-white tracking-tight">Geologistick</span>
             </Link>
             <p className="text-muted-foreground dark:text-gray-500 text-sm leading-relaxed max-w-xs mb-6">
-              La plataforma de gestión logística más completa de Argentina. Optimiza tus entregas con tecnología de punta.
+              {t('footer.description')}
             </p>
-            {/* Contact info */}
             <div className="space-y-3">
               <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-muted-foreground dark:text-gray-500 hover:text-foreground dark:hover:text-white transition-colors">
                 <MessageCircle className="h-4 w-4 text-green-500" />
@@ -54,12 +54,11 @@ const Footer = () => {
             </div>
           </div>
 
-          {/* Producto */}
           <div>
-            <h4 className="text-foreground dark:text-white font-semibold mb-4 text-sm uppercase tracking-wider">Producto</h4>
+            <h4 className="text-foreground dark:text-white font-semibold mb-4 text-sm uppercase tracking-wider">{t('footer.product')}</h4>
             <ul className="space-y-3">
               {links.producto.map((link) => (
-                <li key={link.label}>
+                <li key={link.href}>
                   {link.href.startsWith("/") ? (
                     <Link to={link.href} className="text-muted-foreground dark:text-gray-500 hover:text-foreground dark:hover:text-white transition-colors text-sm">
                       {link.label}
@@ -74,12 +73,11 @@ const Footer = () => {
             </ul>
           </div>
 
-          {/* Legal */}
           <div>
-            <h4 className="text-foreground dark:text-white font-semibold mb-4 text-sm uppercase tracking-wider">Legal</h4>
+            <h4 className="text-foreground dark:text-white font-semibold mb-4 text-sm uppercase tracking-wider">{t('footer.legal')}</h4>
             <ul className="space-y-3">
               {links.legal.map((link) => (
-                <li key={link.label}>
+                <li key={link.href}>
                   <Link to={link.href} className="text-muted-foreground dark:text-gray-500 hover:text-foreground dark:hover:text-white transition-colors text-sm">
                     {link.label}
                   </Link>
@@ -88,13 +86,12 @@ const Footer = () => {
             </ul>
           </div>
 
-          {/* Soporte */}
           <div>
-            <h4 className="text-foreground dark:text-white font-semibold mb-4 text-sm uppercase tracking-wider">Soporte</h4>
+            <h4 className="text-foreground dark:text-white font-semibold mb-4 text-sm uppercase tracking-wider">{t('footer.support')}</h4>
             <ul className="space-y-3">
               <li>
                 <Link to="/support" className="text-muted-foreground dark:text-gray-500 hover:text-foreground dark:hover:text-white transition-colors text-sm">
-                  Centro de Ayuda
+                  {t('footer.helpCenter')}
                 </Link>
               </li>
               {links.contacto.map((link) => (
@@ -108,19 +105,17 @@ const Footer = () => {
           </div>
         </div>
 
-        {/* Bottom bar */}
         <div className="mt-16 pt-8 border-t border-border dark:border-white/5 flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-muted-foreground/70 dark:text-gray-600 text-sm">
-            © {currentYear} Geologistick. Todos los derechos reservados.
+            © {currentYear} Geologistick. {t('footer.allRights')}
           </p>
           <div className="flex items-center gap-2 text-muted-foreground/70 dark:text-gray-600 text-sm">
             <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-            <span>Todos los sistemas operativos</span>
+            <span>{t('footer.allSystems')}</span>
           </div>
         </div>
       </div>
 
-      {/* Floating WhatsApp button */}
       <a
         href={whatsappUrl}
         target="_blank"

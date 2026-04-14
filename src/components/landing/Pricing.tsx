@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useLandingContent, defaultLandingContent } from "@/hooks/useLandingContent";
 import { TrialRequestDialog } from "./TrialRequestDialog";
+import { useTranslation } from "react-i18next";
 
 interface SubscriptionPlan {
   id: string;
@@ -25,6 +26,7 @@ const Pricing = () => {
   const generalContent = landingContent?.general || defaultLandingContent.general!;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | undefined>();
+  const { t } = useTranslation('landing');
 
   const { data: plans, isLoading } = useQuery({
     queryKey: ["public-subscription-plans"],
@@ -59,29 +61,25 @@ const Pricing = () => {
 
   return (
     <section id="pricing" className="relative py-32 overflow-hidden bg-background dark:bg-[#050507]">
-      {/* Subtle gradient */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1000px] h-[600px] bg-[hsl(var(--geo-teal)/0.03)] rounded-full blur-[200px] opacity-50 dark:opacity-100" />
 
       <div className="container relative z-10 mx-auto px-4">
-        {/* Header */}
         <div className="max-w-3xl mx-auto text-center mb-20">
           <h2 className="text-5xl lg:text-6xl font-bold text-foreground dark:text-white mb-6 tracking-tight">
-            Precios
-            <span className="bg-gradient-to-r from-[hsl(var(--geo-teal))] to-[hsl(var(--geo-cyan))] bg-clip-text text-transparent"> simples</span>
+            {t('pricing.title')}
+            <span className="bg-gradient-to-r from-[hsl(var(--geo-teal))] to-[hsl(var(--geo-cyan))] bg-clip-text text-transparent">{t('pricing.titleHighlight')}</span>
           </h2>
           <p className="text-xl text-muted-foreground dark:text-gray-400">
             {generalContent.pricing_subtitle}
           </p>
         </div>
 
-        {/* Loading state */}
         {isLoading && (
           <div className="flex justify-center items-center py-20">
             <Loader2 className="h-8 w-8 animate-spin text-[hsl(var(--geo-teal))]" />
           </div>
         )}
 
-        {/* Pricing cards */}
         {plans && plans.length > 0 && (
           <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
             {plans.map((plan, i) => {
@@ -92,29 +90,25 @@ const Pricing = () => {
                   key={plan.id}
                   className={`relative group ${isPopular ? 'md:-mt-6 md:mb-6' : ''}`}
                 >
-                  {/* Popular badge */}
                   {isPopular && (
                     <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-10">
                       <div className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-gradient-to-r from-[hsl(var(--geo-teal))] to-[hsl(var(--geo-blue))] shadow-lg shadow-[hsl(var(--geo-teal)/0.25)]">
                         <Sparkles className="h-4 w-4 text-white" />
-                        <span className="text-white text-sm font-medium">Más popular</span>
+                        <span className="text-white text-sm font-medium">{t('pricing.popular')}</span>
                       </div>
                     </div>
                   )}
 
-                  {/* Card */}
                   <div className={`h-full p-8 rounded-2xl border transition-all duration-500 ${
                     isPopular 
                       ? "bg-gradient-to-b from-[hsl(var(--geo-teal)/0.05)] to-transparent border-[hsl(var(--geo-teal)/0.3)]" 
                       : "bg-muted/50 dark:bg-white/[0.02] border-border dark:border-white/5 hover:border-border/80 dark:hover:border-white/10"
                   }`}>
-                    {/* Plan header */}
                     <div className="mb-8">
                       <h3 className="text-2xl font-bold text-foreground dark:text-white mb-2">{plan.name}</h3>
                       <p className="text-muted-foreground dark:text-gray-500 text-sm">{plan.description}</p>
                     </div>
 
-                    {/* Price */}
                     <div className="mb-8">
                       <div className="flex items-baseline gap-1">
                         <span className="text-muted-foreground dark:text-gray-500 text-lg">$</span>
@@ -122,28 +116,26 @@ const Pricing = () => {
                           {formatPrice(plan.price_monthly)}
                         </span>
                       </div>
-                      <span className="text-muted-foreground/70 dark:text-gray-600 text-sm">/mes · {generalContent.currency_label}</span>
+                      <span className="text-muted-foreground/70 dark:text-gray-600 text-sm">{t('pricing.perMonth')} · {generalContent.currency_label}</span>
                     </div>
 
-                    {/* Limits */}
                     <div className="flex items-center justify-between py-4 border-y border-border dark:border-white/5 mb-6">
                       <div className="text-center">
                         <p className="text-2xl font-bold text-foreground dark:text-white">{formatLimit(plan.max_shipments_month)}</p>
-                        <p className="text-xs text-muted-foreground dark:text-gray-500">envíos/mes</p>
+                        <p className="text-xs text-muted-foreground dark:text-gray-500">{t('pricing.shipmentsMonth')}</p>
                       </div>
                       <div className="h-8 w-px bg-border dark:bg-white/10" />
                       <div className="text-center">
                         <p className="text-2xl font-bold text-foreground dark:text-white">{formatLimit(plan.max_branches)}</p>
-                        <p className="text-xs text-muted-foreground dark:text-gray-500">sucursales</p>
+                        <p className="text-xs text-muted-foreground dark:text-gray-500">{t('pricing.branches')}</p>
                       </div>
                       <div className="h-8 w-px bg-border dark:bg-white/10" />
                       <div className="text-center">
                         <p className="text-2xl font-bold text-foreground dark:text-white">{formatLimit(plan.max_users)}</p>
-                        <p className="text-xs text-muted-foreground dark:text-gray-500">usuarios</p>
+                        <p className="text-xs text-muted-foreground dark:text-gray-500">{t('pricing.users')}</p>
                       </div>
                     </div>
 
-                    {/* Features */}
                     <ul className="space-y-3 mb-8">
                       {plan.features.slice(0, 5).map((feature, j) => (
                         <li key={j} className="flex items-start gap-3">
@@ -153,7 +145,6 @@ const Pricing = () => {
                       ))}
                     </ul>
 
-                    {/* CTA */}
                     <Button 
                       onClick={() => handleRequestTrial(plan.name)}
                       className={`w-full py-6 rounded-xl font-medium transition-all duration-300 group ${
@@ -163,7 +154,7 @@ const Pricing = () => {
                       }`}
                       size="lg"
                     >
-                      Comenzar prueba gratis
+                      {t('pricing.startTrial')}
                       <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
                     </Button>
                   </div>
@@ -173,10 +164,9 @@ const Pricing = () => {
           </div>
         )}
 
-        {/* Bottom text */}
         <div className="text-center mt-16">
           <p className="text-muted-foreground/70 dark:text-gray-600 text-sm">
-            {generalContent.trial_text}. Sin tarjeta de crédito.
+            {generalContent.trial_text}. {t('pricing.noCreditCard')}
           </p>
         </div>
       </div>
