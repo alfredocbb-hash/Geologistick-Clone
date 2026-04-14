@@ -6,16 +6,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar, Download, Package, TrendingUp, TrendingDown, Clock, DollarSign, BarChart3, Users, MapPin, FileText, Loader2, FileSpreadsheet, Award, ShieldCheck, Zap, Fuel, Brain } from 'lucide-react';
+import { Calendar, Download, Package, TrendingUp, TrendingDown, Clock, DollarSign, BarChart3, Users, MapPin, FileText, Loader2, FileSpreadsheet, Award, ShieldCheck, Zap, Fuel, Brain, ScanLine } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import { useReportsData, type ReportsFilters } from '@/hooks/useReportsData';
 import { useProductividadData } from '@/hooks/useProductividadData';
 import { useCostosData } from '@/hooks/useCostosData';
-import { subDays, subMonths, format } from 'date-fns';
+import { subDays, subMonths, format, startOfDay, endOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { exportReportPDF } from '@/lib/exportReportPDF';
 import { exportToExcel } from '@/lib/exportExcel';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
+import { useTenant } from '@/hooks/useTenant';
 import ProductividadTab from '@/components/reports/ProductividadTab';
 import CostosTab from '@/components/reports/CostosTab';
 import DemandPredictionTab from '@/components/reports/DemandPredictionTab';
@@ -65,6 +67,107 @@ export default function Reports() {
   const [datePreset, setDatePreset] = useState('Último Mes');
   const [sucursalId, setSucursalId] = useState<string>('all');
   const [exporting, setExporting] = useState(false);
+  const [exportingOCR, setExportingOCR] = useState(false);
+  const { tenantId } = useTenant();
+
+  const handleExportOCR = async () => {
+    if (!tenantId) return;
+    setExportingOCR(true);
+    try {
+      const preset = DATE_PRESETS.find(p => p.label === datePreset) || DATE_PRESETS[2];
+      const { from, to } = preset.getValue();
+      const fromISO = startOfDay(from).toISOString();
+      const toISO = endOfDay(to).toISOString();
+
+      let query = supabase
+        .from('envios')
+        .select('tracking_number, created_at, source_module, estado, ml_shipment_id, nombre_destinatario, direccion_entrega, ciudad_entrega, cp_entrega, provincia, whatsapp_destinatario, nombre_remitente, chofer_id, cantidad_bultos, peso_kg, valor_declarado, precio_total')
+        .eq('tenant_id', tenantId)
+        .gte('created_at', fromISO)
+        .lte('created_at', toISO)
+        .like('source_module', 'bulk_ocr%');
+
+      if (sucursalId !== 'all') {
+        query = query.eq('sucursal_origen_id', sucursalId);
+      }
+
+      const { data: enviosData, error } = await query;
+      if (error) throw error;
+      if (!enviosData || enviosData.length === 0) {
+        toast.info('No se encontraron envíos OCR en el período seleccionado');
+        return;
+      }
+
+      // Get unique chofer IDs and fetch names
+      const choferIds = [...new Set(enviosData.map(e => e.chofer_id).filter(Boolean))] as string[];
+      let choferMap = new Map<string, string>();
+      if (choferIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('user_id, nombre, apellido')
+          .in('user_id', choferIds);
+        for (const p of profiles || []) {
+          choferMap.set(p.user_id, `${p.nombre || ''} ${p.apellido || ''}`.trim() || 'Sin nombre');
+        }
+      }
+
+      const SOURCE_LABELS: Record<string, string> = {
+        bulk_ocr_album: 'Álbum',
+        bulk_ocr_burst: 'Ráfaga',
+        bulk_ocr_manual: 'Manual',
+      };
+
+      const rows = enviosData.map(e => ({
+        tracking_number: e.tracking_number || '',
+        fecha: e.created_at ? new Date(e.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '',
+        modulo: SOURCE_LABELS[e.source_module || ''] || e.source_module || '',
+        estado: STATUS_LABELS[e.estado || ''] || e.estado || '',
+        ml_shipment_id: e.ml_shipment_id || '',
+        nombre_destinatario: e.nombre_destinatario || '',
+        direccion_entrega: e.direccion_entrega || '',
+        ciudad_entrega: e.ciudad_entrega || '',
+        cp_entrega: e.cp_entrega || '',
+        provincia: e.provincia || '',
+        telefono: e.whatsapp_destinatario || '',
+        nombre_remitente: e.nombre_remitente || '',
+        chofer: e.chofer_id ? (choferMap.get(e.chofer_id) || 'Sin nombre') : 'No asignado',
+        cantidad_bultos: e.cantidad_bultos || 0,
+        peso_kg: e.peso_kg || 0,
+        valor_declarado: e.valor_declarado || 0,
+        precio_total: e.precio_total || 0,
+      }));
+
+      exportToExcel({
+        filename: `envios-ocr-${format(from, 'ddMMyy')}-${format(to, 'ddMMyy')}`,
+        sheetName: 'Envíos OCR',
+        columns: [
+          { header: 'Tracking', key: 'tracking_number' },
+          { header: 'Fecha', key: 'fecha' },
+          { header: 'Módulo', key: 'modulo' },
+          { header: 'Estado', key: 'estado' },
+          { header: 'ML Shipment ID', key: 'ml_shipment_id' },
+          { header: 'Destinatario', key: 'nombre_destinatario' },
+          { header: 'Dirección', key: 'direccion_entrega' },
+          { header: 'Ciudad', key: 'ciudad_entrega' },
+          { header: 'CP', key: 'cp_entrega' },
+          { header: 'Provincia', key: 'provincia' },
+          { header: 'Teléfono', key: 'telefono' },
+          { header: 'Remitente', key: 'nombre_remitente' },
+          { header: 'Chofer', key: 'chofer' },
+          { header: 'Bultos', key: 'cantidad_bultos', format: 'number' },
+          { header: 'Peso (kg)', key: 'peso_kg', format: 'number' },
+          { header: 'Valor Declarado', key: 'valor_declarado', format: 'currency' },
+          { header: 'Precio Total', key: 'precio_total', format: 'currency' },
+        ],
+        data: rows,
+      });
+      toast.success(`${rows.length} envíos OCR exportados`);
+    } catch (e) {
+      toast.error('Error al exportar envíos OCR');
+    } finally {
+      setExportingOCR(false);
+    }
+  };
 
   // Chart refs for PDF capture
   const sucursalesChartRef = useRef<HTMLDivElement>(null);
@@ -127,6 +230,15 @@ export default function Reports() {
           <h1 className="text-2xl font-bold text-foreground">Reportes y Análisis</h1>
           <p className="text-muted-foreground text-sm">Métricas y estadísticas de tu operación logística</p>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={exportingOCR}
+          onClick={handleExportOCR}
+        >
+          {exportingOCR ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ScanLine className="h-4 w-4 mr-2" />}
+          Exportar OCR
+        </Button>
       </div>
 
       {/* Global Filters */}
