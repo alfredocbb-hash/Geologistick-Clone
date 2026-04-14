@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import i18n from '@/i18n';
 import type { Database } from '@/integrations/supabase/types';
 
 type AppRole = Database['public']['Enums']['app_role'];
@@ -53,6 +54,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (profileData) {
         setProfile(profileData as Profile);
+        // Apply saved language preference
+        const savedLang = (profileData as any).idioma;
+        if (savedLang && savedLang !== i18n.language) {
+          i18n.changeLanguage(savedLang);
+        }
       }
 
       // Fetch roles

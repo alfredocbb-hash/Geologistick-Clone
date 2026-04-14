@@ -11,10 +11,13 @@ import { useQuery } from '@tanstack/react-query';
 import { useTheme } from 'next-themes';
 import { Label } from '@/components/ui/label';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { useTranslation } from 'react-i18next';
+import { LanguageSelector } from '@/components/i18n/LanguageSelector';
 
 export default function Profile() {
   const { profile, roles, user } = useAuth();
   const { theme, setTheme } = useTheme();
+  const { t } = useTranslation('auth');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(profile?.avatar_url || null);
   const [localProfile, setLocalProfile] = useState<ProfileType | null>(profile);
 
@@ -25,7 +28,6 @@ export default function Profile() {
     }
   }, [profile]);
 
-  // Fetch assigned branch name
   const { data: sucursal } = useQuery({
     queryKey: ['sucursal', profile?.sucursal_id],
     queryFn: async () => {
@@ -41,35 +43,26 @@ export default function Profile() {
     enabled: !!profile?.sucursal_id,
   });
 
-  // Fetch driver stats if user is a driver
   const isDriver = roles.includes('chofer');
   const { data: driverStats, isLoading: statsLoading } = useQuery({
     queryKey: ['driver-stats', user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
-
-      // Get delivered shipments count
       const { count: deliveredCount } = await supabase
         .from('envios')
         .select('*', { count: 'exact', head: true })
         .eq('chofer_id', user.id)
         .eq('estado', 'entregado');
-
-      // Get total commissions
       const { data: commissions } = await supabase
         .from('comisiones')
         .select('monto')
         .eq('chofer_id', user.id);
-
       const totalCommissions = commissions?.reduce((sum, c) => sum + (c.monto || 0), 0) || 0;
-
-      // Get completed routes
       const { count: routesCount } = await supabase
         .from('rutas_planificadas')
         .select('*', { count: 'exact', head: true })
         .eq('chofer_id', user.id)
         .eq('estado', 'completada');
-
       return {
         deliveredCount: deliveredCount || 0,
         totalCommissions,
@@ -79,14 +72,9 @@ export default function Profile() {
     enabled: isDriver && !!user?.id,
   });
 
-  const handleAvatarUpdate = (url: string) => {
-    setAvatarUrl(url || null);
-  };
-
+  const handleAvatarUpdate = (url: string) => setAvatarUrl(url || null);
   const handleProfileUpdate = (updates: Partial<ProfileType>) => {
-    if (localProfile) {
-      setLocalProfile({ ...localProfile, ...updates });
-    }
+    if (localProfile) setLocalProfile({ ...localProfile, ...updates });
   };
 
   if (!localProfile) {
@@ -100,13 +88,11 @@ export default function Profile() {
 
   return (
     <div className="space-y-6 p-4 md:p-6">
-      {/* Page Title */}
       <div>
-        <h1 className="text-2xl font-bold">Mi Perfil</h1>
-        <p className="text-muted-foreground">Gestiona tu información personal y seguridad</p>
+        <h1 className="text-2xl font-bold">{t('profile.title')}</h1>
+        <p className="text-muted-foreground">{t('profile.subtitle')}</p>
       </div>
 
-      {/* Profile Header */}
       <ProfileHeader
         profile={localProfile}
         roles={roles}
@@ -115,55 +101,60 @@ export default function Profile() {
       />
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Personal Info */}
         <PersonalInfoCard
           profile={localProfile}
           sucursalName={sucursal?.nombre}
           onProfileUpdate={handleProfileUpdate}
         />
-
-        {/* Security */}
         <SecurityCard />
 
         {/* Preferences */}
         <Card>
           <CardHeader>
-            <CardTitle>Preferencias</CardTitle>
-            <CardDescription>Configura tu experiencia de usuario</CardDescription>
+            <CardTitle>{t('profile.preferences')}</CardTitle>
+            <CardDescription>{t('profile.preferencesDescription')}</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
+            {/* Theme */}
             <div className="space-y-2">
-              <Label>Tema de la Interfaz</Label>
+              <Label>{t('profile.theme')}</Label>
               <ToggleGroup 
                 type="single" 
                 value={theme} 
                 onValueChange={(value) => value && setTheme(value)}
                 className="justify-start flex-wrap"
               >
-                <ToggleGroupItem value="light" aria-label="Modo claro">
+                <ToggleGroupItem value="light" aria-label={t('profile.themeLight')}>
                   <Sun className="h-4 w-4 mr-2" />
-                  Claro
+                  {t('profile.themeLight')}
                 </ToggleGroupItem>
-                <ToggleGroupItem value="dark" aria-label="Modo oscuro">
+                <ToggleGroupItem value="dark" aria-label={t('profile.themeDark')}>
                   <Moon className="h-4 w-4 mr-2" />
-                  Oscuro
+                  {t('profile.themeDark')}
                 </ToggleGroupItem>
                 <ToggleGroupItem value="midnight" aria-label="Midnight">
                   <Star className="h-4 w-4 mr-2" />
-                  Midnight
+                  {t('profile.themeMidnight')}
                 </ToggleGroupItem>
                 <ToggleGroupItem value="logistics-blue" aria-label="Logistics Blue">
                   <Ship className="h-4 w-4 mr-2" />
-                  Logistics
+                  {t('profile.themeLogistics')}
                 </ToggleGroupItem>
-                <ToggleGroupItem value="system" aria-label="Sistema">
+                <ToggleGroupItem value="system" aria-label={t('profile.themeSystem')}>
                   <Monitor className="h-4 w-4 mr-2" />
-                  Sistema
+                  {t('profile.themeSystem')}
                 </ToggleGroupItem>
               </ToggleGroup>
-              <p className="text-xs text-muted-foreground">
-                Elige entre modo claro, oscuro o usa la configuración de tu sistema
-              </p>
+              <p className="text-xs text-muted-foreground">{t('profile.themeDescription')}</p>
+            </div>
+
+            {/* Language */}
+            <div className="space-y-2">
+              <Label>{t('profile.language')}</Label>
+              <div>
+                <LanguageSelector persist variant="outline" />
+              </div>
+              <p className="text-xs text-muted-foreground">{t('profile.languageDescription')}</p>
             </div>
           </CardContent>
         </Card>
@@ -173,8 +164,8 @@ export default function Profile() {
       {isDriver && (
         <Card>
           <CardHeader>
-            <CardTitle>Mis Estadísticas</CardTitle>
-            <CardDescription>Tu rendimiento como chofer</CardDescription>
+            <CardTitle>{t('profile.stats')}</CardTitle>
+            <CardDescription>{t('profile.statsDescription')}</CardDescription>
           </CardHeader>
           <CardContent>
             {statsLoading ? (
@@ -191,10 +182,9 @@ export default function Profile() {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{driverStats?.deliveredCount || 0}</p>
-                    <p className="text-sm text-muted-foreground">Entregas realizadas</p>
+                    <p className="text-sm text-muted-foreground">{t('profile.deliveries')}</p>
                   </div>
                 </div>
-
                 <div className="flex items-center gap-4 p-4 bg-gradient-to-br from-commissions/10 to-commissions/5 rounded-lg border border-commissions/20">
                   <div className="p-3 bg-commissions/20 rounded-full">
                     <TrendingUp className="h-6 w-6 text-commissions" />
@@ -203,17 +193,16 @@ export default function Profile() {
                     <p className="text-2xl font-bold">
                       ${driverStats?.totalCommissions.toLocaleString('es-AR') || 0}
                     </p>
-                    <p className="text-sm text-muted-foreground">Comisiones totales</p>
+                    <p className="text-sm text-muted-foreground">{t('profile.commissions')}</p>
                   </div>
                 </div>
-
                 <div className="flex items-center gap-4 p-4 bg-gradient-to-br from-routes/10 to-routes/5 rounded-lg border border-routes/20">
                   <div className="p-3 bg-routes/20 rounded-full">
                     <Route className="h-6 w-6 text-routes" />
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{driverStats?.routesCount || 0}</p>
-                    <p className="text-sm text-muted-foreground">Rutas completadas</p>
+                    <p className="text-sm text-muted-foreground">{t('profile.completedRoutes')}</p>
                   </div>
                 </div>
               </div>
