@@ -93,6 +93,7 @@ import { RouteStatsPanel } from "@/components/maps/RouteStatsPanel";
 import { useDriverRoute } from "@/hooks/useDriverRoute";
 import EditRouteDialog from "@/components/routes/EditRouteDialog";
 import { cn } from "@/lib/utils";
+import { EditableHorarioCell } from "@/components/routes/EditableHorarioCell";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown, ChevronRight, List, MapPinned } from "lucide-react";
 import CancelRouteDialog from "@/components/routes/CancelRouteDialog";
