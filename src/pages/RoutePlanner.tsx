@@ -1650,18 +1650,12 @@ export default function RoutePlanner() {
                                 {localidad}
                               </TableCell>
                               <TableCell>
-                                {envio.horario_entrega_desde && envio.horario_entrega_hasta && (
-                                  <div className="text-xs font-medium">
-                                    {envio.horario_entrega_desde} - {envio.horario_entrega_hasta}
-                                  </div>
-                                )}
-                                {envio.horario_preferido_entrega && envio.horario_preferido_entrega !== 'cualquier_hora' && (
-                                  <Badge variant="outline" className="text-[10px]">
-                                    {envio.horario_preferido_entrega === 'manana' ? '🌅 Mañana' :
-                                     envio.horario_preferido_entrega === 'tarde' ? '☀️ Tarde' :
-                                     envio.horario_preferido_entrega === 'noche' ? '🌙 Noche' : ''}
-                                  </Badge>
-                                )}
+                                <EditableHorarioCell
+                                  envioId={envio.id}
+                                  horarioDesde={envio.horario_entrega_desde}
+                                  horarioHasta={envio.horario_entrega_hasta}
+                                  horarioPreferido={envio.horario_preferido_entrega}
+                                />
                               </TableCell>
                               <TableCell className="text-xs max-w-[150px] truncate">
                                 {envio.tipo === "retiro" 
