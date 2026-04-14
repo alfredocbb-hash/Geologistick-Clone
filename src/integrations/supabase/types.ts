@@ -2835,6 +2835,7 @@ export type Database = {
           created_at: string | null
           email: string
           id: string
+          idioma: string | null
           nombre: string
           sucursal_id: string | null
           telefono: string | null
@@ -2856,6 +2857,7 @@ export type Database = {
           created_at?: string | null
           email: string
           id?: string
+          idioma?: string | null
           nombre: string
           sucursal_id?: string | null
           telefono?: string | null
@@ -2877,6 +2879,7 @@ export type Database = {
           created_at?: string | null
           email?: string
           id?: string
+          idioma?: string | null
           nombre?: string
           sucursal_id?: string | null
           telefono?: string | null
