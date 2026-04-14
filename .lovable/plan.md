@@ -1,19 +1,33 @@
 
 
-## Plan: Actualizar envíos de KINGDOM VINTAGE a entregado
+## Plan: Corregir visualización y bloqueo de suscripciones vencidas
 
-### Contexto
-- Seller: **KINGDOM VINTAGE** (ID: `482c8c28-5afd-4a44-8df4-bf80dd1438ec`)
-- **47 envíos** pendientes/en_reparto que deben pasar a `entregado`
+### Problema
+BlackBox tiene `current_period_end = 2026-04-13` (ayer) pero `status = active` en la DB. Dos problemas:
 
-### Cambios (sin modificar código, solo datos)
+1. **Visual**: En la tabla de "Gestión de Suscripciones" (SuperAdminSubscriptionManager), el badge muestra "Activo" porque lee el campo `status` sin verificar si `current_period_end` ya pasó.
+2. **Funcional**: El bloqueo del hook `useSubscriptionBlock` sí funciona correctamente (compara la fecha), pero el estado en DB queda desincronizado.
 
-1. **Actualizar estado de los 47 envíos** a `entregado` y setear `fecha_entrega = now()` en la tabla `envios`
-2. **Insertar registros en `envio_historial`** para cada envío con la nota "Marcado como entregado por administrador (actualización masiva)"
-3. Las órdenes de ecommerce se actualizarán automáticamente por el trigger `sync_ecommerce_order_status` que ya existe
+### Solución
 
-### Ejecución
-Se usará el insert tool para ejecutar dos queries:
-- `UPDATE envios SET estado = 'entregado', fecha_entrega = now() WHERE id IN (SELECT e.id FROM envios e JOIN ecommerce_orders eo ON eo.envio_id = e.id WHERE eo.seller_id = '482c8c28-...' AND e.estado NOT IN ('entregado','cancelado','devuelto'))`
-- `INSERT INTO envio_historial` para los 47 registros
+#### 1. `src/components/subscriptions/SuperAdminSubscriptionManager.tsx`
+En la tabla de empresas, al mostrar el badge de estado, verificar si `current_period_end < now()`. Si la fecha ya pasó aunque `status === 'active'`, mostrar badge "Vencido" en rojo en lugar de "Activo" en verde.
+
+#### 2. Migración SQL (opcional pero recomendada)
+Actualizar el registro de BlackBox para reflejar la realidad:
+```sql
+UPDATE tenant_subscriptions 
+SET status = 'expired' 
+WHERE tenant_id = '81be07a7-73a0-4986-994e-5365478343eb' 
+AND current_period_end < now();
+```
+
+### Archivos a modificar
+| Archivo | Cambio |
+|---------|--------|
+| `src/components/subscriptions/SuperAdminSubscriptionManager.tsx` | Agregar lógica para mostrar "Vencido" cuando `current_period_end < now` |
+
+### Notas
+- El bloqueo para usuarios de BlackBox **ya funciona** — ellos ven la pantalla de bloqueo. Solo el super_admin ve "Activo" porque: (a) está exento del bloqueo y (b) la tabla lee `status` sin chequear fecha.
+- La corrección es puramente visual en el panel de super admin.
 
