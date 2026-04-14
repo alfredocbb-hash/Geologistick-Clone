@@ -13,6 +13,9 @@ import { useProductividadData } from '@/hooks/useProductividadData';
 import { useCostosData } from '@/hooks/useCostosData';
 import { subDays, subMonths, format, startOfDay, endOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { exportReportPDF } from '@/lib/exportReportPDF';
 import { exportToExcel } from '@/lib/exportExcel';
 import { toast } from 'sonner';
@@ -65,6 +68,8 @@ function TrendBadge({ value, suffix = '%' }: { value: number; suffix?: string })
 
 export default function Reports() {
   const [datePreset, setDatePreset] = useState('Último Mes');
+  const [customFrom, setCustomFrom] = useState<Date | undefined>(undefined);
+  const [customTo, setCustomTo] = useState<Date | undefined>(undefined);
   const [sucursalId, setSucursalId] = useState<string>('all');
   const [exporting, setExporting] = useState(false);
   const [exportingOCR, setExportingOCR] = useState(false);
@@ -176,8 +181,10 @@ export default function Reports() {
   const evolucionChartRef = useRef<HTMLDivElement>(null);
   const estadosChartRef = useRef<HTMLDivElement>(null);
 
+  const isCustom = datePreset === 'Personalizado';
   const preset = DATE_PRESETS.find(p => p.label === datePreset) || DATE_PRESETS[2];
-  const { from, to } = preset.getValue();
+  const from = isCustom && customFrom ? customFrom : preset.getValue().from;
+  const to = isCustom && customTo ? customTo : preset.getValue().to;
   const dateRange = `${format(from, 'dd/MM/yy')} - ${format(to, 'dd/MM/yy')}`;
 
   const filters: ReportsFilters = {
@@ -247,7 +254,13 @@ export default function Reports() {
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
               <label className="text-sm font-medium text-muted-foreground mb-1.5 block">Período</label>
-              <Select value={datePreset} onValueChange={setDatePreset}>
+              <Select value={datePreset} onValueChange={(v) => {
+                setDatePreset(v);
+                if (v !== 'Personalizado') {
+                  setCustomFrom(undefined);
+                  setCustomTo(undefined);
+                }
+              }}>
                 <SelectTrigger>
                   <Calendar className="h-4 w-4 mr-2 text-muted-foreground" />
                   <SelectValue />
@@ -256,9 +269,56 @@ export default function Reports() {
                   {DATE_PRESETS.map(p => (
                     <SelectItem key={p.label} value={p.label}>{p.label}</SelectItem>
                   ))}
+                  <SelectItem value="Personalizado">Personalizado</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+            {isCustom && (
+              <>
+                <div className="flex-1">
+                  <label className="text-sm font-medium text-muted-foreground mb-1.5 block">Desde</label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !customFrom && "text-muted-foreground")}>
+                        <Calendar className="h-4 w-4 mr-2" />
+                        {customFrom ? format(customFrom, 'dd/MM/yyyy') : 'Seleccionar'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <CalendarComponent
+                        mode="single"
+                        selected={customFrom}
+                        onSelect={setCustomFrom}
+                        disabled={(date) => date > new Date()}
+                        initialFocus
+                        className={cn("p-3 pointer-events-auto")}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div className="flex-1">
+                  <label className="text-sm font-medium text-muted-foreground mb-1.5 block">Hasta</label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !customTo && "text-muted-foreground")}>
+                        <Calendar className="h-4 w-4 mr-2" />
+                        {customTo ? format(customTo, 'dd/MM/yyyy') : 'Seleccionar'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <CalendarComponent
+                        mode="single"
+                        selected={customTo}
+                        onSelect={setCustomTo}
+                        disabled={(date) => date > new Date() || (customFrom ? date < customFrom : false)}
+                        initialFocus
+                        className={cn("p-3 pointer-events-auto")}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </>
+            )}
             <div className="flex-1">
               <label className="text-sm font-medium text-muted-foreground mb-1.5 block">Sucursal</label>
               <Select value={sucursalId} onValueChange={setSucursalId}>
