@@ -76,7 +76,7 @@ import { es } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useDriverRoute } from "@/hooks/useDriverRoute";
-import { GoogleMapsProvider } from "@/components/maps/GoogleMapsProvider";
+
 import { MapView } from "@/components/maps/MapView";
 import { RouteStatsPanel } from "@/components/maps/RouteStatsPanel";
 import { ReceiveRouteSheetDialog } from "@/components/scan/ReceiveRouteSheetDialog";
