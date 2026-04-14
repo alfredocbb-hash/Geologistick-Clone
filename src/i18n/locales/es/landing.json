@@ -1,0 +1,18 @@
+{
+  "headline1": "Software de",
+  "headline2": "logística inteligente",
+  "trackYourShipment": "Seguí tu envío",
+  "enterTrackingCode": "Ingresá el código de tracking",
+  "trackingPlaceholder": "Ej: ENV-A3K9P2",
+  "freeTrial": "14 días gratis",
+  "noCard": "Sin tarjeta",
+  "supportIncluded": "Soporte incluido",
+  "featureShipments": "Gestión de envíos",
+  "featureShipmentsDesc": "Crea, rastrea y entrega",
+  "featureGPS": "GPS en tiempo real",
+  "featureGPSDesc": "Seguí a tus choferes",
+  "featureSettlements": "Liquidaciones",
+  "featureSettlementsDesc": "Cálculo automático",
+  "featureIntegrations": "Integraciones",
+  "featureIntegrationsDesc": "ML, Tiendanube, API"
+}

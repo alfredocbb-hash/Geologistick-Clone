@@ -1,0 +1,18 @@
+{
+  "headline1": "Intelligent",
+  "headline2": "logistics software",
+  "trackYourShipment": "Track your shipment",
+  "enterTrackingCode": "Enter the tracking code",
+  "trackingPlaceholder": "e.g.: ENV-A3K9P2",
+  "freeTrial": "14 days free",
+  "noCard": "No credit card",
+  "supportIncluded": "Support included",
+  "featureShipments": "Shipment management",
+  "featureShipmentsDesc": "Create, track and deliver",
+  "featureGPS": "Real-time GPS",
+  "featureGPSDesc": "Track your drivers",
+  "featureSettlements": "Settlements",
+  "featureSettlementsDesc": "Automatic calculation",
+  "featureIntegrations": "Integrations",
+  "featureIntegrationsDesc": "ML, Tiendanube, API"
+}

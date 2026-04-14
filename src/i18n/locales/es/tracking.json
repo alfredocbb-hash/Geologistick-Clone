@@ -1,0 +1,19 @@
+{
+  "searchTitle": "Rastrea tu Envío",
+  "searchSubtitle": "Ingresa tu número de tracking para conocer el estado de tu paquete",
+  "searchPlaceholder": "Ej: ENV-20240115-A1B2C3",
+  "searchButton": "Buscar",
+  "searching": "Buscando envío...",
+  "notFound": "Envío no encontrado",
+  "notFoundDesc": "No encontramos un envío con el tracking:",
+  "backToDashboard": "Volver al dashboard",
+  "origin": "Origen",
+  "destination": "Destino",
+  "noSender": "Sin remitente",
+  "noRecipient": "Sin destinatario",
+  "standardPackage": "Paquete estándar",
+  "routeSheets": "Hojas de Ruta",
+  "departure": "Salida",
+  "movementHistory": "Historial de Movimientos",
+  "copyright": "Sistema de Gestión Logística."
+}

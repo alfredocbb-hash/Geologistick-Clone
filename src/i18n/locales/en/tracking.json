@@ -1,0 +1,19 @@
+{
+  "searchTitle": "Track your Shipment",
+  "searchSubtitle": "Enter your tracking number to check your package status",
+  "searchPlaceholder": "e.g.: ENV-20240115-A1B2C3",
+  "searchButton": "Search",
+  "searching": "Searching shipment...",
+  "notFound": "Shipment not found",
+  "notFoundDesc": "We couldn't find a shipment with tracking:",
+  "backToDashboard": "Back to dashboard",
+  "origin": "Origin",
+  "destination": "Destination",
+  "noSender": "No sender",
+  "noRecipient": "No recipient",
+  "standardPackage": "Standard package",
+  "routeSheets": "Route Sheets",
+  "departure": "Departure",
+  "movementHistory": "Movement History",
+  "copyright": "Logistics Management System."
+}
