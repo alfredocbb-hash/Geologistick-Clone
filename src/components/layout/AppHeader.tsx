@@ -16,6 +16,8 @@ import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { NotificationPopover } from '@/components/notifications/NotificationPopover';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
+import { useTranslation } from 'react-i18next';
+import { LanguageSelector } from '@/components/i18n/LanguageSelector';
 
 export function AppHeader() {
   const { profile, roles, signOut } = useAuth();

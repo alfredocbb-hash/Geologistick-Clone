@@ -8,6 +8,8 @@ import { Card, CardContent, CardFooter, CardHeader, CardDescription } from "@/co
 import { Loader2, Mail, Lock, MapPin, Truck, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import geologistickLogo from "@/assets/geologistick-logo.png";
+import { useTranslation } from "react-i18next";
+import { LanguageSelector } from "@/components/i18n/LanguageSelector";
 
 export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
@@ -15,8 +17,8 @@ export function LoginForm() {
   const { signIn } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { t } = useTranslation('auth');
 
-  // Animate content on mount
   useEffect(() => {
     const timer = setTimeout(() => setShowContent(true), 100);
     return () => clearTimeout(timer);
@@ -34,14 +36,14 @@ export function LoginForm() {
 
     if (error) {
       toast({
-        title: "Error al iniciar sesión",
+        title: t('login.error'),
         description: error.message,
         variant: "destructive",
       });
     } else {
       toast({
-        title: "¡Bienvenido!",
-        description: "Has iniciado sesión correctamente.",
+        title: t('login.welcome'),
+        description: t('login.welcomeMessage'),
       });
       navigate("/dashboard");
     }
@@ -53,12 +55,10 @@ export function LoginForm() {
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 overflow-hidden">
       {/* Animated Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {/* Gradient orbs */}
         <div className="absolute -top-32 -right-32 w-64 h-64 bg-primary/20 rounded-full blur-3xl animate-pulse" />
         <div className="absolute top-1/2 -left-32 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl" />
         <div className="absolute -bottom-32 right-1/4 w-72 h-72 bg-blue-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
         
-        {/* Grid pattern */}
         <div 
           className="absolute inset-0 opacity-5"
           style={{
@@ -67,7 +67,6 @@ export function LoginForm() {
           }}
         />
         
-        {/* Floating icons */}
         <div className="absolute top-20 left-10 opacity-10 animate-bounce" style={{ animationDuration: '3s' }}>
           <Truck className="w-8 h-8 text-white" />
         </div>
@@ -80,13 +79,17 @@ export function LoginForm() {
       </div>
 
       <div className="relative z-10 w-full max-w-md space-y-6">
+        {/* Language Selector - top right */}
+        <div className="flex justify-end">
+          <LanguageSelector variant="ghost" className="text-slate-400 hover:text-white" />
+        </div>
+
         {/* Logo & Title */}
         <div 
           className={`text-center space-y-4 transition-all duration-700 ${
             showContent ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
           }`}
         >
-          {/* Glowing logo container */}
           <div className="relative mx-auto w-fit">
             <div className="absolute inset-0 bg-primary/30 rounded-2xl blur-xl animate-pulse" />
             <img 
@@ -96,7 +99,7 @@ export function LoginForm() {
             />
           </div>
           <h1 className="text-3xl font-bold tracking-tight text-white">Geologistick</h1>
-          <p className="text-slate-400">Sistema de Gestión Logística</p>
+          <p className="text-slate-400">{t('login.systemName')}</p>
         </div>
 
         {/* Login Card */}
@@ -106,16 +109,16 @@ export function LoginForm() {
           }`}
         >
           <CardHeader className="pb-4 text-center">
-            <h2 className="text-xl font-semibold text-white">Iniciar Sesión</h2>
+            <h2 className="text-xl font-semibold text-white">{t('login.title')}</h2>
             <CardDescription className="text-slate-400">
-              Ingresa tus credenciales para acceder
+              {t('login.subtitle')}
             </CardDescription>
           </CardHeader>
 
           <form onSubmit={handleLogin}>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="login-email" className="text-slate-300">Correo electrónico</Label>
+                <Label htmlFor="login-email" className="text-slate-300">{t('login.email')}</Label>
                 <div className="relative group">
                   <div className="absolute inset-0 bg-primary/20 rounded-xl blur opacity-0 group-focus-within:opacity-100 transition-opacity" />
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-primary transition-colors z-10" />
@@ -123,14 +126,14 @@ export function LoginForm() {
                     id="login-email"
                     name="email"
                     type="email"
-                    placeholder="tu@email.com"
+                    placeholder={t('login.emailPlaceholder')}
                     className="relative pl-10 bg-slate-800/50 border-slate-700/50 text-white placeholder:text-slate-500 focus:border-primary focus:ring-primary/30"
                     required
                   />
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="login-password" className="text-slate-300">Contraseña</Label>
+                <Label htmlFor="login-password" className="text-slate-300">{t('login.password')}</Label>
                 <div className="relative group">
                   <div className="absolute inset-0 bg-primary/20 rounded-xl blur opacity-0 group-focus-within:opacity-100 transition-opacity" />
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-primary transition-colors z-10" />
@@ -138,7 +141,7 @@ export function LoginForm() {
                     id="login-password"
                     name="password"
                     type="password"
-                    placeholder="••••••••"
+                    placeholder={t('login.passwordPlaceholder')}
                     className="relative pl-10 bg-slate-800/50 border-slate-700/50 text-white placeholder:text-slate-500 focus:border-primary focus:ring-primary/30"
                     required
                   />
@@ -154,21 +157,21 @@ export function LoginForm() {
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Iniciando...
+                    {t('login.submitting')}
                   </>
                 ) : (
-                  "Iniciar Sesión"
+                  t('login.submit')
                 )}
               </Button>
               
               <div className="text-center">
                 <p className="text-sm text-slate-400">
-                  ¿No tienes cuenta?{" "}
+                  {t('login.noAccount')}{" "}
                   <Link 
                     to="/#pricing" 
                     className="text-primary hover:text-primary/80 font-medium inline-flex items-center gap-1"
                   >
-                    Solicitar prueba gratuita
+                    {t('login.requestTrial')}
                     <ExternalLink className="h-3 w-3" />
                   </Link>
                 </p>
@@ -182,7 +185,7 @@ export function LoginForm() {
             showContent ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
           }`}
         >
-          © 2026 Geologistick. Sistema de Gestión Logística.
+          {t('login.copyright')}
         </p>
       </div>
     </div>
