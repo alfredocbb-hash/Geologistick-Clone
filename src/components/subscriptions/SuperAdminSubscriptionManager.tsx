@@ -334,18 +334,27 @@ export default function SuperAdminSubscriptionManager() {
 
   // Stats
   const totalTenants = tenants?.length || 0;
-  const activeSubscriptions = tenants?.filter(t =>
-    t.tenant_subscriptions?.[0]?.status === "active"
-  ).length || 0;
+  const activeSubscriptions = tenants?.filter(t => {
+    const sub = t.tenant_subscriptions?.[0];
+    if (sub?.status !== "active") return false;
+    if (sub.current_period_end && new Date(sub.current_period_end) < new Date()) return false;
+    return true;
+  }).length || 0;
   const noplan = totalTenants - activeSubscriptions;
   const pendingPayments = payments?.filter(p => p.status === "pending").length || 0;
 
-  const getStatusBadge = (status: string | undefined) => {
+  const getStatusBadge = (status: string | undefined, currentPeriodEnd?: string | null) => {
     if (!status) return <Badge variant="outline">Sin plan</Badge>;
+    // Check if subscription is expired by date even if status says "active"
+    const isExpiredByDate = status === "active" && currentPeriodEnd && new Date(currentPeriodEnd) < new Date();
+    if (isExpiredByDate) {
+      return <Badge variant="destructive">Vencido</Badge>;
+    }
     switch (status) {
       case "active": return <Badge className="bg-green-600 text-white">Activo</Badge>;
       case "pending": return <Badge className="bg-yellow-500 text-white">Pendiente</Badge>;
       case "cancelled": return <Badge variant="destructive">Cancelado</Badge>;
+      case "expired": return <Badge variant="destructive">Vencido</Badge>;
       case "trial": return <Badge variant="secondary">Trial</Badge>;
       default: return <Badge variant="outline">{status}</Badge>;
     }
@@ -467,7 +476,7 @@ export default function SuperAdminSubscriptionManager() {
                             <span className="text-muted-foreground text-sm">Sin plan</span>
                           )}
                         </TableCell>
-                        <TableCell>{getStatusBadge(sub?.status)}</TableCell>
+                        <TableCell>{getStatusBadge(sub?.status, sub?.current_period_end)}</TableCell>
                         <TableCell>
                           {sub?.current_period_end
                             ? format(new Date(sub.current_period_end), "dd/MM/yyyy", { locale: es })
