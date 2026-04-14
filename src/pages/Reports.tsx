@@ -181,8 +181,10 @@ export default function Reports() {
   const evolucionChartRef = useRef<HTMLDivElement>(null);
   const estadosChartRef = useRef<HTMLDivElement>(null);
 
+  const isCustom = datePreset === 'Personalizado';
   const preset = DATE_PRESETS.find(p => p.label === datePreset) || DATE_PRESETS[2];
-  const { from, to } = preset.getValue();
+  const from = isCustom && customFrom ? customFrom : preset.getValue().from;
+  const to = isCustom && customTo ? customTo : preset.getValue().to;
   const dateRange = `${format(from, 'dd/MM/yy')} - ${format(to, 'dd/MM/yy')}`;
 
   const filters: ReportsFilters = {
