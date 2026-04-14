@@ -1,36 +1,28 @@
 
 
-## Plan: Re-sincronizar horarios de entrega para envíos ML existentes
+## Plan: Editar horario de entrega manualmente en el Planificador
 
 ### Problema
-Hay **116 envíos ML activos** sin horario de entrega (`horario_entrega_desde`, `horario_entrega_hasta` son NULL). Estos fueron creados antes de que la función de sync extrajera el `time_frame`.
+Cuando la API de ML no devuelve `time_frame`, los envíos aparecen sin horario en el Planificador y no hay forma de asignarlo manualmente.
 
 ### Solución
-Crear una edge function `recover-ml-timeframes` que:
-1. Busque envíos ML activos sin horario de entrega
-2. Para cada uno, consulte la API de ML (`/shipments/{id}`) usando el access token del seller correspondiente
-3. Extraiga `lead_time.estimated_delivery_time.time_frame`
-4. Actualice los campos `horario_entrega_desde`, `horario_entrega_hasta` y `horario_preferido_entrega`
+Hacer clickeable la celda "Horario" en la tabla de envíos del Planificador. Al hacer click, mostrar un popover/select que permita:
+1. Elegir una preferencia horaria (Mañana, Tarde, Noche, Comercial)
+2. Opcionalmente ingresar rango exacto (HH:MM desde/hasta)
+3. Guardar directamente en la tabla `envios` via Supabase update
 
-### Archivo a crear
+### Archivo a modificar
 
-| Archivo | Descripción |
-|---------|-------------|
-| `supabase/functions/recover-ml-timeframes/index.ts` | Edge function que re-consulta ML y actualiza horarios |
-
-### Flujo
-1. Recibe POST con `tenant_id` (o lo obtiene del usuario autenticado)
-2. Busca sellers ML del tenant con access token válido
-3. Busca envíos sin horario vinculados a cada seller (via `ecommerce_orders`)
-4. Para cada envío, llama a `/shipments/{ml_shipment_id}` de ML
-5. Extrae `time_frame` y actualiza el envío en la DB
-6. Retorna conteo de actualizados/errores
-
-### Ejecución
-Una vez creada, la invocaré directamente para actualizar los 116 envíos del tenant `94a9ea85-43c5-49ac-9bfa-86843072c2ce`.
+| Archivo | Cambio |
+|---------|--------|
+| `src/pages/RoutePlanner.tsx` | Reemplazar la celda estática de "Horario" (líneas 1652-1665) por un componente clickeable con popover que muestre un Select de preferencia + inputs de hora desde/hasta, y al confirmar haga `supabase.from('envios').update(...)` |
 
 ### Detalle técnico
-- Reutiliza la función `getValidAccessToken` del sync existente
-- Agrupa envíos por seller para usar un solo token por seller
-- Procesa en lotes para no exceder rate limits de ML
+- La celda mostrará el horario actual (si existe) o un botón "Asignar"
+- Al clickear se abre un `Popover` con:
+  - `Select` con opciones: Mañana (08:00-13:00), Tarde (13:00-20:00), Noche (20:00-23:00), Comercial (09:00-18:00), Personalizado
+  - Si elige "Personalizado", aparecen 2 inputs tipo `time` para desde/hasta
+- Al confirmar, actualiza `envios` con `horario_preferido_entrega`, `horario_entrega_desde`, `horario_entrega_hasta`
+- Invalida el query de envíos para refrescar la tabla
+- No requiere cambios de base de datos (los campos ya existen)
 
