@@ -1,38 +1,34 @@
 
 
-## Plan: Reporte Excel de envíos OCR con chofer y estado
+## Plan: Extraer horario de entrega de ML en la sincronización
 
-### Cambio
-Agregar un botón "Exportar OCR" en la página de Reportes que descargue un Excel con todos los envíos creados por OCR, incluyendo chofer asignado y estado actual.
+### Problema
+El envío ML-46848602811 tiene horario comercial en Mercado Libre, pero los campos `horario_entrega_desde`, `horario_entrega_hasta` y `horario_preferido_entrega` están vacíos en la base de datos. Esto ocurre porque la función `mercadolibre-sync` **no extrae el `time_frame`** de la API de ML al crear envíos — solo lo hacen `mercadolibre-webhook` y `register-ml-shipment`.
 
-### Archivos a modificar
+### Solución
+Replicar la lógica de extracción de `time_frame` (que ya existe en el webhook) dentro de `mercadolibre-sync`, para que los envíos creados por sincronización también tengan sus horarios de entrega.
+
+### Archivo a modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/pages/Reports.tsx` | Agregar botón "Exportar OCR" + lógica de query y exportación |
+| `supabase/functions/mercadolibre-sync/index.ts` | Extraer `lead_time.estimated_delivery_time.time_frame` del shipment y guardar `horario_preferido_entrega`, `horario_entrega_desde`, `horario_entrega_hasta` en el insert de `envios` |
 
-### Columnas del Excel
-1. Tracking Number
-2. Fecha de creación
-3. Módulo origen (album/burst/manual)
-4. **Estado actual**
-5. ML Shipment ID
-6. Nombre destinatario
-7. Dirección de entrega
-8. Ciudad
-9. Código Postal
-10. Provincia
-11. Teléfono destinatario
-12. Nombre remitente
-13. **Chofer asignado** (nombre + apellido del profile)
-14. Cantidad bultos
-15. Peso (kg)
-16. Valor declarado
-17. Precio total
+### Detalle técnico
+Se agregará el mismo bloque que usa el webhook (líneas 210-225 de `mercadolibre-webhook/index.ts`):
 
-### Lógica
-1. Query `envios` filtrando `source_module LIKE 'bulk_ocr%'` + rango de fechas + tenant
-2. Obtener IDs de choferes únicos y hacer query a `profiles` para nombres
-3. Mapear chofer_id → nombre completo
-4. Exportar con `exportToExcel()` existente
+```typescript
+const timeFrame = shipment.lead_time?.estimated_delivery_time?.time_frame;
+let horarioPreferido = 'cualquier_hora';
+let horarioEntregaDesde = null;
+let horarioEntregaHasta = null;
+if (timeFrame?.from != null && timeFrame?.to != null) {
+  // Convertir a HH:MM y determinar preferencia
+}
+```
+
+Y se incluirán los 3 campos en el `insert` de envíos (línea ~503).
+
+### Nota
+Los envíos **ya existentes** que se sincronizaron sin estos datos no se corregirán automáticamente. Si se desea actualizar los existentes, se podría hacer una re-sincronización o un script puntual.
 
