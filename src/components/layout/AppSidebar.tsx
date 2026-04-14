@@ -360,7 +360,7 @@ export function AppSidebar() {
             </div>
             {!collapsed && <div className="flex flex-col">
                 <span className="text-lg font-bold text-sidebar-foreground">Geologistick</span>
-                <span className="text-xs text-sidebar-foreground/60">Cargando...</span>
+                <span className="text-xs text-sidebar-foreground/60">{t('mobile.loading', 'Cargando...')}</span>
               </div>}
           </div>
         </SidebarHeader>
