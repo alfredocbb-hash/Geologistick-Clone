@@ -14,5 +14,110 @@
   "featureSettlements": "Liquidações",
   "featureSettlementsDesc": "Cálculo automático",
   "featureIntegrations": "Integrações",
-  "featureIntegrationsDesc": "ML, Tiendanube, API"
+  "featureIntegrationsDesc": "ML, Tiendanube, API",
+
+  "nav": {
+    "features": "Funcionalidades",
+    "circuit": "Circuito",
+    "pricing": "Preços",
+    "tracking": "Rastreamento",
+    "contact": "Contato",
+    "login": "Entrar",
+    "getStarted": "Começar",
+    "getStartedFree": "Começar grátis"
+  },
+
+  "features": {
+    "title": "Funcionalidades",
+    "titleHighlight": " completas",
+    "f1Title": "Folhas de rota e atribuição de envios",
+    "f1Desc": "Crie folhas de rota, atribua envios a motoristas e gerencie todo o fluxo de despacho em um único painel. Reatribua em tempo real conforme disponibilidade e zona de cobertura.",
+    "f2Title": "Rastreamento GPS em tempo real",
+    "f2Desc": "Acompanhe a localização de cada motorista no mapa ao vivo. Compartilhe um link de rastreamento público para que seus clientes vejam o status do envio sem precisar ligar.",
+    "f3Title": "Liquidações automáticas",
+    "f3Desc": "Calcule comissões de motoristas, filiais e clientes automaticamente. Defina porcentagens, valores fixos e conceitos personalizados. Gere PDFs de liquidação com um clique.",
+    "f4Title": "Integração com Mercado Livre e Tiendanube",
+    "f4Desc": "Sincronize pedidos do Mercado Livre e Tiendanube automaticamente. Atualize status de envio na plataforma de origem sem intervenção manual.",
+    "f5Title": "Leitura QR e digitalização",
+    "f5Desc": "Leia códigos QR para receber, transferir e entregar pacotes. Registre cada movimento com rastreabilidade completa desde a recepção até a entrega.",
+    "f6Title": "Etiquetas e rótulos automáticos",
+    "f6Desc": "Gere etiquetas com código QR, rótulos de despacho e comprovantes de entrega (EPOD) automaticamente. Imprima em lote ou individualmente.",
+    "f7Title": "Analytics e relatórios avançados",
+    "f7Desc": "Dashboard com métricas-chave: envios por dia, receita, desempenho de motoristas, previsão de demanda e análise de produtividade por filial.",
+    "f8Title": "App móvel para motoristas",
+    "f8Desc": "Os motoristas gerenciam suas rotas, confirmam entregas com foto e assinatura, registram cobranças na entrega e reportam incidentes pelo celular."
+  },
+
+  "cta": {
+    "joinCount": "Junte-se a {{count}}+ que já otimizam seus envios",
+    "joinGeneric": "Junte-se a empresas que já otimizam seus envios",
+    "readyTo": "Pronto para",
+    "transformLogistics": "transformar sua logística?",
+    "subtitle": "Comece seu teste gratuito hoje. Sem compromissos, sem cartão de crédito.",
+    "startNow": "Começar agora",
+    "viewPlans": "Ver planos",
+    "setupTime": "Setup em 5 min",
+    "noCard": "Sem cartão",
+    "support247": "Suporte 24/7"
+  },
+
+  "pricing": {
+    "title": "Preços",
+    "titleHighlight": " simples",
+    "popular": "Mais popular",
+    "startTrial": "Começar teste grátis",
+    "shipmentsMonth": "envios/mês",
+    "branches": "filiais",
+    "users": "usuários",
+    "noCreditCard": "Sem cartão de crédito.",
+    "perMonth": "/mês"
+  },
+
+  "circuit": {
+    "title": "Circuito",
+    "titleHighlight": " operativo",
+    "subtitle": "Desde a entrada do pacote até a liquidação, tudo em um único sistema.",
+    "s1Label": "Recepção",
+    "s1Desc": "Entrada do pacote na filial ou retirada do remetente",
+    "s2Label": "Digitalização",
+    "s2Desc": "Leitura QR, geração de etiquetas e registro no sistema",
+    "s3Label": "Atribuição",
+    "s3Desc": "Atribuição a motorista e criação de folha de rota",
+    "s4Label": "Rota",
+    "s4Desc": "Otimização de percurso com IA e navegação GPS",
+    "s5Label": "Entrega",
+    "s5Desc": "Confirmação com assinatura, foto e notificação ao cliente",
+    "s6Label": "Liquidação",
+    "s6Desc": "Cálculo automático de comissões e prestações de contas"
+  },
+
+  "about": {
+    "whoWeAre": "Quem somos",
+    "ourMission": "Nossa missão",
+    "ourVision": "Nossa visão"
+  },
+
+  "stats": {
+    "activeCompanies": "Empresas ativas",
+    "shipmentsManaged": "Envios gerenciados",
+    "driversConnected": "Motoristas conectados",
+    "uptimeGuaranteed": "Uptime garantido"
+  },
+
+  "footer": {
+    "product": "Produto",
+    "legal": "Legal",
+    "support": "Suporte",
+    "helpCenter": "Central de Ajuda",
+    "features": "Funcionalidades",
+    "operativeCircuit": "Circuito operativo",
+    "pricing": "Preços",
+    "tracking": "Rastreamento",
+    "terms": "Termos",
+    "privacy": "Privacidade",
+    "cookies": "Cookies",
+    "allRights": "Todos os direitos reservados.",
+    "allSystems": "Todos os sistemas operacionais",
+    "description": "A plataforma de gestão logística mais completa da Argentina. Otimize suas entregas com tecnologia de ponta."
+  }
 }

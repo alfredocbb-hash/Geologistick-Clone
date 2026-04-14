@@ -14,5 +14,110 @@
   "featureSettlements": "Settlements",
   "featureSettlementsDesc": "Automatic calculation",
   "featureIntegrations": "Integrations",
-  "featureIntegrationsDesc": "ML, Tiendanube, API"
+  "featureIntegrationsDesc": "ML, Tiendanube, API",
+
+  "nav": {
+    "features": "Features",
+    "circuit": "Workflow",
+    "pricing": "Pricing",
+    "tracking": "Tracking",
+    "contact": "Contact",
+    "login": "Sign in",
+    "getStarted": "Get started",
+    "getStartedFree": "Get started free"
+  },
+
+  "features": {
+    "title": "Complete",
+    "titleHighlight": " features",
+    "f1Title": "Route sheets and shipment assignment",
+    "f1Desc": "Create route sheets, assign shipments to drivers and manage the entire dispatch flow from a single panel. Reassign in real time based on availability and coverage area.",
+    "f2Title": "Real-time GPS tracking",
+    "f2Desc": "Track each driver's location on a live map. Share a public tracking link so your customers can see their shipment status without calling.",
+    "f3Title": "Automatic settlements",
+    "f3Desc": "Automatically calculate driver, branch and client commissions. Define percentages, fixed amounts and custom concepts. Generate settlement PDFs with one click.",
+    "f4Title": "Mercado Libre & Tiendanube integration",
+    "f4Desc": "Sync orders from Mercado Libre and Tiendanube automatically. Update shipment statuses on the source platform without manual intervention.",
+    "f5Title": "QR scanning and digitization",
+    "f5Desc": "Scan QR codes to receive, transfer and deliver packages. Record every movement with full traceability from reception to delivery.",
+    "f6Title": "Automatic labels and tags",
+    "f6Desc": "Generate QR code labels, dispatch tags and proof of delivery (EPOD) automatically. Print in batch or one by one.",
+    "f7Title": "Analytics and advanced reports",
+    "f7Desc": "Dashboard with key metrics: shipments per day, revenue, driver performance, demand prediction and productivity analysis by branch.",
+    "f8Title": "Mobile app for drivers",
+    "f8Desc": "Drivers manage their routes, confirm deliveries with photo and signature, record COD payments and report incidents from their phone."
+  },
+
+  "cta": {
+    "joinCount": "Join {{count}}+ companies already optimizing their shipments",
+    "joinGeneric": "Join companies already optimizing their shipments",
+    "readyTo": "Ready to",
+    "transformLogistics": "transform your logistics?",
+    "subtitle": "Start your free trial today. No commitments, no credit card.",
+    "startNow": "Start now",
+    "viewPlans": "View plans",
+    "setupTime": "5 min setup",
+    "noCard": "No credit card",
+    "support247": "24/7 support"
+  },
+
+  "pricing": {
+    "title": "Simple",
+    "titleHighlight": " pricing",
+    "popular": "Most popular",
+    "startTrial": "Start free trial",
+    "shipmentsMonth": "shipments/mo",
+    "branches": "branches",
+    "users": "users",
+    "noCreditCard": "No credit card required.",
+    "perMonth": "/month"
+  },
+
+  "circuit": {
+    "title": "Operative",
+    "titleHighlight": " workflow",
+    "subtitle": "From package intake to settlement, everything in one system.",
+    "s1Label": "Reception",
+    "s1Desc": "Package intake at branch or sender pickup",
+    "s2Label": "Digitization",
+    "s2Desc": "QR scan, label generation and system registration",
+    "s3Label": "Assignment",
+    "s3Desc": "Driver assignment and route sheet creation",
+    "s4Label": "Route",
+    "s4Desc": "AI-powered route optimization and GPS navigation",
+    "s5Label": "Delivery",
+    "s5Desc": "Confirmation with signature, photo and customer notification",
+    "s6Label": "Settlement",
+    "s6Desc": "Automatic commission and rendition calculation"
+  },
+
+  "about": {
+    "whoWeAre": "Who we are",
+    "ourMission": "Our mission",
+    "ourVision": "Our vision"
+  },
+
+  "stats": {
+    "activeCompanies": "Active companies",
+    "shipmentsManaged": "Shipments managed",
+    "driversConnected": "Connected drivers",
+    "uptimeGuaranteed": "Guaranteed uptime"
+  },
+
+  "footer": {
+    "product": "Product",
+    "legal": "Legal",
+    "support": "Support",
+    "helpCenter": "Help Center",
+    "features": "Features",
+    "operativeCircuit": "Operative workflow",
+    "pricing": "Pricing",
+    "tracking": "Tracking",
+    "terms": "Terms",
+    "privacy": "Privacy",
+    "cookies": "Cookies",
+    "allRights": "All rights reserved.",
+    "allSystems": "All systems operational",
+    "description": "The most complete logistics management platform in Argentina. Optimize your deliveries with cutting-edge technology."
+  }
 }

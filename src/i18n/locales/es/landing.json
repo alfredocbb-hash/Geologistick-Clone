@@ -14,5 +14,110 @@
   "featureSettlements": "Liquidaciones",
   "featureSettlementsDesc": "Cálculo automático",
   "featureIntegrations": "Integraciones",
-  "featureIntegrationsDesc": "ML, Tiendanube, API"
+  "featureIntegrationsDesc": "ML, Tiendanube, API",
+
+  "nav": {
+    "features": "Funcionalidades",
+    "circuit": "Circuito",
+    "pricing": "Precios",
+    "tracking": "Tracking",
+    "contact": "Contacto",
+    "login": "Iniciar sesión",
+    "getStarted": "Comenzar",
+    "getStartedFree": "Comenzar gratis"
+  },
+
+  "features": {
+    "title": "Funcionalidades",
+    "titleHighlight": " completas",
+    "f1Title": "Hojas de ruta y asignación de envíos",
+    "f1Desc": "Creá hojas de ruta, asigná envíos a choferes y gestioná todo el flujo de despacho desde un solo panel. Reasigná en tiempo real según disponibilidad y zona de cobertura.",
+    "f2Title": "Seguimiento GPS en tiempo real",
+    "f2Desc": "Seguí la ubicación de cada chofer en el mapa en vivo. Compartí un link de tracking público para que tus clientes vean el estado de su envío sin necesidad de llamar.",
+    "f3Title": "Liquidaciones automáticas",
+    "f3Desc": "Calculá comisiones de choferes, sucursales y clientes de forma automática. Definí porcentajes, montos fijos y conceptos personalizados. Generá PDFs de liquidación con un click.",
+    "f4Title": "Integración con Mercado Libre y Tiendanube",
+    "f4Desc": "Sincronizá pedidos de Mercado Libre y Tiendanube automáticamente. Actualizá estados de envío en la plataforma de origen sin intervención manual.",
+    "f5Title": "Escaneo QR y digitalización",
+    "f5Desc": "Escaneá códigos QR para recibir, transferir y entregar paquetes. Registrá cada movimiento con trazabilidad completa desde la recepción hasta la entrega.",
+    "f6Title": "Etiquetas y rótulos automáticos",
+    "f6Desc": "Generá etiquetas con código QR, rótulos de despacho y comprobantes de entrega (EPOD) de forma automática. Imprimí en lote o uno por uno.",
+    "f7Title": "Analytics y reportes avanzados",
+    "f7Desc": "Dashboard con métricas clave: envíos por día, ingresos, rendimiento de choferes, predicción de demanda y análisis de productividad por sucursal.",
+    "f8Title": "App móvil para choferes",
+    "f8Desc": "Los choferes gestionan sus rutas, confirman entregas con foto y firma, registran cobros contra entrega y reportan incidentes desde su celular."
+  },
+
+  "cta": {
+    "joinCount": "Únete a {{count}}+ que ya optimizan sus envíos",
+    "joinGeneric": "Únete a empresas que ya optimizan sus envíos",
+    "readyTo": "¿Listo para",
+    "transformLogistics": "transformar tu logística?",
+    "subtitle": "Comienza tu prueba gratuita hoy. Sin compromisos, sin tarjeta de crédito.",
+    "startNow": "Comenzar ahora",
+    "viewPlans": "Ver planes",
+    "setupTime": "Setup en 5 min",
+    "noCard": "Sin tarjeta",
+    "support247": "Soporte 24/7"
+  },
+
+  "pricing": {
+    "title": "Precios",
+    "titleHighlight": " simples",
+    "popular": "Más popular",
+    "startTrial": "Comenzar prueba gratis",
+    "shipmentsMonth": "envíos/mes",
+    "branches": "sucursales",
+    "users": "usuarios",
+    "noCreditCard": "Sin tarjeta de crédito.",
+    "perMonth": "/mes"
+  },
+
+  "circuit": {
+    "title": "Circuito",
+    "titleHighlight": " operativo",
+    "subtitle": "Desde que el paquete ingresa hasta que se liquida, todo en un solo sistema.",
+    "s1Label": "Recepción",
+    "s1Desc": "Ingreso del paquete en sucursal o retiro del remitente",
+    "s2Label": "Digitalización",
+    "s2Desc": "Escaneo QR, generación de etiquetas y registro en sistema",
+    "s3Label": "Asignación",
+    "s3Desc": "Asignación a chofer y creación de hoja de ruta",
+    "s4Label": "Ruta",
+    "s4Desc": "Optimización de recorrido con IA y navegación GPS",
+    "s5Label": "Entrega",
+    "s5Desc": "Confirmación con firma, foto y notificación al cliente",
+    "s6Label": "Liquidación",
+    "s6Desc": "Cálculo automático de comisiones y rendiciones"
+  },
+
+  "about": {
+    "whoWeAre": "Quiénes somos",
+    "ourMission": "Nuestra misión",
+    "ourVision": "Nuestra visión"
+  },
+
+  "stats": {
+    "activeCompanies": "Empresas activas",
+    "shipmentsManaged": "Envíos gestionados",
+    "driversConnected": "Choferes conectados",
+    "uptimeGuaranteed": "Uptime garantizado"
+  },
+
+  "footer": {
+    "product": "Producto",
+    "legal": "Legal",
+    "support": "Soporte",
+    "helpCenter": "Centro de Ayuda",
+    "features": "Funcionalidades",
+    "operativeCircuit": "Circuito operativo",
+    "pricing": "Precios",
+    "tracking": "Tracking",
+    "terms": "Términos",
+    "privacy": "Privacidad",
+    "cookies": "Cookies",
+    "allRights": "Todos los derechos reservados.",
+    "allSystems": "Todos los sistemas operativos",
+    "description": "La plataforma de gestión logística más completa de Argentina. Optimiza tus entregas con tecnología de punta."
+  }
 }
