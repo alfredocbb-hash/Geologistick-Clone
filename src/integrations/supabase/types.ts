@@ -1535,6 +1535,68 @@ export type Database = {
           },
         ]
       }
+      gastos: {
+        Row: {
+          categoria: string
+          created_at: string | null
+          created_by: string | null
+          cuit_proveedor: string | null
+          descripcion: string | null
+          fecha: string
+          id: string
+          importe_neto: number
+          iva: number
+          numero_comprobante: string | null
+          proveedor: string
+          tenant_id: string
+          tipo_comprobante: string | null
+          total: number
+          updated_at: string | null
+        }
+        Insert: {
+          categoria?: string
+          created_at?: string | null
+          created_by?: string | null
+          cuit_proveedor?: string | null
+          descripcion?: string | null
+          fecha?: string
+          id?: string
+          importe_neto?: number
+          iva?: number
+          numero_comprobante?: string | null
+          proveedor: string
+          tenant_id: string
+          tipo_comprobante?: string | null
+          total?: number
+          updated_at?: string | null
+        }
+        Update: {
+          categoria?: string
+          created_at?: string | null
+          created_by?: string | null
+          cuit_proveedor?: string | null
+          descripcion?: string | null
+          fecha?: string
+          id?: string
+          importe_neto?: number
+          iva?: number
+          numero_comprobante?: string | null
+          proveedor?: string
+          tenant_id?: string
+          tipo_comprobante?: string | null
+          total?: number
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gastos_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       historial_ajustes_tarifas: {
         Row: {
           aplicado_por: string | null
