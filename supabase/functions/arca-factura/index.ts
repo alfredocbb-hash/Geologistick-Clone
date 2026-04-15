@@ -1111,7 +1111,15 @@ serve(async (req) => {
     // ── SINCRONIZACIÓN DESDE AFIP ─────────────────────────────────────────────
     if (rawBody.action === 'sync_from_afip') {
       const syncEnv: 'sandbox' | 'production' = rawBody.environment || 'production';
-      const syncTypes: ('A' | 'B' | 'C')[] = rawBody.tipos || ['A', 'B', 'C'];
+      // Accept single `tipo` or array `tipos`
+      let syncTypes: ('A' | 'B' | 'C')[];
+      if (rawBody.tipo) {
+        syncTypes = [rawBody.tipo as 'A' | 'B' | 'C'];
+      } else {
+        syncTypes = rawBody.tipos || ['A', 'B', 'C'];
+      }
+      const desdeNumero: number | undefined = rawBody.desde_numero ? parseInt(String(rawBody.desde_numero)) : undefined;
+      const MAX_PER_RUN = 30;
 
       const arcaSyncConfig = await getARCAConfig(supabase, tenantId, syncEnv);
       if (!arcaSyncConfig) {
@@ -1125,12 +1133,17 @@ serve(async (req) => {
       const { token, sign } = await getWSAAToken(supabase, tenantId, syncEnv, arcaSyncConfig);
       const puntoVenta = rawBody.punto_venta ? parseInt(String(rawBody.punto_venta)) : parseInt(arcaSyncConfig.punto_venta);
       let totalImported = 0;
+      let totalPending = 0;
       const errors: string[] = [];
+      const detailByType: Record<string, { imported: number; total: number; lastAfip: number }> = {};
 
       for (const tipo of syncTypes) {
         try {
           const afipLast = await getUltimoComprobanteAFIP(token, sign, arcaSyncConfig.cuit, puntoVenta, tipo, endpoints.wsfe);
-          if (afipLast <= 0) continue;
+          if (afipLast <= 0) {
+            detailByType[tipo] = { imported: 0, total: 0, lastAfip: 0 };
+            continue;
+          }
 
           // Get existing invoice numbers in local DB for this type
           const { data: existingFacturas } = await supabase
@@ -1142,16 +1155,26 @@ serve(async (req) => {
 
           const existingNumbers = new Set((existingFacturas || []).map((f: { numero_comprobante: number }) => f.numero_comprobante));
 
-          // Find missing numbers (limit to last 100 to avoid long runs)
-          const startFrom = Math.max(1, afipLast - 99);
+          // Build list of missing numbers
+          const startFrom = desdeNumero || Math.max(1, afipLast - 299);
+          const missingNumbers: number[] = [];
           for (let nro = startFrom; nro <= afipLast; nro++) {
-            if (existingNumbers.has(nro)) continue;
+            if (!existingNumbers.has(nro)) missingNumbers.push(nro);
+          }
 
+          const totalMissing = missingNumbers.length;
+          const batch = missingNumbers.slice(0, MAX_PER_RUN);
+          let importedThisType = 0;
+
+          console.log(`[ARCA] Tipo ${tipo} PV${puntoVenta}: ${totalMissing} faltantes, procesando ${batch.length}`);
+
+          for (let i = 0; i < batch.length; i++) {
+            const nro = batch[i];
             try {
+              console.log(`[ARCA] Importando tipo ${tipo} #${nro} (${i + 1}/${batch.length})...`);
               const comprobante = await consultarComprobante(token, sign, arcaSyncConfig.cuit, puntoVenta, tipo, nro, endpoints.wsfe);
               if (!comprobante) continue;
 
-              // Insert into facturas
               await supabase.from('facturas').insert({
                 tenant_id: tenantId,
                 tipo_comprobante: tipo,
@@ -1171,11 +1194,16 @@ serve(async (req) => {
                 created_by: userId,
               });
 
+              importedThisType++;
               totalImported++;
             } catch (compErr) {
               console.warn(`[ARCA] Error consultando comprobante ${tipo} #${nro}:`, compErr);
             }
           }
+
+          const remainingThisType = totalMissing - importedThisType;
+          totalPending += remainingThisType;
+          detailByType[tipo] = { imported: importedThisType, total: totalMissing, lastAfip: afipLast };
 
           // Update local counter
           await updateInvoiceNumber(supabase, tenantId, tipo, afipLast);
@@ -1184,12 +1212,15 @@ serve(async (req) => {
         }
       }
 
+      const pendingMsg = totalPending > 0 ? ` Quedan ${totalPending} pendientes, ejecutá de nuevo para continuar.` : '';
       return new Response(
         JSON.stringify({
           success: true,
           imported: totalImported,
+          pending: totalPending,
+          detail: detailByType,
           errors: errors.length > 0 ? errors : undefined,
-          message: `Se importaron ${totalImported} comprobante(s) desde AFIP.`,
+          message: `Se importaron ${totalImported} comprobante(s) desde AFIP.${pendingMsg}`,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );

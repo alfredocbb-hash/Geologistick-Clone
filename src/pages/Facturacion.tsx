@@ -40,6 +40,8 @@ export default function Facturacion() {
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, running: false });
   const [syncDialogOpen, setSyncDialogOpen] = useState(false);
   const [syncPuntoVenta, setSyncPuntoVenta] = useState('');
+  const [syncTipo, setSyncTipo] = useState<string>('todos');
+  const [syncResult, setSyncResult] = useState<{ imported: number; pending: number; message: string } | null>(null);
   const [batchResults, setBatchResults] = useState<{ id: string; tracking: string; ok: boolean; error?: string }[]>([]);
 
   // Duplicate dialog state
