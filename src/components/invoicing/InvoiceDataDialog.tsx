@@ -201,6 +201,7 @@ export function InvoiceDataDialog({
     setCuitError('');
     setTipoComprobante('B');
     setIvaIncluido(true);
+    clearCuitMatch();
     onClose();
   };
 
@@ -359,10 +360,18 @@ export function InvoiceDataDialog({
 
           {/* CUIT/DNI */}
           <div className="space-y-2">
-            <Label htmlFor="cuit">
-              {requiresCuit ? 'CUIT' : 'CUIT/DNI (opcional)'}
-              {tipoComprobante === 'A' && <span className="text-destructive ml-1">*</span>}
-            </Label>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="cuit">
+                {requiresCuit ? 'CUIT' : 'CUIT/DNI (opcional)'}
+                {tipoComprobante === 'A' && <span className="text-destructive ml-1">*</span>}
+              </Label>
+              {cuitLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+              {cuitMatch && (
+                <Badge variant="secondary" className="text-xs">
+                  {cuitMatch.source === 'cliente' ? 'Cliente' : 'Empresa Terciarizada'}
+                </Badge>
+              )}
+            </div>
             <Input
               id="cuit"
               placeholder="XX-XXXXXXXX-X"
