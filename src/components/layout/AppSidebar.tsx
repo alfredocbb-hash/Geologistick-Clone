@@ -126,17 +126,17 @@ const navigation: NavGroup[] = [{
     title: 'nav.facturacion',
     url: '/facturacion',
     icon: FileText,
-    permissionKey: 'cash.manage'
+    permissionKey: 'invoicing.view'
   }, {
     title: 'nav.gastos',
     url: '/gastos',
     icon: Receipt,
-    permissionKey: 'cash.manage'
+    permissionKey: 'gastos.manage'
   }, {
     title: 'nav.fiscalDashboard',
     url: '/fiscal',
     icon: Calculator,
-    permissionKey: 'cash.manage'
+    permissionKey: 'fiscal.view'
   }, {
     title: 'nav.branchSettlements',
     url: '/settlements/branches',
@@ -168,7 +168,7 @@ const navigation: NavGroup[] = [{
     icon: CreditCard,
     permissionKey: 'settlements.driver.manage'
   }],
-  permissionKeys: ['cash.manage', 'settlements.branch.view', 'settlements.driver.view', 'settlements.client.view', 'commissions.view']
+  permissionKeys: ['cash.manage', 'invoicing.view', 'gastos.manage', 'fiscal.view', 'settlements.branch.view', 'settlements.driver.view', 'settlements.client.view', 'commissions.view']
 }, {
   label: 'nav.clients',
   items: [{
@@ -253,9 +253,9 @@ const navigation: NavGroup[] = [{
     title: 'nav.partners',
     url: '/admin/partners',
     icon: Handshake,
-    permissionKey: 'integrations.manage'
+    permissionKey: 'partners.view'
   }],
-  permissionKeys: ['branches.manage', 'rates.manage', 'users.manage', 'roles.manage', 'integrations.manage']
+  permissionKeys: ['branches.manage', 'rates.manage', 'users.manage', 'roles.manage', 'integrations.manage', 'partners.view']
 }, {
   label: 'nav.superAdmin',
   items: [{
