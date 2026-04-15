@@ -74,6 +74,8 @@ const PERMISSION_CATEGORIES: Record<string, string> = {
   'delivery': 'Entregas',
   'incidents': 'Incidentes',
   'cash': 'Caja',
+  'fiscal': 'Panel Fiscal',
+  'gastos': 'Gastos',
   'settlements': 'Liquidaciones',
   'commissions': 'Comisiones',
   'clients': 'Clientes',
@@ -85,6 +87,7 @@ const PERMISSION_CATEGORIES: Record<string, string> = {
   'tenants': 'Empresas (Tenants)',
   'third_party': 'Terciarizados',
   'ecommerce': 'e-Commerce',
+  'partners': 'Partners / Asociados',
   'subscription_plans': 'Planes de Suscripción',
 };
 
