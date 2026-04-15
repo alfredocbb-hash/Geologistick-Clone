@@ -25,6 +25,9 @@ import { Loader2, FileText, AlertCircle, CheckCircle } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { useARCAIntegration, determinarTipoFactura, validateCUIT, formatCUIT } from '@/hooks/useARCAConfig';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { useCuitLookup } from '@/hooks/useCuitLookup';
+import { useAuth } from '@/lib/auth';
 
 interface InvoiceDataDialogProps {
   open: boolean;
@@ -72,7 +75,31 @@ export function InvoiceDataDialog({
   const [selectedEnvironment, setSelectedEnvironment] = useState<'sandbox' | 'production'>('production');
   const [ivaIncluido, setIvaIncluido] = useState(true);
 
+  const { profile } = useAuth();
   const { isConfigured, config, hasBothEnvironments, isLoading: arcaLoading } = useARCAIntegration(selectedEnvironment);
+  const { match: cuitMatch, loading: cuitLoading, lookup: lookupCuit, clear: clearCuitMatch, updateSourceRecord } = useCuitLookup({ tenantId: profile?.tenant_id });
+
+  // CUIT auto-lookup
+  useEffect(() => {
+    const clean = cuit.replace(/\D/g, '');
+    if (clean.length === 11 && validateCUIT(clean)) {
+      lookupCuit(cuit);
+    } else {
+      clearCuitMatch();
+    }
+  }, [cuit, lookupCuit, clearCuitMatch]);
+
+  // Auto-fill from CUIT match
+  useEffect(() => {
+    if (cuitMatch) {
+      if (cuitMatch.nombre) setNombre(cuitMatch.nombre);
+      if (cuitMatch.direccion) setDomicilio(cuitMatch.direccion);
+      if (cuitMatch.condicionIva) {
+        const validCondicion = CONDICION_IVA_OPTIONS.find(o => o.value === cuitMatch.condicionIva);
+        if (validCondicion) setCondicionIva(validCondicion.value);
+      }
+    }
+  }, [cuitMatch]);
 
   // Determine invoice type when IVA condition changes
   useEffect(() => {
@@ -138,6 +165,15 @@ export function InvoiceDataDialog({
       return data as FacturaResult;
     },
     onSuccess: (data) => {
+      // Update source record with any missing data
+      if (cuitMatch) {
+        updateSourceRecord(cuitMatch, {
+          nombre: nombre.trim(),
+          razonSocial: nombre.trim(),
+          direccion: domicilio.trim() || undefined,
+          condicionIva: condicionIva,
+        });
+      }
       if (data.estado === 'emitida') {
         toast.success(`Factura ${tipoComprobante} emitida correctamente`, {
           description: `CAE: ${data.cae}`,
@@ -165,6 +201,7 @@ export function InvoiceDataDialog({
     setCuitError('');
     setTipoComprobante('B');
     setIvaIncluido(true);
+    clearCuitMatch();
     onClose();
   };
 
@@ -323,10 +360,18 @@ export function InvoiceDataDialog({
 
           {/* CUIT/DNI */}
           <div className="space-y-2">
-            <Label htmlFor="cuit">
-              {requiresCuit ? 'CUIT' : 'CUIT/DNI (opcional)'}
-              {tipoComprobante === 'A' && <span className="text-destructive ml-1">*</span>}
-            </Label>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="cuit">
+                {requiresCuit ? 'CUIT' : 'CUIT/DNI (opcional)'}
+                {tipoComprobante === 'A' && <span className="text-destructive ml-1">*</span>}
+              </Label>
+              {cuitLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+              {cuitMatch && (
+                <Badge variant="secondary" className="text-xs">
+                  {cuitMatch.source === 'cliente' ? 'Cliente' : 'Empresa Terciarizada'}
+                </Badge>
+              )}
+            </div>
             <Input
               id="cuit"
               placeholder="XX-XXXXXXXX-X"

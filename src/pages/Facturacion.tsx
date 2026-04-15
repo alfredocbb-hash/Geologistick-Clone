@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -20,6 +20,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { FileText, Loader2, Search, CheckCircle, AlertCircle, Package, Copy, RefreshCw, Download, Plus } from 'lucide-react';
 import { useARCAIntegration, determinarTipoFactura, validateCUIT, formatCUIT } from '@/hooks/useARCAConfig';
+import { useCuitLookup } from '@/hooks/useCuitLookup';
 import { format } from 'date-fns';
 
 const CONDICION_IVA_OPTIONS = [
@@ -72,7 +73,31 @@ export default function Facturacion() {
   const [duplicateImporte, setDuplicateImporte] = useState(0);
   const [selectedEnvironment, setSelectedEnvironment] = useState<'sandbox' | 'production'>('production');
 
+  const { match: cuitMatch, loading: cuitLoading, lookup: lookupCuit, clear: clearCuitMatch, updateSourceRecord } = useCuitLookup({ tenantId: profile?.tenant_id });
+
   const { isConfigured, config, hasBothEnvironments, isLoading: arcaLoading } = useARCAIntegration(selectedEnvironment);
+
+  // CUIT auto-lookup for batch/duplicate forms
+  useEffect(() => {
+    const clean = cuit.replace(/\D/g, '');
+    if (clean.length === 11 && validateCUIT(clean)) {
+      lookupCuit(cuit);
+    } else {
+      clearCuitMatch();
+    }
+  }, [cuit, lookupCuit, clearCuitMatch]);
+
+  // Auto-fill from CUIT match
+  useEffect(() => {
+    if (cuitMatch) {
+      if (cuitMatch.nombre) setNombre(cuitMatch.nombre);
+      if (cuitMatch.direccion) setDomicilio(cuitMatch.direccion);
+      if (cuitMatch.condicionIva) {
+        const validCondicion = CONDICION_IVA_OPTIONS.find(o => o.value === cuitMatch.condicionIva);
+        if (validCondicion) setCondicionIva(validCondicion.value);
+      }
+    }
+  }, [cuitMatch]);
 
   // Fetch delivered shipments without invoice
   const { data: pendientes = [], isLoading, refetch } = useQuery({
@@ -248,6 +273,7 @@ export default function Facturacion() {
     setTipoComprobante('B');
     setIvaIncluido(true);
     setDuplicateImporte(0);
+    clearCuitMatch();
   };
 
   const handleBatchInvoice = async () => {
@@ -286,7 +312,18 @@ export default function Facturacion() {
     setBatchProgress(p => ({ ...p, running: false }));
     const ok = results.filter(r => r.ok).length;
     const fail = results.filter(r => !r.ok).length;
-    if (ok > 0) toast.success(`${ok} factura(s) emitida(s) correctamente`);
+    if (ok > 0) {
+      toast.success(`${ok} factura(s) emitida(s) correctamente`);
+      // Update source record with missing data
+      if (cuitMatch) {
+        updateSourceRecord(cuitMatch, {
+          nombre: nombre.trim(),
+          razonSocial: nombre.trim(),
+          direccion: domicilio.trim() || undefined,
+          condicionIva: condicionIva,
+        });
+      }
+    }
     if (fail > 0) toast.error(`${fail} factura(s) fallaron`);
     setSelected(new Set());
     refetch();
@@ -328,6 +365,14 @@ export default function Facturacion() {
       if (error) throw error;
       if (!data.success && data.error) throw new Error(data.error);
       toast.success('Factura duplicada emitida correctamente');
+      if (cuitMatch) {
+        updateSourceRecord(cuitMatch, {
+          nombre: nombre.trim(),
+          razonSocial: nombre.trim(),
+          direccion: domicilio.trim() || undefined,
+          condicionIva: condicionIva,
+        });
+      }
       setDuplicateOpen(false);
       resetForm();
       refetchEmitidas();
@@ -428,7 +473,15 @@ export default function Facturacion() {
       </div>
 
       <div className="space-y-2">
-        <Label>{requiresCuit ? 'CUIT *' : 'CUIT/DNI (opcional)'}</Label>
+        <div className="flex items-center gap-2">
+          <Label>{requiresCuit ? 'CUIT *' : 'CUIT/DNI (opcional)'}</Label>
+          {cuitLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+          {cuitMatch && (
+            <Badge variant="secondary" className="text-xs">
+              {cuitMatch.source === 'cliente' ? 'Cliente' : 'Empresa Terciarizada'}
+            </Badge>
+          )}
+        </div>
         <Input placeholder="XX-XXXXXXXX-X" value={cuit} onChange={e => setCuit(e.target.value)} />
       </div>
 
