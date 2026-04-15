@@ -25,6 +25,9 @@ import { Loader2, FileText, AlertCircle, CheckCircle } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { useARCAIntegration, determinarTipoFactura, validateCUIT, formatCUIT } from '@/hooks/useARCAConfig';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { useCuitLookup } from '@/hooks/useCuitLookup';
+import { useAuth } from '@/lib/auth';
 
 interface InvoiceDataDialogProps {
   open: boolean;
@@ -72,7 +75,31 @@ export function InvoiceDataDialog({
   const [selectedEnvironment, setSelectedEnvironment] = useState<'sandbox' | 'production'>('production');
   const [ivaIncluido, setIvaIncluido] = useState(true);
 
+  const { profile } = useAuth();
   const { isConfigured, config, hasBothEnvironments, isLoading: arcaLoading } = useARCAIntegration(selectedEnvironment);
+  const { match: cuitMatch, loading: cuitLoading, lookup: lookupCuit, clear: clearCuitMatch, updateSourceRecord } = useCuitLookup({ tenantId: profile?.tenant_id });
+
+  // CUIT auto-lookup
+  useEffect(() => {
+    const clean = cuit.replace(/\D/g, '');
+    if (clean.length === 11 && validateCUIT(clean)) {
+      lookupCuit(cuit);
+    } else {
+      clearCuitMatch();
+    }
+  }, [cuit, lookupCuit, clearCuitMatch]);
+
+  // Auto-fill from CUIT match
+  useEffect(() => {
+    if (cuitMatch) {
+      if (cuitMatch.nombre) setNombre(cuitMatch.nombre);
+      if (cuitMatch.direccion) setDomicilio(cuitMatch.direccion);
+      if (cuitMatch.condicionIva) {
+        const validCondicion = CONDICION_IVA_OPTIONS.find(o => o.value === cuitMatch.condicionIva);
+        if (validCondicion) setCondicionIva(validCondicion.value);
+      }
+    }
+  }, [cuitMatch]);
 
   // Determine invoice type when IVA condition changes
   useEffect(() => {
