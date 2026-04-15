@@ -54,7 +54,7 @@ export function EmitirFacturaDialog({ open, onClose, onSuccess }: EmitirFacturaD
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
 
   const { profile } = useAuth();
-  const { isConfigured, config, activeEnvironment, isLoading: arcaLoading } = useARCAIntegration('production');
+  const { isConfigured, config, environment: activeEnvironment, isLoading: arcaLoading } = useARCAIntegration('production');
   const { match: cuitMatch, loading: cuitLoading, lookup: lookupCuit, clear: clearCuitMatch, updateSourceRecord } = useCuitLookup({ tenantId: profile?.tenant_id });
 
   const needsServiceDates = concepto === 2 || concepto === 3;

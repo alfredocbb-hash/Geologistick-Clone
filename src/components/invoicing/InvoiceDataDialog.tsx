@@ -59,7 +59,7 @@ export function InvoiceDataDialog({
   const [ivaIncluido, setIvaIncluido] = useState(true);
 
   const { profile } = useAuth();
-  const { isConfigured, config, activeEnvironment, isLoading: arcaLoading } = useARCAIntegration('production');
+  const { isConfigured, config, environment: activeEnvironment, isLoading: arcaLoading } = useARCAIntegration('production');
   const { match: cuitMatch, loading: cuitLoading, lookup: lookupCuit, clear: clearCuitMatch, updateSourceRecord } = useCuitLookup({ tenantId: profile?.tenant_id });
 
   // CUIT auto-lookup
