@@ -81,6 +81,9 @@ const TenantApiDocs = lazy(() => import("./pages/TenantApiDocs"));
 const TiendanubeOAuthResult = lazy(() => import("./pages/TiendanubeOAuthResult"));
 const TiendanubeDocsPublic = lazy(() => import("./pages/TiendanubeDocsPublic"));
 const MercadoLibreOAuthResult = lazy(() => import("./pages/MercadoLibreOAuthResult"));
+const Facturacion = lazy(() => import("./pages/Facturacion"));
+const GastosPage = lazy(() => import("./pages/Gastos"));
+const FiscalDashboard = lazy(() => import("./pages/FiscalDashboard"));
 
 // Seller Portal Pages
 const SellerLayout = lazy(() => import("./components/seller/SellerLayout").then(m => ({ default: m.SellerLayout })));
@@ -230,6 +233,9 @@ function AppRoutes() {
         <Route path="/settlements/third-party" element={<DashboardLayout><ThirdPartySettlements /></DashboardLayout>} />
         <Route path="/my-commissions" element={<DashboardLayout><MyCommissions /></DashboardLayout>} />
         <Route path="/payments" element={<DashboardLayout><Payments /></DashboardLayout>} />
+        <Route path="/facturacion" element={<DashboardLayout><Facturacion /></DashboardLayout>} />
+        <Route path="/gastos" element={<DashboardLayout><GastosPage /></DashboardLayout>} />
+        <Route path="/fiscal" element={<DashboardLayout><FiscalDashboard /></DashboardLayout>} />
         
         {/* Terciarizados */}
         <Route path="/admin/third-party-companies" element={<DashboardLayout><ThirdPartyCompanies /></DashboardLayout>} />
