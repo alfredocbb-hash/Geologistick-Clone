@@ -653,7 +653,7 @@ export default function Facturacion() {
       </Dialog>
 
       {/* ══════ SYNC PUNTO DE VENTA DIALOG ══════ */}
-      <Dialog open={syncDialogOpen} onOpenChange={o => { if (!syncMutation.isPending) setSyncDialogOpen(o); }}>
+      <Dialog open={syncDialogOpen} onOpenChange={o => { if (!syncMutation.isPending) { setSyncDialogOpen(o); if (!o) setSyncResult(null); } }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -661,7 +661,7 @@ export default function Facturacion() {
               Sincronizar desde AFIP
             </DialogTitle>
             <DialogDescription>
-              Indicá el punto de venta del que querés importar comprobantes
+              Indicá el punto de venta y tipo de comprobante a importar
             </DialogDescription>
           </DialogHeader>
 
@@ -679,14 +679,48 @@ export default function Facturacion() {
                 Punto de venta configurado: {config?.punto_venta || '—'}. Podés cambiarlo para importar de otro.
               </p>
             </div>
+
+            <div className="space-y-2">
+              <Label>Tipo de Comprobante</Label>
+              <Select value={syncTipo} onValueChange={setSyncTipo}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos (A, B, C)</SelectItem>
+                  <SelectItem value="A">Solo Factura A</SelectItem>
+                  <SelectItem value="B">Solo Factura B</SelectItem>
+                  <SelectItem value="C">Solo Factura C</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Se importan hasta 30 comprobantes por ejecución para evitar timeouts.
+              </p>
+            </div>
+
+            {syncResult && (
+              <Alert className={syncResult.pending > 0 ? 'border-yellow-200 bg-yellow-50 dark:bg-yellow-950/30' : 'border-green-200 bg-green-50 dark:bg-green-950/30'}>
+                <AlertDescription className={syncResult.pending > 0 ? 'text-yellow-800 dark:text-yellow-200' : 'text-green-800 dark:text-green-200'}>
+                  {syncResult.message}
+                  {syncResult.pending > 0 && (
+                    <Button variant="link" className="p-0 h-auto ml-1" onClick={() => {
+                      setSyncResult(null);
+                      const pv = syncPuntoVenta ? parseInt(syncPuntoVenta) : undefined;
+                      syncMutation.mutate({ puntoVenta: pv, tipo: syncTipo !== 'todos' ? syncTipo : undefined });
+                    }}>
+                      Ejecutar de nuevo →
+                    </Button>
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
           </div>
 
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setSyncDialogOpen(false)} disabled={syncMutation.isPending}>Cancelar</Button>
+            <Button variant="outline" onClick={() => { setSyncDialogOpen(false); setSyncResult(null); }} disabled={syncMutation.isPending}>Cancelar</Button>
             <Button
               onClick={() => {
+                setSyncResult(null);
                 const pv = syncPuntoVenta ? parseInt(syncPuntoVenta) : undefined;
-                syncMutation.mutate(pv);
+                syncMutation.mutate({ puntoVenta: pv, tipo: syncTipo !== 'todos' ? syncTipo : undefined });
               }}
               disabled={syncMutation.isPending || !syncPuntoVenta}
             >
