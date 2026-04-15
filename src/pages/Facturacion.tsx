@@ -644,6 +644,55 @@ export default function Facturacion() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ══════ SYNC PUNTO DE VENTA DIALOG ══════ */}
+      <Dialog open={syncDialogOpen} onOpenChange={o => { if (!syncMutation.isPending) setSyncDialogOpen(o); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Download className="h-5 w-5" />
+              Sincronizar desde AFIP
+            </DialogTitle>
+            <DialogDescription>
+              Indicá el punto de venta del que querés importar comprobantes
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Punto de Venta</Label>
+              <Input
+                type="number"
+                min={1}
+                placeholder="Ej: 1, 2, 7..."
+                value={syncPuntoVenta}
+                onChange={e => setSyncPuntoVenta(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Punto de venta configurado: {config?.punto_venta || '—'}. Podés cambiarlo para importar de otro.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setSyncDialogOpen(false)} disabled={syncMutation.isPending}>Cancelar</Button>
+            <Button
+              onClick={() => {
+                const pv = syncPuntoVenta ? parseInt(syncPuntoVenta) : undefined;
+                syncMutation.mutate(pv);
+              }}
+              disabled={syncMutation.isPending || !syncPuntoVenta}
+            >
+              {syncMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="mr-2 h-4 w-4" />
+              )}
+              Importar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
