@@ -90,7 +90,7 @@ export default function Reports() {
         .eq('tenant_id', tenantId)
         .gte('created_at', fromISO)
         .lte('created_at', toISO)
-        .like('source_module', 'bulk_ocr%');
+        .or('source_module.like.bulk_ocr%,source_module.eq.third_party');
 
       if (sucursalId !== 'all') {
         query = query.eq('sucursal_origen_id', sucursalId);
@@ -120,6 +120,7 @@ export default function Reports() {
         bulk_ocr_album: 'Álbum',
         bulk_ocr_burst: 'Ráfaga',
         bulk_ocr_manual: 'Manual',
+        third_party: 'Terciarizado',
       };
 
       const rows = enviosData.map(e => ({
