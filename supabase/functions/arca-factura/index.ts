@@ -1480,9 +1480,14 @@ serve(async (req) => {
   } catch (error) {
     console.error('[ARCA] Error general:', error);
     const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+    
+    // Session conflict is recoverable — return 200 with fallback flag so frontend doesn't crash
+    const isSessionConflict = errorMessage.includes('ARCA_SESSION_CONFLICT');
+    const statusCode = isSessionConflict ? 200 : 500;
+    
     return new Response(
-      JSON.stringify({ success: false, error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ success: false, error: errorMessage, fallback: isSessionConflict }),
+      { status: statusCode, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
