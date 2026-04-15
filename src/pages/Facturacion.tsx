@@ -273,6 +273,7 @@ export default function Facturacion() {
     setTipoComprobante('B');
     setIvaIncluido(true);
     setDuplicateImporte(0);
+    clearCuitMatch();
   };
 
   const handleBatchInvoice = async () => {
@@ -453,7 +454,15 @@ export default function Facturacion() {
       </div>
 
       <div className="space-y-2">
-        <Label>{requiresCuit ? 'CUIT *' : 'CUIT/DNI (opcional)'}</Label>
+        <div className="flex items-center gap-2">
+          <Label>{requiresCuit ? 'CUIT *' : 'CUIT/DNI (opcional)'}</Label>
+          {cuitLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+          {cuitMatch && (
+            <Badge variant="secondary" className="text-xs">
+              {cuitMatch.source === 'cliente' ? 'Cliente' : 'Empresa Terciarizada'}
+            </Badge>
+          )}
+        </div>
         <Input placeholder="XX-XXXXXXXX-X" value={cuit} onChange={e => setCuit(e.target.value)} />
       </div>
 
