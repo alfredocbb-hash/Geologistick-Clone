@@ -931,7 +931,19 @@ async function createFacturaRecord(
   importeNeto: number,
   importeIva: number,
   importeTotal: number,
-  userId: string | null
+  userId: string | null,
+  extra?: {
+    concepto?: number;
+    tipoDocumento?: number;
+    condicionVenta?: string;
+    fechaServicioDesde?: string;
+    fechaServicioHasta?: string;
+    fechaVtoPago?: string;
+    importeNoGravado?: number;
+    importeExento?: number;
+    importeTributos?: number;
+    descripcion?: string;
+  }
 // deno-lint-ignore no-explicit-any
 ): Promise<any> {
   const insertData: Record<string, unknown> = {
@@ -946,7 +958,6 @@ async function createFacturaRecord(
     importe_neto: importeNeto,
     importe_iva: importeIva,
     importe_total: importeTotal,
-    // Fecha fiscal: usar hora Argentina (UTC-3) para consistencia con CbteFch
     fecha_emision: (() => {
       const AR_OFFSET = 3 * 60 * 60 * 1000;
       const d = new Date(Date.now() - AR_OFFSET);
@@ -954,6 +965,17 @@ async function createFacturaRecord(
     })(),
     estado: 'pendiente',
     created_by: userId,
+    // New AFIP fields
+    concepto: extra?.concepto ?? 1,
+    tipo_documento: extra?.tipoDocumento ?? 80,
+    condicion_venta: extra?.condicionVenta || null,
+    fecha_servicio_desde: extra?.fechaServicioDesde || null,
+    fecha_servicio_hasta: extra?.fechaServicioHasta || null,
+    fecha_vto_pago: extra?.fechaVtoPago || null,
+    importe_no_gravado: extra?.importeNoGravado ?? 0,
+    importe_exento: extra?.importeExento ?? 0,
+    importe_tributos: extra?.importeTributos ?? 0,
+    descripcion: extra?.descripcion || null,
   };
 
   if (envioId) insertData.envio_id = envioId;
