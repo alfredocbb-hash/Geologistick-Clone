@@ -275,6 +275,9 @@ export default function Facturacion() {
     setTipoComprobante('B');
     setIvaIncluido(true);
     setDuplicateImporte(0);
+    setConcepto(1);
+    setTipoDocumento(80);
+    setCondicionVenta('Contado');
     clearCuitMatch();
   };
 
