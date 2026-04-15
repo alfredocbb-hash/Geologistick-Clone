@@ -42,8 +42,21 @@ export default function Facturacion() {
   const [syncDialogOpen, setSyncDialogOpen] = useState(false);
   const [syncPuntoVenta, setSyncPuntoVenta] = useState('');
   const [syncTipo, setSyncTipo] = useState<string>('todos');
-  const [syncResult, setSyncResult] = useState<{ imported: number; pending: number; message: string } | null>(null);
+  const [syncResult, setSyncResult] = useState<{ imported: number; pending: number; message: string; errors?: string[] } | null>(null);
   const [batchResults, setBatchResults] = useState<{ id: string; tracking: string; ok: boolean; error?: string }[]>([]);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualForm, setManualForm] = useState({
+    tipo_comprobante: 'B' as 'A' | 'B' | 'C',
+    punto_venta: '',
+    numero_comprobante: '',
+    fecha_emision: format(new Date(), 'yyyy-MM-dd'),
+    receptor_cuit: '',
+    receptor_nombre: '',
+    importe_neto: '',
+    importe_iva: '',
+    importe_total: '',
+    cae: '',
+  });
 
   // Duplicate dialog state
   const [duplicateOpen, setDuplicateOpen] = useState(false);
