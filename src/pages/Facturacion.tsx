@@ -38,6 +38,8 @@ export default function Facturacion() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchOpen, setBatchOpen] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, running: false });
+  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
+  const [syncPuntoVenta, setSyncPuntoVenta] = useState('');
   const [batchResults, setBatchResults] = useState<{ id: string; tracking: string; ok: boolean; error?: string }[]>([]);
 
   // Duplicate dialog state
@@ -101,16 +103,17 @@ export default function Facturacion() {
 
   // Sync from AFIP mutation
   const syncMutation = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke('arca-factura', {
-        body: { action: 'sync_from_afip', environment: selectedEnvironment },
-      });
+    mutationFn: async (puntoVenta?: number) => {
+      const body: Record<string, unknown> = { action: 'sync_from_afip', environment: selectedEnvironment };
+      if (puntoVenta) body.punto_venta = puntoVenta;
+      const { data, error } = await supabase.functions.invoke('arca-factura', { body });
       if (error) throw error;
       if (!data.success) throw new Error(data.error);
       return data;
     },
     onSuccess: (data) => {
       toast.success(data.message || `${data.imported} facturas importadas`);
+      setSyncDialogOpen(false);
       refetchEmitidas();
     },
     onError: (err: Error) => {
@@ -479,14 +482,13 @@ export default function Facturacion() {
                 </div>
                 <Button
                   variant="outline"
-                  onClick={() => syncMutation.mutate()}
+                  onClick={() => {
+                    setSyncPuntoVenta(config?.punto_venta ? String(config.punto_venta) : '');
+                    setSyncDialogOpen(true);
+                  }}
                   disabled={syncMutation.isPending || !isConfigured}
                 >
-                  {syncMutation.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Download className="mr-2 h-4 w-4" />
-                  )}
+                  <Download className="mr-2 h-4 w-4" />
                   Sincronizar desde AFIP
                 </Button>
               </CardContent>
