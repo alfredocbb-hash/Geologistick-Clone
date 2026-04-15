@@ -137,8 +137,16 @@ export default function Facturacion() {
         toast.warning('Sesión AFIP activa', { description: data.message });
         return;
       }
-      setSyncResult({ imported: data.imported, pending: data.pending || 0, message: data.message });
-      if (data.pending === 0) {
+      setSyncResult({ imported: data.imported, pending: data.pending || 0, message: data.message, errors: data.errors });
+      if (data.errors?.length) {
+        // Check if it's a PV not RECE error
+        const pvError = data.errors.find((e: string) => e.includes('ARCA_PV_NOT_RECE'));
+        if (pvError) {
+          toast.warning('Punto de Venta no compatible', { description: 'Este PV es de tipo "Factura en Línea". Usá "Cargar Manual" para registrar estos comprobantes.' });
+        } else {
+          toast.warning('Sincronización parcial', { description: data.errors.join('; ') });
+        }
+      } else if (data.pending === 0) {
         toast.success(data.message || `${data.imported} facturas importadas`);
       } else {
         toast.info(data.message);
@@ -149,6 +157,44 @@ export default function Facturacion() {
       toast.error('Error al sincronizar', { description: err.message });
     },
   });
+
+  const handleManualSave = async () => {
+    if (!profile?.tenant_id) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    const importeTotal = parseFloat(manualForm.importe_total) || 0;
+    if (importeTotal <= 0) { toast.error('El importe total debe ser mayor a 0'); return; }
+    if (!manualForm.punto_venta || !manualForm.numero_comprobante) { toast.error('Punto de venta y número son obligatorios'); return; }
+    
+    const { error } = await supabase.from('facturas').insert({
+      tenant_id: profile.tenant_id,
+      tipo_comprobante: manualForm.tipo_comprobante,
+      punto_venta: parseInt(manualForm.punto_venta),
+      numero_comprobante: parseInt(manualForm.numero_comprobante),
+      fecha_emision: manualForm.fecha_emision,
+      receptor_cuit: manualForm.receptor_cuit || null,
+      receptor_nombre: manualForm.receptor_nombre || 'Sin datos',
+      importe_neto: parseFloat(manualForm.importe_neto) || 0,
+      importe_iva: parseFloat(manualForm.importe_iva) || 0,
+      importe_total: importeTotal,
+      cae: manualForm.cae || null,
+      estado: 'emitida',
+      importada: true,
+      created_by: user?.id,
+    });
+
+    if (error) {
+      toast.error('Error al guardar factura', { description: error.message });
+      return;
+    }
+    toast.success('Factura manual cargada correctamente');
+    setManualOpen(false);
+    setManualForm({
+      tipo_comprobante: 'B', punto_venta: '', numero_comprobante: '',
+      fecha_emision: format(new Date(), 'yyyy-MM-dd'), receptor_cuit: '',
+      receptor_nombre: '', importe_neto: '', importe_iva: '', importe_total: '', cae: '',
+    });
+    refetchEmitidas();
+  };
 
   const filtered = useMemo(() => {
     if (!search) return pendientes;
