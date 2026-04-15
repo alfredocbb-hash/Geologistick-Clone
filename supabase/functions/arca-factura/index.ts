@@ -928,6 +928,100 @@ async function createFacturaRecord(
 }
 
 // ─────────────────────────────────────────────
+// WSFEv1 – FECompConsultar (consultar comprobante individual)
+// ─────────────────────────────────────────────
+
+interface ComprobanteAFIP {
+  docTipo: number;
+  docNro: string;
+  impTotal: number;
+  impNeto: number;
+  impIVA: number;
+  cbteFch: string;
+  cae: string;
+  caeFchVto: string;
+}
+
+async function consultarComprobante(
+  token: string,
+  sign: string,
+  cuit: string,
+  puntoVenta: number,
+  tipoComprobante: 'A' | 'B' | 'C',
+  cbteNro: number,
+  wsfeUrl: string
+): Promise<ComprobanteAFIP | null> {
+  const tipoCode = INVOICE_CODES[tipoComprobante].factura;
+
+  const soapBody = `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:ar="http://ar.gov.afip.dif.FEV1/">
+  <soap:Header/>
+  <soap:Body>
+    <ar:FECompConsultar>
+      <ar:Auth>
+        <ar:Token>${token}</ar:Token>
+        <ar:Sign>${sign}</ar:Sign>
+        <ar:Cuit>${cuit.replace(/[-]/g, '')}</ar:Cuit>
+      </ar:Auth>
+      <ar:FeCompConsReq>
+        <ar:CbteTipo>${tipoCode}</ar:CbteTipo>
+        <ar:CbteNro>${cbteNro}</ar:CbteNro>
+        <ar:PtoVta>${puntoVenta}</ar:PtoVta>
+      </ar:FeCompConsReq>
+    </ar:FECompConsultar>
+  </soap:Body>
+</soap:Envelope>`;
+
+  const response = await fetch(wsfeUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'text/xml; charset=utf-8',
+      'SOAPAction': 'http://ar.gov.afip.dif.FEV1/FECompConsultar',
+    },
+    body: soapBody,
+  });
+
+  const responseText = await response.text();
+
+  if (!response.ok) return null;
+
+  // Check for errors
+  const errorsMatch = responseText.match(/<Errors>([\s\S]*?)<\/Errors>/i);
+  if (errorsMatch) return null;
+
+  // Extract fields
+  const extract = (tag: string) => {
+    const m = responseText.match(new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, 'i'));
+    return m ? m[1].trim() : '';
+  };
+
+  const cae = extract('CAE');
+  if (!cae) return null;
+
+  const rawFch = extract('CbteFch');
+  const cbteFch = rawFch.length === 8
+    ? `${rawFch.slice(0,4)}-${rawFch.slice(4,6)}-${rawFch.slice(6,8)}`
+    : rawFch;
+
+  const rawVto = extract('CAEFchVto');
+  const caeFchVto = rawVto.length === 8
+    ? `${rawVto.slice(0,4)}-${rawVto.slice(4,6)}-${rawVto.slice(6,8)}`
+    : rawVto;
+
+  return {
+    docTipo: parseInt(extract('DocTipo')) || 99,
+    docNro: extract('DocNro'),
+    impTotal: parseFloat(extract('ImpTotal')) || 0,
+    impNeto: parseFloat(extract('ImpNeto')) || 0,
+    impIVA: parseFloat(extract('ImpIVA')) || 0,
+    cbteFch,
+    cae,
+    caeFchVto,
+  };
+}
+
+// ─────────────────────────────────────────────
 // Main handler
 // ─────────────────────────────────────────────
 
