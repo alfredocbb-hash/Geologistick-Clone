@@ -146,7 +146,7 @@ export default function Facturacion() {
   // Sync from AFIP mutation
   const syncMutation = useMutation({
     mutationFn: async ({ puntoVenta, tipo }: { puntoVenta?: number; tipo?: string }) => {
-      const body: Record<string, unknown> = { action: 'sync_from_afip', environment: selectedEnvironment };
+      const body: Record<string, unknown> = { action: 'sync_from_afip', environment: activeEnvironment || 'production' };
       if (puntoVenta) body.punto_venta = puntoVenta;
       if (tipo && tipo !== 'todos') body.tipo = tipo;
       const { data, error } = await supabase.functions.invoke('arca-factura', { body });
@@ -292,7 +292,7 @@ export default function Facturacion() {
           body: {
             envio_id: envio.id,
             tipo_comprobante: tipoComprobante,
-            environment: selectedEnvironment,
+            environment: activeEnvironment || 'production',
             receptor: {
               cuit: cuit ? formatCUIT(cuit) : undefined,
               nombre: nombre.trim(),
@@ -353,7 +353,7 @@ export default function Facturacion() {
           envio_id: duplicateSource?.envio_id || undefined,
           liquidacion_seller_id: duplicateSource?.liquidacion_seller_id || undefined,
           tipo_comprobante: tipoComprobante,
-          environment: selectedEnvironment,
+          environment: activeEnvironment || 'production',
           receptor: {
             cuit: cuit ? formatCUIT(cuit) : undefined,
             nombre: nombre.trim(),
