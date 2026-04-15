@@ -1,79 +1,35 @@
 
 
-## Plan: Revisar y Corregir Permisos por Rol
+## Plan: Auto-completado de datos fiscales por CUIT
 
-### Análisis actual
-Se revisaron los 47 permission_keys existentes y la asignación para los 11 roles. Se encontraron las siguientes inconsistencias:
+### Objetivo
+Cuando el usuario ingresa un CUIT válido en el formulario de facturación, el sistema debe:
+1. Buscar en `clientes` (campo `dni_cuit`) y `empresas_terciarizadas` (campo `cuit`) del mismo tenant
+2. Si encuentra coincidencia, auto-completar nombre/razón social, domicilio y condición IVA
+3. Si el registro existente tiene datos faltantes (ej: `condicion_iva`, `razon_social`, `direccion`), actualizarlos al emitir la factura
+4. Si no existe en ninguna tabla, guardar los datos del receptor para futuras facturas
 
-### Problemas detectados
+### Cambios
 
-**1. Permisos faltantes en roles que deberían tenerlos:**
+**`src/components/invoicing/InvoiceDataDialog.tsx`**
+- Agregar efecto que, al detectar un CUIT válido (11 dígitos), consulte `clientes` y `empresas_terciarizadas` por ese CUIT dentro del tenant del usuario
+- Si encuentra match: auto-completar `nombre`, `domicilio`, `condicionIva` con los datos existentes. Mostrar badge indicando origen ("Cliente" o "Empresa Terciarizada")
+- Al emitir/guardar la factura exitosamente: si el registro origen tiene campos vacíos (`razon_social`, `condicion_iva`, `direccion`), actualizarlos con los datos ingresados en el formulario
+- Si no existe en ninguna tabla: no crear registro nuevo automáticamente (solo se usan los datos para la factura)
 
-| Rol | Permiso faltante | Justificación |
-|-----|------------------|---------------|
-| `operador` | `incidents.report` | Operadores gestionan incidentes |
-| `operador` | `delivery.confirm` | Operadores confirman entregas |
-| `operador` | `drivers.manage` | Operadores asignan choferes |
-| `operador` | `settlements.driver.view` | Operadores ven liquidaciones |
-| `operador` | `vehicles.manage` | Operadores gestionan vehículos |
-| `supervisor` | `incidents.report` | Supervisores reportan incidentes |
-| `supervisor` | `rates.manage` | Supervisores gestionan tarifas |
-| `supervisor` | `reports.view` | Supervisores ven reportes |
-| `supervisor` | `users.manage` | Supervisores gestionan usuarios |
-| `bodega` | `route_sheets.create` | Bodega crea hojas de ruta |
-| `bodega` | `shipments.create` | Bodega ingresa paquetes |
-| `bodega` | `delivery.confirm` | Bodega confirma entregas en suc |
-| `despachador` | `incidents.report` | Despachadores reportan incidentes |
-| `despachador` | `routes.plan` | Despachadores planifican despachos |
-| `chofer` | `dashboard.view` | Choferes ven su home/dashboard |
-| `sucursal` | `routes.plan` | Sucursales planifican rutas locales |
-| `sucursal` | `live_map.view` | Sucursales ven el mapa |
-| `atencion_cliente` | `incidents.report` | At. Cliente reporta incidentes |
-| `atencion_cliente` | `ecommerce.orders.view` | At. Cliente ve pedidos e-commerce |
+**`src/pages/Facturacion.tsx`**
+- Aplicar la misma lógica de auto-completado en el `InvoiceFormFields` del formulario de facturación manual y batch
 
-**2. Permisos que deberían estar deshabilitados:**
-
-| Rol | Permiso | Justificación |
-|-----|---------|---------------|
-| `seller` | `third_party.manage` | Sellers no gestionan terciarizados |
-| `seller` | `third_party.settlements` | Sellers no ven liq. terciarizados |
-| `seller` | `third_party.view` | Sellers no ven terciarizados |
-
-**3. Nuevos permission_keys a crear (no existen aún):**
-
-| Key | Nombre | Descripción |
-|-----|--------|-------------|
-| `fiscal.view` | Ver Panel Fiscal | Acceso al dashboard fiscal |
-| `gastos.manage` | Gestionar Gastos | ABM de gastos operativos |
-| `partners.view` | Ver Partners | Ver empresas asociadas |
-| `partners.manage` | Gestionar Partners | ABM de partnerships |
-
-### Cambios a realizar
-
-**1. SQL INSERT para nuevos permission_keys** (para todos los roles, con enabled apropiado):
-- `fiscal.view`: enabled para admin, super_admin, supervisor
-- `gastos.manage`: enabled para admin, super_admin, supervisor, operador
-- `partners.view`: enabled para admin, super_admin, supervisor
-- `partners.manage`: enabled para admin, super_admin
-
-**2. SQL UPDATE para corregir permisos existentes** (activar/desactivar según tabla arriba)
-
-**3. Actualizar `AppSidebar.tsx`**:
-- Facturación: `invoicing.view` (en vez de `cash.manage`)
-- Gastos: `gastos.manage` (en vez de `cash.manage`)
-- Panel Fiscal: `fiscal.view` (en vez de `cash.manage`)
-- Partners: `partners.view`
-
-**4. Actualizar `PERMISSION_CATEGORIES` en `RolePermissions.tsx`**:
-- Agregar `'fiscal': 'Panel Fiscal'`
-- Agregar `'gastos': 'Gastos'`
-- Agregar `'partners': 'Partners / Asociados'`
+### Detalle técnico
+- La búsqueda se hace con `formatCUIT(cuit)` normalizado para matchear ambos formatos (con y sin guiones)
+- Se busca primero en `clientes.dni_cuit`, luego en `empresas_terciarizadas.cuit`
+- El update de datos faltantes usa `.update()` condicional: solo campos que estén `null` o vacíos en el registro original
+- Se necesita `useAuth()` para obtener `profile.tenant_id` y filtrar por tenant
 
 ### Archivos a modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| Migración SQL | INSERT nuevos permission_keys + UPDATE correcciones |
-| `src/components/layout/AppSidebar.tsx` | Corregir permissionKeys de finanzas |
-| `src/pages/RolePermissions.tsx` | Agregar categorías faltantes |
+| `src/components/invoicing/InvoiceDataDialog.tsx` | Lookup por CUIT + auto-fill + update datos faltantes al emitir |
+| `src/pages/Facturacion.tsx` | Misma lógica en InvoiceFormFields |
 
