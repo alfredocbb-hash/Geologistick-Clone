@@ -31,7 +31,14 @@ const MONOTRIBUTO_TOPES: Record<string, { label: string; tope: number }> = {
 
 export default function FiscalDashboard() {
   const { profile } = useAuth();
+  const { config: arcaConfig } = useARCAIntegration();
+  const [condicionManual, setCondicionManual] = useState<string>('');
   const [categoriaMonotributo, setCategoriaMonotributo] = useState('D');
+
+  // Determine condicion_iva: from arca_config or manual fallback
+  const condicionIva = arcaConfig?.condicion_iva || condicionManual;
+  const esMonotributo = condicionIva === 'monotributo';
+  const esRI = condicionIva === 'responsable_inscripto';
 
   const now = new Date();
   const mesActualInicio = format(startOfMonth(now), 'yyyy-MM-dd');
