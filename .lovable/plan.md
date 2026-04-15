@@ -1,30 +1,38 @@
 
 
-## Plan: Actualizar envíos en_reparto de Beraexpress a entregado
+## Plan: Incluir envíos importados con IA desde Terciarizados en "Exportar OCR"
 
-### Datos encontrados
-- **Tenant**: Beraexpress (`94a9ea85-...`)
-- **Envíos en_reparto**: ~20+ envíos
-- **Choferes asignados**: Kevin Bernard y Fernando Mauro (ya asignados, se mantienen)
+### Situación actual
 
-### Acción
-Ejecutar un UPDATE via insert tool:
+Los envíos importados con el botón **"Importar fotos con IA"** desde la pestaña Terciarizados del Planificador ya se guardan con `source_module = 'bulk_ocr_album'` (o `bulk_ocr_burst`/`bulk_ocr_manual`), por lo que **ya están incluidos** en el export OCR actual.
 
-```sql
-UPDATE envios
-SET estado = 'entregado',
-    fecha_entrega = now(),
-    updated_at = now()
-WHERE estado = 'en_reparto'
-  AND tenant_id = '94a9ea85-43c5-49ac-9bfa-86843072c2ce';
+Sin embargo, los envíos creados **manualmente** desde el formulario de Terciarizados no tienen `source_module` asignado, por lo que no aparecen en ningún reporte filtrado por módulo.
+
+### Cambios propuestos
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/components/routes/ThirdPartyShipmentsTab.tsx` | Agregar `source_module: 'third_party'` al insert de envíos creados desde el formulario manual |
+| `src/pages/Reports.tsx` | Expandir el filtro del export OCR para incluir también `source_module = 'third_party'`, usando `.or('source_module.like.bulk_ocr%,source_module.eq.third_party')` |
+| `src/pages/Reports.tsx` | Agregar etiqueta `third_party: 'Terciarizado'` al mapa `SOURCE_LABELS` |
+| `mem://features/reports/reporte-excel-envios-ocr` | Actualizar memoria para reflejar la inclusión de terciarizados |
+
+### Detalle técnico
+
+**Filtro actualizado en Reports.tsx:**
+```typescript
+// Antes:
+.like('source_module', 'bulk_ocr%')
+
+// Después:
+.or('source_module.like.bulk_ocr%,source_module.eq.third_party')
 ```
 
-### Qué pasa automáticamente
-- El trigger `log_envio_estado_change` crea registro en `envio_historial` con las notas descriptivas ("Entregado en domicilio - Entregó: chofer")
-- El trigger `sync_ecommerce_order_status` actualiza órdenes ecommerce vinculadas
-- El trigger `auto_sync_ml_status` sincroniza con MercadoLibre si son envíos ML
-- El `chofer_id` existente se mantiene, por lo que queda registrado como que lo entregó el chofer asignado
+**Insert en ThirdPartyShipmentsTab.tsx:**
+```typescript
+// Agregar al objeto de inserción:
+source_module: 'third_party',
+```
 
-### No se requieren cambios de código
-Solo es una operación de datos.
+Esto permite que tanto los envíos importados con IA como los creados manualmente desde la pestaña Terciarizados aparezcan en el Excel exportado, con su etiqueta de origen correspondiente.
 
