@@ -73,7 +73,31 @@ export default function Facturacion() {
   const [duplicateImporte, setDuplicateImporte] = useState(0);
   const [selectedEnvironment, setSelectedEnvironment] = useState<'sandbox' | 'production'>('production');
 
+  const { match: cuitMatch, loading: cuitLoading, lookup: lookupCuit, clear: clearCuitMatch, updateSourceRecord } = useCuitLookup({ tenantId: profile?.tenant_id });
+
   const { isConfigured, config, hasBothEnvironments, isLoading: arcaLoading } = useARCAIntegration(selectedEnvironment);
+
+  // CUIT auto-lookup for batch/duplicate forms
+  useEffect(() => {
+    const clean = cuit.replace(/\D/g, '');
+    if (clean.length === 11 && validateCUIT(clean)) {
+      lookupCuit(cuit);
+    } else {
+      clearCuitMatch();
+    }
+  }, [cuit, lookupCuit, clearCuitMatch]);
+
+  // Auto-fill from CUIT match
+  useEffect(() => {
+    if (cuitMatch) {
+      if (cuitMatch.nombre) setNombre(cuitMatch.nombre);
+      if (cuitMatch.direccion) setDomicilio(cuitMatch.direccion);
+      if (cuitMatch.condicionIva) {
+        const validCondicion = CONDICION_IVA_OPTIONS.find(o => o.value === cuitMatch.condicionIva);
+        if (validCondicion) setCondicionIva(validCondicion.value);
+      }
+    }
+  }, [cuitMatch]);
 
   // Fetch delivered shipments without invoice
   const { data: pendientes = [], isLoading, refetch } = useQuery({
