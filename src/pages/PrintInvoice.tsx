@@ -180,7 +180,7 @@ export default function PrintInvoice() {
     enabled: !!resolvedEnvioId,
   });
 
-  // Fetch detalles
+  // Fetch envio_detalles (conceptos del envío)
   const { data: detalles } = useQuery({
     queryKey: ['print-invoice-detalles', resolvedEnvioId],
     queryFn: async () => {
@@ -193,6 +193,22 @@ export default function PrintInvoice() {
       return data || [];
     },
     enabled: !!resolvedEnvioId,
+  });
+
+  // Fetch factura_detalles (line items AFIP)
+  const { data: facturaDetalles } = useQuery({
+    queryKey: ['print-factura-detalles', factura?.id],
+    queryFn: async () => {
+      if (!factura?.id) return [];
+      const { data, error } = await supabase
+        .from('factura_detalles')
+        .select('*')
+        .eq('factura_id', factura.id)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!factura?.id,
   });
 
   // Resolve tenant_id from envio or factura
@@ -496,6 +512,32 @@ export default function PrintInvoice() {
               </div>
             </div>
 
+            {/* Service period + Condición de Venta */}
+            {(factura.fecha_servicio_desde || factura.condicion_venta) && (
+              <div className="border rounded-lg p-4 grid grid-cols-2 gap-3 text-sm">
+                {factura.condicion_venta && (
+                  <div>
+                    <span className="text-muted-foreground">Condición de Venta: </span>
+                    <span className="font-medium">{factura.condicion_venta}</span>
+                  </div>
+                )}
+                {factura.fecha_servicio_desde && (
+                  <div>
+                    <span className="text-muted-foreground">Período: </span>
+                    <span className="font-medium">
+                      {factura.fecha_servicio_desde} al {factura.fecha_servicio_hasta || '-'}
+                    </span>
+                  </div>
+                )}
+                {factura.fecha_vto_pago && (
+                  <div>
+                    <span className="text-muted-foreground">Vto. Pago: </span>
+                    <span className="font-medium">{factura.fecha_vto_pago}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Envío reference */}
             {envio && (
               <div className="text-sm text-muted-foreground">
@@ -503,55 +545,105 @@ export default function PrintInvoice() {
               </div>
             )}
 
-            {/* Conceptos */}
-            <div className="border rounded-lg overflow-hidden">
-              <div className="bg-muted/50 px-4 py-2 border-b">
-                <div className="flex justify-between text-xs font-semibold text-muted-foreground">
-                  <span>CONCEPTO</span>
-                  <span>IMPORTE</span>
+            {/* Line Items Table (factura_detalles) */}
+            {facturaDetalles && facturaDetalles.length > 0 ? (
+              <div className="border rounded-lg overflow-hidden">
+                <div className="bg-muted/50 px-4 py-2 border-b">
+                  <div className="grid grid-cols-12 text-xs font-semibold text-muted-foreground">
+                    <span className="col-span-1">Código</span>
+                    <span className="col-span-4">Producto / Servicio</span>
+                    <span className="col-span-1 text-right">Cant.</span>
+                    <span className="col-span-2 text-right">Precio Unit.</span>
+                    <span className="col-span-1 text-right">% Bonif.</span>
+                    <span className="col-span-1 text-right">IVA %</span>
+                    <span className="col-span-2 text-right">Subtotal</span>
+                  </div>
+                </div>
+                <div className="divide-y">
+                  {facturaDetalles.map((li: any, i: number) => (
+                    <div key={i} className="grid grid-cols-12 px-4 py-2 text-sm items-center">
+                      <span className="col-span-1 text-muted-foreground text-xs">{li.codigo || '-'}</span>
+                      <span className="col-span-4">{li.descripcion}</span>
+                      <span className="col-span-1 text-right">{li.cantidad}</span>
+                      <span className="col-span-2 text-right">{formatCurrency(li.precio_unitario)}</span>
+                      <span className="col-span-1 text-right">{li.bonificacion_pct > 0 ? `${li.bonificacion_pct}%` : '-'}</span>
+                      <span className="col-span-1 text-right">{li.alicuota_iva}%</span>
+                      <span className="col-span-2 text-right font-medium">{formatCurrency(li.subtotal)}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
-              <div className="divide-y">
-                {conceptosAMostrar.map((c, i) => (
-                  <div key={i} className="flex justify-between px-4 py-3 text-sm">
-                    <span>{c.nombre_concepto}</span>
-                    <span className="font-medium">{formatCurrency(c.monto || 0)}</span>
+            ) : (
+              /* Fallback: envio conceptos */
+              <div className="border rounded-lg overflow-hidden">
+                <div className="bg-muted/50 px-4 py-2 border-b">
+                  <div className="flex justify-between text-xs font-semibold text-muted-foreground">
+                    <span>CONCEPTO</span>
+                    <span>IMPORTE</span>
                   </div>
-                ))}
+                </div>
+                <div className="divide-y">
+                  {conceptosAMostrar.map((c, i) => (
+                    <div key={i} className="flex justify-between px-4 py-3 text-sm">
+                      <span>{c.nombre_concepto}</span>
+                      <span className="font-medium">{formatCurrency(c.monto || 0)}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Descripción / Observaciones */}
+            {factura.descripcion && (
+              <div className="text-sm border rounded-lg p-3">
+                <span className="text-muted-foreground font-semibold text-xs block mb-1">OBSERVACIONES</span>
+                <span>{factura.descripcion}</span>
+              </div>
+            )}
 
             {/* Totals */}
             <div className="border rounded-lg p-4">
-              {isFacturaA && factura.importe_iva ? (
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Neto Gravado:</span>
-                    <span>{formatCurrency(factura.importe_neto)}</span>
-                  </div>
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Neto Gravado:</span>
+                  <span>{formatCurrency(factura.importe_neto)}</span>
+                </div>
+                {(isFacturaA || (factura.importe_iva && factura.importe_iva > 0)) && (
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">IVA (21%):</span>
-                    <span>{formatCurrency(factura.importe_iva)}</span>
+                    <span>{formatCurrency(factura.importe_iva || 0)}</span>
                   </div>
-                  <Separator />
-                  <div className="flex justify-between text-lg font-bold">
-                    <span>TOTAL:</span>
-                    <span className="text-primary">{formatCurrency(factura.importe_total)}</span>
+                )}
+                {(factura.importe_no_gravado ?? 0) > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">No Gravado:</span>
+                    <span>{formatCurrency(factura.importe_no_gravado)}</span>
                   </div>
-                </div>
-              ) : (
+                )}
+                {(factura.importe_exento ?? 0) > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Exento:</span>
+                    <span>{formatCurrency(factura.importe_exento)}</span>
+                  </div>
+                )}
+                {(factura.importe_tributos ?? 0) > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Tributos:</span>
+                    <span>{formatCurrency(factura.importe_tributos)}</span>
+                  </div>
+                )}
+                <Separator />
                 <div className="flex justify-between text-lg font-bold">
                   <span>TOTAL:</span>
                   <span className="text-primary">{formatCurrency(factura.importe_total)}</span>
                 </div>
-              )}
+              </div>
             </div>
 
             {/* CAE + QR AFIP */}
             <div className="border rounded-lg p-4 flex items-center justify-between gap-4">
               <div className="flex items-center gap-4">
                 <div className="p-2 bg-white rounded-lg border flex-shrink-0">
-                  {/* QR con la URL AFIP correcta: https://www.afip.gob.ar/fe/qr/?p=BASE64 */}
                   <QRCodeSVG value={afipQRUrl || 'N/A'} size={90} />
                 </div>
                 <div className="text-sm">
