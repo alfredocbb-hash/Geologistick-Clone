@@ -73,11 +73,10 @@ export default function Facturacion() {
   const [domicilio, setDomicilio] = useState('');
   const [ivaIncluido, setIvaIncluido] = useState(true);
   const [duplicateImporte, setDuplicateImporte] = useState(0);
-  const [selectedEnvironment, setSelectedEnvironment] = useState<'sandbox' | 'production'>('production');
 
   const { match: cuitMatch, loading: cuitLoading, lookup: lookupCuit, clear: clearCuitMatch, updateSourceRecord } = useCuitLookup({ tenantId: profile?.tenant_id });
 
-  const { isConfigured, config, hasBothEnvironments, isLoading: arcaLoading } = useARCAIntegration(selectedEnvironment);
+  const { isConfigured, config, environment: activeEnvironment, isLoading: arcaLoading } = useARCAIntegration('production');
 
   // CUIT auto-lookup for batch/duplicate forms
   useEffect(() => {
@@ -395,24 +394,12 @@ export default function Facturacion() {
       {arcaLoading ? (
         <div className="flex items-center justify-center py-2"><Loader2 className="h-4 w-4 animate-spin" /></div>
       ) : isConfigured ? (
-        <div className="space-y-2">
-          {hasBothEnvironments && (
-            <div className="flex items-center gap-2 p-2 border rounded-lg bg-muted/40">
-              <span className="text-xs text-muted-foreground font-medium">Entorno:</span>
-              <div className="flex gap-1">
-                <Button type="button" size="sm" variant={selectedEnvironment === 'sandbox' ? 'default' : 'ghost'} className="h-7 px-3 text-xs" onClick={() => setSelectedEnvironment('sandbox')}>Sandbox</Button>
-                <Button type="button" size="sm" variant={selectedEnvironment === 'production' ? 'default' : 'ghost'} className="h-7 px-3 text-xs" onClick={() => setSelectedEnvironment('production')}>Producción</Button>
-              </div>
-            </div>
-          )}
-          <Alert className="border-green-200 bg-green-50">
-            <CheckCircle className="h-4 w-4 text-green-600" />
-            <AlertDescription className="text-green-800">
-              ARCA configurado ({selectedEnvironment === 'sandbox' ? 'Sandbox' : 'Producción'})
-              {config && ` – ${config.razon_social}`}
-            </AlertDescription>
-          </Alert>
-        </div>
+        <Alert className="border-green-200 bg-green-50">
+          <CheckCircle className="h-4 w-4 text-green-600" />
+          <AlertDescription className="text-green-800">
+            ARCA configurado{config && ` – ${config.razon_social}`}
+          </AlertDescription>
+        </Alert>
       ) : (
         <Alert className="border-yellow-200 bg-yellow-50">
           <AlertCircle className="h-4 w-4 text-yellow-600" />
