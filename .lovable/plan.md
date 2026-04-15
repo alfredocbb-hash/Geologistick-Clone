@@ -1,38 +1,30 @@
 
 
-## Plan: Corregir bloqueo de suscripción para TODOS los usuarios de un tenant
+## Plan: Actualizar envíos en_reparto de Beraexpress a entregado
 
-### Problema encontrado
+### Datos encontrados
+- **Tenant**: Beraexpress (`94a9ea85-...`)
+- **Envíos en_reparto**: ~20+ envíos
+- **Choferes asignados**: Kevin Bernard y Fernando Mauro (ya asignados, se mantienen)
 
-La tabla `tenant_subscriptions` tiene una política RLS que solo permite lectura a **admins**:
-
-```sql
--- Policy actual: "Tenant admins can view subscription"
-(tenant_id = current_user_tenant()) AND (is_admin(auth.uid()) OR is_super_admin(auth.uid()))
-```
-
-Esto significa que los usuarios con rol `chofer`, `sucursal` o `despachador` no pueden leer la suscripción. Cuando la query no devuelve datos, el hook lo interpreta como "sin suscripción configurada" y **permite el acceso** (línea 55 de `useSubscriptionBlock.ts`).
-
-### BlackBox actualmente
-- Plan: `professional`, suscripción con status `expired`, vencida el 13/04/2026
-- 16 usuarios activos (1 admin, 1 chofer, 14 sucursal/despachador)
-- Solo el admin `blackboxcargas@gmail.com` estaría siendo bloqueado; el resto pasa sin bloqueo
-
-### Solución
-
-| Cambio | Detalle |
-|--------|---------|
-| **Migración SQL** | Agregar política RLS para que **cualquier usuario autenticado** pueda leer la suscripción de **su propio tenant** (solo SELECT, solo columnas `status` y `current_period_end`) |
+### Acción
+Ejecutar un UPDATE via insert tool:
 
 ```sql
-CREATE POLICY "All users can view own tenant subscription"
-ON public.tenant_subscriptions
-FOR SELECT
-TO authenticated
-USING (tenant_id = current_user_tenant());
+UPDATE envios
+SET estado = 'entregado',
+    fecha_entrega = now(),
+    updated_at = now()
+WHERE estado = 'en_reparto'
+  AND tenant_id = '94a9ea85-43c5-49ac-9bfa-86843072c2ce';
 ```
 
-Esto permite que chofer, sucursal, despachador lean el status de suscripción y sean bloqueados correctamente cuando está vencida.
+### Qué pasa automáticamente
+- El trigger `log_envio_estado_change` crea registro en `envio_historial` con las notas descriptivas ("Entregado en domicilio - Entregó: chofer")
+- El trigger `sync_ecommerce_order_status` actualiza órdenes ecommerce vinculadas
+- El trigger `auto_sync_ml_status` sincroniza con MercadoLibre si son envíos ML
+- El `chofer_id` existente se mantiene, por lo que queda registrado como que lo entregó el chofer asignado
 
-No se requieren cambios en el código frontend: el hook `useSubscriptionBlock.ts` ya tiene la lógica correcta, solo faltaba que la query pudiera ejecutarse para usuarios no-admin.
+### No se requieren cambios de código
+Solo es una operación de datos.
 
