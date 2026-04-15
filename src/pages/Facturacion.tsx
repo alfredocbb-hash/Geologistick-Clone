@@ -1,14 +1,15 @@
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -16,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
-import { FileText, Loader2, Search, CheckCircle, AlertCircle, Package } from 'lucide-react';
+import { FileText, Loader2, Search, CheckCircle, AlertCircle, Package, Copy, RefreshCw, Download } from 'lucide-react';
 import { useARCAIntegration, determinarTipoFactura, validateCUIT, formatCUIT } from '@/hooks/useARCAConfig';
 import { format } from 'date-fns';
 
@@ -31,19 +32,26 @@ type CondicionIVA = typeof CONDICION_IVA_OPTIONS[number]['value'];
 
 export default function Facturacion() {
   const { profile } = useAuth();
+  const [activeTab, setActiveTab] = useState('pendientes');
   const [search, setSearch] = useState('');
+  const [searchEmitidas, setSearchEmitidas] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchOpen, setBatchOpen] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, running: false });
   const [batchResults, setBatchResults] = useState<{ id: string; tracking: string; ok: boolean; error?: string }[]>([]);
 
-  // Batch invoice form state
+  // Duplicate dialog state
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
+  const [duplicateSource, setDuplicateSource] = useState<any>(null);
+
+  // Batch/duplicate invoice form state
   const [tipoComprobante, setTipoComprobante] = useState<'A' | 'B' | 'C'>('B');
   const [cuit, setCuit] = useState('');
   const [nombre, setNombre] = useState('');
   const [condicionIva, setCondicionIva] = useState<CondicionIVA>('consumidor_final');
   const [domicilio, setDomicilio] = useState('');
   const [ivaIncluido, setIvaIncluido] = useState(true);
+  const [duplicateImporte, setDuplicateImporte] = useState(0);
   const [selectedEnvironment, setSelectedEnvironment] = useState<'sandbox' | 'production'>('production');
 
   const { isConfigured, config, hasBothEnvironments, isLoading: arcaLoading } = useARCAIntegration(selectedEnvironment);
@@ -53,8 +61,6 @@ export default function Facturacion() {
     queryKey: ['facturacion-pendiente', profile?.tenant_id],
     queryFn: async () => {
       if (!profile?.tenant_id) return [];
-
-      // Get all delivered shipments
       const { data: envios, error: enviosError } = await supabase
         .from('envios')
         .select('id, tracking_number, nombre_destinatario, fecha_entrega, precio_total, ciudad_entrega, direccion_entrega')
@@ -62,22 +68,54 @@ export default function Facturacion() {
         .eq('estado', 'entregado')
         .order('fecha_entrega', { ascending: false })
         .limit(500);
-
       if (enviosError) throw enviosError;
       if (!envios?.length) return [];
-
-      // Get invoiced shipment ids
       const { data: facturas } = await supabase
         .from('facturas')
         .select('envio_id')
         .eq('tenant_id', profile.tenant_id)
         .not('envio_id', 'is', null);
-
       const invoicedIds = new Set((facturas || []).map(f => f.envio_id));
-
       return envios.filter(e => !invoicedIds.has(e.id));
     },
     enabled: !!profile?.tenant_id,
+  });
+
+  // Fetch emitted invoices
+  const { data: emitidas = [], isLoading: loadingEmitidas, refetch: refetchEmitidas } = useQuery({
+    queryKey: ['facturas-emitidas', profile?.tenant_id],
+    queryFn: async () => {
+      if (!profile?.tenant_id) return [];
+      const { data, error } = await supabase
+        .from('facturas')
+        .select('*')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('estado', 'emitida')
+        .order('fecha_emision', { ascending: false })
+        .limit(500);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!profile?.tenant_id,
+  });
+
+  // Sync from AFIP mutation
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('arca-factura', {
+        body: { action: 'sync_from_afip', environment: selectedEnvironment },
+      });
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: (data) => {
+      toast.success(data.message || `${data.imported} facturas importadas`);
+      refetchEmitidas();
+    },
+    onError: (err: Error) => {
+      toast.error('Error al sincronizar', { description: err.message });
+    },
   });
 
   const filtered = useMemo(() => {
@@ -89,6 +127,17 @@ export default function Facturacion() {
       e.ciudad_entrega?.toLowerCase().includes(q)
     );
   }, [pendientes, search]);
+
+  const filteredEmitidas = useMemo(() => {
+    if (!searchEmitidas) return emitidas;
+    const q = searchEmitidas.toLowerCase();
+    return emitidas.filter((f: any) =>
+      f.receptor_nombre?.toLowerCase().includes(q) ||
+      f.receptor_cuit?.includes(q) ||
+      String(f.numero_comprobante)?.includes(q) ||
+      f.cae?.includes(q)
+    );
+  }, [emitidas, searchEmitidas]);
 
   const toggleSelect = (id: string) => {
     setSelected(prev => {
@@ -113,20 +162,26 @@ export default function Facturacion() {
 
   const requiresCuit = CONDICION_IVA_OPTIONS.find(o => o.value === condicionIva)?.requiresCuit;
 
+  const resetForm = () => {
+    setCuit('');
+    setNombre('');
+    setCondicionIva('consumidor_final');
+    setDomicilio('');
+    setTipoComprobante('B');
+    setIvaIncluido(true);
+    setDuplicateImporte(0);
+  };
+
   const handleBatchInvoice = async () => {
     const ids = Array.from(selected);
     const enviosToInvoice = pendientes.filter(e => ids.includes(e.id));
     setBatchProgress({ current: 0, total: enviosToInvoice.length, running: true });
     setBatchResults([]);
-
     const results: typeof batchResults = [];
-
     for (let i = 0; i < enviosToInvoice.length; i++) {
       const envio = enviosToInvoice[i];
       setBatchProgress(p => ({ ...p, current: i + 1 }));
-
       const importeTotalConIva = ivaIncluido ? envio.precio_total : Math.round(envio.precio_total * 1.21 * 100) / 100;
-
       try {
         const { data, error } = await supabase.functions.invoke('arca-factura', {
           body: {
@@ -149,117 +204,367 @@ export default function Facturacion() {
         results.push({ id: envio.id, tracking: envio.tracking_number, ok: false, error: err.message });
       }
     }
-
     setBatchResults(results);
     setBatchProgress(p => ({ ...p, running: false }));
-
     const ok = results.filter(r => r.ok).length;
     const fail = results.filter(r => !r.ok).length;
     if (ok > 0) toast.success(`${ok} factura(s) emitida(s) correctamente`);
     if (fail > 0) toast.error(`${fail} factura(s) fallaron`);
-
     setSelected(new Set());
     refetch();
+    refetchEmitidas();
+  };
+
+  const handleDuplicate = (factura: any) => {
+    setDuplicateSource(factura);
+    setTipoComprobante(factura.tipo_comprobante || 'B');
+    setCuit(factura.receptor_cuit || '');
+    setNombre(factura.receptor_nombre || '');
+    setCondicionIva(factura.receptor_condicion_iva || 'consumidor_final');
+    setDomicilio(factura.receptor_domicilio || '');
+    setDuplicateImporte(factura.importe_total || 0);
+    setIvaIncluido(true);
+    setDuplicateOpen(true);
+  };
+
+  const handleEmitDuplicate = async () => {
+    try {
+      const importeTotal = ivaIncluido ? duplicateImporte : Math.round(duplicateImporte * 1.21 * 100) / 100;
+      const { data, error } = await supabase.functions.invoke('arca-factura', {
+        body: {
+          // Duplicate is a new standalone invoice - use a dummy envio_id reference or none
+          // We use the original envio_id if exists, otherwise create standalone
+          envio_id: duplicateSource?.envio_id || undefined,
+          liquidacion_seller_id: duplicateSource?.liquidacion_seller_id || undefined,
+          tipo_comprobante: tipoComprobante,
+          environment: selectedEnvironment,
+          receptor: {
+            cuit: cuit ? formatCUIT(cuit) : undefined,
+            nombre: nombre.trim(),
+            condicion_iva: condicionIva,
+            domicilio: domicilio.trim() || undefined,
+          },
+          importe_total: importeTotal,
+        },
+      });
+      if (error) throw error;
+      if (!data.success && data.error) throw new Error(data.error);
+      toast.success('Factura duplicada emitida correctamente');
+      setDuplicateOpen(false);
+      resetForm();
+      refetchEmitidas();
+    } catch (err: any) {
+      toast.error('Error al emitir factura duplicada', { description: err.message });
+    }
   };
 
   const formatCurrency = (n: number) =>
     new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(n);
 
+  const formatComprobante = (pv: number, num: number) =>
+    `${String(pv).padStart(4, '0')}-${String(num).padStart(8, '0')}`;
+
+  // Shared ARCA status component
+  const ARCAStatus = () => (
+    <>
+      {arcaLoading ? (
+        <div className="flex items-center justify-center py-2"><Loader2 className="h-4 w-4 animate-spin" /></div>
+      ) : isConfigured ? (
+        <div className="space-y-2">
+          {hasBothEnvironments && (
+            <div className="flex items-center gap-2 p-2 border rounded-lg bg-muted/40">
+              <span className="text-xs text-muted-foreground font-medium">Entorno:</span>
+              <div className="flex gap-1">
+                <Button type="button" size="sm" variant={selectedEnvironment === 'sandbox' ? 'default' : 'ghost'} className="h-7 px-3 text-xs" onClick={() => setSelectedEnvironment('sandbox')}>Sandbox</Button>
+                <Button type="button" size="sm" variant={selectedEnvironment === 'production' ? 'default' : 'ghost'} className="h-7 px-3 text-xs" onClick={() => setSelectedEnvironment('production')}>Producción</Button>
+              </div>
+            </div>
+          )}
+          <Alert className="border-green-200 bg-green-50">
+            <CheckCircle className="h-4 w-4 text-green-600" />
+            <AlertDescription className="text-green-800">
+              ARCA configurado ({selectedEnvironment === 'sandbox' ? 'Sandbox' : 'Producción'})
+              {config && ` – ${config.razon_social}`}
+            </AlertDescription>
+          </Alert>
+        </div>
+      ) : (
+        <Alert className="border-yellow-200 bg-yellow-50">
+          <AlertCircle className="h-4 w-4 text-yellow-600" />
+          <AlertDescription className="text-yellow-800">ARCA no configurado. Se guardarán para facturación manual.</AlertDescription>
+        </Alert>
+      )}
+    </>
+  );
+
+  // Shared invoice form fields
+  const InvoiceFormFields = ({ showImporte = false }: { showImporte?: boolean }) => (
+    <div className="space-y-4 py-2">
+      <ARCAStatus />
+
+      <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/40">
+        <Label className="text-sm font-medium cursor-pointer">
+          {ivaIncluido ? 'IVA incluido en el monto' : 'Agregar IVA 21% al monto'}
+        </Label>
+        <Switch checked={ivaIncluido} onCheckedChange={setIvaIncluido} />
+      </div>
+
+      {showImporte && (
+        <div className="space-y-2">
+          <Label>Importe Total *</Label>
+          <Input
+            type="number"
+            step="0.01"
+            value={duplicateImporte}
+            onChange={e => setDuplicateImporte(parseFloat(e.target.value) || 0)}
+          />
+        </div>
+      )}
+
+      {!showImporte && (
+        <div className="p-3 bg-muted rounded-lg flex justify-between items-center">
+          <span className="text-sm text-muted-foreground">Total a facturar ({selected.size} envíos):</span>
+          <span className="text-lg font-bold">{formatCurrency(selectedTotal)}</span>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <Label>Tipo de Comprobante</Label>
+        <RadioGroup value={tipoComprobante} onValueChange={v => setTipoComprobante(v as 'A' | 'B' | 'C')} className="flex gap-4">
+          <div className="flex items-center space-x-2"><RadioGroupItem value="A" id="f-a" disabled={condicionIva === 'consumidor_final'} /><Label htmlFor="f-a">Factura A</Label></div>
+          <div className="flex items-center space-x-2"><RadioGroupItem value="B" id="f-b" /><Label htmlFor="f-b">Factura B</Label></div>
+          <div className="flex items-center space-x-2"><RadioGroupItem value="C" id="f-c" /><Label htmlFor="f-c">Factura C</Label></div>
+        </RadioGroup>
+      </div>
+
+      <div className="space-y-2">
+        <Label>Condición frente al IVA</Label>
+        <Select value={condicionIva} onValueChange={v => setCondicionIva(v as CondicionIVA)}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {CONDICION_IVA_OPTIONS.map(o => (
+              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-2">
+        <Label>{requiresCuit ? 'CUIT *' : 'CUIT/DNI (opcional)'}</Label>
+        <Input placeholder="XX-XXXXXXXX-X" value={cuit} onChange={e => setCuit(e.target.value)} />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Razón Social / Nombre *</Label>
+        <Input placeholder="Nombre completo o razón social" value={nombre} onChange={e => setNombre(e.target.value)} />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Domicilio Fiscal (opcional)</Label>
+        <Input placeholder="Dirección completa" value={domicilio} onChange={e => setDomicilio(e.target.value)} />
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Cola de Facturación</h1>
-          <p className="text-muted-foreground">Envíos entregados pendientes de facturar</p>
+          <h1 className="text-2xl font-bold">Facturación</h1>
+          <p className="text-muted-foreground">Gestión de facturas electrónicas</p>
         </div>
-        <Badge variant="secondary" className="text-lg px-4 py-2">
-          {pendientes.length} pendientes
-        </Badge>
       </div>
 
-      {/* Action bar */}
-      <Card>
-        <CardContent className="pt-4 flex flex-wrap items-center gap-4">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar por tracking, destinatario o ciudad..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="pl-9"
-            />
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="pendientes">
+            Pendientes
+            {pendientes.length > 0 && (
+              <Badge variant="secondary" className="ml-2">{pendientes.length}</Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="emitidas">
+            Emitidas
+            {emitidas.length > 0 && (
+              <Badge variant="secondary" className="ml-2">{emitidas.length}</Badge>
+            )}
+          </TabsTrigger>
+        </TabsList>
+
+        {/* ══════ TAB PENDIENTES ══════ */}
+        <TabsContent value="pendientes">
+          <div className="space-y-4">
+            <Card>
+              <CardContent className="pt-4 flex flex-wrap items-center gap-4">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por tracking, destinatario o ciudad..."
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+                <Button onClick={() => { resetForm(); setBatchOpen(true); }} disabled={selected.size === 0}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  Facturar en Lote ({selected.size})
+                </Button>
+                {selected.size > 0 && (
+                  <span className="text-sm text-muted-foreground">
+                    Total: <strong>{formatCurrency(selectedTotal)}</strong>
+                  </span>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-0">
+                {isLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : filtered.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                    <Package className="h-10 w-10 mb-2" />
+                    <p>No hay envíos pendientes de facturar</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-10">
+                          <Checkbox checked={filtered.length > 0 && selected.size === filtered.length} onCheckedChange={toggleAll} />
+                        </TableHead>
+                        <TableHead>Tracking</TableHead>
+                        <TableHead>Destinatario</TableHead>
+                        <TableHead>Fecha Entrega</TableHead>
+                        <TableHead>Ciudad</TableHead>
+                        <TableHead className="text-right">Importe</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filtered.map(envio => (
+                        <TableRow key={envio.id} className="cursor-pointer" onClick={() => toggleSelect(envio.id)}>
+                          <TableCell onClick={e => e.stopPropagation()}>
+                            <Checkbox checked={selected.has(envio.id)} onCheckedChange={() => toggleSelect(envio.id)} />
+                          </TableCell>
+                          <TableCell className="font-mono text-xs">{envio.tracking_number}</TableCell>
+                          <TableCell>{envio.nombre_destinatario || '—'}</TableCell>
+                          <TableCell>{envio.fecha_entrega ? format(new Date(envio.fecha_entrega), 'dd/MM/yyyy') : '—'}</TableCell>
+                          <TableCell>{envio.ciudad_entrega || '—'}</TableCell>
+                          <TableCell className="text-right font-medium">{formatCurrency(envio.precio_total || 0)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
           </div>
-          <Button
-            onClick={() => setBatchOpen(true)}
-            disabled={selected.size === 0}
-          >
-            <FileText className="mr-2 h-4 w-4" />
-            Facturar en Lote ({selected.size})
-          </Button>
-          {selected.size > 0 && (
-            <span className="text-sm text-muted-foreground">
-              Total seleccionado: <strong>{formatCurrency(selectedTotal)}</strong>
-            </span>
-          )}
-        </CardContent>
-      </Card>
+        </TabsContent>
 
-      {/* Table */}
-      <Card>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-              <Package className="h-10 w-10 mb-2" />
-              <p>No hay envíos pendientes de facturar</p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10">
-                    <Checkbox
-                      checked={filtered.length > 0 && selected.size === filtered.length}
-                      onCheckedChange={toggleAll}
-                    />
-                  </TableHead>
-                  <TableHead>Tracking</TableHead>
-                  <TableHead>Destinatario</TableHead>
-                  <TableHead>Fecha Entrega</TableHead>
-                  <TableHead>Ciudad</TableHead>
-                  <TableHead className="text-right">Importe</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map(envio => (
-                  <TableRow key={envio.id} className="cursor-pointer" onClick={() => toggleSelect(envio.id)}>
-                    <TableCell onClick={e => e.stopPropagation()}>
-                      <Checkbox
-                        checked={selected.has(envio.id)}
-                        onCheckedChange={() => toggleSelect(envio.id)}
-                      />
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">{envio.tracking_number}</TableCell>
-                    <TableCell>{envio.nombre_destinatario || '—'}</TableCell>
-                    <TableCell>
-                      {envio.fecha_entrega ? format(new Date(envio.fecha_entrega), 'dd/MM/yyyy') : '—'}
-                    </TableCell>
-                    <TableCell>{envio.ciudad_entrega || '—'}</TableCell>
-                    <TableCell className="text-right font-medium">
-                      {formatCurrency(envio.precio_total || 0)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+        {/* ══════ TAB EMITIDAS ══════ */}
+        <TabsContent value="emitidas">
+          <div className="space-y-4">
+            <Card>
+              <CardContent className="pt-4 flex flex-wrap items-center gap-4">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por receptor, CUIT, nro comprobante o CAE..."
+                    value={searchEmitidas}
+                    onChange={e => setSearchEmitidas(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => syncMutation.mutate()}
+                  disabled={syncMutation.isPending || !isConfigured}
+                >
+                  {syncMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="mr-2 h-4 w-4" />
+                  )}
+                  Sincronizar desde AFIP
+                </Button>
+              </CardContent>
+            </Card>
 
-      {/* Batch Invoice Dialog */}
+            <Card>
+              <CardContent className="p-0">
+                {loadingEmitidas ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : filteredEmitidas.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                    <FileText className="h-10 w-10 mb-2" />
+                    <p>No hay facturas emitidas</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nro Comprobante</TableHead>
+                        <TableHead>Tipo</TableHead>
+                        <TableHead>Receptor</TableHead>
+                        <TableHead>CUIT</TableHead>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
+                        <TableHead>CAE</TableHead>
+                        <TableHead>Origen</TableHead>
+                        <TableHead className="w-20">Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredEmitidas.map((factura: any) => (
+                        <TableRow key={factura.id}>
+                          <TableCell className="font-mono text-xs">
+                            {factura.punto_venta && factura.numero_comprobante
+                              ? formatComprobante(factura.punto_venta, factura.numero_comprobante)
+                              : '—'}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">Factura {factura.tipo_comprobante}</Badge>
+                          </TableCell>
+                          <TableCell className="max-w-[200px] truncate">{factura.receptor_nombre || '—'}</TableCell>
+                          <TableCell className="font-mono text-xs">{factura.receptor_cuit || '—'}</TableCell>
+                          <TableCell>
+                            {factura.fecha_emision ? format(new Date(factura.fecha_emision), 'dd/MM/yyyy') : '—'}
+                          </TableCell>
+                          <TableCell className="text-right font-medium">{formatCurrency(factura.importe_total || 0)}</TableCell>
+                          <TableCell className="font-mono text-xs max-w-[120px] truncate">{factura.cae || '—'}</TableCell>
+                          <TableCell>
+                            {factura.importada ? (
+                              <Badge variant="secondary" className="text-xs">AFIP</Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-xs">Local</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDuplicate(factura)}
+                              title="Duplicar factura"
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      {/* ══════ BATCH INVOICE DIALOG ══════ */}
       <Dialog open={batchOpen} onOpenChange={o => { if (!batchProgress.running) setBatchOpen(o); }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -294,92 +599,7 @@ export default function Facturacion() {
             </div>
           ) : (
             <>
-              <div className="space-y-4 py-2">
-                {/* ARCA status */}
-                {arcaLoading ? (
-                  <div className="flex items-center justify-center py-2"><Loader2 className="h-4 w-4 animate-spin" /></div>
-                ) : isConfigured ? (
-                  <div className="space-y-2">
-                    {hasBothEnvironments && (
-                      <div className="flex items-center gap-2 p-2 border rounded-lg bg-muted/40">
-                        <span className="text-xs text-muted-foreground font-medium">Entorno:</span>
-                        <div className="flex gap-1">
-                          <Button type="button" size="sm" variant={selectedEnvironment === 'sandbox' ? 'default' : 'ghost'} className="h-7 px-3 text-xs" onClick={() => setSelectedEnvironment('sandbox')}>Sandbox</Button>
-                          <Button type="button" size="sm" variant={selectedEnvironment === 'production' ? 'default' : 'ghost'} className="h-7 px-3 text-xs" onClick={() => setSelectedEnvironment('production')}>Producción</Button>
-                        </div>
-                      </div>
-                    )}
-                    <Alert className="border-green-200 bg-green-50">
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                      <AlertDescription className="text-green-800">
-                        ARCA configurado ({selectedEnvironment === 'sandbox' ? 'Sandbox' : 'Producción'})
-                        {config && ` – ${config.razon_social}`}
-                      </AlertDescription>
-                    </Alert>
-                  </div>
-                ) : (
-                  <Alert className="border-yellow-200 bg-yellow-50">
-                    <AlertCircle className="h-4 w-4 text-yellow-600" />
-                    <AlertDescription className="text-yellow-800">ARCA no configurado. Se guardarán para facturación manual.</AlertDescription>
-                  </Alert>
-                )}
-
-                {/* IVA toggle */}
-                <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/40">
-                  <Label className="text-sm font-medium cursor-pointer">
-                    {ivaIncluido ? 'IVA incluido en el monto' : 'Agregar IVA 21% al monto'}
-                  </Label>
-                  <Switch checked={ivaIncluido} onCheckedChange={setIvaIncluido} />
-                </div>
-
-                {/* Total */}
-                <div className="p-3 bg-muted rounded-lg flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Total a facturar ({selected.size} envíos):</span>
-                  <span className="text-lg font-bold">{formatCurrency(selectedTotal)}</span>
-                </div>
-
-                {/* Invoice type */}
-                <div className="space-y-2">
-                  <Label>Tipo de Comprobante</Label>
-                  <RadioGroup value={tipoComprobante} onValueChange={v => setTipoComprobante(v as 'A' | 'B' | 'C')} className="flex gap-4">
-                    <div className="flex items-center space-x-2"><RadioGroupItem value="A" id="b-a" disabled={condicionIva === 'consumidor_final'} /><Label htmlFor="b-a">Factura A</Label></div>
-                    <div className="flex items-center space-x-2"><RadioGroupItem value="B" id="b-b" /><Label htmlFor="b-b">Factura B</Label></div>
-                    <div className="flex items-center space-x-2"><RadioGroupItem value="C" id="b-c" /><Label htmlFor="b-c">Factura C</Label></div>
-                  </RadioGroup>
-                </div>
-
-                {/* IVA condition */}
-                <div className="space-y-2">
-                  <Label>Condición frente al IVA</Label>
-                  <Select value={condicionIva} onValueChange={v => setCondicionIva(v as CondicionIVA)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {CONDICION_IVA_OPTIONS.map(o => (
-                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* CUIT */}
-                <div className="space-y-2">
-                  <Label>{requiresCuit ? 'CUIT *' : 'CUIT/DNI (opcional)'}</Label>
-                  <Input placeholder="XX-XXXXXXXX-X" value={cuit} onChange={e => setCuit(e.target.value)} />
-                </div>
-
-                {/* Name */}
-                <div className="space-y-2">
-                  <Label>Razón Social / Nombre *</Label>
-                  <Input placeholder="Nombre completo o razón social" value={nombre} onChange={e => setNombre(e.target.value)} />
-                </div>
-
-                {/* Address */}
-                <div className="space-y-2">
-                  <Label>Domicilio Fiscal (opcional)</Label>
-                  <Input placeholder="Dirección completa" value={domicilio} onChange={e => setDomicilio(e.target.value)} />
-                </div>
-              </div>
-
+              <InvoiceFormFields />
               <DialogFooter className="gap-2">
                 <Button variant="outline" onClick={() => setBatchOpen(false)}>Cancelar</Button>
                 <Button
@@ -392,6 +612,34 @@ export default function Facturacion() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ══════ DUPLICATE INVOICE DIALOG ══════ */}
+      <Dialog open={duplicateOpen} onOpenChange={o => { if (!o) { setDuplicateOpen(false); resetForm(); } }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Copy className="h-5 w-5" />
+              Duplicar Factura
+            </DialogTitle>
+            <DialogDescription>
+              Los datos están precargados de la factura original. Editá lo que necesites antes de emitir.
+            </DialogDescription>
+          </DialogHeader>
+
+          <InvoiceFormFields showImporte />
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setDuplicateOpen(false); resetForm(); }}>Cancelar</Button>
+            <Button
+              onClick={handleEmitDuplicate}
+              disabled={!nombre.trim() || (requiresCuit && !cuit.trim()) || duplicateImporte <= 0}
+            >
+              <FileText className="mr-2 h-4 w-4" />
+              Emitir Factura
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
