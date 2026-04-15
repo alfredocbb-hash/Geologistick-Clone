@@ -481,12 +481,14 @@ export default function ThirdPartyShipmentsTab() {
           tipo_pago: shipment.tipo_pago || 'destino',
           pago_contra_entrega: shipment.tipo_pago === 'destino',
           nombre_destinatario: shipment.nombre_destinatario,
-          direccion_entrega: shipment.direccion_entrega,
-          ciudad_entrega: shipment.ciudad_entrega,
+          // Si es retiro: la dirección del form es donde se retira, la empresa es el destino
+          // Si es entrega: la dirección del form es el destino, la empresa es el origen
+          direccion_entrega: shipment.tipo_operacion === "retiro" ? (selectedEmpresa?.direccion || '') : shipment.direccion_entrega,
+          ciudad_entrega: shipment.tipo_operacion === "retiro" ? (selectedEmpresa?.ciudad || '') : shipment.ciudad_entrega,
           provincia: shipment.provincia,
           cp_entrega: shipment.cp_entrega || null,
-          entrega_lat: shipment.entrega_lat,
-          entrega_lng: shipment.entrega_lng,
+          entrega_lat: shipment.tipo_operacion === "retiro" ? null : shipment.entrega_lat,
+          entrega_lng: shipment.tipo_operacion === "retiro" ? null : shipment.entrega_lng,
           destinatario_id: destinatarioId,
           remitente_id: selectedSeller?.cliente_id || null,
           tipo_servicio: "puerta_puerta",
@@ -500,8 +502,10 @@ export default function ThirdPartyShipmentsTab() {
           requiere_retiro: shipment.tipo_operacion === "retiro",
           // Datos del remitente (empresa terciarizada)
           nombre_remitente: selectedSeller ? selectedSeller.nombre : (selectedEmpresa?.nombre || null),
-          direccion_retiro: selectedEmpresa?.direccion || null,
-          ciudad_retiro: selectedEmpresa?.ciudad || null,
+          direccion_retiro: shipment.tipo_operacion === "retiro" ? shipment.direccion_entrega : (selectedEmpresa?.direccion || null),
+          ciudad_retiro: shipment.tipo_operacion === "retiro" ? shipment.ciudad_entrega : (selectedEmpresa?.ciudad || null),
+          remitente_lat: shipment.tipo_operacion === "retiro" ? shipment.entrega_lat : null,
+          remitente_lng: shipment.tipo_operacion === "retiro" ? shipment.entrega_lng : null,
           source_module: 'third_party',
         })
         .select()
