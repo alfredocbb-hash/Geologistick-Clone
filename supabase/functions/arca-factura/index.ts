@@ -988,7 +988,6 @@ serve(async (req) => {
 
       const testEndpoints = ARCA_ENDPOINTS[testEnv];
       try {
-        // Usar caché: si hay token vigente, retornarlo sin re-autenticar
         const { token, sign } = await getWSAAToken(supabase, tenantId, testEnv, arcaTestConfig);
         return new Response(
           JSON.stringify({
@@ -1014,6 +1013,94 @@ serve(async (req) => {
       }
     }
     // ── FIN TEST DE CONEXIÓN ──────────────────────────────────────────────────
+
+    // ── SINCRONIZACIÓN DESDE AFIP ─────────────────────────────────────────────
+    if (rawBody.action === 'sync_from_afip') {
+      const syncEnv: 'sandbox' | 'production' = rawBody.environment || 'production';
+      const syncTypes: ('A' | 'B' | 'C')[] = rawBody.tipos || ['A', 'B', 'C'];
+
+      const arcaSyncConfig = await getARCAConfig(supabase, tenantId, syncEnv);
+      if (!arcaSyncConfig) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'ARCA no configurado para este entorno' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const endpoints = ARCA_ENDPOINTS[syncEnv];
+      const { token, sign } = await getWSAAToken(supabase, tenantId, syncEnv, arcaSyncConfig);
+      const puntoVenta = parseInt(arcaSyncConfig.punto_venta);
+      let totalImported = 0;
+      const errors: string[] = [];
+
+      for (const tipo of syncTypes) {
+        try {
+          const afipLast = await getUltimoComprobanteAFIP(token, sign, arcaSyncConfig.cuit, puntoVenta, tipo, endpoints.wsfe);
+          if (afipLast <= 0) continue;
+
+          // Get existing invoice numbers in local DB for this type
+          const { data: existingFacturas } = await supabase
+            .from('facturas')
+            .select('numero_comprobante')
+            .eq('tenant_id', tenantId)
+            .eq('tipo_comprobante', tipo)
+            .eq('punto_venta', puntoVenta);
+
+          const existingNumbers = new Set((existingFacturas || []).map((f: { numero_comprobante: number }) => f.numero_comprobante));
+
+          // Find missing numbers (limit to last 100 to avoid long runs)
+          const startFrom = Math.max(1, afipLast - 99);
+          for (let nro = startFrom; nro <= afipLast; nro++) {
+            if (existingNumbers.has(nro)) continue;
+
+            try {
+              const comprobante = await consultarComprobante(token, sign, arcaSyncConfig.cuit, puntoVenta, tipo, nro, endpoints.wsfe);
+              if (!comprobante) continue;
+
+              // Insert into facturas
+              await supabase.from('facturas').insert({
+                tenant_id: tenantId,
+                tipo_comprobante: tipo,
+                punto_venta: puntoVenta,
+                numero_comprobante: nro,
+                receptor_cuit: comprobante.docNro !== '0' ? comprobante.docNro : null,
+                receptor_nombre: 'Importado desde AFIP',
+                receptor_condicion_iva: comprobante.docTipo === 80 ? 'responsable_inscripto' : 'consumidor_final',
+                importe_neto: comprobante.impNeto,
+                importe_iva: comprobante.impIVA,
+                importe_total: comprobante.impTotal,
+                fecha_emision: comprobante.cbteFch,
+                cae: comprobante.cae,
+                cae_vencimiento: comprobante.caeFchVto,
+                estado: 'emitida',
+                importada: true,
+                created_by: userId,
+              });
+
+              totalImported++;
+            } catch (compErr) {
+              console.warn(`[ARCA] Error consultando comprobante ${tipo} #${nro}:`, compErr);
+            }
+          }
+
+          // Update local counter
+          await updateInvoiceNumber(supabase, tenantId, tipo, afipLast);
+        } catch (tipoErr) {
+          errors.push(`Tipo ${tipo}: ${tipoErr instanceof Error ? tipoErr.message : String(tipoErr)}`);
+        }
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          imported: totalImported,
+          errors: errors.length > 0 ? errors : undefined,
+          message: `Se importaron ${totalImported} comprobante(s) desde AFIP.`,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    // ── FIN SINCRONIZACIÓN ────────────────────────────────────────────────────
 
     const body: FacturaRequest = rawBody;
     const { envio_id, liquidacion_seller_id, liquidacion_terciarizado_id, tipo_comprobante, receptor, importe_total } = body;
