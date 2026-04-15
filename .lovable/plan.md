@@ -1,71 +1,31 @@
 
 
-## Plan: Corregir Sincronización AFIP + Módulo de Compras
+## Plan: Soporte para PV de Factura en Línea (PV 3 y 6)
 
-### Problema 1: Timeout en sincronización
-El PV 1 tiene 323 comprobantes (A:55 + B:268). La Edge Function consulta uno por uno vía SOAP y se excede del timeout de 60s.
+### Problema
+Los PV 3 y 6 son de tipo "Factura en Línea - Responsable Inscripto". AFIP no permite consultar estos PV vía WSFEv1 (error 11002). Solo los PV tipo "RECE" (1, 2, 4, 5, 7) son accesibles por API.
 
-**Solución**: Procesar en lotes más pequeños y agregar logging de progreso:
-- Reducir el rango de búsqueda: en vez de los últimos 100, consultar solo los **faltantes** de forma más inteligente
-- Agregar un parámetro `desde_numero` opcional para paginar manualmente
-- Agregar un parámetro `tipo` para sincronizar de a un tipo por vez (A, B o C) en vez de los tres juntos
-- Esto permite al usuario hacer: "Traer Tipo B del PV 1" sin cargar A y C
+### Solución
+Dos cambios:
 
-**Cambios en `supabase/functions/arca-factura/index.ts`**:
-- Aceptar `tipo` (string) además de `tipos` (array)
-- Aceptar `desde_numero` para limitar el rango
-- Limitar a máximo 30 comprobantes por ejecución (en vez de 100) para evitar timeout
-- Agregar logs de progreso: `[ARCA] Importando tipo B #45/268...`
+**1. Mensaje claro de error en la sincronización**
+Cuando AFIP devuelve error 11002, mostrar un mensaje explicativo en vez de fallar silenciosamente con "0 importados":
+- "El Punto de Venta X es de tipo 'Factura en Línea' y no es consultable por web service. Solo los PV tipo RECE son sincronizables. Podés cargar estos comprobantes manualmente."
 
-**Cambios en `src/pages/Facturacion.tsx`**:
-- En el dialog de sincronización, agregar un selector de tipo de comprobante (A, B, C o Todos)
-- Mostrar un mensaje si se importaron menos del total sugiriendo volver a ejecutar
-- Mostrar el resultado con detalle: "Importados: 30 de 268 tipo B. Ejecutar de nuevo para continuar."
+**2. Carga manual de comprobantes emitidos**
+Agregar un botón "Cargar Factura Manual" en la pestaña "Emitidas" de Facturación que permita registrar facturas emitidas desde la web de AFIP (PV 3, 6, etc.) con los datos básicos:
+- Tipo (A/B/C), Punto de Venta, Número, Fecha, CUIT receptor, Nombre receptor, Neto, IVA, Total, CAE
+- Se insertan en la tabla `facturas` con `importada: true` y `estado: 'emitida'`
 
-### Problema 2: Facturas de Compra
-WSFEv1 de AFIP solo permite consultar comprobantes **emitidos** (ventas). Las facturas de compra recibidas por Beraexpress no están disponibles por este servicio.
-
-**Solución**: Agregar un módulo de "Compras / Gastos Fiscales" en el Panel Fiscal (`FiscalDashboard.tsx`):
-- Una tabla manual donde se cargan las facturas de compra recibidas (proveedor, CUIT, tipo, monto, IVA)
-- Requiere una nueva tabla `facturas_compra` en la base de datos
-- Se integra con el reporte de IVA Digital existente como "IVA Crédito Fiscal"
-- Para Responsable Inscripto esto es crítico: la posición de IVA = Débito (ventas) - Crédito (compras)
-
-**Migración SQL**:
-```sql
-CREATE TABLE public.facturas_compra (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID NOT NULL REFERENCES tenants(id),
-  proveedor_nombre TEXT NOT NULL,
-  proveedor_cuit TEXT,
-  tipo_comprobante TEXT NOT NULL DEFAULT 'B',
-  punto_venta INT,
-  numero_comprobante INT,
-  fecha_emision DATE NOT NULL DEFAULT CURRENT_DATE,
-  importe_neto NUMERIC(12,2) DEFAULT 0,
-  importe_iva NUMERIC(12,2) DEFAULT 0,
-  importe_total NUMERIC(12,2) NOT NULL DEFAULT 0,
-  categoria TEXT, -- ej: 'insumos', 'servicios', 'alquiler'
-  notas TEXT,
-  created_by UUID REFERENCES auth.users(id),
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE public.facturas_compra ENABLE ROW LEVEL SECURITY;
--- RLS: tenant isolation
-```
-
-**Nuevo componente en `FiscalDashboard.tsx`** (solo para Responsable Inscripto):
-- Sección "Libro IVA Compras" con tabla de facturas recibidas
-- Botón "Agregar Factura de Compra" con formulario
-- El reporte de IVA Digital suma el IVA de compras como crédito fiscal
-
-### Archivos a modificar/crear
+### Archivos a modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `supabase/functions/arca-factura/index.ts` | Paginación: `tipo`, `desde_numero`, límite 30 |
-| `src/pages/Facturacion.tsx` | Selector de tipo en dialog sync + mensaje paginación |
-| Migración SQL | Crear tabla `facturas_compra` con RLS |
-| `src/pages/FiscalDashboard.tsx` | Sección "Libro IVA Compras" para RI |
+| `supabase/functions/arca-factura/index.ts` | Detectar error 11002 en respuesta AFIP y retornar mensaje claro por tipo |
+| `src/pages/Facturacion.tsx` | Agregar dialog "Cargar Factura Manual" + mostrar mensaje de error 11002 |
+
+### Detalle técnico
+- En `getUltimoComprobanteAFIP`, parsear el XML de respuesta buscando `<Code>11002</Code>` y lanzar un error específico tipo `ARCA_PV_NOT_RECE`
+- En el loop de `sync_from_afip`, capturar ese error y agregarlo al array `errors` con mensaje descriptivo
+- El formulario manual inserta directamente en `facturas` vía Supabase client (no necesita Edge Function)
 
