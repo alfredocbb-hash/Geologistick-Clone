@@ -23,12 +23,14 @@ import { useARCAIntegration, determinarTipoFactura, validateCUIT, formatCUIT } f
 import { useCuitLookup } from '@/hooks/useCuitLookup';
 import { format } from 'date-fns';
 
-import {
-  CONCEPTO_OPTIONS, TIPO_DOCUMENTO_OPTIONS, CONDICION_VENTA_OPTIONS,
-  CONDICION_IVA_OPTIONS, type CondicionIVA,
-} from '@/components/invoicing/afipConstants';
+const CONDICION_IVA_OPTIONS = [
+  { value: 'responsable_inscripto', label: 'Responsable Inscripto', requiresCuit: true },
+  { value: 'monotributo', label: 'Monotributista', requiresCuit: true },
+  { value: 'exento', label: 'Exento', requiresCuit: true },
+  { value: 'consumidor_final', label: 'Consumidor Final', requiresCuit: false },
+] as const;
 
-
+type CondicionIVA = typeof CONDICION_IVA_OPTIONS[number]['value'];
 
 export default function Facturacion() {
   const { profile } = useAuth();
@@ -70,10 +72,6 @@ export default function Facturacion() {
   const [ivaIncluido, setIvaIncluido] = useState(true);
   const [duplicateImporte, setDuplicateImporte] = useState(0);
   const [selectedEnvironment, setSelectedEnvironment] = useState<'sandbox' | 'production'>('production');
-  // AFIP fields for batch/duplicate
-  const [concepto, setConcepto] = useState(1);
-  const [tipoDocumento, setTipoDocumento] = useState(80);
-  const [condicionVenta, setCondicionVenta] = useState('Contado');
 
   const { match: cuitMatch, loading: cuitLoading, lookup: lookupCuit, clear: clearCuitMatch, updateSourceRecord } = useCuitLookup({ tenantId: profile?.tenant_id });
 
@@ -275,9 +273,6 @@ export default function Facturacion() {
     setTipoComprobante('B');
     setIvaIncluido(true);
     setDuplicateImporte(0);
-    setConcepto(1);
-    setTipoDocumento(80);
-    setCondicionVenta('Contado');
     clearCuitMatch();
   };
 
@@ -304,9 +299,6 @@ export default function Facturacion() {
               domicilio: domicilio.trim() || undefined,
             },
             importe_total: importeTotalConIva,
-            concepto,
-            tipo_documento: tipoDocumento,
-            condicion_venta: condicionVenta,
           },
         });
         if (error) throw error;
@@ -355,6 +347,8 @@ export default function Facturacion() {
       const importeTotal = ivaIncluido ? duplicateImporte : Math.round(duplicateImporte * 1.21 * 100) / 100;
       const { data, error } = await supabase.functions.invoke('arca-factura', {
         body: {
+          // Duplicate is a new standalone invoice - use a dummy envio_id reference or none
+          // We use the original envio_id if exists, otherwise create standalone
           envio_id: duplicateSource?.envio_id || undefined,
           liquidacion_seller_id: duplicateSource?.liquidacion_seller_id || undefined,
           tipo_comprobante: tipoComprobante,
@@ -366,9 +360,6 @@ export default function Facturacion() {
             domicilio: domicilio.trim() || undefined,
           },
           importe_total: importeTotal,
-          concepto,
-          tipo_documento: tipoDocumento,
-          condicion_venta: condicionVenta,
         },
       });
       if (error) throw error;
@@ -434,32 +425,6 @@ export default function Facturacion() {
     <div className="space-y-4 py-2">
       <ARCAStatus />
 
-      {/* Row 1: Concepto + Condición de Venta */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>Concepto</Label>
-          <Select value={String(concepto)} onValueChange={v => setConcepto(parseInt(v))}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {CONCEPTO_OPTIONS.map(o => (
-                <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-2">
-          <Label>Condición de Venta</Label>
-          <Select value={condicionVenta} onValueChange={setCondicionVenta}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {CONDICION_VENTA_OPTIONS.map(o => (
-                <SelectItem key={o} value={o}>{o}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
       <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/40">
         <Label className="text-sm font-medium cursor-pointer">
           {ivaIncluido ? 'IVA incluido en el monto' : 'Agregar IVA 21% al monto'}
@@ -495,30 +460,16 @@ export default function Facturacion() {
         </RadioGroup>
       </div>
 
-      {/* Row: IVA Condition + Document Type */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>Condición frente al IVA</Label>
-          <Select value={condicionIva} onValueChange={v => setCondicionIva(v as CondicionIVA)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {CONDICION_IVA_OPTIONS.map(o => (
-                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-2">
-          <Label>Tipo Documento</Label>
-          <Select value={String(tipoDocumento)} onValueChange={v => setTipoDocumento(parseInt(v))}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {TIPO_DOCUMENTO_OPTIONS.map(o => (
-                <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      <div className="space-y-2">
+        <Label>Condición frente al IVA</Label>
+        <Select value={condicionIva} onValueChange={v => setCondicionIva(v as CondicionIVA)}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {CONDICION_IVA_OPTIONS.map(o => (
+              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="space-y-2">

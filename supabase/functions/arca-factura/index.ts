@@ -1403,19 +1403,7 @@ serve(async (req) => {
       // No config in either environment → save as pending
       const factura = await createFacturaRecord(
         supabase, envio_id || null, liquidacion_seller_id || null, tenantId,
-        tipo_comprobante, 0, 0, receptor, importeNeto, importeIva, importeTotal, userId,
-        {
-          concepto: body.concepto,
-          tipoDocumento: body.tipo_documento,
-          condicionVenta: body.condicion_venta,
-          fechaServicioDesde: body.fecha_servicio_desde,
-          fechaServicioHasta: body.fecha_servicio_hasta,
-          fechaVtoPago: body.fecha_vto_pago,
-          importeNoGravado: body.importe_no_gravado,
-          importeExento: body.importe_exento,
-          importeTributos: body.importe_tributos,
-          descripcion: body.descripcion,
-        }
+        tipo_comprobante, 0, 0, receptor, importeNeto, importeIva, importeTotal, userId
       );
 
       if (envio_id) {
@@ -1447,51 +1435,16 @@ serve(async (req) => {
       wsaaToken, wsaaSign, arcaConfig.cuit, endpoints.wsfe
     );
 
-    const soapOpts = {
-      concepto: body.concepto,
-      tipoDocumento: body.tipo_documento,
-      fechaServicioDesde: body.fecha_servicio_desde,
-      fechaServicioHasta: body.fecha_servicio_hasta,
-      fechaVtoPago: body.fecha_vto_pago,
-      importeNoGravado: body.importe_no_gravado ?? 0,
-      importeExento: body.importe_exento ?? 0,
-      importeTributos: body.importe_tributos ?? 0,
-    };
-
     const factura = await createFacturaRecord(
       supabase, envio_id || null, liquidacion_seller_id || null, tenantId,
       tipo_comprobante, puntoVenta, numeroComprobante, receptor,
-      importeNeto, importeIva, importeTotal, userId,
-      {
-        ...soapOpts,
-        condicionVenta: body.condicion_venta,
-        descripcion: body.descripcion,
-      }
+      importeNeto, importeIva, importeTotal, userId
     );
-
-    // Save line items to factura_detalles
-    if (body.line_items && body.line_items.length > 0) {
-      const detalleRows = body.line_items.map((li, idx) => ({
-        factura_id: factura.id,
-        codigo: li.codigo || null,
-        descripcion: li.descripcion,
-        cantidad: li.cantidad,
-        unidad_medida: li.unidad_medida || 'unidades',
-        precio_unitario: li.precio_unitario,
-        bonificacion_pct: li.bonificacion_pct || 0,
-        subtotal: li.subtotal,
-        alicuota_iva: li.alicuota_iva ?? 21,
-        subtotal_con_iva: Math.round(li.subtotal * (1 + (li.alicuota_iva ?? 21) / 100) * 100) / 100,
-        tenant_id: tenantId,
-      }));
-      const { error: detError } = await supabase.from('factura_detalles').insert(detalleRows);
-      if (detError) console.warn('[ARCA] Error guardando line items:', detError.message);
-    }
 
     const arcaResult = await emitirFacturaARCA(
       supabase, tenantId, arcaConfig, environment, tipo_comprobante, numeroComprobante,
       receptor, importeNeto, importeIva, importeTotal,
-      wsaaToken, wsaaSign, soapOpts
+      wsaaToken, wsaaSign  // reusar el token ya obtenido, evita doble auth
     );
 
     if (arcaResult.success && arcaResult.cae) {
