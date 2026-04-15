@@ -10,10 +10,11 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, TrendingUp, TrendingDown, AlertTriangle, Download, DollarSign, Receipt, Calculator, FileText } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Loader2, TrendingUp, TrendingDown, AlertTriangle, Download, DollarSign, Receipt, Calculator, FileText, Plus } from 'lucide-react';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { exportToExcel } from '@/lib/exportExcel';
+import { PurchaseInvoiceForm } from '@/components/fiscal/PurchaseInvoiceForm';
 
 const MONOTRIBUTO_TOPES: Record<string, { label: string; tope: number }> = {
   A: { label: 'A', tope: 2108288 },
@@ -34,8 +35,8 @@ export default function FiscalDashboard() {
   const { config: arcaConfig } = useARCAIntegration();
   const [condicionManual, setCondicionManual] = useState<string>('');
   const [categoriaMonotributo, setCategoriaMonotributo] = useState('D');
+  const [compraFormOpen, setCompraFormOpen] = useState(false);
 
-  // Determine condicion_iva: from arca_config or manual fallback
   const condicionIva = arcaConfig?.condicion_iva || condicionManual;
   const esMonotributo = condicionIva === 'monotributo';
   const esRI = condicionIva === 'responsable_inscripto';
@@ -44,7 +45,7 @@ export default function FiscalDashboard() {
   const mesActualInicio = format(startOfMonth(now), 'yyyy-MM-dd');
   const mesActualFin = format(endOfMonth(now), 'yyyy-MM-dd');
 
-  // Facturas del mes actual
+  // Facturas emitidas (ventas) del mes actual
   const { data: facturasMes = [], isLoading: loadingFacturas } = useQuery({
     queryKey: ['fiscal-facturas-mes', profile?.tenant_id, mesActualInicio],
     queryFn: async () => {
@@ -61,16 +62,16 @@ export default function FiscalDashboard() {
     enabled: !!profile?.tenant_id,
   });
 
-  // Gastos del mes actual
-  const { data: gastosMes = [], isLoading: loadingGastos } = useQuery({
-    queryKey: ['fiscal-gastos-mes', profile?.tenant_id, mesActualInicio],
+  // Facturas de compra del mes actual
+  const { data: comprasMes = [], isLoading: loadingCompras } = useQuery({
+    queryKey: ['fiscal-compras-mes', profile?.tenant_id, mesActualInicio],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('gastos')
-        .select('importe_neto, iva, total, fecha, proveedor, cuit_proveedor, numero_comprobante, tipo_comprobante')
+        .from('facturas_compra')
+        .select('*')
         .eq('tenant_id', profile!.tenant_id)
-        .gte('fecha', mesActualInicio)
-        .lte('fecha', mesActualFin);
+        .gte('fecha_emision', mesActualInicio)
+        .lte('fecha_emision', mesActualFin);
       if (error) throw error;
       return data;
     },
@@ -94,25 +95,12 @@ export default function FiscalDashboard() {
     enabled: !!profile?.tenant_id,
   });
 
-  // Monthly chart data (last 6 months)
-  const chartData = useMemo(() => {
-    const months: { name: string; ventas: number; gastos: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = subMonths(now, i);
-      const key = format(d, 'yyyy-MM');
-      const label = format(d, 'MMM yy');
-      months.push({ name: label, ventas: 0, gastos: 0 });
-    }
-    // We'd need all 6 months data, but we'll use what we have
-    return months;
-  }, []);
-
   // Current month calculations
   const totalVentas = facturasMes.reduce((s, f) => s + Number(f.importe_total), 0);
   const totalNetoVentas = facturasMes.reduce((s, f) => s + Number(f.importe_neto), 0);
   const ivaDebito = facturasMes.reduce((s, f) => s + Number(f.importe_iva || 0), 0);
-  const totalGastos = gastosMes.reduce((s, g) => s + Number(g.total), 0);
-  const ivaCredito = gastosMes.reduce((s, g) => s + Number(g.iva), 0);
+  const totalCompras = comprasMes.reduce((s, g) => s + Number(g.importe_total), 0);
+  const ivaCredito = comprasMes.reduce((s, g) => s + Number(g.importe_iva || 0), 0);
   const posicionIva = ivaDebito - ivaCredito;
   const estimacionIIBB = Math.round(totalNetoVentas * 0.035 * 100) / 100;
 
@@ -123,7 +111,7 @@ export default function FiscalDashboard() {
   const restante = topeSeleccionado ? Math.max(topeSeleccionado.tope - facturacion12m, 0) : 0;
   const alerta80 = porcentajeTope >= 80;
 
-  const isLoading = loadingFacturas || loadingGastos;
+  const isLoading = loadingFacturas || loadingCompras;
 
   const formatCurrency = (n: number) =>
     new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(n);
@@ -154,16 +142,18 @@ export default function FiscalDashboard() {
       filename: `Libro_IVA_Compras_${format(now, 'yyyy-MM')}`,
       sheetName: 'IVA Compras',
       columns: [
-        { header: 'Fecha', key: 'fecha' },
+        { header: 'Fecha', key: 'fecha_emision' },
         { header: 'Tipo', key: 'tipo_comprobante' },
-        { header: 'Proveedor', key: 'proveedor' },
-        { header: 'CUIT', key: 'cuit_proveedor' },
-        { header: 'Nro Comprobante', key: 'numero_comprobante' },
+        { header: 'Proveedor', key: 'proveedor_nombre' },
+        { header: 'CUIT', key: 'proveedor_cuit' },
+        { header: 'PV', key: 'punto_venta', format: 'number' },
+        { header: 'Nro Comprobante', key: 'numero_comprobante', format: 'number' },
         { header: 'Neto', key: 'importe_neto', format: 'currency' },
-        { header: 'IVA', key: 'iva', format: 'currency' },
-        { header: 'Total', key: 'total', format: 'currency' },
+        { header: 'IVA', key: 'importe_iva', format: 'currency' },
+        { header: 'Total', key: 'importe_total', format: 'currency' },
+        { header: 'Categoría', key: 'categoria' },
       ],
-      data: gastosMes,
+      data: comprasMes.map(c => ({ ...c, fecha_emision: c.fecha_emision ? format(new Date(c.fecha_emision), 'dd/MM/yyyy') : '' })),
     });
   };
 
@@ -187,7 +177,7 @@ export default function FiscalDashboard() {
             <Download className="mr-2 h-4 w-4" />
             Libro IVA Ventas
           </Button>
-          <Button variant="outline" size="sm" onClick={handleExportIVACompras} disabled={gastosMes.length === 0}>
+          <Button variant="outline" size="sm" onClick={handleExportIVACompras} disabled={comprasMes.length === 0}>
             <Download className="mr-2 h-4 w-4" />
             Libro IVA Compras
           </Button>
@@ -229,10 +219,10 @@ export default function FiscalDashboard() {
           <CardContent className="pt-4">
             <div className="flex items-center gap-2 mb-1">
               <TrendingDown className="h-4 w-4 text-red-500" />
-              <span className="text-sm text-muted-foreground">Total Gastos</span>
+              <span className="text-sm text-muted-foreground">Total Compras</span>
             </div>
-            <p className="text-2xl font-bold">{formatCurrency(totalGastos)}</p>
-            <p className="text-xs text-muted-foreground">{gastosMes.length} registro(s)</p>
+            <p className="text-2xl font-bold">{formatCurrency(totalCompras)}</p>
+            <p className="text-xs text-muted-foreground">{comprasMes.length} factura(s) de compra</p>
           </CardContent>
         </Card>
         <Card>
@@ -241,8 +231,8 @@ export default function FiscalDashboard() {
               <DollarSign className="h-4 w-4 text-blue-500" />
               <span className="text-sm text-muted-foreground">Resultado</span>
             </div>
-            <p className={`text-2xl font-bold ${totalVentas - totalGastos >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {formatCurrency(totalVentas - totalGastos)}
+            <p className={`text-2xl font-bold ${totalVentas - totalCompras >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {formatCurrency(totalVentas - totalCompras)}
             </p>
           </CardContent>
         </Card>
@@ -297,6 +287,60 @@ export default function FiscalDashboard() {
           </p>
         </CardContent>
       </Card>
+
+      {/* Libro IVA Compras - for Responsable Inscripto */}
+      {esRI && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between text-lg">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Libro IVA Compras — {format(now, 'MMMM yyyy')}
+              </div>
+              <Button size="sm" onClick={() => setCompraFormOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Agregar Compra
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {comprasMes.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">
+                No hay facturas de compra registradas este mes. Agregá tus facturas de proveedores para calcular el crédito fiscal.
+              </p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Proveedor</TableHead>
+                    <TableHead>CUIT</TableHead>
+                    <TableHead>Categoría</TableHead>
+                    <TableHead className="text-right">Neto</TableHead>
+                    <TableHead className="text-right">IVA</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {comprasMes.map((c: any) => (
+                    <TableRow key={c.id}>
+                      <TableCell>{c.fecha_emision ? format(new Date(c.fecha_emision), 'dd/MM/yyyy') : '—'}</TableCell>
+                      <TableCell><Badge variant="outline">{c.tipo_comprobante}</Badge></TableCell>
+                      <TableCell className="max-w-[200px] truncate">{c.proveedor_nombre}</TableCell>
+                      <TableCell className="font-mono text-xs">{c.proveedor_cuit || '—'}</TableCell>
+                      <TableCell className="capitalize">{c.categoria || '—'}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(Number(c.importe_neto))}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(Number(c.importe_iva))}</TableCell>
+                      <TableCell className="text-right font-medium">{formatCurrency(Number(c.importe_total))}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Retenciones / Percepciones - only for Responsable Inscripto */}
       {esRI && (
@@ -369,6 +413,9 @@ export default function FiscalDashboard() {
           </CardContent>
         </Card>
       )}
+
+      {/* Purchase Invoice Form Dialog */}
+      <PurchaseInvoiceForm open={compraFormOpen} onOpenChange={setCompraFormOpen} />
     </div>
   );
 }

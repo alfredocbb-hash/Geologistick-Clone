@@ -1538,6 +1538,71 @@ export type Database = {
           },
         ]
       }
+      facturas_compra: {
+        Row: {
+          categoria: string | null
+          created_at: string | null
+          created_by: string | null
+          fecha_emision: string
+          id: string
+          importe_iva: number | null
+          importe_neto: number | null
+          importe_total: number
+          notas: string | null
+          numero_comprobante: number | null
+          proveedor_cuit: string | null
+          proveedor_nombre: string
+          punto_venta: number | null
+          tenant_id: string
+          tipo_comprobante: string
+          updated_at: string | null
+        }
+        Insert: {
+          categoria?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          fecha_emision?: string
+          id?: string
+          importe_iva?: number | null
+          importe_neto?: number | null
+          importe_total?: number
+          notas?: string | null
+          numero_comprobante?: number | null
+          proveedor_cuit?: string | null
+          proveedor_nombre: string
+          punto_venta?: number | null
+          tenant_id: string
+          tipo_comprobante?: string
+          updated_at?: string | null
+        }
+        Update: {
+          categoria?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          fecha_emision?: string
+          id?: string
+          importe_iva?: number | null
+          importe_neto?: number | null
+          importe_total?: number
+          notas?: string | null
+          numero_comprobante?: number | null
+          proveedor_cuit?: string | null
+          proveedor_nombre?: string
+          punto_venta?: number | null
+          tenant_id?: string
+          tipo_comprobante?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "facturas_compra_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       gastos: {
         Row: {
           categoria: string
