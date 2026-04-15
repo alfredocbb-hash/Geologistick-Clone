@@ -111,10 +111,18 @@ export default function Facturacion() {
       if (tipo && tipo !== 'todos') body.tipo = tipo;
       const { data, error } = await supabase.functions.invoke('arca-factura', { body });
       if (error) throw error;
+      if (!data.success && data.fallback) {
+        // Session conflict - graceful degradation
+        return { imported: 0, pending: 0, message: 'AFIP tiene una sesión activa. Intente de nuevo en unos minutos.', fallback: true };
+      }
       if (!data.success) throw new Error(data.error);
       return data;
     },
     onSuccess: (data) => {
+      if (data.fallback) {
+        toast.warning('Sesión AFIP activa', { description: data.message });
+        return;
+      }
       setSyncResult({ imported: data.imported, pending: data.pending || 0, message: data.message });
       if (data.pending === 0) {
         toast.success(data.message || `${data.imported} facturas importadas`);
