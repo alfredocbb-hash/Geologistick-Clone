@@ -119,6 +119,10 @@ export default function Facturacion() {
       return data;
     },
     onSuccess: (data) => {
+      if (data.fallback) {
+        toast.warning('Sesión AFIP activa', { description: data.message });
+        return;
+      }
       setSyncResult({ imported: data.imported, pending: data.pending || 0, message: data.message });
       if (data.pending === 0) {
         toast.success(data.message || `${data.imported} facturas importadas`);
