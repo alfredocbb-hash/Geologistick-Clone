@@ -304,6 +304,9 @@ export default function Facturacion() {
               domicilio: domicilio.trim() || undefined,
             },
             importe_total: importeTotalConIva,
+            concepto,
+            tipo_documento: tipoDocumento,
+            condicion_venta: condicionVenta,
           },
         });
         if (error) throw error;
