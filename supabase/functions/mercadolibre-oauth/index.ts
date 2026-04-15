@@ -11,9 +11,12 @@ const ML_TOKEN_URL = 'https://api.mercadolibre.com/oauth/token';
 const ML_USER_URL = 'https://api.mercadolibre.com/users/me';
 const FRONTEND_URL = 'https://geologic.lovable.app';
 
-function redirectSuccess(sellerId: string, tenantId?: string) {
+function redirectSuccess(sellerId: string, tenantId?: string, branding?: any) {
   let url = `${FRONTEND_URL}/oauth/mercadolibre/result?status=success&seller_id=${encodeURIComponent(sellerId)}`;
   if (tenantId) url += `&tenant_id=${encodeURIComponent(tenantId)}`;
+  if (branding?.logo_light) url += `&logo=${encodeURIComponent(branding.logo_light)}`;
+  if (branding?.nombre_app) url += `&app_name=${encodeURIComponent(branding.nombre_app)}`;
+  if (branding?.color_primario) url += `&color=${encodeURIComponent(branding.color_primario)}`;
   return Response.redirect(url, 302);
 }
 
@@ -207,7 +210,14 @@ Deno.serve(async (req) => {
 
       console.log('[ML OAuth] Seller updated successfully');
 
-      return redirectSuccess(sellerId, seller.tenant_id);
+      // Fetch branding for the redirect URL
+      const { data: brandingData } = await supabase
+        .from('tenant_branding')
+        .select('nombre_app, logo_light, logo_dark, color_primario')
+        .eq('tenant_id', seller.tenant_id)
+        .maybeSingle();
+
+      return redirectSuccess(sellerId, seller.tenant_id, brandingData);
     }
 
     // =====================================================
