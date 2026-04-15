@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
+import { EmitirFacturaDialog } from '@/components/invoicing/EmitirFacturaDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { Card, CardContent } from '@/components/ui/card';
@@ -46,6 +47,7 @@ export default function Facturacion() {
   const [syncResult, setSyncResult] = useState<{ imported: number; pending: number; message: string; errors?: string[] } | null>(null);
   const [batchResults, setBatchResults] = useState<{ id: string; tracking: string; ok: boolean; error?: string }[]>([]);
   const [manualOpen, setManualOpen] = useState(false);
+  const [emitirOpen, setEmitirOpen] = useState(false);
   const [manualForm, setManualForm] = useState({
     tipo_comprobante: 'B' as 'A' | 'B' | 'C',
     punto_venta: '',
@@ -626,6 +628,12 @@ export default function Facturacion() {
                   <Download className="mr-2 h-4 w-4" />
                   Sincronizar desde AFIP
                 </Button>
+                <Button
+                  onClick={() => setEmitirOpen(true)}
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  Emitir Factura
+                </Button>
               </CardContent>
             </Card>
 
@@ -960,6 +968,13 @@ export default function Facturacion() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ══════ EMITIR FACTURA AFIP DIALOG ══════ */}
+      <EmitirFacturaDialog
+        open={emitirOpen}
+        onClose={() => setEmitirOpen(false)}
+        onSuccess={() => refetchEmitidas()}
+      />
     </div>
   );
 }
