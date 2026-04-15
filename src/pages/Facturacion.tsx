@@ -312,7 +312,18 @@ export default function Facturacion() {
     setBatchProgress(p => ({ ...p, running: false }));
     const ok = results.filter(r => r.ok).length;
     const fail = results.filter(r => !r.ok).length;
-    if (ok > 0) toast.success(`${ok} factura(s) emitida(s) correctamente`);
+    if (ok > 0) {
+      toast.success(`${ok} factura(s) emitida(s) correctamente`);
+      // Update source record with missing data
+      if (cuitMatch) {
+        updateSourceRecord(cuitMatch, {
+          nombre: nombre.trim(),
+          razonSocial: nombre.trim(),
+          direccion: domicilio.trim() || undefined,
+          condicionIva: condicionIva,
+        });
+      }
+    }
     if (fail > 0) toast.error(`${fail} factura(s) fallaron`);
     setSelected(new Set());
     refetch();
