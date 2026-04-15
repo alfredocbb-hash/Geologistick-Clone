@@ -46,12 +46,28 @@ interface FacturaRequest {
     condicion_iva: string;
     domicilio?: string;
   };
-  conceptos?: Array<{
+  importe_total?: number;
+  // AFIP-standard fields
+  concepto?: number; // 1=Productos, 2=Servicios, 3=Ambos
+  tipo_documento?: number; // 80=CUIT, 96=DNI, 99=Sin Identificar
+  condicion_venta?: string;
+  fecha_servicio_desde?: string; // YYYY-MM-DD
+  fecha_servicio_hasta?: string;
+  fecha_vto_pago?: string;
+  importe_no_gravado?: number;
+  importe_exento?: number;
+  importe_tributos?: number;
+  descripcion?: string;
+  line_items?: Array<{
+    codigo?: string;
     descripcion: string;
     cantidad: number;
+    unidad_medida?: string;
     precio_unitario: number;
+    bonificacion_pct?: number;
+    subtotal: number;
+    alicuota_iva?: number;
   }>;
-  importe_total?: number;
 }
 
 interface ARCAConfig {
