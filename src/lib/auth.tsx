@@ -126,47 +126,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     });
 
-    // Set up periodic session check to detect expired sessions
-    const sessionCheckInterval = setInterval(async () => {
-      if (!mounted) return;
-      
-      const { data: { session: currentSession }, error } = await supabase.auth.getSession();
-      
-      if (error) {
-        console.error('[Auth] Session check error:', error);
-        
-        // Handle corrupt/invalid refresh token - force logout
-        const errorMsg = error?.message || '';
-        if (
-          errorMsg.includes('Refresh Token') || 
-          errorMsg.includes('refresh_token') ||
-          errorMsg.includes('Invalid Refresh Token') ||
-          (error as any)?.code === 'refresh_token_not_found'
-        ) {
-          console.warn('[Auth] Refresh token invalid/corrupt, forcing logout...');
-          await supabase.auth.signOut();
-          setSession(null);
-          setUser(null);
-          setProfile(null);
-          setRoles([]);
-        }
-        return;
-      }
-
-      // If we had a session but now we don't, update state
-      if (session && !currentSession) {
-        console.log('[Auth] Session expired, clearing state');
-        setSession(null);
-        setUser(null);
-        setProfile(null);
-        setRoles([]);
-      }
-    }, 60000); // Check every minute
-
     return () => {
       mounted = false;
       subscription.unsubscribe();
-      clearInterval(sessionCheckInterval);
     };
   }, []);
 

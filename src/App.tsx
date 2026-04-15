@@ -17,8 +17,10 @@ import { ThemeProvider } from "next-themes";
 import { ChunkErrorBoundary } from "@/components/ChunkErrorBoundary";
 
 // Eagerly loaded pages (common entry points)
-import Index from "./pages/Index";
 import Login from "./pages/Login";
+
+// Landing page lazy-loaded — authenticated users skip it entirely
+const Index = lazy(() => import("./pages/Index"));
 import NotFound from "./pages/NotFound";
 
 // Lazy loaded pages
@@ -101,9 +103,9 @@ const EcommerceSettlements = lazy(() => import("./pages/ecommerce/Settlements"))
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 30 * 1000,
+      staleTime: 60 * 1000,
       gcTime: 10 * 60 * 1000,
-      refetchOnWindowFocus: true,
+      refetchOnWindowFocus: false,
       refetchOnReconnect: true,
       retry: 1,
     },
@@ -199,12 +201,12 @@ function AppRoutes() {
         <Route path="/oauth/mercadolibre/result" element={<MercadoLibreOAuthResult />} />
         <Route path="/docs/tiendanube" element={<TiendanubeDocsPublic />} />
         {/* Protected Routes */}
-        <Route path="/dashboard" element={<DashboardLayout><Dashboard /></DashboardLayout>} />
+        <Route path="/dashboard" element={<DashboardLayout><GoogleMapsProvider><Dashboard /></GoogleMapsProvider></DashboardLayout>} />
         <Route path="/reports" element={<DashboardLayout><Reports /></DashboardLayout>} />
         
         {/* Envíos */}
         <Route path="/shipments" element={<DashboardLayout><Shipments /></DashboardLayout>} />
-        <Route path="/shipments/new" element={<DashboardLayout><NewShipment /></DashboardLayout>} />
+        <Route path="/shipments/new" element={<DashboardLayout><GoogleMapsProvider><NewShipment /></GoogleMapsProvider></DashboardLayout>} />
         <Route path="/print-label" element={<PrintLabel />} />
         <Route path="/print-receipt" element={<PrintReceipt />} />
         <Route path="/print-invoice" element={<PrintInvoice />} />
@@ -212,11 +214,11 @@ function AppRoutes() {
         
         {/* Operaciones */}
         <Route path="/scan" element={<DashboardLayout><ScanQR /></DashboardLayout>} />
-        <Route path="/planner" element={<DashboardLayout><RoutePlanner /></DashboardLayout>} />
+        <Route path="/planner" element={<DashboardLayout><GoogleMapsProvider><RoutePlanner /></GoogleMapsProvider></DashboardLayout>} />
         <Route path="/route-sheets" element={<DashboardLayout><RouteSheets /></DashboardLayout>} />
         <Route path="/print-route-sheet" element={<PrintRouteSheet />} />
         <Route path="/print/planned-route" element={<PrintPlannedRoute />} />
-        <Route path="/live-map" element={<DashboardLayout><LiveMap /></DashboardLayout>} />
+        <Route path="/live-map" element={<DashboardLayout><GoogleMapsProvider><LiveMap /></GoogleMapsProvider></DashboardLayout>} />
         <Route path="/incidents" element={<DashboardLayout><Incidents /></DashboardLayout>} />
         <Route path="/drivers" element={<DashboardLayout><Drivers /></DashboardLayout>} />
         <Route path="/vehicles" element={<DashboardLayout><Vehicles /></DashboardLayout>} />
@@ -250,7 +252,7 @@ function AppRoutes() {
         <Route path="/ecommerce/settlements" element={<DashboardLayout><EcommerceSettlements /></DashboardLayout>} />
         
         {/* Administración */}
-        <Route path="/admin/branches" element={<DashboardLayout><Branches /></DashboardLayout>} />
+        <Route path="/admin/branches" element={<DashboardLayout><GoogleMapsProvider><Branches /></GoogleMapsProvider></DashboardLayout>} />
         <Route path="/admin/rates" element={<DashboardLayout><Rates /></DashboardLayout>} />
         <Route path="/admin/users" element={<DashboardLayout><Users /></DashboardLayout>} />
         <Route path="/admin/roles" element={<DashboardLayout><RolePermissions /></DashboardLayout>} />
