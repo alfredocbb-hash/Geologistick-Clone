@@ -1123,7 +1123,7 @@ serve(async (req) => {
 
       const endpoints = ARCA_ENDPOINTS[syncEnv];
       const { token, sign } = await getWSAAToken(supabase, tenantId, syncEnv, arcaSyncConfig);
-      const puntoVenta = parseInt(arcaSyncConfig.punto_venta);
+      const puntoVenta = rawBody.punto_venta ? parseInt(String(rawBody.punto_venta)) : parseInt(arcaSyncConfig.punto_venta);
       let totalImported = 0;
       const errors: string[] = [];
 
