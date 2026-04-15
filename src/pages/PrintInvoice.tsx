@@ -180,7 +180,7 @@ export default function PrintInvoice() {
     enabled: !!resolvedEnvioId,
   });
 
-  // Fetch detalles
+  // Fetch envio_detalles (conceptos del envío)
   const { data: detalles } = useQuery({
     queryKey: ['print-invoice-detalles', resolvedEnvioId],
     queryFn: async () => {
@@ -193,6 +193,22 @@ export default function PrintInvoice() {
       return data || [];
     },
     enabled: !!resolvedEnvioId,
+  });
+
+  // Fetch factura_detalles (line items AFIP)
+  const { data: facturaDetalles } = useQuery({
+    queryKey: ['print-factura-detalles', factura?.id],
+    queryFn: async () => {
+      if (!factura?.id) return [];
+      const { data, error } = await supabase
+        .from('factura_detalles')
+        .select('*')
+        .eq('factura_id', factura.id)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!factura?.id,
   });
 
   // Resolve tenant_id from envio or factura
