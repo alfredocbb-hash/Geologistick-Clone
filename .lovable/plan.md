@@ -1,55 +1,106 @@
 
 
-## Plan: Mostrar logo del tenant en página OAuth de MercadoLibre
+## Plan: Sistema de Administración Contable Inteligente
 
-### Problema
+### Resumen
+Implementar 4 módulos: Cola de facturación pendiente con facturación en lote, módulo de gastos, monitor de topes Monotributo, y reporte de IVA. Todo manual, sin automatización.
 
-La página `/oauth/mercadolibre/result` consulta `tenant_branding` para mostrar el logo del tenant, pero la tabla tiene RLS que requiere autenticación (`current_user_tenant()`). Como el usuario llega sin sesión (es un redirect de MercadoLibre), la consulta no devuelve datos y el logo no aparece.
+---
 
-### Solución
+### 1. Migración de Base de Datos
 
-Pasar los datos de branding directamente como query params desde la edge function, evitando la consulta desde el frontend.
-
-**Archivo 1: `supabase/functions/mercadolibre-oauth/index.ts`**
-
-En el callback de éxito (~línea 208-210), antes de hacer `redirectSuccess`, consultar `tenant_branding` para obtener `logo_light`, `logo_dark`, `nombre_app` y `color_primario`, y pasarlos como query params en la URL de redirección.
-
-```typescript
-// Fetch branding for the redirect URL
-const { data: brandingData } = await supabase
-  .from('tenant_branding')
-  .select('nombre_app, logo_light, logo_dark, color_primario')
-  .eq('tenant_id', seller.tenant_id)
-  .maybeSingle();
-
-return redirectSuccess(sellerId, seller.tenant_id, brandingData);
+**Crear tabla `gastos`**:
+```sql
+CREATE TABLE public.gastos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id),
+  proveedor TEXT NOT NULL,
+  cuit_proveedor TEXT,
+  fecha DATE NOT NULL DEFAULT CURRENT_DATE,
+  importe_neto NUMERIC NOT NULL DEFAULT 0,
+  iva NUMERIC NOT NULL DEFAULT 0,
+  total NUMERIC NOT NULL DEFAULT 0,
+  categoria TEXT NOT NULL DEFAULT 'otros',
+  descripcion TEXT,
+  numero_comprobante TEXT,
+  tipo_comprobante TEXT DEFAULT 'factura_b',
+  created_by UUID REFERENCES auth.users(id),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE public.gastos ENABLE ROW LEVEL SECURITY;
+-- RLS: tenant isolation via current_user_tenant()
 ```
 
-Actualizar `redirectSuccess` para incluir los datos de branding en la URL:
-```typescript
-function redirectSuccess(sellerId: string, tenantId?: string, branding?: any) {
-  let url = `${FRONTEND_URL}/oauth/mercadolibre/result?status=success&seller_id=${encodeURIComponent(sellerId)}`;
-  if (tenantId) url += `&tenant_id=${encodeURIComponent(tenantId)}`;
-  if (branding?.logo_light) url += `&logo=${encodeURIComponent(branding.logo_light)}`;
-  if (branding?.nombre_app) url += `&app_name=${encodeURIComponent(branding.nombre_app)}`;
-  if (branding?.color_primario) url += `&color=${encodeURIComponent(branding.color_primario)}`;
-  return Response.redirect(url, 302);
-}
-```
+---
 
-**Archivo 2: `src/pages/MercadoLibreOAuthResult.tsx`**
+### 2. Página: Cola de Facturación (`/facturacion`)
 
-Leer los datos de branding desde los query params en lugar de consultar la base de datos:
+**Archivo**: `src/pages/Facturacion.tsx`
 
-```typescript
-const logo = searchParams.get("logo");
-const appName = searchParams.get("app_name") || "Sistema de Envíos";
-const primaryColor = searchParams.get("color") || "#FFE600";
-```
+- Consulta envíos con `estado = 'entregado'` que NO tienen factura asociada (LEFT JOIN o NOT EXISTS contra `facturas`).
+- Tabla con checkbox para selección múltiple.
+- Filtros por fecha y cliente.
+- Botón **"Facturar en Lote"**: abre un dialog que pide datos fiscales del receptor (reutilizando la lógica de `InvoiceDataDialog`) y luego invoca `arca-factura` secuencialmente por cada envío seleccionado, mostrando progreso.
+- Columnas: tracking, destinatario, fecha entrega, importe, ciudad.
 
-Eliminar el `useEffect` que consulta `tenant_branding` y el estado `branding`.
+---
 
-### Archivos a modificar
-1. `supabase/functions/mercadolibre-oauth/index.ts` — Pasar branding en query params
-2. `src/pages/MercadoLibreOAuthResult.tsx` — Leer branding de query params
+### 3. Página: Gastos (`/gastos`)
+
+**Archivo**: `src/pages/Gastos.tsx`
+
+- CRUD completo con tabla filtrable por fecha y categoría.
+- Dialog para crear/editar con campos: proveedor, CUIT, fecha, neto, IVA (auto-calcula 21%), total, categoría (select: Combustible, Repuestos, Peajes, Servicios, Sueldos, AWS/Tech, Seguros, Otros), descripción, nro comprobante.
+- Botón exportar Excel (Libro IVA Compras).
+
+---
+
+### 4. Página: Panel Fiscal (`/fiscal`)
+
+**Archivo**: `src/pages/FiscalDashboard.tsx`
+
+**Cards resumen del mes actual:**
+- Total Facturado (ventas): `SUM(importe_total)` de `facturas` con `estado='emitida'`.
+- Total Gastos: `SUM(total)` de `gastos`.
+- IVA Débito Fiscal vs IVA Crédito Fiscal → Saldo estimado a pagar.
+- Estimación IIBB: 3.5% sobre ventas netas.
+
+**Gráfico de Progreso Anual (Monotributo):**
+- Barra de progreso que muestra facturación acumulada últimos 12 meses.
+- Topes configurables por categoría (A: $2.108.288, B: $3.133.941, etc.).
+- Alerta visual cuando se supera el 80% del tope.
+- Indicador que dice "Te quedan $X antes de subir de categoría".
+
+**Reporte IVA Digital:**
+- Card informativa: "Este mes tenés acumulado $X de IVA Ventas y $Y de IVA Compras. Tu saldo estimado a pagar es $Z".
+
+**Exportación:**
+- Botón Libro IVA Ventas (Excel desde `facturas`).
+- Botón Libro IVA Compras (Excel desde `gastos`).
+
+---
+
+### 5. Navegación y Routing
+
+- Lazy imports en `App.tsx` para `Facturacion`, `Gastos`, `FiscalDashboard`.
+- Rutas `/facturacion`, `/gastos`, `/fiscal` dentro de `DashboardLayout`.
+- Items en `AppSidebar.tsx` en el grupo "Finanzas":
+  - "Facturación" → `/facturacion` (icon: FileText)
+  - "Gastos" → `/gastos` (icon: Receipt)
+  - "Panel Fiscal" → `/fiscal` (icon: Calculator)
+- Permission key: `cash.manage` (reutiliza el existente de finanzas).
+
+---
+
+### Archivos a crear/modificar
+
+| Archivo | Acción |
+|---------|--------|
+| Migración SQL | Crear tabla `gastos` + RLS |
+| `src/pages/Facturacion.tsx` | Crear — cola de pendientes + lote |
+| `src/pages/Gastos.tsx` | Crear — CRUD gastos |
+| `src/pages/FiscalDashboard.tsx` | Crear — dashboard + monitor + IVA |
+| `src/App.tsx` | Agregar 3 rutas lazy |
+| `src/components/layout/AppSidebar.tsx` | Agregar 3 nav items en Finanzas |
 
