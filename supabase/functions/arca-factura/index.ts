@@ -538,7 +538,17 @@ async function solicitarCAE(
   importeNeto: number,
   importeIva: number,
   importeTotal: number,
-  wsfeUrl: string
+  wsfeUrl: string,
+  opts?: {
+    concepto?: number;
+    tipoDocumento?: number;
+    fechaServicioDesde?: string;
+    fechaServicioHasta?: string;
+    fechaVtoPago?: string;
+    importeNoGravado?: number;
+    importeExento?: number;
+    importeTributos?: number;
+  }
 ): Promise<{ cae: string; caeVencimiento: string }> {
   const tipoComprobanteCode = INVOICE_CODES[tipoComprobante].factura;
   const ivaCondition = IVA_CONDITIONS[receptor.condicion_iva] || IVA_CONDITIONS.consumidor_final;
