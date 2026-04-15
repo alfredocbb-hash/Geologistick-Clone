@@ -1,37 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-
-interface TenantBranding {
-  nombre_app: string | null;
-  logo_light: string | null;
-  logo_dark: string | null;
-  color_primario: string | null;
-}
 
 const MercadoLibreOAuthResult = () => {
   const [searchParams] = useSearchParams();
   const status = searchParams.get("status");
   const sellerId = searchParams.get("seller_id");
-  const tenantId = searchParams.get("tenant_id");
   const errorTitle = searchParams.get("title") || "Error de Conexión";
   const errorMessage = searchParams.get("message") || "Ocurrió un error inesperado.";
-  const [branding, setBranding] = useState<TenantBranding | null>(null);
+
+  // Branding from query params (injected by edge function)
+  const logo = searchParams.get("logo");
+  const appName = searchParams.get("app_name") || "Sistema de Envíos";
+  const primaryColor = searchParams.get("color") || "#FFE600";
+  const textColor = "#2D3277";
 
   const isSuccess = status === "success";
-
-  useEffect(() => {
-    if (tenantId) {
-      supabase
-        .from("tenant_branding")
-        .select("nombre_app, logo_light, logo_dark, color_primario")
-        .eq("tenant_id", tenantId)
-        .maybeSingle()
-        .then(({ data }) => {
-          if (data) setBranding(data);
-        });
-    }
-  }, [tenantId]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -47,11 +30,6 @@ const MercadoLibreOAuthResult = () => {
     }, 5000);
     return () => clearTimeout(timer);
   }, [isSuccess, sellerId]);
-
-  const logo = branding?.logo_light || branding?.logo_dark;
-  const appName = branding?.nombre_app || "Sistema de Envíos";
-  const primaryColor = branding?.color_primario || "#FFE600";
-  const textColor = "#2D3277";
 
   if (isSuccess) {
     return (
