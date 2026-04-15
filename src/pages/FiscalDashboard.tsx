@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
+import { useARCAIntegration } from '@/hooks/useARCAConfig';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -9,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, TrendingUp, TrendingDown, AlertTriangle, Download, DollarSign, Receipt, Calculator } from 'lucide-react';
+import { Loader2, TrendingUp, TrendingDown, AlertTriangle, Download, DollarSign, Receipt, Calculator, FileText } from 'lucide-react';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { exportToExcel } from '@/lib/exportExcel';
@@ -30,7 +31,14 @@ const MONOTRIBUTO_TOPES: Record<string, { label: string; tope: number }> = {
 
 export default function FiscalDashboard() {
   const { profile } = useAuth();
+  const { config: arcaConfig } = useARCAIntegration();
+  const [condicionManual, setCondicionManual] = useState<string>('');
   const [categoriaMonotributo, setCategoriaMonotributo] = useState('D');
+
+  // Determine condicion_iva: from arca_config or manual fallback
+  const condicionIva = arcaConfig?.condicion_iva || condicionManual;
+  const esMonotributo = condicionIva === 'monotributo';
+  const esRI = condicionIva === 'responsable_inscripto';
 
   const now = new Date();
   const mesActualInicio = format(startOfMonth(now), 'yyyy-MM-dd');
@@ -186,6 +194,25 @@ export default function FiscalDashboard() {
         </div>
       </div>
 
+      {/* Manual IVA condition selector when no ARCA config */}
+      {!arcaConfig && (
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-4">
+              <Label className="whitespace-nowrap">¿Cuál es tu condición ante el IVA?</Label>
+              <Select value={condicionManual} onValueChange={setCondicionManual}>
+                <SelectTrigger className="w-[220px]"><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="responsable_inscripto">Responsable Inscripto</SelectItem>
+                  <SelectItem value="monotributo">Monotributista</SelectItem>
+                  <SelectItem value="exento">Exento</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
@@ -236,6 +263,9 @@ export default function FiscalDashboard() {
           <CardTitle className="flex items-center gap-2 text-lg">
             <Receipt className="h-5 w-5" />
             Reporte IVA Digital — {format(now, 'MMMM yyyy')}
+            {esMonotributo && (
+              <Badge variant="secondary" className="ml-2 text-xs">Solo informativo</Badge>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -256,64 +286,89 @@ export default function FiscalDashboard() {
             </div>
           </div>
           <p className="text-xs text-muted-foreground mt-4">
-            Este mes tenés acumulado {formatCurrency(ivaDebito)} de IVA Ventas y {formatCurrency(ivaCredito)} de IVA Compras.
-            Tu saldo estimado {posicionIva >= 0 ? 'a pagar' : 'a favor'} es {formatCurrency(Math.abs(posicionIva))}.
+            {esMonotributo ? (
+              <>Los monotributistas no liquidan IVA mensualmente. Este reporte es solo a fines informativos.</>
+            ) : (
+              <>
+                Este mes tenés acumulado {formatCurrency(ivaDebito)} de IVA Ventas y {formatCurrency(ivaCredito)} de IVA Compras.
+                Tu saldo estimado {posicionIva >= 0 ? 'a pagar' : 'a favor'} es {formatCurrency(Math.abs(posicionIva))}.
+              </>
+            )}
           </p>
         </CardContent>
       </Card>
 
-      {/* Monotributo Monitor */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <AlertTriangle className={`h-5 w-5 ${alerta80 ? 'text-orange-500' : 'text-muted-foreground'}`} />
-            Monitor de Monotributo — Facturación últimos 12 meses
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-4">
-            <Label className="whitespace-nowrap">Mi Categoría:</Label>
-            <Select value={categoriaMonotributo} onValueChange={setCategoriaMonotributo}>
-              <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {Object.entries(MONOTRIBUTO_TOPES).map(([key, val]) => (
-                  <SelectItem key={key} value={key}>
-                    Cat. {val.label} — {formatCurrency(val.tope)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>Facturado: {formatCurrency(facturacion12m)}</span>
-              <span>Tope: {formatCurrency(topeSeleccionado?.tope || 0)}</span>
-            </div>
-            <Progress value={porcentajeTope} className={alerta80 ? '[&>div]:bg-orange-500' : ''} />
+      {/* Retenciones / Percepciones - only for Responsable Inscripto */}
+      {esRI && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <FileText className="h-5 w-5" />
+              Retenciones y Percepciones
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
             <p className="text-sm text-muted-foreground">
-              {porcentajeTope.toFixed(1)}% utilizado
+              Próximamente podrás cargar y consultar las retenciones y percepciones sufridas para computar como crédito fiscal.
             </p>
-          </div>
+          </CardContent>
+        </Card>
+      )}
 
-          {alerta80 && (
-            <Alert className="border-orange-200 bg-orange-50 dark:bg-orange-950/30">
-              <AlertTriangle className="h-4 w-4 text-orange-600" />
-              <AlertDescription className="text-orange-800 dark:text-orange-200">
-                ⚠️ Estás al {porcentajeTope.toFixed(1)}% del tope de la categoría {categoriaMonotributo}.
-                Te quedan <strong>{formatCurrency(restante)}</strong> antes de superar el límite.
-                Considerá diferir facturas al próximo período o recategorizar.
-              </AlertDescription>
-            </Alert>
-          )}
+      {/* Monotributo Monitor - only for Monotributistas */}
+      {(esMonotributo || !condicionIva) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <AlertTriangle className={`h-5 w-5 ${alerta80 ? 'text-orange-500' : 'text-muted-foreground'}`} />
+              Monitor de Monotributo — Facturación últimos 12 meses
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-4">
+              <Label className="whitespace-nowrap">Mi Categoría:</Label>
+              <Select value={categoriaMonotributo} onValueChange={setCategoriaMonotributo}>
+                <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(MONOTRIBUTO_TOPES).map(([key, val]) => (
+                    <SelectItem key={key} value={key}>
+                      Cat. {val.label} — {formatCurrency(val.tope)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          {!alerta80 && (
-            <p className="text-sm text-green-700 dark:text-green-300">
-              ✅ Te quedan <strong>{formatCurrency(restante)}</strong> antes de alcanzar el tope de la categoría {categoriaMonotributo}.
-            </p>
-          )}
-        </CardContent>
-      </Card>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span>Facturado: {formatCurrency(facturacion12m)}</span>
+                <span>Tope: {formatCurrency(topeSeleccionado?.tope || 0)}</span>
+              </div>
+              <Progress value={porcentajeTope} className={alerta80 ? '[&>div]:bg-orange-500' : ''} />
+              <p className="text-sm text-muted-foreground">
+                {porcentajeTope.toFixed(1)}% utilizado
+              </p>
+            </div>
+
+            {alerta80 && (
+              <Alert className="border-orange-200 bg-orange-50 dark:bg-orange-950/30">
+                <AlertTriangle className="h-4 w-4 text-orange-600" />
+                <AlertDescription className="text-orange-800 dark:text-orange-200">
+                  ⚠️ Estás al {porcentajeTope.toFixed(1)}% del tope de la categoría {categoriaMonotributo}.
+                  Te quedan <strong>{formatCurrency(restante)}</strong> antes de superar el límite.
+                  Considerá diferir facturas al próximo período o recategorizar.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {!alerta80 && (
+              <p className="text-sm text-green-700 dark:text-green-300">
+                ✅ Te quedan <strong>{formatCurrency(restante)}</strong> antes de alcanzar el tope de la categoría {categoriaMonotributo}.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
