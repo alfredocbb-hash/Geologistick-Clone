@@ -70,6 +70,10 @@ export default function Facturacion() {
   const [ivaIncluido, setIvaIncluido] = useState(true);
   const [duplicateImporte, setDuplicateImporte] = useState(0);
   const [selectedEnvironment, setSelectedEnvironment] = useState<'sandbox' | 'production'>('production');
+  // AFIP fields for batch/duplicate
+  const [concepto, setConcepto] = useState(1);
+  const [tipoDocumento, setTipoDocumento] = useState(80);
+  const [condicionVenta, setCondicionVenta] = useState('Contado');
 
   const { match: cuitMatch, loading: cuitLoading, lookup: lookupCuit, clear: clearCuitMatch, updateSourceRecord } = useCuitLookup({ tenantId: profile?.tenant_id });
 
