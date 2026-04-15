@@ -16,8 +16,9 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { FileText, Loader2, Search, CheckCircle, AlertCircle, Package, Copy, RefreshCw, Download } from 'lucide-react';
+import { FileText, Loader2, Search, CheckCircle, AlertCircle, Package, Copy, RefreshCw, Download, Plus } from 'lucide-react';
 import { useARCAIntegration, determinarTipoFactura, validateCUIT, formatCUIT } from '@/hooks/useARCAConfig';
 import { format } from 'date-fns';
 
@@ -41,8 +42,21 @@ export default function Facturacion() {
   const [syncDialogOpen, setSyncDialogOpen] = useState(false);
   const [syncPuntoVenta, setSyncPuntoVenta] = useState('');
   const [syncTipo, setSyncTipo] = useState<string>('todos');
-  const [syncResult, setSyncResult] = useState<{ imported: number; pending: number; message: string } | null>(null);
+  const [syncResult, setSyncResult] = useState<{ imported: number; pending: number; message: string; errors?: string[] } | null>(null);
   const [batchResults, setBatchResults] = useState<{ id: string; tracking: string; ok: boolean; error?: string }[]>([]);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualForm, setManualForm] = useState({
+    tipo_comprobante: 'B' as 'A' | 'B' | 'C',
+    punto_venta: '',
+    numero_comprobante: '',
+    fecha_emision: format(new Date(), 'yyyy-MM-dd'),
+    receptor_cuit: '',
+    receptor_nombre: '',
+    importe_neto: '',
+    importe_iva: '',
+    importe_total: '',
+    cae: '',
+  });
 
   // Duplicate dialog state
   const [duplicateOpen, setDuplicateOpen] = useState(false);
@@ -123,8 +137,16 @@ export default function Facturacion() {
         toast.warning('Sesión AFIP activa', { description: data.message });
         return;
       }
-      setSyncResult({ imported: data.imported, pending: data.pending || 0, message: data.message });
-      if (data.pending === 0) {
+      setSyncResult({ imported: data.imported, pending: data.pending || 0, message: data.message, errors: data.errors });
+      if (data.errors?.length) {
+        // Check if it's a PV not RECE error
+        const pvError = data.errors.find((e: string) => e.includes('ARCA_PV_NOT_RECE'));
+        if (pvError) {
+          toast.warning('Punto de Venta no compatible', { description: 'Este PV es de tipo "Factura en Línea". Usá "Cargar Manual" para registrar estos comprobantes.' });
+        } else {
+          toast.warning('Sincronización parcial', { description: data.errors.join('; ') });
+        }
+      } else if (data.pending === 0) {
         toast.success(data.message || `${data.imported} facturas importadas`);
       } else {
         toast.info(data.message);
@@ -135,6 +157,44 @@ export default function Facturacion() {
       toast.error('Error al sincronizar', { description: err.message });
     },
   });
+
+  const handleManualSave = async () => {
+    if (!profile?.tenant_id) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    const importeTotal = parseFloat(manualForm.importe_total) || 0;
+    if (importeTotal <= 0) { toast.error('El importe total debe ser mayor a 0'); return; }
+    if (!manualForm.punto_venta || !manualForm.numero_comprobante) { toast.error('Punto de venta y número son obligatorios'); return; }
+    
+    const { error } = await supabase.from('facturas').insert({
+      tenant_id: profile.tenant_id,
+      tipo_comprobante: manualForm.tipo_comprobante,
+      punto_venta: parseInt(manualForm.punto_venta),
+      numero_comprobante: parseInt(manualForm.numero_comprobante),
+      fecha_emision: manualForm.fecha_emision,
+      receptor_cuit: manualForm.receptor_cuit || null,
+      receptor_nombre: manualForm.receptor_nombre || 'Sin datos',
+      importe_neto: parseFloat(manualForm.importe_neto) || 0,
+      importe_iva: parseFloat(manualForm.importe_iva) || 0,
+      importe_total: importeTotal,
+      cae: manualForm.cae || null,
+      estado: 'emitida',
+      importada: true,
+      created_by: user?.id,
+    });
+
+    if (error) {
+      toast.error('Error al guardar factura', { description: error.message });
+      return;
+    }
+    toast.success('Factura manual cargada correctamente');
+    setManualOpen(false);
+    setManualForm({
+      tipo_comprobante: 'B', punto_venta: '', numero_comprobante: '',
+      fecha_emision: format(new Date(), 'yyyy-MM-dd'), receptor_cuit: '',
+      receptor_nombre: '', importe_neto: '', importe_iva: '', importe_total: '', cae: '',
+    });
+    refetchEmitidas();
+  };
 
   const filtered = useMemo(() => {
     if (!search) return pendientes;
@@ -497,6 +557,13 @@ export default function Facturacion() {
                 </div>
                 <Button
                   variant="outline"
+                  onClick={() => setManualOpen(true)}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Cargar Manual
+                </Button>
+                <Button
+                  variant="outline"
                   onClick={() => {
                     setSyncPuntoVenta(config?.punto_venta ? String(config.punto_venta) : '');
                     setSyncDialogOpen(true);
@@ -705,20 +772,32 @@ export default function Facturacion() {
             </div>
 
             {syncResult && (
-              <Alert className={syncResult.pending > 0 ? 'border-yellow-200 bg-yellow-50 dark:bg-yellow-950/30' : 'border-green-200 bg-green-50 dark:bg-green-950/30'}>
-                <AlertDescription className={syncResult.pending > 0 ? 'text-yellow-800 dark:text-yellow-200' : 'text-green-800 dark:text-green-200'}>
-                  {syncResult.message}
-                  {syncResult.pending > 0 && (
-                    <Button variant="link" className="p-0 h-auto ml-1" onClick={() => {
-                      setSyncResult(null);
-                      const pv = syncPuntoVenta ? parseInt(syncPuntoVenta) : undefined;
-                      syncMutation.mutate({ puntoVenta: pv, tipo: syncTipo !== 'todos' ? syncTipo : undefined });
-                    }}>
-                      Ejecutar de nuevo →
-                    </Button>
-                  )}
-                </AlertDescription>
-              </Alert>
+              <>
+                <Alert className={syncResult.errors?.length ? 'border-destructive/50 bg-destructive/10' : syncResult.pending > 0 ? 'border-yellow-200 bg-yellow-50 dark:bg-yellow-950/30' : 'border-green-200 bg-green-50 dark:bg-green-950/30'}>
+                  <AlertDescription className={syncResult.errors?.length ? 'text-destructive' : syncResult.pending > 0 ? 'text-yellow-800 dark:text-yellow-200' : 'text-green-800 dark:text-green-200'}>
+                    {syncResult.message}
+                    {syncResult.pending > 0 && (
+                      <Button variant="link" className="p-0 h-auto ml-1" onClick={() => {
+                        setSyncResult(null);
+                        const pv = syncPuntoVenta ? parseInt(syncPuntoVenta) : undefined;
+                        syncMutation.mutate({ puntoVenta: pv, tipo: syncTipo !== 'todos' ? syncTipo : undefined });
+                      }}>
+                        Ejecutar de nuevo →
+                      </Button>
+                    )}
+                  </AlertDescription>
+                </Alert>
+                {syncResult.errors?.map((err, i) => (
+                  <Alert key={i} className="border-destructive/50 bg-destructive/10">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription className="text-destructive text-xs">
+                      {err.includes('ARCA_PV_NOT_RECE') 
+                        ? err.replace('ARCA_PV_NOT_RECE: ', '') 
+                        : err}
+                    </AlertDescription>
+                  </Alert>
+                ))}
+              </>
             )}
           </div>
 
@@ -738,6 +817,92 @@ export default function Facturacion() {
                 <Download className="mr-2 h-4 w-4" />
               )}
               Importar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ══════ MANUAL INVOICE DIALOG ══════ */}
+      <Dialog open={manualOpen} onOpenChange={setManualOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5" />
+              Cargar Factura Manual
+            </DialogTitle>
+            <DialogDescription>
+              Para comprobantes emitidos desde la web de AFIP (Factura en Línea) u otro sistema
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Tipo *</Label>
+                <Select value={manualForm.tipo_comprobante} onValueChange={v => setManualForm(f => ({ ...f, tipo_comprobante: v as 'A' | 'B' | 'C' }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="A">Factura A</SelectItem>
+                    <SelectItem value="B">Factura B</SelectItem>
+                    <SelectItem value="C">Factura C</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Punto de Venta *</Label>
+                <Input type="number" min={1} placeholder="Ej: 3" value={manualForm.punto_venta} onChange={e => setManualForm(f => ({ ...f, punto_venta: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Número *</Label>
+                <Input type="number" min={1} placeholder="Ej: 150" value={manualForm.numero_comprobante} onChange={e => setManualForm(f => ({ ...f, numero_comprobante: e.target.value }))} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Fecha Emisión *</Label>
+                <Input type="date" value={manualForm.fecha_emision} onChange={e => setManualForm(f => ({ ...f, fecha_emision: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>CUIT Receptor</Label>
+                <Input placeholder="XX-XXXXXXXX-X" value={manualForm.receptor_cuit} onChange={e => setManualForm(f => ({ ...f, receptor_cuit: e.target.value }))} />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Razón Social / Nombre Receptor</Label>
+              <Input placeholder="Nombre del receptor" value={manualForm.receptor_nombre} onChange={e => setManualForm(f => ({ ...f, receptor_nombre: e.target.value }))} />
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Neto</Label>
+                <Input type="number" step="0.01" placeholder="0.00" value={manualForm.importe_neto} onChange={e => setManualForm(f => ({ ...f, importe_neto: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>IVA</Label>
+                <Input type="number" step="0.01" placeholder="0.00" value={manualForm.importe_iva} onChange={e => setManualForm(f => ({ ...f, importe_iva: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Total *</Label>
+                <Input type="number" step="0.01" placeholder="0.00" value={manualForm.importe_total} onChange={e => setManualForm(f => ({ ...f, importe_total: e.target.value }))} />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>CAE</Label>
+              <Input placeholder="Código de Autorización Electrónica" value={manualForm.cae} onChange={e => setManualForm(f => ({ ...f, cae: e.target.value }))} />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setManualOpen(false)}>Cancelar</Button>
+            <Button
+              onClick={handleManualSave}
+              disabled={!manualForm.punto_venta || !manualForm.numero_comprobante || !(parseFloat(manualForm.importe_total) > 0)}
+            >
+              <FileText className="mr-2 h-4 w-4" />
+              Guardar Factura
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -809,6 +809,12 @@ async function getUltimoComprobanteAFIP(
     const responseText = await response.text();
     console.log('[ARCA] FECompUltimoAutorizado response:', responseText.substring(0, 1000));
 
+    // Detectar error 11002: PV de tipo "Factura en Línea" no consultable por WSFEv1
+    const errorCodeMatch = responseText.match(/<Code>([\s\S]*?)<\/Code>/i);
+    if (errorCodeMatch && errorCodeMatch[1].trim() === '11002') {
+      throw new Error(`ARCA_PV_NOT_RECE: El Punto de Venta ${puntoVenta} es de tipo "Factura en Línea" y no es consultable por web service (WSFEv1). Solo los PV tipo RECE son sincronizables. Podés cargar estos comprobantes manualmente.`);
+    }
+
     // Extraer CbteNro de la respuesta
     const cbteNroMatch = responseText.match(/<CbteNro>([\s\S]*?)<\/CbteNro>/i);
     if (cbteNroMatch) {
@@ -820,6 +826,8 @@ async function getUltimoComprobanteAFIP(
     // Si no hay comprobantes emitidos, AFIP devuelve 0
     return 0;
   } catch (err) {
+    // Re-throw ARCA_PV_NOT_RECE so the caller can handle it specifically
+    if (err instanceof Error && err.message.startsWith('ARCA_PV_NOT_RECE')) throw err;
     console.warn('[ARCA] Error consultando FECompUltimoAutorizado:', err);
     // Retornar -1 para indicar fallo y que el caller use el contador local como fallback
     return -1;
@@ -1208,7 +1216,12 @@ serve(async (req) => {
           // Update local counter
           await updateInvoiceNumber(supabase, tenantId, tipo, afipLast);
         } catch (tipoErr) {
-          errors.push(`Tipo ${tipo}: ${tipoErr instanceof Error ? tipoErr.message : String(tipoErr)}`);
+          const errMsg = tipoErr instanceof Error ? tipoErr.message : String(tipoErr);
+          if (errMsg.startsWith('ARCA_PV_NOT_RECE')) {
+            errors.push(errMsg);
+          } else {
+            errors.push(`Tipo ${tipo}: ${errMsg}`);
+          }
         }
       }
 
