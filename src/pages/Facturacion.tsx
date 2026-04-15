@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -20,6 +20,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { FileText, Loader2, Search, CheckCircle, AlertCircle, Package, Copy, RefreshCw, Download, Plus } from 'lucide-react';
 import { useARCAIntegration, determinarTipoFactura, validateCUIT, formatCUIT } from '@/hooks/useARCAConfig';
+import { useCuitLookup } from '@/hooks/useCuitLookup';
 import { format } from 'date-fns';
 
 const CONDICION_IVA_OPTIONS = [
