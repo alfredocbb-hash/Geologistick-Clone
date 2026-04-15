@@ -1,95 +1,58 @@
 
 
-## Plan: Sistema de Administración Contable Inteligente
+## Plan: Duplicar Factura + Sincronización desde AFIP
 
-### Resumen
-Implementar 4 módulos: Cola de facturación pendiente con facturación en lote, módulo de gastos, monitor de topes Monotributo, y reporte de IVA. Todo manual, sin automatización.
-
----
-
-### 1. Migración de Base de Datos
-
-**Crear tabla `gastos`**:
-```sql
-CREATE TABLE public.gastos (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID NOT NULL REFERENCES tenants(id),
-  proveedor TEXT NOT NULL,
-  cuit_proveedor TEXT,
-  fecha DATE NOT NULL DEFAULT CURRENT_DATE,
-  importe_neto NUMERIC NOT NULL DEFAULT 0,
-  iva NUMERIC NOT NULL DEFAULT 0,
-  total NUMERIC NOT NULL DEFAULT 0,
-  categoria TEXT NOT NULL DEFAULT 'otros',
-  descripcion TEXT,
-  numero_comprobante TEXT,
-  tipo_comprobante TEXT DEFAULT 'factura_b',
-  created_by UUID REFERENCES auth.users(id),
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE public.gastos ENABLE ROW LEVEL SECURITY;
--- RLS: tenant isolation via current_user_tenant()
-```
-
----
-
-### 2. Página: Cola de Facturación (`/facturacion`)
+### 1. Agregar pestaña de Facturas Emitidas con acción Duplicar
 
 **Archivo**: `src/pages/Facturacion.tsx`
 
-- Consulta envíos con `estado = 'entregado'` que NO tienen factura asociada (LEFT JOIN o NOT EXISTS contra `facturas`).
-- Tabla con checkbox para selección múltiple.
-- Filtros por fecha y cliente.
-- Botón **"Facturar en Lote"**: abre un dialog que pide datos fiscales del receptor (reutilizando la lógica de `InvoiceDataDialog`) y luego invoca `arca-factura` secuencialmente por cada envío seleccionado, mostrando progreso.
-- Columnas: tracking, destinatario, fecha entrega, importe, ciudad.
+Agregar un sistema de tabs (Pendientes | Emitidas) a la página existente.
+
+**Tab "Emitidas"**:
+- Consulta `facturas` del tenant con estado `emitida`, ordenadas por fecha.
+- Tabla con columnas: Nro Comprobante, Tipo, Receptor, CUIT, Fecha, Total, CAE, Acciones.
+- Filtro por búsqueda (receptor, nro comprobante).
+- Botón **"Duplicar"** en cada fila (DropdownMenu o botón directo).
+
+**Lógica de Duplicar**:
+- Al hacer clic, abre el dialog de facturación (mismo formulario del lote) pero precargado con los datos de la factura original: `receptor_nombre`, `receptor_cuit`, `receptor_condicion_iva`, `receptor_domicilio`, `tipo_comprobante`, `importe_total`.
+- Todos los campos son editables antes de emitir.
+- Al confirmar, invoca `arca-factura` como una factura nueva (sin `envio_id` asociado, o con uno nuevo si se selecciona).
 
 ---
 
-### 3. Página: Gastos (`/gastos`)
+### 2. Sincronización desde AFIP (Importación)
 
-**Archivo**: `src/pages/Gastos.tsx`
+**Archivo**: `supabase/functions/arca-factura/index.ts`
 
-- CRUD completo con tabla filtrable por fecha y categoría.
-- Dialog para crear/editar con campos: proveedor, CUIT, fecha, neto, IVA (auto-calcula 21%), total, categoría (select: Combustible, Repuestos, Peajes, Servicios, Sueldos, AWS/Tech, Seguros, Otros), descripción, nro comprobante.
-- Botón exportar Excel (Libro IVA Compras).
+Agregar nueva acción `sync_from_afip` al handler principal:
 
----
+- Usa el token WSAA existente (con caché).
+- Llama a `FECompConsultar` de WSFEv1 para consultar comprobantes por rango de número.
+- Lógica: obtener `FECompUltimoAutorizado` para saber el último número, luego comparar con los `numero_comprobante` existentes en tabla `facturas`. Para cada número faltante, consultar `FECompConsultar` y crear el registro en `facturas` con estado `emitida` y flag `importada: true`.
 
-### 4. Página: Panel Fiscal (`/fiscal`)
+Nueva función SOAP `consultarComprobante()`:
+```
+SOAPAction: FECompConsultar
+Params: PtoVta, CbteTipo, CbteNro
+Returns: DocTipo, DocNro, ImpTotal, ImpNeto, ImpIVA, CbteFch, CAE, CAEFchVto
+```
 
-**Archivo**: `src/pages/FiscalDashboard.tsx`
-
-**Cards resumen del mes actual:**
-- Total Facturado (ventas): `SUM(importe_total)` de `facturas` con `estado='emitida'`.
-- Total Gastos: `SUM(total)` de `gastos`.
-- IVA Débito Fiscal vs IVA Crédito Fiscal → Saldo estimado a pagar.
-- Estimación IIBB: 3.5% sobre ventas netas.
-
-**Gráfico de Progreso Anual (Monotributo):**
-- Barra de progreso que muestra facturación acumulada últimos 12 meses.
-- Topes configurables por categoría (A: $2.108.288, B: $3.133.941, etc.).
-- Alerta visual cuando se supera el 80% del tope.
-- Indicador que dice "Te quedan $X antes de subir de categoría".
-
-**Reporte IVA Digital:**
-- Card informativa: "Este mes tenés acumulado $X de IVA Ventas y $Y de IVA Compras. Tu saldo estimado a pagar es $Z".
-
-**Exportación:**
-- Botón Libro IVA Ventas (Excel desde `facturas`).
-- Botón Libro IVA Compras (Excel desde `gastos`).
+**Frontend** (en `Facturacion.tsx`):
+- Botón "Sincronizar desde AFIP" en la tab de Emitidas.
+- Al hacer clic, invoca `arca-factura` con `action: 'sync_from_afip'`.
+- Muestra progreso y resultado (X facturas importadas).
 
 ---
 
-### 5. Navegación y Routing
+### 3. Columna `importada` en tabla `facturas`
 
-- Lazy imports en `App.tsx` para `Facturacion`, `Gastos`, `FiscalDashboard`.
-- Rutas `/facturacion`, `/gastos`, `/fiscal` dentro de `DashboardLayout`.
-- Items en `AppSidebar.tsx` en el grupo "Finanzas":
-  - "Facturación" → `/facturacion` (icon: FileText)
-  - "Gastos" → `/gastos` (icon: Receipt)
-  - "Panel Fiscal" → `/fiscal` (icon: Calculator)
-- Permission key: `cash.manage` (reutiliza el existente de finanzas).
+**Migración SQL**:
+```sql
+ALTER TABLE public.facturas ADD COLUMN importada BOOLEAN DEFAULT false;
+```
+
+Permite distinguir facturas emitidas desde Geologistick vs importadas desde AFIP.
 
 ---
 
@@ -97,10 +60,7 @@ ALTER TABLE public.gastos ENABLE ROW LEVEL SECURITY;
 
 | Archivo | Acción |
 |---------|--------|
-| Migración SQL | Crear tabla `gastos` + RLS |
-| `src/pages/Facturacion.tsx` | Crear — cola de pendientes + lote |
-| `src/pages/Gastos.tsx` | Crear — CRUD gastos |
-| `src/pages/FiscalDashboard.tsx` | Crear — dashboard + monitor + IVA |
-| `src/App.tsx` | Agregar 3 rutas lazy |
-| `src/components/layout/AppSidebar.tsx` | Agregar 3 nav items en Finanzas |
+| Migración SQL | Agregar columna `importada` a `facturas` |
+| `supabase/functions/arca-factura/index.ts` | Agregar acción `sync_from_afip` + función `consultarComprobante` |
+| `src/pages/Facturacion.tsx` | Tabs (Pendientes/Emitidas), tabla de emitidas, duplicar, botón sync |
 
