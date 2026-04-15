@@ -1,0 +1,1 @@
+ALTER TABLE public.facturas ADD COLUMN IF NOT EXISTS importada BOOLEAN DEFAULT false;

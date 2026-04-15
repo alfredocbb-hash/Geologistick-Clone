@@ -1437,6 +1437,7 @@ export type Database = {
           estado: string | null
           fecha_emision: string | null
           id: string
+          importada: boolean | null
           importe_iva: number | null
           importe_neto: number
           importe_total: number
@@ -1463,6 +1464,7 @@ export type Database = {
           estado?: string | null
           fecha_emision?: string | null
           id?: string
+          importada?: boolean | null
           importe_iva?: number | null
           importe_neto: number
           importe_total: number
@@ -1489,6 +1491,7 @@ export type Database = {
           estado?: string | null
           fecha_emision?: string | null
           id?: string
+          importada?: boolean | null
           importe_iva?: number | null
           importe_neto?: number
           importe_total?: number
