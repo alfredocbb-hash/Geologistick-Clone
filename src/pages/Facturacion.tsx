@@ -365,6 +365,14 @@ export default function Facturacion() {
       if (error) throw error;
       if (!data.success && data.error) throw new Error(data.error);
       toast.success('Factura duplicada emitida correctamente');
+      if (cuitMatch) {
+        updateSourceRecord(cuitMatch, {
+          nombre: nombre.trim(),
+          razonSocial: nombre.trim(),
+          direccion: domicilio.trim() || undefined,
+          condicionIva: condicionIva,
+        });
+      }
       setDuplicateOpen(false);
       resetForm();
       refetchEmitidas();
