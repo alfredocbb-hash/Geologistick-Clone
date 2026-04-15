@@ -502,6 +502,7 @@ export default function ThirdPartyShipmentsTab() {
           nombre_remitente: selectedSeller ? selectedSeller.nombre : (selectedEmpresa?.nombre || null),
           direccion_retiro: selectedEmpresa?.direccion || null,
           ciudad_retiro: selectedEmpresa?.ciudad || null,
+          source_module: 'third_party',
         })
         .select()
         .single();
