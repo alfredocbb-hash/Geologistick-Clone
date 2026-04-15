@@ -1425,22 +1425,94 @@ export type Database = {
           },
         ]
       }
+      factura_detalles: {
+        Row: {
+          alicuota_iva: number
+          bonificacion_pct: number
+          cantidad: number
+          codigo: string | null
+          created_at: string
+          descripcion: string
+          factura_id: string
+          id: string
+          precio_unitario: number
+          subtotal: number
+          subtotal_con_iva: number
+          tenant_id: string | null
+          unidad_medida: string
+        }
+        Insert: {
+          alicuota_iva?: number
+          bonificacion_pct?: number
+          cantidad?: number
+          codigo?: string | null
+          created_at?: string
+          descripcion: string
+          factura_id: string
+          id?: string
+          precio_unitario?: number
+          subtotal?: number
+          subtotal_con_iva?: number
+          tenant_id?: string | null
+          unidad_medida?: string
+        }
+        Update: {
+          alicuota_iva?: number
+          bonificacion_pct?: number
+          cantidad?: number
+          codigo?: string | null
+          created_at?: string
+          descripcion?: string
+          factura_id?: string
+          id?: string
+          precio_unitario?: number
+          subtotal?: number
+          subtotal_con_iva?: number
+          tenant_id?: string | null
+          unidad_medida?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "factura_detalles_factura_id_fkey"
+            columns: ["factura_id"]
+            isOneToOne: false
+            referencedRelation: "facturas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "factura_detalles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       facturas: {
         Row: {
           arca_response: Json | null
           cae: string | null
           cae_vencimiento: string | null
+          concepto: number
+          condicion_venta: string | null
           created_at: string | null
           created_by: string | null
+          descripcion: string | null
           envio_id: string | null
           error_mensaje: string | null
           estado: string | null
           fecha_emision: string | null
+          fecha_servicio_desde: string | null
+          fecha_servicio_hasta: string | null
+          fecha_vto_pago: string | null
           id: string
           importada: boolean | null
+          importe_exento: number
           importe_iva: number | null
           importe_neto: number
+          importe_no_gravado: number
           importe_total: number
+          importe_tributos: number
           liquidacion_seller_id: string | null
           liquidacion_terciarizado_id: string | null
           numero_comprobante: number
@@ -1452,22 +1524,32 @@ export type Database = {
           receptor_nombre: string | null
           tenant_id: string | null
           tipo_comprobante: string
+          tipo_documento: number
         }
         Insert: {
           arca_response?: Json | null
           cae?: string | null
           cae_vencimiento?: string | null
+          concepto?: number
+          condicion_venta?: string | null
           created_at?: string | null
           created_by?: string | null
+          descripcion?: string | null
           envio_id?: string | null
           error_mensaje?: string | null
           estado?: string | null
           fecha_emision?: string | null
+          fecha_servicio_desde?: string | null
+          fecha_servicio_hasta?: string | null
+          fecha_vto_pago?: string | null
           id?: string
           importada?: boolean | null
+          importe_exento?: number
           importe_iva?: number | null
           importe_neto: number
+          importe_no_gravado?: number
           importe_total: number
+          importe_tributos?: number
           liquidacion_seller_id?: string | null
           liquidacion_terciarizado_id?: string | null
           numero_comprobante: number
@@ -1479,22 +1561,32 @@ export type Database = {
           receptor_nombre?: string | null
           tenant_id?: string | null
           tipo_comprobante: string
+          tipo_documento?: number
         }
         Update: {
           arca_response?: Json | null
           cae?: string | null
           cae_vencimiento?: string | null
+          concepto?: number
+          condicion_venta?: string | null
           created_at?: string | null
           created_by?: string | null
+          descripcion?: string | null
           envio_id?: string | null
           error_mensaje?: string | null
           estado?: string | null
           fecha_emision?: string | null
+          fecha_servicio_desde?: string | null
+          fecha_servicio_hasta?: string | null
+          fecha_vto_pago?: string | null
           id?: string
           importada?: boolean | null
+          importe_exento?: number
           importe_iva?: number | null
           importe_neto?: number
+          importe_no_gravado?: number
           importe_total?: number
+          importe_tributos?: number
           liquidacion_seller_id?: string | null
           liquidacion_terciarizado_id?: string | null
           numero_comprobante?: number
@@ -1506,6 +1598,7 @@ export type Database = {
           receptor_nombre?: string | null
           tenant_id?: string | null
           tipo_comprobante?: string
+          tipo_documento?: number
         }
         Relationships: [
           {

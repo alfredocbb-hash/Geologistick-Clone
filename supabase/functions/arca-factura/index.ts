@@ -46,12 +46,28 @@ interface FacturaRequest {
     condicion_iva: string;
     domicilio?: string;
   };
-  conceptos?: Array<{
+  importe_total?: number;
+  // AFIP-standard fields
+  concepto?: number; // 1=Productos, 2=Servicios, 3=Ambos
+  tipo_documento?: number; // 80=CUIT, 96=DNI, 99=Sin Identificar
+  condicion_venta?: string;
+  fecha_servicio_desde?: string; // YYYY-MM-DD
+  fecha_servicio_hasta?: string;
+  fecha_vto_pago?: string;
+  importe_no_gravado?: number;
+  importe_exento?: number;
+  importe_tributos?: number;
+  descripcion?: string;
+  line_items?: Array<{
+    codigo?: string;
     descripcion: string;
     cantidad: number;
+    unidad_medida?: string;
     precio_unitario: number;
+    bonificacion_pct?: number;
+    subtotal: number;
+    alicuota_iva?: number;
   }>;
-  importe_total?: number;
 }
 
 interface ARCAConfig {
@@ -522,28 +538,37 @@ async function solicitarCAE(
   importeNeto: number,
   importeIva: number,
   importeTotal: number,
-  wsfeUrl: string
+  wsfeUrl: string,
+  opts?: {
+    concepto?: number;
+    tipoDocumento?: number;
+    fechaServicioDesde?: string;
+    fechaServicioHasta?: string;
+    fechaVtoPago?: string;
+    importeNoGravado?: number;
+    importeExento?: number;
+    importeTributos?: number;
+  }
 ): Promise<{ cae: string; caeVencimiento: string }> {
   const tipoComprobanteCode = INVOICE_CODES[tipoComprobante].factura;
   const ivaCondition = IVA_CONDITIONS[receptor.condicion_iva] || IVA_CONDITIONS.consumidor_final;
   
-  const docTipo = ivaCondition.docTipo;
-  // RG AFIP: cuando DocTipo = 99 (Consumidor Final), DocNro DEBE ser 0
-  // para comprobantes B < $10M. El DNI se guarda igual en la tabla facturas.
+  // Use explicit tipo_documento from opts if provided, otherwise infer from IVA condition
+  const docTipo = opts?.tipoDocumento ?? ivaCondition.docTipo;
   const docNro = docTipo === 99
     ? '0'
     : (receptor.cuit?.replace(/[-]/g, '') || receptor.dni || '0');
 
-  // Usar hora Argentina (UTC-3) para la fecha del comprobante fiscal
   const nowMs = Date.now();
   const AR_OFFSET_MS = 3 * 60 * 60 * 1000;
   const argentinaDate = new Date(nowMs - AR_OFFSET_MS);
   const fechaComprobante = `${argentinaDate.getUTCFullYear()}${String(argentinaDate.getUTCMonth()+1).padStart(2,'0')}${String(argentinaDate.getUTCDate()).padStart(2,'0')}`;
 
-  // AFIP requiere el objeto IVA cuando ImpNeto > 0, independientemente del tipo de comprobante (A, B o C)
-  // Solo incluir el bloque <ar:Iva> si importeIva > 0 (RG AFIP error 10070)
-  // RG 5616: CondicionIvaReceptor es obligatorio desde 15/04/2025 (rechazado desde 01/04/2026 en sandbox)
-  // Mapeo de condición IVA a código numérico AFIP (FEParamGetCondicionIvaReceptor)
+  const conceptoValue = opts?.concepto ?? 1;
+  const impTotConc = (opts?.importeNoGravado ?? 0).toFixed(2);
+  const impOpEx = (opts?.importeExento ?? 0).toFixed(2);
+  const impTrib = (opts?.importeTributos ?? 0).toFixed(2);
+
   const condicionIvaReceptorCode: Record<string, number> = {
     responsable_inscripto: 1,
     exento: 4,
@@ -553,13 +578,18 @@ async function solicitarCAE(
   };
   const condicionIvaReceptorNumero = condicionIvaReceptorCode[receptor.condicion_iva] ?? 5;
 
-  // Construir bloque IVA con prefijo ar: en TODOS los elementos internos (AFIP parser estricto)
-  // Sin ar: en AlicIva/Id/BaseImp/Importe AFIP los descarta → error "AlicIva es obligatorio"
   const ivaBlock = importeIva > 0.005
     ? `<ar:Iva><ar:AlicIva><ar:Id>5</ar:Id><ar:BaseImp>${importeNeto.toFixed(2)}</ar:BaseImp><ar:Importe>${importeIva.toFixed(2)}</ar:Importe></ar:AlicIva></ar:Iva>`
     : '';
 
-  console.log(`[ARCA] CondicionIvaReceptor: ${receptor.condicion_iva} → código ${condicionIvaReceptorNumero}`);
+  // Service dates block (required when Concepto = 2 or 3)
+  const fmtDate = (d: string) => d.replace(/-/g, '');
+  const serviceDatesBlock = conceptoValue !== 1 && opts?.fechaServicioDesde && opts?.fechaServicioHasta && opts?.fechaVtoPago
+    ? `<ar:FchServDesde>${fmtDate(opts.fechaServicioDesde)}</ar:FchServDesde><ar:FchServHasta>${fmtDate(opts.fechaServicioHasta)}</ar:FchServHasta><ar:FchVtoPago>${fmtDate(opts.fechaVtoPago)}</ar:FchVtoPago>`
+    : '';
+
+  console.log(`[ARCA] Concepto: ${conceptoValue}, DocTipo: ${docTipo}, CondIvaReceptor: ${condicionIvaReceptorNumero}`);
+  console.log(`[ARCA] ImpTotConc: ${impTotConc}, ImpOpEx: ${impOpEx}, ImpTrib: ${impTrib}`);
   console.log(`[ARCA] IVA block incluido: ${importeIva > 0.005}`);
 
   const soapBody = `<?xml version="1.0" encoding="utf-8"?>
@@ -581,18 +611,18 @@ async function solicitarCAE(
         </ar:FeCabReq>
         <ar:FeDetReq>
           <ar:FECAEDetRequest>
-            <ar:Concepto>1</ar:Concepto>
+            <ar:Concepto>${conceptoValue}</ar:Concepto>
             <ar:DocTipo>${docTipo}</ar:DocTipo>
             <ar:DocNro>${docNro}</ar:DocNro>
             <ar:CbteDesde>${numeroComprobante}</ar:CbteDesde>
             <ar:CbteHasta>${numeroComprobante}</ar:CbteHasta>
             <ar:CbteFch>${fechaComprobante}</ar:CbteFch>
             <ar:ImpTotal>${importeTotal.toFixed(2)}</ar:ImpTotal>
-            <ar:ImpTotConc>0.00</ar:ImpTotConc>
+            <ar:ImpTotConc>${impTotConc}</ar:ImpTotConc>
             <ar:ImpNeto>${importeNeto.toFixed(2)}</ar:ImpNeto>
-            <ar:ImpOpEx>0.00</ar:ImpOpEx>
+            <ar:ImpOpEx>${impOpEx}</ar:ImpOpEx>
             <ar:ImpIVA>${importeIva.toFixed(2)}</ar:ImpIVA>
-            <ar:ImpTrib>0.00</ar:ImpTrib>
+            <ar:ImpTrib>${impTrib}</ar:ImpTrib>${serviceDatesBlock}
             <ar:MonId>PES</ar:MonId>
             <ar:MonCotiz>1</ar:MonCotiz><ar:CondicionIvaReceptorId>${condicionIvaReceptorNumero}</ar:CondicionIvaReceptorId>${ivaBlock}
           </ar:FECAEDetRequest>
@@ -681,9 +711,18 @@ async function emitirFacturaARCA(
   importeNeto: number,
   importeIva: number,
   importeTotal: number,
-  // Token ya obtenido previamente para evitar doble autenticación
   preloadedToken?: string,
   preloadedSign?: string,
+  soapOpts?: {
+    concepto?: number;
+    tipoDocumento?: number;
+    fechaServicioDesde?: string;
+    fechaServicioHasta?: string;
+    fechaVtoPago?: string;
+    importeNoGravado?: number;
+    importeExento?: number;
+    importeTributos?: number;
+  },
 ): Promise<{ success: boolean; cae?: string; caeVencimiento?: string; error?: string; sessionConflict?: boolean }> {
   const endpoints = ARCA_ENDPOINTS[environment];
 
@@ -692,7 +731,6 @@ async function emitirFacturaARCA(
     let sign: string;
 
     if (preloadedToken && preloadedSign) {
-      // Reusar el token ya obtenido para la consulta de FECompUltimoAutorizado
       token = preloadedToken;
       sign = preloadedSign;
       console.log('[ARCA] Reutilizando token WSAA ya obtenido para FECAESolicitar');
@@ -705,17 +743,9 @@ async function emitirFacturaARCA(
     }
 
     const { cae, caeVencimiento } = await solicitarCAE(
-      token,
-      sign,
-      config.cuit,
-      parseInt(config.punto_venta),
-      tipoComprobante,
-      numeroComprobante,
-      receptor,
-      importeNeto,
-      importeIva,
-      importeTotal,
-      endpoints.wsfe
+      token, sign, config.cuit, parseInt(config.punto_venta),
+      tipoComprobante, numeroComprobante, receptor,
+      importeNeto, importeIva, importeTotal, endpoints.wsfe, soapOpts
     );
 
     console.log(`[ARCA] CAE obtenido: ${cae}, vence: ${caeVencimiento}`);
@@ -901,7 +931,19 @@ async function createFacturaRecord(
   importeNeto: number,
   importeIva: number,
   importeTotal: number,
-  userId: string | null
+  userId: string | null,
+  extra?: {
+    concepto?: number;
+    tipoDocumento?: number;
+    condicionVenta?: string;
+    fechaServicioDesde?: string;
+    fechaServicioHasta?: string;
+    fechaVtoPago?: string;
+    importeNoGravado?: number;
+    importeExento?: number;
+    importeTributos?: number;
+    descripcion?: string;
+  }
 // deno-lint-ignore no-explicit-any
 ): Promise<any> {
   const insertData: Record<string, unknown> = {
@@ -916,7 +958,6 @@ async function createFacturaRecord(
     importe_neto: importeNeto,
     importe_iva: importeIva,
     importe_total: importeTotal,
-    // Fecha fiscal: usar hora Argentina (UTC-3) para consistencia con CbteFch
     fecha_emision: (() => {
       const AR_OFFSET = 3 * 60 * 60 * 1000;
       const d = new Date(Date.now() - AR_OFFSET);
@@ -924,6 +965,17 @@ async function createFacturaRecord(
     })(),
     estado: 'pendiente',
     created_by: userId,
+    // New AFIP fields
+    concepto: extra?.concepto ?? 1,
+    tipo_documento: extra?.tipoDocumento ?? 80,
+    condicion_venta: extra?.condicionVenta || null,
+    fecha_servicio_desde: extra?.fechaServicioDesde || null,
+    fecha_servicio_hasta: extra?.fechaServicioHasta || null,
+    fecha_vto_pago: extra?.fechaVtoPago || null,
+    importe_no_gravado: extra?.importeNoGravado ?? 0,
+    importe_exento: extra?.importeExento ?? 0,
+    importe_tributos: extra?.importeTributos ?? 0,
+    descripcion: extra?.descripcion || null,
   };
 
   if (envioId) insertData.envio_id = envioId;
