@@ -23,14 +23,12 @@ import { useARCAIntegration, determinarTipoFactura, validateCUIT, formatCUIT } f
 import { useCuitLookup } from '@/hooks/useCuitLookup';
 import { format } from 'date-fns';
 
-const CONDICION_IVA_OPTIONS = [
-  { value: 'responsable_inscripto', label: 'Responsable Inscripto', requiresCuit: true },
-  { value: 'monotributo', label: 'Monotributista', requiresCuit: true },
-  { value: 'exento', label: 'Exento', requiresCuit: true },
-  { value: 'consumidor_final', label: 'Consumidor Final', requiresCuit: false },
-] as const;
+import {
+  CONCEPTO_OPTIONS, TIPO_DOCUMENTO_OPTIONS, CONDICION_VENTA_OPTIONS,
+  CONDICION_IVA_OPTIONS, type CondicionIVA,
+} from '@/components/invoicing/afipConstants';
 
-type CondicionIVA = typeof CONDICION_IVA_OPTIONS[number]['value'];
+
 
 export default function Facturacion() {
   const { profile } = useAuth();
