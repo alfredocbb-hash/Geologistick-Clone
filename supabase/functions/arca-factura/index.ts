@@ -553,23 +553,22 @@ async function solicitarCAE(
   const tipoComprobanteCode = INVOICE_CODES[tipoComprobante].factura;
   const ivaCondition = IVA_CONDITIONS[receptor.condicion_iva] || IVA_CONDITIONS.consumidor_final;
   
-  const docTipo = ivaCondition.docTipo;
-  // RG AFIP: cuando DocTipo = 99 (Consumidor Final), DocNro DEBE ser 0
-  // para comprobantes B < $10M. El DNI se guarda igual en la tabla facturas.
+  // Use explicit tipo_documento from opts if provided, otherwise infer from IVA condition
+  const docTipo = opts?.tipoDocumento ?? ivaCondition.docTipo;
   const docNro = docTipo === 99
     ? '0'
     : (receptor.cuit?.replace(/[-]/g, '') || receptor.dni || '0');
 
-  // Usar hora Argentina (UTC-3) para la fecha del comprobante fiscal
   const nowMs = Date.now();
   const AR_OFFSET_MS = 3 * 60 * 60 * 1000;
   const argentinaDate = new Date(nowMs - AR_OFFSET_MS);
   const fechaComprobante = `${argentinaDate.getUTCFullYear()}${String(argentinaDate.getUTCMonth()+1).padStart(2,'0')}${String(argentinaDate.getUTCDate()).padStart(2,'0')}`;
 
-  // AFIP requiere el objeto IVA cuando ImpNeto > 0, independientemente del tipo de comprobante (A, B o C)
-  // Solo incluir el bloque <ar:Iva> si importeIva > 0 (RG AFIP error 10070)
-  // RG 5616: CondicionIvaReceptor es obligatorio desde 15/04/2025 (rechazado desde 01/04/2026 en sandbox)
-  // Mapeo de condición IVA a código numérico AFIP (FEParamGetCondicionIvaReceptor)
+  const conceptoValue = opts?.concepto ?? 1;
+  const impTotConc = (opts?.importeNoGravado ?? 0).toFixed(2);
+  const impOpEx = (opts?.importeExento ?? 0).toFixed(2);
+  const impTrib = (opts?.importeTributos ?? 0).toFixed(2);
+
   const condicionIvaReceptorCode: Record<string, number> = {
     responsable_inscripto: 1,
     exento: 4,
@@ -579,13 +578,18 @@ async function solicitarCAE(
   };
   const condicionIvaReceptorNumero = condicionIvaReceptorCode[receptor.condicion_iva] ?? 5;
 
-  // Construir bloque IVA con prefijo ar: en TODOS los elementos internos (AFIP parser estricto)
-  // Sin ar: en AlicIva/Id/BaseImp/Importe AFIP los descarta → error "AlicIva es obligatorio"
   const ivaBlock = importeIva > 0.005
     ? `<ar:Iva><ar:AlicIva><ar:Id>5</ar:Id><ar:BaseImp>${importeNeto.toFixed(2)}</ar:BaseImp><ar:Importe>${importeIva.toFixed(2)}</ar:Importe></ar:AlicIva></ar:Iva>`
     : '';
 
-  console.log(`[ARCA] CondicionIvaReceptor: ${receptor.condicion_iva} → código ${condicionIvaReceptorNumero}`);
+  // Service dates block (required when Concepto = 2 or 3)
+  const fmtDate = (d: string) => d.replace(/-/g, '');
+  const serviceDatesBlock = conceptoValue !== 1 && opts?.fechaServicioDesde && opts?.fechaServicioHasta && opts?.fechaVtoPago
+    ? `<ar:FchServDesde>${fmtDate(opts.fechaServicioDesde)}</ar:FchServDesde><ar:FchServHasta>${fmtDate(opts.fechaServicioHasta)}</ar:FchServHasta><ar:FchVtoPago>${fmtDate(opts.fechaVtoPago)}</ar:FchVtoPago>`
+    : '';
+
+  console.log(`[ARCA] Concepto: ${conceptoValue}, DocTipo: ${docTipo}, CondIvaReceptor: ${condicionIvaReceptorNumero}`);
+  console.log(`[ARCA] ImpTotConc: ${impTotConc}, ImpOpEx: ${impOpEx}, ImpTrib: ${impTrib}`);
   console.log(`[ARCA] IVA block incluido: ${importeIva > 0.005}`);
 
   const soapBody = `<?xml version="1.0" encoding="utf-8"?>
@@ -607,16 +611,16 @@ async function solicitarCAE(
         </ar:FeCabReq>
         <ar:FeDetReq>
           <ar:FECAEDetRequest>
-            <ar:Concepto>1</ar:Concepto>
+            <ar:Concepto>${conceptoValue}</ar:Concepto>
             <ar:DocTipo>${docTipo}</ar:DocTipo>
             <ar:DocNro>${docNro}</ar:DocNro>
             <ar:CbteDesde>${numeroComprobante}</ar:CbteDesde>
             <ar:CbteHasta>${numeroComprobante}</ar:CbteHasta>
             <ar:CbteFch>${fechaComprobante}</ar:CbteFch>
             <ar:ImpTotal>${importeTotal.toFixed(2)}</ar:ImpTotal>
-            <ar:ImpTotConc>0.00</ar:ImpTotConc>
+            <ar:ImpTotConc>${impTotConc}</ar:ImpTotConc>
             <ar:ImpNeto>${importeNeto.toFixed(2)}</ar:ImpNeto>
-            <ar:ImpOpEx>0.00</ar:ImpOpEx>
+            <ar:ImpOpEx>${impOpEx}</ar:ImpOpEx>
             <ar:ImpIVA>${importeIva.toFixed(2)}</ar:ImpIVA>
             <ar:ImpTrib>0.00</ar:ImpTrib>
             <ar:MonId>PES</ar:MonId>
