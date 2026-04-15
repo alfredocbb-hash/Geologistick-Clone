@@ -237,7 +237,7 @@ export default function RoutePlanner() {
           destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido, direccion, ciudad, telefono)
         `)
         .in("estado", ["pendiente", "recogido", "en_sucursal", "en_reparto", "reprogramado", "primera_visita", "segunda_visita"])
-        .or("chofer_id.is.null,reprogramado_count.gt.0")
+        .or("chofer_id.is.null,reprogramado_count.gt.0,estado.in.(primera_visita,segunda_visita)")
         .order("created_at", { ascending: false });
 
       // Filter by sucursal if not admin
