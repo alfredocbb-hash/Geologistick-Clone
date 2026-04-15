@@ -557,6 +557,13 @@ export default function Facturacion() {
                 </div>
                 <Button
                   variant="outline"
+                  onClick={() => setManualOpen(true)}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Cargar Manual
+                </Button>
+                <Button
+                  variant="outline"
                   onClick={() => {
                     setSyncPuntoVenta(config?.punto_venta ? String(config.punto_venta) : '');
                     setSyncDialogOpen(true);
