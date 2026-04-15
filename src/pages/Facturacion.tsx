@@ -430,6 +430,32 @@ export default function Facturacion() {
     <div className="space-y-4 py-2">
       <ARCAStatus />
 
+      {/* Row 1: Concepto + Condición de Venta */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Concepto</Label>
+          <Select value={String(concepto)} onValueChange={v => setConcepto(parseInt(v))}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {CONCEPTO_OPTIONS.map(o => (
+                <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Condición de Venta</Label>
+          <Select value={condicionVenta} onValueChange={setCondicionVenta}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {CONDICION_VENTA_OPTIONS.map(o => (
+                <SelectItem key={o} value={o}>{o}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
       <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/40">
         <Label className="text-sm font-medium cursor-pointer">
           {ivaIncluido ? 'IVA incluido en el monto' : 'Agregar IVA 21% al monto'}
@@ -465,16 +491,30 @@ export default function Facturacion() {
         </RadioGroup>
       </div>
 
-      <div className="space-y-2">
-        <Label>Condición frente al IVA</Label>
-        <Select value={condicionIva} onValueChange={v => setCondicionIva(v as CondicionIVA)}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {CONDICION_IVA_OPTIONS.map(o => (
-              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      {/* Row: IVA Condition + Document Type */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Condición frente al IVA</Label>
+          <Select value={condicionIva} onValueChange={v => setCondicionIva(v as CondicionIVA)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {CONDICION_IVA_OPTIONS.map(o => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Tipo Documento</Label>
+          <Select value={String(tipoDocumento)} onValueChange={v => setTipoDocumento(parseInt(v))}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {TIPO_DOCUMENTO_OPTIONS.map(o => (
+                <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <div className="space-y-2">
