@@ -1,90 +1,41 @@
 
 
-## Plan: Formulario de Emisión con Campos Completos Estilo AFIP
+## Plan: Revertir InvoiceDataDialog + Agregar pestaña "Emitir Factura" en Facturación
 
-### Referencia
-La factura de ejemplo (Correo Argentino, Factura A) muestra los campos AFIP estándar que faltan en el sistema actual.
-
-### Campos a agregar
-
-| Campo | Descripción | Origen en la factura |
-|-------|-------------|---------------------|
-| **Concepto** | Productos (1) / Servicios (2) / Ambos (3) | Implícito (servicios de flete) |
-| **Período Facturado Desde/Hasta** | Fechas de servicio (obligatorio si concepto ≠ 1) | "01/03/2026 - 31/03/2026" |
-| **Fecha Vto. Pago** | Vencimiento del pago (obligatorio si concepto ≠ 1) | "06/05/2026" |
-| **Tipo Documento** | CUIT (80), DNI (96), Sin Identificar (99) | "CUIT: 30708574838" |
-| **Condición de Venta** | Contado / Cuenta Corriente / etc. | "Cuenta Corriente" |
-| **Líneas de detalle** | Código, Producto/Servicio, Cantidad, U. Medida, Precio Unit., % Bonif. | 3 líneas en el ejemplo |
-| **Imp. No Gravado** | ImpTotConc | "0,00" |
-| **Imp. Exento** | ImpOpEx | "0,00" |
-| **Imp. Tributos** | ImpTrib | "0,00" |
-| **Descripción** | Nota general de la factura | — |
+### Problema
+Los campos AFIP completos (concepto, fechas servicio, líneas de detalle, etc.) se agregaron al `InvoiceDataDialog` (el dialog que se usa desde envíos/liquidaciones). El usuario quiere que ese dialog vuelva a ser simple, y que los campos AFIP completos estén en el módulo de Facturación como una opción nueva.
 
 ### Cambios
 
-**1. Migración SQL — Tabla `facturas`** (9 columnas nuevas):
-- `concepto` (smallint, default 1)
-- `fecha_servicio_desde` (date, nullable)
-- `fecha_servicio_hasta` (date, nullable)
-- `fecha_vto_pago` (date, nullable)
-- `importe_no_gravado` (numeric, default 0)
-- `importe_exento` (numeric, default 0)
-- `importe_tributos` (numeric, default 0)
-- `descripcion` (text, nullable)
-- `tipo_documento` (smallint, default 80)
-- `condicion_venta` (text, nullable)
+**1. Revertir `src/components/invoicing/InvoiceDataDialog.tsx`**
+- Quitar los campos nuevos: concepto, condición de venta, fechas de servicio, tipo documento explícito, líneas de detalle, importes no gravado/exento/tributos, descripción
+- Volver al formulario simple: tipo comprobante, condición IVA, CUIT (con auto-lookup), nombre, domicilio, importe total con toggle IVA
+- Mantener el auto-lookup de CUIT (eso fue aprobado aparte)
 
-**2. Migración SQL — Tabla `factura_detalles`** (nueva tabla para líneas):
-- `id`, `factura_id` (FK), `codigo`, `descripcion`, `cantidad`, `unidad_medida`, `precio_unitario`, `bonificacion_pct`, `subtotal`, `alicuota_iva` (21, 10.5, 27, 5, 2.5, 0), `subtotal_con_iva`, `tenant_id`
-- RLS: mismo tenant que la factura
+**2. Agregar botón "Emitir Factura" en `src/pages/Facturacion.tsx`**
+- En la pestaña "Emitidas", al lado de "Cargar Manual" y "Sincronizar desde AFIP", agregar un botón "Emitir Factura"
+- Este botón abre un nuevo dialog con **todos** los campos AFIP completos:
+  - Concepto (Productos/Servicios/Ambos)
+  - Condición de Venta
+  - Fechas de servicio (condicional)
+  - Tipo Documento
+  - Condición IVA + CUIT con auto-lookup
+  - Nombre, Domicilio
+  - Líneas de detalle (tabla editable usando `InvoiceLineItems`)
+  - Importes: No Gravado, Exento, Tributos
+  - Desglose automático (Neto + IVA + extras = Total)
+  - Descripción/Observaciones
+- Al emitir, llama a `arca-factura` con todos los campos AFIP
 
-**3. `src/components/invoicing/InvoiceDataDialog.tsx`** — Ampliar formulario:
-- Select de Concepto (Productos/Servicios/Ambos)
-- Fechas de servicio condicionales (solo concepto 2 o 3)
-- Select Tipo Documento (CUIT/CUIL/CDI/DNI/Sin Identificar)
-- Select Condición de Venta
-- Tabla editable de líneas de detalle (agregar/quitar filas)
-- Inputs para Imp. No Gravado, Exento y Tributos
-- Recalculo automático: Total = Neto + IVA + No Gravado + Exento + Tributos
-- Dialog más ancho (`sm:max-w-2xl`) con scroll
-
-**4. `src/pages/Facturacion.tsx`** — Mismos campos en formulario manual/batch
-
-**5. `supabase/functions/arca-factura/index.ts`** — Parametrizar SOAP:
-- Aceptar `concepto`, fechas, importes adicionales, `tipo_documento` del body
-- Reemplazar `<ar:Concepto>1</ar:Concepto>` por el valor dinámico
-- Incluir `FchServDesde`, `FchServHasta`, `FchVtoPago` cuando concepto ≠ 1
-- Usar `ImpTotConc`, `ImpOpEx`, `ImpTrib` reales en vez de 0
-- Guardar los campos nuevos + insertar líneas en `factura_detalles`
-
-**6. `src/pages/PrintInvoice.tsx`** — Vista previa/impresión:
-- Mostrar tabla de líneas de detalle (como en la factura de ejemplo)
-- Mostrar período facturado y fecha vto. pago
-- Desglose de IVA por alícuota
-- Condición de venta
-
-### Lógica clave
-
-```text
-Si concepto = 2 o 3:
-  → Mostrar fecha_desde, fecha_hasta, fecha_vto_pago (obligatorios)
-  → SOAP incluye FchServDesde, FchServHasta, FchVtoPago
-
-ImpTotal = ImpNeto + ImpIVA + ImpTotConc + ImpOpEx + ImpTrib
-
-Tipo Documento: 80=CUIT, 86=CUIL, 87=CDI, 96=DNI, 99=Sin Identificar
-
-Líneas de detalle: se guardan en factura_detalles, se muestran en PrintInvoice
-(AFIP WSFEv1 NO recibe líneas individuales, solo totales — las líneas son para la vista)
-```
+**3. Mantener sin cambios**
+- `InvoiceLineItems.tsx` y `afipConstants.ts` — se siguen usando en el nuevo dialog de Facturación
+- `supabase/functions/arca-factura/index.ts` — ya acepta los campos nuevos, no hay que revertir
+- Migración SQL — las columnas ya están en la tabla, se usan desde Facturación
 
 ### Archivos a modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| Migración SQL | 10 columnas en `facturas` + tabla `factura_detalles` |
-| `src/components/invoicing/InvoiceDataDialog.tsx` | Formulario completo estilo AFIP |
-| `src/pages/Facturacion.tsx` | Mismos campos en formulario manual |
-| `supabase/functions/arca-factura/index.ts` | Parametrizar SOAP |
-| `src/pages/PrintInvoice.tsx` | Tabla de detalle + campos nuevos |
+| `src/components/invoicing/InvoiceDataDialog.tsx` | Revertir a formulario simple (sin campos AFIP extendidos) |
+| `src/pages/Facturacion.tsx` | Agregar botón "Emitir Factura" + dialog con campos AFIP completos |
 
