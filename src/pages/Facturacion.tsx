@@ -821,6 +821,92 @@ export default function Facturacion() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ══════ MANUAL INVOICE DIALOG ══════ */}
+      <Dialog open={manualOpen} onOpenChange={setManualOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5" />
+              Cargar Factura Manual
+            </DialogTitle>
+            <DialogDescription>
+              Para comprobantes emitidos desde la web de AFIP (Factura en Línea) u otro sistema
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Tipo *</Label>
+                <Select value={manualForm.tipo_comprobante} onValueChange={v => setManualForm(f => ({ ...f, tipo_comprobante: v as 'A' | 'B' | 'C' }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="A">Factura A</SelectItem>
+                    <SelectItem value="B">Factura B</SelectItem>
+                    <SelectItem value="C">Factura C</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Punto de Venta *</Label>
+                <Input type="number" min={1} placeholder="Ej: 3" value={manualForm.punto_venta} onChange={e => setManualForm(f => ({ ...f, punto_venta: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Número *</Label>
+                <Input type="number" min={1} placeholder="Ej: 150" value={manualForm.numero_comprobante} onChange={e => setManualForm(f => ({ ...f, numero_comprobante: e.target.value }))} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Fecha Emisión *</Label>
+                <Input type="date" value={manualForm.fecha_emision} onChange={e => setManualForm(f => ({ ...f, fecha_emision: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>CUIT Receptor</Label>
+                <Input placeholder="XX-XXXXXXXX-X" value={manualForm.receptor_cuit} onChange={e => setManualForm(f => ({ ...f, receptor_cuit: e.target.value }))} />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Razón Social / Nombre Receptor</Label>
+              <Input placeholder="Nombre del receptor" value={manualForm.receptor_nombre} onChange={e => setManualForm(f => ({ ...f, receptor_nombre: e.target.value }))} />
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Neto</Label>
+                <Input type="number" step="0.01" placeholder="0.00" value={manualForm.importe_neto} onChange={e => setManualForm(f => ({ ...f, importe_neto: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>IVA</Label>
+                <Input type="number" step="0.01" placeholder="0.00" value={manualForm.importe_iva} onChange={e => setManualForm(f => ({ ...f, importe_iva: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Total *</Label>
+                <Input type="number" step="0.01" placeholder="0.00" value={manualForm.importe_total} onChange={e => setManualForm(f => ({ ...f, importe_total: e.target.value }))} />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>CAE</Label>
+              <Input placeholder="Código de Autorización Electrónica" value={manualForm.cae} onChange={e => setManualForm(f => ({ ...f, cae: e.target.value }))} />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setManualOpen(false)}>Cancelar</Button>
+            <Button
+              onClick={handleManualSave}
+              disabled={!manualForm.punto_venta || !manualForm.numero_comprobante || !(parseFloat(manualForm.importe_total) > 0)}
+            >
+              <FileText className="mr-2 h-4 w-4" />
+              Guardar Factura
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
