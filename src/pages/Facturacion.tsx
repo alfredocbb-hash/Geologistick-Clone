@@ -105,17 +105,22 @@ export default function Facturacion() {
 
   // Sync from AFIP mutation
   const syncMutation = useMutation({
-    mutationFn: async (puntoVenta?: number) => {
+    mutationFn: async ({ puntoVenta, tipo }: { puntoVenta?: number; tipo?: string }) => {
       const body: Record<string, unknown> = { action: 'sync_from_afip', environment: selectedEnvironment };
       if (puntoVenta) body.punto_venta = puntoVenta;
+      if (tipo && tipo !== 'todos') body.tipo = tipo;
       const { data, error } = await supabase.functions.invoke('arca-factura', { body });
       if (error) throw error;
       if (!data.success) throw new Error(data.error);
       return data;
     },
     onSuccess: (data) => {
-      toast.success(data.message || `${data.imported} facturas importadas`);
-      setSyncDialogOpen(false);
+      setSyncResult({ imported: data.imported, pending: data.pending || 0, message: data.message });
+      if (data.pending === 0) {
+        toast.success(data.message || `${data.imported} facturas importadas`);
+      } else {
+        toast.info(data.message);
+      }
       refetchEmitidas();
     },
     onError: (err: Error) => {
