@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, TrendingUp, TrendingDown, AlertTriangle, Download, DollarSign, Receipt, Calculator } from 'lucide-react';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
