@@ -1,37 +1,31 @@
 
 
-## Plan: Corregir asignación de dirección en envíos terciarizados tipo "Retiro"
+## Plan: Corregir agregado de envíos reprogramados a la planificación
 
 ### Problema
 
-Cuando se crea un envío terciarizado con tipo de operación **"Retiro"**, la dirección cargada en el formulario se guarda siempre como `direccion_entrega`, y la dirección de la empresa terciarizada se guarda como `direccion_retiro`. Esto es incorrecto para retiros: la dirección del formulario es donde se retira el paquete, y la empresa/sucursal es el destino.
+Cuando seleccionás envíos en la pestaña **Reprogramados** y hacés clic en "Agregar a Nueva Ruta", los IDs se agregan a `selectedEnvios` y se cambia a la pestaña "Crear Ruta". Pero los envíos no aparecen porque la consulta principal del planificador (`envios-planificador`) filtra con:
+
+```
+.or("chofer_id.is.null,reprogramado_count.gt.0")
+```
+
+Esto excluye envíos con estado `primera_visita` o `segunda_visita` que tienen `reprogramado_count = 0` y un `chofer_id` asignado (como se ve en la captura con "0x reprogramado").
 
 ### Solución
 
-Modificar `src/components/routes/ThirdPartyShipmentsTab.tsx` para que, cuando `tipo_operacion === "retiro"`:
-
-- `direccion_retiro` / `ciudad_retiro` / coordenadas de retiro = dirección del formulario (la que carga el usuario)
-- `direccion_entrega` / `ciudad_entrega` / coordenadas de entrega = dirección de la empresa terciarizada (o sucursal)
-
-Y cuando es "Entrega" (el caso actual), mantener el comportamiento existente.
-
-### Cambio técnico
-
-En el insert de `envios` (~línea 483-504), condicionar los campos según `tipo_operacion`:
+Ampliar el filtro de la query principal en `src/pages/RoutePlanner.tsx` (~línea 240) para incluir también envíos en estados de visita:
 
 ```typescript
-// Retiro: la dirección del form es donde se retira
-direccion_retiro: shipment.tipo_operacion === "retiro" ? shipment.direccion_entrega : (selectedEmpresa?.direccion || null),
-ciudad_retiro: shipment.tipo_operacion === "retiro" ? shipment.ciudad_entrega : (selectedEmpresa?.ciudad || null),
-remitente_lat: shipment.tipo_operacion === "retiro" ? shipment.entrega_lat : null,
-remitente_lng: shipment.tipo_operacion === "retiro" ? shipment.entrega_lng : null,
+// Antes:
+.or("chofer_id.is.null,reprogramado_count.gt.0")
 
-// Entrega: si es retiro, el destino es la empresa; si es entrega, el destino es el form
-direccion_entrega: shipment.tipo_operacion === "retiro" ? (selectedEmpresa?.direccion || '') : shipment.direccion_entrega,
-ciudad_entrega: shipment.tipo_operacion === "retiro" ? (selectedEmpresa?.ciudad || '') : shipment.ciudad_entrega,
-entrega_lat: shipment.tipo_operacion === "retiro" ? null : shipment.entrega_lat,
-entrega_lng: shipment.tipo_operacion === "retiro" ? null : shipment.entrega_lng,
+// Después:
+.or("chofer_id.is.null,reprogramado_count.gt.0,estado.in.(primera_visita,segunda_visita)")
 ```
 
-Solo se modifica un archivo: `src/components/routes/ThirdPartyShipmentsTab.tsx`.
+Esto asegura que los envíos con visitas previas (que aparecen en la pestaña Reprogramados) también estén disponibles en la lista del planificador y puedan seleccionarse correctamente.
+
+### Archivo a modificar
+- `src/pages/RoutePlanner.tsx` — una línea en la query de envíos pendientes
 
