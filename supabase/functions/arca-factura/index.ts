@@ -711,9 +711,18 @@ async function emitirFacturaARCA(
   importeNeto: number,
   importeIva: number,
   importeTotal: number,
-  // Token ya obtenido previamente para evitar doble autenticación
   preloadedToken?: string,
   preloadedSign?: string,
+  soapOpts?: {
+    concepto?: number;
+    tipoDocumento?: number;
+    fechaServicioDesde?: string;
+    fechaServicioHasta?: string;
+    fechaVtoPago?: string;
+    importeNoGravado?: number;
+    importeExento?: number;
+    importeTributos?: number;
+  },
 ): Promise<{ success: boolean; cae?: string; caeVencimiento?: string; error?: string; sessionConflict?: boolean }> {
   const endpoints = ARCA_ENDPOINTS[environment];
 
@@ -722,7 +731,6 @@ async function emitirFacturaARCA(
     let sign: string;
 
     if (preloadedToken && preloadedSign) {
-      // Reusar el token ya obtenido para la consulta de FECompUltimoAutorizado
       token = preloadedToken;
       sign = preloadedSign;
       console.log('[ARCA] Reutilizando token WSAA ya obtenido para FECAESolicitar');
@@ -735,17 +743,9 @@ async function emitirFacturaARCA(
     }
 
     const { cae, caeVencimiento } = await solicitarCAE(
-      token,
-      sign,
-      config.cuit,
-      parseInt(config.punto_venta),
-      tipoComprobante,
-      numeroComprobante,
-      receptor,
-      importeNeto,
-      importeIva,
-      importeTotal,
-      endpoints.wsfe
+      token, sign, config.cuit, parseInt(config.punto_venta),
+      tipoComprobante, numeroComprobante, receptor,
+      importeNeto, importeIva, importeTotal, endpoints.wsfe, soapOpts
     );
 
     console.log(`[ARCA] CAE obtenido: ${cae}, vence: ${caeVencimiento}`);
