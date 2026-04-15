@@ -165,6 +165,15 @@ export function InvoiceDataDialog({
       return data as FacturaResult;
     },
     onSuccess: (data) => {
+      // Update source record with any missing data
+      if (cuitMatch) {
+        updateSourceRecord(cuitMatch, {
+          nombre: nombre.trim(),
+          razonSocial: nombre.trim(),
+          direccion: domicilio.trim() || undefined,
+          condicionIva: condicionIva,
+        });
+      }
       if (data.estado === 'emitida') {
         toast.success(`Factura ${tipoComprobante} emitida correctamente`, {
           description: `CAE: ${data.cae}`,
