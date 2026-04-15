@@ -355,8 +355,6 @@ export default function Facturacion() {
       const importeTotal = ivaIncluido ? duplicateImporte : Math.round(duplicateImporte * 1.21 * 100) / 100;
       const { data, error } = await supabase.functions.invoke('arca-factura', {
         body: {
-          // Duplicate is a new standalone invoice - use a dummy envio_id reference or none
-          // We use the original envio_id if exists, otherwise create standalone
           envio_id: duplicateSource?.envio_id || undefined,
           liquidacion_seller_id: duplicateSource?.liquidacion_seller_id || undefined,
           tipo_comprobante: tipoComprobante,
@@ -368,6 +366,9 @@ export default function Facturacion() {
             domicilio: domicilio.trim() || undefined,
           },
           importe_total: importeTotal,
+          concepto,
+          tipo_documento: tipoDocumento,
+          condicion_venta: condicionVenta,
         },
       });
       if (error) throw error;
