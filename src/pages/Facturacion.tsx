@@ -16,8 +16,9 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { FileText, Loader2, Search, CheckCircle, AlertCircle, Package, Copy, RefreshCw, Download } from 'lucide-react';
+import { FileText, Loader2, Search, CheckCircle, AlertCircle, Package, Copy, RefreshCw, Download, Plus } from 'lucide-react';
 import { useARCAIntegration, determinarTipoFactura, validateCUIT, formatCUIT } from '@/hooks/useARCAConfig';
 import { format } from 'date-fns';
 
