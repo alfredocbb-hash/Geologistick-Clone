@@ -1216,7 +1216,12 @@ serve(async (req) => {
           // Update local counter
           await updateInvoiceNumber(supabase, tenantId, tipo, afipLast);
         } catch (tipoErr) {
-          errors.push(`Tipo ${tipo}: ${tipoErr instanceof Error ? tipoErr.message : String(tipoErr)}`);
+          const errMsg = tipoErr instanceof Error ? tipoErr.message : String(tipoErr);
+          if (errMsg.startsWith('ARCA_PV_NOT_RECE')) {
+            errors.push(errMsg);
+          } else {
+            errors.push(`Tipo ${tipo}: ${errMsg}`);
+          }
         }
       }
 
