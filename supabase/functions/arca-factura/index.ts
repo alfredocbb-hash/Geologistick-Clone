@@ -622,7 +622,7 @@ async function solicitarCAE(
             <ar:ImpNeto>${importeNeto.toFixed(2)}</ar:ImpNeto>
             <ar:ImpOpEx>${impOpEx}</ar:ImpOpEx>
             <ar:ImpIVA>${importeIva.toFixed(2)}</ar:ImpIVA>
-            <ar:ImpTrib>0.00</ar:ImpTrib>
+            <ar:ImpTrib>${impTrib}</ar:ImpTrib>${serviceDatesBlock}
             <ar:MonId>PES</ar:MonId>
             <ar:MonCotiz>1</ar:MonCotiz><ar:CondicionIvaReceptorId>${condicionIvaReceptorNumero}</ar:CondicionIvaReceptorId>${ivaBlock}
           </ar:FECAEDetRequest>
