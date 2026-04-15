@@ -772,20 +772,32 @@ export default function Facturacion() {
             </div>
 
             {syncResult && (
-              <Alert className={syncResult.pending > 0 ? 'border-yellow-200 bg-yellow-50 dark:bg-yellow-950/30' : 'border-green-200 bg-green-50 dark:bg-green-950/30'}>
-                <AlertDescription className={syncResult.pending > 0 ? 'text-yellow-800 dark:text-yellow-200' : 'text-green-800 dark:text-green-200'}>
-                  {syncResult.message}
-                  {syncResult.pending > 0 && (
-                    <Button variant="link" className="p-0 h-auto ml-1" onClick={() => {
-                      setSyncResult(null);
-                      const pv = syncPuntoVenta ? parseInt(syncPuntoVenta) : undefined;
-                      syncMutation.mutate({ puntoVenta: pv, tipo: syncTipo !== 'todos' ? syncTipo : undefined });
-                    }}>
-                      Ejecutar de nuevo →
-                    </Button>
-                  )}
-                </AlertDescription>
-              </Alert>
+              <>
+                <Alert className={syncResult.errors?.length ? 'border-destructive/50 bg-destructive/10' : syncResult.pending > 0 ? 'border-yellow-200 bg-yellow-50 dark:bg-yellow-950/30' : 'border-green-200 bg-green-50 dark:bg-green-950/30'}>
+                  <AlertDescription className={syncResult.errors?.length ? 'text-destructive' : syncResult.pending > 0 ? 'text-yellow-800 dark:text-yellow-200' : 'text-green-800 dark:text-green-200'}>
+                    {syncResult.message}
+                    {syncResult.pending > 0 && (
+                      <Button variant="link" className="p-0 h-auto ml-1" onClick={() => {
+                        setSyncResult(null);
+                        const pv = syncPuntoVenta ? parseInt(syncPuntoVenta) : undefined;
+                        syncMutation.mutate({ puntoVenta: pv, tipo: syncTipo !== 'todos' ? syncTipo : undefined });
+                      }}>
+                        Ejecutar de nuevo →
+                      </Button>
+                    )}
+                  </AlertDescription>
+                </Alert>
+                {syncResult.errors?.map((err, i) => (
+                  <Alert key={i} className="border-destructive/50 bg-destructive/10">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription className="text-destructive text-xs">
+                      {err.includes('ARCA_PV_NOT_RECE') 
+                        ? err.replace('ARCA_PV_NOT_RECE: ', '') 
+                        : err}
+                    </AlertDescription>
+                  </Alert>
+                ))}
+              </>
             )}
           </div>
 
