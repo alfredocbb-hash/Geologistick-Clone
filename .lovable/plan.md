@@ -1,28 +1,42 @@
 
 
-## Plan: Agregar selector de Punto de Venta en Sincronización AFIP
+## Plan: Adaptar Panel Fiscal según Condición IVA
 
 ### Problema
-La sincronización desde AFIP solo consulta el punto de venta configurado en ARCA (7). Las facturas emitidas desde la web de AFIP con otro punto de venta no se importan.
+El Panel Fiscal siempre muestra el Monitor de Monotributo, que no aplica para Responsable Inscripto. Para un RI, lo importante es:
+- **IVA Digital** (débito - crédito = posición mensual) — ya existe
+- **Libros IVA** (ventas/compras) — ya existe
+- **No mostrar** el monitor de topes de Monotributo
 
 ### Solución
-Agregar un campo de entrada de "Punto de Venta" en el dialog/botón de sincronización para que el usuario pueda indicar desde qué punto de venta importar.
+Leer la `condicion_iva` desde `arca_config` (vía `useARCAIntegration`) y condicionar la UI:
 
-### Cambios
+**Si es `responsable_inscripto`**:
+- Mostrar cards de resumen (facturado, gastos, resultado, IIBB)
+- Mostrar Reporte IVA Digital (débito vs crédito) — es el módulo central
+- **Ocultar** el Monitor de Monotributo
+- Agregar card de "Retenciones / Percepciones" como placeholder informativo
 
-**1. Frontend — `src/pages/Facturacion.tsx`**
-- Agregar un input numérico "Punto de Venta" junto al botón "Sincronizar desde AFIP" (o en un mini-dialog previo).
-- Pre-cargar el valor con el punto de venta configurado (7), pero permitir cambiarlo.
-- Enviar el valor `punto_venta` en el body de la llamada a `arca-factura`.
+**Si es `monotributo`**:
+- Mostrar cards de resumen
+- Mostrar Reporte IVA Digital simplificado (solo informativo, monotributistas no liquidan IVA)
+- **Mostrar** el Monitor de Monotributo con topes
 
-**2. Backend — `supabase/functions/arca-factura/index.ts`**
-- En la acción `sync_from_afip`, aceptar un parámetro opcional `punto_venta` en el body.
-- Si viene, usarlo en lugar del `puntoVenta` de la config de ARCA.
-- Esto permite consultar comprobantes de cualquier punto de venta del mismo CUIT.
+**Si no está configurado** (`arca_config` no existe):
+- Mostrar un selector manual "¿Cuál es tu condición IVA?" para elegir qué vista usar
 
-### Archivos a modificar
+### Cambios en `src/pages/FiscalDashboard.tsx`
+
+1. Importar `useARCAIntegration` del hook existente
+2. Leer `config?.condicion_iva` para determinar el modo
+3. Si no hay config, agregar un `Select` de condición IVA como state local
+4. Condicionar renderizado:
+   - `condicion === 'monotributo'` → mostrar Monitor Monotributo
+   - `condicion === 'responsable_inscripto'` → ocultar Monitor Monotributo, destacar IVA
+5. Ajustar texto del reporte IVA: para monotributistas aclarar que es solo informativo (no liquidan IVA)
+
+### Archivo a modificar
 | Archivo | Cambio |
 |---------|--------|
-| `src/pages/Facturacion.tsx` | Input de punto de venta + pasarlo en la llamada |
-| `supabase/functions/arca-factura/index.ts` | Leer `punto_venta` opcional del body en `sync_from_afip` |
+| `src/pages/FiscalDashboard.tsx` | Condicionar secciones según `condicion_iva` |
 
