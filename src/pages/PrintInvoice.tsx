@@ -344,9 +344,21 @@ export default function PrintInvoice() {
   const fleteEnDetalles = (detalles || []).find(d => d.nombre_concepto?.toLowerCase() === 'flete');
   const totalConceptos = (detalles || []).reduce((sum, d) => sum + (d.monto || 0), 0);
   const fleteCalculado = (envio?.precio_total || 0) - totalConceptos;
-  const conceptosAMostrar = fleteEnDetalles
-    ? (detalles || [])
-    : [{ nombre_concepto: 'Flete', monto: fleteCalculado > 0 ? fleteCalculado : (envio?.precio_total || 0) }, ...(detalles || [])];
+
+  // Liquidación: un renglón por envío con tracking, ciudad y fecha
+  const conceptosLiquidacion = (liquidacionEnvios || []).map((e) => {
+    const tracking = e.tracking_externo || e.tracking_number;
+    const fecha = e.fecha_entrega ? format(new Date(e.fecha_entrega), 'dd/MM/yyyy') : '';
+    const ciudad = e.ciudad_entrega || '';
+    const desc = `${tracking}${ciudad ? ` - ${ciudad}` : ''}${fecha ? ` (${fecha})` : ''}`;
+    return { nombre_concepto: desc, monto: e.precio_total || 0 };
+  });
+
+  const conceptosAMostrar = isLiquidacionInvoice
+    ? conceptosLiquidacion
+    : fleteEnDetalles
+      ? (detalles || [])
+      : [{ nombre_concepto: 'Flete', monto: fleteCalculado > 0 ? fleteCalculado : (envio?.precio_total || 0) }, ...(detalles || [])];
 
   const handlePrint = () => window.print();
 
