@@ -1,64 +1,23 @@
 
 
-## Plan: Eliminar remontaje del DashboardLayout al navegar
+## Plan: Asignar sucursal Mar del Plata a 7 envíos
 
-### Problema raíz
-Cada ruta está definida así:
-```
-<Route path="/shipments" element={<DashboardLayout><Shipments /></DashboardLayout>} />
-<Route path="/dashboard" element={<DashboardLayout><Dashboard /></DashboardLayout>} />
-```
+### Acción
+Ejecutar un UPDATE vía la herramienta de inserción para asignar `sucursal_entrega_id = '53aa8cf8-660e-45f0-b4b8-3316520090cc'` (MAR DEL PLATA) a los 7 envíos.
 
-Esto crea una **nueva instancia** de `DashboardLayout` por ruta. Al cambiar de módulo, React desmonta todo el layout (sidebar, header, auth, subscription check, SidebarProvider) y lo vuelve a montar desde cero. Esa es la causa del delay.
+- Los 6 entregados quedarán vinculados a la sucursal para que figuren en la liquidación
+- ENV-JK3MTE se mantiene cancelado pero también recibe la sucursal
 
-### Solución
-Usar **layout routes** de React Router: un `<Route>` padre con `<DashboardLayout>` que renderiza un `<Outlet />`, y las rutas hijas solo cambian el contenido interno.
-
-```text
-Antes:
-  /shipments → <DashboardLayout><Shipments /></DashboardLayout>  (instancia A)
-  /dashboard → <DashboardLayout><Dashboard /></DashboardLayout>  (instancia B) ← remonta todo
-
-Después:
-  <Route element={<DashboardLayout />}>     ← se monta UNA vez
-    /shipments → <Shipments />               ← solo cambia el contenido
-    /dashboard → <Dashboard />
-  </Route>
-```
-
-### Cambios
-
-**1. `src/components/layout/DashboardLayout.tsx`**
-- Cambiar de `children: ReactNode` a usar `<Outlet />` de React Router
-- El componente deja de recibir children y renderiza `<Outlet />` en el `<main>`
-
-**2. `src/App.tsx`**
-- Agrupar todas las rutas protegidas bajo un `<Route element={<DashboardLayout />}>` padre
-- Las rutas que necesitan `GoogleMapsProvider` lo envuelven individualmente en su page element
-- Eliminar `<DashboardLayout>...</DashboardLayout>` de cada ruta individual (~40 rutas)
-
-### Ejemplo del resultado en App.tsx
-```tsx
-{/* Protected Routes with shared layout */}
-<Route element={<DashboardLayout />}>
-  <Route path="/dashboard" element={<GoogleMapsProvider><Dashboard /></GoogleMapsProvider>} />
-  <Route path="/shipments" element={<Shipments />} />
-  <Route path="/reports" element={<Reports />} />
-  <Route path="/clients" element={<Clients />} />
-  {/* ... todas las demás rutas protegidas */}
-</Route>
+### SQL a ejecutar
+```sql
+UPDATE envios
+SET sucursal_entrega_id = '53aa8cf8-660e-45f0-b4b8-3316520090cc',
+    updated_at = now()
+WHERE tracking_number IN ('ENV-3PLUEN', 'ENV-AVMNDU', 'ENV-JK3MTE', 'ENV-7MWMQG', 'ENV-HEG7AV', 'ENV-UEGYVU', 'ENV-YFRT7X');
 ```
 
 ### Impacto
-- La sidebar, header, trial banner y auth checks se ejecutan **una sola vez**
-- Al navegar entre módulos, solo cambia el contenido del `<main>`
-- La transición se siente instantánea
-- Cero cambio en UI o lógica de negocio
-
-### Archivos a modificar
-
-| Archivo | Cambio |
-|---------|--------|
-| `src/components/layout/DashboardLayout.tsx` | Reemplazar `children` por `<Outlet />` |
-| `src/App.tsx` | Agrupar rutas protegidas bajo layout route padre |
+- Sin cambios de código
+- Los 6 envíos entregados aparecerán en la liquidación de la sucursal Mar del Plata
+- ENV-JK3MTE seguirá cancelado (no se incluye en liquidaciones por su estado)
 
