@@ -274,6 +274,9 @@ function AppRoutes() {
 
           {/* Profile */}
           <Route path="/profile" element={<Profile />} />
+          <Route path="/admin/branding" element={<BrandingSettings />} />
+          <Route path="/admin/landing" element={<LandingContentAdmin />} />
+          <Route path="/admin/trial-requests" element={<TrialRequests />} />
         </Route>
 
         {/* Seller Portal */}
