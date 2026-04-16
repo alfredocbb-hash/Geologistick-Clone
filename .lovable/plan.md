@@ -1,52 +1,64 @@
 
 
-## Plan: Mejoras de velocidad (sin romper nada)
+## Plan: Eliminar remontaje del DashboardLayout al navegar
 
-Cambios conservadores y de bajo riesgo que reducen bundle, requests y re-renders innecesarios.
+### Problema raíz
+Cada ruta está definida así:
+```
+<Route path="/shipments" element={<DashboardLayout><Shipments /></DashboardLayout>} />
+<Route path="/dashboard" element={<DashboardLayout><Dashboard /></DashboardLayout>} />
+```
 
-### 1. Lazy-load la landing page (`src/App.tsx`)
-- Cambiar `import Index from "./pages/Index"` a `const Index = lazy(() => import("./pages/Index"))`
-- Los usuarios que van directo a `/login` o `/dashboard` no descargan los 10 componentes de la landing
+Esto crea una **nueva instancia** de `DashboardLayout` por ruta. Al cambiar de módulo, React desmonta todo el layout (sidebar, header, auth, subscription check, SidebarProvider) y lo vuelve a montar desde cero. Esa es la causa del delay.
 
-### 2. Separar chunks pesados (`vite.config.ts`)
-Agregar a `manualChunks`:
-- `maps`: `@react-google-maps/api`
-- `charts`: `recharts`
-- `pdf`: `jspdf`, `html2canvas`
-- `excel`: `xlsx`
-- `i18n`: `i18next`, `react-i18next`
+### Solución
+Usar **layout routes** de React Router: un `<Route>` padre con `<DashboardLayout>` que renderiza un `<Outlet />`, y las rutas hijas solo cambian el contenido interno.
 
-Esto reduce el bundle inicial — estas libs se cargan solo cuando se necesitan.
+```text
+Antes:
+  /shipments → <DashboardLayout><Shipments /></DashboardLayout>  (instancia A)
+  /dashboard → <DashboardLayout><Dashboard /></DashboardLayout>  (instancia B) ← remonta todo
 
-### 3. React Query: desactivar `refetchOnWindowFocus` global (`src/App.tsx`)
-- Cambiar `refetchOnWindowFocus: true` → `false`
-- Aumentar `staleTime` de 30s a 60s
-- Elimina ráfagas de requests al volver a la pestaña del navegador
+Después:
+  <Route element={<DashboardLayout />}>     ← se monta UNA vez
+    /shipments → <Shipments />               ← solo cambia el contenido
+    /dashboard → <Dashboard />
+  </Route>
+```
 
-### 4. Quitar `GoogleMapsProvider` del `DashboardLayout` (`src/components/layout/DashboardLayout.tsx`)
-- Mover el wrapper `<GoogleMapsProvider>` solo a las rutas que usan mapas en `App.tsx`: `/route-planner`, `/live-map`, `/shipments/new`, `/branches`, `/dashboard`
-- El resto de páginas (Facturación, Usuarios, Caja, etc.) no cargan ni el hook ni la Edge Function de Maps
+### Cambios
 
-### 5. Cache de Maps API key (`src/hooks/useMapsApiKey.ts`)
-- Migrar de `useState`/`useEffect` manual a `useQuery` con `staleTime: 30min`
-- Eliminar el listener `onAuthStateChange` duplicado
-- Resultado: una sola llamada a `get-maps-config` por sesión en vez de una por cada mount
+**1. `src/components/layout/DashboardLayout.tsx`**
+- Cambiar de `children: ReactNode` a usar `<Outlet />` de React Router
+- El componente deja de recibir children y renderiza `<Outlet />` en el `<main>`
 
-### 6. Eliminar session polling de 60s (`src/lib/auth.tsx`)
-- Quitar el `setInterval` que llama `getSession()` cada minuto
-- Supabase ya maneja token refresh automáticamente via `onAuthStateChange`
-- Ahorra 1 request/minuto por usuario
+**2. `src/App.tsx`**
+- Agrupar todas las rutas protegidas bajo un `<Route element={<DashboardLayout />}>` padre
+- Las rutas que necesitan `GoogleMapsProvider` lo envuelven individualmente en su page element
+- Eliminar `<DashboardLayout>...</DashboardLayout>` de cada ruta individual (~40 rutas)
+
+### Ejemplo del resultado en App.tsx
+```tsx
+{/* Protected Routes with shared layout */}
+<Route element={<DashboardLayout />}>
+  <Route path="/dashboard" element={<GoogleMapsProvider><Dashboard /></GoogleMapsProvider>} />
+  <Route path="/shipments" element={<Shipments />} />
+  <Route path="/reports" element={<Reports />} />
+  <Route path="/clients" element={<Clients />} />
+  {/* ... todas las demás rutas protegidas */}
+</Route>
+```
+
+### Impacto
+- La sidebar, header, trial banner y auth checks se ejecutan **una sola vez**
+- Al navegar entre módulos, solo cambia el contenido del `<main>`
+- La transición se siente instantánea
+- Cero cambio en UI o lógica de negocio
 
 ### Archivos a modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/App.tsx` | Lazy Index, refetchOnWindowFocus false, staleTime 60s, GoogleMapsProvider per-route |
-| `vite.config.ts` | manualChunks para maps/charts/pdf/excel/i18n |
-| `src/components/layout/DashboardLayout.tsx` | Quitar GoogleMapsProvider |
-| `src/hooks/useMapsApiKey.ts` | Migrar a useQuery con 30min cache |
-| `src/lib/auth.tsx` | Eliminar setInterval polling |
-
-### Riesgo
-Bajo. Todos los cambios son de rendimiento puro — no cambian lógica de negocio, datos, ni UI visible. Los mapas siguen funcionando exactamente igual, solo se cargan donde se necesitan.
+| `src/components/layout/DashboardLayout.tsx` | Reemplazar `children` por `<Outlet />` |
+| `src/App.tsx` | Agrupar rutas protegidas bajo layout route padre |
 
