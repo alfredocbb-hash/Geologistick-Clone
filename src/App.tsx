@@ -210,9 +210,6 @@ function AppRoutes() {
         {/* Standalone pages (no dashboard layout) */}
         <Route path="/route-start" element={<RouteStart />} />
         <Route path="/active-route" element={<ActiveRouteNavigation />} />
-        <Route path="/admin/branding" element={<BrandingSettings />} />
-        <Route path="/admin/landing" element={<LandingContentAdmin />} />
-        <Route path="/admin/trial-requests" element={<TrialRequests />} />
 
         {/* Protected Routes with shared DashboardLayout */}
         <Route element={<DashboardLayout />}>
