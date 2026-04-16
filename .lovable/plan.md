@@ -1,23 +1,34 @@
 
 
-## Plan: Asignar sucursal Mar del Plata a 7 envíos
+## Plan: Mostrar detalle de envíos en facturas de liquidación seller
 
-### Acción
-Ejecutar un UPDATE vía la herramienta de inserción para asignar `sucursal_entrega_id = '53aa8cf8-660e-45f0-b4b8-3316520090cc'` (MAR DEL PLATA) a los 7 envíos.
+### Problema
+La página `PrintInvoice` solo muestra detalles cuando la factura está vinculada a un `envio_id`. Cuando la factura proviene de una **liquidación seller** (`liquidacion_seller_id`), no se cargan los envíos liquidados ni se muestran como ítems → la factura queda con un único renglón "Flete $0,00".
 
-- Los 6 entregados quedarán vinculados a la sucursal para que figuren en la liquidación
-- ENV-JK3MTE se mantiene cancelado pero también recibe la sucursal
+Caso real: factura `0007-00000003` (Beraexpress, $20.491,98) corresponde a 2 envíos ML-46807351356 y ML-46833405396 ($10.245,99 c/u) que están vinculados vía `envios.liquidacion_seller_id`.
 
-### SQL a ejecutar
-```sql
-UPDATE envios
-SET sucursal_entrega_id = '53aa8cf8-660e-45f0-b4b8-3316520090cc',
-    updated_at = now()
-WHERE tracking_number IN ('ENV-3PLUEN', 'ENV-AVMNDU', 'ENV-JK3MTE', 'ENV-7MWMQG', 'ENV-HEG7AV', 'ENV-UEGYVU', 'ENV-YFRT7X');
-```
+### Solución
+En `src/pages/PrintInvoice.tsx`:
 
-### Impacto
-- Sin cambios de código
-- Los 6 envíos entregados aparecerán en la liquidación de la sucursal Mar del Plata
-- ENV-JK3MTE seguirá cancelado (no se incluye en liquidaciones por su estado)
+1. **Detectar tipo de factura**: si `factura.liquidacion_seller_id` existe (o `liquidacion_terciarizado_id`), tratarla como factura de liquidación.
+
+2. **Nueva query `liquidacionEnvios`**: cuando la factura sea de liquidación seller, consultar `envios` filtrando por `liquidacion_seller_id = factura.liquidacion_seller_id`, trayendo: `tracking_number`, `tracking_externo`, `fecha_entrega`, `ciudad_entrega`, `precio_total`.
+
+3. **Construir conceptos dinámicamente**:
+   - Si es factura de envío único → comportamiento actual (Flete + conceptos del envío).
+   - Si es factura de liquidación → un renglón por cada envío con descripción tipo `"{tracking} - {ciudad} ({fecha})"` e importe = `precio_total`.
+
+4. **Reemplazar el bloque "Envío asociado"** por:
+   - Si liquidación: mostrar período `{periodo_inicio} - {periodo_fin}` y cantidad de envíos.
+   - Si envío único: mantener tracking actual.
+
+5. **Tabla de conceptos**: aumentar a 3 columnas (Fecha | Concepto/Tracking | Importe) cuando sea liquidación, para que se vea claro el detalle.
+
+### Archivos a modificar
+| Archivo | Cambio |
+|---------|--------|
+| `src/pages/PrintInvoice.tsx` | Agregar query de liquidación, construir conceptos según tipo, ajustar UI del bloque de detalle |
+
+### Riesgo
+Bajo. Solo se agrega lógica condicional para un caso que hoy no funciona; las facturas de envío único siguen renderizándose igual.
 
