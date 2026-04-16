@@ -195,6 +195,54 @@ export default function PrintInvoice() {
     enabled: !!resolvedEnvioId,
   });
 
+  // Detect liquidacion-type invoices
+  const liquidacionSellerId = (factura as { liquidacion_seller_id?: string } | undefined)?.liquidacion_seller_id;
+  const liquidacionTerciarizadoId = (factura as { liquidacion_terciarizado_id?: string } | undefined)?.liquidacion_terciarizado_id;
+  const isLiquidacionInvoice = !!(liquidacionSellerId || liquidacionTerciarizadoId);
+
+  // Fetch liquidacion seller details (period info)
+  const { data: liquidacionSeller } = useQuery({
+    queryKey: ['print-invoice-liq-seller', liquidacionSellerId],
+    queryFn: async () => {
+      if (!liquidacionSellerId) return null;
+      const { data, error } = await supabase
+        .from('liquidaciones_seller')
+        .select('periodo_inicio, periodo_fin, cantidad_movimientos, total_cargos')
+        .eq('id', liquidacionSellerId)
+        .maybeSingle();
+      if (error) return null;
+      return data;
+    },
+    enabled: !!liquidacionSellerId,
+  });
+
+  // Fetch envíos vinculados a la liquidación (seller o terciarizado)
+  const { data: liquidacionEnvios } = useQuery({
+    queryKey: ['print-invoice-liq-envios', liquidacionSellerId, liquidacionTerciarizadoId],
+    queryFn: async () => {
+      if (liquidacionSellerId) {
+        const { data, error } = await supabase
+          .from('envios')
+          .select('id, tracking_number, tracking_externo, fecha_entrega, ciudad_entrega, precio_total')
+          .eq('liquidacion_seller_id', liquidacionSellerId)
+          .order('fecha_entrega', { ascending: true });
+        if (error) throw error;
+        return data || [];
+      }
+      if (liquidacionTerciarizadoId) {
+        const { data, error } = await supabase
+          .from('envios')
+          .select('id, tracking_number, tracking_externo, fecha_entrega, ciudad_entrega, precio_total')
+          .eq('liquidacion_terciarizado_id' as never, liquidacionTerciarizadoId as never)
+          .order('fecha_entrega', { ascending: true });
+        if (error) throw error;
+        return data || [];
+      }
+      return [];
+    },
+    enabled: isLiquidacionInvoice,
+  });
+
   // Resolve tenant_id from envio or factura
   const tenantId = envio?.tenant_id || factura?.tenant_id;
 
@@ -296,9 +344,21 @@ export default function PrintInvoice() {
   const fleteEnDetalles = (detalles || []).find(d => d.nombre_concepto?.toLowerCase() === 'flete');
   const totalConceptos = (detalles || []).reduce((sum, d) => sum + (d.monto || 0), 0);
   const fleteCalculado = (envio?.precio_total || 0) - totalConceptos;
-  const conceptosAMostrar = fleteEnDetalles
-    ? (detalles || [])
-    : [{ nombre_concepto: 'Flete', monto: fleteCalculado > 0 ? fleteCalculado : (envio?.precio_total || 0) }, ...(detalles || [])];
+
+  // Liquidación: un renglón por envío con tracking, ciudad y fecha
+  const conceptosLiquidacion = (liquidacionEnvios || []).map((e) => {
+    const tracking = e.tracking_externo || e.tracking_number;
+    const fecha = e.fecha_entrega ? format(new Date(e.fecha_entrega), 'dd/MM/yyyy') : '';
+    const ciudad = e.ciudad_entrega || '';
+    const desc = `${tracking}${ciudad ? ` - ${ciudad}` : ''}${fecha ? ` (${fecha})` : ''}`;
+    return { nombre_concepto: desc, monto: e.precio_total || 0 };
+  });
+
+  const conceptosAMostrar = isLiquidacionInvoice
+    ? conceptosLiquidacion
+    : fleteEnDetalles
+      ? (detalles || [])
+      : [{ nombre_concepto: 'Flete', monto: fleteCalculado > 0 ? fleteCalculado : (envio?.precio_total || 0) }, ...(detalles || [])];
 
   const handlePrint = () => window.print();
 
@@ -496,8 +556,18 @@ export default function PrintInvoice() {
               </div>
             </div>
 
-            {/* Envío reference */}
-            {envio && (
+            {/* Referencia: liquidación o envío único */}
+            {isLiquidacionInvoice && liquidacionSeller ? (
+              <div className="text-sm text-muted-foreground">
+                Liquidación período:{' '}
+                <span className="font-medium text-foreground">
+                  {liquidacionSeller.periodo_inicio ? format(new Date(liquidacionSeller.periodo_inicio), 'dd/MM/yyyy') : '-'}
+                  {' '}a{' '}
+                  {liquidacionSeller.periodo_fin ? format(new Date(liquidacionSeller.periodo_fin), 'dd/MM/yyyy') : '-'}
+                </span>
+                {' '}· {(liquidacionEnvios || []).length} envío(s)
+              </div>
+            ) : envio && (
               <div className="text-sm text-muted-foreground">
                 Envío asociado: <span className="font-mono font-medium text-foreground">{envio.tracking_number}</span>
               </div>
