@@ -114,8 +114,20 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Validate roles array
-    const validRoles = ['admin', 'operador', 'operador_sucursal', 'chofer', 'super_admin'];
+    // Validate roles array (must match public.app_role enum)
+    const validRoles = [
+      'admin',
+      'super_admin',
+      'supervisor',
+      'operador',
+      'chofer',
+      'bodega',
+      'despachador',
+      'atencion_cliente',
+      'sucursal',
+      'cliente',
+      'seller',
+    ];
     if (roles && (!Array.isArray(roles) || roles.length > 5 || roles.some((r: unknown) => typeof r !== "string" || !validRoles.includes(r as string)))) {
       return new Response(
         JSON.stringify({ error: "Roles inválidos" }),
