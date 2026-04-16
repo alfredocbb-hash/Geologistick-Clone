@@ -197,27 +197,22 @@ export default function BrandingSettings() {
 
   if (!isSuperAdmin()) {
     return (
-      <DashboardLayout>
-        <div className="flex items-center justify-center h-[60vh]">
-          <p className="text-muted-foreground">No tienes permisos para acceder a esta página</p>
-        </div>
-      </DashboardLayout>
+      <div className="flex items-center justify-center h-[60vh]">
+        <p className="text-muted-foreground">No tienes permisos para acceder a esta página</p>
+      </div>
     );
   }
 
   if (isLoading) {
     return (
-      <DashboardLayout>
-        <div className="flex items-center justify-center h-[60vh]">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      </DashboardLayout>
+      <div className="flex items-center justify-center h-[60vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
     );
   }
 
   return (
-    <DashboardLayout>
-      <div className="space-y-6">
+    <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">Personalización de Marca</h1>
@@ -735,6 +730,6 @@ export default function BrandingSettings() {
         </div>
         )}
       </div>
-    </DashboardLayout>
+    
   );
 }

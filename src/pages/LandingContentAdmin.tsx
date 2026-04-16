@@ -55,17 +55,14 @@ export default function LandingContentAdmin() {
 
   if (isLoading) {
     return (
-      <DashboardLayout>
-        <div className="flex items-center justify-center h-96">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      </DashboardLayout>
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
     );
   }
 
   return (
-    <DashboardLayout>
-      <div className="space-y-6">
+    <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold">Contenido Landing Page</h1>
           <p className="text-muted-foreground">
@@ -339,6 +336,6 @@ export default function LandingContentAdmin() {
           </TabsContent>
         </Tabs>
       </div>
-    </DashboardLayout>
+    
   );
 }

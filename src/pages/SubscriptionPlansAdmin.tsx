@@ -135,27 +135,22 @@ const SubscriptionPlansAdmin = () => {
 
   if (authLoading || isLoading) {
     return (
-      <DashboardLayout>
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
-      </DashboardLayout>
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
     );
   }
 
   if (!isSuperAdmin) {
     return (
-      <DashboardLayout>
-        <div className="flex items-center justify-center h-64">
-          <p className="text-muted-foreground">No tienes permisos para acceder a esta página</p>
-        </div>
-      </DashboardLayout>
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">No tienes permisos para acceder a esta página</p>
+      </div>
     );
   }
 
   return (
-    <DashboardLayout>
-      <div className="space-y-6">
+    <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">Planes de Suscripción</h1>
@@ -448,7 +443,7 @@ const SubscriptionPlansAdmin = () => {
           </DialogContent>
         </Dialog>
       </div>
-    </DashboardLayout>
+    
   );
 };
 
