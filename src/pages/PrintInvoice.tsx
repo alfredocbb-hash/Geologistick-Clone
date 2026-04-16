@@ -556,8 +556,18 @@ export default function PrintInvoice() {
               </div>
             </div>
 
-            {/* Envío reference */}
-            {envio && (
+            {/* Referencia: liquidación o envío único */}
+            {isLiquidacionInvoice && liquidacionSeller ? (
+              <div className="text-sm text-muted-foreground">
+                Liquidación período:{' '}
+                <span className="font-medium text-foreground">
+                  {liquidacionSeller.periodo_inicio ? format(new Date(liquidacionSeller.periodo_inicio), 'dd/MM/yyyy') : '-'}
+                  {' '}a{' '}
+                  {liquidacionSeller.periodo_fin ? format(new Date(liquidacionSeller.periodo_fin), 'dd/MM/yyyy') : '-'}
+                </span>
+                {' '}· {(liquidacionEnvios || []).length} envío(s)
+              </div>
+            ) : envio && (
               <div className="text-sm text-muted-foreground">
                 Envío asociado: <span className="font-mono font-medium text-foreground">{envio.tracking_number}</span>
               </div>
