@@ -195,6 +195,54 @@ export default function PrintInvoice() {
     enabled: !!resolvedEnvioId,
   });
 
+  // Detect liquidacion-type invoices
+  const liquidacionSellerId = (factura as { liquidacion_seller_id?: string } | undefined)?.liquidacion_seller_id;
+  const liquidacionTerciarizadoId = (factura as { liquidacion_terciarizado_id?: string } | undefined)?.liquidacion_terciarizado_id;
+  const isLiquidacionInvoice = !!(liquidacionSellerId || liquidacionTerciarizadoId);
+
+  // Fetch liquidacion seller details (period info)
+  const { data: liquidacionSeller } = useQuery({
+    queryKey: ['print-invoice-liq-seller', liquidacionSellerId],
+    queryFn: async () => {
+      if (!liquidacionSellerId) return null;
+      const { data, error } = await supabase
+        .from('liquidaciones_seller')
+        .select('periodo_inicio, periodo_fin, cantidad_movimientos, total_cargos')
+        .eq('id', liquidacionSellerId)
+        .maybeSingle();
+      if (error) return null;
+      return data;
+    },
+    enabled: !!liquidacionSellerId,
+  });
+
+  // Fetch envíos vinculados a la liquidación (seller o terciarizado)
+  const { data: liquidacionEnvios } = useQuery({
+    queryKey: ['print-invoice-liq-envios', liquidacionSellerId, liquidacionTerciarizadoId],
+    queryFn: async () => {
+      if (liquidacionSellerId) {
+        const { data, error } = await supabase
+          .from('envios')
+          .select('id, tracking_number, tracking_externo, fecha_entrega, ciudad_entrega, precio_total')
+          .eq('liquidacion_seller_id', liquidacionSellerId)
+          .order('fecha_entrega', { ascending: true });
+        if (error) throw error;
+        return data || [];
+      }
+      if (liquidacionTerciarizadoId) {
+        const { data, error } = await supabase
+          .from('envios')
+          .select('id, tracking_number, tracking_externo, fecha_entrega, ciudad_entrega, precio_total')
+          .eq('liquidacion_terciarizado_id' as never, liquidacionTerciarizadoId as never)
+          .order('fecha_entrega', { ascending: true });
+        if (error) throw error;
+        return data || [];
+      }
+      return [];
+    },
+    enabled: isLiquidacionInvoice,
+  });
+
   // Resolve tenant_id from envio or factura
   const tenantId = envio?.tenant_id || factura?.tenant_id;
 
