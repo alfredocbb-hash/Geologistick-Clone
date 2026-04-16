@@ -1,5 +1,4 @@
-import { ReactNode } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { AppSidebar } from './AppSidebar';
@@ -10,18 +9,13 @@ import { useSubscriptionBlock } from '@/hooks/useSubscriptionBlock';
 import { SubscriptionBlockScreen } from '@/components/subscription/SubscriptionBlockScreen';
 import { AdminAssistant } from '@/components/assistant/AdminAssistant';
 
-
-interface DashboardLayoutProps {
-  children: ReactNode;
-}
-
 function getSidebarCookieState(): boolean {
   const match = document.cookie.match(/sidebar:state=(true|false)/);
   return match ? match[1] === 'true' : true;
 }
 
-export function DashboardLayout({ children }: DashboardLayoutProps) {
-  const { user, loading, isAdmin } = useAuth();
+export function DashboardLayout() {
+  const { user, loading } = useAuth();
   const { isBlocked, reason } = useSubscriptionBlock();
 
   if (loading) {
@@ -52,7 +46,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           <AppHeader />
           <main className="flex-1 overflow-auto p-3 sm:p-4 md:p-6 lg:p-8">
             <div className="max-w-full">
-              {children}
+              <Outlet />
             </div>
           </main>
         </div>
