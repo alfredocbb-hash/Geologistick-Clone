@@ -18,12 +18,10 @@ import { ChunkErrorBoundary } from "@/components/ChunkErrorBoundary";
 
 // Eagerly loaded pages (common entry points)
 import Login from "./pages/Login";
-
-// Landing page lazy-loaded — authenticated users skip it entirely
-const Index = lazy(() => import("./pages/Index"));
 import NotFound from "./pages/NotFound";
 
 // Lazy loaded pages
+const Index = lazy(() => import("./pages/Index"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Terms = lazy(() => import("./pages/Terms"));
 const Cookies = lazy(() => import("./pages/Cookies"));
@@ -200,79 +198,87 @@ function AppRoutes() {
         <Route path="/oauth/tiendanube/result" element={<TiendanubeOAuthResult />} />
         <Route path="/oauth/mercadolibre/result" element={<MercadoLibreOAuthResult />} />
         <Route path="/docs/tiendanube" element={<TiendanubeDocsPublic />} />
-        {/* Protected Routes */}
-        <Route path="/dashboard" element={<DashboardLayout><GoogleMapsProvider><Dashboard /></GoogleMapsProvider></DashboardLayout>} />
-        <Route path="/reports" element={<DashboardLayout><Reports /></DashboardLayout>} />
-        
-        {/* Envíos */}
-        <Route path="/shipments" element={<DashboardLayout><Shipments /></DashboardLayout>} />
-        <Route path="/shipments/new" element={<DashboardLayout><GoogleMapsProvider><NewShipment /></GoogleMapsProvider></DashboardLayout>} />
+
+        {/* Print pages (no layout) */}
         <Route path="/print-label" element={<PrintLabel />} />
         <Route path="/print-receipt" element={<PrintReceipt />} />
         <Route path="/print-invoice" element={<PrintInvoice />} />
         <Route path="/print-settlement" element={<PrintSettlement />} />
-        
-        {/* Operaciones */}
-        <Route path="/scan" element={<DashboardLayout><ScanQR /></DashboardLayout>} />
-        <Route path="/planner" element={<DashboardLayout><GoogleMapsProvider><RoutePlanner /></GoogleMapsProvider></DashboardLayout>} />
-        <Route path="/route-sheets" element={<DashboardLayout><RouteSheets /></DashboardLayout>} />
         <Route path="/print-route-sheet" element={<PrintRouteSheet />} />
         <Route path="/print/planned-route" element={<PrintPlannedRoute />} />
-        <Route path="/live-map" element={<DashboardLayout><GoogleMapsProvider><LiveMap /></GoogleMapsProvider></DashboardLayout>} />
-        <Route path="/incidents" element={<DashboardLayout><Incidents /></DashboardLayout>} />
-        <Route path="/drivers" element={<DashboardLayout><Drivers /></DashboardLayout>} />
-        <Route path="/vehicles" element={<DashboardLayout><Vehicles /></DashboardLayout>} />
-        <Route path="/routes" element={<DashboardLayout><RoutesPage /></DashboardLayout>} />
-        <Route path="/my-routes" element={<DashboardLayout><MyRoutes /></DashboardLayout>} />
+
+        {/* Standalone pages (no dashboard layout) */}
         <Route path="/route-start" element={<RouteStart />} />
         <Route path="/active-route" element={<ActiveRouteNavigation />} />
-        
-        {/* Finanzas */}
-        <Route path="/cash" element={<DashboardLayout><Cash /></DashboardLayout>} />
-        <Route path="/settlements/branches" element={<DashboardLayout><BranchSettlements /></DashboardLayout>} />
-        <Route path="/settlements/drivers" element={<DashboardLayout><DriverSettlements /></DashboardLayout>} />
-        <Route path="/settlements/clients" element={<DashboardLayout><ClientSettlements /></DashboardLayout>} />
-        <Route path="/settlements/third-party" element={<DashboardLayout><ThirdPartySettlements /></DashboardLayout>} />
-        <Route path="/my-commissions" element={<DashboardLayout><MyCommissions /></DashboardLayout>} />
-        <Route path="/payments" element={<DashboardLayout><Payments /></DashboardLayout>} />
-        <Route path="/facturacion" element={<DashboardLayout><Facturacion /></DashboardLayout>} />
-        <Route path="/gastos" element={<DashboardLayout><GastosPage /></DashboardLayout>} />
-        <Route path="/fiscal" element={<DashboardLayout><FiscalDashboard /></DashboardLayout>} />
-        
-        {/* Terciarizados */}
-        <Route path="/admin/third-party-companies" element={<DashboardLayout><ThirdPartyCompanies /></DashboardLayout>} />
-        
-        {/* Clientes */}
-        <Route path="/clients" element={<DashboardLayout><Clients /></DashboardLayout>} />
-        
-        {/* e-Commerce */}
-        <Route path="/ecommerce/dashboard" element={<DashboardLayout><EcommerceDashboard /></DashboardLayout>} />
-        <Route path="/ecommerce/sellers" element={<DashboardLayout><EcommerceSellers /></DashboardLayout>} />
-        <Route path="/ecommerce/orders" element={<DashboardLayout><EcommerceOrders /></DashboardLayout>} />
-        <Route path="/ecommerce/settlements" element={<DashboardLayout><EcommerceSettlements /></DashboardLayout>} />
-        
-        {/* Administración */}
-        <Route path="/admin/branches" element={<DashboardLayout><GoogleMapsProvider><Branches /></GoogleMapsProvider></DashboardLayout>} />
-        <Route path="/admin/rates" element={<DashboardLayout><Rates /></DashboardLayout>} />
-        <Route path="/admin/users" element={<DashboardLayout><Users /></DashboardLayout>} />
-        <Route path="/admin/roles" element={<DashboardLayout><RolePermissions /></DashboardLayout>} />
-        <Route path="/admin/settings" element={<DashboardLayout><SystemSettings /></DashboardLayout>} />
-        <Route path="/admin/integrations" element={<DashboardLayout><IntegrationSettings /></DashboardLayout>} />
         <Route path="/admin/branding" element={<BrandingSettings />} />
-        <Route path="/subscription" element={<DashboardLayout><Subscription /></DashboardLayout>} />
-        <Route path="/admin/plans" element={<DashboardLayout><SubscriptionPlansAdmin /></DashboardLayout>} />
-        <Route path="/admin/tenants" element={<DashboardLayout><Tenants /></DashboardLayout>} />
         <Route path="/admin/landing" element={<LandingContentAdmin />} />
         <Route path="/admin/trial-requests" element={<TrialRequests />} />
-        <Route path="/admin/status-guide" element={<DashboardLayout><ShipmentStatusGuide /></DashboardLayout>} />
-        <Route path="/admin/partners" element={<DashboardLayout><Partners /></DashboardLayout>} />
-        <Route path="/marketing-assets" element={<DashboardLayout><MarketingAssets /></DashboardLayout>} />
-        <Route path="/admin/api-docs" element={<DashboardLayout><TenantApiDocs /></DashboardLayout>} />
-        <Route path="/admin/activity" element={<DashboardLayout><UserActivityAdmin /></DashboardLayout>} />
-        
-        {/* Profile */}
-        <Route path="/profile" element={<DashboardLayout><Profile /></DashboardLayout>} />
-        
+
+        {/* Protected Routes with shared DashboardLayout */}
+        <Route element={<DashboardLayout />}>
+          {/* Dashboard */}
+          <Route path="/dashboard" element={<GoogleMapsProvider><Dashboard /></GoogleMapsProvider>} />
+          <Route path="/reports" element={<Reports />} />
+
+          {/* Envíos */}
+          <Route path="/shipments" element={<Shipments />} />
+          <Route path="/shipments/new" element={<GoogleMapsProvider><NewShipment /></GoogleMapsProvider>} />
+
+          {/* Operaciones */}
+          <Route path="/scan" element={<ScanQR />} />
+          <Route path="/planner" element={<GoogleMapsProvider><RoutePlanner /></GoogleMapsProvider>} />
+          <Route path="/route-sheets" element={<RouteSheets />} />
+          <Route path="/live-map" element={<GoogleMapsProvider><LiveMap /></GoogleMapsProvider>} />
+          <Route path="/incidents" element={<Incidents />} />
+          <Route path="/drivers" element={<Drivers />} />
+          <Route path="/vehicles" element={<Vehicles />} />
+          <Route path="/routes" element={<RoutesPage />} />
+          <Route path="/my-routes" element={<MyRoutes />} />
+
+          {/* Finanzas */}
+          <Route path="/cash" element={<Cash />} />
+          <Route path="/settlements/branches" element={<BranchSettlements />} />
+          <Route path="/settlements/drivers" element={<DriverSettlements />} />
+          <Route path="/settlements/clients" element={<ClientSettlements />} />
+          <Route path="/settlements/third-party" element={<ThirdPartySettlements />} />
+          <Route path="/my-commissions" element={<MyCommissions />} />
+          <Route path="/payments" element={<Payments />} />
+          <Route path="/facturacion" element={<Facturacion />} />
+          <Route path="/gastos" element={<GastosPage />} />
+          <Route path="/fiscal" element={<FiscalDashboard />} />
+
+          {/* Terciarizados */}
+          <Route path="/admin/third-party-companies" element={<ThirdPartyCompanies />} />
+
+          {/* Clientes */}
+          <Route path="/clients" element={<Clients />} />
+
+          {/* e-Commerce */}
+          <Route path="/ecommerce/dashboard" element={<EcommerceDashboard />} />
+          <Route path="/ecommerce/sellers" element={<EcommerceSellers />} />
+          <Route path="/ecommerce/orders" element={<EcommerceOrders />} />
+          <Route path="/ecommerce/settlements" element={<EcommerceSettlements />} />
+
+          {/* Administración */}
+          <Route path="/admin/branches" element={<GoogleMapsProvider><Branches /></GoogleMapsProvider>} />
+          <Route path="/admin/rates" element={<Rates />} />
+          <Route path="/admin/users" element={<Users />} />
+          <Route path="/admin/roles" element={<RolePermissions />} />
+          <Route path="/admin/settings" element={<SystemSettings />} />
+          <Route path="/admin/integrations" element={<IntegrationSettings />} />
+          <Route path="/subscription" element={<Subscription />} />
+          <Route path="/admin/plans" element={<SubscriptionPlansAdmin />} />
+          <Route path="/admin/tenants" element={<Tenants />} />
+          <Route path="/admin/status-guide" element={<ShipmentStatusGuide />} />
+          <Route path="/admin/partners" element={<Partners />} />
+          <Route path="/marketing-assets" element={<MarketingAssets />} />
+          <Route path="/admin/api-docs" element={<TenantApiDocs />} />
+          <Route path="/admin/activity" element={<UserActivityAdmin />} />
+
+          {/* Profile */}
+          <Route path="/profile" element={<Profile />} />
+        </Route>
+
         {/* Seller Portal */}
         <Route path="/seller" element={<SellerLayout />}>
           <Route index element={<SellerDashboard />} />
@@ -280,7 +286,7 @@ function AppRoutes() {
           <Route path="shipments" element={<SellerShipments />} />
           <Route path="account" element={<SellerAccount />} />
         </Route>
-        
+
         {/* 404 */}
         <Route path="*" element={<NotFound />} />
       </Routes>
