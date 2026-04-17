@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Envio {
   id: string;
@@ -129,23 +130,28 @@ async function loadImageAsBase64(url: string): Promise<string | null> {
   }
 }
 
-// Generate static map URL for delivery location
-const generateStaticMapUrl = (lat: number, lng: number, apiKey: string): string => {
-  return `https://maps.googleapis.com/maps/api/staticmap?` +
-    `center=${lat},${lng}` +
-    `&zoom=16` +
-    `&size=400x200` +
-    `&scale=2` +
-    `&maptype=roadmap` +
-    `&markers=color:red%7Csize:mid%7C${lat},${lng}` +
-    `&key=${apiKey}`;
-};
+// Fetch static map via secure edge function (avoids CORS / referrer restrictions)
+async function fetchStaticMapBase64(lat: number, lng: number): Promise<string | null> {
+  try {
+    const { data, error } = await supabase.functions.invoke('static-map', {
+      body: { lat, lng, zoom: 16, size: '400x200' },
+    });
+    if (error) {
+      console.error('static-map invoke error:', error);
+      return null;
+    }
+    return (data as { image?: string } | null)?.image ?? null;
+  } catch (e) {
+    console.error('static-map fetch failed:', e);
+    return null;
+  }
+}
 
 export async function generateEPODPDF(
   envio: Envio,
   historial: HistorialItem[] = [],
   incidentes: Incidente[] = [],
-  mapsApiKey?: string
+  _mapsApiKey?: string
 ): Promise<void> {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -154,16 +160,13 @@ export async function generateEPODPDF(
   const contentWidth = pageWidth - margin * 2;
   let yPosition = margin;
 
-  // Generate static map URL if we have coordinates and API key
-  const staticMapUrl = (envio.entrega_lat && envio.entrega_lng && mapsApiKey)
-    ? generateStaticMapUrl(envio.entrega_lat, envio.entrega_lng, mapsApiKey)
-    : null;
+  const hasMapCoords = !!(envio.entrega_lat && envio.entrega_lng);
 
   // Load images in parallel (photo, signature, and map)
   const [photoBase64, signatureBase64, mapBase64] = await Promise.all([
     envio.foto_entrega ? loadImageAsBase64(envio.foto_entrega) : Promise.resolve(null),
     envio.firma_destinatario ? loadImageAsBase64(envio.firma_destinatario) : Promise.resolve(null),
-    staticMapUrl ? loadImageAsBase64(staticMapUrl) : Promise.resolve(null),
+    hasMapCoords ? fetchStaticMapBase64(envio.entrega_lat!, envio.entrega_lng!) : Promise.resolve(null),
   ]);
 
   // Helper function to add page number
