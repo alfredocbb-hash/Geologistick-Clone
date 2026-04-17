@@ -5,7 +5,7 @@ import geologistickLogo from "@/assets/geologistick-logo.png";
 
 const Footer = () => {
   const currentYear = new Date().getFullYear();
-  const whatsappUrl = "https://wa.me/5491112345678?text=Hola,%20me%20interesa%20conocer%20más%20sobre%20Geologistick";
+  const whatsappUrl = "https://wa.me/5491151767139?text=Hola,%20me%20interesa%20conocer%20más%20sobre%20Geologistick";
   const { t } = useTranslation('landing');
 
   const links = {
