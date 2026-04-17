@@ -954,20 +954,33 @@ export default function NewShipment() {
       }
     }
     
-    // 2. Buscar por nombre+dirección (case-insensitive) para evitar duplicados por el índice único
-    if (data.nombre && data.direccion) {
-      const { data: clientByNameAddr, error: nameAddrError } = await supabase
+    // Helper: busca con wildcards (tolerante a whitespace) y filtra match exacto trimmed/lowercase
+    const findByNameAddr = async (nombre: string, direccion: string) => {
+      const n = nombre.trim();
+      const d = direccion.trim();
+      if (!n || !d) return null;
+      const { data: candidates, error } = await supabase
         .from('clientes')
         .select('*')
-        .ilike('nombre', data.nombre.trim())
-        .ilike('direccion', data.direccion.trim())
-        .limit(1)
-        .maybeSingle();
-      
-      if (nameAddrError) {
-        console.error('Error buscando cliente por nombre+dirección:', nameAddrError);
+        .ilike('nombre', `%${n}%`)
+        .ilike('direccion', `%${d}%`)
+        .limit(20);
+      if (error) {
+        console.error('Error buscando cliente por nombre+dirección:', error);
+        return null;
       }
-      
+      const nLow = n.toLowerCase();
+      const dLow = d.toLowerCase();
+      return candidates?.find((c: any) =>
+        (c.nombre || '').trim().toLowerCase() === nLow &&
+        (c.direccion || '').trim().toLowerCase() === dLow
+      ) || null;
+    };
+
+    // 2. Buscar por nombre+dirección (case-insensitive + tolerante a whitespace)
+    if (data.nombre && data.direccion) {
+      const clientByNameAddr = await findByNameAddr(data.nombre, data.direccion);
+
       if (clientByNameAddr) {
         const { error: updateError } = await supabase
           .from('clientes')
@@ -1019,15 +1032,8 @@ export default function NewShipment() {
         if (createError.code === '23505') {
           console.warn('Cliente duplicado detectado, recuperando existente...', createError.message);
           
-          // Buscar por nombre+dirección como fallback
-          const { data: existingClient } = await supabase
-            .from('clientes')
-            .select('id')
-            .ilike('nombre', data.nombre.trim())
-            .ilike('direccion', data.direccion.trim())
-            .limit(1)
-            .maybeSingle();
-          
+          // Buscar por nombre+dirección como fallback (tolerante a whitespace)
+          const existingClient = await findByNameAddr(data.nombre, data.direccion);
           if (existingClient) {
             return existingClient.id;
           }
@@ -1052,14 +1058,8 @@ export default function NewShipment() {
       // Re-throw errors ya manejados
       if (err.message?.includes('No se pudo crear ni encontrar')) throw err;
       if (err.code === '23505') {
-        // Último intento de recuperación
-        const { data: fallbackClient } = await supabase
-          .from('clientes')
-          .select('id')
-          .ilike('nombre', data.nombre.trim())
-          .ilike('direccion', data.direccion.trim())
-          .limit(1)
-          .maybeSingle();
+        // Último intento de recuperación (tolerante a whitespace)
+        const fallbackClient = await findByNameAddr(data.nombre, data.direccion);
         if (fallbackClient) return fallbackClient.id;
       }
       throw err;
