@@ -1,19 +1,13 @@
 
-Actualizar `fecha_entrega` del envío 1564 a hoy a las 22:35 hs (hora Argentina).
+El botón de WhatsApp en el Hero de la landing apunta a un número incorrecto. Debe usar `+54 9 11 5176-7139` (el mismo que ya usa el Footer).
 
-## Acción
-UPDATE en `envios` (id `85aa726f-8e23-4e82-a38f-c2e0c62287ed`) seteando `fecha_entrega` con el timestamp correspondiente a las 22:35 hora Argentina (UTC-3) → `01:35 UTC` del día siguiente.
+## Cambio
+En `src/components/landing/Hero.tsx`, actualizar el `href` del enlace de WhatsApp para que apunte a `https://wa.me/5491151767139` (formato internacional sin `+`, espacios ni guiones, como ya lo usa `Footer.tsx`).
 
-## SQL
-```sql
-UPDATE envios
-SET fecha_entrega = (date_trunc('day', fecha_entrega AT TIME ZONE 'America/Argentina/Buenos_Aires')
-                     + interval '22 hours 35 minutes') AT TIME ZONE 'America/Argentina/Buenos_Aires',
-    updated_at = now()
-WHERE id = '85aa726f-8e23-4e82-a38f-c2e0c62287ed';
-```
-
-Esto preserva el día original de entrega y solo cambia la hora a 22:35 ART. El EPOD reflejará la nueva hora automáticamente.
+## Archivo
+| Archivo | Cambio |
+|---|---|
+| `src/components/landing/Hero.tsx` | Reemplazar el número actual del enlace WhatsApp por `5491151767139` |
 
 ## Riesgo
-Bajo. Cambio puntual de un campo de un solo envío.
+Nulo. Cambio de una sola URL.
