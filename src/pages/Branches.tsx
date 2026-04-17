@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -248,48 +248,60 @@ export default function Branches() {
 
   // Initialize commission data when dialog opens - separado por tipo_rol
   // Uses name-based fallback when concept IDs don't match (cross-tenant legacy data)
+  // Guard con useRef para evitar re-inicializar el formulario en cada keystroke
+  const initializedKeyRef = useRef<string | null>(null);
   useEffect(() => {
-    if (selectedSucursalForCommissions && conceptosFiltrados.length > 0) {
-      const findExisting = (concepto: TarifaConcepto, tipoRol: 'emision' | 'recepcion') => {
-        // Direct ID match first
-        const byId = sucursalComisiones.find(
-          (c) => c.concepto_id === concepto.id && c.tipo_rol === tipoRol
-        );
-        if (byId) return byId;
-        // Fallback: match by concept name using orphan names map
-        return sucursalComisiones.find(
-          (c) => c.tipo_rol === tipoRol &&
-            orphanConceptNames[c.concepto_id]?.toLowerCase() === concepto.nombre.toLowerCase()
-        );
+    const sucursalId = selectedSucursalForCommissions?.id ?? null;
+    if (!sucursalId || conceptosFiltrados.length === 0) return;
+    // Clave compuesta: id de sucursal + tamaño de datos cargados.
+    // Esto permite re-inicializar una vez cuando llegan datos de la BD,
+    // pero no se re-dispara al tipear (el length no cambia con keystrokes).
+    const key = `${sucursalId}:${sucursalComisiones.length}:${Object.keys(orphanConceptNames).length}`;
+    if (initializedKeyRef.current === key) return;
+    initializedKeyRef.current = key;
+
+    const findExisting = (concepto: TarifaConcepto, tipoRol: 'emision' | 'recepcion') => {
+      // Direct ID match first
+      const byId = sucursalComisiones.find(
+        (c) => c.concepto_id === concepto.id && c.tipo_rol === tipoRol
+      );
+      if (byId) return byId;
+      // Fallback: match by concept name using orphan names map
+      return sucursalComisiones.find(
+        (c) => c.tipo_rol === tipoRol &&
+          orphanConceptNames[c.concepto_id]?.toLowerCase() === concepto.nombre.toLowerCase()
+      );
+    };
+
+    // Inicializar datos de EMISIÓN
+    const emisionData: Record<string, CommissionValues> = {};
+    conceptosFiltrados.forEach((concepto) => {
+      const existing = findExisting(concepto, 'emision');
+      emisionData[concepto.id] = {
+        contado: existing?.porcentaje_contado?.toString() || '0',
+        destino: existing?.porcentaje_destino?.toString() || '0',
+        cta_cte: existing?.porcentaje_cta_cte?.toString() || '0',
+        base: existing?.base_comision || 'total',
       };
+    });
+    setEmisionCommissionData(emisionData);
 
-      // Inicializar datos de EMISIÓN
-      const emisionData: Record<string, CommissionValues> = {};
-      conceptosFiltrados.forEach((concepto) => {
-        const existing = findExisting(concepto, 'emision');
-        emisionData[concepto.id] = {
-          contado: existing?.porcentaje_contado?.toString() || '0',
-          destino: existing?.porcentaje_destino?.toString() || '0',
-          cta_cte: existing?.porcentaje_cta_cte?.toString() || '0',
-          base: existing?.base_comision || 'total',
-        };
-      });
-      setEmisionCommissionData(emisionData);
-
-      // Inicializar datos de RECEPCIÓN
-      const recepcionData: Record<string, CommissionValues> = {};
-      conceptosFiltrados.forEach((concepto) => {
-        const existing = findExisting(concepto, 'recepcion');
-        recepcionData[concepto.id] = {
-          contado: existing?.porcentaje_contado?.toString() || '0',
-          destino: existing?.porcentaje_destino?.toString() || '0',
-          cta_cte: existing?.porcentaje_cta_cte?.toString() || '0',
-          base: existing?.base_comision || 'total',
-        };
-      });
-      setRecepcionCommissionData(recepcionData);
-    }
-  }, [selectedSucursalForCommissions, conceptosFiltrados, sucursalComisiones, orphanConceptNames]);
+    // Inicializar datos de RECEPCIÓN
+    const recepcionData: Record<string, CommissionValues> = {};
+    conceptosFiltrados.forEach((concepto) => {
+      const existing = findExisting(concepto, 'recepcion');
+      recepcionData[concepto.id] = {
+        contado: existing?.porcentaje_contado?.toString() || '0',
+        destino: existing?.porcentaje_destino?.toString() || '0',
+        cta_cte: existing?.porcentaje_cta_cte?.toString() || '0',
+        base: existing?.base_comision || 'total',
+      };
+    });
+    setRecepcionCommissionData(recepcionData);
+    // Dependemos de primitivos (id + lengths) para no re-disparar en cada keystroke.
+    // Cuando llega data fresca de la BD, el length cambia y se re-inicializa una sola vez.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSucursalForCommissions?.id, conceptosFiltrados.length, sucursalComisiones.length, Object.keys(orphanConceptNames).length]);
 
   // Create/Update sucursal mutation
   const saveMutation = useMutation({
@@ -1271,7 +1283,10 @@ export default function Branches() {
       )}
 
       {/* Dialog para configurar comisiones con tabs Emisión/Recepción */}
-      <Dialog open={isCommissionsDialogOpen} onOpenChange={setIsCommissionsDialogOpen}>
+      <Dialog open={isCommissionsDialogOpen} onOpenChange={(open) => {
+        setIsCommissionsDialogOpen(open);
+        if (!open) initializedKeyRef.current = null;
+      }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
