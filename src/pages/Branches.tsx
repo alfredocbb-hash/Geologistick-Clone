@@ -249,13 +249,16 @@ export default function Branches() {
   // Initialize commission data when dialog opens - separado por tipo_rol
   // Uses name-based fallback when concept IDs don't match (cross-tenant legacy data)
   // Guard con useRef para evitar re-inicializar el formulario en cada keystroke
-  const initializedSucursalIdRef = useRef<string | null>(null);
+  const initializedKeyRef = useRef<string | null>(null);
   useEffect(() => {
     const sucursalId = selectedSucursalForCommissions?.id ?? null;
     if (!sucursalId || conceptosFiltrados.length === 0) return;
-    // Solo inicializar la primera vez que se abre para esta sucursal
-    if (initializedSucursalIdRef.current === sucursalId) return;
-    initializedSucursalIdRef.current = sucursalId;
+    // Clave compuesta: id de sucursal + tamaño de datos cargados.
+    // Esto permite re-inicializar una vez cuando llegan datos de la BD,
+    // pero no se re-dispara al tipear (el length no cambia con keystrokes).
+    const key = `${sucursalId}:${sucursalComisiones.length}:${Object.keys(orphanConceptNames).length}`;
+    if (initializedKeyRef.current === key) return;
+    initializedKeyRef.current = key;
 
     const findExisting = (concepto: TarifaConcepto, tipoRol: 'emision' | 'recepcion') => {
       // Direct ID match first
