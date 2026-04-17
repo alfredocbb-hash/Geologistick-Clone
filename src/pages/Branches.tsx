@@ -1283,7 +1283,10 @@ export default function Branches() {
       )}
 
       {/* Dialog para configurar comisiones con tabs Emisión/Recepción */}
-      <Dialog open={isCommissionsDialogOpen} onOpenChange={setIsCommissionsDialogOpen}>
+      <Dialog open={isCommissionsDialogOpen} onOpenChange={(open) => {
+        setIsCommissionsDialogOpen(open);
+        if (!open) initializedKeyRef.current = null;
+      }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
