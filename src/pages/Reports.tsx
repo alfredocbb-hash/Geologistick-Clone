@@ -79,8 +79,14 @@ export default function Reports() {
     if (!tenantId) return;
     setExportingOCR(true);
     try {
-      const preset = DATE_PRESETS.find(p => p.label === datePreset) || DATE_PRESETS[2];
-      const { from, to } = preset.getValue();
+      let from: Date, to: Date;
+      if (datePreset === 'Personalizado' && customFrom && customTo) {
+        from = customFrom;
+        to = customTo;
+      } else {
+        const preset = DATE_PRESETS.find(p => p.label === datePreset) || DATE_PRESETS[2];
+        ({ from, to } = preset.getValue());
+      }
       const fromISO = startOfDay(from).toISOString();
       const toISO = endOfDay(to).toISOString();
 
