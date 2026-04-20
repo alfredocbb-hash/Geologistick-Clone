@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
@@ -69,7 +70,9 @@ import {
   Route,
   Inbox,
   Send,
-  History
+  History,
+  ChevronRight,
+  ChevronDown,
 } from "lucide-react";
 import { format, startOfDay, endOfDay } from "date-fns";
 import { es } from "date-fns/locale";
@@ -231,6 +234,8 @@ export default function RouteSheets() {
   const [selectedChofer, setSelectedChofer] = useState<string>("");
   const [selectedVehiculo, setSelectedVehiculo] = useState<string>("");
   const [notas, setNotas] = useState("");
+  const [enviosSearch, setEnviosSearch] = useState("");
+  const [expandedCities, setExpandedCities] = useState<Set<string>>(new Set());
   
   // Date filters
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
@@ -494,6 +499,60 @@ export default function RouteSheets() {
     setSelectedEnvios([]);
   };
 
+  // Group envíos by ciudad_entrega (normalized) with optional search filter
+  const normalizarCiudad = (c?: string | null) =>
+    (c || "sin ciudad").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+  const gruposPorCiudad = useMemo(() => {
+    const term = enviosSearch.trim().toLowerCase();
+    const filtered = term
+      ? enviosPendientes.filter((e: any) => {
+          const dest = `${e.destinatario?.nombre || ""} ${e.destinatario?.apellido || ""}`.toLowerCase();
+          return (
+            (e.tracking_number || "").toLowerCase().includes(term) ||
+            dest.includes(term) ||
+            (e.ciudad_entrega || "").toLowerCase().includes(term)
+          );
+        })
+      : enviosPendientes;
+
+    const map = new Map<string, { display: string; envios: any[] }>();
+    for (const env of filtered) {
+      const key = normalizarCiudad(env.ciudad_entrega);
+      const display = (env.ciudad_entrega || "Sin ciudad").trim();
+      if (!map.has(key)) map.set(key, { display, envios: [] });
+      map.get(key)!.envios.push(env);
+    }
+    return Array.from(map.entries())
+      .map(([key, v]) => ({ key, display: v.display, envios: v.envios }))
+      .sort((a, b) => b.envios.length - a.envios.length || a.display.localeCompare(b.display));
+  }, [enviosPendientes, enviosSearch]);
+
+  const toggleCity = (key: string) => {
+    setExpandedCities(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const isGrupoSelected = (ids: string[]) =>
+    ids.length > 0 && ids.every(id => selectedEnvios.includes(id));
+  const isGrupoIndeterminate = (ids: string[]) => {
+    const sel = ids.filter(id => selectedEnvios.includes(id)).length;
+    return sel > 0 && sel < ids.length;
+  };
+  const toggleGrupoSeleccion = (ids: string[]) => {
+    setSelectedEnvios(prev => {
+      const allSelected = ids.every(id => prev.includes(id));
+      if (allSelected) return prev.filter(id => !ids.includes(id));
+      const set = new Set(prev);
+      ids.forEach(id => set.add(id));
+      return Array.from(set);
+    });
+  };
+
   // Filter hojas by search term
   const filterBySearch = (hojas: HojaRutaWithDetails[]) => 
     hojas.filter(hr => 
@@ -688,47 +747,91 @@ export default function RouteSheets() {
                       No hay envíos pendientes para esta sucursal destino
                     </p>
                   ) : (
-                    <div className="border rounded-lg max-h-60 overflow-y-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="w-12"></TableHead>
-                            <TableHead>Tracking</TableHead>
-                            <TableHead>Destinatario</TableHead>
-                            <TableHead>Destino</TableHead>
-                            <TableHead>Bultos</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {enviosPendientes.map(envio => (
-                            <TableRow key={envio.id}>
-                              <TableCell>
-                                <Checkbox
-                                  checked={selectedEnvios.includes(envio.id)}
-                                  onCheckedChange={() => toggleEnvioSelection(envio.id)}
-                                />
-                              </TableCell>
-                              <TableCell className="font-mono text-sm">
-                                {envio.tracking_number}
-                              </TableCell>
-                              <TableCell>
-                                {envio.destinatario?.nombre} {envio.destinatario?.apellido}
-                              </TableCell>
-                              <TableCell>
-                                {envio.sucursal_destino?.nombre ? (
-                                  <span className="text-sm">{envio.sucursal_destino.nombre}</span>
-                                ) : envio.ciudad_entrega ? (
-                                  <span className="text-sm">{envio.ciudad_entrega}</span>
-                                ) : (
-                                  <span className="text-xs text-muted-foreground italic">Sin destino</span>
-                                )}
-                              </TableCell>
-                              <TableCell>{envio.cantidad_bultos || 1}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
+                    <>
+                      <div className="relative">
+                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Buscar por tracking, destinatario o ciudad..."
+                          value={enviosSearch}
+                          onChange={(e) => setEnviosSearch(e.target.value)}
+                          className="pl-8 h-9"
+                        />
+                      </div>
+                      <div className="border rounded-lg max-h-72 overflow-y-auto divide-y">
+                        {gruposPorCiudad.length === 0 ? (
+                          <p className="text-sm text-muted-foreground py-4 text-center">
+                            Sin resultados para la búsqueda
+                          </p>
+                        ) : (
+                          gruposPorCiudad.map(grupo => {
+                            const ids = grupo.envios.map(e => e.id);
+                            const isOpen = expandedCities.has(grupo.key) || gruposPorCiudad.length <= 3;
+                            const allSel = isGrupoSelected(ids);
+                            const indet = isGrupoIndeterminate(ids);
+                            return (
+                              <Collapsible
+                                key={grupo.key}
+                                open={isOpen}
+                                onOpenChange={() => toggleCity(grupo.key)}
+                              >
+                                <div className="flex items-center gap-2 px-3 py-2 bg-muted/40 hover:bg-muted/60">
+                                  <Checkbox
+                                    checked={allSel ? true : indet ? "indeterminate" : false}
+                                    onCheckedChange={() => toggleGrupoSeleccion(ids)}
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                  <CollapsibleTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className="flex-1 flex items-center gap-2 text-left"
+                                    >
+                                      {isOpen ? (
+                                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                      ) : (
+                                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                                      )}
+                                      <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+                                      <span className="font-medium text-sm capitalize">
+                                        {grupo.display.toLowerCase()}
+                                      </span>
+                                      <Badge variant="secondary" className="text-xs">
+                                        {grupo.envios.length} envío{grupo.envios.length !== 1 ? "s" : ""}
+                                      </Badge>
+                                    </button>
+                                  </CollapsibleTrigger>
+                                </div>
+                                <CollapsibleContent>
+                                  <Table>
+                                    <TableBody>
+                                      {grupo.envios.map(envio => (
+                                        <TableRow key={envio.id}>
+                                          <TableCell className="w-12 pl-6">
+                                            <Checkbox
+                                              checked={selectedEnvios.includes(envio.id)}
+                                              onCheckedChange={() => toggleEnvioSelection(envio.id)}
+                                            />
+                                          </TableCell>
+                                          <TableCell className="font-mono text-xs">
+                                            {envio.tracking_number}
+                                          </TableCell>
+                                          <TableCell className="text-sm">
+                                            {envio.destinatario?.nombre} {envio.destinatario?.apellido}
+                                          </TableCell>
+                                          <TableCell className="text-xs text-muted-foreground">
+                                            {envio.sucursal_destino?.nombre || envio.ciudad_entrega || "—"}
+                                          </TableCell>
+                                          <TableCell className="text-sm">{envio.cantidad_bultos || 1}</TableCell>
+                                        </TableRow>
+                                      ))}
+                                    </TableBody>
+                                  </Table>
+                                </CollapsibleContent>
+                              </Collapsible>
+                            );
+                          })
+                        )}
+                      </div>
+                    </>
                   )}
 
                   {selectedEnvios.length > 0 && (
