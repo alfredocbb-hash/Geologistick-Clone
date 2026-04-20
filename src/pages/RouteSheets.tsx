@@ -234,6 +234,8 @@ export default function RouteSheets() {
   const [selectedChofer, setSelectedChofer] = useState<string>("");
   const [selectedVehiculo, setSelectedVehiculo] = useState<string>("");
   const [notas, setNotas] = useState("");
+  const [enviosSearch, setEnviosSearch] = useState("");
+  const [expandedCities, setExpandedCities] = useState<Set<string>>(new Set());
   
   // Date filters
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
