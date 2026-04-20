@@ -499,6 +499,60 @@ export default function RouteSheets() {
     setSelectedEnvios([]);
   };
 
+  // Group envíos by ciudad_entrega (normalized) with optional search filter
+  const normalizarCiudad = (c?: string | null) =>
+    (c || "sin ciudad").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+  const gruposPorCiudad = useMemo(() => {
+    const term = enviosSearch.trim().toLowerCase();
+    const filtered = term
+      ? enviosPendientes.filter((e: any) => {
+          const dest = `${e.destinatario?.nombre || ""} ${e.destinatario?.apellido || ""}`.toLowerCase();
+          return (
+            (e.tracking_number || "").toLowerCase().includes(term) ||
+            dest.includes(term) ||
+            (e.ciudad_entrega || "").toLowerCase().includes(term)
+          );
+        })
+      : enviosPendientes;
+
+    const map = new Map<string, { display: string; envios: any[] }>();
+    for (const env of filtered) {
+      const key = normalizarCiudad(env.ciudad_entrega);
+      const display = (env.ciudad_entrega || "Sin ciudad").trim();
+      if (!map.has(key)) map.set(key, { display, envios: [] });
+      map.get(key)!.envios.push(env);
+    }
+    return Array.from(map.entries())
+      .map(([key, v]) => ({ key, display: v.display, envios: v.envios }))
+      .sort((a, b) => b.envios.length - a.envios.length || a.display.localeCompare(b.display));
+  }, [enviosPendientes, enviosSearch]);
+
+  const toggleCity = (key: string) => {
+    setExpandedCities(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const isGrupoSelected = (ids: string[]) =>
+    ids.length > 0 && ids.every(id => selectedEnvios.includes(id));
+  const isGrupoIndeterminate = (ids: string[]) => {
+    const sel = ids.filter(id => selectedEnvios.includes(id)).length;
+    return sel > 0 && sel < ids.length;
+  };
+  const toggleGrupoSeleccion = (ids: string[]) => {
+    setSelectedEnvios(prev => {
+      const allSelected = ids.every(id => prev.includes(id));
+      if (allSelected) return prev.filter(id => !ids.includes(id));
+      const set = new Set(prev);
+      ids.forEach(id => set.add(id));
+      return Array.from(set);
+    });
+  };
+
   // Filter hojas by search term
   const filterBySearch = (hojas: HojaRutaWithDetails[]) => 
     hojas.filter(hr => 
