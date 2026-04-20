@@ -747,47 +747,91 @@ export default function RouteSheets() {
                       No hay envíos pendientes para esta sucursal destino
                     </p>
                   ) : (
-                    <div className="border rounded-lg max-h-60 overflow-y-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="w-12"></TableHead>
-                            <TableHead>Tracking</TableHead>
-                            <TableHead>Destinatario</TableHead>
-                            <TableHead>Destino</TableHead>
-                            <TableHead>Bultos</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {enviosPendientes.map(envio => (
-                            <TableRow key={envio.id}>
-                              <TableCell>
-                                <Checkbox
-                                  checked={selectedEnvios.includes(envio.id)}
-                                  onCheckedChange={() => toggleEnvioSelection(envio.id)}
-                                />
-                              </TableCell>
-                              <TableCell className="font-mono text-sm">
-                                {envio.tracking_number}
-                              </TableCell>
-                              <TableCell>
-                                {envio.destinatario?.nombre} {envio.destinatario?.apellido}
-                              </TableCell>
-                              <TableCell>
-                                {envio.sucursal_destino?.nombre ? (
-                                  <span className="text-sm">{envio.sucursal_destino.nombre}</span>
-                                ) : envio.ciudad_entrega ? (
-                                  <span className="text-sm">{envio.ciudad_entrega}</span>
-                                ) : (
-                                  <span className="text-xs text-muted-foreground italic">Sin destino</span>
-                                )}
-                              </TableCell>
-                              <TableCell>{envio.cantidad_bultos || 1}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
+                    <>
+                      <div className="relative">
+                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Buscar por tracking, destinatario o ciudad..."
+                          value={enviosSearch}
+                          onChange={(e) => setEnviosSearch(e.target.value)}
+                          className="pl-8 h-9"
+                        />
+                      </div>
+                      <div className="border rounded-lg max-h-72 overflow-y-auto divide-y">
+                        {gruposPorCiudad.length === 0 ? (
+                          <p className="text-sm text-muted-foreground py-4 text-center">
+                            Sin resultados para la búsqueda
+                          </p>
+                        ) : (
+                          gruposPorCiudad.map(grupo => {
+                            const ids = grupo.envios.map(e => e.id);
+                            const isOpen = expandedCities.has(grupo.key) || gruposPorCiudad.length <= 3;
+                            const allSel = isGrupoSelected(ids);
+                            const indet = isGrupoIndeterminate(ids);
+                            return (
+                              <Collapsible
+                                key={grupo.key}
+                                open={isOpen}
+                                onOpenChange={() => toggleCity(grupo.key)}
+                              >
+                                <div className="flex items-center gap-2 px-3 py-2 bg-muted/40 hover:bg-muted/60">
+                                  <Checkbox
+                                    checked={allSel ? true : indet ? "indeterminate" : false}
+                                    onCheckedChange={() => toggleGrupoSeleccion(ids)}
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                  <CollapsibleTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className="flex-1 flex items-center gap-2 text-left"
+                                    >
+                                      {isOpen ? (
+                                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                      ) : (
+                                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                                      )}
+                                      <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+                                      <span className="font-medium text-sm capitalize">
+                                        {grupo.display.toLowerCase()}
+                                      </span>
+                                      <Badge variant="secondary" className="text-xs">
+                                        {grupo.envios.length} envío{grupo.envios.length !== 1 ? "s" : ""}
+                                      </Badge>
+                                    </button>
+                                  </CollapsibleTrigger>
+                                </div>
+                                <CollapsibleContent>
+                                  <Table>
+                                    <TableBody>
+                                      {grupo.envios.map(envio => (
+                                        <TableRow key={envio.id}>
+                                          <TableCell className="w-12 pl-6">
+                                            <Checkbox
+                                              checked={selectedEnvios.includes(envio.id)}
+                                              onCheckedChange={() => toggleEnvioSelection(envio.id)}
+                                            />
+                                          </TableCell>
+                                          <TableCell className="font-mono text-xs">
+                                            {envio.tracking_number}
+                                          </TableCell>
+                                          <TableCell className="text-sm">
+                                            {envio.destinatario?.nombre} {envio.destinatario?.apellido}
+                                          </TableCell>
+                                          <TableCell className="text-xs text-muted-foreground">
+                                            {envio.sucursal_destino?.nombre || envio.ciudad_entrega || "—"}
+                                          </TableCell>
+                                          <TableCell className="text-sm">{envio.cantidad_bultos || 1}</TableCell>
+                                        </TableRow>
+                                      ))}
+                                    </TableBody>
+                                  </Table>
+                                </CollapsibleContent>
+                              </Collapsible>
+                            );
+                          })
+                        )}
+                      </div>
+                    </>
                   )}
 
                   {selectedEnvios.length > 0 && (
