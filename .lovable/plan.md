@@ -1,57 +1,43 @@
 
 ## Objetivo
-En el dialog "Crear Hoja de Ruta" (`src/pages/RouteSheets.tsx`), agrupar la lista de envíos disponibles por localidad/ciudad para facilitar la selección masiva cuando se arma una hoja de ruta hacia una sucursal.
-
-## Contexto
-Actualmente la tabla muestra todos los envíos planos (65 en el ejemplo) ordenados sin criterio geográfico, lo que obliga a buscar visualmente uno por uno. Como las hojas de ruta agrupan paquetes que viajan juntos a la misma sucursal destino, agruparlos por **ciudad de entrega** acelera la selección.
-
-Ya existe precedente en el sistema: el Planificador de Rutas usa `normalizarCiudad` para agrupar por localidad (ver memoria `route-planner/normalizacion-ciudades-agrupamiento`). Reutilizamos el mismo criterio.
+Agregar un filtro **"Chofer"** en `src/pages/ecommerce/Orders.tsx` para acotar pedidos por el chofer asignado al envío.
 
 ## Cambios
 
-**Archivo único:** `src/pages/RouteSheets.tsx` — sección del dialog "Crear Hoja de Ruta" (la tabla de "Envíos Disponibles").
+**Archivo único:** `src/pages/ecommerce/Orders.tsx`
 
-1. **Agrupar `enviosPendientes` por `ciudad_entrega`** (normalizada: trim + lowercase + sin tildes), ordenando los grupos alfabéticamente y mostrando primero las ciudades con más envíos.
+1. **Nuevo estado**: `const [choferFilter, setChoferFilter] = useState<string>('all');`
 
-2. **Reemplazar la tabla plana por secciones colapsables** (usando `Collapsible` ya disponible en `src/components/ui/collapsible.tsx`):
-   - Header de cada grupo: nombre de localidad + contador `(N envíos)` + checkbox "Seleccionar todos los de esta localidad" + chevron expand/collapse.
-   - Contenido: las filas actuales (tracking, destinatario, bultos, checkbox individual).
-   - Por defecto: todos los grupos colapsados si hay más de 3 ciudades; expandidos si son pocos.
+2. **Nueva query** `ecommerce-choferes-filter` (en paralelo a `ecommerce-sellers-filter`): trae los choferes activos del tenant — `user_roles` con `role='chofer'` + `profiles` (nombre/apellido) — para poblar el dropdown. Mismo patrón que ya se usa en `Drivers.tsx` y `Routes.tsx`.
 
-3. **Acción "Seleccionar todos de [ciudad]"** en cada header de grupo: agrega/quita los IDs del grupo del estado `selectedEnvios`.
+3. **Aplicar filtro en `filteredOrders`** (cliente):
+   ```ts
+   const matchesChofer =
+     choferFilter === 'all'
+       ? true
+       : choferFilter === 'sin_asignar'
+       ? !o.envio?.chofer_id
+       : o.envio?.chofer_id === choferFilter;
+   return matchesSearch && matchesStatus && matchesFulfillment && matchesChofer;
+   ```
 
-4. **Mantener** los botones globales "Seleccionar todos" / "Deseleccionar" arriba de la lista, sin cambios.
+4. **Nuevo `Select` en la barra de filtros** (al lado de "Seller"):
+   - "Todos los choferes" (default)
+   - "Sin asignar" (envíos sin chofer)
+   - Lista de choferes (`{nombre} {apellido}`)
 
-5. **Buscador opcional** (mejora menor): un input de filtro por tracking/destinatario/ciudad arriba de los grupos para acelerar más la búsqueda en listas largas (65+ envíos).
-
-## Diagrama
-
-```text
-┌─ Envíos Disponibles (65) ──── [Sel.todos] [Deselec.] ─┐
-│ [🔍 buscar...]                                         │
-├────────────────────────────────────────────────────────┤
-│ ▼ ☐ La Plata (12 envíos)              [Sel. grupo]    │
-│     ☐ ML-46512... | Juan Pérez       | 1              │
-│     ☐ ML-46513... | María López      | 2              │
-│ ▶ ☐ Berisso (8 envíos)                [Sel. grupo]    │
-│ ▶ ☐ Ensenada (5 envíos)               [Sel. grupo]    │
-│ ▶ ☐ Magdalena (3 envíos)              [Sel. grupo]    │
-└────────────────────────────────────────────────────────┘
-```
+5. Sin cambios en server query: el filtro se aplica en cliente sobre `orders` ya cargados (mismo patrón que `statusFilter` y `fulfillmentFilter`).
 
 ## Detalles técnicos
-- Función `normalizarCiudad(ciudad: string)` local: `(c||'sin ciudad').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')`. Display: capitalizar el original (primer envío del grupo).
-- `useMemo` para construir `gruposPorCiudad: { ciudad: string; envios: EnvioPendiente[] }[]`, recalculado cuando cambia `enviosPendientes` o el filtro de búsqueda.
-- Estado local `expandedCities: Set<string>` para tracking de qué grupos están abiertos.
-- Helper `toggleGrupoSeleccion(ciudadKey)`: si todos los del grupo ya están en `selectedEnvios`, los remueve; si no, los agrega todos.
-- Helper `isGrupoSelected(ciudadKey)` y `isGrupoIndeterminate(ciudadKey)` para el estado tri-state del checkbox del header.
+- El campo `envio.chofer_id` ya está en el SELECT actual (línea 227), no requiere modificar el query principal.
+- Los pedidos sin envío creado quedan agrupados bajo "Sin asignar" junto con los envíos sin chofer.
+- La lista de choferes se cachea por `tenantId` igual que sellers.
 
 ## Riesgo
-Bajo. Cambio aislado al render de la lista dentro del dialog "Crear Hoja de Ruta". No toca lógica de creación, mutaciones, ni el resto de la página.
+Bajo. Cambio aislado de UI + filtro en cliente. No toca mutaciones ni el query principal.
 
 ## Verificación
-1. Abrir Hojas de Ruta → "Nueva Hoja de Ruta" → seleccionar sucursal destino.
-2. Confirmar que los envíos aparecen agrupados por ciudad con contador.
-3. Click en checkbox del header de grupo → seleccionar todos los de esa localidad.
-4. Click en "Seleccionar todos" global → marca todos los grupos.
-5. Crear la hoja de ruta y verificar que se generan correctamente los `hoja_ruta_envios`.
+1. Abrir Pedidos e-Commerce → confirmar que aparece el dropdown "Chofer" entre "Seller" y "Estado pedido".
+2. Elegir un chofer específico → solo se ven pedidos cuyo envío esté asignado a ese chofer.
+3. Elegir "Sin asignar" → se ven pedidos sin envío o sin chofer asignado.
+4. Combinar con "Seller" y "Estado pedido" para asegurar que los filtros se acumulan correctamente.
