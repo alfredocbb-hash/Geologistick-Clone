@@ -106,6 +106,7 @@ export default function Orders() {
   const [dateFrom, setDateFrom] = useState<Date>(new Date());
   const [dateTo, setDateTo] = useState<Date>(new Date());
   const [sellerFilter, setSellerFilter] = useState<string>('all');
+  const [choferFilter, setChoferFilter] = useState<string>('all');
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [detailsOrder, setDetailsOrder] = useState<Order | null>(null);
   const [createShipmentOrder, setCreateShipmentOrder] = useState<Order | null>(null);
