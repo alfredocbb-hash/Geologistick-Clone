@@ -216,6 +216,34 @@ export default function Orders() {
     enabled: !!tenantId,
   });
 
+  // Fetch choferes for filter
+  const { data: choferes } = useQuery({
+    queryKey: ['ecommerce-choferes-filter', tenantId],
+    queryFn: async () => {
+      const { data: roles, error: rolesError } = await supabase
+        .from('user_roles')
+        .select('user_id')
+        .eq('role', 'chofer');
+      if (rolesError) throw rolesError;
+      const userIds = (roles || []).map((r) => r.user_id);
+      if (userIds.length === 0) return [];
+      const { data: profs, error: profError } = await supabase
+        .from('profiles')
+        .select('user_id, nombre, apellido')
+        .eq('tenant_id', tenantId)
+        .eq('activo', true)
+        .in('user_id', userIds)
+        .order('nombre');
+      if (profError) throw profError;
+      return (profs || []).map((p) => ({
+        id: p.user_id,
+        nombre: `${p.nombre || ''} ${p.apellido || ''}`.trim() || 'Sin nombre',
+      }));
+    },
+    enabled: !!tenantId,
+  });
+
+
   // Fetch orders with seller info — filtered by date server-side
   const { data: ordersData, isLoading } = useQuery({
     queryKey: ['ecommerce-orders', tenantId, dateFrom.toISOString().slice(0, 10), dateTo.toISOString().slice(0, 10), sellerFilter],
