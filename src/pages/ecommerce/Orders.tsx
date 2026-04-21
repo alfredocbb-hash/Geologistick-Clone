@@ -106,6 +106,7 @@ export default function Orders() {
   const [dateFrom, setDateFrom] = useState<Date>(new Date());
   const [dateTo, setDateTo] = useState<Date>(new Date());
   const [sellerFilter, setSellerFilter] = useState<string>('all');
+  const [choferFilter, setChoferFilter] = useState<string>('all');
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [detailsOrder, setDetailsOrder] = useState<Order | null>(null);
   const [createShipmentOrder, setCreateShipmentOrder] = useState<Order | null>(null);
@@ -215,6 +216,34 @@ export default function Orders() {
     enabled: !!tenantId,
   });
 
+  // Fetch choferes for filter
+  const { data: choferes } = useQuery({
+    queryKey: ['ecommerce-choferes-filter', tenantId],
+    queryFn: async () => {
+      const { data: roles, error: rolesError } = await supabase
+        .from('user_roles')
+        .select('user_id')
+        .eq('role', 'chofer');
+      if (rolesError) throw rolesError;
+      const userIds = (roles || []).map((r) => r.user_id);
+      if (userIds.length === 0) return [];
+      const { data: profs, error: profError } = await supabase
+        .from('profiles')
+        .select('user_id, nombre, apellido')
+        .eq('tenant_id', tenantId)
+        .eq('activo', true)
+        .in('user_id', userIds)
+        .order('nombre');
+      if (profError) throw profError;
+      return (profs || []).map((p) => ({
+        id: p.user_id,
+        nombre: `${p.nombre || ''} ${p.apellido || ''}`.trim() || 'Sin nombre',
+      }));
+    },
+    enabled: !!tenantId,
+  });
+
+
   // Fetch orders with seller info — filtered by date server-side
   const { data: ordersData, isLoading } = useQuery({
     queryKey: ['ecommerce-orders', tenantId, dateFrom.toISOString().slice(0, 10), dateTo.toISOString().slice(0, 10), sellerFilter],
@@ -281,8 +310,14 @@ export default function Orders() {
     const matchesStatus = statusFilter === 'all' || 
       (o.ml_shipping_status ? o.ml_shipping_status === statusFilter : o.order_status === statusFilter);
     const matchesFulfillment = fulfillmentFilter === 'all' || o.fulfillment_status === fulfillmentFilter;
-    
-    return matchesSearch && matchesStatus && matchesFulfillment;
+    const matchesChofer =
+      choferFilter === 'all'
+        ? true
+        : choferFilter === 'sin_asignar'
+          ? !o.envio?.chofer_id
+          : o.envio?.chofer_id === choferFilter;
+
+    return matchesSearch && matchesStatus && matchesFulfillment && matchesChofer;
   });
 
   // Group orders by seller
@@ -403,6 +438,19 @@ export default function Orders() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={choferFilter} onValueChange={setChoferFilter}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Chofer" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los choferes</SelectItem>
+            <SelectItem value="sin_asignar">Sin asignar</SelectItem>
+            {choferes?.map((c) => (
+              <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Estado pedido" />
