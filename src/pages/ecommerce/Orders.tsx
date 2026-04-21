@@ -438,6 +438,19 @@ export default function Orders() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={choferFilter} onValueChange={setChoferFilter}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Chofer" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los choferes</SelectItem>
+            <SelectItem value="sin_asignar">Sin asignar</SelectItem>
+            {choferes?.map((c) => (
+              <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Estado pedido" />
