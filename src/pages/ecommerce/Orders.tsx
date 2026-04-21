@@ -310,8 +310,14 @@ export default function Orders() {
     const matchesStatus = statusFilter === 'all' || 
       (o.ml_shipping_status ? o.ml_shipping_status === statusFilter : o.order_status === statusFilter);
     const matchesFulfillment = fulfillmentFilter === 'all' || o.fulfillment_status === fulfillmentFilter;
-    
-    return matchesSearch && matchesStatus && matchesFulfillment;
+    const matchesChofer =
+      choferFilter === 'all'
+        ? true
+        : choferFilter === 'sin_asignar'
+          ? !o.envio?.chofer_id
+          : o.envio?.chofer_id === choferFilter;
+
+    return matchesSearch && matchesStatus && matchesFulfillment && matchesChofer;
   });
 
   // Group orders by seller
