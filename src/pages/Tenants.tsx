@@ -181,6 +181,29 @@ export default function Tenants() {
     setBrandingDialogOpen(true);
   };
 
+  const [seedingDemo, setSeedingDemo] = useState(false);
+  const handleSeedDemo = async () => {
+    const ok = window.confirm(
+      "Esto creará (o RESETEARÁ) la empresa 'Empresa Demo' con usuarios, clientes y ~100 envíos de prueba.\n\nSi ya existe, se eliminarán todos sus datos y usuarios.\n\n¿Continuar?"
+    );
+    if (!ok) return;
+    setSeedingDemo(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('seed-demo-tenant');
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast.success(
+        `Empresa Demo lista — ${data?.stats?.envios || 0} envíos, ${data?.stats?.clientes || 0} clientes. Password: ${data?.credenciales?.password}`,
+        { duration: 15000 }
+      );
+      refetch();
+    } catch (e: any) {
+      toast.error('Error: ' + (e?.message || 'desconocido'));
+    } finally {
+      setSeedingDemo(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
