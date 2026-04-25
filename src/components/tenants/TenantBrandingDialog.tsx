@@ -337,7 +337,7 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label>Sidebar (Claro)</Label>
+                          <Label>Menú lateral — Tema Claro</Label>
                           <div className="flex gap-2">
                             <Input
                               type="color"
@@ -351,9 +351,12 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                               className="flex-1"
                             />
                           </div>
+                          <p className="text-xs text-muted-foreground">
+                            Se usa cuando el usuario tiene el tema claro activo. Recomendado un color claro (ej. #F8FAFC).
+                          </p>
                         </div>
                         <div className="space-y-2">
-                          <Label>Sidebar (Oscuro)</Label>
+                          <Label>Menú lateral — Tema Oscuro</Label>
                           <div className="flex gap-2">
                             <Input
                               type="color"
@@ -367,6 +370,9 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                               className="flex-1"
                             />
                           </div>
+                          <p className="text-xs text-muted-foreground">
+                            Se usa cuando el usuario tiene el tema oscuro activo. Recomendado un color oscuro (ej. #1A1A2E).
+                          </p>
                         </div>
                       </div>
                     </CardContent>
