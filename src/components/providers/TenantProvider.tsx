@@ -145,10 +145,15 @@ export function TenantProvider({ children }: TenantProviderProps) {
       root.style.setProperty('--accent', hexToHsl(branding.color_acento));
     }
 
-    // Paleta del sidebar derivada del primario + modo actual
+    // Paleta del sidebar derivada del primario + modo actual.
+    // Importante: usar color_sidebar para tema claro y color_sidebar_dark para tema oscuro,
+    // de modo que un color oscuro nunca se aplique al modo claro y viceversa.
     if (branding.color_primario) {
       const primaryHsl = hexToHsl(branding.color_primario);
-      const explicitSidebarBg = branding.color_sidebar ? hexToHsl(branding.color_sidebar) : undefined;
+      const sidebarHexForMode = isDark
+        ? (branding.color_sidebar_dark || branding.color_sidebar)
+        : (branding.color_sidebar || branding.color_sidebar_dark);
+      const explicitSidebarBg = sidebarHexForMode ? hexToHsl(sidebarHexForMode) : undefined;
       const palette = buildSidebarPalette(primaryHsl, isDark, explicitSidebarBg);
 
       root.style.setProperty('--sidebar-background', palette.background);
