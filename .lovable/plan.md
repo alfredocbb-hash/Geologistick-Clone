@@ -1,88 +1,54 @@
+## Diagnóstico
+
+Hoy el sistema de **branding por tenant** aplica color_primario, color_acento y color_sidebar como variables CSS. El problema:
+
+- Solo se actualiza `--sidebar-background`, pero el sidebar usa además `--sidebar-foreground`, `--sidebar-primary`, `--sidebar-primary-foreground`, `--sidebar-accent`, `--sidebar-accent-foreground`, `--sidebar-border` y `--sidebar-ring`. Estas quedan con los valores por defecto del tema base (azul) y **no combinan** con el color elegido por el cliente.
+- El item activo del menú usa `--sidebar-primary` que sigue siendo el azul original aunque el tenant haya elegido naranja, verde, etc.
+- En modo oscuro sucede lo mismo: el sidebar mantiene su paleta original sin armonizarse con el primario del tenant.
+
+Resultado: sidebar visualmente desconectado del tema elegido.
+
 ## Objetivo
-Crear una empresa de prueba (tenant) **"Empresa Demo"** completa con usuarios de distintos roles, clientes, envíos en varios estados, una hoja de ruta y una ruta planificada para usar como entorno de capacitación y demostraciones.
 
-## Qué se va a crear
+Que **todo el menú lateral (fondo, texto, item activo, hover, borde)** se derive automáticamente del color primario del tenant y del modo claro/oscuro activo, manteniendo buen contraste para legibilidad.
 
-### 1. Tenant
-- **Nombre:** Empresa Demo
-- **Slug:** `empresa-demo`
-- **Plan:** trial (sin vencimiento práctico — 365 días)
-- Branding por defecto
+## Cambios
 
-### 2. Sucursal única
-- **Sucursal Central** (centro logístico, puede despachar/recibir/entregar/retirar)
-- Dirección de Buenos Aires con coordenadas reales
+**Archivo único:** `src/components/providers/TenantProvider.tsx`
 
-### 3. Usuarios (todos con password **`Demo1234!`**)
-| Email | Rol | Nombre |
-|---|---|---|
-| `admin@demo.com` | admin | Ana Administradora |
-| `chofer1@demo.com` | chofer | Carlos Chofer |
-| `chofer2@demo.com` | chofer | Carla Chofer |
-| `operador@demo.com` | operator | Oscar Operador |
-| `seller@demo.com` | seller | Sofía Seller |
+1. **Detectar modo claro/oscuro** leyendo `document.documentElement.classList.contains('dark')` y suscribirse a cambios mediante un `MutationObserver` sobre la clase de `<html>` para reaccionar al toggle del tema.
 
-Todos vinculados al tenant y a la Sucursal Central (excepto seller).
+2. **Derivar paleta completa del sidebar** a partir del `color_primario` del tenant usando manipulación HSL (función helper local):
+   - `--sidebar-background`: light → `H 20% 97%` (muy tenue del primario); dark → `H 30% 7%`
+   - `--sidebar-foreground`: light → `H 47% 11%`; dark → `H 40% 95%`
+   - `--sidebar-primary`: usa el color primario tal cual (item activo)
+   - `--sidebar-primary-foreground`: blanco/casi blanco para contraste
+   - `--sidebar-accent`: light → `H 40% 92%`; dark → `H 30% 14%` (hover)
+   - `--sidebar-accent-foreground`: hereda del foreground
+   - `--sidebar-border`: light → `H 32% 88%`; dark → `H 30% 18%`
+   - `--sidebar-ring`: igual al primario
 
-### 4. Datos operativos (volumen mediano)
-- **30 clientes** con direcciones reales en CABA y GBA, teléfonos AR, algunos con cuenta corriente.
-- **1 vehículo** asignado a cada chofer (2 vehículos en total).
-- **1 tarifa** básica activa con conceptos típicos (flete, seguro).
-- **1 seller e-commerce** vinculado al usuario seller.
-- **~100 envíos** distribuidos en estados realistas:
-  - 15 `pendiente` (recién creados)
-  - 10 `recogido`
-  - 10 `en_transito`
-  - 15 `en_sucursal`
-  - 15 `en_reparto` (asignados a chofer1)
-  - 25 `entregado` (con fecha_entrega)
-  - 5 `incidencia`
-  - 5 `devuelto`
-- Mix de pago contado / contra-entrega, varias ciudades destino.
-- **1 Hoja de Ruta** activa con 8 envíos asignada a chofer2.
-- **1 Ruta Planificada** en curso con 6 paradas asignada a chofer1.
-- **Pagos COD** registrados para los entregados con contra-entrega.
-- Historial básico generado por triggers existentes.
+   Todo se calcula extrayendo el **Hue** del color primario y aplicando saturación/luminosidad fijas que garantizan buen contraste en cada modo.
 
-## Cómo se va a implementar
+3. **Si `branding.color_sidebar` está explícitamente seteado** (override manual del cliente), respetarlo y solo derivar las variables que faltan (foreground/border/accent compatibles con ese fondo).
 
-Un único script Node/TS (`scripts/seed-demo-tenant.ts`) ejecutado vía `bun` que usa la **service role key** para:
+4. **Actualizar el cleanup** para remover las nuevas propiedades cuando el branding cambia.
 
-1. Crear tenant + branding + sucursal vía SQL directo (`psql`/insert tool no alcanza por límites de update).
-2. Crear los 5 usuarios via `supabase.auth.admin.createUser` con `email_confirm: true` y `tenant_id` en metadata para que el trigger `handle_new_user` los asocie al tenant existente.
-3. Asignar roles correctos en `user_roles`.
-4. Insertar clientes, vehículos, tarifa, seller, envíos, pagos, hoja de ruta y ruta planificada.
-5. Imprimir al final un resumen con credenciales y IDs.
+5. **Re-aplicar la paleta** cuando cambia el modo (dark/light) o el branding.
 
-Como la creación de usuarios requiere la service role key (no disponible en el sandbox normal), se va a usar una **edge function temporal `seed-demo-tenant`** invocada una sola vez desde el frontend por un super_admin, similar al patrón de `create-tenant-with-admin`.
+## Lo que NO cambia
 
-### Detalles técnicos
-- La edge function valida que quien la invoca sea `super_admin`.
-- Es **idempotente**: si ya existe el tenant `empresa-demo`, lo borra primero (CASCADE) y lo recrea — para poder re-ejecutar y resetear los datos demo.
-- Tracking numbers se generan con la función `generate_tracking_number()` existente.
-- `created_at` de los envíos se distribuye en los últimos 30 días para que se vea en reportes.
-- Coordenadas reales para que el mapa en vivo y planificador funcionen sin geocodificar.
-- Botón **"Crear/Resetear Empresa Demo"** agregado en `src/pages/Tenants.tsx` (solo visible a super_admin) que invoca la función.
-
-## Entregable
-- Edge function `supabase/functions/seed-demo-tenant/index.ts`
-- Botón en la página de Empresas (super admin) con confirmación
-- Toast con resumen de credenciales al terminar
-
-## Credenciales finales
-Todas las cuentas: password **`Demo1234!`**
-- `admin@demo.com` — Administrador
-- `operador@demo.com` — Operador de sucursal
-- `chofer1@demo.com` / `chofer2@demo.com` — Choferes
-- `seller@demo.com` — Vendedor e-commerce
+- `AppSidebar.tsx` no se toca (ya consume las variables `--sidebar-*` correctamente).
+- `index.css` no se toca; los valores por defecto siguen siendo el fallback cuando no hay tenant logueado.
+- Los demás colores de la app (cards, botones, etc.) siguen igual.
 
 ## Verificación
-1. Login como super_admin → ir a Empresas → click "Crear/Resetear Empresa Demo".
-2. Esperar confirmación con resumen.
-3. Logout y login como `admin@demo.com` / `Demo1234!`.
-4. Verificar Dashboard con métricas, Envíos con ~100 registros mixtos, Hojas de Ruta con 1 activa, Rutas Planificadas con 1 en curso, Clientes con 30, Choferes con 2.
-5. Login como `chofer1@demo.com` → ver su ruta planificada activa.
-6. Login como `seller@demo.com` → ver portal de seller.
+
+1. Cambiar `color_primario` del tenant a naranja → el sidebar adopta tonos naranjas tenues coherentes y el item activo se ve naranja.
+2. Toggle modo oscuro → sidebar mantiene la armonía del primario pero adaptada a oscuro.
+3. Sin tenant (login screen) → sidebar usa los valores default del index.css.
+4. Hover sobre items y item activo deben tener contraste legible (texto siempre legible sobre el fondo).
 
 ## Riesgo
-Bajo. Toda la creación es aislada en un tenant nuevo. La función borra y recrea solo el tenant `empresa-demo` — no toca ningún otro dato.
+
+Bajo. Cambio aislado a un único archivo (provider). Si algo se ve mal, cleanup remueve los overrides y vuelve al default.
