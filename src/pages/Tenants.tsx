@@ -212,10 +212,15 @@ export default function Tenants() {
           <h1 className="text-3xl font-bold tracking-tight">Empresas</h1>
           <p className="text-muted-foreground">Gestión de todas las empresas del sistema</p>
         </div>
-        <Button onClick={() => setCreateDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Nueva Empresa
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleSeedDemo} disabled={seedingDemo}>
+            {seedingDemo ? 'Creando...' : 'Crear/Resetear Empresa Demo'}
+          </Button>
+          <Button onClick={() => setCreateDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Nueva Empresa
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
