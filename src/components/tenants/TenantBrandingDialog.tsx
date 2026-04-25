@@ -382,8 +382,9 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                   <Card>
                     <CardHeader className="pb-3">
                       <CardTitle className="text-base">Vista Previa</CardTitle>
+                      <CardDescription>Así se verá el menú según el tema activo del usuario.</CardDescription>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="space-y-4">
                       <div className="flex gap-4">
                         <div
                           className="flex-1 h-24 rounded-lg flex items-center justify-center text-sm font-medium"
@@ -405,6 +406,35 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                           style={{ backgroundColor: formData.color_acento }}
                         >
                           Acento
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="rounded-lg border overflow-hidden">
+                          <div className="text-xs px-3 py-1.5 bg-muted/60 font-medium">Tema Claro</div>
+                          <div className="flex h-28">
+                            <div className="w-16 p-2" style={{ backgroundColor: formData.color_sidebar }}>
+                              <div className="w-full h-3 rounded mb-1.5" style={{ backgroundColor: formData.color_primario }} />
+                              <div className="w-3/4 h-2 rounded mb-1 bg-black/20" />
+                              <div className="w-2/3 h-2 rounded bg-black/20" />
+                            </div>
+                            <div className="flex-1 bg-white p-2">
+                              <div className="text-[10px] font-bold" style={{ color: formData.color_primario }}>{formData.nombre_app || 'App'}</div>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="rounded-lg border overflow-hidden">
+                          <div className="text-xs px-3 py-1.5 bg-muted/60 font-medium">Tema Oscuro</div>
+                          <div className="flex h-28">
+                            <div className="w-16 p-2" style={{ backgroundColor: formData.color_sidebar_dark }}>
+                              <div className="w-full h-3 rounded mb-1.5" style={{ backgroundColor: formData.color_primario }} />
+                              <div className="w-3/4 h-2 rounded mb-1 bg-white/20" />
+                              <div className="w-2/3 h-2 rounded bg-white/20" />
+                            </div>
+                            <div className="flex-1 p-2" style={{ backgroundColor: '#0f172a' }}>
+                              <div className="text-[10px] font-bold text-white">{formData.nombre_app || 'App'}</div>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </CardContent>
