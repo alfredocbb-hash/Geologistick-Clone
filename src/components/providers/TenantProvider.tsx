@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useTenant, Tenant, TenantBranding, hexToHsl } from '@/hooks/useTenant';
 
 interface TenantContextType {
@@ -21,16 +21,79 @@ interface TenantProviderProps {
   children: ReactNode;
 }
 
+/** Extrae el Hue (0-360) de un string HSL "H S% L%". */
+function parseHue(hslString: string): number {
+  const match = /^(\d+)\s/.exec(hslString);
+  return match ? parseInt(match[1], 10) : 217;
+}
+
+/**
+ * Construye una paleta completa para el sidebar derivada del Hue del color primario,
+ * adaptada a modo claro u oscuro para garantizar buen contraste.
+ */
+function buildSidebarPalette(primaryHsl: string, isDark: boolean, explicitSidebarBg?: string) {
+  const h = parseHue(primaryHsl);
+
+  if (isDark) {
+    return {
+      background: explicitSidebarBg ?? `${h} 30% 7%`,
+      foreground: `${h} 20% 95%`,
+      primary: primaryHsl,
+      primaryForeground: `${h} 40% 98%`,
+      accent: `${h} 25% 14%`,
+      accentForeground: `${h} 20% 95%`,
+      border: `${h} 25% 18%`,
+      ring: primaryHsl,
+    };
+  }
+
+  return {
+    background: explicitSidebarBg ?? `${h} 25% 97%`,
+    foreground: `${h} 30% 15%`,
+    primary: primaryHsl,
+    primaryForeground: `0 0% 100%`,
+    accent: `${h} 35% 92%`,
+    accentForeground: `${h} 40% 18%`,
+    border: `${h} 25% 88%`,
+    ring: primaryHsl,
+  };
+}
+
+const SIDEBAR_VARS = [
+  '--sidebar-background',
+  '--sidebar-foreground',
+  '--sidebar-primary',
+  '--sidebar-primary-foreground',
+  '--sidebar-accent',
+  '--sidebar-accent-foreground',
+  '--sidebar-border',
+  '--sidebar-ring',
+] as const;
+
 export function TenantProvider({ children }: TenantProviderProps) {
   const { tenant, branding, isLoading } = useTenant();
+  const [isDark, setIsDark] = useState(() =>
+    typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
+  );
 
-  // Apply branding CSS variables when branding changes
+  // Observar cambios de modo claro/oscuro en <html>
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const root = document.documentElement;
+    const update = () => setIsDark(root.classList.contains('dark'));
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(root, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+
+  // Aplicar branding (colores generales + paleta derivada del sidebar)
   useEffect(() => {
     if (!branding) return;
 
     const root = document.documentElement;
 
-    // Apply custom colors as CSS variables
+    // Colores base
     if (branding.color_primario) {
       root.style.setProperty('--primary', hexToHsl(branding.color_primario));
     }
@@ -40,16 +103,32 @@ export function TenantProvider({ children }: TenantProviderProps) {
     if (branding.color_acento) {
       root.style.setProperty('--accent', hexToHsl(branding.color_acento));
     }
-    if (branding.color_sidebar) {
+
+    // Paleta del sidebar derivada del primario + modo actual
+    if (branding.color_primario) {
+      const primaryHsl = hexToHsl(branding.color_primario);
+      const explicitSidebarBg = branding.color_sidebar ? hexToHsl(branding.color_sidebar) : undefined;
+      const palette = buildSidebarPalette(primaryHsl, isDark, explicitSidebarBg);
+
+      root.style.setProperty('--sidebar-background', palette.background);
+      root.style.setProperty('--sidebar-foreground', palette.foreground);
+      root.style.setProperty('--sidebar-primary', palette.primary);
+      root.style.setProperty('--sidebar-primary-foreground', palette.primaryForeground);
+      root.style.setProperty('--sidebar-accent', palette.accent);
+      root.style.setProperty('--sidebar-accent-foreground', palette.accentForeground);
+      root.style.setProperty('--sidebar-border', palette.border);
+      root.style.setProperty('--sidebar-ring', palette.ring);
+    } else if (branding.color_sidebar) {
+      // Sin color primario pero con sidebar custom
       root.style.setProperty('--sidebar-background', hexToHsl(branding.color_sidebar));
     }
 
-    // Update page title
+    // Page title
     if (branding.nombre_app) {
       document.title = branding.meta_title || branding.nombre_app;
     }
 
-    // Update meta description
+    // Meta description
     if (branding.meta_description) {
       let metaDesc = document.querySelector('meta[name="description"]');
       if (!metaDesc) {
@@ -60,15 +139,13 @@ export function TenantProvider({ children }: TenantProviderProps) {
       metaDesc.setAttribute('content', branding.meta_description);
     }
 
-    // Update favicon
+    // Favicon
     if (branding.favicon) {
-      let favicon = document.querySelector('link[rel="icon"]') as HTMLLinkElement;
-      if (favicon) {
-        favicon.href = branding.favicon;
-      }
+      const favicon = document.querySelector('link[rel="icon"]') as HTMLLinkElement | null;
+      if (favicon) favicon.href = branding.favicon;
     }
 
-    // Apply custom CSS
+    // Custom CSS
     if (branding.custom_css) {
       let styleEl = document.getElementById('tenant-custom-css');
       if (!styleEl) {
@@ -79,19 +156,15 @@ export function TenantProvider({ children }: TenantProviderProps) {
       styleEl.textContent = branding.custom_css;
     }
 
-    // Cleanup function to remove custom styles when component unmounts
     return () => {
       root.style.removeProperty('--primary');
       root.style.removeProperty('--primary-foreground');
       root.style.removeProperty('--accent');
-      root.style.removeProperty('--sidebar-background');
-      
+      SIDEBAR_VARS.forEach((v) => root.style.removeProperty(v));
       const customStyle = document.getElementById('tenant-custom-css');
-      if (customStyle) {
-        customStyle.remove();
-      }
+      if (customStyle) customStyle.remove();
     };
-  }, [branding]);
+  }, [branding, isDark]);
 
   return (
     <TenantContext.Provider value={{ tenant, branding, isLoading }}>
