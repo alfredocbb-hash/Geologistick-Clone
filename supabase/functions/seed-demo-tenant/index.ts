@@ -108,8 +108,19 @@ Deno.serve(async (req) => {
     if (tErr) throw new Error("Crear tenant: " + tErr.message);
     const tenantId = tenant.id;
 
-    // 3. Branding
-    await admin.from("tenant_branding").insert({ tenant_id: tenantId, nombre_app: "Empresa Demo" });
+    // 3. Branding con colores coherentes (menú claro y oscuro consistentes con cada tema)
+    await admin.from("tenant_branding").insert({
+      tenant_id: tenantId,
+      nombre_app: "Empresa Demo",
+      color_primario: "#3B82F6",
+      color_primario_foreground: "#FFFFFF",
+      color_secundario: "#1E40AF",
+      color_acento: "#10B981",
+      color_sidebar: "#F8FAFC",
+      color_sidebar_dark: "#1A1A2E",
+      color_fondo: "#FFFFFF",
+      color_fondo_dark: "#0F172A",
+    });
 
     // 4. Sucursal Central
     const { data: sucursal, error: sErr } = await admin.from("sucursales").insert({
