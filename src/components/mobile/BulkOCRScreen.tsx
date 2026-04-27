@@ -680,9 +680,42 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
           </h1>
           <p className="text-[10px] font-bold text-primary uppercase tracking-widest">{albumPhotos.length} fotos cargadas</p>
         </div>
-        {isMobile && (
-          <Button variant="ghost" size="icon" onClick={onClose} className="text-white/50 rounded-full bg-white/5 h-12 w-12"><X /></Button>
-        )}
+        <div className="flex items-center gap-2">
+          {!isMobile && (
+            <div className="flex flex-col items-end gap-1">
+              <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Fecha de ingreso</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={albumPhase !== 'capturing'}
+                    className={cn(
+                      "h-9 justify-start text-left font-medium gap-2",
+                      !fechaIngreso && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="h-4 w-4" />
+                    {format(fechaIngreso, "PPP", { locale: es })}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="end">
+                  <Calendar
+                    mode="single"
+                    selected={fechaIngreso}
+                    onSelect={(d) => d && setFechaIngreso(d)}
+                    disabled={(date) => date > new Date()}
+                    initialFocus
+                    locale={es}
+                    className={cn("p-3 pointer-events-auto")}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          )}
+          {isMobile && (
+            <Button variant="ghost" size="icon" onClick={onClose} className="text-white/50 rounded-full bg-white/5 h-12 w-12"><X /></Button>
+          )}
       </div>
 
       {/* Processing progress */}
