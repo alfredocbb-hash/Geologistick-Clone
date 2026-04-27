@@ -100,6 +100,7 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
   const [burstProcessing, setBurstProcessing] = useState(0);
   const [editingPhoto, setEditingPhoto] = useState<AlbumPhoto | null>(null);
   const [manualData, setManualData] = useState<ManualEditData>({ direccion: '', localidad: '', codigoPostal: '', nombreDestinatario: '', telefono: '', nombreRemitente: '' });
+  const [fechaIngreso, setFechaIngreso] = useState<Date>(new Date());
 
   const [profileData, setProfileData] = useState<{ tenant_id: string; sucursal_id: string | null } | null>(null);
 
