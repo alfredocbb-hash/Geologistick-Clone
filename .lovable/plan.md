@@ -1,26 +1,32 @@
-## Selector de fecha en OCR Masivo (Planificador → Terciarizados)
+## Objetivo
 
-### Objetivo
-Permitir que al subir imágenes vía OCR Masivo desde el escritorio (Planificador → Terciarizados → "Importar Fotos con IA"), el usuario pueda elegir la fecha con la que se registrarán los envíos. Por defecto se ofrece la fecha de hoy, pero se puede modificar a cualquier día anterior (caso típico: cargar el lunes pedidos que llegaron el sábado).
+Actualizar de forma masiva los 35 envíos en estado `pendiente` creados el día **20 de abril de 2026** (zona horaria Argentina), asignándolos al chofer **Kevin Bernard** (`d6a5a65d-9594-45a6-b660-0c501554b227`) y marcándolos como `entregado`.
 
-### Comportamiento
+## Datos verificados
 
-- En la cabecera del modo Álbum (escritorio) aparece un selector de fecha junto al título **"Importar Fotos con IA"**.
-- Valor por defecto: **hoy**.
-- Permite seleccionar cualquier fecha **≤ hoy** (no fechas futuras).
-- La fecha elegida se aplica a **todos los envíos** procesados en esa sesión OCR.
-- El selector queda deshabilitado durante el procesamiento y la fase final (`done`) para evitar inconsistencias.
-- En mobile se mantiene el comportamiento actual (siempre fecha de hoy) — el ajuste es exclusivo del flujo escritorio del Planificador → Terciarizados.
+- Chofer destino: **Kevin Bernard** (`kevinbernard@beraexpress.com`).
+- Envíos detectados: **35** registros con `estado = 'pendiente'` y `created_at` dentro del 2026-04-20 (horario AR).
+- Ninguno tiene chofer asignado actualmente, por lo que se les debe setear `chofer_id`, `chofer_ultima_milla_id` y `fecha_asignacion_ultima_milla`.
 
-### Cambios técnicos
+## Cambios a ejecutar (vía herramienta de inserción/actualización SQL)
 
-**`src/components/mobile/BulkOCRScreen.tsx`**
-- Nuevo estado `fechaIngreso: Date` (inicializado a `new Date()`).
-- Renderizar un Popover + `Calendar` (shadcn) en la cabecera del modo Álbum, visible solo cuando `!isMobile`.
-- En los **3 puntos de inserción a `envios`** (OCR álbum estándar, force-save de duplicados, y guardado manual), enviar `created_at: fechaIngreso.toISOString()` para que el envío quede registrado con la fecha seleccionada.
-- El modo Ráfaga (mobile-only) no se modifica.
+1. **Actualizar `envios`** para los 35 registros:
+   - `estado = 'entregado'`
+   - `chofer_id = d6a5a65d-...`
+   - `chofer_ultima_milla_id = d6a5a65d-...`
+   - `fecha_asignacion_ultima_milla = NOW()` (si está nulo)
+   - `fecha_entrega = NOW()` (también lo asegura el trigger `set_fecha_entrega_on_delivered`)
+   - Filtros: `estado = 'pendiente'` AND `created_at >= '2026-04-20 00:00:00-03'` AND `created_at < '2026-04-21 00:00:00-03'`.
 
-### Consideraciones
-- La columna `created_at` admite el override desde el cliente (ya se hace en el seed de demo).
-- No se modifican triggers ni la base de datos.
-- Los reportes y filtros por fecha de creación reflejarán la fecha elegida por el usuario.
+2. **Cerrar paradas asociadas** en `ruta_paradas`: marcar como `completada` con `completada_at = NOW()` cualquier parada vinculada a esos envíos que aún esté `pendiente`.
+
+3. **Triggers automáticos** que se dispararán y NO requieren acción manual:
+   - `log_envio_estado_change` → registra el cambio en `envio_historial`.
+   - `set_fecha_entrega_on_delivered` → asegura `fecha_entrega`.
+   - `auto_sync_ml_status` y `sync_partner_shipment_status` → sincronización con MercadoLibre/partners si aplica.
+
+## Notas importantes
+
+- La operación es irreversible salvo intervención manual de un super_admin (estados finales bloqueados).
+- No se modificarán envíos que ya estén entregados, cancelados o devueltos.
+- Tras aprobar este plan, ejecutaré los UPDATE en una sola transacción y reportaré el conteo final.
