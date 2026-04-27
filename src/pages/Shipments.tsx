@@ -28,6 +28,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { MLSyncBadge } from '@/components/shipments/MLSyncBadge';
 import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
 import { ShipmentHistoryDialog } from '@/components/shipments/ShipmentHistoryDialog';
@@ -658,24 +659,31 @@ export default function Shipments() {
                      <TableCell>
                       <StatusBadge status={envio.estado as ShipmentStatus} />
                     </TableCell>
-                    <TableCell>
-                      {envio.ml_shipment_id ? (
-                        <div className="flex items-center gap-1">
-                          {envio.estado_ml ? (
-                            <>
-                              <StatusBadge status={envio.estado_ml as ShipmentStatus} />
-                              {envio.estado_ml !== envio.estado && (
-                                <span title="Discrepancia entre estado interno y ML">
-                                  <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                                </span>
-                              )}
-                            </>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">Sin sync</span>
-                          )}
-                        </div>
-                      ) : null}
-                    </TableCell>
+                     <TableCell>
+                       {envio.ml_shipment_id ? (
+                         <div className="flex items-center gap-1 flex-wrap">
+                           {envio.estado_ml ? (
+                             <>
+                               <StatusBadge status={envio.estado_ml as ShipmentStatus} />
+                               {envio.estado_ml !== envio.estado && (
+                                 <span title="Discrepancia entre estado interno y ML">
+                                   <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                                 </span>
+                               )}
+                             </>
+                           ) : (
+                             <span className="text-xs text-muted-foreground">Sin sync</span>
+                           )}
+                           <MLSyncBadge
+                             ml_shipment_id={envio.ml_shipment_id}
+                             ml_sync_status={(envio as any).ml_sync_status}
+                             ml_sync_error_detail={(envio as any).ml_sync_error_detail}
+                             ml_last_sync_at={(envio as any).ml_last_sync_at}
+                             compact
+                           />
+                         </div>
+                       ) : null}
+                     </TableCell>
                     <TableCell className="text-right font-medium">
                       ${envio.precio_total?.toLocaleString('es-AR')}
                     </TableCell>
