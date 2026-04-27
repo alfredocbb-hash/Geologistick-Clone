@@ -14,6 +14,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
+import { MLSyncBadge } from '@/components/shipments/MLSyncBadge';
 import { 
   Package, 
   User, 
