@@ -437,7 +437,15 @@ export function ShipmentDetailsDialog({
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div>
-                        <p className="text-xs font-semibold text-muted-foreground mb-1">ESTADO MERCADO LIBRE</p>
+                        <p className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-2">
+                          ESTADO MERCADO LIBRE
+                          <MLSyncBadge
+                            ml_shipment_id={envio.ml_shipment_id}
+                            ml_sync_status={(envio as any).ml_sync_status}
+                            ml_sync_error_detail={(envio as any).ml_sync_error_detail}
+                            ml_last_sync_at={(envio as any).ml_last_sync_at}
+                          />
+                        </p>
                         {(() => {
                           const mlStatus = envio.estado_ml as string;
                           const mappedKey = ML_TO_INTERNAL[mlStatus] || mlStatus;
