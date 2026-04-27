@@ -410,7 +410,8 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
         source_module: 'bulk_ocr_manual',
         tenant_id: profileData.tenant_id,
         sucursal_origen_id: profileData.sucursal_id,
-        created_by: user?.id
+        created_by: user?.id,
+        created_at: fechaIngreso.toISOString()
       }).select().single();
 
       if (insertError) throw new Error(insertError.message);
