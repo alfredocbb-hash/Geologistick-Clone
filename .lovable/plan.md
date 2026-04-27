@@ -1,61 +1,45 @@
-# Sincronización de reprogramaciones con Mercado Libre
+## Badge de sincronización con Mercado Libre
 
-## Diagnóstico
+Agregar un indicador visual del estado de sincronización con ML en dos ubicaciones: la **lista de envíos** (tabla principal) y el **diálogo de detalle del envío**.
 
-Hoy, cuando reprogramás un envío (desde APK o admin), pasa esto:
+### Componente nuevo: `MLSyncBadge`
 
-1. El RPC `reschedule_envio` cambia el `estado` interno a **`pendiente`**.
-2. El trigger `auto_sync_ml_status` dispara la edge function `mercadolibre-update-status`.
-3. La edge function busca el mapeo de `pendiente` → ML lo recibe como **`ready_to_ship`** ("listo para despachar de bodega").
-4. ML **rechaza** la transición porque no permite retroceder de `shipped/out_for_delivery` a `ready_to_ship` → queda `ml_sync_status = 'error'` y el envío en ML se queda con el estado anterior.
+Ubicación: `src/components/shipments/MLSyncBadge.tsx`
 
-Resultado: **la reprogramación no se refleja en Mercado Libre.**
+Recibe como props el envío (o los campos relevantes: `ml_shipment_id`, `ml_sync_status`, `ml_sync_error_detail`, `ml_last_sync_at`).
 
-Detalle adicional: en la tabla `ml_status_mapping` ya existe el mapeo correcto para el estado interno `reprogramado` → `shipped` + substatus `rescheduled` / `rescheduled_by_meli` / `rescheduled_by_buyer`. Pero ese estado interno nunca se aplica al envío (solo se aplica a la parada de ruta).
+Lógica de renderizado:
+- Si `ml_shipment_id` es `NULL` → no renderiza nada (envío no es de ML).
+- Si `ml_sync_status = 'synced'` → badge verde con `CheckCircle2`, texto "ML Sincronizado".
+- Si `ml_sync_status = 'pending'` → badge ámbar con `Clock`, texto "ML Pendiente".
+- Si `ml_sync_status = 'error'` → badge rojo con `AlertCircle`, texto "Error ML".
+- Tooltip (shadcn `Tooltip`) muestra: última sincronización (`ml_last_sync_at` formateado con `date-fns` en español) y, si hay error, el `ml_sync_error_detail`.
 
-## Cambios propuestos
+### Integraciones
 
-### 1. Diferenciar el flujo para envíos de Mercado Libre en `reschedule_envio`
-Modificar el RPC para que:
-- Si el envío tiene `ml_shipment_id` (es de ML): setear `estado = 'reprogramado'` en lugar de `'pendiente'`.
-- Si no es de ML: mantener el comportamiento actual (`estado = 'pendiente'`).
-- En ambos casos seguir desasignando chofer, incrementando `reprogramado_count` y marcando la parada como `reprogramado`.
+1. **Detalle del envío (admin)**: agregar el badge en `ShipmentDetailDialog.tsx` (o el dialogo equivalente que se use), junto al tracking number / sección de información ML.
+2. **Lista de envíos**: agregar el badge en la fila de la tabla principal (`Shipments.tsx` / componente de fila), al lado del tracking, solo visible si el envío es de ML.
 
-Esto hace que el trigger sincronice con ML usando `shipped` + `rescheduled`, que SÍ es una transición aceptada por ML desde `out_for_delivery`.
+### Detalles técnicos
 
-### 2. Limpiar entradas duplicadas en `ml_status_mapping`
-Hoy `reprogramado` tiene 3 filas (con substatus `rescheduled`, `rescheduled_by_meli`, `rescheduled_by_buyer`). La edge function hace `.single()` y va a fallar con múltiples filas. Dejar **una sola** fila canónica:
-- `reprogramado` → `shipped` + `rescheduled`
+- Usa tokens del design system (no colores hardcodeados): `bg-success/10 text-success border-success/30`, `bg-warning/10 text-warning border-warning/30`, `bg-destructive/10 text-destructive border-destructive/30`. Si algún token no existe, agregarlo en `index.css` + `tailwind.config.ts`.
+- Tamaño compacto (`text-xs`, `h-5`, `gap-1`) para que no rompa el layout de la tabla.
+- En mobile (vista de lista en APK), el badge se muestra como ícono solo (sin texto) para ahorrar espacio.
+- Tooltip con `TooltipProvider` ya existente; en mobile usar `Popover` al tap si Tooltip no se dispara.
 
-(Las otras dos quedan disponibles solo para el flujo inverso de webhook ML→interno, que usa otra lógica.)
+### Archivos a tocar
 
-### 3. Permitir reprogramar también envíos en estado `pendiente`/`en_sucursal`
-Hoy el flujo asume que el envío estaba `en_reparto`. Ajustar para que la lógica de cambio de estado a `reprogramado` solo se aplique si el estado anterior era `en_reparto`, `primera_visita` o `segunda_visita`. Si estaba en otro estado, mantener `pendiente`.
+- **Nuevo**: `src/components/shipments/MLSyncBadge.tsx`
+- **Editar**: `src/pages/Shipments.tsx` (o el componente de fila/tabla) para incluir el badge en la lista.
+- **Editar**: `src/components/shipments/ShipmentDetailDialog.tsx` (o el dialog de detalle correspondiente) para incluirlo en el detalle.
+- **Posible edición**: `index.css` / `tailwind.config.ts` si falta el token `success` o `warning`.
 
-### 4. Mejorar el manejo de errores de la edge function
-En `mercadolibre-update-status`, cuando ML rechaza la transición (status 4xx con `error_code`), guardar el detalle en una nueva columna o en el campo existente para que el admin pueda ver por qué falló desde la UI. Actualmente solo queda `ml_sync_status = 'error'` sin más info accesible.
+### Resultado visual
 
-### 5. Mostrar el estado de sincronización en el detalle del envío
-En la pantalla de detalle del envío (admin), mostrar un badge claro:
-- ✓ Sincronizado con ML
-- ⚠ Error de sincronización + tooltip con el motivo
-- ⏳ Pendiente de sincronización
+```text
+Tabla:  [ENV-ABC123] [🟢 ML Sincronizado]   Juan Pérez   $1.500
+Detalle: Tracking ENV-ABC123  [🟢 ML Sincronizado]  ← hover: "Última sync: hace 2 min"
+Error:   [🔴 Error ML]  ← hover: "ML rechazó transición: invalid_status_transition"
+```
 
-## Archivos afectados
-
-- **Migración SQL**: modificar el RPC `reschedule_envio` y limpiar `ml_status_mapping`.
-- **`supabase/functions/mercadolibre-update-status/index.ts`**: guardar detalle del error de ML en el envío.
-- **Componente de detalle de envío** (admin): mostrar badge de estado de sync.
-
-## Lo que NO cambia
-
-- El flujo de reprogramación para envíos no-ML sigue idéntico (queda en `pendiente`).
-- La APK y el admin siguen llamando al mismo RPC `reschedule_envio` — no hace falta tocar frontend ahí.
-- El webhook entrante de ML (`mercadolibre-webhook`) no se modifica.
-
-## Resultado esperado
-
-Al reprogramar un envío de Mercado Libre:
-- El envío queda en estado interno `reprogramado` (visible en historial).
-- ML recibe `shipped` + `rescheduled` → el comprador ve "Visita reprogramada" en su app de ML.
-- Si ML rechaza la transición por algún motivo, el admin lo ve con el detalle exacto.
+¿Procedo con la implementación?
