@@ -716,6 +716,7 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
           {isMobile && (
             <Button variant="ghost" size="icon" onClick={onClose} className="text-white/50 rounded-full bg-white/5 h-12 w-12"><X /></Button>
           )}
+        </div>
       </div>
 
       {/* Processing progress */}
