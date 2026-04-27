@@ -1093,6 +1093,7 @@ export type Database = {
           ml_last_sync_at: string | null
           ml_order_id: number | null
           ml_shipment_id: number | null
+          ml_sync_error_detail: string | null
           ml_sync_status: string | null
           nombre_destinatario: string | null
           nombre_remitente: string | null
@@ -1198,6 +1199,7 @@ export type Database = {
           ml_last_sync_at?: string | null
           ml_order_id?: number | null
           ml_shipment_id?: number | null
+          ml_sync_error_detail?: string | null
           ml_sync_status?: string | null
           nombre_destinatario?: string | null
           nombre_remitente?: string | null
@@ -1303,6 +1305,7 @@ export type Database = {
           ml_last_sync_at?: string | null
           ml_order_id?: number | null
           ml_shipment_id?: number | null
+          ml_sync_error_detail?: string | null
           ml_sync_status?: string | null
           nombre_destinatario?: string | null
           nombre_remitente?: string | null

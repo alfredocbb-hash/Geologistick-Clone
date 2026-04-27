@@ -163,12 +163,23 @@ Deno.serve(async (req) => {
       // Some status transitions might not be allowed by ML
       // Log but don't fail the operation
       console.warn('[ML Update] ML API returned error:', mlResponseText);
-      
+
+      // Try to extract a clean error message
+      let errorDetail = mlResponseText;
+      try {
+        const errJson = JSON.parse(mlResponseText);
+        errorDetail = `${errJson.error || errJson.error_code || 'error'}: ${errJson.message || errJson.cause?.[0]?.description || mlResponseText}`;
+      } catch (_) {
+        // keep raw text
+      }
+      const truncatedError = `[${mlResponse.status}] ${errorDetail}`.slice(0, 500);
+
       await supabase
         .from('envios')
         .update({
           ml_sync_status: 'error',
           ml_last_sync_at: new Date().toISOString(),
+          ml_sync_error_detail: truncatedError,
         })
         .eq('id', envio_id);
 
@@ -182,12 +193,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Update envio sync status
+    // Update envio sync status (clear previous error)
     await supabase
       .from('envios')
       .update({
         ml_sync_status: 'synced',
         ml_last_sync_at: new Date().toISOString(),
+        ml_sync_error_detail: null,
       })
       .eq('id', envio_id);
 
