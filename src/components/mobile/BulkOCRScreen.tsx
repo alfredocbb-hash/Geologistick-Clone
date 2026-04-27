@@ -264,7 +264,8 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
         tenant_id: profileData!.tenant_id,
         sucursal_origen_id: profileData!.sucursal_id,
         ml_shipment_id: ocrData.mlShipmentId ? parseInt(ocrData.mlShipmentId) : null,
-        created_by: user?.id
+        created_by: user?.id,
+        created_at: fechaIngreso.toISOString()
       }).select().single();
 
       if (insertError) {
