@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -354,11 +355,22 @@ export default function PrintInvoice() {
     return { nombre_concepto: desc, monto: e.precio_total || 0 };
   });
 
+  const lineItemsFactura = Array.isArray((factura as { line_items?: unknown } | undefined)?.line_items)
+    ? ((factura as { line_items: Array<{ descripcion?: string; subtotal?: number; cantidad?: number; precio_unitario?: number }> }).line_items)
+    : [];
+
   const conceptosAMostrar = isLiquidacionInvoice
     ? conceptosLiquidacion
-    : fleteEnDetalles
-      ? (detalles || [])
-      : [{ nombre_concepto: 'Flete', monto: fleteCalculado > 0 ? fleteCalculado : (envio?.precio_total || 0) }, ...(detalles || [])];
+    : lineItemsFactura.length > 0
+      ? lineItemsFactura.map((it) => ({
+          nombre_concepto: it.descripcion || 'Ítem',
+          monto: typeof it.subtotal === 'number'
+            ? it.subtotal
+            : (Number(it.cantidad || 1) * Number(it.precio_unitario || 0)),
+        }))
+      : fleteEnDetalles
+        ? (detalles || [])
+        : [{ nombre_concepto: 'Flete', monto: fleteCalculado > 0 ? fleteCalculado : (envio?.precio_total || 0) }, ...(detalles || [])];
 
   const handlePrint = () => window.print();
 
@@ -402,6 +414,23 @@ export default function PrintInvoice() {
     }
   };
 
+  // Auto-descarga cuando se abre con ?download=1
+  const shouldAutoDownload = searchParams.get('download') === '1';
+  const autoDownloadedRef = useRef(false);
+  useEffect(() => {
+    if (!shouldAutoDownload || autoDownloadedRef.current) return;
+    if (!factura) return;
+    // Esperar al próximo tick para asegurar render del DOM
+    const t = setTimeout(() => {
+      autoDownloadedRef.current = true;
+      handleDownloadPDF();
+    }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldAutoDownload, factura?.id]);
+
+  const backHref = resolvedEnvioId ? '/shipments' : '/facturacion';
+
   if (loadingFactura) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -416,9 +445,9 @@ export default function PrintInvoice() {
         <FileText className="h-16 w-16 text-muted-foreground" />
         <p className="text-lg text-muted-foreground">Factura no encontrada</p>
         <Button asChild variant="outline">
-          <Link to="/shipments">
+          <Link to="/facturacion">
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Volver a Envíos
+            Volver a Facturación
           </Link>
         </Button>
       </div>
@@ -441,7 +470,7 @@ export default function PrintInvoice() {
         {/* Header - hidden on print */}
         <div className="flex items-center justify-between mb-6 print:hidden">
           <Button asChild variant="ghost" size="sm">
-            <Link to="/shipments">
+            <Link to={backHref}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Volver
             </Link>

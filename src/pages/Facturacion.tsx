@@ -19,7 +19,7 @@ import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { FileText, Loader2, Search, CheckCircle, AlertCircle, Package, Copy, RefreshCw, Download, Plus, MoreVertical, Ban, FileMinus } from 'lucide-react';
+import { FileText, Loader2, Search, CheckCircle, AlertCircle, Package, Copy, RefreshCw, Download, Plus, MoreVertical, Ban, FileMinus, Printer } from 'lucide-react';
 import { useARCAIntegration, determinarTipoFactura, validateCUIT, formatCUIT } from '@/hooks/useARCAConfig';
 import { useCuitLookup } from '@/hooks/useCuitLookup';
 import { format } from 'date-fns';
@@ -714,6 +714,13 @@ export default function Facturacion() {
                                 <Button variant="ghost" size="sm"><MoreVertical className="h-4 w-4" /></Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => window.open(`/print-invoice?factura_id=${factura.id}`, '_blank')}>
+                                  <Printer className="mr-2 h-4 w-4" />Imprimir / Ver PDF
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => window.open(`/print-invoice?factura_id=${factura.id}&download=1`, '_blank')}>
+                                  <Download className="mr-2 h-4 w-4" />Descargar PDF
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
                                 <DropdownMenuItem onClick={() => handleDuplicate(factura)}>
                                   <Copy className="mr-2 h-4 w-4" />Duplicar
                                 </DropdownMenuItem>
