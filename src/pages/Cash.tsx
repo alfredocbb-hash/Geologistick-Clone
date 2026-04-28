@@ -342,19 +342,62 @@ export default function Cash() {
     },
   });
 
+  // Drivers list (for adelanto a chofer)
+  const { data: drivers = [] } = useQuery({
+    queryKey: ['tenant-drivers', profile?.tenant_id],
+    queryFn: async () => {
+      if (!profile?.tenant_id) return [];
+      const { data: roles } = await supabase
+        .from('user_roles')
+        .select('user_id')
+        .eq('role', 'chofer');
+      const ids = roles?.map(r => r.user_id) || [];
+      if (!ids.length) return [];
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('user_id, nombre, apellido')
+        .eq('tenant_id', profile.tenant_id)
+        .in('user_id', ids);
+      if (error) throw error;
+      return (data || []) as DriverOption[];
+    },
+    enabled: !!profile?.tenant_id,
+  });
+
+  const driverName = (id?: string | null) => {
+    if (!id) return '';
+    const d = drivers.find(x => x.user_id === id);
+    if (!d) return 'Chofer';
+    return `${d.nombre || ''} ${d.apellido || ''}`.trim() || 'Chofer';
+  };
+
   // Add movement
   const addMovementMutation = useMutation({
     mutationFn: async (data: typeof movementFormData) => {
       if (!currentSession || !user) throw new Error('No hay sesión activa');
 
+      // Validate adelanto a chofer
+      if (data.tipo === 'egreso' && data.categoria === 'adelanto_chofer' && !data.chofer_id) {
+        throw new Error('Debe seleccionar el chofer al registrar un adelanto');
+      }
+
+      const isAdelanto = data.tipo === 'egreso' && data.categoria === 'adelanto_chofer';
+      const concepto = data.concepto?.trim()
+        ? data.concepto
+        : isAdelanto
+          ? `Adelanto a ${driverName(data.chofer_id)}`
+          : '';
+
       const { error } = await supabase.from('movimientos_caja').insert({
         sesion_caja_id: currentSession.id,
         tipo: data.tipo,
-        concepto: data.concepto,
+        concepto,
         monto: parseFloat(data.monto),
         metodo_pago: data.metodo_pago,
         referencia: data.referencia || null,
         created_by: user.id,
+        categoria: data.tipo === 'egreso' ? data.categoria : null,
+        chofer_id: isAdelanto ? data.chofer_id : null,
       });
       if (error) throw error;
     },
@@ -368,6 +411,8 @@ export default function Cash() {
         monto: '',
         metodo_pago: 'efectivo',
         referencia: '',
+        categoria: 'otro',
+        chofer_id: '',
       });
     },
     onError: (error: Error) => {
