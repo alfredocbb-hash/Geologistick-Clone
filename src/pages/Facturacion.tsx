@@ -243,10 +243,18 @@ export default function Facturacion() {
   }, [pendientes, search]);
 
   const filteredEmitidas = useMemo(() => {
-    if (!searchEmitidas) return emitidas;
+    let list = emitidas;
+    if (tipoFilter === 'facturas') list = list.filter((f: any) => !f.es_nota_credito);
+    else if (tipoFilter === 'nc') list = list.filter((f: any) => f.es_nota_credito);
+    if (!searchEmitidas) return list;
     const q = searchEmitidas.toLowerCase();
-    return emitidas.filter((f: any) =>
+    return list.filter((f: any) =>
       f.receptor_nombre?.toLowerCase().includes(q) ||
+      f.receptor_cuit?.includes(q) ||
+      String(f.numero_comprobante)?.includes(q) ||
+      f.cae?.includes(q)
+    );
+  }, [emitidas, searchEmitidas, tipoFilter]);
       f.receptor_cuit?.includes(q) ||
       String(f.numero_comprobante)?.includes(q) ||
       f.cae?.includes(q)
