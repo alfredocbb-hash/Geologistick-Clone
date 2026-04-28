@@ -1583,16 +1583,22 @@ serve(async (req) => {
     const { envio_id, liquidacion_seller_id, liquidacion_terciarizado_id, tipo_comprobante, receptor, importe_total } = body;
     const requestedEnv: 'sandbox' | 'production' = body.environment || 'production';
 
-    if (!envio_id && !liquidacion_seller_id && !liquidacion_terciarizado_id) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Se requiere envio_id, liquidacion_seller_id o liquidacion_terciarizado_id' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    // Extra AFIP fields (factura manual / completos)
+    const concepto: number = (rawBody.concepto as number) ?? 1;
+    const tipoDocumento: number = (rawBody.tipo_documento as number) ?? (receptor?.cuit ? 80 : 99);
+    const condicionVenta: string | undefined = rawBody.condicion_venta;
+    const fechaServicioDesde: string | undefined = rawBody.fecha_servicio_desde;
+    const fechaServicioHasta: string | undefined = rawBody.fecha_servicio_hasta;
+    const fechaVtoPago: string | undefined = rawBody.fecha_vto_pago;
+    const importeNoGravadoIn: number = Number(rawBody.importe_no_gravado || 0);
+    const importeExentoIn: number = Number(rawBody.importe_exento || 0);
+    const importeTributosIn: number = Number(rawBody.importe_tributos || 0);
+    const descripcion: string | undefined = rawBody.descripcion;
+    const lineItems: unknown[] | undefined = Array.isArray(rawBody.line_items) ? rawBody.line_items : undefined;
 
     if (!tipo_comprobante || !receptor) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Faltan campos requeridos' }),
+        JSON.stringify({ success: false, error: 'Faltan campos requeridos (tipo_comprobante, receptor)' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -1600,6 +1606,14 @@ serve(async (req) => {
     if (tipo_comprobante === 'A' && !receptor.cuit) {
       return new Response(
         JSON.stringify({ success: false, error: 'Factura A requiere CUIT del receptor' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validar fechas servicio para conceptos 2 y 3
+    if ((concepto === 2 || concepto === 3) && (!fechaServicioDesde || !fechaServicioHasta || !fechaVtoPago)) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Para conceptos Servicios o Productos+Servicios, las fechas de servicio (desde, hasta) y vto. pago son obligatorias' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -1634,7 +1648,7 @@ serve(async (req) => {
         );
       }
       total = importe_total ?? liquidacion.monto_total;
-    } else {
+    } else if (envio_id) {
       const { data: envio, error: envioError } = await supabase
         .from('envios')
         .select('*')
@@ -1649,23 +1663,55 @@ serve(async (req) => {
         );
       }
       total = importe_total ?? envio.precio_total;
+    } else {
+      // Factura manual sin envío ni liquidación: usar importe_total directamente
+      if (!importe_total || importe_total <= 0) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Para factura manual, el importe_total debe ser mayor a 0' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      total = importe_total;
     }
 
     // ── Desglose fiscal ──────────────────────────────────────────────
-    // CORRECCIÓN Bug 1: Calcular importeNeto e importeIva con precisión garantizada.
-    // total = precio con IVA incluido (21%).
-    // Para Factura A: receptor es RI, se factura con IVA discriminado.
-    // Para Factura B/C: consumidores finales o monotributistas, IVA incluido.
-    // AFIP exige siempre el desglose aunque el receptor sea CF.
+    // total = precio TOTAL con IVA incluido (si aplica).
+    // Si vienen importes No Gravado / Exento / Tributos, descontarlos del cálculo de neto+IVA.
     const importeTotal = Math.round(total * 100) / 100;
-    const importeNeto  = Math.round((importeTotal / 1.21) * 100) / 100;
-    const importeIva   = Math.round((importeTotal - importeNeto) * 100) / 100;
+    const impNoGravado = Math.round(importeNoGravadoIn * 100) / 100;
+    const impExento    = Math.round(importeExentoIn * 100) / 100;
+    const impTributos  = Math.round(importeTributosIn * 100) / 100;
 
-    console.log(`[ARCA] Desglose fiscal: total=${importeTotal}, neto=${importeNeto}, iva=${importeIva}`);
-    // Validar coherencia (AFIP rechaza si no cuadra)
-    if (Math.abs(importeNeto + importeIva - importeTotal) > 0.02) {
-      console.error('[ARCA] WARN: Discrepancia en desglose IVA', { importeTotal, importeNeto, importeIva });
-    }
+    // Base gravada = total - (no gravado + exento + tributos)
+    const baseGravada = Math.round((importeTotal - impNoGravado - impExento - impTributos) * 100) / 100;
+    const importeNeto = baseGravada > 0 ? Math.round((baseGravada / 1.21) * 100) / 100 : 0;
+    const importeIva  = baseGravada > 0 ? Math.round((baseGravada - importeNeto) * 100) / 100 : 0;
+
+    console.log(`[ARCA] Desglose fiscal: total=${importeTotal}, neto=${importeNeto}, iva=${importeIva}, noGrav=${impNoGravado}, exento=${impExento}, trib=${impTributos}`);
+
+    const facturaExtra = {
+      concepto,
+      tipoDocumento,
+      condicionVenta,
+      fechaServicioDesde,
+      fechaServicioHasta,
+      fechaVtoPago,
+      importeNoGravado: impNoGravado,
+      importeExento: impExento,
+      importeTributos: impTributos,
+      descripcion,
+    };
+
+    const soapOpts = {
+      concepto,
+      tipoDocumento,
+      fechaServicioDesde,
+      fechaServicioHasta,
+      fechaVtoPago,
+      importeNoGravado: impNoGravado,
+      importeExento: impExento,
+      importeTributos: impTributos,
+    };
 
     // Use exactly the requested environment – no silent fallback
     const environment = requestedEnv;
@@ -1690,8 +1736,13 @@ serve(async (req) => {
       // No config in either environment → save as pending
       const factura = await createFacturaRecord(
         supabase, envio_id || null, liquidacion_seller_id || null, tenantId,
-        tipo_comprobante, 0, 0, receptor, importeNeto, importeIva, importeTotal, userId
+        tipo_comprobante, 0, 0, receptor, importeNeto, importeIva, importeTotal, userId,
+        facturaExtra
       );
+
+      if (lineItems && lineItems.length > 0) {
+        await supabase.from('facturas').update({ line_items: lineItems }).eq('id', factura.id);
+      }
 
       if (envio_id) {
         await supabase.from('envios')
@@ -1725,13 +1776,19 @@ serve(async (req) => {
     const factura = await createFacturaRecord(
       supabase, envio_id || null, liquidacion_seller_id || null, tenantId,
       tipo_comprobante, puntoVenta, numeroComprobante, receptor,
-      importeNeto, importeIva, importeTotal, userId
+      importeNeto, importeIva, importeTotal, userId,
+      facturaExtra
     );
+
+    if (lineItems && lineItems.length > 0) {
+      await supabase.from('facturas').update({ line_items: lineItems }).eq('id', factura.id);
+    }
 
     const arcaResult = await emitirFacturaARCA(
       supabase, tenantId, arcaConfig, environment, tipo_comprobante, numeroComprobante,
       receptor, importeNeto, importeIva, importeTotal,
-      wsaaToken, wsaaSign  // reusar el token ya obtenido, evita doble auth
+      wsaaToken, wsaaSign,  // reusar el token ya obtenido, evita doble auth
+      soapOpts
     );
 
     if (arcaResult.success && arcaResult.cae) {

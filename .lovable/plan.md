@@ -1,81 +1,38 @@
-# Anulación de Facturas y Notas de Crédito
+## Problema
 
-Implementación completa para gestionar la anulación de facturas y la emisión de Notas de Crédito (NC A/B/C) ante ARCA desde Facturación → Emitidas.
+El diálogo "Factura Manual" (`EmitirFacturaDialog`) llama al edge function `arca-factura` **sin** enviar `envio_id`, `liquidacion_seller_id` ni `liquidacion_terciarizado_id`. La función exige obligatoriamente uno de esos tres (línea 1586), por lo que devuelve **400 "Se requiere envio_id, liquidacion_seller_id o liquidacion_terciarizado_id"** y el frontend muestra "Edge Function returned a non-2xx status code".
 
-## Cambios en Base de Datos
+Además, cuando se envían `concepto`, `tipo_documento`, `condicion_venta`, `fecha_servicio_*`, `importe_no_gravado/exento/tributos`, `descripcion` y `line_items` desde la factura manual, el flujo principal **no los pasa** a `createFacturaRecord` ni a `emitirFacturaARCA` (solo el flujo de NC los considera). Esto hace que la factura manual se grabe sin esos datos y AFIP rechace o falten en el comprobante.
 
-Migración sobre `facturas`:
-- `factura_origen_id UUID` (FK a `facturas.id`) — vincula NC con la factura original.
-- `motivo_nota_credito TEXT` — motivo del ajuste.
-- `es_nota_credito BOOLEAN DEFAULT false` — flag rápido para filtros.
-- `anulada_at TIMESTAMPTZ`, `anulada_por UUID`, `motivo_anulacion TEXT`.
-- Actualizar constraint `tipo_comprobante` para incluir `NC_A`, `NC_B`, `NC_C`.
-- Index sobre `factura_origen_id`.
+## Plan de corrección
 
-## Edge Function: `arca-factura`
+### 1. Edge function `arca-factura` (flujo principal)
+- Eliminar la validación que obliga a tener envío/liquidación. Permitir emisión "manual" sin asociación.
+- Cuando no hay envío ni liquidación:
+  - `total = importe_total` directamente del body (validar que sea > 0).
+  - Saltar las consultas a `envios` / `liquidaciones_*`.
+- Pasar al `createFacturaRecord` el objeto `extra` con: `concepto`, `tipo_documento`, `condicion_venta`, `fecha_servicio_desde/hasta`, `fecha_vto_pago`, `importe_no_gravado`, `importe_exento`, `importe_tributos`, `descripcion`.
+- Para conceptos 2 (Servicios) y 3 (Productos y Servicios): si vienen `fecha_servicio_*` y `fecha_vto_pago`, incluirlos en el XML SOAP `FECAESolicitar` (campos `FchServDesde`, `FchServHasta`, `FchVtoPago` con formato `AAAAMMDD`).
+- Pasar `importe_no_gravado` / `importe_exento` / `importe_tributos` al cálculo del XML (campos `ImpTotConc`, `ImpOpEx`, `ImpTrib`) y recalcular `ImpNeto = importe_total - IVA - no_gravado - exento - tributos` para que cuadre con AFIP.
+- Persistir `line_items` (si vienen) en una columna JSONB `line_items` de `facturas` (agregar columna en migración).
 
-Nueva acción `emitir_nota_credito`:
-- Recibe `factura_origen_id`, `tipo` (NC_A/B/C), `items`, `motivo`, `total` (puede ser parcial).
-- Determina `CbteTipo` AFIP: 3 (NC A), 8 (NC B), 13 (NC C).
-- Llama `FECAESolicitar` con `CbtesAsoc` apuntando al `cbte_tipo`, `pto_vta` y `cbte_nro` de la factura original (requisito AFIP para asociar la NC).
-- Reutiliza la caché del token WSAA (12h) ya existente.
-- Persiste la NC en `facturas` con `es_nota_credito=true`, `factura_origen_id`, `cae`, `cae_vencimiento`.
+### 2. Migración BD
+- Agregar columna `line_items jsonb` a `facturas` (nullable). Esto permite que la factura impresa muestre el detalle.
 
-## UI: `src/pages/Facturacion.tsx` (pestaña Emitidas)
+### 3. Frontend `EmitirFacturaDialog.tsx`
+- Sin cambios funcionales en la llamada (ya envía todo lo necesario).
+- Mejorar mensaje de error mostrando el `data.error` real cuando exista, no solo el genérico.
 
-Menú de acciones (⋮) por fila con lógica condicional:
+### 4. Validaciones extra del edge function
+- Si `concepto` ∈ {2,3} y faltan fechas servicio → 400 con mensaje claro.
+- Si `importe_total <= 0` → 400.
 
-1. **Anular (local)** — visible solo si `estado IN ('pendiente','rechazada','error')` y NO tiene `cae`.
-   - Diálogo simple con motivo; marca `estado='anulada'`, registra `anulada_at/por/motivo_anulacion`.
+## Archivos a modificar
 
-2. **Emitir Nota de Crédito** — visible si la factura tiene `cae` y no está ya anulada por NC total.
-   - Diálogo `CreditNoteDialog` con:
-     - Tipo NC sugerido automáticamente según el tipo de la factura origen (A→NC_A, B→NC_B, C→NC_C).
-     - Selector Total / Parcial.
-     - Si Parcial: edición de items e importe.
-     - Campo motivo obligatorio.
-     - Vista previa: nro punto venta, totales, IVA discriminado.
-   - Al confirmar: invoca `arca-factura` acción `emitir_nota_credito`.
+- `supabase/functions/arca-factura/index.ts` (flujo principal de emisión + XML SOAP).
+- `supabase/migrations/<nuevo>.sql` (columna `line_items jsonb` en `facturas`).
+- (Opcional) `src/components/invoicing/EmitirFacturaDialog.tsx` para propagar error detallado.
 
-3. **Ver NC asociadas** — listado de NCs con `factura_origen_id = factura.id`.
+## Resultado esperado
 
-## Lógica contable / cuentas corrientes
-
-Al confirmar una NC con CAE:
-- Si la factura original está vinculada a `liquidacion_seller_id`: insertar movimiento negativo en `seller_cuenta_corriente` (revierte el cargo proporcional).
-- Si está vinculada a `liquidacion_terciarizado_id`: registrar ajuste negativo en la liquidación del tercero.
-- Si la NC es **total**, marcar la factura origen con `estado='anulada_por_nc'` y `anulada_at=now()`.
-- Registrar entrada en `envio_historial` o log equivalente cuando aplique.
-
-## Filtros y visualización
-
-- Pestaña Emitidas: añadir filtro "Tipo": Facturas / Notas de Crédito / Todas.
-- Badge visual:
-  - `anulada` → rojo "Anulada"
-  - `anulada_por_nc` → naranja "Anulada por NC"
-  - `es_nota_credito=true` → azul "NC"
-- En el detalle de una factura con NCs: mostrar tarjeta "Notas de Crédito asociadas" con link a cada una.
-
-## Reportes
-
-- Libro IVA Ventas: incluir NCs como filas con signo negativo (ya soportado por `tipo_comprobante`, solo verificar agrupación).
-- Reporte de facturación: separar Bruto / NC / Neto.
-
-## Archivos a modificar/crear
-
-- `supabase/migrations/<timestamp>_facturas_nc_anulacion.sql` (nuevo)
-- `supabase/functions/arca-factura/index.ts` (extender)
-- `src/pages/Facturacion.tsx` (menú acciones + filtros)
-- `src/components/facturacion/CreditNoteDialog.tsx` (nuevo)
-- `src/components/facturacion/VoidInvoiceDialog.tsx` (nuevo)
-- `src/components/facturacion/RelatedCreditNotes.tsx` (nuevo, opcional para detalle)
-
-## Validaciones clave
-
-- No permitir NC sobre una factura sin CAE → usar Anular.
-- No permitir NC cuyo total exceda el saldo no acreditado de la factura origen.
-- No permitir Anular si la factura ya tiene CAE → forzar NC.
-- Solo `admin` / `super_admin` pueden anular o emitir NC.
-- Si AFIP rechaza la NC, no persistir movimientos contables (transacción atómica).
-
-¿Procedo con la implementación completa, o preferís dividirlo en fases (primero Anular sin CAE, luego NC ARCA)?
+Desde "Facturación → Emitir Factura" se podrá emitir Factura A/B/C **manualmente** (sin envío/liquidación), con datos completos AFIP (concepto, fechas servicio, importes desglosados, ítems) y obtener CAE correctamente.

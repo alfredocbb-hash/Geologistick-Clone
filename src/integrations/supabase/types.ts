@@ -1520,6 +1520,7 @@ export type Database = {
           importe_no_gravado: number
           importe_total: number
           importe_tributos: number
+          line_items: Json | null
           liquidacion_seller_id: string | null
           liquidacion_terciarizado_id: string | null
           motivo_anulacion: string | null
@@ -1563,6 +1564,7 @@ export type Database = {
           importe_no_gravado?: number
           importe_total: number
           importe_tributos?: number
+          line_items?: Json | null
           liquidacion_seller_id?: string | null
           liquidacion_terciarizado_id?: string | null
           motivo_anulacion?: string | null
@@ -1606,6 +1608,7 @@ export type Database = {
           importe_no_gravado?: number
           importe_total?: number
           importe_tributos?: number
+          line_items?: Json | null
           liquidacion_seller_id?: string | null
           liquidacion_terciarizado_id?: string | null
           motivo_anulacion?: string | null

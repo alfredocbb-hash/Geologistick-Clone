@@ -146,7 +146,22 @@ export function EmitirFacturaDialog({ open, onClose, onSuccess }: EmitirFacturaD
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        // Try to surface the real backend error message instead of generic "non-2xx"
+        // deno-lint-ignore no-explicit-any
+        const ctx: any = (error as any).context;
+        let backendMsg: string | undefined;
+        try {
+          if (ctx && typeof ctx.json === 'function') {
+            const parsed = await ctx.json();
+            backendMsg = parsed?.error;
+          } else if (ctx && typeof ctx.text === 'function') {
+            const txt = await ctx.text();
+            try { backendMsg = JSON.parse(txt)?.error; } catch { backendMsg = txt; }
+          }
+        } catch { /* noop */ }
+        throw new Error(backendMsg || error.message || 'Error al invocar el servicio');
+      }
       if (!data.success && data.error) throw new Error(data.error);
       return data;
     },
