@@ -83,6 +83,15 @@ interface CashMovement {
   envio_id: string | null;
   created_at: string | null;
   created_by: string | null;
+  chofer_id?: string | null;
+  categoria?: string | null;
+  descontado_en_liquidacion_id?: string | null;
+}
+
+interface DriverOption {
+  user_id: string;
+  nombre: string | null;
+  apellido: string | null;
 }
 
 interface Sucursal {
@@ -127,6 +136,8 @@ export default function Cash() {
     monto: '',
     metodo_pago: 'efectivo' as PaymentMethod,
     referencia: '',
+    categoria: 'otro' as 'adelanto_chofer' | 'gasto_operativo' | 'otro',
+    chofer_id: '' as string,
   });
 
   // Default selectedSucursalId to user's branch
@@ -331,19 +342,62 @@ export default function Cash() {
     },
   });
 
+  // Drivers list (for adelanto a chofer)
+  const { data: drivers = [] } = useQuery({
+    queryKey: ['tenant-drivers', profile?.tenant_id],
+    queryFn: async () => {
+      if (!profile?.tenant_id) return [];
+      const { data: roles } = await supabase
+        .from('user_roles')
+        .select('user_id')
+        .eq('role', 'chofer');
+      const ids = roles?.map(r => r.user_id) || [];
+      if (!ids.length) return [];
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('user_id, nombre, apellido')
+        .eq('tenant_id', profile.tenant_id)
+        .in('user_id', ids);
+      if (error) throw error;
+      return (data || []) as DriverOption[];
+    },
+    enabled: !!profile?.tenant_id,
+  });
+
+  const driverName = (id?: string | null) => {
+    if (!id) return '';
+    const d = drivers.find(x => x.user_id === id);
+    if (!d) return 'Chofer';
+    return `${d.nombre || ''} ${d.apellido || ''}`.trim() || 'Chofer';
+  };
+
   // Add movement
   const addMovementMutation = useMutation({
     mutationFn: async (data: typeof movementFormData) => {
       if (!currentSession || !user) throw new Error('No hay sesión activa');
 
+      // Validate adelanto a chofer
+      if (data.tipo === 'egreso' && data.categoria === 'adelanto_chofer' && !data.chofer_id) {
+        throw new Error('Debe seleccionar el chofer al registrar un adelanto');
+      }
+
+      const isAdelanto = data.tipo === 'egreso' && data.categoria === 'adelanto_chofer';
+      const concepto = data.concepto?.trim()
+        ? data.concepto
+        : isAdelanto
+          ? `Adelanto a ${driverName(data.chofer_id)}`
+          : '';
+
       const { error } = await supabase.from('movimientos_caja').insert({
         sesion_caja_id: currentSession.id,
         tipo: data.tipo,
-        concepto: data.concepto,
+        concepto,
         monto: parseFloat(data.monto),
         metodo_pago: data.metodo_pago,
         referencia: data.referencia || null,
         created_by: user.id,
+        categoria: data.tipo === 'egreso' ? data.categoria : null,
+        chofer_id: isAdelanto ? data.chofer_id : null,
       });
       if (error) throw error;
     },
@@ -357,6 +411,8 @@ export default function Cash() {
         monto: '',
         metodo_pago: 'efectivo',
         referencia: '',
+        categoria: 'otro',
+        chofer_id: '',
       });
     },
     onError: (error: Error) => {
@@ -682,7 +738,14 @@ export default function Cash() {
                         </TableCell>
                         <TableCell>
                           <div>
-                            <p className="font-medium">{movement.concepto}</p>
+                            <p className="font-medium flex items-center gap-2">
+                              {movement.concepto}
+                              {movement.categoria === 'adelanto_chofer' && (
+                                <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30">
+                                  Adelanto {movement.chofer_id ? `· ${driverName(movement.chofer_id)}` : ''}
+                                </Badge>
+                              )}
+                            </p>
                             {movement.referencia && (
                               <p className="text-xs text-muted-foreground">
                                 Ref: {movement.referencia}
@@ -1026,6 +1089,65 @@ export default function Cash() {
             }}
             className="space-y-4"
           >
+            {movementFormData.tipo === 'egreso' && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Categoría</Label>
+                  <Select
+                    value={movementFormData.categoria}
+                    onValueChange={(value) =>
+                      setMovementFormData({
+                        ...movementFormData,
+                        categoria: value as typeof movementFormData.categoria,
+                        // reset chofer si cambia
+                        chofer_id: value === 'adelanto_chofer' ? movementFormData.chofer_id : '',
+                      })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="adelanto_chofer">Adelanto a Chofer</SelectItem>
+                      <SelectItem value="gasto_operativo">Gasto Operativo</SelectItem>
+                      <SelectItem value="otro">Otro</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {movementFormData.categoria === 'adelanto_chofer' && (
+                  <div className="space-y-2">
+                    <Label>Chofer *</Label>
+                    <Select
+                      value={movementFormData.chofer_id}
+                      onValueChange={(value) =>
+                        setMovementFormData({
+                          ...movementFormData,
+                          chofer_id: value,
+                          concepto: movementFormData.concepto || `Adelanto a ${driverName(value)}`,
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar chofer" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {drivers.length === 0 ? (
+                          <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                            No hay choferes
+                          </div>
+                        ) : (
+                          drivers.map((d) => (
+                            <SelectItem key={d.user_id} value={d.user_id}>
+                              {`${d.nombre || ''} ${d.apellido || ''}`.trim() || 'Sin nombre'}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Concepto *</Label>
               <Input
