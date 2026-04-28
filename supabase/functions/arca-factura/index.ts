@@ -1496,9 +1496,7 @@ serve(async (req) => {
       try {
         const { token, sign } = await getWSAAToken(supabase, tenantId, ncEnv, arcaConfig);
 
-        // Próximo número de NC para este PV+tipo
-        const nextNCNumber = await getUltimoComprobanteAFIP(token, sign, arcaConfig.cuit, puntoVenta, tipoLetra, endpointsNC.wsfe);
-        // Reusar getUltimoComprobanteAFIP devuelve último de FACTURA, no NC. Necesitamos consulta específica para NC.
+        // Próximo número de NC (CbteTipo 3/8/13) específico
         const nextNC = await getUltimoNCAFIP(token, sign, arcaConfig.cuit, puntoVenta, ncTipoCode, endpointsNC.wsfe);
         const nroNC = (nextNC >= 0 ? nextNC : 0) + 1;
 
