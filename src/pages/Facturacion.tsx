@@ -19,10 +19,13 @@ import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { FileText, Loader2, Search, CheckCircle, AlertCircle, Package, Copy, RefreshCw, Download, Plus } from 'lucide-react';
+import { FileText, Loader2, Search, CheckCircle, AlertCircle, Package, Copy, RefreshCw, Download, Plus, MoreVertical, Ban, FileMinus } from 'lucide-react';
 import { useARCAIntegration, determinarTipoFactura, validateCUIT, formatCUIT } from '@/hooks/useARCAConfig';
 import { useCuitLookup } from '@/hooks/useCuitLookup';
 import { format } from 'date-fns';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { VoidInvoiceDialog } from '@/components/invoicing/VoidInvoiceDialog';
+import { CreditNoteDialog } from '@/components/invoicing/CreditNoteDialog';
 
 const CONDICION_IVA_OPTIONS = [
   { value: 'responsable_inscripto', label: 'Responsable Inscripto', requiresCuit: true },
