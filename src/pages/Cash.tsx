@@ -1082,6 +1082,65 @@ export default function Cash() {
             }}
             className="space-y-4"
           >
+            {movementFormData.tipo === 'egreso' && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Categoría</Label>
+                  <Select
+                    value={movementFormData.categoria}
+                    onValueChange={(value) =>
+                      setMovementFormData({
+                        ...movementFormData,
+                        categoria: value as typeof movementFormData.categoria,
+                        // reset chofer si cambia
+                        chofer_id: value === 'adelanto_chofer' ? movementFormData.chofer_id : '',
+                      })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="adelanto_chofer">Adelanto a Chofer</SelectItem>
+                      <SelectItem value="gasto_operativo">Gasto Operativo</SelectItem>
+                      <SelectItem value="otro">Otro</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {movementFormData.categoria === 'adelanto_chofer' && (
+                  <div className="space-y-2">
+                    <Label>Chofer *</Label>
+                    <Select
+                      value={movementFormData.chofer_id}
+                      onValueChange={(value) =>
+                        setMovementFormData({
+                          ...movementFormData,
+                          chofer_id: value,
+                          concepto: movementFormData.concepto || `Adelanto a ${driverName(value)}`,
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar chofer" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {drivers.length === 0 ? (
+                          <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                            No hay choferes
+                          </div>
+                        ) : (
+                          drivers.map((d) => (
+                            <SelectItem key={d.user_id} value={d.user_id}>
+                              {`${d.nombre || ''} ${d.apellido || ''}`.trim() || 'Sin nombre'}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Concepto *</Label>
               <Input
