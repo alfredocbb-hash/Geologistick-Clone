@@ -1013,6 +1013,25 @@ export default function Facturacion() {
         onClose={() => setEmitirOpen(false)}
         onSuccess={() => refetchEmitidas()}
       />
+
+      {voidTarget && (
+        <VoidInvoiceDialog
+          open={voidOpen}
+          onOpenChange={setVoidOpen}
+          factura={voidTarget}
+          onSuccess={() => refetchEmitidas()}
+        />
+      )}
+
+      {ncTarget && (
+        <CreditNoteDialog
+          open={ncOpen}
+          onOpenChange={setNcOpen}
+          factura={ncTarget}
+          environment={activeEnvironment || 'production'}
+          onSuccess={() => refetchEmitidas()}
+        />
+      )}
     </div>
   );
 }
