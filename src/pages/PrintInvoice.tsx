@@ -445,9 +445,9 @@ export default function PrintInvoice() {
         <FileText className="h-16 w-16 text-muted-foreground" />
         <p className="text-lg text-muted-foreground">Factura no encontrada</p>
         <Button asChild variant="outline">
-          <Link to="/shipments">
+          <Link to="/facturacion">
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Volver a Envíos
+            Volver a Facturación
           </Link>
         </Button>
       </div>
