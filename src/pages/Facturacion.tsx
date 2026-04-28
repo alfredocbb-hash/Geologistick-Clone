@@ -612,6 +612,14 @@ export default function Facturacion() {
                     className="pl-9"
                   />
                 </div>
+                <Select value={tipoFilter} onValueChange={(v) => setTipoFilter(v as any)}>
+                  <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todas">Todas</SelectItem>
+                    <SelectItem value="facturas">Solo Facturas</SelectItem>
+                    <SelectItem value="nc">Solo Notas de Crédito</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Button
                   variant="outline"
                   onClick={() => setManualOpen(true)}
