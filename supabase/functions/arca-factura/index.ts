@@ -692,6 +692,7 @@ async function solicitarCAE(
     ? `${caeFchRaw.slice(0,4)}-${caeFchRaw.slice(4,6)}-${caeFchRaw.slice(6,8)}`
     : caeFchRaw;
 
+  return { cae, caeVencimiento };
 }
 
 // ─────────────────────────────────────────────
