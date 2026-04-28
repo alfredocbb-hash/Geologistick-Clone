@@ -1675,20 +1675,43 @@ serve(async (req) => {
     }
 
     // ── Desglose fiscal ──────────────────────────────────────────────
-    // CORRECCIÓN Bug 1: Calcular importeNeto e importeIva con precisión garantizada.
-    // total = precio con IVA incluido (21%).
-    // Para Factura A: receptor es RI, se factura con IVA discriminado.
-    // Para Factura B/C: consumidores finales o monotributistas, IVA incluido.
-    // AFIP exige siempre el desglose aunque el receptor sea CF.
+    // total = precio TOTAL con IVA incluido (si aplica).
+    // Si vienen importes No Gravado / Exento / Tributos, descontarlos del cálculo de neto+IVA.
     const importeTotal = Math.round(total * 100) / 100;
-    const importeNeto  = Math.round((importeTotal / 1.21) * 100) / 100;
-    const importeIva   = Math.round((importeTotal - importeNeto) * 100) / 100;
+    const impNoGravado = Math.round(importeNoGravadoIn * 100) / 100;
+    const impExento    = Math.round(importeExentoIn * 100) / 100;
+    const impTributos  = Math.round(importeTributosIn * 100) / 100;
 
-    console.log(`[ARCA] Desglose fiscal: total=${importeTotal}, neto=${importeNeto}, iva=${importeIva}`);
-    // Validar coherencia (AFIP rechaza si no cuadra)
-    if (Math.abs(importeNeto + importeIva - importeTotal) > 0.02) {
-      console.error('[ARCA] WARN: Discrepancia en desglose IVA', { importeTotal, importeNeto, importeIva });
-    }
+    // Base gravada = total - (no gravado + exento + tributos)
+    const baseGravada = Math.round((importeTotal - impNoGravado - impExento - impTributos) * 100) / 100;
+    const importeNeto = baseGravada > 0 ? Math.round((baseGravada / 1.21) * 100) / 100 : 0;
+    const importeIva  = baseGravada > 0 ? Math.round((baseGravada - importeNeto) * 100) / 100 : 0;
+
+    console.log(`[ARCA] Desglose fiscal: total=${importeTotal}, neto=${importeNeto}, iva=${importeIva}, noGrav=${impNoGravado}, exento=${impExento}, trib=${impTributos}`);
+
+    const facturaExtra = {
+      concepto,
+      tipoDocumento,
+      condicionVenta,
+      fechaServicioDesde,
+      fechaServicioHasta,
+      fechaVtoPago,
+      importeNoGravado: impNoGravado,
+      importeExento: impExento,
+      importeTributos: impTributos,
+      descripcion,
+    };
+
+    const soapOpts = {
+      concepto,
+      tipoDocumento,
+      fechaServicioDesde,
+      fechaServicioHasta,
+      fechaVtoPago,
+      importeNoGravado: impNoGravado,
+      importeExento: impExento,
+      importeTributos: impTributos,
+    };
 
     // Use exactly the requested environment – no silent fallback
     const environment = requestedEnv;
@@ -1713,8 +1736,13 @@ serve(async (req) => {
       // No config in either environment → save as pending
       const factura = await createFacturaRecord(
         supabase, envio_id || null, liquidacion_seller_id || null, tenantId,
-        tipo_comprobante, 0, 0, receptor, importeNeto, importeIva, importeTotal, userId
+        tipo_comprobante, 0, 0, receptor, importeNeto, importeIva, importeTotal, userId,
+        facturaExtra
       );
+
+      if (lineItems && lineItems.length > 0) {
+        await supabase.from('facturas').update({ line_items: lineItems }).eq('id', factura.id);
+      }
 
       if (envio_id) {
         await supabase.from('envios')
@@ -1748,13 +1776,19 @@ serve(async (req) => {
     const factura = await createFacturaRecord(
       supabase, envio_id || null, liquidacion_seller_id || null, tenantId,
       tipo_comprobante, puntoVenta, numeroComprobante, receptor,
-      importeNeto, importeIva, importeTotal, userId
+      importeNeto, importeIva, importeTotal, userId,
+      facturaExtra
     );
+
+    if (lineItems && lineItems.length > 0) {
+      await supabase.from('facturas').update({ line_items: lineItems }).eq('id', factura.id);
+    }
 
     const arcaResult = await emitirFacturaARCA(
       supabase, tenantId, arcaConfig, environment, tipo_comprobante, numeroComprobante,
       receptor, importeNeto, importeIva, importeTotal,
-      wsaaToken, wsaaSign  // reusar el token ya obtenido, evita doble auth
+      wsaaToken, wsaaSign,  // reusar el token ya obtenido, evita doble auth
+      soapOpts
     );
 
     if (arcaResult.success && arcaResult.cae) {
