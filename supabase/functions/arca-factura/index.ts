@@ -1292,6 +1292,149 @@ serve(async (req) => {
     }
     // ── FIN SINCRONIZACIÓN ────────────────────────────────────────────────────
 
+    // ── EMISIÓN DE NOTA DE CRÉDITO ────────────────────────────────────────────
+    if (rawBody.action === 'emitir_nota_credito') {
+      const ncEnv: 'sandbox' | 'production' = rawBody.environment || 'production';
+      const facturaOrigenId = rawBody.factura_origen_id as string | undefined;
+      const motivo = (rawBody.motivo as string | undefined) || '';
+      const importeTotalNC = Number(rawBody.importe_total) || 0;
+      const isTotal = !!rawBody.total;
+
+      if (!facturaOrigenId || importeTotalNC <= 0) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Faltan datos: factura_origen_id e importe_total' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Cargar factura origen
+      const { data: facturaOrigen, error: foErr } = await supabase
+        .from('facturas')
+        .select('*')
+        .eq('id', facturaOrigenId)
+        .eq('tenant_id', tenantId)
+        .single();
+
+      if (foErr || !facturaOrigen) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Factura origen no encontrada' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (!facturaOrigen.cae) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'La factura origen no tiene CAE; debe anularse en lugar de emitir NC' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const tipoLetra = (facturaOrigen.tipo_comprobante as 'A' | 'B' | 'C') || 'B';
+      const ncTipoCode = INVOICE_CODES[tipoLetra].notaCredito; // 3, 8 o 13
+
+      const ncTotal = Math.round(importeTotalNC * 100) / 100;
+      const ncNeto = Math.round((ncTotal / 1.21) * 100) / 100;
+      const ncIva = Math.round((ncTotal - ncNeto) * 100) / 100;
+
+      const arcaConfig = await getARCAConfig(supabase, tenantId, ncEnv);
+      if (!arcaConfig) {
+        return new Response(
+          JSON.stringify({ success: false, error: `No hay configuración ARCA para ${ncEnv}` }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const puntoVenta = parseInt(arcaConfig.punto_venta);
+      const endpointsNC = ARCA_ENDPOINTS[ncEnv];
+
+      try {
+        const { token, sign } = await getWSAAToken(supabase, tenantId, ncEnv, arcaConfig);
+
+        // Próximo número de NC para este PV+tipo
+        const nextNCNumber = await getUltimoComprobanteAFIP(token, sign, arcaConfig.cuit, puntoVenta, tipoLetra, endpointsNC.wsfe);
+        // Reusar getUltimoComprobanteAFIP devuelve último de FACTURA, no NC. Necesitamos consulta específica para NC.
+        const nextNC = await getUltimoNCAFIP(token, sign, arcaConfig.cuit, puntoVenta, ncTipoCode, endpointsNC.wsfe);
+        const nroNC = (nextNC >= 0 ? nextNC : 0) + 1;
+
+        // Receptor: tomar de la factura origen
+        const receptorNC = {
+          cuit: facturaOrigen.receptor_cuit || undefined,
+          nombre: facturaOrigen.receptor_nombre || 'Sin datos',
+          condicion_iva: facturaOrigen.receptor_condicion_iva || 'consumidor_final',
+          domicilio: facturaOrigen.receptor_domicilio || undefined,
+        };
+
+        // Solicitar CAE para NC con CbtesAsoc apuntando a la factura origen
+        const caeResult = await solicitarCAENotaCredito(
+          token, sign, arcaConfig.cuit, puntoVenta, ncTipoCode, nroNC,
+          receptorNC, ncNeto, ncIva, ncTotal,
+          {
+            origen_tipo: INVOICE_CODES[tipoLetra].factura,
+            origen_pv: facturaOrigen.punto_venta,
+            origen_nro: facturaOrigen.numero_comprobante,
+            origen_cuit: arcaConfig.cuit,
+            origen_fecha: facturaOrigen.fecha_emision,
+          },
+          endpointsNC.wsfe
+        );
+
+        // Persistir NC en facturas
+        const { data: ncRecord, error: insErr } = await supabase.from('facturas').insert({
+          tenant_id: tenantId,
+          tipo_comprobante: tipoLetra, // mantenemos letra; flag es_nota_credito diferencia
+          punto_venta: puntoVenta,
+          numero_comprobante: nroNC,
+          fecha_emision: new Date().toISOString(),
+          receptor_cuit: receptorNC.cuit,
+          receptor_nombre: receptorNC.nombre,
+          receptor_condicion_iva: receptorNC.condicion_iva,
+          receptor_domicilio: receptorNC.domicilio,
+          importe_neto: ncNeto,
+          importe_iva: ncIva,
+          importe_total: ncTotal,
+          cae: caeResult.cae,
+          cae_vencimiento: caeResult.caeVencimiento,
+          estado: 'emitida',
+          es_nota_credito: true,
+          factura_origen_id: facturaOrigenId,
+          motivo_nota_credito: motivo,
+          created_by: userId,
+          arca_response: { ...caeResult, environment: ncEnv, cbte_tipo: ncTipoCode },
+        }).select().single();
+
+        if (insErr) throw insErr;
+
+        // Si NC total → marcar factura origen como anulada_por_nc
+        if (isTotal) {
+          await supabase.from('facturas').update({
+            estado: 'anulada_por_nc',
+            anulada_at: new Date().toISOString(),
+            anulada_por: userId,
+            motivo_anulacion: motivo || 'Anulada por Nota de Crédito',
+          }).eq('id', facturaOrigenId);
+        }
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            nota_credito_id: ncRecord.id,
+            cae: caeResult.cae,
+            cae_vencimiento: caeResult.caeVencimiento,
+            numero_comprobante: `${String(puntoVenta).padStart(4,'0')}-${String(nroNC).padStart(8,'0')}`,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('[ARCA NC] Error:', msg);
+        return new Response(
+          JSON.stringify({ success: false, error: msg }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+    // ── FIN NOTA DE CRÉDITO ───────────────────────────────────────────────────
+
     const body: FacturaRequest = rawBody;
     const { envio_id, liquidacion_seller_id, liquidacion_terciarizado_id, tipo_comprobante, receptor, importe_total } = body;
     const requestedEnv: 'sandbox' | 'production' = body.environment || 'production';
