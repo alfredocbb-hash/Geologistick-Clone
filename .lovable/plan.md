@@ -1,49 +1,81 @@
+# Anulación de Facturas y Notas de Crédito
 
-## Adelantos a Choferes desde Caja
+Implementación completa para gestionar la anulación de facturas y la emisión de Notas de Crédito (NC A/B/C) ante ARCA desde Facturación → Emitidas.
 
-Permitir que Administración registre un egreso de caja del tipo "Adelanto a Chofer", vinculado a un chofer específico, que luego se descuente automáticamente al liquidar al chofer.
+## Cambios en Base de Datos
 
-### Cambios en base de datos
+Migración sobre `facturas`:
+- `factura_origen_id UUID` (FK a `facturas.id`) — vincula NC con la factura original.
+- `motivo_nota_credito TEXT` — motivo del ajuste.
+- `es_nota_credito BOOLEAN DEFAULT false` — flag rápido para filtros.
+- `anulada_at TIMESTAMPTZ`, `anulada_por UUID`, `motivo_anulacion TEXT`.
+- Actualizar constraint `tipo_comprobante` para incluir `NC_A`, `NC_B`, `NC_C`.
+- Index sobre `factura_origen_id`.
 
-Migración para extender `movimientos_caja`:
-- Agregar columna `chofer_id UUID` (nullable, FK lógica a `profiles.user_id`).
-- Agregar columna `categoria TEXT` (nullable) para tipificar movimientos: `adelanto_chofer`, `gasto_operativo`, `otro`.
-- Agregar columna `descontado_en_liquidacion_id UUID` (nullable) para marcar cuando ya fue aplicado a una liquidación de chofer y evitar doble descuento.
-- Index en `(chofer_id, descontado_en_liquidacion_id)` para queries de adelantos pendientes.
+## Edge Function: `arca-factura`
 
-### UI - Página Caja (`src/pages/Cash.tsx`)
+Nueva acción `emitir_nota_credito`:
+- Recibe `factura_origen_id`, `tipo` (NC_A/B/C), `items`, `motivo`, `total` (puede ser parcial).
+- Determina `CbteTipo` AFIP: 3 (NC A), 8 (NC B), 13 (NC C).
+- Llama `FECAESolicitar` con `CbtesAsoc` apuntando al `cbte_tipo`, `pto_vta` y `cbte_nro` de la factura original (requisito AFIP para asociar la NC).
+- Reutiliza la caché del token WSAA (12h) ya existente.
+- Persiste la NC en `facturas` con `es_nota_credito=true`, `factura_origen_id`, `cae`, `cae_vencimiento`.
 
-En el diálogo "Nuevo Movimiento" (cuando `tipo = egreso`):
-- Nuevo Select **Categoría**: "Adelanto a Chofer", "Gasto Operativo", "Otro".
-- Si se elige "Adelanto a Chofer": aparece un Select **Chofer** (lista de usuarios con rol `chofer` de la sucursal/tenant). Campo obligatorio.
-- El concepto se autocompleta como "Adelanto a [Nombre Chofer]" pero editable.
-- Al guardar se persiste `chofer_id` y `categoria = 'adelanto_chofer'`.
+## UI: `src/pages/Facturacion.tsx` (pestaña Emitidas)
 
-En el listado de movimientos:
-- Mostrar badge "Adelanto a [Chofer]" cuando aplique.
+Menú de acciones (⋮) por fila con lógica condicional:
 
-### Nueva pestaña "Adelantos" en Caja
+1. **Anular (local)** — visible solo si `estado IN ('pendiente','rechazada','error')` y NO tiene `cae`.
+   - Diálogo simple con motivo; marca `estado='anulada'`, registra `anulada_at/por/motivo_anulacion`.
 
-Tab adicional que lista todos los adelantos del tenant con filtros por chofer y estado (pendiente de descuento / descontado), mostrando monto, fecha, sucursal y sesión de caja.
+2. **Emitir Nota de Crédito** — visible si la factura tiene `cae` y no está ya anulada por NC total.
+   - Diálogo `CreditNoteDialog` con:
+     - Tipo NC sugerido automáticamente según el tipo de la factura origen (A→NC_A, B→NC_B, C→NC_C).
+     - Selector Total / Parcial.
+     - Si Parcial: edición de items e importe.
+     - Campo motivo obligatorio.
+     - Vista previa: nro punto venta, totales, IVA discriminado.
+   - Al confirmar: invoca `arca-factura` acción `emitir_nota_credito`.
 
-### Integración con Liquidación de Choferes (`src/pages/DriverSettlements.tsx`)
+3. **Ver NC asociadas** — listado de NCs con `factura_origen_id = factura.id`.
 
-Al calcular la liquidación de un chofer en un período:
-- Buscar adelantos en `movimientos_caja` con `chofer_id = X`, `categoria = 'adelanto_chofer'`, `descontado_en_liquidacion_id IS NULL`, fecha dentro del rango.
-- Mostrarlos como línea de descuento ("Adelantos otorgados") restando del monto a pagar.
-- Al confirmar/aprobar la liquidación, actualizar esos movimientos con `descontado_en_liquidacion_id` para marcarlos como aplicados.
-- Si se anula la liquidación, revertir el `descontado_en_liquidacion_id` a NULL.
+## Lógica contable / cuentas corrientes
 
-### Validaciones
+Al confirmar una NC con CAE:
+- Si la factura original está vinculada a `liquidacion_seller_id`: insertar movimiento negativo en `seller_cuenta_corriente` (revierte el cargo proporcional).
+- Si está vinculada a `liquidacion_terciarizado_id`: registrar ajuste negativo en la liquidación del tercero.
+- Si la NC es **total**, marcar la factura origen con `estado='anulada_por_nc'` y `anulada_at=now()`.
+- Registrar entrada en `envio_historial` o log equivalente cuando aplique.
 
-- Solo Admin / Super Admin pueden registrar adelantos (resto puede ver pero no crear).
-- No permitir registrar adelantos si la caja no está abierta.
-- El monto debe ser > 0.
-- El chofer debe pertenecer al mismo tenant.
+## Filtros y visualización
 
-### Archivos a modificar
+- Pestaña Emitidas: añadir filtro "Tipo": Facturas / Notas de Crédito / Todas.
+- Badge visual:
+  - `anulada` → rojo "Anulada"
+  - `anulada_por_nc` → naranja "Anulada por NC"
+  - `es_nota_credito=true` → azul "NC"
+- En el detalle de una factura con NCs: mostrar tarjeta "Notas de Crédito asociadas" con link a cada una.
 
-- `supabase/migrations/<nuevo>.sql` — schema changes
-- `src/pages/Cash.tsx` — diálogo + tab adelantos
-- `src/pages/DriverSettlements.tsx` — descuento en liquidación
-- (opcional) `src/components/cash/AdvanceToDriverBadge.tsx` — badge visual
+## Reportes
+
+- Libro IVA Ventas: incluir NCs como filas con signo negativo (ya soportado por `tipo_comprobante`, solo verificar agrupación).
+- Reporte de facturación: separar Bruto / NC / Neto.
+
+## Archivos a modificar/crear
+
+- `supabase/migrations/<timestamp>_facturas_nc_anulacion.sql` (nuevo)
+- `supabase/functions/arca-factura/index.ts` (extender)
+- `src/pages/Facturacion.tsx` (menú acciones + filtros)
+- `src/components/facturacion/CreditNoteDialog.tsx` (nuevo)
+- `src/components/facturacion/VoidInvoiceDialog.tsx` (nuevo)
+- `src/components/facturacion/RelatedCreditNotes.tsx` (nuevo, opcional para detalle)
+
+## Validaciones clave
+
+- No permitir NC sobre una factura sin CAE → usar Anular.
+- No permitir NC cuyo total exceda el saldo no acreditado de la factura origen.
+- No permitir Anular si la factura ya tiene CAE → forzar NC.
+- Solo `admin` / `super_admin` pueden anular o emitir NC.
+- Si AFIP rechaza la NC, no persistir movimientos contables (transacción atómica).
+
+¿Procedo con la implementación completa, o preferís dividirlo en fases (primero Anular sin CAE, luego NC ARCA)?

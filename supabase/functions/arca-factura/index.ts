@@ -696,6 +696,152 @@ async function solicitarCAE(
 }
 
 // ─────────────────────────────────────────────
+// WSFEv1 – Último número de Nota de Crédito (CbteTipo 3/8/13)
+// ─────────────────────────────────────────────
+async function getUltimoNCAFIP(
+  token: string,
+  sign: string,
+  cuit: string,
+  puntoVenta: number,
+  cbteTipo: number,
+  wsfeUrl: string
+): Promise<number> {
+  const soapBody = `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ar="http://ar.gov.afip.dif.FEV1/">
+  <soap:Header/>
+  <soap:Body>
+    <ar:FECompUltimoAutorizado>
+      <ar:Auth><ar:Token>${token}</ar:Token><ar:Sign>${sign}</ar:Sign><ar:Cuit>${cuit.replace(/[-]/g,'')}</ar:Cuit></ar:Auth>
+      <ar:PtoVta>${puntoVenta}</ar:PtoVta>
+      <ar:CbteTipo>${cbteTipo}</ar:CbteTipo>
+    </ar:FECompUltimoAutorizado>
+  </soap:Body>
+</soap:Envelope>`;
+  const r = await fetch(wsfeUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/xml; charset=utf-8', 'SOAPAction': 'http://ar.gov.afip.dif.FEV1/FECompUltimoAutorizado' },
+    body: soapBody,
+  });
+  const text = await r.text();
+  const m = text.match(/<CbteNro>([\s\S]*?)<\/CbteNro>/i);
+  return m ? (parseInt(m[1].trim(), 10) || 0) : 0;
+}
+
+// ─────────────────────────────────────────────
+// WSFEv1 – Solicitar CAE para Nota de Crédito (con CbtesAsoc)
+// ─────────────────────────────────────────────
+async function solicitarCAENotaCredito(
+  token: string,
+  sign: string,
+  cuit: string,
+  puntoVenta: number,
+  cbteTipo: number,
+  numero: number,
+  receptor: { cuit?: string; nombre: string; condicion_iva: string; domicilio?: string },
+  importeNeto: number,
+  importeIva: number,
+  importeTotal: number,
+  origen: { origen_tipo: number; origen_pv: number; origen_nro: number; origen_cuit: string; origen_fecha?: string | null },
+  wsfeUrl: string
+): Promise<{ cae: string; caeVencimiento: string }> {
+  const ivaCondition = IVA_CONDITIONS[receptor.condicion_iva] || IVA_CONDITIONS.consumidor_final;
+  const docTipo = ivaCondition.docTipo;
+  const docNro = docTipo === 99 ? '0' : (receptor.cuit?.replace(/[-]/g, '') || '0');
+
+  const AR_OFFSET_MS = 3 * 60 * 60 * 1000;
+  const ar = new Date(Date.now() - AR_OFFSET_MS);
+  const fechaCbte = `${ar.getUTCFullYear()}${String(ar.getUTCMonth()+1).padStart(2,'0')}${String(ar.getUTCDate()).padStart(2,'0')}`;
+
+  const condicionIvaCode: Record<string, number> = {
+    responsable_inscripto: 1, exento: 4, consumidor_final: 5, monotributo: 6, no_responsable: 7,
+  };
+  const condIvaReceptor = condicionIvaCode[receptor.condicion_iva] ?? 5;
+
+  const ivaBlock = importeIva > 0.005
+    ? `<ar:Iva><ar:AlicIva><ar:Id>5</ar:Id><ar:BaseImp>${importeNeto.toFixed(2)}</ar:BaseImp><ar:Importe>${importeIva.toFixed(2)}</ar:Importe></ar:AlicIva></ar:Iva>`
+    : '';
+
+  // Fecha origen → formato AAAAMMDD
+  let fchOrigen = '';
+  if (origen.origen_fecha) {
+    const d = new Date(origen.origen_fecha);
+    fchOrigen = `${d.getUTCFullYear()}${String(d.getUTCMonth()+1).padStart(2,'0')}${String(d.getUTCDate()).padStart(2,'0')}`;
+  }
+
+  const cbtesAsocBlock = `<ar:CbtesAsoc><ar:CbteAsoc>
+    <ar:Tipo>${origen.origen_tipo}</ar:Tipo>
+    <ar:PtoVta>${origen.origen_pv}</ar:PtoVta>
+    <ar:Nro>${origen.origen_nro}</ar:Nro>
+    <ar:Cuit>${origen.origen_cuit.replace(/[-]/g,'')}</ar:Cuit>${fchOrigen ? `<ar:CbteFch>${fchOrigen}</ar:CbteFch>` : ''}
+  </ar:CbteAsoc></ar:CbtesAsoc>`;
+
+  const soapBody = `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ar="http://ar.gov.afip.dif.FEV1/">
+  <soap:Header/>
+  <soap:Body>
+    <ar:FECAESolicitar>
+      <ar:Auth><ar:Token>${token}</ar:Token><ar:Sign>${sign}</ar:Sign><ar:Cuit>${cuit.replace(/[-]/g,'')}</ar:Cuit></ar:Auth>
+      <ar:FeCAEReq>
+        <ar:FeCabReq><ar:CantReg>1</ar:CantReg><ar:PtoVta>${puntoVenta}</ar:PtoVta><ar:CbteTipo>${cbteTipo}</ar:CbteTipo></ar:FeCabReq>
+        <ar:FeDetReq>
+          <ar:FECAEDetRequest>
+            <ar:Concepto>1</ar:Concepto>
+            <ar:DocTipo>${docTipo}</ar:DocTipo>
+            <ar:DocNro>${docNro}</ar:DocNro>
+            <ar:CbteDesde>${numero}</ar:CbteDesde>
+            <ar:CbteHasta>${numero}</ar:CbteHasta>
+            <ar:CbteFch>${fechaCbte}</ar:CbteFch>
+            <ar:ImpTotal>${importeTotal.toFixed(2)}</ar:ImpTotal>
+            <ar:ImpTotConc>0.00</ar:ImpTotConc>
+            <ar:ImpNeto>${importeNeto.toFixed(2)}</ar:ImpNeto>
+            <ar:ImpOpEx>0.00</ar:ImpOpEx>
+            <ar:ImpIVA>${importeIva.toFixed(2)}</ar:ImpIVA>
+            <ar:ImpTrib>0.00</ar:ImpTrib>
+            <ar:MonId>PES</ar:MonId>
+            <ar:MonCotiz>1</ar:MonCotiz>
+            <ar:CondicionIvaReceptorId>${condIvaReceptor}</ar:CondicionIvaReceptorId>
+            ${cbtesAsocBlock}
+            ${ivaBlock}
+          </ar:FECAEDetRequest>
+        </ar:FeDetReq>
+      </ar:FeCAEReq>
+    </ar:FECAESolicitar>
+  </soap:Body>
+</soap:Envelope>`;
+
+  const r = await fetch(wsfeUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/xml; charset=utf-8', 'SOAPAction': 'http://ar.gov.afip.dif.FEV1/FECAESolicitar' },
+    body: soapBody,
+  });
+  const text = await r.text();
+  console.log('[ARCA NC] FECAESolicitar status:', r.status, 'body:', text.substring(0, 2000));
+
+  const fault = text.match(/<faultstring>([\s\S]*?)<\/faultstring>/i);
+  if (fault) throw new Error(`AFIP SOAP Fault: ${fault[1]}`);
+
+  const errs = text.match(/<Errors>([\s\S]*?)<\/Errors>/i);
+  if (errs) {
+    const code = errs[1].match(/<Code>([\s\S]*?)<\/Code>/i)?.[1] || '';
+    const msg = errs[1].match(/<Msg>([\s\S]*?)<\/Msg>/i)?.[1] || errs[1];
+    throw new Error(`AFIP Error ${code}: ${msg}`);
+  }
+
+  const resultado = text.match(/<Resultado>([\s\S]*?)<\/Resultado>/i);
+  if (resultado && resultado[1].trim() === 'R') {
+    const obs = text.match(/<Obs>([\s\S]*?)<\/Obs>/i);
+    const obsMsg = obs ? obs[1].match(/<Msg>([\s\S]*?)<\/Msg>/i)?.[1] : null;
+    throw new Error(`AFIP rechazó la NC: ${obsMsg || obs?.[1] || 'sin detalle'}`);
+  }
+
+  const cae = text.match(/<CAE>([\s\S]*?)<\/CAE>/i)?.[1].trim();
+  const caeFch = text.match(/<CAEFchVto>([\s\S]*?)<\/CAEFchVto>/i)?.[1].trim() || '';
+  if (!cae) throw new Error('No se pudo extraer CAE de la respuesta de AFIP');
+  const caeVencimiento = caeFch.length === 8 ? `${caeFch.slice(0,4)}-${caeFch.slice(4,6)}-${caeFch.slice(6,8)}` : caeFch;
+  return { cae, caeVencimiento };
+}
+
+// ─────────────────────────────────────────────
 // Main emitirFacturaARCA – sandbox + production
 // ─────────────────────────────────────────────
 
@@ -1291,6 +1437,147 @@ serve(async (req) => {
       );
     }
     // ── FIN SINCRONIZACIÓN ────────────────────────────────────────────────────
+
+    // ── EMISIÓN DE NOTA DE CRÉDITO ────────────────────────────────────────────
+    if (rawBody.action === 'emitir_nota_credito') {
+      const ncEnv: 'sandbox' | 'production' = rawBody.environment || 'production';
+      const facturaOrigenId = rawBody.factura_origen_id as string | undefined;
+      const motivo = (rawBody.motivo as string | undefined) || '';
+      const importeTotalNC = Number(rawBody.importe_total) || 0;
+      const isTotal = !!rawBody.total;
+
+      if (!facturaOrigenId || importeTotalNC <= 0) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Faltan datos: factura_origen_id e importe_total' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Cargar factura origen
+      const { data: facturaOrigen, error: foErr } = await supabase
+        .from('facturas')
+        .select('*')
+        .eq('id', facturaOrigenId)
+        .eq('tenant_id', tenantId)
+        .single();
+
+      if (foErr || !facturaOrigen) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Factura origen no encontrada' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (!facturaOrigen.cae) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'La factura origen no tiene CAE; debe anularse en lugar de emitir NC' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const tipoLetra = (facturaOrigen.tipo_comprobante as 'A' | 'B' | 'C') || 'B';
+      const ncTipoCode = INVOICE_CODES[tipoLetra].notaCredito; // 3, 8 o 13
+
+      const ncTotal = Math.round(importeTotalNC * 100) / 100;
+      const ncNeto = Math.round((ncTotal / 1.21) * 100) / 100;
+      const ncIva = Math.round((ncTotal - ncNeto) * 100) / 100;
+
+      const arcaConfig = await getARCAConfig(supabase, tenantId, ncEnv);
+      if (!arcaConfig) {
+        return new Response(
+          JSON.stringify({ success: false, error: `No hay configuración ARCA para ${ncEnv}` }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const puntoVenta = parseInt(arcaConfig.punto_venta);
+      const endpointsNC = ARCA_ENDPOINTS[ncEnv];
+
+      try {
+        const { token, sign } = await getWSAAToken(supabase, tenantId, ncEnv, arcaConfig);
+
+        // Próximo número de NC (CbteTipo 3/8/13) específico
+        const nextNC = await getUltimoNCAFIP(token, sign, arcaConfig.cuit, puntoVenta, ncTipoCode, endpointsNC.wsfe);
+        const nroNC = (nextNC >= 0 ? nextNC : 0) + 1;
+
+        // Receptor: tomar de la factura origen
+        const receptorNC = {
+          cuit: facturaOrigen.receptor_cuit || undefined,
+          nombre: facturaOrigen.receptor_nombre || 'Sin datos',
+          condicion_iva: facturaOrigen.receptor_condicion_iva || 'consumidor_final',
+          domicilio: facturaOrigen.receptor_domicilio || undefined,
+        };
+
+        // Solicitar CAE para NC con CbtesAsoc apuntando a la factura origen
+        const caeResult = await solicitarCAENotaCredito(
+          token, sign, arcaConfig.cuit, puntoVenta, ncTipoCode, nroNC,
+          receptorNC, ncNeto, ncIva, ncTotal,
+          {
+            origen_tipo: INVOICE_CODES[tipoLetra].factura,
+            origen_pv: facturaOrigen.punto_venta,
+            origen_nro: facturaOrigen.numero_comprobante,
+            origen_cuit: arcaConfig.cuit,
+            origen_fecha: facturaOrigen.fecha_emision,
+          },
+          endpointsNC.wsfe
+        );
+
+        // Persistir NC en facturas
+        const { data: ncRecord, error: insErr } = await supabase.from('facturas').insert({
+          tenant_id: tenantId,
+          tipo_comprobante: tipoLetra, // mantenemos letra; flag es_nota_credito diferencia
+          punto_venta: puntoVenta,
+          numero_comprobante: nroNC,
+          fecha_emision: new Date().toISOString(),
+          receptor_cuit: receptorNC.cuit,
+          receptor_nombre: receptorNC.nombre,
+          receptor_condicion_iva: receptorNC.condicion_iva,
+          receptor_domicilio: receptorNC.domicilio,
+          importe_neto: ncNeto,
+          importe_iva: ncIva,
+          importe_total: ncTotal,
+          cae: caeResult.cae,
+          cae_vencimiento: caeResult.caeVencimiento,
+          estado: 'emitida',
+          es_nota_credito: true,
+          factura_origen_id: facturaOrigenId,
+          motivo_nota_credito: motivo,
+          created_by: userId,
+          arca_response: { ...caeResult, environment: ncEnv, cbte_tipo: ncTipoCode },
+        }).select().single();
+
+        if (insErr) throw insErr;
+
+        // Si NC total → marcar factura origen como anulada_por_nc
+        if (isTotal) {
+          await supabase.from('facturas').update({
+            estado: 'anulada_por_nc',
+            anulada_at: new Date().toISOString(),
+            anulada_por: userId,
+            motivo_anulacion: motivo || 'Anulada por Nota de Crédito',
+          }).eq('id', facturaOrigenId);
+        }
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            nota_credito_id: ncRecord.id,
+            cae: caeResult.cae,
+            cae_vencimiento: caeResult.caeVencimiento,
+            numero_comprobante: `${String(puntoVenta).padStart(4,'0')}-${String(nroNC).padStart(8,'0')}`,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('[ARCA NC] Error:', msg);
+        return new Response(
+          JSON.stringify({ success: false, error: msg }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+    // ── FIN NOTA DE CRÉDITO ───────────────────────────────────────────────────
 
     const body: FacturaRequest = rawBody;
     const { envio_id, liquidacion_seller_id, liquidacion_terciarizado_id, tipo_comprobante, receptor, importe_total } = body;

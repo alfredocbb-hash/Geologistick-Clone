@@ -1493,6 +1493,8 @@ export type Database = {
       }
       facturas: {
         Row: {
+          anulada_at: string | null
+          anulada_por: string | null
           arca_response: Json | null
           cae: string | null
           cae_vencimiento: string | null
@@ -1503,7 +1505,9 @@ export type Database = {
           descripcion: string | null
           envio_id: string | null
           error_mensaje: string | null
+          es_nota_credito: boolean
           estado: string | null
+          factura_origen_id: string | null
           fecha_emision: string | null
           fecha_servicio_desde: string | null
           fecha_servicio_hasta: string | null
@@ -1518,6 +1522,8 @@ export type Database = {
           importe_tributos: number
           liquidacion_seller_id: string | null
           liquidacion_terciarizado_id: string | null
+          motivo_anulacion: string | null
+          motivo_nota_credito: string | null
           numero_comprobante: number
           pdf_url: string | null
           punto_venta: number
@@ -1530,6 +1536,8 @@ export type Database = {
           tipo_documento: number
         }
         Insert: {
+          anulada_at?: string | null
+          anulada_por?: string | null
           arca_response?: Json | null
           cae?: string | null
           cae_vencimiento?: string | null
@@ -1540,7 +1548,9 @@ export type Database = {
           descripcion?: string | null
           envio_id?: string | null
           error_mensaje?: string | null
+          es_nota_credito?: boolean
           estado?: string | null
+          factura_origen_id?: string | null
           fecha_emision?: string | null
           fecha_servicio_desde?: string | null
           fecha_servicio_hasta?: string | null
@@ -1555,6 +1565,8 @@ export type Database = {
           importe_tributos?: number
           liquidacion_seller_id?: string | null
           liquidacion_terciarizado_id?: string | null
+          motivo_anulacion?: string | null
+          motivo_nota_credito?: string | null
           numero_comprobante: number
           pdf_url?: string | null
           punto_venta: number
@@ -1567,6 +1579,8 @@ export type Database = {
           tipo_documento?: number
         }
         Update: {
+          anulada_at?: string | null
+          anulada_por?: string | null
           arca_response?: Json | null
           cae?: string | null
           cae_vencimiento?: string | null
@@ -1577,7 +1591,9 @@ export type Database = {
           descripcion?: string | null
           envio_id?: string | null
           error_mensaje?: string | null
+          es_nota_credito?: boolean
           estado?: string | null
+          factura_origen_id?: string | null
           fecha_emision?: string | null
           fecha_servicio_desde?: string | null
           fecha_servicio_hasta?: string | null
@@ -1592,6 +1608,8 @@ export type Database = {
           importe_tributos?: number
           liquidacion_seller_id?: string | null
           liquidacion_terciarizado_id?: string | null
+          motivo_anulacion?: string | null
+          motivo_nota_credito?: string | null
           numero_comprobante?: number
           pdf_url?: string | null
           punto_venta?: number
@@ -1609,6 +1627,13 @@ export type Database = {
             columns: ["envio_id"]
             isOneToOne: false
             referencedRelation: "envios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "facturas_factura_origen_id_fkey"
+            columns: ["factura_origen_id"]
+            isOneToOne: false
+            referencedRelation: "facturas"
             referencedColumns: ["id"]
           },
           {

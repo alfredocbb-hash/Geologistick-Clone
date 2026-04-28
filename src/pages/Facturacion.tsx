@@ -19,10 +19,13 @@ import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { FileText, Loader2, Search, CheckCircle, AlertCircle, Package, Copy, RefreshCw, Download, Plus } from 'lucide-react';
+import { FileText, Loader2, Search, CheckCircle, AlertCircle, Package, Copy, RefreshCw, Download, Plus, MoreVertical, Ban, FileMinus } from 'lucide-react';
 import { useARCAIntegration, determinarTipoFactura, validateCUIT, formatCUIT } from '@/hooks/useARCAConfig';
 import { useCuitLookup } from '@/hooks/useCuitLookup';
 import { format } from 'date-fns';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { VoidInvoiceDialog } from '@/components/invoicing/VoidInvoiceDialog';
+import { CreditNoteDialog } from '@/components/invoicing/CreditNoteDialog';
 
 const CONDICION_IVA_OPTIONS = [
   { value: 'responsable_inscripto', label: 'Responsable Inscripto', requiresCuit: true },
@@ -73,6 +76,13 @@ export default function Facturacion() {
   const [domicilio, setDomicilio] = useState('');
   const [ivaIncluido, setIvaIncluido] = useState(true);
   const [duplicateImporte, setDuplicateImporte] = useState(0);
+
+  // Void / Credit Note state
+  const [voidOpen, setVoidOpen] = useState(false);
+  const [voidTarget, setVoidTarget] = useState<any>(null);
+  const [ncOpen, setNcOpen] = useState(false);
+  const [ncTarget, setNcTarget] = useState<any>(null);
+  const [tipoFilter, setTipoFilter] = useState<'todas' | 'facturas' | 'nc'>('todas');
 
   const { match: cuitMatch, loading: cuitLoading, lookup: lookupCuit, clear: clearCuitMatch, updateSourceRecord } = useCuitLookup({ tenantId: profile?.tenant_id });
 
@@ -134,7 +144,7 @@ export default function Facturacion() {
         .from('facturas')
         .select('*')
         .eq('tenant_id', profile.tenant_id)
-        .eq('estado', 'emitida')
+        .in('estado', ['emitida', 'anulada', 'anulada_por_nc'])
         .order('fecha_emision', { ascending: false })
         .limit(500);
       if (error) throw error;
@@ -233,15 +243,20 @@ export default function Facturacion() {
   }, [pendientes, search]);
 
   const filteredEmitidas = useMemo(() => {
-    if (!searchEmitidas) return emitidas;
+    let list = emitidas;
+    if (tipoFilter === 'facturas') list = list.filter((f: any) => !f.es_nota_credito);
+    else if (tipoFilter === 'nc') list = list.filter((f: any) => f.es_nota_credito);
+    if (!searchEmitidas) return list;
     const q = searchEmitidas.toLowerCase();
-    return emitidas.filter((f: any) =>
+    return list.filter((f: any) =>
       f.receptor_nombre?.toLowerCase().includes(q) ||
       f.receptor_cuit?.includes(q) ||
       String(f.numero_comprobante)?.includes(q) ||
       f.cae?.includes(q)
     );
-  }, [emitidas, searchEmitidas]);
+  }, [emitidas, searchEmitidas, tipoFilter]);
+
+
 
   const toggleSelect = (id: string) => {
     setSelected(prev => {
@@ -597,6 +612,14 @@ export default function Facturacion() {
                     className="pl-9"
                   />
                 </div>
+                <Select value={tipoFilter} onValueChange={(v) => setTipoFilter(v as any)}>
+                  <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todas">Todas</SelectItem>
+                    <SelectItem value="facturas">Solo Facturas</SelectItem>
+                    <SelectItem value="nc">Solo Notas de Crédito</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Button
                   variant="outline"
                   onClick={() => setManualOpen(true)}
@@ -659,7 +682,17 @@ export default function Facturacion() {
                               : '—'}
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline">Factura {factura.tipo_comprobante}</Badge>
+                            {factura.es_nota_credito ? (
+                              <Badge className="bg-blue-600 text-white">NC {factura.tipo_comprobante}</Badge>
+                            ) : (
+                              <Badge variant="outline">Factura {factura.tipo_comprobante}</Badge>
+                            )}
+                            {factura.estado === 'anulada' && (
+                              <Badge variant="destructive" className="ml-1 text-xs">Anulada</Badge>
+                            )}
+                            {factura.estado === 'anulada_por_nc' && (
+                              <Badge className="ml-1 text-xs bg-orange-500 text-white">Anulada x NC</Badge>
+                            )}
                           </TableCell>
                           <TableCell className="max-w-[200px] truncate">{factura.receptor_nombre || '—'}</TableCell>
                           <TableCell className="font-mono text-xs">{factura.receptor_cuit || '—'}</TableCell>
@@ -676,14 +709,32 @@ export default function Facturacion() {
                             )}
                           </TableCell>
                           <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDuplicate(factura)}
-                              title="Duplicar factura"
-                            >
-                              <Copy className="h-4 w-4" />
-                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm"><MoreVertical className="h-4 w-4" /></Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleDuplicate(factura)}>
+                                  <Copy className="mr-2 h-4 w-4" />Duplicar
+                                </DropdownMenuItem>
+                                {!factura.cae && factura.estado !== 'anulada' && !factura.es_nota_credito && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => { setVoidTarget(factura); setVoidOpen(true); }} className="text-destructive">
+                                      <Ban className="mr-2 h-4 w-4" />Anular (sin CAE)
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
+                                {factura.cae && !factura.es_nota_credito && factura.estado !== 'anulada_por_nc' && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => { setNcTarget(factura); setNcOpen(true); }}>
+                                      <FileMinus className="mr-2 h-4 w-4" />Emitir Nota de Crédito
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -962,6 +1013,25 @@ export default function Facturacion() {
         onClose={() => setEmitirOpen(false)}
         onSuccess={() => refetchEmitidas()}
       />
+
+      {voidTarget && (
+        <VoidInvoiceDialog
+          open={voidOpen}
+          onOpenChange={setVoidOpen}
+          factura={voidTarget}
+          onSuccess={() => refetchEmitidas()}
+        />
+      )}
+
+      {ncTarget && (
+        <CreditNoteDialog
+          open={ncOpen}
+          onOpenChange={setNcOpen}
+          factura={ncTarget}
+          environment={activeEnvironment || 'production'}
+          onSuccess={() => refetchEmitidas()}
+        />
+      )}
     </div>
   );
 }
