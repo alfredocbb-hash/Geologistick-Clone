@@ -674,7 +674,17 @@ export default function Facturacion() {
                               : '—'}
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline">Factura {factura.tipo_comprobante}</Badge>
+                            {factura.es_nota_credito ? (
+                              <Badge className="bg-blue-600 text-white">NC {factura.tipo_comprobante}</Badge>
+                            ) : (
+                              <Badge variant="outline">Factura {factura.tipo_comprobante}</Badge>
+                            )}
+                            {factura.estado === 'anulada' && (
+                              <Badge variant="destructive" className="ml-1 text-xs">Anulada</Badge>
+                            )}
+                            {factura.estado === 'anulada_por_nc' && (
+                              <Badge className="ml-1 text-xs bg-orange-500 text-white">Anulada x NC</Badge>
+                            )}
                           </TableCell>
                           <TableCell className="max-w-[200px] truncate">{factura.receptor_nombre || '—'}</TableCell>
                           <TableCell className="font-mono text-xs">{factura.receptor_cuit || '—'}</TableCell>
@@ -691,14 +701,32 @@ export default function Facturacion() {
                             )}
                           </TableCell>
                           <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDuplicate(factura)}
-                              title="Duplicar factura"
-                            >
-                              <Copy className="h-4 w-4" />
-                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm"><MoreVertical className="h-4 w-4" /></Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleDuplicate(factura)}>
+                                  <Copy className="mr-2 h-4 w-4" />Duplicar
+                                </DropdownMenuItem>
+                                {!factura.cae && factura.estado !== 'anulada' && !factura.es_nota_credito && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => { setVoidTarget(factura); setVoidOpen(true); }} className="text-destructive">
+                                      <Ban className="mr-2 h-4 w-4" />Anular (sin CAE)
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
+                                {factura.cae && !factura.es_nota_credito && factura.estado !== 'anulada_por_nc' && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => { setNcTarget(factura); setNcOpen(true); }}>
+                                      <FileMinus className="mr-2 h-4 w-4" />Emitir Nota de Crédito
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </TableCell>
                         </TableRow>
                       ))}
