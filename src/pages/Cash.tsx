@@ -136,6 +136,8 @@ export default function Cash() {
     monto: '',
     metodo_pago: 'efectivo' as PaymentMethod,
     referencia: '',
+    categoria: 'otro' as 'adelanto_chofer' | 'gasto_operativo' | 'otro',
+    chofer_id: '' as string,
   });
 
   // Default selectedSucursalId to user's branch
