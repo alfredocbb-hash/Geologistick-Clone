@@ -77,6 +77,13 @@ export default function Facturacion() {
   const [ivaIncluido, setIvaIncluido] = useState(true);
   const [duplicateImporte, setDuplicateImporte] = useState(0);
 
+  // Void / Credit Note state
+  const [voidOpen, setVoidOpen] = useState(false);
+  const [voidTarget, setVoidTarget] = useState<any>(null);
+  const [ncOpen, setNcOpen] = useState(false);
+  const [ncTarget, setNcTarget] = useState<any>(null);
+  const [tipoFilter, setTipoFilter] = useState<'todas' | 'facturas' | 'nc'>('todas');
+
   const { match: cuitMatch, loading: cuitLoading, lookup: lookupCuit, clear: clearCuitMatch, updateSourceRecord } = useCuitLookup({ tenantId: profile?.tenant_id });
 
   const { isConfigured, config, environment: activeEnvironment, isLoading: arcaLoading } = useARCAIntegration('production');
