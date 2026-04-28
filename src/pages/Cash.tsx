@@ -83,6 +83,15 @@ interface CashMovement {
   envio_id: string | null;
   created_at: string | null;
   created_by: string | null;
+  chofer_id?: string | null;
+  categoria?: string | null;
+  descontado_en_liquidacion_id?: string | null;
+}
+
+interface DriverOption {
+  user_id: string;
+  nombre: string | null;
+  apellido: string | null;
 }
 
 interface Sucursal {
