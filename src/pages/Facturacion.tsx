@@ -144,7 +144,7 @@ export default function Facturacion() {
         .from('facturas')
         .select('*')
         .eq('tenant_id', profile.tenant_id)
-        .eq('estado', 'emitida')
+        .in('estado', ['emitida', 'anulada', 'anulada_por_nc'])
         .order('fecha_emision', { ascending: false })
         .limit(500);
       if (error) throw error;
