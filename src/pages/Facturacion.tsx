@@ -255,11 +255,8 @@ export default function Facturacion() {
       f.cae?.includes(q)
     );
   }, [emitidas, searchEmitidas, tipoFilter]);
-      f.receptor_cuit?.includes(q) ||
-      String(f.numero_comprobante)?.includes(q) ||
-      f.cae?.includes(q)
-    );
-  }, [emitidas, searchEmitidas]);
+
+
 
   const toggleSelect = (id: string) => {
     setSelected(prev => {
