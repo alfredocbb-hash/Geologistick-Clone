@@ -2689,9 +2689,12 @@ export type Database = {
       }
       movimientos_caja: {
         Row: {
+          categoria: string | null
+          chofer_id: string | null
           concepto: string
           created_at: string | null
           created_by: string | null
+          descontado_en_liquidacion_id: string | null
           envio_id: string | null
           id: string
           metodo_pago: Database["public"]["Enums"]["payment_method"]
@@ -2701,9 +2704,12 @@ export type Database = {
           tipo: string
         }
         Insert: {
+          categoria?: string | null
+          chofer_id?: string | null
           concepto: string
           created_at?: string | null
           created_by?: string | null
+          descontado_en_liquidacion_id?: string | null
           envio_id?: string | null
           id?: string
           metodo_pago: Database["public"]["Enums"]["payment_method"]
@@ -2713,9 +2719,12 @@ export type Database = {
           tipo: string
         }
         Update: {
+          categoria?: string | null
+          chofer_id?: string | null
           concepto?: string
           created_at?: string | null
           created_by?: string | null
+          descontado_en_liquidacion_id?: string | null
           envio_id?: string | null
           id?: string
           metodo_pago?: Database["public"]["Enums"]["payment_method"]
