@@ -738,7 +738,14 @@ export default function Cash() {
                         </TableCell>
                         <TableCell>
                           <div>
-                            <p className="font-medium">{movement.concepto}</p>
+                            <p className="font-medium flex items-center gap-2">
+                              {movement.concepto}
+                              {movement.categoria === 'adelanto_chofer' && (
+                                <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30">
+                                  Adelanto {movement.chofer_id ? `· ${driverName(movement.chofer_id)}` : ''}
+                                </Badge>
+                              )}
+                            </p>
                             {movement.referencia && (
                               <p className="text-xs text-muted-foreground">
                                 Ref: {movement.referencia}
