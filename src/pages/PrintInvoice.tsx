@@ -355,11 +355,22 @@ export default function PrintInvoice() {
     return { nombre_concepto: desc, monto: e.precio_total || 0 };
   });
 
+  const lineItemsFactura = Array.isArray((factura as { line_items?: unknown } | undefined)?.line_items)
+    ? ((factura as { line_items: Array<{ descripcion?: string; subtotal?: number; cantidad?: number; precio_unitario?: number }> }).line_items)
+    : [];
+
   const conceptosAMostrar = isLiquidacionInvoice
     ? conceptosLiquidacion
-    : fleteEnDetalles
-      ? (detalles || [])
-      : [{ nombre_concepto: 'Flete', monto: fleteCalculado > 0 ? fleteCalculado : (envio?.precio_total || 0) }, ...(detalles || [])];
+    : lineItemsFactura.length > 0
+      ? lineItemsFactura.map((it) => ({
+          nombre_concepto: it.descripcion || 'Ítem',
+          monto: typeof it.subtotal === 'number'
+            ? it.subtotal
+            : (Number(it.cantidad || 1) * Number(it.precio_unitario || 0)),
+        }))
+      : fleteEnDetalles
+        ? (detalles || [])
+        : [{ nombre_concepto: 'Flete', monto: fleteCalculado > 0 ? fleteCalculado : (envio?.precio_total || 0) }, ...(detalles || [])];
 
   const handlePrint = () => window.print();
 
