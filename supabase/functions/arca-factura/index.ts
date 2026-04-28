@@ -839,6 +839,10 @@ async function solicitarCAENotaCredito(
   if (!cae) throw new Error('No se pudo extraer CAE de la respuesta de AFIP');
   const caeVencimiento = caeFch.length === 8 ? `${caeFch.slice(0,4)}-${caeFch.slice(4,6)}-${caeFch.slice(6,8)}` : caeFch;
   return { cae, caeVencimiento };
+}
+
+// ─────────────────────────────────────────────
+// Main emitirFacturaARCA – sandbox + production
 // ─────────────────────────────────────────────
 
 async function emitirFacturaARCA(
