@@ -414,6 +414,23 @@ export default function PrintInvoice() {
     }
   };
 
+  // Auto-descarga cuando se abre con ?download=1
+  const shouldAutoDownload = searchParams.get('download') === '1';
+  const autoDownloadedRef = useRef(false);
+  useEffect(() => {
+    if (!shouldAutoDownload || autoDownloadedRef.current) return;
+    if (!factura) return;
+    // Esperar al próximo tick para asegurar render del DOM
+    const t = setTimeout(() => {
+      autoDownloadedRef.current = true;
+      handleDownloadPDF();
+    }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldAutoDownload, factura?.id]);
+
+  const backHref = resolvedEnvioId ? '/shipments' : '/facturacion';
+
   if (loadingFactura) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
