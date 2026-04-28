@@ -714,6 +714,13 @@ export default function Facturacion() {
                                 <Button variant="ghost" size="sm"><MoreVertical className="h-4 w-4" /></Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => window.open(`/print-invoice?factura_id=${factura.id}`, '_blank')}>
+                                  <Printer className="mr-2 h-4 w-4" />Imprimir / Ver PDF
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => window.open(`/print-invoice?factura_id=${factura.id}&download=1`, '_blank')}>
+                                  <Download className="mr-2 h-4 w-4" />Descargar PDF
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
                                 <DropdownMenuItem onClick={() => handleDuplicate(factura)}>
                                   <Copy className="mr-2 h-4 w-4" />Duplicar
                                 </DropdownMenuItem>
