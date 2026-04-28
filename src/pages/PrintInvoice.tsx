@@ -470,7 +470,7 @@ export default function PrintInvoice() {
         {/* Header - hidden on print */}
         <div className="flex items-center justify-between mb-6 print:hidden">
           <Button asChild variant="ghost" size="sm">
-            <Link to="/shipments">
+            <Link to={backHref}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Volver
             </Link>
