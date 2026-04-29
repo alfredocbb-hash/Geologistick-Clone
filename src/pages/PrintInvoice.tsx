@@ -334,12 +334,20 @@ export default function PrintInvoice() {
   });
 
   // Normalizar tipo_comprobante (soporta 'A','B','C' y 'factura_a','factura_b','factura_c')
-  const tipoNormalizado = factura ? normalizarTipoComprobante(factura.tipo_comprobante) : '';
+  // Si la factura es Nota de Crédito (es_nota_credito=true), mapear a 'nota_credito_x'
+  const esNotaCredito = !!(factura as { es_nota_credito?: boolean } | undefined)?.es_nota_credito;
+  const tipoBase = factura ? normalizarTipoComprobante(factura.tipo_comprobante) : '';
+  const letraTipo = tipoBase.split('_').pop() || '';
+  const tipoNormalizado = factura
+    ? (esNotaCredito ? `nota_credito_${letraTipo}` : tipoBase)
+    : '';
   const isFacturaA = tipoNormalizado.includes('_a');
   const isSandbox = resolvedEnvironment === 'sandbox';
 
-  // URL QR AFIP conforme RG 4291/2018
-  const afipQRUrl = factura ? buildAfipQRUrl(factura, arcaConfig) : '';
+  // URL QR AFIP conforme RG 4291/2018 (pasamos tipoNormalizado para que el código sea correcto en NC)
+  const afipQRUrl = factura
+    ? buildAfipQRUrl({ ...factura, tipo_comprobante: tipoNormalizado }, arcaConfig)
+    : '';
 
   // Build conceptos
   const fleteEnDetalles = (detalles || []).find(d => d.nombre_concepto?.toLowerCase() === 'flete');
