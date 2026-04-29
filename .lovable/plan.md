@@ -1,39 +1,60 @@
 ## Problema
 
-En "Facturación → Emitidas" no hay forma de imprimir ni descargar la factura emitida. El menú de acciones (⋮) solo ofrece **Duplicar / Anular / Emitir Nota de Crédito**, pero falta el acceso a la vista de impresión.
+Cuando se imprime/visualiza una **Nota de Crédito** desde `/print-invoice?factura_id=...`, la vista muestra "FACTURA A/B/C" en lugar de "NOTA DE CRÉDITO A/B/C".
 
-La página `PrintInvoice` ya existe y soporta `?factura_id=<uuid>` (no requiere envío), pero **no se enlaza desde ningún lado en Facturación**. Además, cuando la factura es **manual** (sin `envio_id` ni liquidación), `PrintInvoice` no renderiza los `line_items` guardados y termina mostrando un único renglón "Flete $0".
+**Causa raíz:** las NC se guardan en la tabla `facturas` con `tipo_comprobante = 'A' | 'B' | 'C'` (la letra) y un flag separado `es_nota_credito = true`. Pero `src/pages/PrintInvoice.tsx` arma el label únicamente a partir de `tipo_comprobante`, sin mirar `es_nota_credito`, por lo que siempre cae en "FACTURA X".
+
+Esto afecta:
+- Encabezado grande ("FACTURA A" → debe decir "NOTA DE CRÉDITO A")
+- Letra grande del centro (A/B/C) — se mantiene igual
+- Código AFIP (`Cod. 01/06/11` → debe ser `03/08/13` para NC)
+- Número de comprobante: el `tipoCmpMap` para el QR ya soporta `nota_credito_a/b/c`, pero recibe la letra cruda y termina usando el código de factura. Hay que normalizar antes.
+- Nombre del archivo descargado y título del PDF deberían decir "nota-credito-..."
 
 ## Cambios
 
-### 1. `src/pages/Facturacion.tsx` — Agregar acciones de impresión
+### `src/pages/PrintInvoice.tsx`
 
-Dentro del `DropdownMenuContent` de cada fila de "Emitidas", agregar al inicio (antes de Duplicar):
+1. **Normalizar tipo considerando `es_nota_credito`:**
+   En la función / línea donde se calcula `tipoNormalizado`, detectar el flag y mapear a la clave de NC:
+   ```ts
+   const esNC = !!(factura as any)?.es_nota_credito;
+   const letra = normalizarTipoComprobante(factura.tipo_comprobante).replace('factura_', '');
+   const tipoNormalizado = factura
+     ? (esNC ? `nota_credito_${letra}` : `factura_${letra}`)
+     : '';
+   ```
+   Con esto:
+   - `TIPO_COMPROBANTE_LABELS[tipoNormalizado]` ya devuelve "NOTA DE CRÉDITO A/B/C".
+   - `tipoCodigo` (el `Cod. 0X` que se imprime junto a la letra) debe ampliarse:
+     - `nota_credito_a` → `03`
+     - `nota_credito_b` → `08`
+     - `nota_credito_c` → `13`
 
-- **Imprimir / Ver PDF** → abre `/print-invoice?factura_id={id}` en nueva pestaña.
-- **Descargar PDF** → mismo destino con un parámetro `?factura_id={id}&download=1` para que `PrintInvoice` dispare automáticamente la descarga al cargar.
+2. **`buildAfipQRUrl`:** ya soporta NC en `tipoCmpMap`. Como ahora `factura.tipo_comprobante` se pasa tal cual (letra), hay que pasarle el `tipoNormalizado` calculado en lugar del campo crudo. Ajustar la firma o construir un objeto temporal `{ ...factura, tipo_comprobante: tipoNormalizado }` al invocarla.
 
-Iconos: `Printer` y `Download` de lucide-react (ya importados en otros lugares; agregar imports si faltan).
+3. **Título y archivo PDF:**
+   - Cambiar `<title>` / encabezado del documento generado para usar `tipoLabel` (ya queda "Nota de Crédito ..." automáticamente).
+   - En `handleDownloadPDF`, cambiar `fileName` a:
+     ```ts
+     const prefix = esNC ? 'nota-credito' : 'factura';
+     const fileName = `${prefix}-${formatNumeroComprobante(...)}${...}.pdf`;
+     ```
+   - Toast: `'Nota de Crédito descargada'` cuando `esNC`, sino `'Factura descargada'`.
 
-### 2. `src/pages/PrintInvoice.tsx` — Soporte de auto-descarga + facturas manuales
+4. **Referencia a factura origen (opcional, mejora visual):**
+   Si `factura.factura_origen_id` existe, mostrar bajo el encabezado una línea pequeña:
+   `"Asociada a Factura {tipoOrigen} N° {pv-nro}"`. Requiere fetch adicional de la factura origen por id (un `useQuery` corto). Se puede dejar fuera de este fix si se prefiere mantener el cambio mínimo.
 
-a) **Auto-descarga:** leer `searchParams.get('download')`. Cuando exista, en un `useEffect` que dispare cuando el DOM y la factura estén listos, llamar a `handleDownloadPDF()` automáticamente.
+### Validación
 
-b) **Renderizar `line_items` para facturas manuales:** ajustar `conceptosAMostrar`:
-- Si la factura tiene `line_items` (array no vacío) y no es de liquidación, usar esos ítems mapeados a `{ nombre_concepto: descripcion, monto: subtotal }`.
-- Mantener el comportamiento actual para facturas con envío y liquidaciones.
+- Emitir una NC desde "Facturación → Emitidas → ⋮ → Emitir Nota de Crédito".
+- Abrir "Imprimir / Ver PDF" en la NC recién emitida → debe mostrar "NOTA DE CRÉDITO A/B/C" y `Cod. 03/08/13`.
+- "Descargar PDF" baja `nota-credito-XXXX-XXXXXXXX.pdf` y el QR de AFIP valida el comprobante como NC.
+- Las facturas normales siguen mostrando "FACTURA A/B/C" y `Cod. 01/06/11`.
 
-c) **Botón Volver:** cuando no hay envío asociado, redirigir a `/facturacion` en lugar de `/shipments`.
+## Archivos
 
-### 3. Validación rápida
-
-- Emitir Factura B manual → en Emitidas, click en ⋮ → "Imprimir" abre la vista con los ítems correctos y el QR de AFIP.
-- "Descargar PDF" baja el archivo `factura-XXXX-XXXXXXXX.pdf` automáticamente.
-- Facturas vinculadas a envíos siguen mostrando el detalle del envío como hasta ahora.
-
-## Archivos a modificar
-
-- `src/pages/Facturacion.tsx`
 - `src/pages/PrintInvoice.tsx`
 
-Sin cambios de base de datos ni de edge functions.
+Sin cambios de DB ni de edge functions.

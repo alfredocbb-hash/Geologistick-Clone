@@ -334,12 +334,20 @@ export default function PrintInvoice() {
   });
 
   // Normalizar tipo_comprobante (soporta 'A','B','C' y 'factura_a','factura_b','factura_c')
-  const tipoNormalizado = factura ? normalizarTipoComprobante(factura.tipo_comprobante) : '';
+  // Si la factura es Nota de Crédito (es_nota_credito=true), mapear a 'nota_credito_x'
+  const esNotaCredito = !!(factura as { es_nota_credito?: boolean } | undefined)?.es_nota_credito;
+  const tipoBase = factura ? normalizarTipoComprobante(factura.tipo_comprobante) : '';
+  const letraTipo = tipoBase.split('_').pop() || '';
+  const tipoNormalizado = factura
+    ? (esNotaCredito ? `nota_credito_${letraTipo}` : tipoBase)
+    : '';
   const isFacturaA = tipoNormalizado.includes('_a');
   const isSandbox = resolvedEnvironment === 'sandbox';
 
-  // URL QR AFIP conforme RG 4291/2018
-  const afipQRUrl = factura ? buildAfipQRUrl(factura, arcaConfig) : '';
+  // URL QR AFIP conforme RG 4291/2018 (pasamos tipoNormalizado para que el código sea correcto en NC)
+  const afipQRUrl = factura
+    ? buildAfipQRUrl({ ...factura, tipo_comprobante: tipoNormalizado }, arcaConfig)
+    : '';
 
   // Build conceptos
   const fleteEnDetalles = (detalles || []).find(d => d.nombre_concepto?.toLowerCase() === 'flete');
@@ -406,9 +414,10 @@ export default function PrintInvoice() {
 
       doc.addImage(imgData, 'PNG', 10, 10, pdfWidth, Math.min(pdfHeight, pageHeight - 20));
 
-      const fileName = `factura-${formatNumeroComprobante(factura.punto_venta, factura.numero_comprobante)}${envio?.tracking_number ? `-${envio.tracking_number}` : ''}.pdf`;
+      const prefix = esNotaCredito ? 'nota-credito' : 'factura';
+      const fileName = `${prefix}-${formatNumeroComprobante(factura.punto_venta, factura.numero_comprobante)}${envio?.tracking_number ? `-${envio.tracking_number}` : ''}.pdf`;
       doc.save(fileName);
-      toast.success('Factura descargada');
+      toast.success(esNotaCredito ? 'Nota de Crédito descargada' : 'Factura descargada');
     } catch {
       toast.error('Error al generar PDF');
     }
@@ -458,9 +467,12 @@ export default function PrintInvoice() {
   const letraComprobante = tipoNormalizado?.split('_').pop()?.toUpperCase() || '';
 
   // Código numérico para el PDF según tipo
-  const tipoCodigo = tipoNormalizado.includes('factura_a') ? '01'
-    : tipoNormalizado.includes('factura_b') ? '06'
-    : tipoNormalizado.includes('factura_c') ? '11'
+  const tipoCodigo = tipoNormalizado === 'factura_a' ? '01'
+    : tipoNormalizado === 'factura_b' ? '06'
+    : tipoNormalizado === 'factura_c' ? '11'
+    : tipoNormalizado === 'nota_credito_a' ? '03'
+    : tipoNormalizado === 'nota_credito_b' ? '08'
+    : tipoNormalizado === 'nota_credito_c' ? '13'
     : '06';
 
   return (
