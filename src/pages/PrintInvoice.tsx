@@ -414,9 +414,10 @@ export default function PrintInvoice() {
 
       doc.addImage(imgData, 'PNG', 10, 10, pdfWidth, Math.min(pdfHeight, pageHeight - 20));
 
-      const fileName = `factura-${formatNumeroComprobante(factura.punto_venta, factura.numero_comprobante)}${envio?.tracking_number ? `-${envio.tracking_number}` : ''}.pdf`;
+      const prefix = esNotaCredito ? 'nota-credito' : 'factura';
+      const fileName = `${prefix}-${formatNumeroComprobante(factura.punto_venta, factura.numero_comprobante)}${envio?.tracking_number ? `-${envio.tracking_number}` : ''}.pdf`;
       doc.save(fileName);
-      toast.success('Factura descargada');
+      toast.success(esNotaCredito ? 'Nota de Crédito descargada' : 'Factura descargada');
     } catch {
       toast.error('Error al generar PDF');
     }
