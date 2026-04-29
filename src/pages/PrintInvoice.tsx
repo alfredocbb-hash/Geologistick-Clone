@@ -467,9 +467,12 @@ export default function PrintInvoice() {
   const letraComprobante = tipoNormalizado?.split('_').pop()?.toUpperCase() || '';
 
   // Código numérico para el PDF según tipo
-  const tipoCodigo = tipoNormalizado.includes('factura_a') ? '01'
-    : tipoNormalizado.includes('factura_b') ? '06'
-    : tipoNormalizado.includes('factura_c') ? '11'
+  const tipoCodigo = tipoNormalizado === 'factura_a' ? '01'
+    : tipoNormalizado === 'factura_b' ? '06'
+    : tipoNormalizado === 'factura_c' ? '11'
+    : tipoNormalizado === 'nota_credito_a' ? '03'
+    : tipoNormalizado === 'nota_credito_b' ? '08'
+    : tipoNormalizado === 'nota_credito_c' ? '13'
     : '06';
 
   return (
