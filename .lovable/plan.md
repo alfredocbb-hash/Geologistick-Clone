@@ -1,50 +1,45 @@
-## Objetivo
+# Selector de empresa terciarizada en OCR masivo
 
-Pasar a estado `entregado` los **32 envíos** del tenant **Beraexpress** (`94a9ea85-43c5-49ac-9bfa-86843072c2ce`) que actualmente están en estado `en_reparto`, manteniendo al chofer asignado como responsable de la entrega.
+## Contexto
 
-## Datos verificados
+Hoy en `Planificador → Terciarizados`, al abrir el OCR masivo (`BulkOCRScreen`), solo se pide la **fecha de ingreso**. Los envíos creados quedan como `pendiente` normales, sin marcar como terciarizados ni vinculados a una empresa, lo que impide liquidarlos después en `Liquidaciones de terceros`.
 
-- Tenant: **Beraexpress** (slug `vos-lo-vendes-y-nosotros-lo-entregamos`)
-- Envíos `en_reparto`: **32**
-- Todos tienen chofer asignado (32/32)
-- Ninguno tiene pago contra entrega (COD = 0), así que no hay cobros que registrar
-- Todos fueron asignados el 2026-04-27
+## Cambios
 
-## Cambio a aplicar
+### 1. `src/components/mobile/BulkOCRScreen.tsx`
 
-Operación de **datos puntual** (una sola vez, no automatizada) sobre la tabla `envios`:
+- Nuevas props opcionales:
+  - `terciarizadoMode?: boolean` — activa la UI del selector y obliga elegir empresa.
+  - `defaultEmpresaTerciarizadaId?: string` (opcional, no requerido).
+- Nuevo estado `empresaTerciarizadaId` + carga de empresas activas (`empresas_terciarizadas` filtradas por `tenant_id` y `activa = true`).
+- En el header (junto a "Fecha de ingreso"), agregar un `Select` "Empresa terciarizada" cuando `terciarizadoMode` esté activo. Visible tanto en mobile como desktop (mismo patrón que el datepicker actual).
+- Bloqueo: si `terciarizadoMode` y no hay empresa elegida, deshabilitar el botón de "Procesar"/"Iniciar" y mostrar toast "Seleccioná una empresa terciarizada".
+- En los 4 puntos de `INSERT` en `envios` (OCR album, force-save duplicado, manual entry, burst — líneas ~244, ~302, ~400, ~543), agregar cuando hay empresa seleccionada:
+  ```
+  es_terciarizado: true,
+  empresa_terciarizada_id: empresaTerciarizadaId,
+  empresa_terciarizada: <nombre de la empresa elegida>,
+  ```
+- Ajustar `source_module` a `bulk_ocr_terciarizado` para trazabilidad.
 
-- `estado` = `'entregado'`
-- `fecha_entrega` = `NOW()` (si está nula, el trigger `set_fecha_entrega_on_delivered` ya lo cubre)
-- `entregado_en_sucursal` = `false` (entrega en domicilio, atribuida al chofer)
-- `chofer_id` se mantiene → cuenta para liquidaciones del repartidor
-- `updated_at` = `NOW()`
+### 2. `src/components/routes/ThirdPartyShipmentsTab.tsx`
 
-Filtros estrictos:
-```sql
-WHERE tenant_id = '94a9ea85-43c5-49ac-9bfa-86843072c2ce'
-  AND estado = 'en_reparto'
-```
+- Pasar `terciarizadoMode` al render del dialog OCR (línea 1042):
+  ```tsx
+  <BulkOCRScreen
+    terciarizadoMode
+    defaultEmpresaTerciarizadaId={formData.empresa_terciarizada || undefined}
+    onClose={...}
+  />
+  ```
+- Invalidar también `["envios-terciarizados-pendientes"]` (ya lo hace) — sin cambios.
 
-## Efectos automáticos (triggers existentes)
+### 3. Otras llamadas a `BulkOCRScreen`
 
-Al cambiar `estado → entregado` se disparan automáticamente:
+`MobileScanTab`, `FlexMixtoScreen`, `CollectScanScreen` — **sin cambios**. Al no pasar `terciarizadoMode`, mantienen el comportamiento actual.
 
-1. **`log_envio_estado_change`** → inserta una entrada en `envio_historial` por cada envío con la nota "Entregado en domicilio" y el chofer.
-2. **`auto_sync_ml_status`** → para los envíos que sean de Mercado Libre, sincroniza el estado contra ML vía edge function.
-3. **`sync_partner_shipment_status`** → si alguno fue derivado a un partner, propaga el `entregado` al envío origen.
-4. **`set_fecha_entrega_on_delivered`** → completa `fecha_entrega` si quedó nula.
+## Resultado
 
-No se tocan pagos, rendiciones ni cajas (no hay COD en este lote).
-
-## Reversibilidad
-
-Una vez aplicado, los envíos quedan en estado final. Solo un `super_admin` podrá revertir individualmente vía el diálogo de cambio de estado. Por eso, antes de ejecutar, te voy a pedir confirmación final.
-
-## Pasos
-
-1. Ejecutar el `UPDATE` masivo filtrado por tenant + estado.
-2. Verificar el conteo final (`SELECT COUNT(*) ... estado='entregado' AND fecha_entrega >= hoy`) y reportarlo.
-3. Confirmarte cuántos historiales se generaron y si hubo envíos ML re-sincronizados.
-
-¿Avanzo con la ejecución?
+- En `Planificador → Terciarizados`, al abrir "Importar fotos con IA", aparece un selector de empresa terciarizada junto al de fecha.
+- Los envíos creados por OCR quedan marcados como terciarizados y vinculados a la empresa elegida → aparecen en `Liquidaciones de terceros` para liquidar.
+- Resto de pantallas que usan el OCR masivo (chofer, Flex mixto, recolección) no se ven afectadas.

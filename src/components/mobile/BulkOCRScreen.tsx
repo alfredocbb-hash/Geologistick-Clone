@@ -20,6 +20,7 @@ import { useNavigate } from 'react-router-dom';
 import { useNativeCamera } from '@/hooks/useNativeCamera';
 import { useMobileCamera } from './MobileCameraContext';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface ManualEditData {
   direccion: string;
@@ -55,6 +56,8 @@ interface BulkPackage {
 interface BulkOCRScreenProps {
   onClose: () => void;
   onPackagesReady?: (envioIds: string[]) => void;
+  terciarizadoMode?: boolean;
+  defaultEmpresaTerciarizadaId?: string;
 }
 
 async function geocodeAndUpdate(envioId: string, direccion: string, localidad: string) {
@@ -75,7 +78,7 @@ async function geocodeAndUpdate(envioId: string, direccion: string, localidad: s
   }
 }
 
-export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) {
+export function BulkOCRScreen({ onClose, onPackagesReady, terciarizadoMode = false, defaultEmpresaTerciarizadaId }: BulkOCRScreenProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -101,6 +104,8 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
   const [editingPhoto, setEditingPhoto] = useState<AlbumPhoto | null>(null);
   const [manualData, setManualData] = useState<ManualEditData>({ direccion: '', localidad: '', codigoPostal: '', nombreDestinatario: '', telefono: '', nombreRemitente: '' });
   const [fechaIngreso, setFechaIngreso] = useState<Date>(new Date());
+  const [empresaTerciarizadaId, setEmpresaTerciarizadaId] = useState<string>(defaultEmpresaTerciarizadaId || '');
+  const [empresasTerciarizadas, setEmpresasTerciarizadas] = useState<Array<{ id: string; nombre: string }>>([]);
 
   const [profileData, setProfileData] = useState<{ tenant_id: string; sucursal_id: string | null } | null>(null);
 
@@ -116,6 +121,26 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
     };
     fetchProfile();
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!terciarizadoMode || !profileData?.tenant_id) return;
+    (async () => {
+      const { data } = await supabase
+        .from('empresas_terciarizadas')
+        .select('id, nombre')
+        .eq('tenant_id', profileData.tenant_id)
+        .eq('activa', true)
+        .order('nombre');
+      if (data) setEmpresasTerciarizadas(data);
+    })();
+  }, [terciarizadoMode, profileData?.tenant_id]);
+
+  const empresaSeleccionada = empresasTerciarizadas.find(e => e.id === empresaTerciarizadaId);
+  const terciarizadoFields = terciarizadoMode && empresaSeleccionada ? {
+    es_terciarizado: true as const,
+    empresa_terciarizada_id: empresaSeleccionada.id,
+    empresa_terciarizada: empresaSeleccionada.nombre,
+  } : {};
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -201,6 +226,10 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
       toast.error("Cargando perfil...");
       return;
     }
+    if (terciarizadoMode && !empresaTerciarizadaId) {
+      toast.error("Seleccioná una empresa terciarizada");
+      return;
+    }
 
     setAlbumPhase('processing');
     setProcessedCount(0);
@@ -214,7 +243,7 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
       await Promise.allSettled(chunk.map(photo => processOnePhoto(photo)));
     }
     setAlbumPhase('done');
-  }, [albumPhotos, user?.id, profileData, packages]);
+  }, [albumPhotos, user?.id, profileData, packages, terciarizadoMode, empresaTerciarizadaId]);
 
   const processOnePhoto = async (photo: AlbumPhoto) => {
     setAlbumPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'processing', error: undefined } : p));
@@ -260,7 +289,8 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
         tipo_pago: ocrData.tipoPago || null,
         estado: 'pendiente',
         precio_total: 0,
-        source_module: 'bulk_ocr_album',
+        source_module: terciarizadoMode ? 'bulk_ocr_terciarizado' : 'bulk_ocr_album',
+        ...terciarizadoFields,
         tenant_id: profileData!.tenant_id,
         sucursal_origen_id: profileData!.sucursal_id,
         ml_shipment_id: ocrData.mlShipmentId ? parseInt(ocrData.mlShipmentId) : null,
@@ -318,7 +348,8 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
         tipo_pago: ocrData.tipoPago || null,
         estado: 'pendiente',
         precio_total: 0,
-        source_module: 'bulk_ocr_album',
+        source_module: terciarizadoMode ? 'bulk_ocr_terciarizado' : 'bulk_ocr_album',
+        ...terciarizadoFields,
         tenant_id: profileData.tenant_id,
         sucursal_origen_id: profileData.sucursal_id,
         ml_shipment_id: ocrData.mlShipmentId ? parseInt(ocrData.mlShipmentId) : null,
@@ -407,7 +438,8 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
         nombre_remitente: manualData.nombreRemitente || null,
         estado: 'pendiente',
         precio_total: 0,
-        source_module: 'bulk_ocr_manual',
+        source_module: terciarizadoMode ? 'bulk_ocr_terciarizado_manual' : 'bulk_ocr_manual',
+        ...terciarizadoFields,
         tenant_id: profileData.tenant_id,
         sucursal_origen_id: profileData.sucursal_id,
         created_by: user?.id,
@@ -562,7 +594,8 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
           tenant_id: profileData.tenant_id,
           sucursal_origen_id: profileData.sucursal_id,
           ml_shipment_id: ocrData.mlShipmentId ? parseInt(ocrData.mlShipmentId) : null,
-          source_module: 'bulk_ocr_burst',
+          source_module: terciarizadoMode ? 'bulk_ocr_terciarizado_burst' : 'bulk_ocr_burst',
+          ...terciarizadoFields,
           created_by: user?.id
         }).select().single();
 
@@ -680,7 +713,26 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
           </h1>
           <p className="text-[10px] font-bold text-primary uppercase tracking-widest">{albumPhotos.length} fotos cargadas</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {terciarizadoMode && (
+            <div className="flex flex-col items-end gap-1">
+              <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Empresa terciarizada *</Label>
+              <Select
+                value={empresaTerciarizadaId}
+                onValueChange={setEmpresaTerciarizadaId}
+                disabled={albumPhase !== 'capturing'}
+              >
+                <SelectTrigger className="h-9 min-w-[200px] text-sm">
+                  <SelectValue placeholder="Seleccioná empresa" />
+                </SelectTrigger>
+                <SelectContent className="z-[10001] bg-popover">
+                  {empresasTerciarizadas.map(e => (
+                    <SelectItem key={e.id} value={e.id}>{e.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           {!isMobile && (
             <div className="flex flex-col items-end gap-1">
               <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Fecha de ingreso</Label>
@@ -699,7 +751,7 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
                     {format(fechaIngreso, "PPP", { locale: es })}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="end">
+                <PopoverContent className="w-auto p-0 z-[10001]" align="end">
                   <Calendar
                     mode="single"
                     selected={fechaIngreso}
@@ -835,7 +887,7 @@ export function BulkOCRScreen({ onClose, onPackagesReady }: BulkOCRScreenProps) 
               </Button>
             )}
             {albumPhotos.length > 0 && (
-              <Button onClick={processAlbum} className={isMobile ? "w-full h-12 rounded-2xl bg-white text-black font-black active:scale-95 transition-all border-2 border-slate-200" : "w-full h-12 rounded-xl bg-primary text-primary-foreground font-bold"}>
+              <Button onClick={processAlbum} disabled={terciarizadoMode && !empresaTerciarizadaId} className={isMobile ? "w-full h-12 rounded-2xl bg-white text-black font-black active:scale-95 transition-all border-2 border-slate-200 disabled:opacity-50" : "w-full h-12 rounded-xl bg-primary text-primary-foreground font-bold"}>
                 PROCESAR {pendingCount} FOTOS
               </Button>
             )}

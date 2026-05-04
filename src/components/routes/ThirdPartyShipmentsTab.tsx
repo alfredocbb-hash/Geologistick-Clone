@@ -1039,11 +1039,15 @@ export default function ThirdPartyShipmentsTab() {
       <Dialog open={showBulkOCR} onOpenChange={setShowBulkOCR}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0">
           <DialogTitle className="sr-only">Importar fotos con IA</DialogTitle>
-          <BulkOCRScreen onClose={() => {
-            setShowBulkOCR(false);
-            queryClient.invalidateQueries({ queryKey: ["envios-terciarizados-pendientes"] });
-            queryClient.invalidateQueries({ queryKey: ["envios-planificador"] });
-          }} />
+          <BulkOCRScreen
+            terciarizadoMode
+            defaultEmpresaTerciarizadaId={formData.empresa_terciarizada || undefined}
+            onClose={() => {
+              setShowBulkOCR(false);
+              queryClient.invalidateQueries({ queryKey: ["envios-terciarizados-pendientes"] });
+              queryClient.invalidateQueries({ queryKey: ["envios-planificador"] });
+            }}
+          />
         </DialogContent>
       </Dialog>
     </div>
