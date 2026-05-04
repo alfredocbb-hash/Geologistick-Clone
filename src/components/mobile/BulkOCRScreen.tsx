@@ -226,6 +226,10 @@ export function BulkOCRScreen({ onClose, onPackagesReady, terciarizadoMode = fal
       toast.error("Cargando perfil...");
       return;
     }
+    if (terciarizadoMode && !empresaTerciarizadaId) {
+      toast.error("Seleccioná una empresa terciarizada");
+      return;
+    }
 
     setAlbumPhase('processing');
     setProcessedCount(0);
@@ -239,7 +243,7 @@ export function BulkOCRScreen({ onClose, onPackagesReady, terciarizadoMode = fal
       await Promise.allSettled(chunk.map(photo => processOnePhoto(photo)));
     }
     setAlbumPhase('done');
-  }, [albumPhotos, user?.id, profileData, packages]);
+  }, [albumPhotos, user?.id, profileData, packages, terciarizadoMode, empresaTerciarizadaId]);
 
   const processOnePhoto = async (photo: AlbumPhoto) => {
     setAlbumPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, status: 'processing', error: undefined } : p));
