@@ -713,7 +713,26 @@ export function BulkOCRScreen({ onClose, onPackagesReady, terciarizadoMode = fal
           </h1>
           <p className="text-[10px] font-bold text-primary uppercase tracking-widest">{albumPhotos.length} fotos cargadas</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {terciarizadoMode && (
+            <div className="flex flex-col items-end gap-1">
+              <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Empresa terciarizada *</Label>
+              <Select
+                value={empresaTerciarizadaId}
+                onValueChange={setEmpresaTerciarizadaId}
+                disabled={albumPhase !== 'capturing'}
+              >
+                <SelectTrigger className="h-9 min-w-[200px] text-sm">
+                  <SelectValue placeholder="Seleccioná empresa" />
+                </SelectTrigger>
+                <SelectContent className="z-[10001] bg-popover">
+                  {empresasTerciarizadas.map(e => (
+                    <SelectItem key={e.id} value={e.id}>{e.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           {!isMobile && (
             <div className="flex flex-col items-end gap-1">
               <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Fecha de ingreso</Label>
@@ -732,7 +751,7 @@ export function BulkOCRScreen({ onClose, onPackagesReady, terciarizadoMode = fal
                     {format(fechaIngreso, "PPP", { locale: es })}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="end">
+                <PopoverContent className="w-auto p-0 z-[10001]" align="end">
                   <Calendar
                     mode="single"
                     selected={fechaIngreso}
