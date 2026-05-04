@@ -20,6 +20,7 @@ import { useNavigate } from 'react-router-dom';
 import { useNativeCamera } from '@/hooks/useNativeCamera';
 import { useMobileCamera } from './MobileCameraContext';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface ManualEditData {
   direccion: string;
