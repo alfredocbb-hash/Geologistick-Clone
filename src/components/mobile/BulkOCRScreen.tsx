@@ -887,7 +887,7 @@ export function BulkOCRScreen({ onClose, onPackagesReady, terciarizadoMode = fal
               </Button>
             )}
             {albumPhotos.length > 0 && (
-              <Button onClick={processAlbum} className={isMobile ? "w-full h-12 rounded-2xl bg-white text-black font-black active:scale-95 transition-all border-2 border-slate-200" : "w-full h-12 rounded-xl bg-primary text-primary-foreground font-bold"}>
+              <Button onClick={processAlbum} disabled={terciarizadoMode && !empresaTerciarizadaId} className={isMobile ? "w-full h-12 rounded-2xl bg-white text-black font-black active:scale-95 transition-all border-2 border-slate-200 disabled:opacity-50" : "w-full h-12 rounded-xl bg-primary text-primary-foreground font-bold"}>
                 PROCESAR {pendingCount} FOTOS
               </Button>
             )}
