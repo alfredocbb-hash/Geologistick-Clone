@@ -594,7 +594,8 @@ export function BulkOCRScreen({ onClose, onPackagesReady, terciarizadoMode = fal
           tenant_id: profileData.tenant_id,
           sucursal_origen_id: profileData.sucursal_id,
           ml_shipment_id: ocrData.mlShipmentId ? parseInt(ocrData.mlShipmentId) : null,
-          source_module: 'bulk_ocr_burst',
+          source_module: terciarizadoMode ? 'bulk_ocr_terciarizado_burst' : 'bulk_ocr_burst',
+          ...terciarizadoFields,
           created_by: user?.id
         }).select().single();
 
