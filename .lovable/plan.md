@@ -1,60 +1,50 @@
-## Problema
+## Objetivo
 
-Cuando se imprime/visualiza una **Nota de Crédito** desde `/print-invoice?factura_id=...`, la vista muestra "FACTURA A/B/C" en lugar de "NOTA DE CRÉDITO A/B/C".
+Pasar a estado `entregado` los **32 envíos** del tenant **Beraexpress** (`94a9ea85-43c5-49ac-9bfa-86843072c2ce`) que actualmente están en estado `en_reparto`, manteniendo al chofer asignado como responsable de la entrega.
 
-**Causa raíz:** las NC se guardan en la tabla `facturas` con `tipo_comprobante = 'A' | 'B' | 'C'` (la letra) y un flag separado `es_nota_credito = true`. Pero `src/pages/PrintInvoice.tsx` arma el label únicamente a partir de `tipo_comprobante`, sin mirar `es_nota_credito`, por lo que siempre cae en "FACTURA X".
+## Datos verificados
 
-Esto afecta:
-- Encabezado grande ("FACTURA A" → debe decir "NOTA DE CRÉDITO A")
-- Letra grande del centro (A/B/C) — se mantiene igual
-- Código AFIP (`Cod. 01/06/11` → debe ser `03/08/13` para NC)
-- Número de comprobante: el `tipoCmpMap` para el QR ya soporta `nota_credito_a/b/c`, pero recibe la letra cruda y termina usando el código de factura. Hay que normalizar antes.
-- Nombre del archivo descargado y título del PDF deberían decir "nota-credito-..."
+- Tenant: **Beraexpress** (slug `vos-lo-vendes-y-nosotros-lo-entregamos`)
+- Envíos `en_reparto`: **32**
+- Todos tienen chofer asignado (32/32)
+- Ninguno tiene pago contra entrega (COD = 0), así que no hay cobros que registrar
+- Todos fueron asignados el 2026-04-27
 
-## Cambios
+## Cambio a aplicar
 
-### `src/pages/PrintInvoice.tsx`
+Operación de **datos puntual** (una sola vez, no automatizada) sobre la tabla `envios`:
 
-1. **Normalizar tipo considerando `es_nota_credito`:**
-   En la función / línea donde se calcula `tipoNormalizado`, detectar el flag y mapear a la clave de NC:
-   ```ts
-   const esNC = !!(factura as any)?.es_nota_credito;
-   const letra = normalizarTipoComprobante(factura.tipo_comprobante).replace('factura_', '');
-   const tipoNormalizado = factura
-     ? (esNC ? `nota_credito_${letra}` : `factura_${letra}`)
-     : '';
-   ```
-   Con esto:
-   - `TIPO_COMPROBANTE_LABELS[tipoNormalizado]` ya devuelve "NOTA DE CRÉDITO A/B/C".
-   - `tipoCodigo` (el `Cod. 0X` que se imprime junto a la letra) debe ampliarse:
-     - `nota_credito_a` → `03`
-     - `nota_credito_b` → `08`
-     - `nota_credito_c` → `13`
+- `estado` = `'entregado'`
+- `fecha_entrega` = `NOW()` (si está nula, el trigger `set_fecha_entrega_on_delivered` ya lo cubre)
+- `entregado_en_sucursal` = `false` (entrega en domicilio, atribuida al chofer)
+- `chofer_id` se mantiene → cuenta para liquidaciones del repartidor
+- `updated_at` = `NOW()`
 
-2. **`buildAfipQRUrl`:** ya soporta NC en `tipoCmpMap`. Como ahora `factura.tipo_comprobante` se pasa tal cual (letra), hay que pasarle el `tipoNormalizado` calculado en lugar del campo crudo. Ajustar la firma o construir un objeto temporal `{ ...factura, tipo_comprobante: tipoNormalizado }` al invocarla.
+Filtros estrictos:
+```sql
+WHERE tenant_id = '94a9ea85-43c5-49ac-9bfa-86843072c2ce'
+  AND estado = 'en_reparto'
+```
 
-3. **Título y archivo PDF:**
-   - Cambiar `<title>` / encabezado del documento generado para usar `tipoLabel` (ya queda "Nota de Crédito ..." automáticamente).
-   - En `handleDownloadPDF`, cambiar `fileName` a:
-     ```ts
-     const prefix = esNC ? 'nota-credito' : 'factura';
-     const fileName = `${prefix}-${formatNumeroComprobante(...)}${...}.pdf`;
-     ```
-   - Toast: `'Nota de Crédito descargada'` cuando `esNC`, sino `'Factura descargada'`.
+## Efectos automáticos (triggers existentes)
 
-4. **Referencia a factura origen (opcional, mejora visual):**
-   Si `factura.factura_origen_id` existe, mostrar bajo el encabezado una línea pequeña:
-   `"Asociada a Factura {tipoOrigen} N° {pv-nro}"`. Requiere fetch adicional de la factura origen por id (un `useQuery` corto). Se puede dejar fuera de este fix si se prefiere mantener el cambio mínimo.
+Al cambiar `estado → entregado` se disparan automáticamente:
 
-### Validación
+1. **`log_envio_estado_change`** → inserta una entrada en `envio_historial` por cada envío con la nota "Entregado en domicilio" y el chofer.
+2. **`auto_sync_ml_status`** → para los envíos que sean de Mercado Libre, sincroniza el estado contra ML vía edge function.
+3. **`sync_partner_shipment_status`** → si alguno fue derivado a un partner, propaga el `entregado` al envío origen.
+4. **`set_fecha_entrega_on_delivered`** → completa `fecha_entrega` si quedó nula.
 
-- Emitir una NC desde "Facturación → Emitidas → ⋮ → Emitir Nota de Crédito".
-- Abrir "Imprimir / Ver PDF" en la NC recién emitida → debe mostrar "NOTA DE CRÉDITO A/B/C" y `Cod. 03/08/13`.
-- "Descargar PDF" baja `nota-credito-XXXX-XXXXXXXX.pdf` y el QR de AFIP valida el comprobante como NC.
-- Las facturas normales siguen mostrando "FACTURA A/B/C" y `Cod. 01/06/11`.
+No se tocan pagos, rendiciones ni cajas (no hay COD en este lote).
 
-## Archivos
+## Reversibilidad
 
-- `src/pages/PrintInvoice.tsx`
+Una vez aplicado, los envíos quedan en estado final. Solo un `super_admin` podrá revertir individualmente vía el diálogo de cambio de estado. Por eso, antes de ejecutar, te voy a pedir confirmación final.
 
-Sin cambios de DB ni de edge functions.
+## Pasos
+
+1. Ejecutar el `UPDATE` masivo filtrado por tenant + estado.
+2. Verificar el conteo final (`SELECT COUNT(*) ... estado='entregado' AND fecha_entrega >= hoy`) y reportarlo.
+3. Confirmarte cuántos historiales se generaron y si hubo envíos ML re-sincronizados.
+
+¿Avanzo con la ejecución?
