@@ -104,6 +104,8 @@ export function BulkOCRScreen({ onClose, onPackagesReady, terciarizadoMode = fal
   const [editingPhoto, setEditingPhoto] = useState<AlbumPhoto | null>(null);
   const [manualData, setManualData] = useState<ManualEditData>({ direccion: '', localidad: '', codigoPostal: '', nombreDestinatario: '', telefono: '', nombreRemitente: '' });
   const [fechaIngreso, setFechaIngreso] = useState<Date>(new Date());
+  const [empresaTerciarizadaId, setEmpresaTerciarizadaId] = useState<string>(defaultEmpresaTerciarizadaId || '');
+  const [empresasTerciarizadas, setEmpresasTerciarizadas] = useState<Array<{ id: string; nombre: string }>>([]);
 
   const [profileData, setProfileData] = useState<{ tenant_id: string; sucursal_id: string | null } | null>(null);
 
@@ -119,6 +121,26 @@ export function BulkOCRScreen({ onClose, onPackagesReady, terciarizadoMode = fal
     };
     fetchProfile();
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!terciarizadoMode || !profileData?.tenant_id) return;
+    (async () => {
+      const { data } = await supabase
+        .from('empresas_terciarizadas')
+        .select('id, nombre')
+        .eq('tenant_id', profileData.tenant_id)
+        .eq('activa', true)
+        .order('nombre');
+      if (data) setEmpresasTerciarizadas(data);
+    })();
+  }, [terciarizadoMode, profileData?.tenant_id]);
+
+  const empresaSeleccionada = empresasTerciarizadas.find(e => e.id === empresaTerciarizadaId);
+  const terciarizadoFields = terciarizadoMode && empresaSeleccionada ? {
+    es_terciarizado: true as const,
+    empresa_terciarizada_id: empresaSeleccionada.id,
+    empresa_terciarizada: empresaSeleccionada.nombre,
+  } : {};
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
