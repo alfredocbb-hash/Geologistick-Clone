@@ -56,6 +56,8 @@ interface BulkPackage {
 interface BulkOCRScreenProps {
   onClose: () => void;
   onPackagesReady?: (envioIds: string[]) => void;
+  terciarizadoMode?: boolean;
+  defaultEmpresaTerciarizadaId?: string;
 }
 
 async function geocodeAndUpdate(envioId: string, direccion: string, localidad: string) {
