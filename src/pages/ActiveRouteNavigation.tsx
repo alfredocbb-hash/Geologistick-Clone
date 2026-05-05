@@ -372,6 +372,8 @@ export default function ActiveRouteNavigation() {
       
       // Skip shipments with incident - no further action needed from driver
       if (envio.estado === 'incidencia') return false;
+      // Skip shipments with failed visit - keep them visible in list but out of suggestion
+      if (envio.estado === 'primera_visita' || envio.estado === 'segunda_visita') return false;
       
       // Excluir envíos sin chofer asignado (reprogramados que pasaron el filtro)
       if (!envio.chofer_id) return false;
@@ -399,7 +401,7 @@ export default function ActiveRouteNavigation() {
         if (!envio) return null;
         
         const isItemPickup = envio.requiere_retiro;
-        const isCompleted = envio.estado === 'entregado' || envio.estado === 'devuelto' || envio.estado === 'incidencia' || envio.estado_retiro === 'retirado';
+        const isCompleted = envio.estado === 'entregado' || envio.estado === 'devuelto' || envio.estado === 'incidencia' || envio.estado === 'primera_visita' || envio.estado === 'segunda_visita' || envio.estado_retiro === 'retirado';
         const isCurrent = nextStop?.id === item.id;
         
         // Get coordinates: prioritize envio fields, fallback to ruta_paradas lat/lng
