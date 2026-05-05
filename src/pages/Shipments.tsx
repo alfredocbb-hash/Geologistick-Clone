@@ -596,6 +596,7 @@ export default function Shipments() {
                    <TableHead>IDML</TableHead>
                    <TableHead>Remitente</TableHead>
                    <TableHead>Destinatario</TableHead>
+                   <TableHead>Dirección</TableHead>
                    <TableHead>CP Dest.</TableHead>
                    <TableHead>Origen</TableHead>
                    <TableHead>Destino</TableHead>

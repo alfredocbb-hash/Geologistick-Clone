@@ -1,15 +1,12 @@
-# Buscar por dirección, localidad y chofer en Gestión de Envíos
+## Mostrar dirección en Gestión de Envíos
 
-## Cambio
-En `src/pages/Shipments.tsx`, ampliar el filtro `filteredEnvios` (línea ~373) para incluir además de tracking/nombre:
+Actualmente la tabla en `src/pages/Shipments.tsx` muestra columnas (Tracking, IDML, Remitente, Destinatario, CP Dest., Origen, Destino, Chofer, Estado, ...) pero no la dirección de entrega completa. La columna "Destino" solo muestra sucursal_destino o ciudad/dirección como fallback.
 
-- `envio.direccion_entrega`
-- `envio.ciudad_entrega`
-- `envio.destinatario?.direccion`
-- `envio.destinatario?.ciudad`
-- Nombre del chofer (vía `choferMap[envio.chofer_id]`, ya disponible)
+### Cambios
 
-También se corrige un bug menor: `destinatario?.nombre` actualmente usa `.includes` sin `toLowerCase()` (no matchea minúsculas).
+1. En `src/pages/Shipments.tsx`:
+   - Agregar nueva columna `<TableHead>Dirección</TableHead>` después de "Destinatario" (antes de "CP Dest.").
+   - Agregar `<TableCell>` correspondiente que muestre `envio.direccion_entrega || envio.destinatario?.direccion || '-'`, con `ciudad_entrega` como sub-texto en muted si existe.
+   - Texto truncado con `max-w-[200px] truncate` y `title` para tooltip completo.
 
-## Resultado
-El input de búsqueda existente filtra por tracking, remitente, destinatario, dirección, localidad y nombre del chofer. Sin cambios de UI ni de BD.
+No se modifican filtros ni queries — los campos `direccion_entrega` y `destinatario.direccion` ya se traen.
