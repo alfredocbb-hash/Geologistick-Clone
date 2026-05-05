@@ -64,7 +64,10 @@ interface EnvioLiquidacion {
   tracking_externo: string | null;
   nombre_destinatario: string | null;
   precio_total: number;
+  precio_resuelto: number;
+  tarifa_aplicada_id: string | null;
   fecha_entrega: string | null;
+  ciudad_entrega: string | null;
 }
 
 interface LiquidacionTerciarizado {
