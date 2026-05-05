@@ -460,6 +460,14 @@ export default function ThirdPartyCompanies() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          title="Tarifas"
+                          onClick={() => setRatesEmpresa(empresa)}
+                        >
+                          <Tag className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           onClick={() => openEditDialog(empresa)}
                         >
                           <Pencil className="h-4 w-4" />
