@@ -60,19 +60,45 @@ export function SellerLiquidacionDetailDialog({
   const [isSaving, setIsSaving] = useState(false);
   const queryClient = useQueryClient();
 
-  // Fetch envíos vinculados a esta liquidación
+  // Fetch envíos vinculados a esta liquidación + huérfanos del período
   const { data: envios, isLoading: isLoadingEnvios } = useQuery({
     queryKey: ['seller-liquidacion-envios', liquidacion?.id],
     queryFn: async () => {
-      const { data, error } = await (supabase
-        .from('envios') as any)
-        .select('id, tracking_number, nombre_destinatario, direccion_entrega, precio_total, estado, created_at, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
-        .eq('liquidacion_seller_id', liquidacion?.id)
-        .neq('estado', 'pendiente')
-        .order('created_at', { ascending: true });
+      if (!liquidacion?.id) return [];
+      const selectCols = 'id, tracking_number, nombre_destinatario, direccion_entrega, precio_total, estado, created_at, liquidacion_seller_id, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)';
 
-      if (error) throw error;
-      return data;
+      const { data: linked, error: e1 } = await (supabase.from('envios') as any)
+        .select(selectCols)
+        .eq('liquidacion_seller_id', liquidacion.id)
+        .neq('estado', 'pendiente');
+      if (e1) throw e1;
+
+      // Buscar huérfanos del período (mismo seller, sin liquidación, dentro del rango)
+      const sellerId = (liquidacion as any).seller_id;
+      let orphans: any[] = [];
+      if (sellerId && liquidacion.periodo_inicio && liquidacion.periodo_fin) {
+        const { data: orph, error: e2 } = await (supabase.from('envios') as any)
+          .select(selectCols)
+          .eq('remitente_id', sellerId)
+          .is('liquidacion_seller_id', null)
+          .neq('estado', 'pendiente')
+          .gte('created_at', liquidacion.periodo_inicio)
+          .lte('created_at', liquidacion.periodo_fin + 'T23:59:59');
+        if (e2) throw e2;
+        orphans = orph || [];
+
+        // Auto-link huérfanos a esta liquidación si está en estado 'generada'
+        if (orphans.length > 0 && liquidacion.estado === 'generada') {
+          const orphanIds = orphans.map((o: any) => o.id);
+          await (supabase.from('envios') as any)
+            .update({ liquidacion_seller_id: liquidacion.id })
+            .in('id', orphanIds);
+        }
+      }
+
+      const all = [...(linked || []), ...orphans];
+      all.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+      return all;
     },
     enabled: open && !!liquidacion?.id,
   });
