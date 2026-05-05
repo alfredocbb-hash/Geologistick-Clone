@@ -98,6 +98,7 @@ interface EmpresaTerciarizada {
   incluye_iva: boolean;
   porcentaje_iva: number;
   created_at: string;
+  tenant_id: string;
 }
 
 interface FormData {
