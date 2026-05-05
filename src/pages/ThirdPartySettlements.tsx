@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { ThirdPartySettlementDetailDialog } from "@/components/settlements/ThirdPartySettlementDetailDialog";
 import { downloadThirdPartySettlementPDF } from "@/lib/generateSettlementPDF";
+import { resolveTerciarizadoPrice, type TarifaTerciarizada } from "@/lib/resolveTerciarizadoPrice";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { parseDateString } from "@/lib/dateUtils";
@@ -64,7 +65,10 @@ interface EnvioLiquidacion {
   tracking_externo: string | null;
   nombre_destinatario: string | null;
   precio_total: number;
+  precio_resuelto: number;
+  tarifa_aplicada_id: string | null;
   fecha_entrega: string | null;
+  ciudad_entrega: string | null;
 }
 
 interface LiquidacionTerciarizado {
@@ -189,13 +193,20 @@ export default function ThirdPartySettlements() {
     }
     setIsCalculating(true);
     try {
+      // Tarifas activas de la empresa
+      const { data: tarifasData } = await (supabase.from("tarifas_terciarizadas") as any)
+        .select("*")
+        .eq("empresa_id", liqEmpresaId)
+        .eq("activa", true);
+      const tarifas = (tarifasData || []) as TarifaTerciarizada[];
+
       const { data, error } = await supabase
         .from("envios")
-        .select("id, tracking_number, tracking_externo, nombre_destinatario, precio_total, fecha_entrega")
+        .select("id, tracking_number, tracking_externo, nombre_destinatario, precio_total, fecha_entrega, ciudad_entrega, ciudad_retiro, provincia, requiere_retiro, peso_kg, tipo_pago")
         .eq("empresa_terciarizada_id", liqEmpresaId)
         .eq("es_terciarizado", true)
         .eq("estado", "entregado")
-        .neq("tipo_pago", "destino")
+        .or("tipo_pago.is.null,tipo_pago.neq.destino")
         .gte("fecha_entrega", periodoInicio)
         .lte("fecha_entrega", periodoFin + "T23:59:59");
 
@@ -203,16 +214,49 @@ export default function ThirdPartySettlements() {
 
       // Filter out already liquidated shipments
       const envioIds = (data || []).map((e) => e.id);
+      let liquidadosSet = new Set<string>();
       if (envioIds.length > 0) {
         const { data: yaLiquidados } = await supabase
           .from("liquidacion_terciarizado_detalles")
           .select("envio_id")
           .in("envio_id", envioIds);
+        liquidadosSet = new Set((yaLiquidados || []).map((d) => d.envio_id));
+      }
 
-        const liquidadosSet = new Set((yaLiquidados || []).map((d) => d.envio_id));
-        setEnviosCalculados((data || []).filter((e) => !liquidadosSet.has(e.id)) as EnvioLiquidacion[]);
-      } else {
-        setEnviosCalculados([]);
+      const items: EnvioLiquidacion[] = (data || [])
+        .filter((e: any) => !liquidadosSet.has(e.id))
+        .map((e: any) => {
+          const precioBase = Number(e.precio_total) || 0;
+          let precio_resuelto = precioBase;
+          let tarifa_aplicada_id: string | null = null;
+          if (precioBase <= 0 && tarifas.length > 0) {
+            const r = resolveTerciarizadoPrice({
+              ciudad_entrega: e.ciudad_entrega,
+              ciudad_retiro: e.ciudad_retiro,
+              provincia_entrega: e.provincia,
+              provincia_retiro: e.provincia,
+              requiere_retiro: e.requiere_retiro,
+              peso_kg: e.peso_kg,
+            }, tarifas);
+            precio_resuelto = r.precio;
+            tarifa_aplicada_id = r.tarifaId;
+          }
+          return {
+            id: e.id,
+            tracking_number: e.tracking_number,
+            tracking_externo: e.tracking_externo,
+            nombre_destinatario: e.nombre_destinatario,
+            precio_total: precioBase,
+            precio_resuelto,
+            tarifa_aplicada_id,
+            fecha_entrega: e.fecha_entrega,
+            ciudad_entrega: e.ciudad_entrega,
+          };
+        });
+      setEnviosCalculados(items);
+
+      if (tarifas.length === 0) {
+        toast.warning("La empresa no tiene tarifas configuradas. Los envíos sin precio quedarán en $0.");
       }
       setHasCalculated(true);
     } catch (err: any) {
@@ -223,7 +267,7 @@ export default function ThirdPartySettlements() {
   };
 
   // IVA calculation
-  const montoTotal = enviosCalculados.reduce((sum, e) => sum + (e.precio_total || 0), 0);
+  const montoTotal = enviosCalculados.reduce((sum, e) => sum + (e.precio_resuelto || 0), 0);
   const calcIVA = (total: number, empresa: EmpresaTerciarizada | undefined) => {
     if (!empresa?.incluye_iva) return { neto: total, iva: 0, total };
     const pct = empresa.porcentaje_iva || 21;
@@ -263,7 +307,7 @@ export default function ThirdPartySettlements() {
       const detalles = enviosCalculados.map((e) => ({
         liquidacion_id: liq.id,
         envio_id: e.id,
-        monto: e.precio_total || 0,
+        monto: e.precio_resuelto || 0,
       }));
       const { error: detError } = await supabase
         .from("liquidacion_terciarizado_detalles")
@@ -580,15 +624,32 @@ export default function ThirdPartySettlements() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {enviosCalculados.map((envio) => (
+                        {enviosCalculados.map((envio, idx) => (
                           <TableRow key={envio.id}>
                             <TableCell className="font-mono">{envio.tracking_externo || envio.tracking_number}</TableCell>
                             <TableCell>{envio.nombre_destinatario || "-"}</TableCell>
                             <TableCell>
                               {envio.fecha_entrega ? format(new Date(envio.fecha_entrega), "dd/MM/yy", { locale: es }) : "-"}
                             </TableCell>
-                            <TableCell className="text-right font-medium">
-                              ${(envio.precio_total || 0).toLocaleString()}
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                {envio.precio_resuelto === 0 && (
+                                  <Badge variant="destructive" className="text-xs">Sin tarifa</Badge>
+                                )}
+                                <Input
+                                  type="number"
+                                  className="w-28 text-right"
+                                  value={envio.precio_resuelto}
+                                  onChange={(ev) => {
+                                    const v = Number(ev.target.value) || 0;
+                                    setEnviosCalculados((prev) => {
+                                      const next = [...prev];
+                                      next[idx] = { ...next[idx], precio_resuelto: v };
+                                      return next;
+                                    });
+                                  }}
+                                />
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}

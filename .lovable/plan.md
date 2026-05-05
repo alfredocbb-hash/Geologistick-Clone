@@ -1,41 +1,78 @@
-## Problema
+## Diagnóstico
 
-El envío `ML-46924487035` aparece en el PDF de la liquidación de **Esc Audio del 19/04 - 25/04**, pero:
-- Fecha de venta (created_at): 24/04
-- Fecha de entrega: 27/04 → debería estar en la liquidación del **25/04 - 02/05**
+En `/settlements/third-party` el cálculo no devuelve envíos por dos razones:
 
-### Causa raíz
+1. La query filtra `tipo_pago != 'destino'`. De los 183 envíos terciarizados entregados, **63 tienen `tipo_pago` NULL** (son terciarizados sin clasificar) — el filtro `.neq('tipo_pago', 'destino')` los descarta porque `NEQ` no matchea NULL en Postgres/PostgREST. **Hay que cambiarlo a `.or('tipo_pago.is.null,tipo_pago.neq.destino')`**.
 
-Cuando se generó la liquidación 19-25/04, este envío todavía no estaba entregado, así que correctamente NO se incluyó. Pero al descargar el PDF, la lógica de "huérfanos" que agregamos en el paso anterior busca envíos del seller con `liquidacion_seller_id IS NULL` filtrando por **`created_at`** dentro del período. Como el envío fue creado el 24/04, lo "adopta" indebidamente y además lo auto-vincula a esa liquidación.
+2. La mayoría de envíos terciarizados **tiene `precio_total = 0`** (ver Lace, Alvarez F, etc.) porque hoy no hay forma de tarifar el servicio que la empresa terciarizada le presta a la nuestra. Aunque se incluyan en la liquidación, salen con $0.
 
-Esto contradice la regla del sistema (`mem://features/settlements/estrategias-consulta-liquidaciones`): para e-commerce los envíos deben asignarse a una liquidación según `fecha_entrega` (cuándo se entregó / repartió), no según `created_at`.
+Además el usuario pide poder asignar **tarifas a empresas terciarizadas** para que el costo del flete terciarizado se calcule automáticamente.
 
 ## Solución
 
-Alinear la búsqueda de huérfanos con la misma lógica dual que usa el generador de liquidaciones (`src/pages/ecommerce/Settlements.tsx`):
+### A. Modelo de tarifas para terciarizados (nuevo)
 
-1. Envíos con `fecha_entrega` dentro del período → incluir.
-2. Envíos sin `fecha_entrega` (no entregados todavía) → incluir solo si `created_at` cae en el período Y el estado no es final ambiguo. En la práctica conviene **excluirlos** para evitar adopciones erróneas: si un envío aún no se entregó, debe esperar la liquidación del período en que efectivamente se entregue.
+Crear tabla `tarifas_terciarizadas`:
 
-### Cambios
+```
+id uuid PK
+empresa_id uuid FK -> empresas_terciarizadas
+tenant_id uuid
+nombre text                       -- ej. "CABA y GBA", "Interior"
+tipo_tarifa text                  -- 'fija' | 'por_zona' | 'por_kg'
+precio_fijo numeric               -- si 'fija': se aplica a cualquier envío
+zonas jsonb                       -- si 'por_zona': [{ ciudades: [...], provincias: [...], precio: N }]
+precio_por_kg numeric             -- si 'por_kg'
+precio_minimo numeric             -- piso
+activa boolean default true
+created_at, updated_at
+```
 
-**`src/lib/generateSettlementPDF.ts`** (función `downloadSellerSettlementPDF`, lóg. de huérfanos ~líneas 719-736):
-- Reemplazar el filtro `.gte('created_at', ...)` / `.lte('created_at', ...)` por `.gte('fecha_entrega', ...)` / `.lte('fecha_entrega', ...)`.
-- Quitar de huérfanos los envíos con `fecha_entrega IS NULL` (no se reparten todavía → no liquidar).
-- Mantener el auto-link de los huérfanos verdaderos (los que efectivamente se entregaron en el período y quedaron sin liquidar).
+RLS: por `tenant_id` (admin/super_admin del tenant).
 
-**`src/components/ecommerce/SellerLiquidacionDetailDialog.tsx`** (~líneas 79-86):
-- Mismo cambio: filtrar huérfanos por `fecha_entrega` dentro del período en lugar de `created_at`.
-- Excluir los que tienen `fecha_entrega = NULL`.
+Resolver precio de un envío terciarizado:
+1. Buscar tarifas activas de la empresa.
+2. Si `por_zona`: matchear `ciudad_entrega` (o `ciudad_retiro` si `requiere_retiro`) primero exacto, luego substring, luego provincia.
+3. Si `fija`: usar `precio_fijo` directamente.
+4. Si `por_kg`: `precio_por_kg * peso` con piso `precio_minimo`.
 
-### Limpieza puntual del envío mal vinculado
+### B. UI para gestionar tarifas terciarizadas
 
-Si la liquidación 19-25/04 de Esc Audio quedó con `total_cargos` recalculado incluyendo este envío, al recargar el PDF con la lógica corregida el `recomputedTotal` lo excluirá y volverá a sincronizar `total_cargos` / `saldo_periodo` / `saldo_final` en la base, siempre que la liquidación esté en estado `generada`. Si ya está `aprobada` o `pagada`, no se sobreescribe — en ese caso el usuario puede:
-- Editar manualmente el monto, o
-- Marcarla como "generada" temporalmente para forzar el recálculo.
+En `src/pages/ThirdPartyCompanies.tsx`, agregar acción "Tarifas" en cada empresa que abre un nuevo dialog `ThirdPartyRatesDialog`:
 
-Y al generar la próxima liquidación del seller para 25/04 - 02/05, este envío aparecerá correctamente porque su `fecha_entrega` (27/04) cae en ese rango.
+- Lista de tarifas de la empresa (CRUD).
+- Form con tipo, precio fijo, editor de zonas (ciudades + precio), peso.
+- Estado activo.
+
+### C. Fix del cálculo de liquidación
+
+En `src/pages/ThirdPartySettlements.tsx` (`handleCalculate`):
+
+1. Cambiar el filtro `tipo_pago`:
+   ```
+   .or('tipo_pago.is.null,tipo_pago.neq.destino')
+   ```
+2. Quitar dependencia de `precio_total`. Para cada envío:
+   - Si `precio_total > 0` → usar ese.
+   - Si no → resolver precio aplicando tarifas de la empresa (helper nuevo `resolveTerciarizadoPrice(envio, tarifas)`).
+   - Si no hay tarifa que matchee → mostrar el envío con `precio_resuelto = 0` y un badge "Sin tarifa" para que el usuario lo vea y pueda configurar.
+3. Mostrar columna nueva con el precio resuelto y permitir edición manual antes de generar la liquidación (similar a las liquidaciones de seller).
+4. Al generar la liquidación, `liquidacion_terciarizado_detalles.monto` se guarda con el precio resuelto/editado, no `precio_total` del envío.
+
+### D. Detalles de UX
+
+- En el detalle de empresa terciarizada agregar tab "Tarifas".
+- En el dialog de generación de liquidación, footer con "X envíos sin tarifa configurada — configurar ahora" (link a la pantalla).
+- Si todas las tarifas de la empresa están desactivadas o no hay ninguna, mostrar warning antes de calcular.
+
+## Archivos a tocar
+
+- Nueva migración SQL: tabla `tarifas_terciarizadas` + RLS + índice por `empresa_id`.
+- Nuevo `src/components/settlements/ThirdPartyRatesDialog.tsx`.
+- Nuevo `src/lib/resolveTerciarizadoPrice.ts` (motor de matching).
+- `src/pages/ThirdPartyCompanies.tsx` — botón "Tarifas" + integrar dialog.
+- `src/pages/ThirdPartySettlements.tsx` — fix filtro `tipo_pago`, integrar resolver, columna precio editable, persistir monto al generar.
 
 ## Resumen
 
-Cambiar el criterio de búsqueda de envíos huérfanos en el detalle y PDF de liquidaciones e-commerce, usando `fecha_entrega` en lugar de `created_at`, alineado con la lógica oficial del generador.
+Crear sistema de tarifas para empresas terciarizadas (tabla + UI), arreglar el filtro de `tipo_pago` que oculta envíos con NULL, y resolver dinámicamente el precio de cada envío terciarizado al liquidar usando esas tarifas.

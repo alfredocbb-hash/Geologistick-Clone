@@ -46,7 +46,9 @@ import {
   Users,
   CheckCircle,
   XCircle,
+  Tag,
 } from "lucide-react";
+import { ThirdPartyRatesDialog } from "@/components/settlements/ThirdPartyRatesDialog";
 import { format } from "date-fns";
 
 const PROVINCIAS_ARGENTINA = [
@@ -96,6 +98,7 @@ interface EmpresaTerciarizada {
   incluye_iva: boolean;
   porcentaje_iva: number;
   created_at: string;
+  tenant_id: string;
 }
 
 interface FormData {
@@ -143,6 +146,7 @@ export default function ThirdPartyCompanies() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [ratesEmpresa, setRatesEmpresa] = useState<EmpresaTerciarizada | null>(null);
 
   // Form draft persistence
   const {
@@ -458,6 +462,14 @@ export default function ThirdPartyCompanies() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          title="Tarifas"
+                          onClick={() => setRatesEmpresa(empresa)}
+                        >
+                          <Tag className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           onClick={() => openEditDialog(empresa)}
                         >
                           <Pencil className="h-4 w-4" />
@@ -763,6 +775,12 @@ export default function ThirdPartyCompanies() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ThirdPartyRatesDialog
+        open={!!ratesEmpresa}
+        onOpenChange={(v) => { if (!v) setRatesEmpresa(null); }}
+        empresa={ratesEmpresa ? { id: ratesEmpresa.id, nombre: ratesEmpresa.nombre, tenant_id: (ratesEmpresa as any).tenant_id } : null}
+      />
     </div>
   );
 }
