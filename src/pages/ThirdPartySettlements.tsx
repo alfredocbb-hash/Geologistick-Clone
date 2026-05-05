@@ -307,7 +307,7 @@ export default function ThirdPartySettlements() {
       const detalles = enviosCalculados.map((e) => ({
         liquidacion_id: liq.id,
         envio_id: e.id,
-        monto: e.precio_total || 0,
+        monto: e.precio_resuelto || 0,
       }));
       const { error: detError } = await supabase
         .from("liquidacion_terciarizado_detalles")
