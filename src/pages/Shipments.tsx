@@ -373,12 +373,18 @@ export default function Shipments() {
   const filteredEnvios = envios?.filter(envio => {
     if (!search) return true;
     const searchLower = search.toLowerCase();
+    const choferNombre = envio.chofer_id ? (choferMap[envio.chofer_id] || '') : '';
     return (
       envio.tracking_number?.toLowerCase().includes(searchLower) ||
       envio.tracking_externo?.toLowerCase().includes(searchLower) ||
       envio.remitente?.nombre?.toLowerCase().includes(searchLower) ||
-      envio.destinatario?.nombre?.includes(searchLower) ||
-      envio.nombre_destinatario?.toLowerCase().includes(searchLower)
+      envio.destinatario?.nombre?.toLowerCase().includes(searchLower) ||
+      envio.nombre_destinatario?.toLowerCase().includes(searchLower) ||
+      envio.direccion_entrega?.toLowerCase().includes(searchLower) ||
+      envio.ciudad_entrega?.toLowerCase().includes(searchLower) ||
+      (envio.destinatario as any)?.direccion?.toLowerCase().includes(searchLower) ||
+      (envio.destinatario as any)?.ciudad?.toLowerCase().includes(searchLower) ||
+      choferNombre.toLowerCase().includes(searchLower)
     );
   });
   filteredEnviosRef.current = filteredEnvios || null;
