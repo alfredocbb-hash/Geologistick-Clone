@@ -723,8 +723,9 @@ export async function downloadSellerSettlementPDF(liquidacion: {
       .eq('remitente_id', liquidacion.seller_id)
       .is('liquidacion_seller_id', null)
       .neq('estado', 'pendiente')
-      .gte('created_at', liquidacion.periodo_inicio)
-      .lte('created_at', liquidacion.periodo_fin + 'T23:59:59');
+      .not('fecha_entrega', 'is', null)
+      .gte('fecha_entrega', liquidacion.periodo_inicio)
+      .lte('fecha_entrega', liquidacion.periodo_fin + 'T23:59:59');
     orphans = orph || [];
 
     // Auto-link huérfanos

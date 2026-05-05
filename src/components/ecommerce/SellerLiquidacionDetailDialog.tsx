@@ -77,13 +77,16 @@ export function SellerLiquidacionDetailDialog({
       const sellerId = (liquidacion as any).seller_id;
       let orphans: any[] = [];
       if (sellerId && liquidacion.periodo_inicio && liquidacion.periodo_fin) {
+        // Huérfanos: filtrar por fecha_entrega real dentro del período (regla ecommerce)
+        // Excluye envíos sin fecha_entrega para no adoptar envíos no entregados
         const { data: orph, error: e2 } = await (supabase.from('envios') as any)
           .select(selectCols)
           .eq('remitente_id', sellerId)
           .is('liquidacion_seller_id', null)
           .neq('estado', 'pendiente')
-          .gte('created_at', liquidacion.periodo_inicio)
-          .lte('created_at', liquidacion.periodo_fin + 'T23:59:59');
+          .not('fecha_entrega', 'is', null)
+          .gte('fecha_entrega', liquidacion.periodo_inicio)
+          .lte('fecha_entrega', liquidacion.periodo_fin + 'T23:59:59');
         if (e2) throw e2;
         orphans = orph || [];
 
