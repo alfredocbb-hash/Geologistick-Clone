@@ -267,7 +267,7 @@ export default function ThirdPartySettlements() {
   };
 
   // IVA calculation
-  const montoTotal = enviosCalculados.reduce((sum, e) => sum + (e.precio_total || 0), 0);
+  const montoTotal = enviosCalculados.reduce((sum, e) => sum + (e.precio_resuelto || 0), 0);
   const calcIVA = (total: number, empresa: EmpresaTerciarizada | undefined) => {
     if (!empresa?.incluye_iva) return { neto: total, iva: 0, total };
     const pct = empresa.porcentaje_iva || 21;
