@@ -653,9 +653,6 @@ export default function ThirdPartySettlements() {
                             </TableCell>
                           </TableRow>
                         ))}
-                            </TableCell>
-                          </TableRow>
-                        ))}
                       </TableBody>
                     </Table>
 
