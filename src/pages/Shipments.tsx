@@ -382,8 +382,8 @@ export default function Shipments() {
       envio.nombre_destinatario?.toLowerCase().includes(searchLower) ||
       envio.direccion_entrega?.toLowerCase().includes(searchLower) ||
       envio.ciudad_entrega?.toLowerCase().includes(searchLower) ||
-      envio.destinatario?.direccion?.toLowerCase().includes(searchLower) ||
-      envio.destinatario?.ciudad?.toLowerCase().includes(searchLower) ||
+      (envio.destinatario as any)?.direccion?.toLowerCase().includes(searchLower) ||
+      (envio.destinatario as any)?.ciudad?.toLowerCase().includes(searchLower) ||
       choferNombre.toLowerCase().includes(searchLower)
     );
   });
