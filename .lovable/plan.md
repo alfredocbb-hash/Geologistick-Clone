@@ -1,41 +1,41 @@
 ## Problema
 
-En el PDF de liquidación de seller "Esc Audio" (período 25/04 - 02/05):
-1. **Total inconsistente**: Header dice `$130.322,87` (valor guardado), pero el subtotal al pie dice `$168.431,83` (suma real de las 20 filas). El `total_cargos` quedó desactualizado tras editar precios fuera del flujo "Guardar cambios" del diálogo.
-2. **Faltan envíos en $0 modificados**: solo aparecen los envíos con `liquidacion_seller_id` apuntando a esta liquidación. Los envíos del período que fueron puestos a $0 manualmente pero nunca quedaron linkeados (porque al crear la liquidación estaban `pendiente`, `cancelado sin visitas`, o se actualizaron después) no aparecen en el PDF ni en el detalle.
+El envío `ML-46924487035` aparece en el PDF de la liquidación de **Esc Audio del 19/04 - 25/04**, pero:
+- Fecha de venta (created_at): 24/04
+- Fecha de entrega: 27/04 → debería estar en la liquidación del **25/04 - 02/05**
+
+### Causa raíz
+
+Cuando se generó la liquidación 19-25/04, este envío todavía no estaba entregado, así que correctamente NO se incluyó. Pero al descargar el PDF, la lógica de "huérfanos" que agregamos en el paso anterior busca envíos del seller con `liquidacion_seller_id IS NULL` filtrando por **`created_at`** dentro del período. Como el envío fue creado el 24/04, lo "adopta" indebidamente y además lo auto-vincula a esa liquidación.
+
+Esto contradice la regla del sistema (`mem://features/settlements/estrategias-consulta-liquidaciones`): para e-commerce los envíos deben asignarse a una liquidación según `fecha_entrega` (cuándo se entregó / repartió), no según `created_at`.
 
 ## Solución
 
-### 1. Recalcular `total_cargos` antes de generar el PDF
+Alinear la búsqueda de huérfanos con la misma lógica dual que usa el generador de liquidaciones (`src/pages/ecommerce/Settlements.tsx`):
 
-En `src/lib/generateSettlementPDF.ts > downloadSellerSettlementPDF`:
-- Tras traer los envíos linkeados, calcular `recomputedTotal = sum(precio_total)` excluyendo cancelados sin visitas.
-- Si difiere de `liquidacion.total_cargos`, hacer un `update` a `liquidaciones_seller` (`total_cargos`, `saldo_periodo`, `saldo_final`) para mantener una única fuente de verdad.
-- Pasar `totalCargos: recomputedTotal` al `generateSettlementPDF` para que el header coincida con el subtotal del pie.
+1. Envíos con `fecha_entrega` dentro del período → incluir.
+2. Envíos sin `fecha_entrega` (no entregados todavía) → incluir solo si `created_at` cae en el período Y el estado no es final ambiguo. En la práctica conviene **excluirlos** para evitar adopciones erróneas: si un envío aún no se entregó, debe esperar la liquidación del período en que efectivamente se entregue.
 
-Esto garantiza que header y pie siempre coincidan, sin depender de que el usuario haya pulsado "Guardar cambios" en el diálogo.
+### Cambios
 
-### 2. Incluir todos los envíos del seller en el período
+**`src/lib/generateSettlementPDF.ts`** (función `downloadSellerSettlementPDF`, lóg. de huérfanos ~líneas 719-736):
+- Reemplazar el filtro `.gte('created_at', ...)` / `.lte('created_at', ...)` por `.gte('fecha_entrega', ...)` / `.lte('fecha_entrega', ...)`.
+- Quitar de huérfanos los envíos con `fecha_entrega IS NULL` (no se reparten todavía → no liquidar).
+- Mantener el auto-link de los huérfanos verdaderos (los que efectivamente se entregaron en el período y quedaron sin liquidar).
 
-Cambiar la query del PDF (y la del `SellerLiquidacionDetailDialog`) para no filtrar solo por `liquidacion_seller_id`, sino traer:
-- Envíos con `liquidacion_seller_id = liquidacion.id` **OR**
-- Envíos del seller (`remitente_id = liquidacion.seller_id`) en el rango `[periodo_inicio, periodo_fin]` que **no estén liquidados en otra liquidación** (`liquidacion_seller_id IS NULL`) y no estén `pendiente`.
+**`src/components/ecommerce/SellerLiquidacionDetailDialog.tsx`** (~líneas 79-86):
+- Mismo cambio: filtrar huérfanos por `fecha_entrega` dentro del período en lugar de `created_at`.
+- Excluir los que tienen `fecha_entrega = NULL`.
 
-Para los envíos "huérfanos" detectados, hacer un `update` linkeándolos a esta liquidación (`liquidacion_seller_id = liquidacion.id`) durante la generación del PDF, así también quedan formalmente incluidos. Esto cubre el caso de envíos a $0 modificados después de crear la liquidación.
+### Limpieza puntual del envío mal vinculado
 
-### 3. Aplicar mismo recálculo en el diálogo de detalle
+Si la liquidación 19-25/04 de Esc Audio quedó con `total_cargos` recalculado incluyendo este envío, al recargar el PDF con la lógica corregida el `recomputedTotal` lo excluirá y volverá a sincronizar `total_cargos` / `saldo_periodo` / `saldo_final` en la base, siempre que la liquidación esté en estado `generada`. Si ya está `aprobada` o `pagada`, no se sobreescribe — en ese caso el usuario puede:
+- Editar manualmente el monto, o
+- Marcarla como "generada" temporalmente para forzar el recálculo.
 
-`SellerLiquidacionDetailDialog.tsx`:
-- Usar la misma query expandida (linkeados + huérfanos del período).
-- Al abrir, si hay desincronía entre `total_cargos` y `adjustedTotal`, mostrar advertencia o auto-recalcular silenciosamente para liquidaciones en estado `generada`.
+Y al generar la próxima liquidación del seller para 25/04 - 02/05, este envío aparecerá correctamente porque su `fecha_entrega` (27/04) cae en ese rango.
 
-## Archivos a modificar
+## Resumen
 
-- `src/lib/generateSettlementPDF.ts` (función `downloadSellerSettlementPDF`, líneas 684-765): nueva query, recálculo y update.
-- `src/components/ecommerce/SellerLiquidacionDetailDialog.tsx` (líneas 64-78): query expandida.
-
-## Notas
-
-- El recálculo respeta la regla existente: cancelados sin visitas → $0 (memoria `cancelled-visits-charge`).
-- No se tocan envíos en estado `pendiente` (memoria `exclude-pending`).
-- El link automático a `liquidacion_seller_id` solo afecta a envíos sin liquidación previa, evitando doble facturación.
+Cambiar el criterio de búsqueda de envíos huérfanos en el detalle y PDF de liquidaciones e-commerce, usando `fecha_entrega` en lugar de `created_at`, alineado con la lógica oficial del generador.
