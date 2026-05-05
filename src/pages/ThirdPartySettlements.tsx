@@ -624,15 +624,35 @@ export default function ThirdPartySettlements() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {enviosCalculados.map((envio) => (
+                        {enviosCalculados.map((envio, idx) => (
                           <TableRow key={envio.id}>
                             <TableCell className="font-mono">{envio.tracking_externo || envio.tracking_number}</TableCell>
                             <TableCell>{envio.nombre_destinatario || "-"}</TableCell>
                             <TableCell>
                               {envio.fecha_entrega ? format(new Date(envio.fecha_entrega), "dd/MM/yy", { locale: es }) : "-"}
                             </TableCell>
-                            <TableCell className="text-right font-medium">
-                              ${(envio.precio_total || 0).toLocaleString()}
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                {envio.precio_resuelto === 0 && (
+                                  <Badge variant="destructive" className="text-xs">Sin tarifa</Badge>
+                                )}
+                                <Input
+                                  type="number"
+                                  className="w-28 text-right"
+                                  value={envio.precio_resuelto}
+                                  onChange={(ev) => {
+                                    const v = Number(ev.target.value) || 0;
+                                    setEnviosCalculados((prev) => {
+                                      const next = [...prev];
+                                      next[idx] = { ...next[idx], precio_resuelto: v };
+                                      return next;
+                                    });
+                                  }}
+                                />
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
                             </TableCell>
                           </TableRow>
                         ))}
