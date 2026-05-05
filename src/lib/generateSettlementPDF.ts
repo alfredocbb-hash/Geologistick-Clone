@@ -706,21 +706,81 @@ export async function downloadSellerSettlementPDF(liquidacion: {
     logoBase64 = await loadImageAsBase64(resolvedBranding.logo_light);
   }
 
-  // Fetch envíos vinculados
-  const { data: envios } = await supabase
+  // Fetch envíos vinculados + huérfanos del período (mismo seller, sin liquidación)
+  const selectCols = 'id, tracking_number, nombre_destinatario, precio_total, estado, ciudad_entrega, created_at';
+
+  const { data: linked } = await supabase
     .from('envios')
-    .select('id, tracking_number, nombre_destinatario, precio_total, estado, ciudad_entrega, created_at')
+    .select(selectCols)
     .eq('liquidacion_seller_id', liquidacion.id)
     .neq('estado', 'pendiente')
     .order('created_at', { ascending: true });
 
-  const shipmentItems = (envios || []).map((e: any) => ({
-    tracking: e.tracking_number || '-',
-    fecha: e.created_at ? format(new Date(e.created_at), 'dd/MM/yy') : '-',
-    destinatario: e.nombre_destinatario || '-',
-    localidad: e.ciudad_entrega || '-',
-    precio: e.estado === 'cancelado' ? 0 : (e.precio_total || 0),
-  }));
+  let orphans: any[] = [];
+  if (liquidacion.seller_id && liquidacion.periodo_inicio && liquidacion.periodo_fin) {
+    const { data: orph } = await (supabase.from('envios') as any)
+      .select(selectCols)
+      .eq('remitente_id', liquidacion.seller_id)
+      .is('liquidacion_seller_id', null)
+      .neq('estado', 'pendiente')
+      .gte('created_at', liquidacion.periodo_inicio)
+      .lte('created_at', liquidacion.periodo_fin + 'T23:59:59');
+    orphans = orph || [];
+
+    // Auto-link huérfanos
+    if (orphans.length > 0 && liquidacion.estado === 'generada') {
+      await (supabase.from('envios') as any)
+        .update({ liquidacion_seller_id: liquidacion.id })
+        .in('id', orphans.map((o: any) => o.id));
+    }
+  }
+
+  const allEnvios = [...(linked || []), ...orphans].sort((a, b) =>
+    (a.created_at || '').localeCompare(b.created_at || '')
+  );
+
+  // Detectar visitas para cancelados (regla cancelled-visits-charge)
+  const cancelledIds = allEnvios.filter((e: any) => e.estado === 'cancelado').map((e: any) => e.id);
+  let visitasSet = new Set<string>();
+  if (cancelledIds.length > 0) {
+    const { data: visitas } = await supabase
+      .from('envio_historial')
+      .select('envio_id')
+      .in('envio_id', cancelledIds)
+      .in('estado_nuevo', ['en_reparto', 'no_entregado'] as any[]);
+    visitasSet = new Set((visitas || []).map((v: any) => v.envio_id));
+  }
+
+  const shipmentItems = allEnvios.map((e: any) => {
+    const isCancelledNoVisit = e.estado === 'cancelado' && !visitasSet.has(e.id);
+    return {
+      tracking: e.tracking_number || '-',
+      fecha: e.created_at ? format(new Date(e.created_at), 'dd/MM/yy') : '-',
+      destinatario: e.nombre_destinatario || '-',
+      localidad: e.ciudad_entrega || '-',
+      precio: isCancelledNoVisit ? 0 : (e.precio_total || 0),
+    };
+  });
+
+  // Recalcular total real y sincronizar con la liquidación si difiere
+  const recomputedTotal = shipmentItems.reduce((s, it) => s + (it.precio || 0), 0);
+  const storedTotal = liquidacion.total_cargos || 0;
+  if (Math.abs(recomputedTotal - storedTotal) > 0.01 && liquidacion.estado === 'generada') {
+    const totalPagos = liquidacion.total_pagos || 0;
+    const saldoAnterior = liquidacion.saldo_anterior || 0;
+    const newSaldoPeriodo = recomputedTotal - totalPagos;
+    const newSaldoFinal = saldoAnterior + newSaldoPeriodo;
+    await (supabase.from('liquidaciones_seller') as any)
+      .update({
+        total_cargos: recomputedTotal,
+        saldo_periodo: newSaldoPeriodo,
+        saldo_final: newSaldoFinal,
+      })
+      .eq('id', liquidacion.id);
+    liquidacion.total_cargos = recomputedTotal;
+    liquidacion.saldo_periodo = newSaldoPeriodo;
+    liquidacion.saldo_final = newSaldoFinal;
+  }
 
   // Parse cargos globales por día from notas
   const cargosGlobalesDia: Array<{ nombre: string; monto_dia: number; dias: number; total: number }> = [];
