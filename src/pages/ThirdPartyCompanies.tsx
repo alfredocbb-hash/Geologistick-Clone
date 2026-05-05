@@ -48,6 +48,7 @@ import {
   XCircle,
   Tag,
 } from "lucide-react";
+import { ThirdPartyRatesDialog } from "@/components/settlements/ThirdPartyRatesDialog";
 import { format } from "date-fns";
 
 const PROVINCIAS_ARGENTINA = [
