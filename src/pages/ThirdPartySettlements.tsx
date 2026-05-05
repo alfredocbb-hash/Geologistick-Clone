@@ -230,7 +230,14 @@ export default function ThirdPartySettlements() {
           let precio_resuelto = precioBase;
           let tarifa_aplicada_id: string | null = null;
           if (precioBase <= 0 && tarifas.length > 0) {
-            const r = resolveTerciarizadoPrice(e, tarifas);
+            const r = resolveTerciarizadoPrice({
+              ciudad_entrega: e.ciudad_entrega,
+              ciudad_retiro: e.ciudad_retiro,
+              provincia_entrega: e.provincia,
+              provincia_retiro: e.provincia,
+              requiere_retiro: e.requiere_retiro,
+              peso_kg: e.peso_kg,
+            }, tarifas);
             precio_resuelto = r.precio;
             tarifa_aplicada_id = r.tarifaId;
           }
