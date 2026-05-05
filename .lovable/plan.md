@@ -1,45 +1,33 @@
-# Selector de empresa terciarizada en OCR masivo
+# Sacar envíos con visita fallida de la "Sugerida" sin eliminarlos
 
 ## Contexto
+Hoy, al reportar incidente "Cliente ausente", el envío pasa a `primera_visita` (o `segunda_visita`). El sistema sigue marcándolo como próxima parada sugerida, lo que hace que el chofer vuelva a verlo de inmediato.
 
-Hoy en `Planificador → Terciarizados`, al abrir el OCR masivo (`BulkOCRScreen`), solo se pide la **fecha de ingreso**. Los envíos creados quedan como `pendiente` normales, sin marcar como terciarizados ni vinculados a una empresa, lo que impide liquidarlos después en `Liquidaciones de terceros`.
+## Cambio
 
-## Cambios
+### `src/pages/ActiveRouteNavigation.tsx` — `nextStop` (memo)
+Agregar `primera_visita` y `segunda_visita` a los estados que se saltan al elegir la próxima parada:
 
-### 1. `src/components/mobile/BulkOCRScreen.tsx`
+```ts
+if (envio.estado === 'incidencia') return false;
+if (envio.estado === 'primera_visita' || envio.estado === 'segunda_visita') return false;
+```
 
-- Nuevas props opcionales:
-  - `terciarizadoMode?: boolean` — activa la UI del selector y obliga elegir empresa.
-  - `defaultEmpresaTerciarizadaId?: string` (opcional, no requerido).
-- Nuevo estado `empresaTerciarizadaId` + carga de empresas activas (`empresas_terciarizadas` filtradas por `tenant_id` y `activa = true`).
-- En el header (junto a "Fecha de ingreso"), agregar un `Select` "Empresa terciarizada" cuando `terciarizadoMode` esté activo. Visible tanto en mobile como desktop (mismo patrón que el datepicker actual).
-- Bloqueo: si `terciarizadoMode` y no hay empresa elegida, deshabilitar el botón de "Procesar"/"Iniciar" y mostrar toast "Seleccioná una empresa terciarizada".
-- En los 4 puntos de `INSERT` en `envios` (OCR album, force-save duplicado, manual entry, burst — líneas ~244, ~302, ~400, ~543), agregar cuando hay empresa seleccionada:
-  ```
-  es_terciarizado: true,
-  empresa_terciarizada_id: empresaTerciarizadaId,
-  empresa_terciarizada: <nombre de la empresa elegida>,
-  ```
-- Ajustar `source_module` a `bulk_ocr_terciarizado` para trazabilidad.
+Y en `mapMarkers`, marcar esos estados como "completados" visualmente para que no aparezcan como `current`:
 
-### 2. `src/components/routes/ThirdPartyShipmentsTab.tsx`
-
-- Pasar `terciarizadoMode` al render del dialog OCR (línea 1042):
-  ```tsx
-  <BulkOCRScreen
-    terciarizadoMode
-    defaultEmpresaTerciarizadaId={formData.empresa_terciarizada || undefined}
-    onClose={...}
-  />
-  ```
-- Invalidar también `["envios-terciarizados-pendientes"]` (ya lo hace) — sin cambios.
-
-### 3. Otras llamadas a `BulkOCRScreen`
-
-`MobileScanTab`, `FlexMixtoScreen`, `CollectScanScreen` — **sin cambios**. Al no pasar `terciarizadoMode`, mantienen el comportamiento actual.
+```ts
+const isCompleted =
+  envio.estado === 'entregado' ||
+  envio.estado === 'devuelto' ||
+  envio.estado === 'incidencia' ||
+  envio.estado === 'primera_visita' ||
+  envio.estado === 'segunda_visita' ||
+  envio.estado_retiro === 'retirado';
+```
 
 ## Resultado
+- El envío en `primera_visita`/`segunda_visita` queda fuera de la sugerencia y del foco del mapa.
+- Sigue listado en la ruta y se puede tocar para reintentar la entrega (el flujo de entrega ya existente acepta esos estados).
+- El próximo destino sugerido pasa al siguiente envío pendiente.
 
-- En `Planificador → Terciarizados`, al abrir "Importar fotos con IA", aparece un selector de empresa terciarizada junto al de fecha.
-- Los envíos creados por OCR quedan marcados como terciarizados y vinculados a la empresa elegida → aparecen en `Liquidaciones de terceros` para liquidar.
-- Resto de pantallas que usan el OCR masivo (chofer, Flex mixto, recolección) no se ven afectadas.
+No requiere cambios en BD ni en el dialog de incidentes (la transición a `primera_visita` ya funciona).
