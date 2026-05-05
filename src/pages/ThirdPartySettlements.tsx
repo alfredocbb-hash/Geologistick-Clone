@@ -202,7 +202,7 @@ export default function ThirdPartySettlements() {
 
       const { data, error } = await supabase
         .from("envios")
-        .select("id, tracking_number, tracking_externo, nombre_destinatario, precio_total, fecha_entrega, ciudad_entrega, ciudad_retiro, provincia_entrega, provincia_retiro, requiere_retiro, peso_kg, tipo_pago")
+        .select("id, tracking_number, tracking_externo, nombre_destinatario, precio_total, fecha_entrega, ciudad_entrega, ciudad_retiro, provincia, requiere_retiro, peso_kg, tipo_pago")
         .eq("empresa_terciarizada_id", liqEmpresaId)
         .eq("es_terciarizado", true)
         .eq("estado", "entregado")
