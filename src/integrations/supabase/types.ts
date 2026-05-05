@@ -4387,6 +4387,62 @@ export type Database = {
           },
         ]
       }
+      tarifas_terciarizadas: {
+        Row: {
+          activa: boolean
+          created_at: string
+          created_by: string | null
+          empresa_id: string
+          id: string
+          nombre: string
+          precio_fijo: number | null
+          precio_minimo: number | null
+          precio_por_kg: number | null
+          tenant_id: string
+          tipo_tarifa: string
+          updated_at: string
+          zonas: Json | null
+        }
+        Insert: {
+          activa?: boolean
+          created_at?: string
+          created_by?: string | null
+          empresa_id: string
+          id?: string
+          nombre: string
+          precio_fijo?: number | null
+          precio_minimo?: number | null
+          precio_por_kg?: number | null
+          tenant_id: string
+          tipo_tarifa?: string
+          updated_at?: string
+          zonas?: Json | null
+        }
+        Update: {
+          activa?: boolean
+          created_at?: string
+          created_by?: string | null
+          empresa_id?: string
+          id?: string
+          nombre?: string
+          precio_fijo?: number | null
+          precio_minimo?: number | null
+          precio_por_kg?: number | null
+          tenant_id?: string
+          tipo_tarifa?: string
+          updated_at?: string
+          zonas?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tarifas_terciarizadas_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_terciarizadas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_api_keys: {
         Row: {
           api_key_hash: string
