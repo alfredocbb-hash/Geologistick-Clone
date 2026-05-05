@@ -144,6 +144,7 @@ export default function ThirdPartyCompanies() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [ratesEmpresa, setRatesEmpresa] = useState<EmpresaTerciarizada | null>(null);
 
   // Form draft persistence
   const {
