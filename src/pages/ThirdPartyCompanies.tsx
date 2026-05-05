@@ -773,6 +773,12 @@ export default function ThirdPartyCompanies() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ThirdPartyRatesDialog
+        open={!!ratesEmpresa}
+        onOpenChange={(v) => { if (!v) setRatesEmpresa(null); }}
+        empresa={ratesEmpresa ? { id: ratesEmpresa.id, nombre: ratesEmpresa.nombre, tenant_id: (ratesEmpresa as any).tenant_id } : null}
+      />
     </div>
   );
 }
