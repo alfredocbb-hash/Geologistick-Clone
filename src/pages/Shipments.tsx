@@ -596,6 +596,7 @@ export default function Shipments() {
                    <TableHead>IDML</TableHead>
                    <TableHead>Remitente</TableHead>
                    <TableHead>Destinatario</TableHead>
+                   <TableHead>Dirección</TableHead>
                    <TableHead>CP Dest.</TableHead>
                    <TableHead>Origen</TableHead>
                    <TableHead>Destino</TableHead>
@@ -645,9 +646,22 @@ export default function Shipments() {
                      <TableCell>
                        {envio.nombre_remitente || (envio.remitente ? `${envio.remitente.nombre} ${envio.remitente.apellido || ''}` : '-')}
                      </TableCell>
-                    <TableCell>
-                      {envio.nombre_destinatario || (envio.destinatario ? `${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}` : '-')}
-                    </TableCell>
+                     <TableCell>
+                       {envio.nombre_destinatario || (envio.destinatario ? `${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}` : '-')}
+                     </TableCell>
+                     <TableCell className="max-w-[220px]">
+                       <div
+                         className="truncate text-sm"
+                         title={`${envio.direccion_entrega || (envio.destinatario as any)?.direccion || ''}${envio.ciudad_entrega ? ', ' + envio.ciudad_entrega : ''}`}
+                       >
+                         {envio.direccion_entrega || (envio.destinatario as any)?.direccion || '-'}
+                       </div>
+                       {(envio.ciudad_entrega || (envio.destinatario as any)?.ciudad) && (
+                         <div className="truncate text-xs text-muted-foreground">
+                           {envio.ciudad_entrega || (envio.destinatario as any)?.ciudad}
+                         </div>
+                       )}
+                     </TableCell>
                      <TableCell>
                        <span className="text-xs text-muted-foreground">{envio.cp_entrega || envio.codigo_postal_destino || '-'}</span>
                      </TableCell>
