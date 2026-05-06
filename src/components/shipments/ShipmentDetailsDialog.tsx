@@ -593,12 +593,33 @@ export function ShipmentDetailsDialog({
                   )}
 
                   {/* Notas */}
-                  {envio.notas && (
+                  {(envio.notas || isAdmin) && (() => {
+                    const isFinal = envio.estado === 'entregado' || envio.estado === 'cancelado';
+                    const canEdit = isAdmin && (!isFinal || isSuperAdmin);
+                    return (
                     <div className="p-3 border rounded-lg">
-                      <p className="text-xs font-semibold text-muted-foreground mb-2">NOTAS</p>
-                      <p className="text-sm">{envio.notas}</p>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-semibold text-muted-foreground">NOTAS / OBSERVACIONES</p>
+                        {canEdit && !editNotas && (
+                          <Button size="sm" variant="ghost" onClick={() => { setNotasDraft(envio.notas || ''); setEditNotas(true); }}>
+                            <Pencil className="h-3 w-3 mr-1" /> Editar
+                          </Button>
+                        )}
+                      </div>
+                      {editNotas ? (
+                        <div className="space-y-2">
+                          <Textarea value={notasDraft} onChange={(e) => setNotasDraft(e.target.value)} rows={4} placeholder="Agregar comentario u observación..." />
+                          <div className="flex gap-2 justify-end">
+                            <Button size="sm" variant="outline" onClick={() => setEditNotas(false)}>Cancelar</Button>
+                            <Button size="sm" onClick={() => updateEnvioMutation.mutate({ notas: notasDraft || null })} disabled={updateEnvioMutation.isPending}>Guardar</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm whitespace-pre-wrap">{envio.notas || <span className="text-muted-foreground italic">Sin notas</span>}</p>
+                      )}
                     </div>
-                  )}
+                    );
+                  })()}
                 </TabsContent>
 
                 <TabsContent value="contactos" className="space-y-4 mt-4">
