@@ -320,7 +320,8 @@ serve(async (req: Request) => {
 
     // Build response - mask PII for public (unauthenticated) access
     const response = {
-      tracking_number: envio.tracking_number,
+      tracking_number: envio.tracking_externo || envio.tracking_number,
+      tracking_externo: envio.tracking_externo,
       estado: envio.estado,
       estado_retiro: envio.estado_retiro,
       created_at: envio.created_at,
