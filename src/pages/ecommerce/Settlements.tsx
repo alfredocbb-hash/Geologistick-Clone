@@ -1961,6 +1961,8 @@ export default function Settlements() {
               )}
             </CardContent>
           </Card>
+            );
+          })()}
         </TabsContent>
       </Tabs>
 
