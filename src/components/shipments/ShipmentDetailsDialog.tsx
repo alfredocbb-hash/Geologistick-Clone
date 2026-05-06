@@ -103,8 +103,20 @@ export function ShipmentDetailsDialog({
 }: ShipmentDetailsDialogProps) {
   const [isGeneratingEPOD, setIsGeneratingEPOD] = useState(false);
   const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
-  const { user } = useAuth();
+  const { user, hasRole } = useAuth();
   const queryClient = useQueryClient();
+  const isAdmin = hasRole('admin') || hasRole('super_admin');
+  const isSuperAdmin = hasRole('super_admin');
+
+  const [editFinanciero, setEditFinanciero] = useState(false);
+  const [editNotas, setEditNotas] = useState(false);
+  const [editForm, setEditForm] = useState<{
+    precio_total: string;
+    tipo_pago: string;
+    pago_contra_entrega: boolean;
+    valor_declarado: string;
+  }>({ precio_total: '', tipo_pago: 'contado', pago_contra_entrega: false, valor_declarado: '' });
+  const [notasDraft, setNotasDraft] = useState('');
 
   const ML_TO_INTERNAL: Record<string, string> = {
     ready_to_ship: 'pendiente',
