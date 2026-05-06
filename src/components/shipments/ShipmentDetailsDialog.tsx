@@ -14,7 +14,13 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MLSyncBadge } from '@/components/shipments/MLSyncBadge';
+import { Pencil } from 'lucide-react';
 import { 
   Package, 
   User, 
@@ -97,8 +103,20 @@ export function ShipmentDetailsDialog({
 }: ShipmentDetailsDialogProps) {
   const [isGeneratingEPOD, setIsGeneratingEPOD] = useState(false);
   const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
-  const { user } = useAuth();
+  const { user, hasRole } = useAuth();
   const queryClient = useQueryClient();
+  const isAdmin = hasRole('admin') || hasRole('super_admin');
+  const isSuperAdmin = hasRole('super_admin');
+
+  const [editFinanciero, setEditFinanciero] = useState(false);
+  const [editNotas, setEditNotas] = useState(false);
+  const [editForm, setEditForm] = useState<{
+    precio_total: string;
+    tipo_pago: string;
+    pago_contra_entrega: boolean;
+    valor_declarado: string;
+  }>({ precio_total: '', tipo_pago: 'contado', pago_contra_entrega: false, valor_declarado: '' });
+  const [notasDraft, setNotasDraft] = useState('');
 
   const ML_TO_INTERNAL: Record<string, string> = {
     ready_to_ship: 'pendiente',
@@ -139,6 +157,22 @@ export function ShipmentDetailsDialog({
     onError: () => {
       toast.error('Error al aplicar el estado de ML');
     },
+  });
+
+  const updateEnvioMutation = useMutation({
+    mutationFn: async (patch: Record<string, any>) => {
+      if (!envioId) throw new Error('No envio');
+      const { error } = await supabase.from('envios').update(patch).eq('id', envioId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Envío actualizado');
+      setEditFinanciero(false);
+      setEditNotas(false);
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ['envios'] });
+    },
+    onError: (e: any) => toast.error(e?.message || 'Error al actualizar el envío'),
   });
   
   const { data: envio, isLoading, refetch } = useQuery({
@@ -559,12 +593,33 @@ export function ShipmentDetailsDialog({
                   )}
 
                   {/* Notas */}
-                  {envio.notas && (
+                  {(envio.notas || isAdmin) && (() => {
+                    const isFinal = envio.estado === 'entregado' || envio.estado === 'cancelado';
+                    const canEdit = isAdmin && (!isFinal || isSuperAdmin);
+                    return (
                     <div className="p-3 border rounded-lg">
-                      <p className="text-xs font-semibold text-muted-foreground mb-2">NOTAS</p>
-                      <p className="text-sm">{envio.notas}</p>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-semibold text-muted-foreground">NOTAS / OBSERVACIONES</p>
+                        {canEdit && !editNotas && (
+                          <Button size="sm" variant="ghost" onClick={() => { setNotasDraft(envio.notas || ''); setEditNotas(true); }}>
+                            <Pencil className="h-3 w-3 mr-1" /> Editar
+                          </Button>
+                        )}
+                      </div>
+                      {editNotas ? (
+                        <div className="space-y-2">
+                          <Textarea value={notasDraft} onChange={(e) => setNotasDraft(e.target.value)} rows={4} placeholder="Agregar comentario u observación..." />
+                          <div className="flex gap-2 justify-end">
+                            <Button size="sm" variant="outline" onClick={() => setEditNotas(false)}>Cancelar</Button>
+                            <Button size="sm" onClick={() => updateEnvioMutation.mutate({ notas: notasDraft || null })} disabled={updateEnvioMutation.isPending}>Guardar</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm whitespace-pre-wrap">{envio.notas || <span className="text-muted-foreground italic">Sin notas</span>}</p>
+                      )}
                     </div>
-                  )}
+                    );
+                  })()}
                 </TabsContent>
 
                 <TabsContent value="contactos" className="space-y-4 mt-4">
@@ -632,8 +687,68 @@ export function ShipmentDetailsDialog({
 
                 <TabsContent value="financiero" className="space-y-4 mt-4">
                   {/* Totales */}
+                  {(() => {
+                    const isFinal = envio.estado === 'entregado' || envio.estado === 'cancelado';
+                    const canEdit = isAdmin && (!isFinal || isSuperAdmin);
+                    return (
                   <div className="p-4 border rounded-lg">
-                    <p className="text-xs font-semibold text-muted-foreground mb-3">INFORMACIÓN DE PAGO</p>
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-xs font-semibold text-muted-foreground">INFORMACIÓN DE PAGO</p>
+                      {canEdit && !editFinanciero && (
+                        <Button size="sm" variant="ghost" onClick={() => {
+                          setEditForm({
+                            precio_total: String(envio.precio_total ?? ''),
+                            tipo_pago: envio.tipo_pago || 'contado',
+                            pago_contra_entrega: !!envio.pago_contra_entrega,
+                            valor_declarado: String(envio.valor_declarado ?? ''),
+                          });
+                          setEditFinanciero(true);
+                        }}>
+                          <Pencil className="h-3 w-3 mr-1" /> Editar
+                        </Button>
+                      )}
+                    </div>
+                    {editFinanciero ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <Label>Precio Total</Label>
+                          <Input type="number" step="0.01" value={editForm.precio_total}
+                            onChange={(e) => setEditForm((f) => ({ ...f, precio_total: e.target.value }))} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label>Tipo de Pago</Label>
+                          <Select value={editForm.tipo_pago} onValueChange={(v) => setEditForm((f) => ({ ...f, tipo_pago: v }))}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="contado">Contado</SelectItem>
+                              <SelectItem value="destino">Pago en Destino</SelectItem>
+                              <SelectItem value="cuenta_corriente">Cuenta Corriente</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label>Monto a Cobrar (Valor Declarado / COD)</Label>
+                          <Input type="number" step="0.01" value={editForm.valor_declarado}
+                            onChange={(e) => setEditForm((f) => ({ ...f, valor_declarado: e.target.value }))} />
+                        </div>
+                        <div className="flex items-center justify-between gap-3 pt-6">
+                          <Label htmlFor="pce">Pago Contra Entrega</Label>
+                          <Switch id="pce" checked={editForm.pago_contra_entrega}
+                            onCheckedChange={(v) => setEditForm((f) => ({ ...f, pago_contra_entrega: v }))} />
+                        </div>
+                        <div className="md:col-span-2 flex justify-end gap-2">
+                          <Button size="sm" variant="outline" onClick={() => setEditFinanciero(false)}>Cancelar</Button>
+                          <Button size="sm" disabled={updateEnvioMutation.isPending}
+                            onClick={() => updateEnvioMutation.mutate({
+                              precio_total: editForm.precio_total === '' ? null : Number(editForm.precio_total),
+                              tipo_pago: editForm.tipo_pago,
+                              pago_contra_entrega: editForm.pago_contra_entrega,
+                              valor_declarado: editForm.valor_declarado === '' ? null : Number(editForm.valor_declarado),
+                            })}
+                          >Guardar</Button>
+                        </div>
+                      </div>
+                    ) : (
                     <div className="grid grid-cols-2 gap-4">
                       <InfoRow 
                         icon={DollarSign} 
@@ -662,7 +777,10 @@ export function ShipmentDetailsDialog({
                         value={envio.pago_contra_entrega ? 'Sí' : 'No'} 
                       />
                     </div>
+                    )}
                   </div>
+                    );
+                  })()}
 
                   {/* Detalles de conceptos */}
                   {detalles && detalles.length > 0 && (

@@ -1,36 +1,32 @@
-## Filtro por estado y totalizadores en Liquidaciones E-commerce
+## Edición administrativa de detalles del envío
 
-En `src/pages/ecommerce/Settlements.tsx`, dentro del card "Historial de Liquidaciones" (tab Liquidaciones), agregar:
+En el diálogo `Detalles del Envío` (`src/components/shipments/ShipmentDetailsDialog.tsx`), agregar a usuarios con rol admin/super_admin un botón "Editar" en la tarjeta de **INFORMACIÓN DE PAGO** y otro junto al bloque de **NOTAS**.
 
-### 1. Filtro por estado
-Encima de la tabla, un `Select` con opciones:
-- Todas
-- Generada
-- Aprobada
-- Pagada
-- Anulada / Cancelada (los estados existentes en `liquidaciones_seller.estado`)
+### Cambios
 
-Estado local `filterEstado` que filtra `liquidaciones` antes del `.map()`.
+**1. `src/components/shipments/ShipmentDetailsDialog.tsx`**
 
-Adicional: un `Input` de búsqueda por seller (nombre) para acompañar el filtro, ya que es habitual al revisar por estado.
+- Importar `usePermissions` (o leer `profile.rol` desde `useAuth`) para detectar admin/super_admin.
+- Importar `Input`, `Textarea`, `Switch`/`Select`, `Label`.
+- Estado local `editFinanciero` y `editNotas` (booleans), con campos controlados:
+  - `precio_total` (number)
+  - `tipo_pago` (`contado | destino | cuenta_corriente`)
+  - `pago_contra_entrega` (boolean)
+  - `monto_cobrar` / `monto_cod` (number — usar columna `monto_cobrar` si existe, si no, `valor_declarado` o agregar campo a notas)
+  - `notas` (textarea)
+- Botón "Editar" → muestra los campos en modo edición con "Guardar"/"Cancelar".
+- Mutación con `supabase.from('envios').update({...}).eq('id', envio.id)` que invalida la query del envío y `['envios']`.
 
-### 2. Totalizadores (cards arriba de la tabla)
-Calculados sobre la lista **filtrada** (`filteredLiquidaciones`):
+**2. Verificación de columnas**
 
-- **Cantidad** de liquidaciones
-- **Total Cargos** (suma `total_cargos`)
-- **Total Pagos** (suma `total_pagos`)
-- **Saldo Pendiente** (suma `saldo_periodo` de las que NO están en estado `pagada` ni `anulada`) — destacado en naranja
-- **Total Pagado** (suma `total_pagos` de las `pagada`) — en verde
+Antes de codificar, confirmar columnas reales (`tipo_pago`, `pago_contra_entrega`, `monto_cobrar`, `notas`, `precio_total`) consultando `envios`. Si no existe `monto_cobrar`, usar el existente `valor_declarado` para el monto a cobrar contra entrega y aclararlo en el label. Si no existe alguno necesario, crear migración para agregar `monto_cobrar numeric` en `envios`.
 
-Cuando el usuario filtre por "Aprobada" verá inmediatamente cuánto hay pendiente de cobro; al filtrar por "Pagada" verá el total cobrado del período.
+**3. Seguridad**
 
-### 3. Detalles técnicos
+- Botón visible solo si `profile?.rol in ('admin','super_admin')`.
+- RLS ya cubre updates de envíos por tenant (mantener).
+- Bloqueo: si el envío está `entregado`/`cancelado` y el usuario NO es `super_admin`, deshabilitar edición (regla del proyecto: estados finales bloquean modificaciones, sólo super_admin bypass).
 
-- Sin cambios de DB; sólo UI sobre el `useQuery` ya existente (`seller-liquidaciones`).
-- Usar `useMemo` para `filteredLiquidaciones` y los totales.
-- Mantener el `colSpan` del empty state coherente.
-- Reusar `getEstadoBadge` y mismos colores que ya se usan (orange/green) para consistencia visual.
-
-### Archivos a modificar
-- `src/pages/ecommerce/Settlements.tsx` (único archivo)
+### Archivos
+- `src/components/shipments/ShipmentDetailsDialog.tsx` (único)
+- (opcional) migración para añadir `monto_cobrar` a `envios` si no existe.
