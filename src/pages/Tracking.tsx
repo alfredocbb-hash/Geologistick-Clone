@@ -99,7 +99,7 @@ const statusOrder: ShipmentStatus[] = ['pendiente', 'recogido', 'en_sucursal', '
 export default function Tracking() {
   const { code: codeFromPath } = useParams();
   const [searchParams] = useSearchParams();
-  const codeFromQuery = searchParams.get('code');
+  const codeFromQuery = searchParams.get('code') || searchParams.get('q') || searchParams.get('tracking') || searchParams.get('t');
   
   const [trackingNumber, setTrackingNumber] = useState('');
   const [searchedTracking, setSearchedTracking] = useState('');

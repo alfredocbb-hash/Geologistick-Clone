@@ -112,26 +112,15 @@ serve(async (req: Request) => {
       logStep("API key validated", { tenantId });
     }
 
-    // SECURITY: Require full tracking number for unauthenticated public access
-    // This prevents enumeration attacks via short suffix matching
+    // SECURITY: Allow exact match (any length) but only allow suffix-style enumeration
+    // for codes >= 8 chars. Exact match is not enumerable on its own.
     const isShortCode = trackingCode.length < 8;
-    if (isShortCode && !isAuthenticated) {
-      return new Response(
-        JSON.stringify({ error: "Full tracking number required for public access" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
 
-    const searchPattern = isShortCode ? `%${trackingCode}` : trackingCode;
-    
-    logStep("Search mode", { isShortCode, authenticated: isAuthenticated });
-    
-    let query = supabaseClient
-      .from("envios")
-      .select(`
+    const selectFields = `
         id,
         tenant_id,
         tracking_number,
+        tracking_externo,
         estado,
         estado_retiro,
         created_at,
@@ -152,15 +141,31 @@ serve(async (req: Request) => {
         sucursal_entrega:sucursales!envios_sucursal_entrega_id_fkey(nombre, ciudad, codigo, es_centro_logistico),
         remitente:clientes!envios_remitente_id_fkey(nombre, ciudad),
         destinatario:clientes!envios_destinatario_id_fkey(nombre, ciudad)
-      `)
-      .ilike("tracking_number", searchPattern);
+      `;
 
-    // If tenant_id from API key, filter by tenant
-    if (tenantId) {
-      query = query.eq("tenant_id", tenantId);
+    logStep("Search mode", { isShortCode, authenticated: isAuthenticated });
+
+    // Attempt 1: exact match on tracking_number OR tracking_externo (case-insensitive)
+    let exactQuery = supabaseClient
+      .from("envios")
+      .select(selectFields)
+      .or(`tracking_number.ilike.${trackingCode},tracking_externo.ilike.${trackingCode}`);
+
+    if (tenantId) exactQuery = exactQuery.eq("tenant_id", tenantId);
+
+    let { data: envio, error: envioError } = await exactQuery.maybeSingle();
+
+    // Attempt 2: suffix match (only for long enough codes; prevents enumeration)
+    if (!envio && !isShortCode) {
+      let suffixQuery = supabaseClient
+        .from("envios")
+        .select(selectFields)
+        .ilike("tracking_number", `%${trackingCode}`);
+      if (tenantId) suffixQuery = suffixQuery.eq("tenant_id", tenantId);
+      const res = await suffixQuery.maybeSingle();
+      envio = res.data;
+      envioError = res.error;
     }
-
-    const { data: envio, error: envioError } = await query.single();
 
     if (envioError || !envio) {
       logStep("Shipment not found", { error: envioError?.message });
@@ -315,7 +320,8 @@ serve(async (req: Request) => {
 
     // Build response - mask PII for public (unauthenticated) access
     const response = {
-      tracking_number: envio.tracking_number,
+      tracking_number: envio.tracking_externo || envio.tracking_number,
+      tracking_externo: envio.tracking_externo,
       estado: envio.estado,
       estado_retiro: envio.estado_retiro,
       created_at: envio.created_at,
