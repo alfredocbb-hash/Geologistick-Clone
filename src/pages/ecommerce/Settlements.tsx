@@ -1865,7 +1865,7 @@ export default function Settlements() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {liquidaciones?.map((liq) => (
+                    {filteredLiquidaciones.map((liq) => (
                       <TableRow key={liq.id}>
                         <TableCell className="text-sm">
                           {format(parseDateString(liq.periodo_inicio), 'dd/MM')} - {format(parseDateString(liq.periodo_fin), 'dd/MM/yy')}
