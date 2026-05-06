@@ -147,6 +147,10 @@ export default function Settlements() {
   const [cancelingLiquidacion, setCancelingLiquidacion] = useState<SellerLiquidacion | null>(null);
   const [excludedEnvioIds, setExcludedEnvioIds] = useState<Set<string>>(new Set());
 
+  // Historial filters
+  const [filterEstado, setFilterEstado] = useState<string>('all');
+  const [filterSellerSearch, setFilterSellerSearch] = useState('');
+
   // Fetch sellers with account
   const { data: sellers, isLoading: loadingSellers } = useQuery({
     queryKey: ['ecommerce-sellers-cta-cte', tenantId],
