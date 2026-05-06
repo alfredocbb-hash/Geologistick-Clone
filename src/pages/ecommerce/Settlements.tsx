@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -146,6 +146,10 @@ export default function Settlements() {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelingLiquidacion, setCancelingLiquidacion] = useState<SellerLiquidacion | null>(null);
   const [excludedEnvioIds, setExcludedEnvioIds] = useState<Set<string>>(new Set());
+
+  // Historial filters
+  const [filterEstado, setFilterEstado] = useState<string>('all');
+  const [filterSellerSearch, setFilterSellerSearch] = useState('');
 
   // Fetch sellers with account
   const { data: sellers, isLoading: loadingSellers } = useQuery({
@@ -1760,12 +1764,87 @@ export default function Settlements() {
           </Card>
 
           {/* History Card */}
+          {(() => {
+            const filteredLiquidaciones = (liquidaciones || []).filter((liq) => {
+              if (filterEstado !== 'all' && (liq.estado || '') !== filterEstado) return false;
+              if (filterSellerSearch.trim()) {
+                const q = filterSellerSearch.trim().toLowerCase();
+                if (!(liq.seller?.nombre || '').toLowerCase().includes(q)) return false;
+              }
+              return true;
+            });
+            const totals = filteredLiquidaciones.reduce(
+              (acc, l) => {
+                acc.cargos += l.total_cargos || 0;
+                acc.pagos += l.total_pagos || 0;
+                const saldo = l.saldo_periodo || 0;
+                if (l.estado !== 'pagada' && l.estado !== 'anulada' && l.estado !== 'cancelada') {
+                  acc.pendiente += saldo;
+                }
+                if (l.estado === 'pagada') {
+                  acc.pagado += l.total_pagos || 0;
+                }
+                return acc;
+              },
+              { cargos: 0, pagos: 0, pendiente: 0, pagado: 0 }
+            );
+            return (
           <Card>
             <CardHeader>
               <CardTitle>Historial de Liquidaciones</CardTitle>
               <CardDescription>Liquidaciones generadas para sellers</CardDescription>
             </CardHeader>
             <CardContent>
+              {/* Filters */}
+              <div className="flex flex-col md:flex-row gap-3 mb-4">
+                <div className="flex-1">
+                  <Input
+                    placeholder="Buscar por seller..."
+                    value={filterSellerSearch}
+                    onChange={(e) => setFilterSellerSearch(e.target.value)}
+                  />
+                </div>
+                <div className="w-full md:w-56">
+                  <Select value={filterEstado} onValueChange={setFilterEstado}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Estado" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos los estados</SelectItem>
+                      <SelectItem value="generada">Generada</SelectItem>
+                      <SelectItem value="aprobada">Aprobada</SelectItem>
+                      <SelectItem value="pagada">Pagada</SelectItem>
+                      <SelectItem value="anulada">Anulada</SelectItem>
+                      <SelectItem value="cancelada">Cancelada</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Totalizadores */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+                <div className="p-3 bg-muted/50 rounded-lg">
+                  <p className="text-xs text-muted-foreground">Cantidad</p>
+                  <p className="text-lg font-bold">{filteredLiquidaciones.length}</p>
+                </div>
+                <div className="p-3 bg-muted/50 rounded-lg">
+                  <p className="text-xs text-muted-foreground">Total Cargos</p>
+                  <p className="text-lg font-bold text-orange-600">${totals.cargos.toLocaleString()}</p>
+                </div>
+                <div className="p-3 bg-muted/50 rounded-lg">
+                  <p className="text-xs text-muted-foreground">Total Pagos</p>
+                  <p className="text-lg font-bold text-green-600">${totals.pagos.toLocaleString()}</p>
+                </div>
+                <div className="p-3 bg-muted/50 rounded-lg">
+                  <p className="text-xs text-muted-foreground">Saldo Pendiente</p>
+                  <p className="text-lg font-bold text-orange-600">${totals.pendiente.toLocaleString()}</p>
+                </div>
+                <div className="p-3 bg-muted/50 rounded-lg">
+                  <p className="text-xs text-muted-foreground">Total Pagado</p>
+                  <p className="text-lg font-bold text-green-600">${totals.pagado.toLocaleString()}</p>
+                </div>
+              </div>
+
               {loadingLiquidaciones ? (
                 <div className="space-y-4">
                   {[...Array(5)].map((_, i) => (
@@ -1786,7 +1865,7 @@ export default function Settlements() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {liquidaciones?.map((liq) => (
+                    {filteredLiquidaciones.map((liq) => (
                       <TableRow key={liq.id}>
                         <TableCell className="text-sm">
                           {format(parseDateString(liq.periodo_inicio), 'dd/MM')} - {format(parseDateString(liq.periodo_fin), 'dd/MM/yy')}
@@ -1870,7 +1949,7 @@ export default function Settlements() {
                         </TableCell>
                       </TableRow>
                     ))}
-                    {liquidaciones?.length === 0 && (
+                    {filteredLiquidaciones.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                           No hay liquidaciones generadas
@@ -1882,6 +1961,8 @@ export default function Settlements() {
               )}
             </CardContent>
           </Card>
+            );
+          })()}
         </TabsContent>
       </Tabs>
 
