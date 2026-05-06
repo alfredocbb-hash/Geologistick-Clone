@@ -1949,7 +1949,7 @@ export default function Settlements() {
                         </TableCell>
                       </TableRow>
                     ))}
-                    {liquidaciones?.length === 0 && (
+                    {filteredLiquidaciones.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                           No hay liquidaciones generadas
