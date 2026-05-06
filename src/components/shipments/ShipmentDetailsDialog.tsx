@@ -158,6 +158,22 @@ export function ShipmentDetailsDialog({
       toast.error('Error al aplicar el estado de ML');
     },
   });
+
+  const updateEnvioMutation = useMutation({
+    mutationFn: async (patch: Record<string, any>) => {
+      if (!envioId) throw new Error('No envio');
+      const { error } = await supabase.from('envios').update(patch).eq('id', envioId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Envío actualizado');
+      setEditFinanciero(false);
+      setEditNotas(false);
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ['envios'] });
+    },
+    onError: (e: any) => toast.error(e?.message || 'Error al actualizar el envío'),
+  });
   
   const { data: envio, isLoading, refetch } = useQuery({
     queryKey: ['envio-details', envioId],
