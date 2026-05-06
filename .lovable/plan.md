@@ -1,78 +1,53 @@
-## Diagnóstico
+## Objetivo
 
-En `/settlements/third-party` el cálculo no devuelve envíos por dos razones:
+Marcar el envío `MAN-1777930500711-626` como entregado con:
+- Coordenadas de entrega en Falucho 2811, Florencio Varela (lat: `-34.8055332`, lng: `-58.2853618`)
+- Nota indicando que el chofer cobró $71.629 al cliente para descontar en su liquidación
+- Foto de evidencia adjunta (la imagen de la etiqueta de Grupo Utopía con "COBRAR $71.629")
 
-1. La query filtra `tipo_pago != 'destino'`. De los 183 envíos terciarizados entregados, **63 tienen `tipo_pago` NULL** (son terciarizados sin clasificar) — el filtro `.neq('tipo_pago', 'destino')` los descarta porque `NEQ` no matchea NULL en Postgres/PostgREST. **Hay que cambiarlo a `.or('tipo_pago.is.null,tipo_pago.neq.destino')`**.
+## Pasos
 
-2. La mayoría de envíos terciarizados **tiene `precio_total = 0`** (ver Lace, Alvarez F, etc.) porque hoy no hay forma de tarifar el servicio que la empresa terciarizada le presta a la nuestra. Aunque se incluyan en la liquidación, salen con $0.
+### 1. Subir la foto de evidencia a Storage
+- Subir `WhatsApp_Image_2026-05-04_at_17.18.56.jpeg` al bucket de evidencias de entrega (`shipment-photos` o equivalente que ya use el sistema para `foto_entrega`).
+- Path sugerido: `{tenant_id}/MAN-1777930500711-626/evidencia-entrega.jpeg`.
+- Obtener la URL pública para guardar en `foto_entrega`.
 
-Además el usuario pide poder asignar **tarifas a empresas terciarizadas** para que el costo del flete terciarizado se calcule automáticamente.
+### 2. Migración SQL para actualizar el envío
+Sobre la fila `envios` con `tracking_number = 'MAN-1777930500711-626'`:
 
-## Solución
-
-### A. Modelo de tarifas para terciarizados (nuevo)
-
-Crear tabla `tarifas_terciarizadas`:
-
+```sql
+UPDATE public.envios
+SET
+  estado = 'entregado',
+  fecha_entrega = COALESCE(fecha_entrega, now()),
+  entrega_lat = -34.8055332,
+  entrega_lng = -58.2853618,
+  destinatario_lat = -34.8055332,   -- mantener sync (regla de proyecto)
+  destinatario_lng = -58.2853618,
+  foto_entrega = '<URL pública subida>',
+  notas = COALESCE(notas || E'\n\n', '') ||
+    '[ENTREGA] Se cobró al cliente $71.629 en efectivo. ' ||
+    'Monto cobrado por el chofer — descontar en su próxima liquidación.'
+WHERE tracking_number = 'MAN-1777930500711-626';
 ```
-id uuid PK
-empresa_id uuid FK -> empresas_terciarizadas
-tenant_id uuid
-nombre text                       -- ej. "CABA y GBA", "Interior"
-tipo_tarifa text                  -- 'fija' | 'por_zona' | 'por_kg'
-precio_fijo numeric               -- si 'fija': se aplica a cualquier envío
-zonas jsonb                       -- si 'por_zona': [{ ciudades: [...], provincias: [...], precio: N }]
-precio_por_kg numeric             -- si 'por_kg'
-precio_minimo numeric             -- piso
-activa boolean default true
-created_at, updated_at
-```
 
-RLS: por `tenant_id` (admin/super_admin del tenant).
+Notas:
+- Se respeta la regla de sincronización de coordenadas (`entrega_*` y `destinatario_*` quedan iguales).
+- No se toca `chofer_id` ni `tenant_id`.
+- Se preserva cualquier nota previa.
 
-Resolver precio de un envío terciarizado:
-1. Buscar tarifas activas de la empresa.
-2. Si `por_zona`: matchear `ciudad_entrega` (o `ciudad_retiro` si `requiere_retiro`) primero exacto, luego substring, luego provincia.
-3. Si `fija`: usar `precio_fijo` directamente.
-4. Si `por_kg`: `precio_por_kg * peso` con piso `precio_minimo`.
+### 3. Registrar el cobro para descuento en liquidación del chofer
+Para que el monto se refleje al liquidar al chofer, agregar un movimiento en la cuenta corriente del chofer (tabla equivalente a `seller_cuenta_corriente` para choferes; verificar nombre exacto antes de ejecutar — probablemente `chofer_cuenta_corriente` o registrar como gasto/cobranza asociada al envío).
 
-### B. UI para gestionar tarifas terciarizadas
+Si existe la tabla de cobros por envío (cash collection), insertar un registro de `cobro_efectivo = 71629` vinculado a este envío para que aparezca como descuento en la liquidación.
 
-En `src/pages/ThirdPartyCompanies.tsx`, agregar acción "Tarifas" en cada empresa que abre un nuevo dialog `ThirdPartyRatesDialog`:
+### 4. Verificación
+- Abrir `/shipments` y confirmar estado "Entregado" con la foto y la nota visibles.
+- Confirmar en el tracking público (`/tracking/MAN-1777930500711-626`) que el mapa muestra Falucho 2811.
+- Confirmar que en la liquidación del chofer aparece el descuento de $71.629.
 
-- Lista de tarifas de la empresa (CRUD).
-- Form con tipo, precio fijo, editor de zonas (ciudades + precio), peso.
-- Estado activo.
+## Detalles técnicos
 
-### C. Fix del cálculo de liquidación
-
-En `src/pages/ThirdPartySettlements.tsx` (`handleCalculate`):
-
-1. Cambiar el filtro `tipo_pago`:
-   ```
-   .or('tipo_pago.is.null,tipo_pago.neq.destino')
-   ```
-2. Quitar dependencia de `precio_total`. Para cada envío:
-   - Si `precio_total > 0` → usar ese.
-   - Si no → resolver precio aplicando tarifas de la empresa (helper nuevo `resolveTerciarizadoPrice(envio, tarifas)`).
-   - Si no hay tarifa que matchee → mostrar el envío con `precio_resuelto = 0` y un badge "Sin tarifa" para que el usuario lo vea y pueda configurar.
-3. Mostrar columna nueva con el precio resuelto y permitir edición manual antes de generar la liquidación (similar a las liquidaciones de seller).
-4. Al generar la liquidación, `liquidacion_terciarizado_detalles.monto` se guarda con el precio resuelto/editado, no `precio_total` del envío.
-
-### D. Detalles de UX
-
-- En el detalle de empresa terciarizada agregar tab "Tarifas".
-- En el dialog de generación de liquidación, footer con "X envíos sin tarifa configurada — configurar ahora" (link a la pantalla).
-- Si todas las tarifas de la empresa están desactivadas o no hay ninguna, mostrar warning antes de calcular.
-
-## Archivos a tocar
-
-- Nueva migración SQL: tabla `tarifas_terciarizadas` + RLS + índice por `empresa_id`.
-- Nuevo `src/components/settlements/ThirdPartyRatesDialog.tsx`.
-- Nuevo `src/lib/resolveTerciarizadoPrice.ts` (motor de matching).
-- `src/pages/ThirdPartyCompanies.tsx` — botón "Tarifas" + integrar dialog.
-- `src/pages/ThirdPartySettlements.tsx` — fix filtro `tipo_pago`, integrar resolver, columna precio editable, persistir monto al generar.
-
-## Resumen
-
-Crear sistema de tarifas para empresas terciarizadas (tabla + UI), arreglar el filtro de `tipo_pago` que oculta envíos con NULL, y resolver dinámicamente el precio de cada envío terciarizado al liquidar usando esas tarifas.
+- Coordenadas extraídas del link de Google Maps proporcionado: `-34.8055332, -58.2853618`.
+- Bucket y nombre exacto de la columna se verifican antes de la migración leyendo el flujo de `DeliveryConfirmationDialog` para usar la misma convención (`foto_entrega` + bucket usado por choferes).
+- La inserción en cuenta corriente del chofer se hace solo si existe esa estructura; si no, se deja registrado solo en `notas` y se avisa al usuario para descuento manual en próxima liquidación.
