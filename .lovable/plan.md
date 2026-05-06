@@ -1,29 +1,36 @@
-## Problema
+## Filtro por estado y totalizadores en Liquidaciones E-commerce
 
-La URL `https://geologistick.com/tracking?q=44056` no funciona por dos razones:
+En `src/pages/ecommerce/Settlements.tsx`, dentro del card "Historial de Liquidaciones" (tab Liquidaciones), agregar:
 
-1. **Parámetro incorrecto**: La página `/tracking` solo lee `?code=...` desde `useSearchParams`, ignora `?q=...` (y otros alias como `?tracking=`). El input queda vacío y nunca se dispara la búsqueda.
-2. **Bloqueo de códigos cortos**: Aunque el usuario reescriba el código en el input, el edge function `public-tracking` rechaza cualquier código de menos de 8 caracteres si no hay API key (`"Full tracking number required for public access"`). El envío `44056` existe en la base como `tracking_number = '44056'` (5 caracteres), por lo que nunca se encuentra públicamente.
-3. **Falta búsqueda por `tracking_externo`**: Si en el futuro el tracking se carga en `tracking_externo` (caso ML/partners), tampoco lo encuentra.
+### 1. Filtro por estado
+Encima de la tabla, un `Select` con opciones:
+- Todas
+- Generada
+- Aprobada
+- Pagada
+- Anulada / Cancelada (los estados existentes en `liquidaciones_seller.estado`)
 
-## Cambios propuestos
+Estado local `filterEstado` que filtra `liquidaciones` antes del `.map()`.
 
-### 1. `src/pages/Tracking.tsx`
-- Aceptar como alias del query param `code`: `q`, `tracking`, `t`. Usar el primero que esté presente.
-- Mantener compatibilidad con `code` y con la ruta `/tracking/:code`.
+Adicional: un `Input` de búsqueda por seller (nombre) para acompañar el filtro, ya que es habitual al revisar por estado.
 
-### 2. `supabase/functions/public-tracking/index.ts`
-- Permitir **match exacto** sin importar la longitud para usuarios no autenticados (es decir: `44056` es válido si coincide exacto con `tracking_number` o con `tracking_externo`). El bloqueo anti-enumeración por longitud solo aplicará al modo "suffix" (`%code`).
-- Lógica nueva:
-  - Intento 1: `eq('tracking_number', code)` o `eq('tracking_externo', code)` (case-insensitive vía `or` con `ilike` exacto).
-  - Intento 2 (solo si `code.length >= 8` y no se encontró): suffix match `ilike %code` sobre `tracking_number`.
-- Mantener la restricción de tenant cuando hay API key.
+### 2. Totalizadores (cards arriba de la tabla)
+Calculados sobre la lista **filtrada** (`filteredLiquidaciones`):
 
-### 3. Visualización
-- Asegurar que en la respuesta y la UI se siga priorizando `tracking_externo || tracking_number` (regla global ya existente).
+- **Cantidad** de liquidaciones
+- **Total Cargos** (suma `total_cargos`)
+- **Total Pagos** (suma `total_pagos`)
+- **Saldo Pendiente** (suma `saldo_periodo` de las que NO están en estado `pagada` ni `anulada`) — destacado en naranja
+- **Total Pagado** (suma `total_pagos` de las `pagada`) — en verde
 
-## Verificación
-- `https://geologistick.com/tracking?q=44056` → carga el envío `44056` (estado actual `en_reparto`).
-- `https://geologistick.com/tracking?code=44056` y `/tracking/44056` siguen funcionando.
-- Códigos cortos aleatorios inexistentes devuelven 404 (no enumeración masiva, porque solo se permite match exacto, no suffix).
-- Códigos con `tracking_externo` (ej. ML) también se encuentran.
+Cuando el usuario filtre por "Aprobada" verá inmediatamente cuánto hay pendiente de cobro; al filtrar por "Pagada" verá el total cobrado del período.
+
+### 3. Detalles técnicos
+
+- Sin cambios de DB; sólo UI sobre el `useQuery` ya existente (`seller-liquidaciones`).
+- Usar `useMemo` para `filteredLiquidaciones` y los totales.
+- Mantener el `colSpan` del empty state coherente.
+- Reusar `getEstadoBadge` y mismos colores que ya se usan (orange/green) para consistencia visual.
+
+### Archivos a modificar
+- `src/pages/ecommerce/Settlements.tsx` (único archivo)
