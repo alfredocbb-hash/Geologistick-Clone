@@ -687,8 +687,68 @@ export function ShipmentDetailsDialog({
 
                 <TabsContent value="financiero" className="space-y-4 mt-4">
                   {/* Totales */}
+                  {(() => {
+                    const isFinal = envio.estado === 'entregado' || envio.estado === 'cancelado';
+                    const canEdit = isAdmin && (!isFinal || isSuperAdmin);
+                    return (
                   <div className="p-4 border rounded-lg">
-                    <p className="text-xs font-semibold text-muted-foreground mb-3">INFORMACIÓN DE PAGO</p>
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-xs font-semibold text-muted-foreground">INFORMACIÓN DE PAGO</p>
+                      {canEdit && !editFinanciero && (
+                        <Button size="sm" variant="ghost" onClick={() => {
+                          setEditForm({
+                            precio_total: String(envio.precio_total ?? ''),
+                            tipo_pago: envio.tipo_pago || 'contado',
+                            pago_contra_entrega: !!envio.pago_contra_entrega,
+                            valor_declarado: String(envio.valor_declarado ?? ''),
+                          });
+                          setEditFinanciero(true);
+                        }}>
+                          <Pencil className="h-3 w-3 mr-1" /> Editar
+                        </Button>
+                      )}
+                    </div>
+                    {editFinanciero ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <Label>Precio Total</Label>
+                          <Input type="number" step="0.01" value={editForm.precio_total}
+                            onChange={(e) => setEditForm((f) => ({ ...f, precio_total: e.target.value }))} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label>Tipo de Pago</Label>
+                          <Select value={editForm.tipo_pago} onValueChange={(v) => setEditForm((f) => ({ ...f, tipo_pago: v }))}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="contado">Contado</SelectItem>
+                              <SelectItem value="destino">Pago en Destino</SelectItem>
+                              <SelectItem value="cuenta_corriente">Cuenta Corriente</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label>Monto a Cobrar (Valor Declarado / COD)</Label>
+                          <Input type="number" step="0.01" value={editForm.valor_declarado}
+                            onChange={(e) => setEditForm((f) => ({ ...f, valor_declarado: e.target.value }))} />
+                        </div>
+                        <div className="flex items-center justify-between gap-3 pt-6">
+                          <Label htmlFor="pce">Pago Contra Entrega</Label>
+                          <Switch id="pce" checked={editForm.pago_contra_entrega}
+                            onCheckedChange={(v) => setEditForm((f) => ({ ...f, pago_contra_entrega: v }))} />
+                        </div>
+                        <div className="md:col-span-2 flex justify-end gap-2">
+                          <Button size="sm" variant="outline" onClick={() => setEditFinanciero(false)}>Cancelar</Button>
+                          <Button size="sm" disabled={updateEnvioMutation.isPending}
+                            onClick={() => updateEnvioMutation.mutate({
+                              precio_total: editForm.precio_total === '' ? null : Number(editForm.precio_total),
+                              tipo_pago: editForm.tipo_pago,
+                              pago_contra_entrega: editForm.pago_contra_entrega,
+                              valor_declarado: editForm.valor_declarado === '' ? null : Number(editForm.valor_declarado),
+                            })}
+                          >Guardar</Button>
+                        </div>
+                      </div>
+                    ) : (
                     <div className="grid grid-cols-2 gap-4">
                       <InfoRow 
                         icon={DollarSign} 
@@ -717,7 +777,10 @@ export function ShipmentDetailsDialog({
                         value={envio.pago_contra_entrega ? 'Sí' : 'No'} 
                       />
                     </div>
+                    )}
                   </div>
+                    );
+                  })()}
 
                   {/* Detalles de conceptos */}
                   {detalles && detalles.length > 0 && (
