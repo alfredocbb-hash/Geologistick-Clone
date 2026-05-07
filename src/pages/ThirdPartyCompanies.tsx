@@ -554,11 +554,17 @@ export default function ThirdPartyCompanies() {
                 </div>
                 <div className="space-y-2">
                   <Label>CUIT</Label>
-                  <Input
-                    placeholder="30-12345678-9"
-                    value={formData.cuit}
-                    onChange={(e) => setFormData((p) => ({ ...p, cuit: e.target.value }))}
-                  />
+                  <div className="relative">
+                    <Input
+                      placeholder="30-12345678-9"
+                      value={formData.cuit}
+                      onChange={(e) => setFormData((p) => ({ ...p, cuit: e.target.value }))}
+                      onBlur={() => lookupArcaPadron(formData.cuit)}
+                    />
+                    {arcaLoading && (
+                      <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
