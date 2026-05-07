@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { ArrowLeft, Loader2, Package, Printer, Download, FileText, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Loader2, Package, Printer, Download, FileText, AlertTriangle, Image as ImageIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { QRCodeSVG } from 'qrcode.react';
