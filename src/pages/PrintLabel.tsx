@@ -20,7 +20,7 @@ const LABEL_SIZE = {
   widthMm: 100,
   heightMm: 150,
   orientation: 'portrait' as const,
-  qrSize: 30,
+  qrSize: 26,
 };
 
 const TIPO_SERVICIO_CONFIG = {
@@ -237,8 +237,8 @@ function drawLabel(
   });
   y += row2H / 2;
 
-  // ── Row 3: Sucursal destino ──
-  const row3H = isCompact ? 12 : 10;
+  // ── Row 3: Sucursal destino / Localidad GRANDE ──
+  const row3H = isCompact ? 16 : 14;
   const destCiudad = envio.ciudad_entrega || envio.sucursal_destino?.ciudad || '';
   const letraZona = destCiudad ? destCiudad.charAt(0).toUpperCase() : '';
   
@@ -252,16 +252,28 @@ function drawLabel(
   doc.text('SUCURSAL', lx + 1.5, y + row3H / 2 - 1);
   doc.text('DESTINO', lx + 1.5, y + row3H / 2 + 2);
   
-  // Code
-  doc.rect(lx + sucDestHdrW, y, cw - sucDestHdrW - 12, row3H);
+  // Localidad GRANDE
+  const cityBoxX = lx + sucDestHdrW;
+  const cityBoxW = cw - sucDestHdrW - 12;
+  doc.rect(cityBoxX, y, cityBoxW, row3H);
   doc.setTextColor(0, 0, 0);
-  doc.setFontSize(isCompact ? 14 : 16);
+  const sucDestNombre = envio.sucursal_destino?.nombre || envio.sucursal_destino?.codigo || '';
+  const cityText = (destCiudad || sucDestNombre || '-').toUpperCase();
+  // Auto-shrink city font to fit width
+  let cityFontSize = isCompact ? 22 : 24;
   doc.setFont('helvetica', 'bold');
-  doc.text(envio.sucursal_destino?.codigo || '-', lx + sucDestHdrW + 2, y + row3H / 2 + 2);
-  doc.setFontSize(fontBase - 1);
-  doc.setFont('helvetica', 'normal');
-  const sucDestNombre = envio.sucursal_destino?.nombre || '';
-  doc.text(sucDestNombre, lx + sucDestHdrW + 18, y + row3H / 2 + 1, { maxWidth: cw - sucDestHdrW - 32 });
+  doc.setFontSize(cityFontSize);
+  while (doc.getTextWidth(cityText) > cityBoxW - 4 && cityFontSize > 10) {
+    cityFontSize -= 1;
+    doc.setFontSize(cityFontSize);
+  }
+  const hasSubLine = !!sucDestNombre && destCiudad && sucDestNombre.toUpperCase() !== destCiudad.toUpperCase();
+  doc.text(cityText, cityBoxX + cityBoxW / 2, y + (hasSubLine ? row3H / 2 + 1 : row3H / 2 + cityFontSize / 8), { align: 'center' });
+  if (hasSubLine) {
+    doc.setFontSize(fontBase - 1);
+    doc.setFont('helvetica', 'normal');
+    doc.text(sucDestNombre, cityBoxX + cityBoxW / 2, y + row3H - 2, { align: 'center', maxWidth: cityBoxW - 4 });
+  }
   
   // Zona letter
   const zonaX = lx + cw - 12;
@@ -295,7 +307,7 @@ function drawLabel(
   doc.text('DESTINATARIO', lx + cw / 2, y + destHdrH / 2 + 1, { align: 'center' });
   y += destHdrH;
 
-  const destDataH = isCompact ? 16 : 12;
+  const destDataH = isCompact ? 22 : 18;
   doc.rect(lx, y, cw, destDataH);
   const destinatarioNombre = envio.destinatario 
     ? `${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}`.trim()
@@ -307,18 +319,20 @@ function drawLabel(
   const provinciaEntrega = envio.provincia || '';
 
   doc.setTextColor(0, 0, 0);
-  doc.setFontSize(fontBase + 1);
+  doc.setFontSize(isCompact ? 12 : 13);
   doc.setFont('helvetica', 'bold');
   let nameStr = destinatarioNombre;
   if (envio.dni_destinatario) nameStr += ` - DNI: ${envio.dni_destinatario}`;
-  doc.text(nameStr, lx + 2, y + 4, { maxWidth: cw - 4 });
+  doc.text(nameStr, lx + 2, y + 6, { maxWidth: cw - 4 });
   
-  doc.setFontSize(fontBase - 1);
-  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
   const addr2 = `${direccionEntrega}${cpEntrega ? ` (${cpEntrega})` : ''}`;
-  doc.text(addr2, lx + 2, y + (isCompact ? 9 : 8), { maxWidth: cw - 4 });
+  doc.text(addr2, lx + 2, y + (isCompact ? 13 : 12), { maxWidth: cw - 4 });
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
   const addr3 = `${ciudadEntrega}${provinciaEntrega ? ` - ${provinciaEntrega}` : ''}${destinatarioTel ? ` - Tel: ${destinatarioTel}` : ''}`;
-  doc.text(addr3, lx + 2, y + (isCompact ? 13 : 11), { maxWidth: cw - 4 });
+  doc.text(addr3, lx + 2, y + (isCompact ? 19 : 17), { maxWidth: cw - 4 });
   y += destDataH;
 
   // ── Row 6: Observaciones + QR ──
@@ -401,6 +415,30 @@ function drawLabel(
   doc.setFontSize(fontBase - 1);
   doc.setFont('helvetica', 'normal');
   doc.text(remStr, lx + cw / 2, y + row8DataH / 2 + 1, { align: 'center', maxWidth: cw - 4 });
+  y += row8DataH;
+
+  // ── Row 9: BULTOS GIGANTES (ocupa el espacio restante) ──
+  const bottomY = m + offsetY + (H - m * 2);
+  const bultosBoxH = bottomY - y;
+  if (bultosBoxH > 6) {
+    doc.rect(lx, y, cw, bultosBoxH);
+    // Label "BULTOS"
+    doc.setTextColor(80, 80, 80);
+    doc.setFontSize(fontBase - 1);
+    doc.setFont('helvetica', 'bold');
+    doc.text('BULTOS', lx + 3, y + 4);
+    // Numero gigante
+    doc.setTextColor(0, 0, 0);
+    doc.setFont('helvetica', 'bold');
+    const bultosText = `${bultoNum} / ${totalBultos}`;
+    let bSize = Math.min(bultosBoxH * 2.0, cw * 1.2);
+    doc.setFontSize(bSize);
+    while (doc.getTextWidth(bultosText) > cw - 6 && bSize > 14) {
+      bSize -= 2;
+      doc.setFontSize(bSize);
+    }
+    doc.text(bultosText, lx + cw / 2, y + bultosBoxH / 2 + bSize / 3.2, { align: 'center' });
+  }
 }
 
 // Shared logic to prepare PDF data
