@@ -422,22 +422,25 @@ function drawLabel(
   const bultosBoxH = bottomY - y;
   if (bultosBoxH > 6) {
     doc.rect(lx, y, cw, bultosBoxH);
-    // Label "BULTOS"
+    const labelH = 5;
     doc.setTextColor(80, 80, 80);
     doc.setFontSize(fontBase - 1);
     doc.setFont('helvetica', 'bold');
     doc.text('BULTOS', lx + 3, y + 4);
-    // Numero gigante
     doc.setTextColor(0, 0, 0);
     doc.setFont('helvetica', 'bold');
     const bultosText = `${bultoNum} / ${totalBultos}`;
-    let bSize = Math.min(bultosBoxH * 2.0, cw * 1.2);
+    // cap-height ≈ fontSize(pt) * 0.247 mm. Fit within available height.
+    const availH = bultosBoxH - labelH - 2;
+    let bSize = Math.min(80, Math.floor(availH / 0.247));
     doc.setFontSize(bSize);
-    while (doc.getTextWidth(bultosText) > cw - 6 && bSize > 14) {
+    while (doc.getTextWidth(bultosText) > cw - 8 && bSize > 12) {
       bSize -= 2;
       doc.setFontSize(bSize);
     }
-    doc.text(bultosText, lx + cw / 2, y + bultosBoxH / 2 + bSize / 3.2, { align: 'center' });
+    const capMm = bSize * 0.247;
+    const numCenterY = y + labelH + (bultosBoxH - labelH) / 2;
+    doc.text(bultosText, lx + cw / 2, numCenterY + capMm / 2, { align: 'center', baseline: 'alphabetic' });
   }
 }
 
