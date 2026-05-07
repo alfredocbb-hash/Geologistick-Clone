@@ -307,7 +307,7 @@ function drawLabel(
   doc.text('DESTINATARIO', lx + cw / 2, y + destHdrH / 2 + 1, { align: 'center' });
   y += destHdrH;
 
-  const destDataH = isCompact ? 16 : 12;
+  const destDataH = isCompact ? 22 : 18;
   doc.rect(lx, y, cw, destDataH);
   const destinatarioNombre = envio.destinatario 
     ? `${envio.destinatario.nombre} ${envio.destinatario.apellido || ''}`.trim()
@@ -319,18 +319,20 @@ function drawLabel(
   const provinciaEntrega = envio.provincia || '';
 
   doc.setTextColor(0, 0, 0);
-  doc.setFontSize(fontBase + 1);
+  doc.setFontSize(isCompact ? 12 : 13);
   doc.setFont('helvetica', 'bold');
   let nameStr = destinatarioNombre;
   if (envio.dni_destinatario) nameStr += ` - DNI: ${envio.dni_destinatario}`;
-  doc.text(nameStr, lx + 2, y + 4, { maxWidth: cw - 4 });
+  doc.text(nameStr, lx + 2, y + 6, { maxWidth: cw - 4 });
   
-  doc.setFontSize(fontBase - 1);
-  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
   const addr2 = `${direccionEntrega}${cpEntrega ? ` (${cpEntrega})` : ''}`;
-  doc.text(addr2, lx + 2, y + (isCompact ? 9 : 8), { maxWidth: cw - 4 });
+  doc.text(addr2, lx + 2, y + (isCompact ? 13 : 12), { maxWidth: cw - 4 });
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
   const addr3 = `${ciudadEntrega}${provinciaEntrega ? ` - ${provinciaEntrega}` : ''}${destinatarioTel ? ` - Tel: ${destinatarioTel}` : ''}`;
-  doc.text(addr3, lx + 2, y + (isCompact ? 13 : 11), { maxWidth: cw - 4 });
+  doc.text(addr3, lx + 2, y + (isCompact ? 19 : 17), { maxWidth: cw - 4 });
   y += destDataH;
 
   // ── Row 6: Observaciones + QR ──
