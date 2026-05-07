@@ -524,9 +524,9 @@ export async function generateEPODPDF(
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
 
-    // Sort by date ascending
+    // Sort by date descending (most recent first)
     const sortedHistorial = [...historial].sort((a, b) => 
-      new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
+      new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
     );
 
     sortedHistorial.forEach((item, index) => {
@@ -539,21 +539,22 @@ export async function generateEPODPDF(
         doc.setFontSize(8);
       }
 
+      const isMostRecent = index === 0;
       const isLast = index === sortedHistorial.length - 1;
       const statusLabel = STATUS_LABELS[item.estado_nuevo] || item.estado_nuevo;
       const dateStr = item.created_at 
         ? format(new Date(item.created_at), "dd/MM/yy HH:mm", { locale: es })
         : '';
 
-      // Timeline dot
-      if (isLast) {
+      // Timeline dot - most recent (top) is green
+      if (isMostRecent) {
         doc.setFillColor(34, 197, 94);
       } else {
         doc.setFillColor(59, 130, 246);
       }
       doc.circle(margin + 3, yPosition, 2, 'F');
 
-      // Timeline line
+      // Timeline line connecting to next entry below
       if (!isLast) {
         doc.setDrawColor(200, 200, 200);
         doc.line(margin + 3, yPosition + 3, margin + 3, yPosition + 10);
