@@ -20,7 +20,7 @@ const LABEL_SIZE = {
   widthMm: 100,
   heightMm: 150,
   orientation: 'portrait' as const,
-  qrSize: 30,
+  qrSize: 26,
 };
 
 const TIPO_SERVICIO_CONFIG = {
