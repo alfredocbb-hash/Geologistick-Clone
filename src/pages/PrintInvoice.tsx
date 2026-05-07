@@ -557,6 +557,10 @@ export default function PrintInvoice() {
               <Printer className="h-4 w-4 mr-2" />
               Imprimir
             </Button>
+            <Button variant="outline" onClick={handleDownloadJPG}>
+              <ImageIcon className="h-4 w-4 mr-2" />
+              Descargar JPG (≤1MB)
+            </Button>
             <Button onClick={handleDownloadPDF}>
               <Download className="h-4 w-4 mr-2" />
               Descargar PDF
