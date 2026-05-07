@@ -165,7 +165,8 @@ export default function Shipments() {
     }
   }, [mlSellers]);
 
-  const canChangeStatus = isAdmin() || hasRole('supervisor') || isCentroLogistico;
+  // Solo admin / super_admin pueden cambiar el estado de un envío manualmente
+  const canChangeStatus = isAdmin() || isSuperAdmin();
 
   const cancelMutation = useMutation({
     mutationFn: async ({ envioId, reason, previousStatus }: { envioId: string; reason: string; previousStatus: string | null }) => {
