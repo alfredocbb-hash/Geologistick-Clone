@@ -415,6 +415,30 @@ function drawLabel(
   doc.setFontSize(fontBase - 1);
   doc.setFont('helvetica', 'normal');
   doc.text(remStr, lx + cw / 2, y + row8DataH / 2 + 1, { align: 'center', maxWidth: cw - 4 });
+  y += row8DataH;
+
+  // ── Row 9: BULTOS GIGANTES (ocupa el espacio restante) ──
+  const bottomY = m + offsetY + (H - m * 2);
+  const bultosBoxH = bottomY - y;
+  if (bultosBoxH > 6) {
+    doc.rect(lx, y, cw, bultosBoxH);
+    // Label "BULTOS"
+    doc.setTextColor(80, 80, 80);
+    doc.setFontSize(fontBase - 1);
+    doc.setFont('helvetica', 'bold');
+    doc.text('BULTOS', lx + 3, y + 4);
+    // Numero gigante
+    doc.setTextColor(0, 0, 0);
+    doc.setFont('helvetica', 'bold');
+    const bultosText = `${bultoNum} / ${totalBultos}`;
+    let bSize = Math.min(bultosBoxH * 2.0, cw * 1.2);
+    doc.setFontSize(bSize);
+    while (doc.getTextWidth(bultosText) > cw - 6 && bSize > 14) {
+      bSize -= 2;
+      doc.setFontSize(bSize);
+    }
+    doc.text(bultosText, lx + cw / 2, y + bultosBoxH / 2 + bSize / 3.2, { align: 'center' });
+  }
 }
 
 // Shared logic to prepare PDF data
