@@ -423,6 +423,71 @@ export default function PrintInvoice() {
     }
   };
 
+  const handleDownloadJPG = async () => {
+    if (!factura) return;
+    const invoiceElement = document.getElementById('invoice-print-area');
+    if (!invoiceElement) return;
+
+    try {
+      toast.info('Generando imagen...');
+      const badge = invoiceElement.querySelector('[data-print-hide]');
+      if (badge) (badge as HTMLElement).style.display = 'none';
+
+      const html2canvasModule = await import('html2canvas');
+      const html2canvas = html2canvasModule.default;
+
+      const MAX_BYTES = 1024 * 1024; // 1 MB
+      const qualities = [0.92, 0.85, 0.75, 0.65, 0.55, 0.45, 0.35];
+      const scales = [2, 1.5, 1.2, 1];
+
+      let finalDataUrl = '';
+      let finalSize = 0;
+
+      outer: for (const scale of scales) {
+        const canvas = await html2canvas(invoiceElement, {
+          scale,
+          useCORS: true,
+          logging: false,
+          backgroundColor: '#ffffff',
+        });
+        for (const q of qualities) {
+          const dataUrl = canvas.toDataURL('image/jpeg', q);
+          // Estimate bytes from base64 length
+          const base64 = dataUrl.split(',')[1] || '';
+          const bytes = Math.floor((base64.length * 3) / 4);
+          if (bytes <= MAX_BYTES) {
+            finalDataUrl = dataUrl;
+            finalSize = bytes;
+            break outer;
+          }
+          finalDataUrl = dataUrl;
+          finalSize = bytes;
+        }
+      }
+
+      if (badge) (badge as HTMLElement).style.display = '';
+
+      const prefix = esNotaCredito ? 'nota-credito' : 'factura';
+      const fileName = `${prefix}-${formatNumeroComprobante(factura.punto_venta, factura.numero_comprobante)}${envio?.tracking_number ? `-${envio.tracking_number}` : ''}.jpg`;
+
+      const link = document.createElement('a');
+      link.href = finalDataUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      const kb = Math.round(finalSize / 1024);
+      if (finalSize <= MAX_BYTES) {
+        toast.success(`Imagen descargada (${kb} KB)`);
+      } else {
+        toast.warning(`Imagen descargada (${kb} KB) — supera 1 MB tras compresión máxima`);
+      }
+    } catch {
+      toast.error('Error al generar imagen');
+    }
+  };
+
   // Auto-descarga cuando se abre con ?download=1
   const shouldAutoDownload = searchParams.get('download') === '1';
   const autoDownloadedRef = useRef(false);
