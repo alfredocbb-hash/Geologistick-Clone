@@ -162,6 +162,13 @@ export default function ThirdPartyCompanies() {
       });
       if (error) throw error;
       if (!data?.found) {
+        if (data?.error_code === "SERVICE_NOT_AUTHORIZED") {
+          toast.error("Servicio ARCA no habilitado", {
+            description: "El certificado fiscal no tiene autorizado el servicio 'WS Consulta a Padrón Alcance 13' (ws_sr_padron_a13). Habilitalo en AFIP → Administrador de Relaciones de Clave Fiscal → Nueva Relación → buscar 'WS Consulta a Padrón Alcance 13' y asociarlo al mismo certificado de facturación electrónica.",
+            duration: 12000,
+          });
+          return;
+        }
         toast.info(data?.reason || "No se encontraron datos en ARCA");
         return;
       }
