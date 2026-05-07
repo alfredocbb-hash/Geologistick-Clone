@@ -1,15 +1,18 @@
-## Ajuste de orden del historial en EPOD
+## Agregar opción "Marcar como resuelto" en incidencias
 
 ### Problema
-En el PDF EPOD, la seccion **HISTORIAL DE ESTADOS** muestra los estados del mas antiguo al mas reciente (abajo). El usuario necesita el estado mas reciente arriba.
+Cuando una incidencia ya fue resuelta por otros medios (ej: contacto telefónico con el cliente, entrega en visita posterior), el dialog actual solo permite acciones que modifican el envío (re-intentar, reprogramar, devolver, cancelar). Falta una opción para simplemente cerrar la incidencia sin tocar el envío.
 
-### Solucion
-Modificar `src/lib/generateEPODPDF.ts`:
+### Solución
+Modificar `src/components/incidents/IncidentActionDialog.tsx`:
 
-1. **Invertir orden del sort** (linea ~528): cambiar `a - b` por `b - a` para orden descendente por fecha.
-2. **Ajustar indicador de estado actual**: actualmente el punto verde se asigna al ultimo elemento del array (`isLast`). Al invertir el orden, el mas reciente pasa a ser el primero (`index === 0`). Separar la logica en:
-   - `isMostRecent = index === 0` → punto verde
-   - `index < sortedHistorial.length - 1` → dibujar linea de timeline hacia el siguiente estado
+1. **Agregar nueva acción `resuelto`** al inicio del array `RESOLUTION_ACTIONS` con icono `CheckCircle`:
+   - label: "Marcar como resuelto"
+   - description: "Cerrar la incidencia sin modificar el envío (ya fue resuelta)"
+
+2. **Actualizar `resolveMutation`**: agregar caso `'resuelto'` en el switch que no ejecuta ningún update sobre `envios` ni `envio_historial`. Solo marca la incidencia como `estado: 'resuelto'` con `accion_tomada: 'resuelto'` (lógica que ya existe antes del switch).
+
+3. **No es destructiva** — usa el estilo verde/primary normal (no rojo).
 
 ### Resultado
-El EPOD mostrara la timeline con el estado mas reciente en la parte superior y el mas antiguo abajo, manteniendo el punto verde en el estado actual.
+El admin podrá cerrar incidencias ya gestionadas externamente sin alterar el estado del envío.
