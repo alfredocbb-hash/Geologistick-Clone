@@ -1,10 +1,32 @@
-## Encuadrar bien el número de bultos dentro del bloque
+## Problema
 
-En la última versión, el `1 / 2` queda cortado por arriba/abajo del recuadro. Ajustar `drawLabel` en `src/pages/PrintLabel.tsx` (Row 9, líneas 420-441) para que el número quede **centrado verticalmente y nunca se desborde**:
+En `Gestión de Envíos`, usuarios con rol `sucursal`/`despachador` (o supervisor, o pertenecientes a un centro logístico) pueden ver el botón "Cambiar estado" y modificar el estado de un envío. Solo administradores y super administradores deberían poder hacerlo.
 
-1. Calcular el tamaño de fuente máximo a partir de la altura disponible (`bultosBoxH - labelH - padding`) usando la relación cap-height ≈ `fontSize * 0.247 mm`, en vez de `bultosBoxH * 2.0`.
-2. Centrar el número usando `baseline: 'alphabetic'` con `y = labelTop + capHeight/2 + centroVertical` para evitar el corte superior/inferior.
-3. Mantener el auto-shrink por ancho (sigue achicando si no entra horizontalmente).
-4. Topear en 80pt para evitar tamaños desmedidos en etiquetas grandes.
+## Causa
 
-Sin cambios en el resto del layout.
+En `src/pages/Shipments.tsx` línea 168:
+
+```ts
+const canChangeStatus = isAdmin() || hasRole('supervisor') || isCentroLogistico;
+```
+
+Esto habilita el botón "Cambiar estado" (línea 749) para supervisores y para cualquier usuario asignado a una sucursal marcada como centro logístico, sin importar su rol.
+
+## Cambio
+
+Editar `src/pages/Shipments.tsx`:
+
+- Reemplazar la línea 168 por:
+  ```ts
+  const canChangeStatus = isAdmin() || isSuperAdmin();
+  ```
+  (`isAdmin()` ya incluye admin y super_admin, pero dejamos `isSuperAdmin()` explícito por claridad).
+
+- Quitar la dependencia ahora innecesaria `isCentroLogistico` solo del cálculo de `canChangeStatus`. Verificar primero si `isCentroLogistico` se usa en otra parte del archivo; si no, eliminar también su definición. Si se usa para otra funcionalidad (por ejemplo recibir/escanear), no tocarla.
+
+- No cambiar `ChangeStatusDialog.tsx`: ya respeta el bloqueo de estados finales y el bypass de super_admin. La protección de UI alcanza, ya que el diálogo solo se abre desde este botón en gestión de envíos.
+
+## Notas
+
+- Otros flujos donde un chofer/sucursal cambia estado (escaneo, entrega, ingreso a sucursal, etc.) NO se ven afectados; siguen funcionando como hoy. Esta restricción aplica únicamente al botón manual "Cambiar estado" en la lista de envíos.
+- Si más adelante se quiere endurecer a nivel base de datos, se puede agregar una policy/función, pero no es necesario para resolver el reporte actual.
