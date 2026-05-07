@@ -41,6 +41,12 @@ import { cn } from '@/lib/utils';
 import EditAddressDialog from './EditAddressDialog';
 
 const RESOLUTION_ACTIONS = [
+  {
+    value: 'resuelto',
+    label: 'Marcar como resuelto',
+    description: 'Cerrar la incidencia sin modificar el envío (ya fue resuelta)',
+    icon: CheckCircle,
+  },
   { 
     value: 're_intento', 
     label: 'Re-intentar hoy',
