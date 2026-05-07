@@ -597,6 +597,33 @@ export default function PrintInvoice() {
               </div>
             </div>
 
+            {/* Período del servicio y vencimiento de pago */}
+            {(factura.fecha_servicio_desde || factura.fecha_servicio_hasta || factura.fecha_vto_pago) && (
+              <div className="border rounded-lg p-4">
+                <p className="text-xs font-semibold text-muted-foreground mb-2">PERÍODO FACTURADO</p>
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Desde: </span>
+                    <span className="font-medium">
+                      {factura.fecha_servicio_desde ? formatFechaFiscalDisplay(factura.fecha_servicio_desde.slice(0, 10)) : '-'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Hasta: </span>
+                    <span className="font-medium">
+                      {factura.fecha_servicio_hasta ? formatFechaFiscalDisplay(factura.fecha_servicio_hasta.slice(0, 10)) : '-'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Vto. Pago: </span>
+                    <span className="font-medium">
+                      {factura.fecha_vto_pago ? formatFechaFiscalDisplay(factura.fecha_vto_pago.slice(0, 10)) : '-'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Referencia: liquidación o envío único */}
             {isLiquidacionInvoice && liquidacionSeller ? (
               <div className="text-sm text-muted-foreground">
