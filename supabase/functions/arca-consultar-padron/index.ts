@@ -342,6 +342,13 @@ serve(async (req) => {
         if (msg === "WSAA_ALREADY_AUTHENTICATED") {
           return new Response(JSON.stringify({ found: false, reason: "AFIP tiene una sesión activa de padrón. Reintentá en unos minutos." }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
+        if (/computador no autorizado/i.test(msg)) {
+          return new Response(JSON.stringify({
+            found: false,
+            error_code: "SERVICE_NOT_AUTHORIZED",
+            reason: "El certificado fiscal no tiene autorizado el servicio de consulta de padrón (ws_sr_padron_a13) en AFIP."
+          }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
         throw e;
       }
     }
