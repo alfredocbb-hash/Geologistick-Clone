@@ -147,6 +147,43 @@ export default function ThirdPartyCompanies() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [ratesEmpresa, setRatesEmpresa] = useState<EmpresaTerciarizada | null>(null);
+  const [arcaLoading, setArcaLoading] = useState(false);
+  const [lastArcaCuit, setLastArcaCuit] = useState<string>("");
+
+  const lookupArcaPadron = async (rawCuit: string) => {
+    const clean = (rawCuit || "").replace(/\D/g, "");
+    if (clean.length !== 11) return;
+    if (clean === lastArcaCuit) return;
+    setLastArcaCuit(clean);
+    setArcaLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("arca-consultar-padron", {
+        body: { cuit: clean },
+      });
+      if (error) throw error;
+      if (!data?.found) {
+        toast.info(data?.reason || "No se encontraron datos en ARCA");
+        return;
+      }
+      setFormData((p) => ({
+        ...p,
+        razon_social: p.razon_social || data.razon_social || "",
+        nombre: p.nombre || data.nombre || data.razon_social || "",
+        cuit: data.cuit
+          ? `${data.cuit.slice(0, 2)}-${data.cuit.slice(2, 10)}-${data.cuit.slice(10)}`
+          : p.cuit,
+        direccion: p.direccion || data.domicilio || "",
+        ciudad: p.ciudad || data.ciudad || "",
+        provincia: p.provincia || data.provincia || "",
+        codigo_postal: p.codigo_postal || data.codigo_postal || "",
+      }));
+      toast.success("Datos traídos de ARCA");
+    } catch (e: any) {
+      toast.error("No se pudo consultar ARCA: " + (e?.message || "error"));
+    } finally {
+      setArcaLoading(false);
+    }
+  };
 
   // Form draft persistence
   const {
