@@ -237,8 +237,8 @@ function drawLabel(
   });
   y += row2H / 2;
 
-  // ── Row 3: Sucursal destino ──
-  const row3H = isCompact ? 12 : 10;
+  // ── Row 3: Sucursal destino / Localidad GRANDE ──
+  const row3H = isCompact ? 16 : 14;
   const destCiudad = envio.ciudad_entrega || envio.sucursal_destino?.ciudad || '';
   const letraZona = destCiudad ? destCiudad.charAt(0).toUpperCase() : '';
   
@@ -252,16 +252,28 @@ function drawLabel(
   doc.text('SUCURSAL', lx + 1.5, y + row3H / 2 - 1);
   doc.text('DESTINO', lx + 1.5, y + row3H / 2 + 2);
   
-  // Code
-  doc.rect(lx + sucDestHdrW, y, cw - sucDestHdrW - 12, row3H);
+  // Localidad GRANDE
+  const cityBoxX = lx + sucDestHdrW;
+  const cityBoxW = cw - sucDestHdrW - 12;
+  doc.rect(cityBoxX, y, cityBoxW, row3H);
   doc.setTextColor(0, 0, 0);
-  doc.setFontSize(isCompact ? 14 : 16);
+  const sucDestNombre = envio.sucursal_destino?.nombre || envio.sucursal_destino?.codigo || '';
+  const cityText = (destCiudad || sucDestNombre || '-').toUpperCase();
+  // Auto-shrink city font to fit width
+  let cityFontSize = isCompact ? 22 : 24;
   doc.setFont('helvetica', 'bold');
-  doc.text(envio.sucursal_destino?.codigo || '-', lx + sucDestHdrW + 2, y + row3H / 2 + 2);
-  doc.setFontSize(fontBase - 1);
-  doc.setFont('helvetica', 'normal');
-  const sucDestNombre = envio.sucursal_destino?.nombre || '';
-  doc.text(sucDestNombre, lx + sucDestHdrW + 18, y + row3H / 2 + 1, { maxWidth: cw - sucDestHdrW - 32 });
+  doc.setFontSize(cityFontSize);
+  while (doc.getTextWidth(cityText) > cityBoxW - 4 && cityFontSize > 10) {
+    cityFontSize -= 1;
+    doc.setFontSize(cityFontSize);
+  }
+  const hasSubLine = !!sucDestNombre && destCiudad && sucDestNombre.toUpperCase() !== destCiudad.toUpperCase();
+  doc.text(cityText, cityBoxX + cityBoxW / 2, y + (hasSubLine ? row3H / 2 + 1 : row3H / 2 + cityFontSize / 8), { align: 'center' });
+  if (hasSubLine) {
+    doc.setFontSize(fontBase - 1);
+    doc.setFont('helvetica', 'normal');
+    doc.text(sucDestNombre, cityBoxX + cityBoxW / 2, y + row3H - 2, { align: 'center', maxWidth: cityBoxW - 4 });
+  }
   
   // Zona letter
   const zonaX = lx + cw - 12;
