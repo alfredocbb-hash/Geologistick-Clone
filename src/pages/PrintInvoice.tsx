@@ -364,8 +364,8 @@ export default function PrintInvoice() {
     return { nombre_concepto: desc, monto: e.precio_total || 0 };
   });
 
-  const lineItemsFactura: LineItem[] = Array.isArray((factura as { line_items?: unknown } | undefined)?.line_items)
-    ? ((factura as { line_items: LineItem[] }).line_items)
+  const lineItemsFactura: LineItem[] = Array.isArray((factura as unknown as { line_items?: unknown } | undefined)?.line_items)
+    ? ((factura as unknown as { line_items: LineItem[] }).line_items)
     : [];
 
   const hasDetailedLineItems = !isLiquidacionInvoice && lineItemsFactura.length > 0 && lineItemsFactura.some(it => Number(it.cantidad) > 0 || Number(it.precio_unitario) > 0);
