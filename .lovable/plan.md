@@ -1,27 +1,63 @@
-# Descarga ≤1 MB en formato PDF (no JPG)
-
 ## Objetivo
-Reemplazar la descarga JPG comprimida por una descarga **PDF** que mantenga el límite de 1 MB, conservando el botón secundario junto a "Descargar PDF".
 
-## Cambios en `src/pages/PrintInvoice.tsx`
+Al duplicar una factura desde la pestaña "Emitidas", el diálogo "Duplicar Factura" debe traer también:
 
-1. **Renombrar handler** `handleDownloadJPG` → `handleDownloadCompressedPDF`.
-2. **Reemplazar la lógica de generación**:
-   - Seguir capturando el invoice con `html2canvas` iterando `scales = [2, 1.5, 1.2, 1, 0.85]`.
-   - Para cada escala, iterar `qualities = [0.85, 0.75, 0.65, 0.55, 0.45, 0.35, 0.25]`.
-   - En cada iteración: crear un `jsPDF` A4, insertar la imagen como **JPEG comprimido** (`doc.addImage(dataUrl, 'JPEG', ...)`), obtener el blob con `doc.output('blob')` y medir `blob.size`.
-   - Cortar al primer resultado con `size <= 1 MB`. Guardar siempre el último intento como fallback.
-3. **Descarga**: usar `URL.createObjectURL(blob)` + link con extensión `.pdf` (mismo patrón de nombre que `handleDownloadPDF`).
-4. **Toasts**: éxito muestra "PDF descargado (XXX KB)"; si no se logra bajar de 1 MB tras compresión máxima, `toast.warning` indicándolo.
-5. **Botón (línea ~560)**: cambiar texto a `Descargar PDF (≤1MB)` y reemplazar el ícono `ImageIcon` por `FileText` (o mantener `Download`). Quitar el import `Image as ImageIcon` si queda sin uso.
+- **Concepto** (Productos / Servicios / Productos+Servicios)
+- **Fecha de servicio desde** y **hasta** (período facturado)
+- **Fecha de vencimiento de pago**
+- **Descripción / detalle general**
+- **Items de detalle** (line_items)
 
-## Detalles técnicos
-- jsPDF ya está importado.
-- Usar `compress: true` en `new jsPDF({ compress: true })` para reducir overhead.
-- Mantener el bloqueo del badge `[data-print-hide]` durante la captura.
-- No tocar `handleDownloadPDF` (sigue siendo la descarga full-quality).
+Hoy solo se precargan: tipo de comprobante, CUIT, nombre, condición IVA, domicilio e importe total.
 
-## Validación
-- Abrir una factura, click en "Descargar PDF (≤1MB)" → archivo `.pdf` < 1 MB visible en disco.
-- Abrirlo y comprobar legibilidad.
-- "Descargar PDF" original sigue funcionando sin cambios.
+## Cambios (un solo archivo: `src/pages/Facturacion.tsx`)
+
+### 1. Nuevos estados para el duplicado
+Agregar junto a `duplicateImporte`:
+- `duplicateConcepto` (number, default 1)
+- `duplicateFechaServicioDesde`, `duplicateFechaServicioHasta`, `duplicateFechaVtoPago` (string YYYY-MM-DD)
+- `duplicateDescripcion` (string)
+- `duplicateLineItems` (array, mismo shape que `InvoiceLineItems`)
+
+### 2. `handleDuplicate(factura)` (línea ~349)
+Precargar desde la factura origen:
+```
+duplicateConcepto       <- factura.concepto ?? 1
+duplicateFechaServicioDesde <- factura.fecha_servicio_desde?.slice(0,10) ?? ''
+duplicateFechaServicioHasta <- factura.fecha_servicio_hasta?.slice(0,10) ?? ''
+duplicateFechaVtoPago   <- factura.fecha_vto_pago?.slice(0,10) ?? ''
+duplicateDescripcion    <- factura.descripcion ?? ''
+duplicateLineItems      <- (factura.line_items ?? []) as array
+```
+
+### 3. UI en el diálogo "Duplicar Factura" (línea ~808)
+Dentro del `DialogContent` agregar (después de `InvoiceFormFields showImporte`):
+
+- Select de **Concepto** (1 Productos / 2 Servicios / 3 Productos+Servicios), reutilizando el patrón de `EmitirFacturaDialog`.
+- Si `concepto === 2 || 3`: tres `Input type="date"` para Desde / Hasta / Vto. Pago (obligatorios).
+- `<InvoiceLineItems items={duplicateLineItems} onChange={setDuplicateLineItems} />` (mismo componente usado en `EmitirFacturaDialog`).
+- `Textarea` "Descripción / Notas" ligado a `duplicateDescripcion`.
+
+Hacer scrollable el contenido (`max-h-[85vh] overflow-y-auto`) porque el diálogo crece.
+
+### 4. `handleEmitDuplicate` (línea ~361)
+Enviar los nuevos campos al edge function `arca-factura`:
+```
+concepto: duplicateConcepto,
+fecha_servicio_desde: needsServiceDates ? duplicateFechaServicioDesde : undefined,
+fecha_servicio_hasta: needsServiceDates ? duplicateFechaServicioHasta : undefined,
+fecha_vto_pago:       needsServiceDates ? duplicateFechaVtoPago : undefined,
+descripcion: duplicateDescripcion || undefined,
+line_items:  duplicateLineItems.length ? duplicateLineItems : undefined,
+```
+Validar que si `concepto` 2/3, las tres fechas estén cargadas (toast de error si no).
+
+Botón "Emitir Factura" se deshabilita además si faltan esas fechas obligatorias.
+
+### 5. `resetForm`
+Resetear los nuevos estados a sus defaults.
+
+## Fuera de alcance
+- No se toca `arca-factura` (ya soporta todos estos campos).
+- No se modifica el flujo de "Cargar Manual" ni "Facturar en Lote".
+- No se cambia la tabla `facturas`.
