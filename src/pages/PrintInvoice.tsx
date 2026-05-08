@@ -364,18 +364,26 @@ export default function PrintInvoice() {
     return { nombre_concepto: desc, monto: e.precio_total || 0 };
   });
 
-  const lineItemsFactura = Array.isArray((factura as { line_items?: unknown } | undefined)?.line_items)
-    ? ((factura as { line_items: Array<{ descripcion?: string; subtotal?: number; cantidad?: number; precio_unitario?: number }> }).line_items)
+  const lineItemsFactura: LineItem[] = Array.isArray((factura as { line_items?: unknown } | undefined)?.line_items)
+    ? ((factura as { line_items: LineItem[] }).line_items)
     : [];
+
+  const hasDetailedLineItems = !isLiquidacionInvoice && lineItemsFactura.length > 0 && lineItemsFactura.some(it => Number(it.cantidad) > 0 || Number(it.precio_unitario) > 0);
 
   const conceptosAMostrar = isLiquidacionInvoice
     ? conceptosLiquidacion
     : lineItemsFactura.length > 0
       ? lineItemsFactura.map((it) => ({
           nombre_concepto: it.descripcion || 'Ítem',
-          monto: typeof it.subtotal === 'number'
-            ? it.subtotal
-            : (Number(it.cantidad || 1) * Number(it.precio_unitario || 0)),
+          monto: calcLineSubtotal({
+            codigo: it.codigo || '',
+            descripcion: it.descripcion || '',
+            cantidad: Number(it.cantidad) || 0,
+            unidad_medida: it.unidad_medida || 'unidades',
+            precio_unitario: Number(it.precio_unitario) || 0,
+            bonificacion_pct: Number(it.bonificacion_pct) || 0,
+            alicuota_iva: Number(it.alicuota_iva) || 0,
+          }),
         }))
       : fleteEnDetalles
         ? (detalles || [])
