@@ -12,6 +12,7 @@ import { es } from 'date-fns/locale';
 import { QRCodeSVG } from 'qrcode.react';
 import jsPDF from 'jspdf';
 import { toast } from 'sonner';
+import { calcLineSubtotal, type LineItem } from '@/components/invoicing/InvoiceLineItems';
 
 const TIPO_COMPROBANTE_LABELS: Record<string, string> = {
   'factura_a': 'FACTURA A',
@@ -363,18 +364,26 @@ export default function PrintInvoice() {
     return { nombre_concepto: desc, monto: e.precio_total || 0 };
   });
 
-  const lineItemsFactura = Array.isArray((factura as { line_items?: unknown } | undefined)?.line_items)
-    ? ((factura as { line_items: Array<{ descripcion?: string; subtotal?: number; cantidad?: number; precio_unitario?: number }> }).line_items)
+  const lineItemsFactura: LineItem[] = Array.isArray((factura as unknown as { line_items?: unknown } | undefined)?.line_items)
+    ? ((factura as unknown as { line_items: LineItem[] }).line_items)
     : [];
+
+  const hasDetailedLineItems = !isLiquidacionInvoice && lineItemsFactura.length > 0 && lineItemsFactura.some(it => Number(it.cantidad) > 0 || Number(it.precio_unitario) > 0);
 
   const conceptosAMostrar = isLiquidacionInvoice
     ? conceptosLiquidacion
     : lineItemsFactura.length > 0
       ? lineItemsFactura.map((it) => ({
           nombre_concepto: it.descripcion || 'Ítem',
-          monto: typeof it.subtotal === 'number'
-            ? it.subtotal
-            : (Number(it.cantidad || 1) * Number(it.precio_unitario || 0)),
+          monto: calcLineSubtotal({
+            codigo: it.codigo || '',
+            descripcion: it.descripcion || '',
+            cantidad: Number(it.cantidad) || 0,
+            unidad_medida: it.unidad_medida || 'unidades',
+            precio_unitario: Number(it.precio_unitario) || 0,
+            bonificacion_pct: Number(it.bonificacion_pct) || 0,
+            alicuota_iva: Number(it.alicuota_iva) || 0,
+          }),
         }))
       : fleteEnDetalles
         ? (detalles || [])
@@ -713,22 +722,66 @@ export default function PrintInvoice() {
             )}
 
             {/* Conceptos */}
-            <div className="border rounded-lg overflow-hidden">
-              <div className="bg-muted/50 px-4 py-2 border-b">
-                <div className="flex justify-between text-xs font-semibold text-muted-foreground">
-                  <span>CONCEPTO</span>
-                  <span>IMPORTE</span>
+            {hasDetailedLineItems ? (
+              <div className="border rounded-lg overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/50 border-b">
+                    <tr className="text-muted-foreground">
+                      <th className="px-2 py-2 text-left font-semibold">Código</th>
+                      <th className="px-2 py-2 text-left font-semibold">Descripción</th>
+                      <th className="px-2 py-2 text-right font-semibold">Cant.</th>
+                      <th className="px-2 py-2 text-left font-semibold">U. Medida</th>
+                      <th className="px-2 py-2 text-right font-semibold">P. Unit.</th>
+                      <th className="px-2 py-2 text-right font-semibold">% Bonif.</th>
+                      <th className="px-2 py-2 text-right font-semibold">IVA</th>
+                      <th className="px-2 py-2 text-right font-semibold">Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {lineItemsFactura.map((it, i) => {
+                      const item: LineItem = {
+                        codigo: it.codigo || '',
+                        descripcion: it.descripcion || '',
+                        cantidad: Number(it.cantidad) || 0,
+                        unidad_medida: it.unidad_medida || 'unidades',
+                        precio_unitario: Number(it.precio_unitario) || 0,
+                        bonificacion_pct: Number(it.bonificacion_pct) || 0,
+                        alicuota_iva: Number(it.alicuota_iva) || 0,
+                      };
+                      return (
+                        <tr key={i}>
+                          <td className="px-2 py-2">{item.codigo || '-'}</td>
+                          <td className="px-2 py-2">{item.descripcion || '-'}</td>
+                          <td className="px-2 py-2 text-right">{item.cantidad}</td>
+                          <td className="px-2 py-2">{item.unidad_medida}</td>
+                          <td className="px-2 py-2 text-right">{formatCurrency(item.precio_unitario)}</td>
+                          <td className="px-2 py-2 text-right">{item.bonificacion_pct.toFixed(1)}%</td>
+                          <td className="px-2 py-2 text-right">{item.alicuota_iva.toFixed(1)}%</td>
+                          <td className="px-2 py-2 text-right font-medium">{formatCurrency(calcLineSubtotal(item))}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="border rounded-lg overflow-hidden">
+                <div className="bg-muted/50 px-4 py-2 border-b">
+                  <div className="flex justify-between text-xs font-semibold text-muted-foreground">
+                    <span>CONCEPTO</span>
+                    <span>IMPORTE</span>
+                  </div>
+                </div>
+                <div className="divide-y">
+                  {conceptosAMostrar.map((c, i) => (
+                    <div key={i} className="flex justify-between px-4 py-3 text-sm">
+                      <span>{c.nombre_concepto}</span>
+                      <span className="font-medium">{formatCurrency(c.monto || 0)}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
-              <div className="divide-y">
-                {conceptosAMostrar.map((c, i) => (
-                  <div key={i} className="flex justify-between px-4 py-3 text-sm">
-                    <span>{c.nombre_concepto}</span>
-                    <span className="font-medium">{formatCurrency(c.monto || 0)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            )}
 
             {/* Totals */}
             <div className="border rounded-lg p-4">
