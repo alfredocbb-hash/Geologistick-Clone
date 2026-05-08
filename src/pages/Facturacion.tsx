@@ -26,6 +26,8 @@ import { format } from 'date-fns';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { VoidInvoiceDialog } from '@/components/invoicing/VoidInvoiceDialog';
 import { CreditNoteDialog } from '@/components/invoicing/CreditNoteDialog';
+import { InvoiceLineItems, type LineItem } from '@/components/invoicing/InvoiceLineItems';
+import { CONCEPTO_OPTIONS } from '@/components/invoicing/afipConstants';
 
 const CONDICION_IVA_OPTIONS = [
   { value: 'responsable_inscripto', label: 'Responsable Inscripto', requiresCuit: true },
@@ -76,6 +78,12 @@ export default function Facturacion() {
   const [domicilio, setDomicilio] = useState('');
   const [ivaIncluido, setIvaIncluido] = useState(true);
   const [duplicateImporte, setDuplicateImporte] = useState(0);
+  const [duplicateConcepto, setDuplicateConcepto] = useState<number>(1);
+  const [duplicateFechaServicioDesde, setDuplicateFechaServicioDesde] = useState('');
+  const [duplicateFechaServicioHasta, setDuplicateFechaServicioHasta] = useState('');
+  const [duplicateFechaVtoPago, setDuplicateFechaVtoPago] = useState('');
+  const [duplicateDescripcion, setDuplicateDescripcion] = useState('');
+  const [duplicateLineItems, setDuplicateLineItems] = useState<LineItem[]>([]);
 
   // Void / Credit Note state
   const [voidOpen, setVoidOpen] = useState(false);
@@ -289,6 +297,12 @@ export default function Facturacion() {
     setTipoComprobante('B');
     setIvaIncluido(true);
     setDuplicateImporte(0);
+    setDuplicateConcepto(1);
+    setDuplicateFechaServicioDesde('');
+    setDuplicateFechaServicioHasta('');
+    setDuplicateFechaVtoPago('');
+    setDuplicateDescripcion('');
+    setDuplicateLineItems([]);
     clearCuitMatch();
   };
 
@@ -355,16 +369,26 @@ export default function Facturacion() {
     setDomicilio(factura.receptor_domicilio || '');
     setDuplicateImporte(factura.importe_total || 0);
     setIvaIncluido(true);
+    setDuplicateConcepto(factura.concepto ?? 1);
+    setDuplicateFechaServicioDesde(factura.fecha_servicio_desde ? String(factura.fecha_servicio_desde).slice(0, 10) : '');
+    setDuplicateFechaServicioHasta(factura.fecha_servicio_hasta ? String(factura.fecha_servicio_hasta).slice(0, 10) : '');
+    setDuplicateFechaVtoPago(factura.fecha_vto_pago ? String(factura.fecha_vto_pago).slice(0, 10) : '');
+    setDuplicateDescripcion(factura.descripcion || '');
+    setDuplicateLineItems(Array.isArray(factura.line_items) ? (factura.line_items as LineItem[]) : []);
     setDuplicateOpen(true);
   };
 
+  const duplicateNeedsServiceDates = duplicateConcepto === 2 || duplicateConcepto === 3;
+
   const handleEmitDuplicate = async () => {
     try {
+      if (duplicateNeedsServiceDates && (!duplicateFechaServicioDesde || !duplicateFechaServicioHasta || !duplicateFechaVtoPago)) {
+        toast.error('Para Servicios o Productos+Servicios, las fechas de período y vto. pago son obligatorias');
+        return;
+      }
       const importeTotal = ivaIncluido ? duplicateImporte : Math.round(duplicateImporte * 1.21 * 100) / 100;
       const { data, error } = await supabase.functions.invoke('arca-factura', {
         body: {
-          // Duplicate is a new standalone invoice - use a dummy envio_id reference or none
-          // We use the original envio_id if exists, otherwise create standalone
           envio_id: duplicateSource?.envio_id || undefined,
           liquidacion_seller_id: duplicateSource?.liquidacion_seller_id || undefined,
           tipo_comprobante: tipoComprobante,
@@ -376,6 +400,12 @@ export default function Facturacion() {
             domicilio: domicilio.trim() || undefined,
           },
           importe_total: importeTotal,
+          concepto: duplicateConcepto,
+          fecha_servicio_desde: duplicateNeedsServiceDates ? duplicateFechaServicioDesde : undefined,
+          fecha_servicio_hasta: duplicateNeedsServiceDates ? duplicateFechaServicioHasta : undefined,
+          fecha_vto_pago: duplicateNeedsServiceDates ? duplicateFechaVtoPago : undefined,
+          descripcion: duplicateDescripcion.trim() || undefined,
+          line_items: duplicateLineItems.length > 0 ? duplicateLineItems : undefined,
         },
       });
       if (error) throw error;
@@ -807,7 +837,7 @@ export default function Facturacion() {
 
       {/* ══════ DUPLICATE INVOICE DIALOG ══════ */}
       <Dialog open={duplicateOpen} onOpenChange={o => { if (!o) { setDuplicateOpen(false); resetForm(); } }}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Copy className="h-5 w-5" />
@@ -820,11 +850,59 @@ export default function Facturacion() {
 
           <InvoiceFormFields showImporte />
 
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Concepto</Label>
+              <Select value={String(duplicateConcepto)} onValueChange={v => setDuplicateConcepto(parseInt(v))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {CONCEPTO_OPTIONS.map(o => (
+                    <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {duplicateNeedsServiceDates && (
+              <div className="grid grid-cols-3 gap-3 p-3 border rounded-lg bg-muted/30">
+                <div className="space-y-2">
+                  <Label className="text-xs">Período Desde *</Label>
+                  <Input type="date" value={duplicateFechaServicioDesde} onChange={e => setDuplicateFechaServicioDesde(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Período Hasta *</Label>
+                  <Input type="date" value={duplicateFechaServicioHasta} onChange={e => setDuplicateFechaServicioHasta(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Vto. Pago *</Label>
+                  <Input type="date" value={duplicateFechaVtoPago} onChange={e => setDuplicateFechaVtoPago(e.target.value)} />
+                </div>
+              </div>
+            )}
+
+            <InvoiceLineItems items={duplicateLineItems} onChange={setDuplicateLineItems} />
+
+            <div className="space-y-2">
+              <Label>Descripción / Notas</Label>
+              <Textarea
+                placeholder="Detalle general de la factura"
+                value={duplicateDescripcion}
+                onChange={e => setDuplicateDescripcion(e.target.value)}
+                rows={2}
+              />
+            </div>
+          </div>
+
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => { setDuplicateOpen(false); resetForm(); }}>Cancelar</Button>
             <Button
               onClick={handleEmitDuplicate}
-              disabled={!nombre.trim() || (requiresCuit && !cuit.trim()) || duplicateImporte <= 0}
+              disabled={
+                !nombre.trim() ||
+                (requiresCuit && !cuit.trim()) ||
+                duplicateImporte <= 0 ||
+                (duplicateNeedsServiceDates && (!duplicateFechaServicioDesde || !duplicateFechaServicioHasta || !duplicateFechaVtoPago))
+              }
             >
               <FileText className="mr-2 h-4 w-4" />
               Emitir Factura
@@ -832,8 +910,6 @@ export default function Facturacion() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* ══════ SYNC PUNTO DE VENTA DIALOG ══════ */}
       <Dialog open={syncDialogOpen} onOpenChange={o => { if (!syncMutation.isPending) { setSyncDialogOpen(o); if (!o) setSyncResult(null); } }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
