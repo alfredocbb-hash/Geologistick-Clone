@@ -297,6 +297,12 @@ export default function Facturacion() {
     setTipoComprobante('B');
     setIvaIncluido(true);
     setDuplicateImporte(0);
+    setDuplicateConcepto(1);
+    setDuplicateFechaServicioDesde('');
+    setDuplicateFechaServicioHasta('');
+    setDuplicateFechaVtoPago('');
+    setDuplicateDescripcion('');
+    setDuplicateLineItems([]);
     clearCuitMatch();
   };
 
