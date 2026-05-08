@@ -1,29 +1,20 @@
-# Fix: Reprogramar envío falla en la APK
+# Fix: error de tipo al insertar en `envio_historial`
 
-## Causa raíz
+## Causa
 
-La función `reschedule_envio` hace este cast:
+En `reschedule_envio`, el INSERT a `envio_historial` pasa `v_new_estado` (text) a la columna `estado_nuevo`, que es de tipo `shipment_status`. Por eso aparece:
 
-```sql
-estado = v_new_estado::estado_envio
-```
+`column "estado_nuevo" is of type shipment_status but expression is of type text`
 
-Pero el tipo enum en la base se llama **`shipment_status`** (no `estado_envio`). Por eso al ejecutar la reprogramación PostgreSQL devuelve un error de tipo y el toast en la APK muestra "Error al reprogramar".
+## Cambio
 
-Verificado:
-- La columna `envios.estado` usa `udt_name = shipment_status`
-- El tipo `estado_envio` no existe en la base
-- El enum `shipment_status` ya incluye `reprogramado` ✓ (no hace falta tocar el enum)
+Migración para reemplazar la función casteando explícitamente:
 
-## Cambio propuesto
+- `estado_nuevo` → `v_new_estado::shipment_status`
+- `estado_anterior` ya viene tipado desde `v_envio.estado`, se mantiene.
 
-Migración para reemplazar la función `reschedule_envio` casteando al tipo correcto:
-
-- Cambiar `v_new_estado::estado_envio` por `v_new_estado::shipment_status`
-- Mantener intacto el resto de la lógica (estado `reprogramado` para envíos ML en reparto/visitas, `pendiente` en otros casos, desasignación de chofer cuando vuelve a pendiente, marcar `ruta_paradas` como reprogramado, e insertar historial).
-
-No hay cambios en frontend ni en otras tablas.
+Sin cambios en frontend ni en otras tablas. Resto de la lógica intacta.
 
 ## Validación
 
-Después de aplicar la migración: probar reprogramar desde la APK un envío en `en_reparto`. Debe quedar en `reprogramado` (si es ML) o `pendiente` (si no), con el toast "Entrega reprogramada correctamente".
+Reprogramar desde la APK un envío `en_reparto`: debe quedar en `reprogramado` (ML) o `pendiente`, con toast de éxito y un registro nuevo en `envio_historial`.
