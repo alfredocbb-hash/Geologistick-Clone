@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { ArrowLeft, Loader2, Package, Printer, Download, FileText, AlertTriangle, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Loader2, Package, Printer, Download, FileText, AlertTriangle, FileDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { QRCodeSVG } from 'qrcode.react';
@@ -423,13 +423,13 @@ export default function PrintInvoice() {
     }
   };
 
-  const handleDownloadJPG = async () => {
+  const handleDownloadCompressedPDF = async () => {
     if (!factura) return;
     const invoiceElement = document.getElementById('invoice-print-area');
     if (!invoiceElement) return;
 
     try {
-      toast.info('Generando imagen...');
+      toast.info('Generando PDF comprimido...');
       const badge = invoiceElement.querySelector('[data-print-hide]');
       if (badge) (badge as HTMLElement).style.display = 'none';
 
@@ -437,11 +437,10 @@ export default function PrintInvoice() {
       const html2canvas = html2canvasModule.default;
 
       const MAX_BYTES = 1024 * 1024; // 1 MB
-      const qualities = [0.92, 0.85, 0.75, 0.65, 0.55, 0.45, 0.35];
-      const scales = [2, 1.5, 1.2, 1];
+      const scales = [2, 1.5, 1.2, 1, 0.85];
+      const qualities = [0.85, 0.75, 0.65, 0.55, 0.45, 0.35, 0.25];
 
-      let finalDataUrl = '';
-      let finalSize = 0;
+      let finalBlob: Blob | null = null;
 
       outer: for (const scale of scales) {
         const canvas = await html2canvas(invoiceElement, {
@@ -450,41 +449,44 @@ export default function PrintInvoice() {
           logging: false,
           backgroundColor: '#ffffff',
         });
+        const imgRatio = canvas.width / canvas.height;
         for (const q of qualities) {
           const dataUrl = canvas.toDataURL('image/jpeg', q);
-          // Estimate bytes from base64 length
-          const base64 = dataUrl.split(',')[1] || '';
-          const bytes = Math.floor((base64.length * 3) / 4);
-          if (bytes <= MAX_BYTES) {
-            finalDataUrl = dataUrl;
-            finalSize = bytes;
-            break outer;
-          }
-          finalDataUrl = dataUrl;
-          finalSize = bytes;
+          const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
+          const pageWidth = doc.internal.pageSize.getWidth();
+          const pageHeight = doc.internal.pageSize.getHeight();
+          const pdfWidth = pageWidth - 20;
+          const pdfHeight = pdfWidth / imgRatio;
+          doc.addImage(dataUrl, 'JPEG', 10, 10, pdfWidth, Math.min(pdfHeight, pageHeight - 20));
+          const blob = doc.output('blob');
+          finalBlob = blob;
+          if (blob.size <= MAX_BYTES) break outer;
         }
       }
 
       if (badge) (badge as HTMLElement).style.display = '';
+      if (!finalBlob) throw new Error('no blob');
 
       const prefix = esNotaCredito ? 'nota-credito' : 'factura';
-      const fileName = `${prefix}-${formatNumeroComprobante(factura.punto_venta, factura.numero_comprobante)}${envio?.tracking_number ? `-${envio.tracking_number}` : ''}.jpg`;
+      const fileName = `${prefix}-${formatNumeroComprobante(factura.punto_venta, factura.numero_comprobante)}${envio?.tracking_number ? `-${envio.tracking_number}` : ''}.pdf`;
 
+      const url = URL.createObjectURL(finalBlob);
       const link = document.createElement('a');
-      link.href = finalDataUrl;
+      link.href = url;
       link.download = fileName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      URL.revokeObjectURL(url);
 
-      const kb = Math.round(finalSize / 1024);
-      if (finalSize <= MAX_BYTES) {
-        toast.success(`Imagen descargada (${kb} KB)`);
+      const kb = Math.round(finalBlob.size / 1024);
+      if (finalBlob.size <= MAX_BYTES) {
+        toast.success(`PDF descargado (${kb} KB)`);
       } else {
-        toast.warning(`Imagen descargada (${kb} KB) — supera 1 MB tras compresión máxima`);
+        toast.warning(`PDF descargado (${kb} KB) — supera 1 MB tras compresión máxima`);
       }
     } catch {
-      toast.error('Error al generar imagen');
+      toast.error('Error al generar PDF comprimido');
     }
   };
 
@@ -557,9 +559,9 @@ export default function PrintInvoice() {
               <Printer className="h-4 w-4 mr-2" />
               Imprimir
             </Button>
-            <Button variant="outline" onClick={handleDownloadJPG}>
-              <ImageIcon className="h-4 w-4 mr-2" />
-              Descargar JPG (≤1MB)
+            <Button variant="outline" onClick={handleDownloadCompressedPDF}>
+              <FileDown className="h-4 w-4 mr-2" />
+              Descargar PDF (≤1MB)
             </Button>
             <Button onClick={handleDownloadPDF}>
               <Download className="h-4 w-4 mr-2" />
