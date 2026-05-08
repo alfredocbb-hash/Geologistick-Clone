@@ -837,7 +837,7 @@ export default function Facturacion() {
 
       {/* ══════ DUPLICATE INVOICE DIALOG ══════ */}
       <Dialog open={duplicateOpen} onOpenChange={o => { if (!o) { setDuplicateOpen(false); resetForm(); } }}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Copy className="h-5 w-5" />
@@ -850,11 +850,59 @@ export default function Facturacion() {
 
           <InvoiceFormFields showImporte />
 
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Concepto</Label>
+              <Select value={String(duplicateConcepto)} onValueChange={v => setDuplicateConcepto(parseInt(v))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {CONCEPTO_OPTIONS.map(o => (
+                    <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {duplicateNeedsServiceDates && (
+              <div className="grid grid-cols-3 gap-3 p-3 border rounded-lg bg-muted/30">
+                <div className="space-y-2">
+                  <Label className="text-xs">Período Desde *</Label>
+                  <Input type="date" value={duplicateFechaServicioDesde} onChange={e => setDuplicateFechaServicioDesde(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Período Hasta *</Label>
+                  <Input type="date" value={duplicateFechaServicioHasta} onChange={e => setDuplicateFechaServicioHasta(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Vto. Pago *</Label>
+                  <Input type="date" value={duplicateFechaVtoPago} onChange={e => setDuplicateFechaVtoPago(e.target.value)} />
+                </div>
+              </div>
+            )}
+
+            <InvoiceLineItems items={duplicateLineItems} onChange={setDuplicateLineItems} />
+
+            <div className="space-y-2">
+              <Label>Descripción / Notas</Label>
+              <Textarea
+                placeholder="Detalle general de la factura"
+                value={duplicateDescripcion}
+                onChange={e => setDuplicateDescripcion(e.target.value)}
+                rows={2}
+              />
+            </div>
+          </div>
+
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => { setDuplicateOpen(false); resetForm(); }}>Cancelar</Button>
             <Button
               onClick={handleEmitDuplicate}
-              disabled={!nombre.trim() || (requiresCuit && !cuit.trim()) || duplicateImporte <= 0}
+              disabled={
+                !nombre.trim() ||
+                (requiresCuit && !cuit.trim()) ||
+                duplicateImporte <= 0 ||
+                (duplicateNeedsServiceDates && (!duplicateFechaServicioDesde || !duplicateFechaServicioHasta || !duplicateFechaVtoPago))
+              }
             >
               <FileText className="mr-2 h-4 w-4" />
               Emitir Factura
@@ -862,8 +910,6 @@ export default function Facturacion() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* ══════ SYNC PUNTO DE VENTA DIALOG ══════ */}
       <Dialog open={syncDialogOpen} onOpenChange={o => { if (!syncMutation.isPending) { setSyncDialogOpen(o); if (!o) setSyncResult(null); } }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
