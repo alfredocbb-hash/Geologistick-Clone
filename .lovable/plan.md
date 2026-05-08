@@ -1,23 +1,29 @@
-## Objetivo
-Agregar una opción adicional para descargar el comprobante como **imagen JPG** comprimida a un máximo de **1 MB**, junto al botón existente "Descargar PDF" en `PrintInvoice.tsx`.
+# Fix: Reprogramar envío falla en la APK
 
-## Cambios
+## Causa raíz
 
-### `src/pages/PrintInvoice.tsx`
+La función `reschedule_envio` hace este cast:
 
-1. **Nueva función `handleDownloadJPG`** (junto a `handleDownloadPDF`):
-   - Renderiza `#invoice-print-area` con `html2canvas` (scale 2, fondo blanco).
-   - Genera la imagen con `canvas.toDataURL('image/jpeg', quality)`.
-   - Comprime iterativamente: arranca en `quality = 0.92` y va bajando (0.85, 0.75, 0.65, 0.55, 0.45) hasta que el tamaño sea ≤ 1 MB.
-   - Si aún supera 1 MB, re-renderiza el canvas con `scale = 1.5` y reintenta.
-   - Descarga el archivo `.jpg` con el mismo patrón de nombre (`factura-XXXX-YYYY.jpg`).
-   - `toast.info` mientras genera, `toast.success` con el tamaño final (KB), `toast.error` si falla.
+```sql
+estado = v_new_estado::estado_envio
+```
 
-2. **Botón "Descargar JPG"** en la barra de acciones (línea ~490):
-   - Agregar un `<Button variant="outline">` con icono `ImageIcon` (lucide-react) entre "Imprimir" y "Descargar PDF".
-   - Texto: "Descargar JPG (≤1MB)".
+Pero el tipo enum en la base se llama **`shipment_status`** (no `estado_envio`). Por eso al ejecutar la reprogramación PostgreSQL devuelve un error de tipo y el toast en la APK muestra "Error al reprogramar".
 
-### Detalles técnicos
-- Reutiliza el patrón existente de ocultar `[data-print-hide]`.
-- Se mantiene el flujo `?download=1` actual (sigue descargando PDF).
-- No requiere cambios de backend ni de base de datos.
+Verificado:
+- La columna `envios.estado` usa `udt_name = shipment_status`
+- El tipo `estado_envio` no existe en la base
+- El enum `shipment_status` ya incluye `reprogramado` ✓ (no hace falta tocar el enum)
+
+## Cambio propuesto
+
+Migración para reemplazar la función `reschedule_envio` casteando al tipo correcto:
+
+- Cambiar `v_new_estado::estado_envio` por `v_new_estado::shipment_status`
+- Mantener intacto el resto de la lógica (estado `reprogramado` para envíos ML en reparto/visitas, `pendiente` en otros casos, desasignación de chofer cuando vuelve a pendiente, marcar `ruta_paradas` como reprogramado, e insertar historial).
+
+No hay cambios en frontend ni en otras tablas.
+
+## Validación
+
+Después de aplicar la migración: probar reprogramar desde la APK un envío en `en_reparto`. Debe quedar en `reprogramado` (si es ML) o `pendiente` (si no), con el toast "Entrega reprogramada correctamente".
