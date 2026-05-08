@@ -12,6 +12,7 @@ import { es } from 'date-fns/locale';
 import { QRCodeSVG } from 'qrcode.react';
 import jsPDF from 'jspdf';
 import { toast } from 'sonner';
+import { calcLineSubtotal, type LineItem } from '@/components/invoicing/InvoiceLineItems';
 
 const TIPO_COMPROBANTE_LABELS: Record<string, string> = {
   'factura_a': 'FACTURA A',
