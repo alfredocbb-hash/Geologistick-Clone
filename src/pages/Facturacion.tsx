@@ -26,6 +26,8 @@ import { format } from 'date-fns';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { VoidInvoiceDialog } from '@/components/invoicing/VoidInvoiceDialog';
 import { CreditNoteDialog } from '@/components/invoicing/CreditNoteDialog';
+import { InvoiceLineItems, type LineItem } from '@/components/invoicing/InvoiceLineItems';
+import { CONCEPTO_OPTIONS } from '@/components/invoicing/afipConstants';
 
 const CONDICION_IVA_OPTIONS = [
   { value: 'responsable_inscripto', label: 'Responsable Inscripto', requiresCuit: true },
