@@ -78,6 +78,12 @@ export default function Facturacion() {
   const [domicilio, setDomicilio] = useState('');
   const [ivaIncluido, setIvaIncluido] = useState(true);
   const [duplicateImporte, setDuplicateImporte] = useState(0);
+  const [duplicateConcepto, setDuplicateConcepto] = useState<number>(1);
+  const [duplicateFechaServicioDesde, setDuplicateFechaServicioDesde] = useState('');
+  const [duplicateFechaServicioHasta, setDuplicateFechaServicioHasta] = useState('');
+  const [duplicateFechaVtoPago, setDuplicateFechaVtoPago] = useState('');
+  const [duplicateDescripcion, setDuplicateDescripcion] = useState('');
+  const [duplicateLineItems, setDuplicateLineItems] = useState<LineItem[]>([]);
 
   // Void / Credit Note state
   const [voidOpen, setVoidOpen] = useState(false);
