@@ -10,6 +10,7 @@ import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { es } from 'date-fns/locale';
 import LiveDriverMap from '@/components/tracking/LiveDriverMap';
+import { SEO } from '@/components/seo/SEO';
 
 type ShipmentStatus = 'pendiente' | 'recogido' | 'en_sucursal' | 'en_transito' | 'en_reparto' | 'entregado' | 'devuelto' | 'cancelado' | 'primera_visita' | 'segunda_visita' | 'reprogramado' | 'incidencia' | 'no_entregado';
 
@@ -163,6 +164,11 @@ export default function Tracking() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-accent/5">
+      <SEO
+        title={searchedTracking ? `Tracking ${searchedTracking} — Geologistick` : 'Rastreá tu envío — Geologistick'}
+        description="Seguimiento de envíos en tiempo real con Geologistick. Ingresá tu número de tracking y conocé el estado y ubicación de tu paquete."
+        path="/tracking"
+      />
       <div className="max-w-4xl mx-auto px-4 py-12 space-y-8">
         {/* Back button */}
         <Link to="/dashboard" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
