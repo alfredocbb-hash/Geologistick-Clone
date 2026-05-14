@@ -1,8 +1,15 @@
 import { LegalPageLayout } from "@/components/legal/LegalPageLayout";
 import { Card, CardContent } from "@/components/ui/card";
+import { SEO } from "@/components/seo/SEO";
 
 const Terms = () => {
   return (
+    <>
+      <SEO
+        title="Términos de Servicio — Geologistick"
+        description="Términos y condiciones de uso de la plataforma Geologistick para gestión de envíos, rutas, liquidaciones y facturación."
+        path="/terms"
+      />
     <LegalPageLayout title="Términos de Servicio" lastUpdated="27 de enero de 2026">
       <section>
         <h2 className="text-xl font-semibold text-white mb-4">1. Aceptación de los Términos</h2>

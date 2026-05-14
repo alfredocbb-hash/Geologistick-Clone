@@ -149,6 +149,7 @@ const Privacy = () => {
         </p>
       </section>
     </LegalPageLayout>
+    </>
   );
 };
 
