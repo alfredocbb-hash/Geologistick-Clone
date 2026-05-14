@@ -73,6 +73,16 @@ const Support = () => {
     },
   ];
 
+  const faqJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqs.map((f) => ({
+      "@type": "Question",
+      name: f.question,
+      acceptedAnswer: { "@type": "Answer", text: f.answer },
+    })),
+  };
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <SEO
@@ -80,6 +90,9 @@ const Support = () => {
         description="Centro de ayuda de Geologistick: contacto, preguntas frecuentes sobre envíos, integraciones y entregas en Argentina."
         path="/support"
       />
+      <Helmet>
+        <script type="application/ld+json">{JSON.stringify(faqJsonLd)}</script>
+      </Helmet>
       <Navbar />
       <main className="flex-1 py-16 md:py-24">
         <div className="container max-w-6xl mx-auto px-4">
