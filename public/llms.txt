@@ -1,0 +1,19 @@
+# Geologistick
+
+> Plataforma integral de gestión logística y entregas: rutas optimizadas, seguimiento en tiempo real, facturación y liquidaciones para empresas y e-commerce en Argentina.
+
+Geologistick centraliza el ciclo completo de last-mile: alta de envíos, planificación de rutas, asignación a choferes, escaneo y rastreo, liquidaciones a sucursales/sellers/terceros y facturación electrónica con ARCA/AFIP. Integra con Mercado Libre, Tiendanube y Mercado Pago.
+
+## Pages
+
+- [Inicio](/): Resumen del producto, características y planes.
+- [Rastreo público](/tracking): Seguimiento de envíos por código de tracking.
+- [Soporte](/support): Centro de ayuda y contacto.
+- [Iniciar sesión](/login): Acceso para clientes, choferes, sellers y administradores.
+- [Documentación Tiendanube](/docs/tiendanube): Guía de integración con Tiendanube.
+
+## Optional
+
+- [Política de privacidad](/privacy)
+- [Términos y condiciones](/terms)
+- [Política de cookies](/cookies)
