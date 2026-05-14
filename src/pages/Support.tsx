@@ -10,6 +10,7 @@ import { Mail, Phone, Clock, MessageCircle, HelpCircle, ChevronDown, Send, Check
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { toast } from "sonner";
 import { SEO } from "@/components/seo/SEO";
+import { Helmet } from "react-helmet-async";
 
 const Support = () => {
   const [formData, setFormData] = useState({
