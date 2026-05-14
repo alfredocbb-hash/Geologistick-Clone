@@ -162,6 +162,7 @@ const Terms = () => {
         </Card>
       </section>
     </LegalPageLayout>
+    </>
   );
 };
 

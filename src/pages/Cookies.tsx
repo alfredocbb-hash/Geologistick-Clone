@@ -1,8 +1,15 @@
 import { LegalPageLayout } from "@/components/legal/LegalPageLayout";
 import { Card, CardContent } from "@/components/ui/card";
+import { SEO } from "@/components/seo/SEO";
 
 const Cookies = () => {
   return (
+    <>
+      <SEO
+        title="Política de Cookies — Geologistick"
+        description="Información sobre las cookies que utiliza Geologistick, su finalidad y cómo gestionarlas desde tu navegador."
+        path="/cookies"
+      />
     <LegalPageLayout title="Política de Cookies" lastUpdated="27 de enero de 2026">
       <section>
         <h2 className="text-xl font-semibold text-white mb-4">1. ¿Qué son las Cookies?</h2>
