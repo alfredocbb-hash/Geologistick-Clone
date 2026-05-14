@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Mail, Phone, Clock, MessageCircle, HelpCircle, ChevronDown, Send, CheckCircle2 } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { toast } from "sonner";
+import { SEO } from "@/components/seo/SEO";
 
 const Support = () => {
   const [formData, setFormData] = useState({
@@ -73,6 +74,11 @@ const Support = () => {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      <SEO
+        title="Soporte y centro de ayuda — Geologistick"
+        description="Centro de ayuda de Geologistick: contacto, preguntas frecuentes sobre envíos, integraciones y entregas en Argentina."
+        path="/support"
+      />
       <Navbar />
       <main className="flex-1 py-16 md:py-24">
         <div className="container max-w-6xl mx-auto px-4">

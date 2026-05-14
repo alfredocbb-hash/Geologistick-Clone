@@ -1,6 +1,7 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { LoginForm } from '@/components/auth/LoginForm';
+import { SEO } from '@/components/seo/SEO';
 
 export default function Login() {
   const { user, loading, roles, hasRole } = useAuth();
@@ -20,5 +21,14 @@ export default function Login() {
     return <Navigate to="/dashboard" replace />;
   }
 
-  return <LoginForm />;
+  return (
+    <>
+      <SEO
+        title="Iniciar sesión — Geologistick"
+        description="Accedé a tu cuenta de Geologistick para gestionar envíos, rutas, choferes, liquidaciones y facturación."
+        path="/login"
+      />
+      <LoginForm />
+    </>
+  );
 }

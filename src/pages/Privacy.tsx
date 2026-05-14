@@ -1,8 +1,15 @@
 import { LegalPageLayout } from "@/components/legal/LegalPageLayout";
 import { Card, CardContent } from "@/components/ui/card";
+import { SEO } from "@/components/seo/SEO";
 
 const Privacy = () => {
   return (
+    <>
+      <SEO
+        title="Política de Privacidad — Geologistick"
+        description="Cómo Geologistick recopila, utiliza y protege tus datos personales y de envíos en su plataforma de gestión logística."
+        path="/privacy"
+      />
     <LegalPageLayout title="Política de Privacidad" lastUpdated="27 de enero de 2026">
       <section>
         <h2 className="text-xl font-semibold text-white mb-4">1. Información General</h2>
@@ -142,6 +149,7 @@ const Privacy = () => {
         </p>
       </section>
     </LegalPageLayout>
+    </>
   );
 };
 
