@@ -91,7 +91,7 @@ const Hero = () => {
 
             {/* Trust indicators */}
             <div
-              className="flex flex-wrap items-center gap-6 text-sm text-muted-foreground dark:text-gray-500 animate-fade-in"
+              className="flex flex-wrap items-center gap-6 text-sm text-muted-foreground dark:text-gray-300 animate-fade-in"
               style={{ animationDelay: "0.4s" }}
             >
               <div className="flex items-center gap-2">
@@ -119,7 +119,7 @@ const Hero = () => {
                 </div>
                 <div>
                   <h3 className="font-semibold text-foreground dark:text-white">{t('trackYourShipment')}</h3>
-                  <p className="text-sm text-muted-foreground dark:text-gray-500">{t('enterTrackingCode')}</p>
+                  <p className="text-sm text-muted-foreground dark:text-gray-300">{t('enterTrackingCode')}</p>
                 </div>
               </div>
               <form onSubmit={handleTracking} className="flex gap-3">
@@ -156,7 +156,7 @@ const Hero = () => {
                   <h4 className="font-semibold text-foreground dark:text-white text-sm mb-1 group-hover:text-[hsl(var(--geo-teal))] transition-colors">
                     {t(item.titleKey)}
                   </h4>
-                  <p className="text-xs text-muted-foreground dark:text-gray-500">{t(item.descKey)}</p>
+                  <p className="text-xs text-muted-foreground dark:text-gray-300">{t(item.descKey)}</p>
                 </div>
               ))}
             </div>
