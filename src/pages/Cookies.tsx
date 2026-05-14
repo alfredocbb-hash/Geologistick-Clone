@@ -156,6 +156,7 @@ const Cookies = () => {
         </Card>
       </section>
     </LegalPageLayout>
+    </>
   );
 };
 
