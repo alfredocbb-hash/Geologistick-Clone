@@ -100,7 +100,7 @@ export function SettlementDetailDialog({
         .from('liquidacion_sucursal_detalles')
         .select(`
           *,
-          envio:envios(tracking_number, tracking_externo, estado, created_at, nombre_destinatario, destinatario_id, clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
+          envio:envios(tracking_number, tracking_externo, estado, created_at, nombre_destinatario, ciudad_entrega, direccion_entrega, destinatario_id, clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
         `)
         .eq('liquidacion_id', settlementId)
         .order('created_at', { ascending: false });
@@ -119,7 +119,7 @@ export function SettlementDetailDialog({
         .from('comisiones')
         .select(`
           *,
-          envio:envios(tracking_number, tracking_externo, estado, created_at, precio_total, nombre_destinatario, destinatario_id, clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
+          envio:envios(tracking_number, tracking_externo, estado, created_at, precio_total, nombre_destinatario, ciudad_entrega, direccion_entrega, destinatario_id, clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
         `)
         .eq('liquidacion_id', settlementId)
         .order('created_at', { ascending: false });
@@ -229,9 +229,10 @@ export function SettlementDetailDialog({
     doc.setFillColor(230, 230, 230);
     doc.rect(20, y - 4, pageWidth - 40, 8, 'F');
     doc.text('Tracking', 22, y);
-    doc.text('Fecha', 70, y);
-    doc.text('Destinatario', 100, y);
-    doc.text('Monto', 160, y);
+    doc.text('Fecha', 60, y);
+    doc.text('Destinatario', 85, y);
+    doc.text('Localidad', 130, y);
+    doc.text('Monto', 175, y);
     y += 8;
 
     doc.setFont('helvetica', 'normal');
@@ -248,6 +249,7 @@ export function SettlementDetailDialog({
       const tracking = envio?.tracking_externo || envio?.tracking_number || '-';
       const fecha = envio?.created_at ? format(new Date(envio.created_at), 'dd/MM/yy') : '-';
       const nombre = destinatario ? `${destinatario.nombre || ''} ${destinatario.apellido || ''}`.trim() : envio?.nombre_destinatario || '-';
+      const localidad = envio?.ciudad_entrega || '-';
       const monto = isBranch 
         ? `$${(item.monto_envio || 0).toFixed(2)}`
         : `$${(item.monto || 0).toFixed(2)}`;
@@ -257,10 +259,11 @@ export function SettlementDetailDialog({
         doc.rect(20, y - 4, pageWidth - 40, 7, 'F');
       }
 
-      doc.text(tracking.substring(0, 20), 22, y);
-      doc.text(fecha, 70, y);
-      doc.text(nombre.substring(0, 25), 100, y);
-      doc.text(monto, 160, y);
+      doc.text(String(tracking).substring(0, 16), 22, y);
+      doc.text(fecha, 60, y);
+      doc.text(nombre.substring(0, 22), 85, y);
+      doc.text(String(localidad).substring(0, 18), 130, y);
+      doc.text(monto, 175, y);
       y += 7;
     });
 
@@ -293,6 +296,8 @@ export function SettlementDetailDialog({
         tracking: envio?.tracking_externo || envio?.tracking_number || '',
         fecha: envio?.created_at ? format(new Date(envio.created_at), 'dd/MM/yyyy', { locale: es }) : '',
         destinatario: nombre,
+        localidad: envio?.ciudad_entrega || '',
+        direccion: envio?.direccion_entrega || '',
         rol: isBranch ? (item.rol === 'recepcion' ? 'Recepción' : 'Emisión') : '',
         estado: envio?.estado || '',
         monto: isBranch ? Number(item.monto_envio || 0) : Number(item.monto || 0),
@@ -304,6 +309,8 @@ export function SettlementDetailDialog({
       { header: 'Tracking', key: 'tracking' as const },
       { header: 'Fecha', key: 'fecha' as const },
       { header: 'Destinatario', key: 'destinatario' as const },
+      { header: 'Localidad', key: 'localidad' as const },
+      { header: 'Dirección', key: 'direccion' as const },
     ];
     const columns = isBranch
       ? [
