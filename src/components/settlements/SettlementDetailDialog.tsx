@@ -20,7 +20,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Download, FileText, Printer, Building2, Calendar, DollarSign, CreditCard, User, Receipt, Wallet } from 'lucide-react';
+import { Download, FileText, Printer, Building2, Calendar, DollarSign, CreditCard, User, Receipt, Wallet, FileSpreadsheet } from 'lucide-react';
+import { exportToExcel } from '@/lib/exportExcel';
  import { AlertTriangle } from 'lucide-react';
  import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { format } from 'date-fns';
