@@ -1,17 +1,19 @@
 ## Objetivo
-Agregar botón **Excel** en el diálogo "Liquidación de Chofer" (y también Sucursal, mismo diálogo) para descargar el detalle de envíos como `.xlsx` y verlo en tabla.
+Incluir la **Localidad (ciudad de entrega)** en el detalle exportado de las liquidaciones de chofer y sucursal, tanto en PDF como en Excel.
 
-## Cambios
+## Cambios — `src/components/settlements/SettlementDetailDialog.tsx`
 
-**`src/components/settlements/SettlementDetailDialog.tsx`**
-- Importar `exportToExcel` desde `@/lib/exportExcel` y el ícono `FileSpreadsheet` de lucide.
-- Agregar un tercer botón en el header (junto a Imprimir / PDF): **Excel**.
-- Al hacer click, generar archivo con:
-  - Nombre: `liquidacion-chofer-<nombre>-<fecha>.xlsx` (o `liquidacion-sucursal-...` según corresponda).
-  - Hoja "Detalle de Envíos" con columnas: Tracking, Fecha, Destinatario, Dirección, Ciudad, Estado, Comisión (currency).
-  - Para sucursales se ajustan columnas equivalentes (Tracking, Fecha, Destinatario, Estado, Importe).
-- Reutilizar la misma fuente de datos que ya alimenta el tab "Detalle de Envíos" (no se cambia lógica de negocio, sólo presentación/exportación).
+1. **Queries** (`branchDetalles` y `driverComisiones`): agregar `ciudad_entrega, direccion_entrega` al select de `envio:envios(...)`.
 
-## Notas técnicas
-- `exportToExcel` ya existe en `src/lib/exportExcel.ts` y soporta formato `currency`, así que no se necesitan dependencias nuevas.
-- Sin cambios en backend, RLS, queries ni cálculos. Solo UI/exportación.
+2. **Excel (`handleExportExcel`)**:
+   - Agregar campo `localidad: envio?.ciudad_entrega || ''` al map de `data`.
+   - Insertar columna `{ header: 'Localidad', key: 'localidad' }` después de "Destinatario", tanto para chofer como sucursal.
+
+3. **PDF (`generatePDF`)**:
+   - Reorganizar las columnas para hacer lugar a "Localidad":
+     - Tracking (x=22), Fecha (x=60), Destinatario (x=85, ancho ~22 chars), Localidad (x=130, ancho ~18 chars), Monto (x=175).
+   - Agregar header "Localidad" y celda con `envio?.ciudad_entrega || '-'` (truncado a 18 chars).
+
+## Sin cambios
+- Backend, RLS, lógica de cálculo, vista en pantalla del tab "Detalle de Envíos" (no fue solicitado).
+- Si querés que también aparezca en la vista del diálogo, lo agrego como extensión.
