@@ -296,6 +296,8 @@ export function SettlementDetailDialog({
         tracking: envio?.tracking_externo || envio?.tracking_number || '',
         fecha: envio?.created_at ? format(new Date(envio.created_at), 'dd/MM/yyyy', { locale: es }) : '',
         destinatario: nombre,
+        localidad: envio?.ciudad_entrega || '',
+        direccion: envio?.direccion_entrega || '',
         rol: isBranch ? (item.rol === 'recepcion' ? 'Recepción' : 'Emisión') : '',
         estado: envio?.estado || '',
         monto: isBranch ? Number(item.monto_envio || 0) : Number(item.monto || 0),
@@ -307,6 +309,8 @@ export function SettlementDetailDialog({
       { header: 'Tracking', key: 'tracking' as const },
       { header: 'Fecha', key: 'fecha' as const },
       { header: 'Destinatario', key: 'destinatario' as const },
+      { header: 'Localidad', key: 'localidad' as const },
+      { header: 'Dirección', key: 'direccion' as const },
     ];
     const columns = isBranch
       ? [
