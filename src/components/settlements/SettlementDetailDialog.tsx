@@ -281,6 +281,60 @@ export function SettlementDetailDialog({
     window.print();
   };
 
+  const handleExportExcel = () => {
+    const items: any[] = isBranch ? (branchDetalles as any[]) : (driverComisiones as any[]);
+    const data = items.map((item: any) => {
+      const envio = item.envio;
+      const destinatario = envio?.clientes;
+      const nombre = destinatario
+        ? `${destinatario.nombre || ''} ${destinatario.apellido || ''}`.trim()
+        : envio?.nombre_destinatario || '';
+      return {
+        tracking: envio?.tracking_externo || envio?.tracking_number || '',
+        fecha: envio?.created_at ? format(new Date(envio.created_at), 'dd/MM/yyyy', { locale: es }) : '',
+        destinatario: nombre,
+        rol: isBranch ? (item.rol === 'recepcion' ? 'Recepción' : 'Emisión') : '',
+        estado: envio?.estado || '',
+        monto: isBranch ? Number(item.monto_envio || 0) : Number(item.monto || 0),
+        comision: isBranch ? Number(item.comision_aplicada || 0) : Number(item.monto || 0),
+      };
+    });
+
+    const baseCols = [
+      { header: 'Tracking', key: 'tracking' as const },
+      { header: 'Fecha', key: 'fecha' as const },
+      { header: 'Destinatario', key: 'destinatario' as const },
+    ];
+    const columns = isBranch
+      ? [
+          ...baseCols,
+          { header: 'Rol', key: 'rol' as const },
+          { header: 'Estado', key: 'estado' as const },
+          { header: 'Monto Envío', key: 'monto' as const, format: 'currency' as const },
+          { header: 'Comisión', key: 'comision' as const, format: 'currency' as const },
+        ]
+      : [
+          ...baseCols,
+          { header: 'Estado', key: 'estado' as const },
+          { header: 'Comisión', key: 'comision' as const, format: 'currency' as const },
+        ];
+
+    const periodo = format(new Date(settlement.periodo_fin), 'yyyy-MM-dd');
+    const nombreEntidad = isBranch
+      ? branchData.sucursal?.nombre || 'sucursal'
+      : `${driverData.chofer?.nombre || ''}-${driverData.chofer?.apellido || ''}`.trim() || 'chofer';
+    const filename = isBranch
+      ? `liquidacion-sucursal-${nombreEntidad}-${periodo}`
+      : `liquidacion-chofer-${nombreEntidad}-${periodo}`;
+
+    exportToExcel({
+      filename,
+      sheetName: 'Detalle de Envíos',
+      columns,
+      data,
+    });
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
