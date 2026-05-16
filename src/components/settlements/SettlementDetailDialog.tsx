@@ -310,6 +310,10 @@ export function SettlementDetailDialog({
                 <Download className="h-4 w-4 mr-1" />
                 PDF
               </Button>
+              <Button variant="outline" size="sm" onClick={handleExportExcel}>
+                <FileSpreadsheet className="h-4 w-4 mr-1" />
+                Excel
+              </Button>
             </div>
           </div>
         </DialogHeader>
