@@ -150,7 +150,7 @@ export default function Facturacion() {
       if (!profile?.tenant_id) return [];
       const { data, error } = await supabase
         .from('facturas')
-        .select('*')
+        .select('*, factura_origen:facturas!factura_origen_id(id, punto_venta, numero_comprobante, tipo_comprobante, fecha_emision, cae)')
         .eq('tenant_id', profile.tenant_id)
         .in('estado', ['emitida', 'anulada', 'anulada_por_nc'])
         .order('fecha_emision', { ascending: false })
