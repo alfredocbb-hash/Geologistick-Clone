@@ -710,6 +710,22 @@ export default function Facturacion() {
                             {factura.punto_venta && factura.numero_comprobante
                               ? formatComprobante(factura.punto_venta, factura.numero_comprobante)
                               : '—'}
+                            {factura.es_nota_credito && (
+                              <div className="text-[11px] font-sans text-muted-foreground mt-1">
+                                Aplica a:{' '}
+                                {factura.factura_origen ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => window.open(`/print-invoice?factura_id=${factura.factura_origen.id}`, '_blank')}
+                                    className="text-primary hover:underline font-mono"
+                                  >
+                                    Factura {factura.factura_origen.tipo_comprobante} {formatComprobante(factura.factura_origen.punto_venta, factura.factura_origen.numero_comprobante)}
+                                  </button>
+                                ) : (
+                                  <span>—</span>
+                                )}
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell>
                             {factura.es_nota_credito ? (
