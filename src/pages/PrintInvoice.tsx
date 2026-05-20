@@ -138,25 +138,39 @@ export default function PrintInvoice() {
   const { data: factura, isLoading: loadingFactura } = useQuery({
     queryKey: ['print-factura', facturaId, envioId],
     queryFn: async () => {
+      let row: any = null;
       if (facturaId) {
         const { data, error } = await supabase
           .from('facturas')
-          .select('*, factura_origen:facturas!facturas_factura_origen_id_fkey(id, punto_venta, numero_comprobante, tipo_comprobante, fecha_emision, cae)')
+          .select('*')
           .eq('id', facturaId)
           .single();
         if (error) throw error;
-        return data;
+        row = data;
+      } else if (envioId) {
+        const { data, error } = await supabase
+          .from('facturas')
+          .select('*')
+          .eq('envio_id', envioId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+        if (error) throw error;
+        row = data;
+      } else {
+        return null;
       }
-      if (!envioId) return null;
-      const { data, error } = await supabase
-        .from('facturas')
-        .select('*, factura_origen:facturas!facturas_factura_origen_id_fkey(id, punto_venta, numero_comprobante, tipo_comprobante, fecha_emision, cae)')
-        .eq('envio_id', envioId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
-      if (error) throw error;
-      return data;
+      if (row?.factura_origen_id) {
+        const { data: origen } = await supabase
+          .from('facturas')
+          .select('id, punto_venta, numero_comprobante, tipo_comprobante, fecha_emision, cae')
+          .eq('id', row.factura_origen_id)
+          .maybeSingle();
+        row.factura_origen = origen || null;
+      } else {
+        row.factura_origen = null;
+      }
+      return row;
     },
     enabled: !!envioId || !!facturaId,
   });
