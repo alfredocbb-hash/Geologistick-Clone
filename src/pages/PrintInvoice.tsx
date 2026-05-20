@@ -141,7 +141,7 @@ export default function PrintInvoice() {
       if (facturaId) {
         const { data, error } = await supabase
           .from('facturas')
-          .select('*, factura_origen:facturas!factura_origen_id(id, punto_venta, numero_comprobante, tipo_comprobante, fecha_emision, cae)')
+          .select('*, factura_origen:facturas!facturas_factura_origen_id_fkey(id, punto_venta, numero_comprobante, tipo_comprobante, fecha_emision, cae)')
           .eq('id', facturaId)
           .single();
         if (error) throw error;
@@ -150,7 +150,7 @@ export default function PrintInvoice() {
       if (!envioId) return null;
       const { data, error } = await supabase
         .from('facturas')
-        .select('*, factura_origen:facturas!factura_origen_id(id, punto_venta, numero_comprobante, tipo_comprobante, fecha_emision, cae)')
+        .select('*, factura_origen:facturas!facturas_factura_origen_id_fkey(id, punto_venta, numero_comprobante, tipo_comprobante, fecha_emision, cae)')
         .eq('envio_id', envioId)
         .order('created_at', { ascending: false })
         .limit(1)
