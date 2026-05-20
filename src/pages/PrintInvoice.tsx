@@ -809,6 +809,30 @@ export default function PrintInvoice() {
               )}
             </div>
 
+            {/* Comprobante asociado (NC) */}
+            {esNotaCredito && (factura as any).factura_origen && (
+              <div className="border rounded-lg p-3 bg-muted/30">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                  Comprobante asociado
+                </p>
+                <p className="text-sm font-mono">
+                  Factura {(factura as any).factura_origen.tipo_comprobante}{' '}
+                  {String((factura as any).factura_origen.punto_venta).padStart(4, '0')}-
+                  {String((factura as any).factura_origen.numero_comprobante).padStart(8, '0')}
+                  {(factura as any).factura_origen.fecha_emision && (
+                    <span className="ml-3 text-muted-foreground">
+                      Fecha: {format(new Date((factura as any).factura_origen.fecha_emision), 'dd/MM/yyyy')}
+                    </span>
+                  )}
+                  {(factura as any).factura_origen.cae && (
+                    <span className="ml-3 text-muted-foreground">
+                      CAE: {(factura as any).factura_origen.cae}
+                    </span>
+                  )}
+                </p>
+              </div>
+            )}
+
             {/* CAE + QR AFIP */}
             <div className="border rounded-lg p-4 flex items-center justify-between gap-4">
               <div className="flex items-center gap-4">
