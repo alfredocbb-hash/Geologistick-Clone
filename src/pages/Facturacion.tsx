@@ -150,13 +150,23 @@ export default function Facturacion() {
       if (!profile?.tenant_id) return [];
       const { data, error } = await supabase
         .from('facturas')
-        .select('*, factura_origen:facturas!facturas_factura_origen_id_fkey(id, punto_venta, numero_comprobante, tipo_comprobante, fecha_emision, cae)')
+        .select('*')
         .eq('tenant_id', profile.tenant_id)
         .in('estado', ['emitida', 'anulada', 'anulada_por_nc'])
         .order('fecha_emision', { ascending: false })
         .limit(500);
       if (error) throw error;
-      return data || [];
+      const rows = data || [];
+      const origenIds = Array.from(new Set(rows.map((f: any) => f.factura_origen_id).filter(Boolean))) as string[];
+      let origenMap: Record<string, any> = {};
+      if (origenIds.length) {
+        const { data: origenes } = await supabase
+          .from('facturas')
+          .select('id, punto_venta, numero_comprobante, tipo_comprobante, fecha_emision, cae')
+          .in('id', origenIds);
+        origenMap = Object.fromEntries((origenes || []).map((o: any) => [o.id, o]));
+      }
+      return rows.map((f: any) => ({ ...f, factura_origen: f.factura_origen_id ? origenMap[f.factura_origen_id] || null : null }));
     },
     enabled: !!profile?.tenant_id,
   });
