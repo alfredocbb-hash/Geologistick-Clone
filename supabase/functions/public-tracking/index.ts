@@ -372,29 +372,11 @@ serve(async (req: Request) => {
       })),
     };
 
-    let mapsApiKey: string | null = null;
-    if (envio.tenant_id) {
-      for (const env of ['production', 'sandbox']) {
-        const { data: integration } = await supabaseClient
-          .from('system_integrations')
-          .select('config_value')
-          .eq('tenant_id', envio.tenant_id)
-          .eq('integration_type', 'google_maps')
-          .eq('config_key', 'api_key')
-          .eq('environment', env)
-          .eq('is_active', true)
-          .maybeSingle();
-        if (integration?.config_value) {
-          mapsApiKey = integration.config_value;
-          break;
-        }
-      }
-      if (!mapsApiKey) {
-        mapsApiKey = Deno.env.get('GOOGLE_MAPS_API_KEY') || Deno.env.get('VITE_GOOGLE_MAPS_API_KEY') || null;
-      }
-    }
+    // Do not expose the Google Maps API key to unauthenticated callers.
+    // Public tracking clients should use server-rendered static maps (see static-map edge function)
+    // or the dedicated public-tracking-live endpoint which returns a key only when conditions are met.
+    const finalResponse = { ...response };
 
-    const finalResponse = { ...response, maps_api_key: mapsApiKey };
 
     logStep("Response built successfully");
 
