@@ -989,6 +989,24 @@ export default function DriverSettlements() {
                                   {envio.regla_aplicada}
                                 </Badge>
                               )}
+                              {!isALiquidar && envio.liquidacion_id && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] font-normal w-fit bg-blue-500/10 text-blue-600 border-blue-500 cursor-pointer hover:bg-blue-500/20"
+                                  onClick={() => {
+                                    const liq = liquidaciones.find(l => l.id === envio.liquidacion_id);
+                                    if (liq) {
+                                      setDetailLiquidacion(liq);
+                                      setShowDetailDialog(true);
+                                    } else {
+                                      toast.info(`Pertenece a liquidación ${envio.liquidacion_id?.slice(0, 8)}… (no está en las últimas 50)`);
+                                    }
+                                  }}
+                                  title="Ver liquidación. Para recalcular con reglas nuevas, cancelala primero."
+                                >
+                                  Liq. {envio.liquidacion_id.slice(0, 8)}
+                                </Badge>
+                              )}
                             </div>
                           </TableCell>
 
