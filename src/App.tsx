@@ -230,9 +230,9 @@ function AppRoutes() {
           <Route path="/scan" element={<ScanQR />} />
           <Route element={<PlanificadorGuard />}>
             <Route path="/planner" element={<GoogleMapsProvider><RoutePlanner /></GoogleMapsProvider>} />
+            <Route path="/live-map" element={<GoogleMapsProvider><LiveMap /></GoogleMapsProvider>} />
           </Route>
           <Route path="/route-sheets" element={<RouteSheets />} />
-          <Route path="/live-map" element={<GoogleMapsProvider><LiveMap /></GoogleMapsProvider>} />
           <Route path="/incidents" element={<Incidents />} />
           <Route path="/drivers" element={<Drivers />} />
           <Route path="/vehicles" element={<Vehicles />} />
