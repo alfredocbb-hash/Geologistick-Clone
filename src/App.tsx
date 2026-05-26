@@ -98,6 +98,9 @@ const EcommerceSellers = lazy(() => import("./pages/ecommerce/Sellers"));
 const EcommerceOrders = lazy(() => import("./pages/ecommerce/Orders"));
 const EcommerceSettlements = lazy(() => import("./pages/ecommerce/Settlements"));
 
+// Guards
+import { PlanificadorGuard } from "@/components/guards/PlanificadorGuard";
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -164,7 +167,9 @@ function NativeAppWrapper() {
         <Routes>
           <Route path="/route-start" element={<RouteStart />} />
           <Route path="/active-route" element={<ActiveRouteNavigation />} />
-          <Route path="/route-planner" element={<RoutePlanner />} />
+          <Route path="/route-planner" element={<PlanificadorGuard />}>
+            <Route index element={<RoutePlanner />} />
+          </Route>
           <Route path="*" element={<MobileAppLayout />} />
         </Routes>
       </Suspense>
@@ -223,7 +228,9 @@ function AppRoutes() {
 
           {/* Operaciones */}
           <Route path="/scan" element={<ScanQR />} />
-          <Route path="/planner" element={<GoogleMapsProvider><RoutePlanner /></GoogleMapsProvider>} />
+          <Route element={<PlanificadorGuard />}>
+            <Route path="/planner" element={<GoogleMapsProvider><RoutePlanner /></GoogleMapsProvider>} />
+          </Route>
           <Route path="/route-sheets" element={<RouteSheets />} />
           <Route path="/live-map" element={<GoogleMapsProvider><LiveMap /></GoogleMapsProvider>} />
           <Route path="/incidents" element={<Incidents />} />

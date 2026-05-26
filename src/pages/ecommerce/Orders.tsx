@@ -95,7 +95,8 @@ const FULFILLMENT_CONFIG: Record<string, { label: string; className: string }> =
 };
 
 export default function Orders() {
-  const { tenantId } = useTenant();
+  const { tenantId, tenant } = useTenant();
+  const planificadorEnabled = tenant?.planificador_enabled !== false;
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   
@@ -516,18 +517,20 @@ export default function Orders() {
                     <Truck className="mr-2 h-4 w-4" />
                     Crear Envíos ({withoutShipment})
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => {
-                    const ordersWithShipment = selectedData.filter(o => o.envio_id);
-                    if (ordersWithShipment.length === 0) {
-                      toast({ title: 'Sin envíos', description: 'Las órdenes seleccionadas no tienen envío creado', variant: 'destructive' });
-                      return;
-                    }
-                    const envioIds = ordersWithShipment.map(o => o.envio_id);
-navigate(`/planner?envios=${envioIds.join(',')}`);
-                   }}>
-                     <MapPin className="mr-2 h-4 w-4" />
-                    Planificar ({withShipment})
-                  </Button>
+                  {planificadorEnabled && (
+                    <Button size="sm" variant="outline" onClick={() => {
+                      const ordersWithShipment = selectedData.filter(o => o.envio_id);
+                      if (ordersWithShipment.length === 0) {
+                        toast({ title: 'Sin envíos', description: 'Las órdenes seleccionadas no tienen envío creado', variant: 'destructive' });
+                        return;
+                      }
+                      const envioIds = ordersWithShipment.map(o => o.envio_id);
+                      navigate(`/planner?envios=${envioIds.join(',')}`);
+                    }}>
+                      <MapPin className="mr-2 h-4 w-4" />
+                      Planificar ({withShipment})
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -599,14 +602,14 @@ navigate(`/planner?envios=${envioIds.join(',')}`);
                            </div>
                          </TableCell>
                          <TableCell colSpan={2} className="text-right">
-                          {groupWithShipment.length > 0 && (
+                          {groupWithShipment.length > 0 && planificadorEnabled && (
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={() => {
                                 const envioIds = groupWithShipment.map(o => o.envio_id);
-navigate(`/planner?envios=${envioIds.join(',')}`);
-                               }}
+                                navigate(`/planner?envios=${envioIds.join(',')}`);
+                              }}
                             >
                               <MapPin className="mr-1 h-3 w-3" />
                               Planificar ({groupWithShipment.length})

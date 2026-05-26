@@ -18,6 +18,7 @@ interface NavItem {
   icon: React.ElementType;
   permissionKey?: string;
   requiresBranchDelivery?: boolean;
+  requiresPlanificador?: boolean;
 }
 interface NavGroup {
   label: string; // i18n key
@@ -81,7 +82,8 @@ const navigation: NavGroup[] = [{
     title: 'nav.planner',
     url: '/planner',
     icon: Route,
-    permissionKey: 'routes.plan'
+    permissionKey: 'routes.plan',
+    requiresPlanificador: true
   }, {
     title: 'nav.incidents',
     url: '/incidents',
@@ -348,6 +350,9 @@ export function AppSidebar() {
     return group.permissionKeys.some(key => hasPermission(key));
   };
   const canAccessItem = (item: NavItem) => {
+    // Planificador module flag applies to everyone (incl. super admin sees it because flag defaults true)
+    if (item.requiresPlanificador && tenant?.planificador_enabled === false && !isSuperAdmin()) return false;
+
     if (isSuperAdmin()) return true;
 
     // Check permission first

@@ -17,6 +17,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { useTenant } from '@/hooks/useTenant';
 import { useNativeCamera } from '@/hooks/useNativeCamera';
 import { useMobileCamera } from './MobileCameraContext';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -82,6 +83,8 @@ export function BulkOCRScreen({ onClose, onPackagesReady, terciarizadoMode = fal
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { tenant } = useTenant();
+  const planificadorEnabled = tenant?.planificador_enabled !== false;
   const { takePhoto } = useNativeCamera();
   const { setCameraActive } = useMobileCamera();
   const isMobile = useIsMobile();
@@ -667,14 +670,16 @@ export function BulkOCRScreen({ onClose, onPackagesReady, terciarizadoMode = fal
           </div>
 
           <div className="flex gap-2">
-            <Button
-              onClick={handleGoToPlanner}
-              disabled={savedCount === 0}
-              className="flex-1 h-12 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-black shadow-lg disabled:opacity-40"
-            >
-              {onPackagesReady ? <Package className="mr-2 h-5 w-5" /> : <Route className="mr-2 h-5 w-5" />}
-              {onPackagesReady ? `COLECTAR (${savedCount})` : `PLANIFICAR (${savedCount})`}
-            </Button>
+            {(onPackagesReady || planificadorEnabled) && (
+              <Button
+                onClick={handleGoToPlanner}
+                disabled={savedCount === 0}
+                className="flex-1 h-12 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-black shadow-lg disabled:opacity-40"
+              >
+                {onPackagesReady ? <Package className="mr-2 h-5 w-5" /> : <Route className="mr-2 h-5 w-5" />}
+                {onPackagesReady ? `COLECTAR (${savedCount})` : `PLANIFICAR (${savedCount})`}
+              </Button>
+            )}
             <Button
               onClick={() => { stopCamera(); onClose(); }}
               variant="outline"
@@ -900,9 +905,11 @@ export function BulkOCRScreen({ onClose, onPackagesReady, terciarizadoMode = fal
         )}
         {albumPhase === 'done' && (
           <>
-            <Button onClick={handleGoToPlanner} disabled={packages.length === 0} className="w-full h-12 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold shadow-xl disabled:opacity-40">
-              {onPackagesReady ? <Package className="mr-3 h-5 w-5" /> : <Route className="mr-3 h-5 w-5" />} {onPackagesReady ? `COLECTAR (${packages.length})` : `PLANIFICAR RUTA (${packages.length})`}
-            </Button>
+            {(onPackagesReady || planificadorEnabled) && (
+              <Button onClick={handleGoToPlanner} disabled={packages.length === 0} className="w-full h-12 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold shadow-xl disabled:opacity-40">
+                {onPackagesReady ? <Package className="mr-3 h-5 w-5" /> : <Route className="mr-3 h-5 w-5" />} {onPackagesReady ? `COLECTAR (${packages.length})` : `PLANIFICAR RUTA (${packages.length})`}
+              </Button>
+            )}
             {(errorCount > 0 || duplicateCount > 0) && (
               <Button onClick={processAlbum} variant="outline" className="w-full h-10 rounded-xl font-bold text-xs">
                 <RefreshCw className="mr-2 h-4 w-4" /> REINTENTAR {errorCount} CON ERROR

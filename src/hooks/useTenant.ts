@@ -21,6 +21,7 @@ export interface Tenant {
   created_at: string;
   ecommerce_enabled?: boolean;
   modo_flex?: boolean;
+  planificador_enabled?: boolean;
 }
 
 export interface TenantBranding {
