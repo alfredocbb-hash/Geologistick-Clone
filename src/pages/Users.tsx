@@ -55,6 +55,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ResetPasswordDialog } from '@/components/users/ResetPasswordDialog';
 import { DeleteUserDialog } from '@/components/users/DeleteUserDialog';
 import { UserGroupedView } from '@/components/users/UserGroupedView';
+import { DriverZoneCommissionsManager } from '@/components/users/DriverZoneCommissionsManager';
 import type { Database } from '@/integrations/supabase/types';
 
 type AppRole = Database['public']['Enums']['app_role'];
@@ -1059,6 +1060,7 @@ export default function Users() {
                           <SelectItem value="porcentaje">Porcentaje Fijo</SelectItem>
                           <SelectItem value="fija">Comisión Fija por Entrega</SelectItem>
                           <SelectItem value="mixta">Mixta (Porcentaje + Fijo)</SelectItem>
+                          <SelectItem value="zona">Por Zona / Localidad</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -1113,7 +1115,15 @@ export default function Users() {
                         rows={2}
                       />
                     </div>
+
+                    {formData.comision_tipo === 'zona' && editingProfile?.user_id && editingProfile?.tenant_id && (
+                      <DriverZoneCommissionsManager
+                        choferUserId={editingProfile.user_id}
+                        tenantId={editingProfile.tenant_id}
+                      />
+                    )}
                   </div>
+                  
                   
                   {/* Pickup Commission Section */}
                   <div className="border-t border-chofer/20 pt-4 mt-4 space-y-3">

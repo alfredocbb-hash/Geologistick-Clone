@@ -98,11 +98,74 @@ interface Liquidacion {
   chofer?: { nombre: string; apellido: string | null };
 }
 
+interface ChoferZonaRegla {
+  id: string;
+  ciudad: string | null;
+  provincia: string | null;
+  codigo_postal_desde: string | null;
+  codigo_postal_hasta: string | null;
+  monto_fijo: number;
+  porcentaje: number;
+  prioridad: number;
+  activa: boolean;
+}
+
+function normalizeStr(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+}
+
+function extractCP(cp: string): number {
+  const cleaned = cp.replace(/[^0-9]/g, '');
+  return cleaned ? parseInt(cleaned, 10) : NaN;
+}
+
+function matchZonaRegla(
+  reglas: ChoferZonaRegla[],
+  ciudad: string | null | undefined,
+  provincia: string | null | undefined,
+  cp: string | null | undefined
+): ChoferZonaRegla | null {
+  if (!reglas || reglas.length === 0) return null;
+  const cN = ciudad ? normalizeStr(ciudad) : '';
+  const pN = provincia ? normalizeStr(provincia) : '';
+  const cpStr = cp?.trim() || '';
+  const sorted = [...reglas].filter(r => r.activa).sort((a, b) => a.prioridad - b.prioridad);
+
+  // 1. Ciudad exacta
+  if (cN) {
+    const hit = sorted.find(r => r.ciudad && normalizeStr(r.ciudad) === cN);
+    if (hit) return hit;
+  }
+  // 2. CP range
+  if (cpStr) {
+    const cpNum = extractCP(cpStr);
+    const hit = sorted.find(r => {
+      if (!r.codigo_postal_desde) return false;
+      const from = extractCP(r.codigo_postal_desde);
+      const to = extractCP(r.codigo_postal_hasta || r.codigo_postal_desde);
+      return !isNaN(cpNum) && !isNaN(from) && !isNaN(to) && cpNum >= from && cpNum <= to;
+    });
+    if (hit) return hit;
+  }
+  // 3. Ciudad parcial
+  if (cN) {
+    const hit = sorted.find(r => r.ciudad && (normalizeStr(r.ciudad).includes(cN) || cN.includes(normalizeStr(r.ciudad))));
+    if (hit) return hit;
+  }
+  // 4. Provincia
+  if (pN) {
+    const hit = sorted.find(r => r.provincia && (normalizeStr(r.provincia) === pN || pN.includes(normalizeStr(r.provincia)) || normalizeStr(r.provincia).includes(pN)));
+    if (hit) return hit;
+  }
+  return null;
+}
+
 // Helper to calculate commission based on driver config
 function calcularComision(
   precioEnvio: number,
   choferConfig: Pick<Chofer, 'comision_tipo' | 'comision_porcentaje' | 'comision_fija'>,
-  tarifaConfig?: { comision_chofer_porcentaje: number | null; comision_chofer_fija: number | null } | null
+  tarifaConfig?: { comision_chofer_porcentaje: number | null; comision_chofer_fija: number | null } | null,
+  zonaRegla?: ChoferZonaRegla | null
 ): number {
   const tipo = choferConfig.comision_tipo || 'tarifa';
 
@@ -119,6 +182,12 @@ function calcularComision(
     case 'fija':
       return choferConfig.comision_fija || 0;
     case 'mixta':
+      return (precioEnvio * (choferConfig.comision_porcentaje || 0)) / 100 + (choferConfig.comision_fija || 0);
+    case 'zona':
+      if (zonaRegla) {
+        return (precioEnvio * (zonaRegla.porcentaje || 0)) / 100 + (zonaRegla.monto_fijo || 0);
+      }
+      // Fallback: use driver's flat % / fija if cargados, else 0
       return (precioEnvio * (choferConfig.comision_porcentaje || 0)) / 100 + (choferConfig.comision_fija || 0);
     default:
       return 0;
@@ -209,9 +278,20 @@ export default function DriverSettlements() {
 
       const selectFields = `
           id, tracking_number, tracking_externo, precio_total, precio_tarifa_vigente, fecha_entrega, tarifa_id,
-          chofer_id, chofer_ultima_milla_id, pago_contra_entrega, ciudad_entrega, provincia,
+          chofer_id, chofer_ultima_milla_id, pago_contra_entrega, ciudad_entrega, provincia, cp_entrega,
           tarifas:tarifas(comision_chofer_porcentaje, comision_chofer_fija)
         `;
+
+      // Fetch driver's zone commission rules (used only when comision_tipo='zona')
+      let zonaReglas: ChoferZonaRegla[] = [];
+      if (chofer.comision_tipo === 'zona') {
+        const { data: reglasData } = await (supabase as any)
+          .from('chofer_comisiones_zona')
+          .select('id, ciudad, provincia, codigo_postal_desde, codigo_postal_hasta, monto_fijo, porcentaje, prioridad, activa')
+          .eq('chofer_id', chofer.user_id)
+          .eq('activa', true);
+        zonaReglas = (reglasData || []) as ChoferZonaRegla[];
+      }
 
       // 1a. Query por fecha_entrega
       const { data: enviosByFecha, error: enviosError } = await supabase
@@ -375,7 +455,11 @@ export default function DriverSettlements() {
           (envio.precio_total > 0) ? envio.precio_total :
           findZoneTarifaPrecio((envio as any).ciudad_entrega, (envio as any).provincia);
         
-        const comisionCalculada = calcularComision(precioEfectivo, chofer, tarifa);
+        const zonaRegla = chofer.comision_tipo === 'zona'
+          ? matchZonaRegla(zonaReglas, (envio as any).ciudad_entrega, (envio as any).provincia, (envio as any).cp_entrega)
+          : null;
+
+        const comisionCalculada = calcularComision(precioEfectivo, chofer, tarifa, zonaRegla);
 
         return {
           id: envio.id,

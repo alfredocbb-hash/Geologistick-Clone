@@ -1,44 +1,77 @@
-# Módulo Logístico Avanzado (Planificador + Mapa en Vivo)
+# Comisiones de chofer por zona/localidad
 
-Unificar Planificador y Mapa en Vivo bajo un único flag comercial. Reutilizar la columna existente `tenants.planificador_enabled` (sin migración disruptiva) y exponerla en UI con el nombre "Módulo Logístico Avanzado".
+Agregar un esquema dedicado para que cada chofer pueda comisionar de forma diferenciada según ciudad / provincia / código postal, manteniendo compatibilidad con los tipos actuales (`tarifa`, `porcentaje`, `fija`, `mixta`).
 
 ## 1. Base de datos
-- **Sin cambios de esquema.** Mantener la columna `tenants.planificador_enabled` (default `true`) como flag único.
-- Opcional/futuro: si más adelante se desea separar, agregar `live_map_enabled`. Por ahora un solo switch.
 
-## 2. Guard compartido
-- Renombrar `PlanificadorGuard.tsx` → `AdvancedLogisticsGuard.tsx` (mantener export `PlanificadorGuard` como alias para evitar romper imports).
-- Texto de la pantalla "Módulo no disponible" pasa a: **"Módulo Logístico Avanzado no disponible — Contactá al administrador para habilitar Planificador y Mapa en Vivo."**
+Nueva tabla `chofer_comisiones_zona`:
 
-## 3. Rutas protegidas en `src/App.tsx`
-- Envolver `/live-map` con el mismo guard:
-  ```tsx
-  <Route element={<AdvancedLogisticsGuard />}>
-    <Route path="/live-map" element={<GoogleMapsProvider><LiveMap /></GoogleMapsProvider>} />
-    <Route path="/planner" element={...} />
-  </Route>
-  <Route path="/route-planner" element={<AdvancedLogisticsGuard />}>...</Route>
-  ```
+- `chofer_id` (FK a `choferes`)
+- `tenant_id`
+- `ciudad`, `provincia` (texto, opcionales)
+- `codigo_postal_desde`, `codigo_postal_hasta` (opcionales)
+- `monto_fijo` (numeric, default 0)
+- `porcentaje` (numeric, default 0)
+- `prioridad` (int, para resolver empates)
+- `activa` (bool)
+- timestamps
 
-## 4. Sidebar (`AppSidebar.tsx`)
-- Marcar el ítem `Mapa en Vivo` (`/live-map`) con `requiresPlanificador: true` (o renombrar la prop a `requiresAdvancedLogistics` y aplicar a ambos ítems). Sin cambios en la lógica de filtrado.
+Reglas:
+- GRANT a `authenticated` + `service_role`.
+- RLS: solo usuarios del mismo tenant pueden CRUD; super_admin acceso total.
+- Índice por `(chofer_id, activa)`.
 
-## 5. Botones/CTAs dispersos
-- Auditar entradas hacia `/live-map` (Dashboard widgets, atajos en Hojas de Ruta, header de Choferes). Ocultar con la misma condición `tenant?.planificador_enabled !== false` ya usada para Planificador.
+Extender enum/columna `choferes.comision_tipo` para aceptar el nuevo valor **`'zona'`**.
 
-## 6. Admin UI
-- En `EditTenantDialog.tsx`: renombrar la etiqueta del Switch de "Módulo Planificador" → **"Módulo Logístico Avanzado"** con subtítulo "Habilita Planificador de Rutas y Mapa en Vivo".
-- Mismo cambio en `create-tenant-with-admin/index.ts` (solo copy en frontend; la edge function ya acepta el flag).
+## 2. Lógica de cálculo (`DriverSettlements.tsx`)
 
-## 7. Validación
-- Tenant con flag `false`: sidebar oculta Planificador y Mapa en Vivo; URLs `/planner`, `/route-planner`, `/live-map` muestran la pantalla informativa; super_admin sigue accediendo.
-- Tenant con flag `true` (default): comportamiento actual intacto.
+Ampliar `calcularComision()` con un nuevo caso `'zona'`:
 
-## Archivos a tocar
-- `src/components/guards/PlanificadorGuard.tsx` (rename + copy)
-- `src/App.tsx` (envolver `/live-map`)
-- `src/components/layout/AppSidebar.tsx` (marcar live-map)
-- `src/components/tenants/EditTenantDialog.tsx` (label)
-- Posibles widgets del Dashboard u Hojas de Ruta con link directo a `/live-map` (auditar)
+1. Buscar en `chofer_comisiones_zona` del chofer una regla activa que matchee, en este orden:
+   - Match exacto por `ciudad` (normalizada, sin acentos) → reusar helper de `useCoverageValidation`.
+   - Match por rango de CP (`codigo_postal_desde/hasta`).
+   - Match por `provincia`.
+   - Fallback: si el chofer tiene `comision_fija` o `comision_porcentaje` cargados, usar esos como red de seguridad.
+2. Aplicar `precio × % + fijo` de la regla encontrada.
+3. Si no hay match y no hay fallback → comisión 0 con marca **"sin config zona"** (similar al patrón ya usado en `ConceptBreakdownTable` con el aviso `sin config`).
 
-Sin migración de DB, sin cambios en edge functions.
+Cargar las reglas del chofer en una sola query antes del cálculo (igual que se hace hoy con `tarifas` zonales) y armar un `Map<chofer_id, reglas[]>`.
+
+## 3. UI de gestión
+
+En el formulario/perfil del chofer (Drivers), nueva sección **"Comisiones por zona"** visible cuando `comision_tipo = 'zona'` o como tab independiente:
+
+- Tabla con columnas: Ciudad / Provincia / CP desde-hasta / % / Fijo / Activa / Acciones.
+- Botón "Agregar regla" → dialog con los campos.
+- Validaciones: al menos uno entre ciudad, provincia o rango de CP.
+- Ordenable por prioridad.
+
+En el selector de `comision_tipo` agregar la opción **"Por zona/localidad"** con tooltip explicativo.
+
+## 4. Liquidación: visualización
+
+En `SettlementDetailDialog` y export PDF/Excel, cuando la comisión viene de una regla zonal:
+- Mostrar en una columna extra la zona/ciudad aplicada (ej. "Belgrano · 12%").
+- Si no matcheó → badge `sin config zona` (patrón ya existente).
+
+## 5. Memory
+
+Agregar memory:
+- `features/settlements/comisiones-chofer-por-zona` — describiendo el orden de matching (ciudad → CP → provincia → fallback del chofer) y la convivencia con `comision_tipo='tarifa'`.
+
+## Detalles técnicos
+
+- Reusar `normalize()` (lowercase + sin acentos) — ya existe en `useCoverageValidation` y en `findZoneTarifaPrecio`.
+- Reusar `extractNumericCP()` + `cpInRange()` para el matching de CP argentinos alfanuméricos.
+- No tocar la lógica actual `'tarifa'` para no romper tenants existentes.
+- Recálculo de pendientes sigue funcionando: por la memory `recalculo-comisiones-pendientes`, los envíos no liquidados se recalculan al abrir la liquidación, así que cambios de reglas se reflejan sin migrar histórico.
+- Históricos ya liquidados mantienen su `comision_monto` congelado.
+
+## Archivos afectados
+
+- Migración SQL nueva.
+- `src/pages/DriverSettlements.tsx` — extender `calcularComision`, cargar reglas.
+- `src/pages/Drivers.tsx` + componente nuevo `DriverZoneCommissionsTab.tsx`.
+- `src/components/settlements/SettlementDetailDialog.tsx` — mostrar zona aplicada.
+- `src/lib/exportExcel.ts` / `generateSettlementPDF.ts` — agregar columna zona.
+- Memory file nuevo.

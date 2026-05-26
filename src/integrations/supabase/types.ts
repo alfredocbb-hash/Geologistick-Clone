@@ -85,6 +85,57 @@ export type Database = {
           },
         ]
       }
+      chofer_comisiones_zona: {
+        Row: {
+          activa: boolean
+          chofer_id: string
+          ciudad: string | null
+          codigo_postal_desde: string | null
+          codigo_postal_hasta: string | null
+          created_at: string
+          id: string
+          monto_fijo: number
+          notas: string | null
+          porcentaje: number
+          prioridad: number
+          provincia: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          activa?: boolean
+          chofer_id: string
+          ciudad?: string | null
+          codigo_postal_desde?: string | null
+          codigo_postal_hasta?: string | null
+          created_at?: string
+          id?: string
+          monto_fijo?: number
+          notas?: string | null
+          porcentaje?: number
+          prioridad?: number
+          provincia?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          activa?: boolean
+          chofer_id?: string
+          ciudad?: string | null
+          codigo_postal_desde?: string | null
+          codigo_postal_hasta?: string | null
+          created_at?: string
+          id?: string
+          monto_fijo?: number
+          notas?: string | null
+          porcentaje?: number
+          prioridad?: number
+          provincia?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       cliente_cuenta_corriente: {
         Row: {
           cliente_id: string
