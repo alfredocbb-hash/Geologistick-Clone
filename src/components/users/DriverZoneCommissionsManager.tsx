@@ -153,8 +153,9 @@ export function DriverZoneCommissionsManager({ choferUserId, tenantId }: Props) 
       </div>
 
       <p className="text-xs text-muted-foreground">
-        El sistema busca la primera regla activa que matchee (por prioridad). Orden: ciudad → CP → provincia.
+        Matching por especificidad: 1) ciudad exacta → 2) CP (sólo reglas sin ciudad) → 3) ciudad parcial → 4) provincia catch-all (sólo reglas sin ciudad ni CP) → 5) regla global sin ciudad/CP/provincia. Para un "resto = $X" cargá una regla SIN ciudad ni CP.
       </p>
+
 
       {isLoading ? (
         <p className="text-xs text-muted-foreground">Cargando...</p>
