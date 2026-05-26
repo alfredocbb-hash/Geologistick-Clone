@@ -1059,6 +1059,7 @@ export default function Users() {
                           <SelectItem value="porcentaje">Porcentaje Fijo</SelectItem>
                           <SelectItem value="fija">Comisión Fija por Entrega</SelectItem>
                           <SelectItem value="mixta">Mixta (Porcentaje + Fijo)</SelectItem>
+                          <SelectItem value="zona">Por Zona / Localidad</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
