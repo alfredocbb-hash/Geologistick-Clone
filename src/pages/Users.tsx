@@ -55,6 +55,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ResetPasswordDialog } from '@/components/users/ResetPasswordDialog';
 import { DeleteUserDialog } from '@/components/users/DeleteUserDialog';
 import { UserGroupedView } from '@/components/users/UserGroupedView';
+import { DriverZoneCommissionsManager } from '@/components/users/DriverZoneCommissionsManager';
 import type { Database } from '@/integrations/supabase/types';
 
 type AppRole = Database['public']['Enums']['app_role'];
