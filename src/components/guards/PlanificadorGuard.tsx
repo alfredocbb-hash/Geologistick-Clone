@@ -29,10 +29,10 @@ export function PlanificadorGuard() {
             <div className="mx-auto w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
               <Route className="h-8 w-8 text-muted-foreground" />
             </div>
-            <CardTitle className="text-2xl">Módulo no disponible</CardTitle>
+            <CardTitle className="text-2xl">Módulo Logístico Avanzado no disponible</CardTitle>
             <CardDescription>
-              El módulo Planificador no está habilitado para tu organización.
-              Contactá al administrador para activarlo.
+              El Módulo Logístico Avanzado (Planificador de Rutas y Mapa en Vivo) no está habilitado
+              para tu organización. Contactá al administrador para activarlo.
             </CardDescription>
           </CardHeader>
           <CardContent>
