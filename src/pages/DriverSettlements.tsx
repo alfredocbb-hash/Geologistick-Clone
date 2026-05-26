@@ -521,7 +521,11 @@ export default function DriverSettlements() {
           liquidacion_id: comision?.liquidacion_id || null,
           estado_liquidacion: comision?.liquidacion_id ? 'liquidado' : 'a_liquidar',
           comision_calculada: comision?.liquidacion_id ? (comision.monto ?? comisionCalculada) : comisionCalculada,
+          regla_aplicada: chofer.comision_tipo === 'zona'
+            ? (describeReglaAplicada(zonaRegla) ?? 'sin match → fallback chofer')
+            : null,
         };
+
       });
 
       // Reset edited amounts and COD discounts
