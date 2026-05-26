@@ -4795,6 +4795,7 @@ export type Database = {
           modo_flex_mixto: boolean | null
           nombre: string
           plan: string | null
+          planificador_enabled: boolean
           slug: string
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
@@ -4820,6 +4821,7 @@ export type Database = {
           modo_flex_mixto?: boolean | null
           nombre: string
           plan?: string | null
+          planificador_enabled?: boolean
           slug: string
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
@@ -4845,6 +4847,7 @@ export type Database = {
           modo_flex_mixto?: boolean | null
           nombre?: string
           plan?: string | null
+          planificador_enabled?: boolean
           slug?: string
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null

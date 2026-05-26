@@ -1,29 +1,55 @@
-## Mostrar factura de origen en Notas de Crédito
+## Plan: Módulo Planificador habilitable por tenant (Opción B)
 
-Hoy las NC se identifican con un badge "NC A/B/C" pero no muestran a qué factura corresponden, aunque el dato ya existe en la base (`facturas.factura_origen_id`).
+### 1. Base de datos
+Agregar columna `planificador_enabled BOOLEAN NOT NULL DEFAULT true` a `public.tenants`. Default `true` preserva el comportamiento actual para todos los tenants existentes.
 
-### Cambios
+### 2. Hook `useTenant`
+Agregar `planificador_enabled?: boolean` a la interfaz `Tenant` en `src/hooks/useTenant.ts`.
 
-**1. `src/pages/Facturacion.tsx` — listado de Emitidas**
-- Ampliar el `select` de la query `facturas-emitidas` para traer la factura origen:
-  ```ts
-  .select('*, factura_origen:facturas!factura_origen_id(id, punto_venta, numero_comprobante, tipo_comprobante)')
-  ```
-- En la fila de la tabla, cuando `factura.es_nota_credito === true`, mostrar debajo del número de comprobante (o como sub-línea en la columna "Tipo") un texto pequeño:
-  > `Aplica a: Factura A 0007-00000026`
-  con click que abra el PDF de esa factura (`/print-invoice?factura_id=...`).
-- Si `factura_origen` es null (NC importada de AFIP sin vínculo local), mostrar `Aplica a: —`.
+### 3. Sidebar (`src/components/layout/AppSidebar.tsx`)
+- Agregar flag `requiresPlanificador` al tipado de items/grupos.
+- Marcar el item "Planificador" (ruta `/planner`) con `requiresPlanificador: true`.
+- Filtrar igual que `requiresEcommerce`: si `!tenant?.planificador_enabled`, ocultar el item.
 
-**2. `src/pages/PrintInvoice.tsx` — PDF/impresión**
-- Para NC, traer también `factura_origen` y renderizar en el encabezado del comprobante una línea:
-  > `Comprobante asociado: Factura {tipo} {PV-Número} — Fecha: dd/MM/yyyy — CAE: …`
-- Esto es lo que AFIP espera en el cuerpo de toda NC.
+### 4. Guard de rutas (Opción B — pantalla informativa)
+Crear `src/components/guards/PlanificadorGuard.tsx` que:
+- Lee `tenant.planificador_enabled` vía `useTenant()`.
+- Si está habilitado → renderiza `<Outlet />`.
+- Si no → renderiza una pantalla con icono, título "Módulo no disponible", descripción "El módulo Planificador no está habilitado para tu organización. Contactá al administrador para activarlo." y botón "Volver al Dashboard".
+- Mientras `isLoading`, muestra spinner.
 
-**3. (Opcional, recomendado) `CreditNoteDialog`**
-- Verificar que ya guarda `factura_origen_id` (sí lo hace, línea 66). Sin cambios.
+Envolver en `src/App.tsx` las rutas `/planner` y `/route-planner` (web y native) con este guard.
 
-### Fuera de alcance
-- No se modifica la edge function `arca-factura` (ya envía `CbtesAsoc` a AFIP).
-- No se toca el esquema de base — el FK `facturas_factura_origen_id_fkey` ya existe.
+### 5. Ocultar botones dispersos
+Buscar y ocultar (no deshabilitar) cuando `!tenant?.planificador_enabled`:
+- "Planificar ruta" / "Enviar a planificador" en `src/pages/Shipments.tsx` y componentes en `src/components/shipments/`.
+- "Crear ruta" desde e-commerce (`src/pages/ecommerce/Orders.tsx`, `Settlements.tsx`) y terciarizados (`src/pages/ThirdPartyCompanies.tsx`, `ThirdPartySettlements.tsx`).
+- Cualquier CTA en Dashboard que apunte a `/planner`.
 
-¿Procedo?
+Patrón uniforme: `{tenant?.planificador_enabled && <Button>...</Button>}`.
+
+### 6. Admin — gestión del switch
+- En `src/pages/Tenants.tsx` (gestión Super Admin): agregar un Switch "Módulo Planificador" junto al de e-commerce, con update directo a `tenants.planificador_enabled`.
+- En `supabase/functions/create-tenant-with-admin/index.ts`: aceptar `planificador_enabled` opcional en el payload (default `true`) al crear nuevos tenants.
+
+### 7. Validaciones
+- Verificar que datos previos (rutas planificadas, paradas) siguen existiendo y visibles en otras vistas (Hojas de Ruta, Live Map) cuando el módulo se desactiva.
+- Verificar que la app móvil (chofer) no se ve afectada — solo bloquea creación/edición desde web.
+
+### Detalles técnicos
+- Tipo `Tenant` ya extensible.
+- `requiresEcommerce` ya es el patrón espejo a replicar.
+- El guard usa `<Outlet />` para anidarse en `DashboardLayout`.
+- Sin cambios en RLS (la columna es solo flag UI; el bloqueo es client-side. Si se quisiera bloqueo server-side, podría agregarse después a las funciones de creación de rutas).
+
+### Archivos afectados (estimado)
+- 1 migración SQL
+- `src/hooks/useTenant.ts`
+- `src/components/layout/AppSidebar.tsx`
+- `src/components/guards/PlanificadorGuard.tsx` (nuevo)
+- `src/App.tsx`
+- `src/pages/Shipments.tsx` + 1-2 componentes de shipments
+- `src/pages/ecommerce/Orders.tsx`, `Settlements.tsx`
+- `src/pages/ThirdPartyCompanies.tsx`, `ThirdPartySettlements.tsx`
+- `src/pages/Tenants.tsx`
+- `supabase/functions/create-tenant-with-admin/index.ts`
