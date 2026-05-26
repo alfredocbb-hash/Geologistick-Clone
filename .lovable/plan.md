@@ -1,58 +1,44 @@
 ## Diagnóstico
 
-Consulté las reglas de Ariel Kersul y los envíos del rango (18-24/05).
+El envío `ML-47113271306` (Centro Agricola El Pato) **sigue ligado a una liquidación activa** (`a8f8cd58-5d86-4298-a602-67969938da3b`, estado `generada`) con `monto = $6000`.
 
-**Reglas cargadas (4):**
-| Ciudad | Provincia | CP | Monto |
-|---|---|---|---|
-| Berazategui | Buenos Aires | 1880–1884 | $3300 |
-| Berazategui 2 | Buenos Aires | `1893,1893,1885,1890,...` (lista, no rango) | $3300 |
-| Quilmes | Buenos Aires | — | $3300 |
-| Florencio Varela | Buenos Aires | — | $3300 |
+La regla "Centro agricola el pato → $3300" **está bien cargada** y el matching la encontraría correctamente. El problema es que el código (línea 522-523 de `DriverSettlements.tsx`) decide:
 
-**Envíos liquidados:** mayoría en Merlo, Caballito, Ituzaingó, Temperley, Canning, La Matanza, etc. Sólo 1 en Florencio Varela.
+```ts
+estado_liquidacion: comision?.liquidacion_id ? 'liquidado' : 'a_liquidar'
+comision_calculada: comision?.liquidacion_id ? (comision.monto ?? recalculado) : recalculado
+```
 
-**Por qué todos dan $3300:**
+Es decir: si la `comisiones` row tiene `liquidacion_id` no nulo, **muestra el monto histórico congelado y no recalcula nunca**. Cuando vos "eliminaste y volviste a generar", probablemente eliminaste otra liquidación distinta, no la `a8f8cd58…`. Por eso sigue trayendo $6000.
 
-`matchZonaRegla` corre 4 pasos. Los pasos 1–3 (ciudad exacta, CP, ciudad parcial) no encuentran nada para Merlo/Caballito/etc. Pero el paso 4 (provincia) busca cualquier regla con `provincia` cargada — y las 4 reglas tienen `provincia = "Buenos Aires"`. Como están ordenadas por `prioridad = 100` (empate), agarra la primera = Berazategui → **$3300 a todo lo que está en Bs. As.**
+Hay dos cosas que arreglar:
 
-Además, el campo `codigo_postal_desde` de "Berazategui 2" guarda la lista `"1893,1893,1885,..."` como string. La función `extractCP` la convierte a un número gigante inválido, así que esa regla no matchea por CP a ningún envío.
+### 1. Liberar el envío de El Pato (acción de datos)
 
-No existe una regla "resto = $6000".
+Borrar/anular la liquidación `a8f8cd58…` para que el envío vuelva a `a_liquidar` y, al recalcular, aplique la regla nueva ($3300). Esto requiere un INSERT/DELETE — te pido confirmación antes de tocar nada.
 
-## Solución
+Opciones:
+- **A)** Eliminar sólo el row de `comisiones` de este envío (más quirúrgico). El envío queda libre, la liquidación sigue existiendo con los demás envíos.
+- **B)** Anular la liquidación `a8f8cd58…` completa (revierte todos los envíos que contiene). Más seguro si no estaba pagada.
 
-### 1. Fix de lógica de matching (`src/pages/DriverSettlements.tsx`)
-Cambiar `matchZonaRegla` para que cada regla se considere sólo en su nivel más específico:
-- **Paso 1 (ciudad exacta)** — sólo reglas con `ciudad` no nulo.
-- **Paso 2 (CP range)** — sólo reglas con `codigo_postal_desde` no nulo **y `ciudad` nulo**.
-- **Paso 3 (ciudad parcial)** — sólo reglas con `ciudad` no nulo.
-- **Paso 4 (provincia)** — sólo reglas con `provincia` no nulo **y `ciudad` nula **y `codigo_postal_desde` nulo** (catch-all real por provincia).
+Necesito saber:
+1. ¿La liquidación `a8f8cd58…` está pagada o sólo "generada"?
+2. ¿Querés liberar **sólo** este envío (opción A) o anular toda la liquidación (opción B)?
 
-Resultado: la regla "Berazategui · Buenos Aires" deja de funcionar como fallback de toda la provincia.
+### 2. Mejora de UI para evitar el bug a futuro
 
-### 2. Soporte multi-CP en `DriverZoneCommissionsManager.tsx` + `matchZonaRegla`
-Permitir cargar lista de CPs separados por coma en `codigo_postal_desde` (lo que el usuario ya intentó). Si el valor contiene comas, parsear como `Set<number>` y matchear por inclusión exacta. Mantener compatibilidad con rangos (`desde`–`hasta`) si no hay coma.
+El usuario no tiene forma hoy de saber *por qué* un envío sigue apareciendo con un monto viejo cuando piensa que lo "regeneró". Propongo:
 
-UX en el form: agregar texto de ayuda "Podés cargar un rango (1880–1884) o lista separada por comas (1880,1885,1890)".
+- En la tabla de liquidación, cuando `estado_liquidacion === 'liquidado'`, mostrar también el **número/ID corto de la liquidación que lo contiene** y un botón "Ver liquidación" que abre el detalle. Así si el monto está raro, ves a qué liquidación pertenece.
+- Agregar un botón **"Reabrir liquidación" (super_admin)** en el detalle de cada liquidación que esté en estado `generada` (no pagada): borra la liquidación y libera todos los envíos a `a_liquidar`. Hoy no existe ese flujo, por eso vos terminás "eliminando" cosas a mano sin saber qué se libera realmente.
 
-### 3. Acción sobre los datos de Ariel (vos en la UI, después del fix)
-- Editar las 4 reglas existentes y **borrar el campo "Provincia"** (dejar sólo ciudad/CP).
-- Corregir la regla "Berazategui 2" usando el nuevo soporte multi-CP.
-- Crear una **regla catch-all** sin ciudad ni CP, con `provincia = "Buenos Aires"`, `monto_fijo = 6000`, `prioridad = 999`. Esta va a aplicar a todo envío en Bs. As. que no matchee ninguna regla específica.
-- Opcional: crear otra catch-all sin ciudad/CP/provincia con prioridad 9999 para envíos fuera de Bs. As.
+## Archivos a tocar (sólo si confirmás la parte 2)
 
-### 4. UI: mostrar regla aplicada en la tabla de liquidación
-En la fila del envío, mostrar un badge chiquito con la ciudad/provincia matcheada (o "sin match → fallback chofer") para que sea evidente qué regla se aplicó. Ayuda a debuggear casos como este sin tener que abrir consola.
-
-## Archivos a tocar
-
-- `src/pages/DriverSettlements.tsx` — `matchZonaRegla` (especificidad + multi-CP), columna badge regla aplicada.
-- `src/components/users/DriverZoneCommissionsManager.tsx` — placeholder y helper text para multi-CP.
-- `mem://features/settlements/comisiones-chofer-por-zona` — actualizar describiendo nueva regla de especificidad y catch-all por provincia.
-
-No hace falta migración: los cambios son sólo de lógica y UX.
+- `src/pages/DriverSettlements.tsx` — mostrar `liquidacion_id` corto + botón en filas ya liquidadas.
+- Nuevo botón "Reabrir liquidación" en el dialog de detalle (`detailLiquidacion`) visible sólo para `super_admin`, que dispara DELETE de la liquidación y limpia `comisiones.liquidacion_id`.
 
 ## Confirmación
 
-¿Avanzo con este plan? Tras implementarlo te indico exactamente qué reglas editar/crear en el perfil de Ariel.
+Decime:
+1. **Para el envío El Pato:** ¿opción A (sólo este envío) u opción B (anular toda la liquidación `a8f8cd58…`)?
+2. **Para la mejora de UI:** ¿avanzo con el botón "Reabrir liquidación" + el indicador de liquidación en la tabla?
