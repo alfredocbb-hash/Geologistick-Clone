@@ -68,7 +68,8 @@ Deno.serve(async (req) => {
     const { 
       nombre_empresa, slug, plan, activo, max_usuarios, max_sucursales, 
       max_envios_mes, trial_days, admin_email, admin_password, 
-      admin_nombre, admin_apellido, admin_telefono 
+      admin_nombre, admin_apellido, admin_telefono,
+      planificador_enabled
     } = body as Record<string, any>;
 
     // Validate required fields
@@ -185,7 +186,8 @@ Deno.serve(async (req) => {
         max_usuarios: max_usuarios || 5,
         max_sucursales: max_sucursales || 3,
         max_envios_mes: max_envios_mes || 500,
-        trial_ends_at: trialEndsAt
+        trial_ends_at: trialEndsAt,
+        planificador_enabled: planificador_enabled !== false
       })
       .select()
       .single();

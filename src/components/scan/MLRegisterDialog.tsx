@@ -186,10 +186,12 @@ export function MLRegisterDialog({
             <Button variant="outline" onClick={handleContinueScanning} className="w-full sm:w-auto">
               Seguir Escaneando
             </Button>
-            <Button onClick={handleGoToPlanner} className="w-full sm:w-auto gap-2">
-              <MapPin className="h-4 w-4" />
-              Ir al Planificador
-            </Button>
+            {planificadorEnabled && (
+              <Button onClick={handleGoToPlanner} className="w-full sm:w-auto gap-2">
+                <MapPin className="h-4 w-4" />
+                Ir al Planificador
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
