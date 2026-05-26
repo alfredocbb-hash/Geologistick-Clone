@@ -230,13 +230,15 @@ export function DriverZoneCommissionsManager({ choferUserId, tenantId }: Props) 
                 <Input value={form.provincia} onChange={(e) => setForm({ ...form, provincia: e.target.value })} placeholder="Ej: Buenos Aires" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">CP desde</Label>
-                <Input value={form.codigo_postal_desde} onChange={(e) => setForm({ ...form, codigo_postal_desde: e.target.value })} placeholder="1400" />
+                <Label className="text-xs">CP desde / lista</Label>
+                <Input value={form.codigo_postal_desde} onChange={(e) => setForm({ ...form, codigo_postal_desde: e.target.value })} placeholder="1400 ó 1880,1885,1890" />
+                <p className="text-[10px] text-muted-foreground">Rango (con "CP hasta") o lista separada por comas.</p>
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">CP hasta</Label>
-                <Input value={form.codigo_postal_hasta} onChange={(e) => setForm({ ...form, codigo_postal_hasta: e.target.value })} placeholder="1499" />
+                <Label className="text-xs">CP hasta (sólo rango)</Label>
+                <Input value={form.codigo_postal_hasta} onChange={(e) => setForm({ ...form, codigo_postal_hasta: e.target.value })} placeholder="1499" disabled={form.codigo_postal_desde.includes(',')} />
               </div>
+
               <div className="space-y-1">
                 <Label className="text-xs">Porcentaje (%)</Label>
                 <Input type="number" step="0.1" value={form.porcentaje} onChange={(e) => setForm({ ...form, porcentaje: parseFloat(e.target.value) || 0 })} />
