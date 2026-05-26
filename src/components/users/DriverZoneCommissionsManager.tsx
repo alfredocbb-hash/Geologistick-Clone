@@ -64,9 +64,10 @@ export function DriverZoneCommissionsManager({ choferUserId, tenantId }: Props) 
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!form.ciudad && !form.provincia && !form.codigo_postal_desde) {
-        throw new Error('Cargá al menos ciudad, provincia o código postal');
+      if (!form.ciudad && !form.provincia && !form.codigo_postal_desde && Number(form.monto_fijo) === 0 && Number(form.porcentaje) === 0) {
+        throw new Error('Cargá al menos ciudad/provincia/CP, o un monto > 0 para la regla catch-all');
       }
+
       const payload = {
         chofer_id: choferUserId,
         tenant_id: tenantId,
@@ -153,8 +154,9 @@ export function DriverZoneCommissionsManager({ choferUserId, tenantId }: Props) 
       </div>
 
       <p className="text-xs text-muted-foreground">
-        El sistema busca la primera regla activa que matchee (por prioridad). Orden: ciudad → CP → provincia.
+        Matching por especificidad: 1) ciudad exacta → 2) CP (sólo reglas sin ciudad) → 3) ciudad parcial → 4) provincia catch-all (sólo reglas sin ciudad ni CP) → 5) regla global sin ciudad/CP/provincia. Para un "resto = $X" cargá una regla SIN ciudad ni CP.
       </p>
+
 
       {isLoading ? (
         <p className="text-xs text-muted-foreground">Cargando...</p>
@@ -230,13 +232,15 @@ export function DriverZoneCommissionsManager({ choferUserId, tenantId }: Props) 
                 <Input value={form.provincia} onChange={(e) => setForm({ ...form, provincia: e.target.value })} placeholder="Ej: Buenos Aires" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">CP desde</Label>
-                <Input value={form.codigo_postal_desde} onChange={(e) => setForm({ ...form, codigo_postal_desde: e.target.value })} placeholder="1400" />
+                <Label className="text-xs">CP desde / lista</Label>
+                <Input value={form.codigo_postal_desde} onChange={(e) => setForm({ ...form, codigo_postal_desde: e.target.value })} placeholder="1400 ó 1880,1885,1890" />
+                <p className="text-[10px] text-muted-foreground">Rango (con "CP hasta") o lista separada por comas.</p>
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">CP hasta</Label>
-                <Input value={form.codigo_postal_hasta} onChange={(e) => setForm({ ...form, codigo_postal_hasta: e.target.value })} placeholder="1499" />
+                <Label className="text-xs">CP hasta (sólo rango)</Label>
+                <Input value={form.codigo_postal_hasta} onChange={(e) => setForm({ ...form, codigo_postal_hasta: e.target.value })} placeholder="1499" disabled={form.codigo_postal_desde.includes(',')} />
               </div>
+
               <div className="space-y-1">
                 <Label className="text-xs">Porcentaje (%)</Label>
                 <Input type="number" step="0.1" value={form.porcentaje} onChange={(e) => setForm({ ...form, porcentaje: parseFloat(e.target.value) || 0 })} />
