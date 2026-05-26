@@ -80,7 +80,9 @@ interface EnvioParaLiquidar {
   liquidacion_id?: string | null;
   estado_liquidacion: 'a_liquidar' | 'liquidado';
   comision_calculada: number;
+  regla_aplicada?: string | null;
 }
+
 
 interface Liquidacion {
   id: string;
