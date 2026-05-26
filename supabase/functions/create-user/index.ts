@@ -114,10 +114,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Validate roles array (must match public.app_role enum)
+    // Validate roles array (must match public.app_role enum).
+    // Note: super_admin is intentionally NOT in validRoles — only an existing super_admin can
+    // grant it, and that flow is handled separately to prevent tenant-admin privilege escalation.
     const validRoles = [
       'admin',
-      'super_admin',
       'supervisor',
       'operador',
       'chofer',
@@ -128,9 +129,17 @@ Deno.serve(async (req) => {
       'cliente',
       'seller',
     ];
-    if (roles && (!Array.isArray(roles) || roles.length > 5 || roles.some((r: unknown) => typeof r !== "string" || !validRoles.includes(r as string)))) {
+    const isCallerSuperAdmin = adminRoles.some((r: { role: string }) => r.role === 'super_admin');
+    const privilegedRoles = ['super_admin'];
+
+    if (roles && (!Array.isArray(roles) || roles.length > 5 || roles.some((r: unknown) => {
+      if (typeof r !== "string") return true;
+      // Only super_admin callers can assign privileged roles
+      if (privilegedRoles.includes(r)) return !isCallerSuperAdmin;
+      return !validRoles.includes(r);
+    }))) {
       return new Response(
-        JSON.stringify({ error: "Roles inválidos" }),
+        JSON.stringify({ error: "Roles inválidos o no autorizados" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -163,8 +172,9 @@ Deno.serve(async (req) => {
 
     if (createError) {
       console.error("User creation failed:", createError?.message || "Unknown error");
+      // Generic error message — internal details are logged server-side only
       return new Response(
-        JSON.stringify({ error: createError.message }),
+        JSON.stringify({ error: "No se pudo crear el usuario. Verifique que el email no esté ya registrado." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
