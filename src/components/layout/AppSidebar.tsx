@@ -98,7 +98,8 @@ const navigation: NavGroup[] = [{
     title: 'nav.liveMap',
     url: '/live-map',
     icon: Map,
-    permissionKey: 'live_map.view'
+    permissionKey: 'live_map.view',
+    requiresPlanificador: true
   }, {
     title: 'nav.drivers',
     url: '/drivers',
