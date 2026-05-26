@@ -1,77 +1,58 @@
-# Comisiones de chofer por zona/localidad
+## Diagnóstico
 
-Agregar un esquema dedicado para que cada chofer pueda comisionar de forma diferenciada según ciudad / provincia / código postal, manteniendo compatibilidad con los tipos actuales (`tarifa`, `porcentaje`, `fija`, `mixta`).
+Consulté las reglas de Ariel Kersul y los envíos del rango (18-24/05).
 
-## 1. Base de datos
+**Reglas cargadas (4):**
+| Ciudad | Provincia | CP | Monto |
+|---|---|---|---|
+| Berazategui | Buenos Aires | 1880–1884 | $3300 |
+| Berazategui 2 | Buenos Aires | `1893,1893,1885,1890,...` (lista, no rango) | $3300 |
+| Quilmes | Buenos Aires | — | $3300 |
+| Florencio Varela | Buenos Aires | — | $3300 |
 
-Nueva tabla `chofer_comisiones_zona`:
+**Envíos liquidados:** mayoría en Merlo, Caballito, Ituzaingó, Temperley, Canning, La Matanza, etc. Sólo 1 en Florencio Varela.
 
-- `chofer_id` (FK a `choferes`)
-- `tenant_id`
-- `ciudad`, `provincia` (texto, opcionales)
-- `codigo_postal_desde`, `codigo_postal_hasta` (opcionales)
-- `monto_fijo` (numeric, default 0)
-- `porcentaje` (numeric, default 0)
-- `prioridad` (int, para resolver empates)
-- `activa` (bool)
-- timestamps
+**Por qué todos dan $3300:**
 
-Reglas:
-- GRANT a `authenticated` + `service_role`.
-- RLS: solo usuarios del mismo tenant pueden CRUD; super_admin acceso total.
-- Índice por `(chofer_id, activa)`.
+`matchZonaRegla` corre 4 pasos. Los pasos 1–3 (ciudad exacta, CP, ciudad parcial) no encuentran nada para Merlo/Caballito/etc. Pero el paso 4 (provincia) busca cualquier regla con `provincia` cargada — y las 4 reglas tienen `provincia = "Buenos Aires"`. Como están ordenadas por `prioridad = 100` (empate), agarra la primera = Berazategui → **$3300 a todo lo que está en Bs. As.**
 
-Extender enum/columna `choferes.comision_tipo` para aceptar el nuevo valor **`'zona'`**.
+Además, el campo `codigo_postal_desde` de "Berazategui 2" guarda la lista `"1893,1893,1885,..."` como string. La función `extractCP` la convierte a un número gigante inválido, así que esa regla no matchea por CP a ningún envío.
 
-## 2. Lógica de cálculo (`DriverSettlements.tsx`)
+No existe una regla "resto = $6000".
 
-Ampliar `calcularComision()` con un nuevo caso `'zona'`:
+## Solución
 
-1. Buscar en `chofer_comisiones_zona` del chofer una regla activa que matchee, en este orden:
-   - Match exacto por `ciudad` (normalizada, sin acentos) → reusar helper de `useCoverageValidation`.
-   - Match por rango de CP (`codigo_postal_desde/hasta`).
-   - Match por `provincia`.
-   - Fallback: si el chofer tiene `comision_fija` o `comision_porcentaje` cargados, usar esos como red de seguridad.
-2. Aplicar `precio × % + fijo` de la regla encontrada.
-3. Si no hay match y no hay fallback → comisión 0 con marca **"sin config zona"** (similar al patrón ya usado en `ConceptBreakdownTable` con el aviso `sin config`).
+### 1. Fix de lógica de matching (`src/pages/DriverSettlements.tsx`)
+Cambiar `matchZonaRegla` para que cada regla se considere sólo en su nivel más específico:
+- **Paso 1 (ciudad exacta)** — sólo reglas con `ciudad` no nulo.
+- **Paso 2 (CP range)** — sólo reglas con `codigo_postal_desde` no nulo **y `ciudad` nulo**.
+- **Paso 3 (ciudad parcial)** — sólo reglas con `ciudad` no nulo.
+- **Paso 4 (provincia)** — sólo reglas con `provincia` no nulo **y `ciudad` nula **y `codigo_postal_desde` nulo** (catch-all real por provincia).
 
-Cargar las reglas del chofer en una sola query antes del cálculo (igual que se hace hoy con `tarifas` zonales) y armar un `Map<chofer_id, reglas[]>`.
+Resultado: la regla "Berazategui · Buenos Aires" deja de funcionar como fallback de toda la provincia.
 
-## 3. UI de gestión
+### 2. Soporte multi-CP en `DriverZoneCommissionsManager.tsx` + `matchZonaRegla`
+Permitir cargar lista de CPs separados por coma en `codigo_postal_desde` (lo que el usuario ya intentó). Si el valor contiene comas, parsear como `Set<number>` y matchear por inclusión exacta. Mantener compatibilidad con rangos (`desde`–`hasta`) si no hay coma.
 
-En el formulario/perfil del chofer (Drivers), nueva sección **"Comisiones por zona"** visible cuando `comision_tipo = 'zona'` o como tab independiente:
+UX en el form: agregar texto de ayuda "Podés cargar un rango (1880–1884) o lista separada por comas (1880,1885,1890)".
 
-- Tabla con columnas: Ciudad / Provincia / CP desde-hasta / % / Fijo / Activa / Acciones.
-- Botón "Agregar regla" → dialog con los campos.
-- Validaciones: al menos uno entre ciudad, provincia o rango de CP.
-- Ordenable por prioridad.
+### 3. Acción sobre los datos de Ariel (vos en la UI, después del fix)
+- Editar las 4 reglas existentes y **borrar el campo "Provincia"** (dejar sólo ciudad/CP).
+- Corregir la regla "Berazategui 2" usando el nuevo soporte multi-CP.
+- Crear una **regla catch-all** sin ciudad ni CP, con `provincia = "Buenos Aires"`, `monto_fijo = 6000`, `prioridad = 999`. Esta va a aplicar a todo envío en Bs. As. que no matchee ninguna regla específica.
+- Opcional: crear otra catch-all sin ciudad/CP/provincia con prioridad 9999 para envíos fuera de Bs. As.
 
-En el selector de `comision_tipo` agregar la opción **"Por zona/localidad"** con tooltip explicativo.
+### 4. UI: mostrar regla aplicada en la tabla de liquidación
+En la fila del envío, mostrar un badge chiquito con la ciudad/provincia matcheada (o "sin match → fallback chofer") para que sea evidente qué regla se aplicó. Ayuda a debuggear casos como este sin tener que abrir consola.
 
-## 4. Liquidación: visualización
+## Archivos a tocar
 
-En `SettlementDetailDialog` y export PDF/Excel, cuando la comisión viene de una regla zonal:
-- Mostrar en una columna extra la zona/ciudad aplicada (ej. "Belgrano · 12%").
-- Si no matcheó → badge `sin config zona` (patrón ya existente).
+- `src/pages/DriverSettlements.tsx` — `matchZonaRegla` (especificidad + multi-CP), columna badge regla aplicada.
+- `src/components/users/DriverZoneCommissionsManager.tsx` — placeholder y helper text para multi-CP.
+- `mem://features/settlements/comisiones-chofer-por-zona` — actualizar describiendo nueva regla de especificidad y catch-all por provincia.
 
-## 5. Memory
+No hace falta migración: los cambios son sólo de lógica y UX.
 
-Agregar memory:
-- `features/settlements/comisiones-chofer-por-zona` — describiendo el orden de matching (ciudad → CP → provincia → fallback del chofer) y la convivencia con `comision_tipo='tarifa'`.
+## Confirmación
 
-## Detalles técnicos
-
-- Reusar `normalize()` (lowercase + sin acentos) — ya existe en `useCoverageValidation` y en `findZoneTarifaPrecio`.
-- Reusar `extractNumericCP()` + `cpInRange()` para el matching de CP argentinos alfanuméricos.
-- No tocar la lógica actual `'tarifa'` para no romper tenants existentes.
-- Recálculo de pendientes sigue funcionando: por la memory `recalculo-comisiones-pendientes`, los envíos no liquidados se recalculan al abrir la liquidación, así que cambios de reglas se reflejan sin migrar histórico.
-- Históricos ya liquidados mantienen su `comision_monto` congelado.
-
-## Archivos afectados
-
-- Migración SQL nueva.
-- `src/pages/DriverSettlements.tsx` — extender `calcularComision`, cargar reglas.
-- `src/pages/Drivers.tsx` + componente nuevo `DriverZoneCommissionsTab.tsx`.
-- `src/components/settlements/SettlementDetailDialog.tsx` — mostrar zona aplicada.
-- `src/lib/exportExcel.ts` / `generateSettlementPDF.ts` — agregar columna zona.
-- Memory file nuevo.
+¿Avanzo con este plan? Tras implementarlo te indico exactamente qué reglas editar/crear en el perfil de Ariel.
