@@ -121,6 +121,25 @@ function extractCP(cp: string): number {
   return cleaned ? parseInt(cleaned, 10) : NaN;
 }
 
+// Parses codigo_postal_desde. Supports either a single CP, a list "1880,1885,1890",
+// or a range (when codigo_postal_hasta is also set).
+function parseCPField(desde: string | null, hasta: string | null): { mode: 'none' } | { mode: 'list'; cps: Set<number> } | { mode: 'range'; from: number; to: number } {
+  if (!desde) return { mode: 'none' };
+  if (desde.includes(',')) {
+    const cps = new Set<number>();
+    for (const part of desde.split(',')) {
+      const n = extractCP(part);
+      if (!isNaN(n)) cps.add(n);
+    }
+    if (cps.size === 0) return { mode: 'none' };
+    return { mode: 'list', cps };
+  }
+  const from = extractCP(desde);
+  if (isNaN(from)) return { mode: 'none' };
+  const to = hasta ? extractCP(hasta) : from;
+  return { mode: 'range', from, to: isNaN(to) ? from : to };
+}
+
 function matchZonaRegla(
   reglas: ChoferZonaRegla[],
   ciudad: string | null | undefined,
@@ -131,36 +150,61 @@ function matchZonaRegla(
   const cN = ciudad ? normalizeStr(ciudad) : '';
   const pN = provincia ? normalizeStr(provincia) : '';
   const cpStr = cp?.trim() || '';
+  const cpNum = cpStr ? extractCP(cpStr) : NaN;
   const sorted = [...reglas].filter(r => r.activa).sort((a, b) => a.prioridad - b.prioridad);
 
-  // 1. Ciudad exacta
+  // 1. Ciudad exacta (sólo reglas con ciudad cargada)
   if (cN) {
     const hit = sorted.find(r => r.ciudad && normalizeStr(r.ciudad) === cN);
     if (hit) return hit;
   }
-  // 2. CP range
-  if (cpStr) {
-    const cpNum = extractCP(cpStr);
+  // 2. CP (sólo reglas SIN ciudad, con CP cargado: lista o rango)
+  if (!isNaN(cpNum)) {
     const hit = sorted.find(r => {
-      if (!r.codigo_postal_desde) return false;
-      const from = extractCP(r.codigo_postal_desde);
-      const to = extractCP(r.codigo_postal_hasta || r.codigo_postal_desde);
-      return !isNaN(cpNum) && !isNaN(from) && !isNaN(to) && cpNum >= from && cpNum <= to;
+      if (r.ciudad) return false;
+      const parsed = parseCPField(r.codigo_postal_desde, r.codigo_postal_hasta);
+      if (parsed.mode === 'list') return parsed.cps.has(cpNum);
+      if (parsed.mode === 'range') return cpNum >= parsed.from && cpNum <= parsed.to;
+      return false;
     });
     if (hit) return hit;
   }
-  // 3. Ciudad parcial
+  // 3. Ciudad parcial (sólo reglas con ciudad cargada)
   if (cN) {
     const hit = sorted.find(r => r.ciudad && (normalizeStr(r.ciudad).includes(cN) || cN.includes(normalizeStr(r.ciudad))));
     if (hit) return hit;
   }
-  // 4. Provincia
+  // 4. Provincia catch-all (sólo reglas con provincia y SIN ciudad ni CP)
   if (pN) {
-    const hit = sorted.find(r => r.provincia && (normalizeStr(r.provincia) === pN || pN.includes(normalizeStr(r.provincia)) || normalizeStr(r.provincia).includes(pN)));
+    const hit = sorted.find(r => {
+      if (r.ciudad) return false;
+      if (r.codigo_postal_desde) return false;
+      if (!r.provincia) return false;
+      const rp = normalizeStr(r.provincia);
+      return rp === pN || pN.includes(rp) || rp.includes(pN);
+    });
     if (hit) return hit;
   }
+  // 5. Catch-all global (regla sin ciudad, sin CP, sin provincia)
+  const fallback = sorted.find(r => !r.ciudad && !r.codigo_postal_desde && !r.provincia);
+  if (fallback) return fallback;
   return null;
 }
+
+function describeReglaAplicada(r: ChoferZonaRegla | null): string | null {
+  if (!r) return null;
+  if (r.ciudad) return r.ciudad;
+  if (r.codigo_postal_desde) {
+    if (r.codigo_postal_desde.includes(',')) return `CPs ${r.codigo_postal_desde}`;
+    if (r.codigo_postal_hasta && r.codigo_postal_hasta !== r.codigo_postal_desde) {
+      return `CP ${r.codigo_postal_desde}–${r.codigo_postal_hasta}`;
+    }
+    return `CP ${r.codigo_postal_desde}`;
+  }
+  if (r.provincia) return `${r.provincia} (resto)`;
+  return 'Catch-all';
+}
+
 
 // Helper to calculate commission based on driver config
 function calcularComision(
