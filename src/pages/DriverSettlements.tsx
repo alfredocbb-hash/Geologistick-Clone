@@ -455,7 +455,11 @@ export default function DriverSettlements() {
           (envio.precio_total > 0) ? envio.precio_total :
           findZoneTarifaPrecio((envio as any).ciudad_entrega, (envio as any).provincia);
         
-        const comisionCalculada = calcularComision(precioEfectivo, chofer, tarifa);
+        const zonaRegla = chofer.comision_tipo === 'zona'
+          ? matchZonaRegla(zonaReglas, (envio as any).ciudad_entrega, (envio as any).provincia, (envio as any).cp_entrega)
+          : null;
+
+        const comisionCalculada = calcularComision(precioEfectivo, chofer, tarifa, zonaRegla);
 
         return {
           id: envio.id,
