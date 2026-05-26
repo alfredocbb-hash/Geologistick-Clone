@@ -98,6 +98,9 @@ const EcommerceSellers = lazy(() => import("./pages/ecommerce/Sellers"));
 const EcommerceOrders = lazy(() => import("./pages/ecommerce/Orders"));
 const EcommerceSettlements = lazy(() => import("./pages/ecommerce/Settlements"));
 
+// Guards
+import { PlanificadorGuard } from "@/components/guards/PlanificadorGuard";
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -164,7 +167,9 @@ function NativeAppWrapper() {
         <Routes>
           <Route path="/route-start" element={<RouteStart />} />
           <Route path="/active-route" element={<ActiveRouteNavigation />} />
-          <Route path="/route-planner" element={<RoutePlanner />} />
+          <Route path="/route-planner" element={<PlanificadorGuard />}>
+            <Route index element={<RoutePlanner />} />
+          </Route>
           <Route path="*" element={<MobileAppLayout />} />
         </Routes>
       </Suspense>
