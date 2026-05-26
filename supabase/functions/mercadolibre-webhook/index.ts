@@ -25,7 +25,58 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const body = await req.json();
+    // Read raw body for signature verification (must read once)
+    const rawBody = await req.text();
+
+    // Optional HMAC signature verification (ML "x-signature" header: "ts=...,v1=...")
+    // When ML_WEBHOOK_SECRET is configured in edge function secrets, reject unsigned/invalid requests.
+    // When not configured, fall back to ML API callback validation (every accepted notification triggers
+    // a server-side fetch to ML using the seller's OAuth token before any DB write).
+    const webhookSecret = Deno.env.get('ML_WEBHOOK_SECRET');
+    if (webhookSecret) {
+      const signature = req.headers.get('x-signature') || '';
+      const requestId = req.headers.get('x-request-id') || '';
+      const parts = Object.fromEntries(
+        signature.split(',').map(p => {
+          const [k, ...v] = p.trim().split('=');
+          return [k, v.join('=')];
+        })
+      );
+      const ts = parts['ts'];
+      const v1 = parts['v1'];
+      if (!ts || !v1) {
+        console.warn('[ML Webhook] Missing x-signature header');
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      // Reject if timestamp is older than 5 minutes (replay protection)
+      if (Math.abs(Date.now() - Number(ts)) > 5 * 60 * 1000) {
+        console.warn('[ML Webhook] Stale signature timestamp');
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      const manifest = `id:${requestId};ts:${ts};`;
+      const keyData = new TextEncoder().encode(webhookSecret);
+      const cryptoKey = await crypto.subtle.importKey(
+        'raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+      );
+      const sigBytes = await crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(manifest));
+      const expected = Array.from(new Uint8Array(sigBytes))
+        .map(b => b.toString(16).padStart(2, '0')).join('');
+      if (expected !== v1) {
+        console.warn('[ML Webhook] Invalid signature');
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    const body = JSON.parse(rawBody);
     console.log('[ML Webhook] Received:', JSON.stringify(body));
 
     const { topic, resource, user_id } = body;

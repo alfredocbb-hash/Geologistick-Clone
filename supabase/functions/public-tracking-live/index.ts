@@ -133,23 +133,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get maps API key for this tenant
-    let mapsApiKey: string | null = null;
-    if (envio.tenant_id) {
-      const { data: integration } = await supabase
-        .from("system_integrations")
-        .select("api_key")
-        .eq("tenant_id", envio.tenant_id)
-        .eq("integration_type", "google_maps")
-        .eq("is_active", true)
-        .limit(1)
-        .maybeSingle();
-      
-      if (integration?.api_key) {
-        mapsApiKey = integration.api_key;
-      }
-    }
-
+    // Do NOT return Google Maps API key to anonymous callers.
+    // Frontends needing map tiles must use the `static-map` edge function (server-rendered).
     return new Response(
       JSON.stringify({
         tracking_number: envio.tracking_number,
@@ -166,7 +151,6 @@ Deno.serve(async (req) => {
           direccion: envio.direccion_entrega,
           ciudad: envio.ciudad_entrega,
         },
-        maps_api_key: mapsApiKey,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

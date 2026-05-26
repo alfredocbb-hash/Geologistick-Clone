@@ -195,7 +195,7 @@ Deno.serve(async (req) => {
     if (tenantError) {
       console.error("Tenant creation failed:", tenantError);
       return new Response(
-        JSON.stringify({ error: "Error al crear la empresa: " + tenantError.message }),
+        JSON.stringify({ error: "No se pudo crear la empresa. Verifique los datos o si ya existe." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -219,7 +219,7 @@ Deno.serve(async (req) => {
       // Rollback: delete the tenant
       await adminClient.from('tenants').delete().eq('id', tenant.id);
       return new Response(
-        JSON.stringify({ error: "Error al crear el usuario: " + createUserError.message }),
+        JSON.stringify({ error: "No se pudo crear el usuario administrador. Verifique que el email no esté registrado." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -247,7 +247,7 @@ Deno.serve(async (req) => {
       await adminClient.from('tenants').delete().eq('id', tenant.id);
       await adminClient.auth.admin.deleteUser(userId);
       return new Response(
-        JSON.stringify({ error: "Error al crear sucursal: " + branchError.message }),
+        JSON.stringify({ error: "No se pudo crear la sucursal inicial." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -304,7 +304,7 @@ Deno.serve(async (req) => {
       await adminClient.auth.admin.deleteUser(userId);
       await adminClient.from('tenants').delete().eq('id', tenant.id);
       return new Response(
-        JSON.stringify({ error: "Error al asignar rol de administrador: " + roleError.message }),
+        JSON.stringify({ error: "No se pudo asignar el rol de administrador." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
