@@ -318,12 +318,12 @@ export function EditTenantDialog({ open, onOpenChange, tenant, onSuccess }: Edit
               />
             </div>
 
-            {/* Planificador Module Toggle */}
+            {/* Módulo Logístico Avanzado */}
             <div className="flex items-center justify-between rounded-lg border p-4">
               <div>
-                <Label className="text-base font-medium">Módulo Planificador</Label>
+                <Label className="text-base font-medium">Módulo Logístico Avanzado</Label>
                 <p className="text-sm text-muted-foreground">
-                  Habilita la creación y edición de rutas planificadas desde la web
+                  Habilita el Planificador de Rutas y el Mapa en Vivo
                 </p>
               </div>
               <Switch

@@ -1,55 +1,44 @@
-## Plan: Módulo Planificador habilitable por tenant (Opción B)
+# Módulo Logístico Avanzado (Planificador + Mapa en Vivo)
 
-### 1. Base de datos
-Agregar columna `planificador_enabled BOOLEAN NOT NULL DEFAULT true` a `public.tenants`. Default `true` preserva el comportamiento actual para todos los tenants existentes.
+Unificar Planificador y Mapa en Vivo bajo un único flag comercial. Reutilizar la columna existente `tenants.planificador_enabled` (sin migración disruptiva) y exponerla en UI con el nombre "Módulo Logístico Avanzado".
 
-### 2. Hook `useTenant`
-Agregar `planificador_enabled?: boolean` a la interfaz `Tenant` en `src/hooks/useTenant.ts`.
+## 1. Base de datos
+- **Sin cambios de esquema.** Mantener la columna `tenants.planificador_enabled` (default `true`) como flag único.
+- Opcional/futuro: si más adelante se desea separar, agregar `live_map_enabled`. Por ahora un solo switch.
 
-### 3. Sidebar (`src/components/layout/AppSidebar.tsx`)
-- Agregar flag `requiresPlanificador` al tipado de items/grupos.
-- Marcar el item "Planificador" (ruta `/planner`) con `requiresPlanificador: true`.
-- Filtrar igual que `requiresEcommerce`: si `!tenant?.planificador_enabled`, ocultar el item.
+## 2. Guard compartido
+- Renombrar `PlanificadorGuard.tsx` → `AdvancedLogisticsGuard.tsx` (mantener export `PlanificadorGuard` como alias para evitar romper imports).
+- Texto de la pantalla "Módulo no disponible" pasa a: **"Módulo Logístico Avanzado no disponible — Contactá al administrador para habilitar Planificador y Mapa en Vivo."**
 
-### 4. Guard de rutas (Opción B — pantalla informativa)
-Crear `src/components/guards/PlanificadorGuard.tsx` que:
-- Lee `tenant.planificador_enabled` vía `useTenant()`.
-- Si está habilitado → renderiza `<Outlet />`.
-- Si no → renderiza una pantalla con icono, título "Módulo no disponible", descripción "El módulo Planificador no está habilitado para tu organización. Contactá al administrador para activarlo." y botón "Volver al Dashboard".
-- Mientras `isLoading`, muestra spinner.
+## 3. Rutas protegidas en `src/App.tsx`
+- Envolver `/live-map` con el mismo guard:
+  ```tsx
+  <Route element={<AdvancedLogisticsGuard />}>
+    <Route path="/live-map" element={<GoogleMapsProvider><LiveMap /></GoogleMapsProvider>} />
+    <Route path="/planner" element={...} />
+  </Route>
+  <Route path="/route-planner" element={<AdvancedLogisticsGuard />}>...</Route>
+  ```
 
-Envolver en `src/App.tsx` las rutas `/planner` y `/route-planner` (web y native) con este guard.
+## 4. Sidebar (`AppSidebar.tsx`)
+- Marcar el ítem `Mapa en Vivo` (`/live-map`) con `requiresPlanificador: true` (o renombrar la prop a `requiresAdvancedLogistics` y aplicar a ambos ítems). Sin cambios en la lógica de filtrado.
 
-### 5. Ocultar botones dispersos
-Buscar y ocultar (no deshabilitar) cuando `!tenant?.planificador_enabled`:
-- "Planificar ruta" / "Enviar a planificador" en `src/pages/Shipments.tsx` y componentes en `src/components/shipments/`.
-- "Crear ruta" desde e-commerce (`src/pages/ecommerce/Orders.tsx`, `Settlements.tsx`) y terciarizados (`src/pages/ThirdPartyCompanies.tsx`, `ThirdPartySettlements.tsx`).
-- Cualquier CTA en Dashboard que apunte a `/planner`.
+## 5. Botones/CTAs dispersos
+- Auditar entradas hacia `/live-map` (Dashboard widgets, atajos en Hojas de Ruta, header de Choferes). Ocultar con la misma condición `tenant?.planificador_enabled !== false` ya usada para Planificador.
 
-Patrón uniforme: `{tenant?.planificador_enabled && <Button>...</Button>}`.
+## 6. Admin UI
+- En `EditTenantDialog.tsx`: renombrar la etiqueta del Switch de "Módulo Planificador" → **"Módulo Logístico Avanzado"** con subtítulo "Habilita Planificador de Rutas y Mapa en Vivo".
+- Mismo cambio en `create-tenant-with-admin/index.ts` (solo copy en frontend; la edge function ya acepta el flag).
 
-### 6. Admin — gestión del switch
-- En `src/pages/Tenants.tsx` (gestión Super Admin): agregar un Switch "Módulo Planificador" junto al de e-commerce, con update directo a `tenants.planificador_enabled`.
-- En `supabase/functions/create-tenant-with-admin/index.ts`: aceptar `planificador_enabled` opcional en el payload (default `true`) al crear nuevos tenants.
+## 7. Validación
+- Tenant con flag `false`: sidebar oculta Planificador y Mapa en Vivo; URLs `/planner`, `/route-planner`, `/live-map` muestran la pantalla informativa; super_admin sigue accediendo.
+- Tenant con flag `true` (default): comportamiento actual intacto.
 
-### 7. Validaciones
-- Verificar que datos previos (rutas planificadas, paradas) siguen existiendo y visibles en otras vistas (Hojas de Ruta, Live Map) cuando el módulo se desactiva.
-- Verificar que la app móvil (chofer) no se ve afectada — solo bloquea creación/edición desde web.
+## Archivos a tocar
+- `src/components/guards/PlanificadorGuard.tsx` (rename + copy)
+- `src/App.tsx` (envolver `/live-map`)
+- `src/components/layout/AppSidebar.tsx` (marcar live-map)
+- `src/components/tenants/EditTenantDialog.tsx` (label)
+- Posibles widgets del Dashboard u Hojas de Ruta con link directo a `/live-map` (auditar)
 
-### Detalles técnicos
-- Tipo `Tenant` ya extensible.
-- `requiresEcommerce` ya es el patrón espejo a replicar.
-- El guard usa `<Outlet />` para anidarse en `DashboardLayout`.
-- Sin cambios en RLS (la columna es solo flag UI; el bloqueo es client-side. Si se quisiera bloqueo server-side, podría agregarse después a las funciones de creación de rutas).
-
-### Archivos afectados (estimado)
-- 1 migración SQL
-- `src/hooks/useTenant.ts`
-- `src/components/layout/AppSidebar.tsx`
-- `src/components/guards/PlanificadorGuard.tsx` (nuevo)
-- `src/App.tsx`
-- `src/pages/Shipments.tsx` + 1-2 componentes de shipments
-- `src/pages/ecommerce/Orders.tsx`, `Settlements.tsx`
-- `src/pages/ThirdPartyCompanies.tsx`, `ThirdPartySettlements.tsx`
-- `src/pages/Tenants.tsx`
-- `supabase/functions/create-tenant-with-admin/index.ts`
+Sin migración de DB, sin cambios en edge functions.
