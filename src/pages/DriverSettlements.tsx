@@ -979,8 +979,19 @@ export default function DriverSettlements() {
                       return (
                         <TableRow key={envio.id} className={!isALiquidar ? 'opacity-60' : ''}>
                           <TableCell className="font-mono">
-                            {envio.tracking_externo || envio.tracking_number}
+                            <div className="flex flex-col gap-1">
+                              <span>{envio.tracking_externo || envio.tracking_number}</span>
+                              {envio.regla_aplicada && (
+                                <Badge
+                                  variant="outline"
+                                  className={`text-[10px] font-normal w-fit ${envio.regla_aplicada.startsWith('sin match') ? 'bg-amber-500/10 text-amber-600 border-amber-500' : 'bg-muted text-muted-foreground'}`}
+                                >
+                                  {envio.regla_aplicada}
+                                </Badge>
+                              )}
+                            </div>
                           </TableCell>
+
                           <TableCell>
                             {format(new Date(envio.fecha_entrega), 'dd/MM/yy', { locale: es })}
                           </TableCell>
