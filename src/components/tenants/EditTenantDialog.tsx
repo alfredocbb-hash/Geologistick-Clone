@@ -41,6 +41,7 @@ interface EditTenantDialogProps {
     max_envios_mes: number;
     trial_ends_at: string | null;
     ecommerce_enabled?: boolean;
+    planificador_enabled?: boolean;
   };
   onSuccess: () => void;
 }
@@ -48,6 +49,7 @@ interface EditTenantDialogProps {
 export function EditTenantDialog({ open, onOpenChange, tenant, onSuccess }: EditTenantDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [ecommerceEnabled, setEcommerceEnabled] = useState(tenant.ecommerce_enabled ?? false);
+  const [planificadorEnabled, setPlanificadorEnabled] = useState(tenant.planificador_enabled ?? true);
   const [modoFlexEnabled, setModoFlexEnabled] = useState((tenant as any).modo_flex ?? false);
   const [modoFlexMixtoEnabled, setModoFlexMixtoEnabled] = useState((tenant as any).modo_flex_mixto ?? false);
   const [autoSeleccionTarifaEnabled, setAutoSeleccionTarifaEnabled] = useState(
@@ -80,6 +82,7 @@ export function EditTenantDialog({ open, onOpenChange, tenant, onSuccess }: Edit
       trial_ends_at: tenant.trial_ends_at ? format(new Date(tenant.trial_ends_at), 'yyyy-MM-dd') : ''
     });
     setEcommerceEnabled(tenant.ecommerce_enabled ?? false);
+    setPlanificadorEnabled(tenant.planificador_enabled ?? true);
     setModoFlexEnabled((tenant as any).modo_flex ?? false);
     setModoFlexMixtoEnabled((tenant as any).modo_flex_mixto ?? false);
     setAutoSeleccionTarifaEnabled(!!((tenant as any).configuracion?.auto_seleccion_tarifa_por_zona));
@@ -108,6 +111,7 @@ export function EditTenantDialog({ open, onOpenChange, tenant, onSuccess }: Edit
             ? new Date(values.trial_ends_at).toISOString()
             : null,
           ecommerce_enabled: ecommerceEnabled,
+          planificador_enabled: planificadorEnabled,
           modo_flex: modoFlexEnabled,
           modo_flex_mixto: modoFlexMixtoEnabled,
           configuracion: {
@@ -311,6 +315,20 @@ export function EditTenantDialog({ open, onOpenChange, tenant, onSuccess }: Edit
               <Switch 
                 checked={ecommerceEnabled} 
                 onCheckedChange={setEcommerceEnabled} 
+              />
+            </div>
+
+            {/* Planificador Module Toggle */}
+            <div className="flex items-center justify-between rounded-lg border p-4">
+              <div>
+                <Label className="text-base font-medium">Módulo Planificador</Label>
+                <p className="text-sm text-muted-foreground">
+                  Habilita la creación y edición de rutas planificadas desde la web
+                </p>
+              </div>
+              <Switch
+                checked={planificadorEnabled}
+                onCheckedChange={setPlanificadorEnabled}
               />
             </div>
 

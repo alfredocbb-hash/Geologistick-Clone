@@ -228,7 +228,9 @@ function AppRoutes() {
 
           {/* Operaciones */}
           <Route path="/scan" element={<ScanQR />} />
-          <Route path="/planner" element={<GoogleMapsProvider><RoutePlanner /></GoogleMapsProvider>} />
+          <Route element={<PlanificadorGuard />}>
+            <Route path="/planner" element={<GoogleMapsProvider><RoutePlanner /></GoogleMapsProvider>} />
+          </Route>
           <Route path="/route-sheets" element={<RouteSheets />} />
           <Route path="/live-map" element={<GoogleMapsProvider><LiveMap /></GoogleMapsProvider>} />
           <Route path="/incidents" element={<Incidents />} />
