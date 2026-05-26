@@ -278,9 +278,20 @@ export default function DriverSettlements() {
 
       const selectFields = `
           id, tracking_number, tracking_externo, precio_total, precio_tarifa_vigente, fecha_entrega, tarifa_id,
-          chofer_id, chofer_ultima_milla_id, pago_contra_entrega, ciudad_entrega, provincia,
+          chofer_id, chofer_ultima_milla_id, pago_contra_entrega, ciudad_entrega, provincia, codigo_postal,
           tarifas:tarifas(comision_chofer_porcentaje, comision_chofer_fija)
         `;
+
+      // Fetch driver's zone commission rules (used only when comision_tipo='zona')
+      let zonaReglas: ChoferZonaRegla[] = [];
+      if (chofer.comision_tipo === 'zona') {
+        const { data: reglasData } = await (supabase as any)
+          .from('chofer_comisiones_zona')
+          .select('id, ciudad, provincia, codigo_postal_desde, codigo_postal_hasta, monto_fijo, porcentaje, prioridad, activa')
+          .eq('chofer_id', chofer.user_id)
+          .eq('activa', true);
+        zonaReglas = (reglasData || []) as ChoferZonaRegla[];
+      }
 
       // 1a. Query por fecha_entrega
       const { data: enviosByFecha, error: enviosError } = await supabase
