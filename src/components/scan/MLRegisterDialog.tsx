@@ -7,6 +7,7 @@ import { Loader2, Package, Store, AlertTriangle, CheckCircle2, MapPin, Truck, Ca
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import { useTenant } from '@/hooks/useTenant';
 
 interface MLRegisterDialogProps {
   open: boolean;
@@ -34,6 +35,8 @@ export function MLRegisterDialog({
   onFallbackOCR,
 }: MLRegisterDialogProps) {
   const navigate = useNavigate();
+  const { tenant } = useTenant();
+  const planificadorEnabled = tenant?.planificador_enabled !== false;
   const [isLoading, setIsLoading] = useState(false);
   const [isLookingUpSeller, setIsLookingUpSeller] = useState(false);
   const [seller, setSeller] = useState<SellerInfo | null>(null);
