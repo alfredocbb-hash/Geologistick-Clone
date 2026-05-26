@@ -1115,7 +1115,15 @@ export default function Users() {
                         rows={2}
                       />
                     </div>
+
+                    {formData.comision_tipo === 'zona' && editingProfile?.user_id && editingProfile?.tenant_id && (
+                      <DriverZoneCommissionsManager
+                        choferUserId={editingProfile.user_id}
+                        tenantId={editingProfile.tenant_id}
+                      />
+                    )}
                   </div>
+                  
                   
                   {/* Pickup Commission Section */}
                   <div className="border-t border-chofer/20 pt-4 mt-4 space-y-3">
