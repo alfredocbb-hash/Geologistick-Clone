@@ -64,9 +64,10 @@ export function DriverZoneCommissionsManager({ choferUserId, tenantId }: Props) 
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!form.ciudad && !form.provincia && !form.codigo_postal_desde) {
-        throw new Error('Cargá al menos ciudad, provincia o código postal');
+      if (!form.ciudad && !form.provincia && !form.codigo_postal_desde && Number(form.monto_fijo) === 0 && Number(form.porcentaje) === 0) {
+        throw new Error('Cargá al menos ciudad/provincia/CP, o un monto > 0 para la regla catch-all');
       }
+
       const payload = {
         chofer_id: choferUserId,
         tenant_id: tenantId,
