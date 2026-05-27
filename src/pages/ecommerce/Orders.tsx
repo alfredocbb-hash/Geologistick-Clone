@@ -678,10 +678,13 @@ export default function Orders() {
                                </span>
                              </TableCell>
                              <TableCell>
-                               <Badge variant="outline" className={status.className}>
-                                 <StatusIcon className="mr-1 h-3 w-3" />
-                                 {status.label}
-                               </Badge>
+                               <div className="flex items-center gap-1 flex-wrap">
+                                 <Badge variant="outline" className={status.className}>
+                                   <StatusIcon className="mr-1 h-3 w-3" />
+                                   {status.label}
+                                 </Badge>
+                                 <MLSubstatusBadge substatus={order.envio?.ml_substatus_actual} isML={order.plataforma === 'mercadolibre'} />
+                               </div>
                              </TableCell>
                             <TableCell className="text-right font-medium">
                               {order.shipping_cost ? `$${order.shipping_cost.toLocaleString()}` : '-'}
