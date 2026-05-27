@@ -29,6 +29,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { MLSyncBadge } from '@/components/shipments/MLSyncBadge';
+import { MLSubstatusBadge } from '@/components/ecommerce/MLSubstatusBadge';
 import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
 import { ShipmentHistoryDialog } from '@/components/shipments/ShipmentHistoryDialog';
@@ -702,6 +703,7 @@ export default function Shipments() {
                              ml_last_sync_at={(envio as any).ml_last_sync_at}
                              compact
                            />
+                           <MLSubstatusBadge substatus={(envio as any).ml_substatus_actual} />
                          </div>
                        ) : null}
                      </TableCell>

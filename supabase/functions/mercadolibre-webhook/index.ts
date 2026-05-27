@@ -474,6 +474,7 @@ Deno.serve(async (req) => {
         await supabase.from('envios').update({
           estado: mapping.estado_interno,
           estado_ml: mapping.estado_interno,
+          ml_substatus_actual: shipment.substatus ?? null,
           ml_sync_status: 'synced',
           ml_last_sync_at: now,
         }).eq('id', existingEnvio.id);
@@ -483,7 +484,7 @@ Deno.serve(async (req) => {
           envio_id: existingEnvio.id,
           estado_anterior: existingEnvio.estado,
           estado_nuevo: mapping.estado_interno,
-          notas: 'Actualizado automaticamente via webhook MercadoLibre: ' + mapping.descripcion,
+          notas: 'Actualizado automaticamente via webhook MercadoLibre: ' + mapping.descripcion + (shipment.substatus ? ' [' + shipment.substatus + ']' : ''),
           ubicacion: 'ML Webhook',
         });
 
@@ -505,9 +506,10 @@ Deno.serve(async (req) => {
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       } else {
-        // No mapping or same status, just update sync timestamp
+        // No mapping or same status, just update sync timestamp + substatus
         await supabase.from('envios').update({
           estado_ml: mapping?.estado_interno || shipment.status,
+          ml_substatus_actual: shipment.substatus ?? null,
           ml_sync_status: 'synced',
           ml_last_sync_at: now,
         }).eq('id', existingEnvio.id);

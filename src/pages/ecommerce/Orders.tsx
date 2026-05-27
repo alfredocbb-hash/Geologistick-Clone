@@ -24,6 +24,7 @@ import { CreateShipmentFromOrderDialog } from '@/components/ecommerce/CreateShip
 import { EditOrderAddressDialog } from '@/components/ecommerce/EditOrderAddressDialog';
 import { parseDateString } from '@/lib/dateUtils';
 import { cn } from '@/lib/utils';
+import { MLSubstatusBadge } from '@/components/ecommerce/MLSubstatusBadge';
 
 interface Order {
   id: string;
@@ -67,6 +68,7 @@ interface Order {
     tracking_number: string;
     estado: string | null;
     chofer_id: string | null;
+    ml_substatus_actual?: string | null;
   } | null;
 }
 
@@ -254,7 +256,7 @@ export default function Orders() {
         .select(`
           *,
           seller:ecommerce_sellers(id, nombre, tarifa_id, sucursal_pickup_id, tiene_cuenta_corriente, store_id, activo),
-          envio:envios!ecommerce_orders_envio_id_fkey(tracking_number, estado, chofer_id)
+          envio:envios!ecommerce_orders_envio_id_fkey(tracking_number, estado, chofer_id, ml_substatus_actual)
         `)
         .eq('tenant_id', tenantId);
 
@@ -676,10 +678,13 @@ export default function Orders() {
                                </span>
                              </TableCell>
                              <TableCell>
-                               <Badge variant="outline" className={status.className}>
-                                 <StatusIcon className="mr-1 h-3 w-3" />
-                                 {status.label}
-                               </Badge>
+                               <div className="flex items-center gap-1 flex-wrap">
+                                 <Badge variant="outline" className={status.className}>
+                                   <StatusIcon className="mr-1 h-3 w-3" />
+                                   {status.label}
+                                 </Badge>
+                                 <MLSubstatusBadge substatus={order.envio?.ml_substatus_actual} isML={order.plataforma === 'mercadolibre'} />
+                               </div>
                              </TableCell>
                             <TableCell className="text-right font-medium">
                               {order.shipping_cost ? `$${order.shipping_cost.toLocaleString()}` : '-'}

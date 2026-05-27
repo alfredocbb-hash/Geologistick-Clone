@@ -7,6 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Clock, Truck, Package, CheckCircle, AlertCircle, History, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { ML_SUBSTATUS_LABELS } from '@/lib/mlSubstatusLabels';
 
 interface MLShipmentHistorySectionProps {
   shipmentId: number;
@@ -30,22 +31,6 @@ const ML_STATUS_LABELS: Record<string, { label: string; icon: React.ElementType;
   cancelled: { label: 'Cancelado', icon: AlertCircle, color: 'bg-gray-500' },
 };
 
-const ML_SUBSTATUS_LABELS: Record<string, string> = {
-  rescheduled: 'Reprogramado',
-  rescheduled_by_buyer: 'Reprogramado por comprador',
-  rescheduled_by_meli: 'Reprogramado por ML',
-  returning_to_hub: 'Volviendo a centro',
-  second_visit: 'Segunda visita',
-  ready_to_print: 'Listo para imprimir',
-  printed: 'Etiqueta impresa',
-  in_hub: 'En centro de distribución',
-  waiting_for_withdrawal: 'Esperando retiro',
-  receiver_absent: 'Destinatario ausente',
-  buyer_refused: 'Rechazado por comprador',
-  stolen: 'Robado',
-  damaged: 'Dañado',
-  lost: 'Extraviado',
-};
 
 export function MLShipmentHistorySection({ shipmentId, sellerId }: MLShipmentHistorySectionProps) {
   const [showHistory, setShowHistory] = useState(false);

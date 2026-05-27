@@ -200,6 +200,7 @@ Deno.serve(async (req) => {
         ml_sync_status: 'synced',
         ml_last_sync_at: new Date().toISOString(),
         ml_sync_error_detail: null,
+        ml_substatus_actual: mapping.ml_substatus ?? null,
       })
       .eq('id', envio_id);
 
