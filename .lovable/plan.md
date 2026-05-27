@@ -1,50 +1,32 @@
-## Diagnóstico del caso ENV-Q8FXT4
+## Objetivo
 
-Verifiqué directamente en la base de datos: **el envío ENV-Q8FXT4 existe y NO está eliminado**.
+Corregir ENV-Q8FXT4: borrar todas las marcas de "entregado" del historial (27/03 y 27/04) y dejar el envío en estado `primera_visita` (incidencia ya registrada el 30/03: "No se pudo entregar ya que habia inconvenientes en el barrio...").
 
-- Tenant: Beraexpress
-- Estado: `entregado` (entregado el 27/03/2026 en sucursal)
-- Creado: 16/03/2026
-- Chofer asignado, dirección en Hudson, etc.
+## Cambios
 
-### Por qué no aparece en Gestión de Envíos
+**1. Borrar filas de `envio_historial`** (4 filas):
+- `c8f4f51e-...` (27/03 en_reparto→entregado)
+- `df1d0064-...` (30/03 entregado→primera_visita, sin nota)
+- `699eeb7e-...` (30/03 entregado→primera_visita, con nota de incidencia) — se conserva como nueva nota
+- `d8bf6208-...` (21/04 primera_visita→en_reparto)
+- `9e9aa433-...` (27/04 en_reparto→entregado)
 
-`src/pages/Shipments.tsx` filtra la query por `created_at` entre `dateFrom` y `dateTo`, y ambos arrancan en `new Date()` (hoy ↔ hoy). Como ENV-Q8FXT4 fue creado hace ~2 meses, queda fuera del rango y no se muestra. No tiene nada que ver con un borrado.
+Se mantienen las filas previas hasta `en_reparto` del 27/03 y se vuelve a insertar una entrada limpia: `en_reparto → primera_visita` con la nota original de la incidencia.
 
-### Sobre "buscar en envíos eliminados"
+**2. Actualizar `envios`** (id `19d1aea9-5e04-47d7-96fa-0713b302c702`):
+- `estado` = `primera_visita`
+- `fecha_entrega` = NULL
+- `entregado_en_sucursal` = false (ya está)
+- `chofer_id` se mantiene (Kevin Bernard)
 
-Importante: hoy la tabla `envios` **no tiene soft-delete** (no existe columna `deleted_at` ni `anulado`). Cuando se borra un envío desde Gestión de Envíos (`from('envios').delete()`) o desde el borrado masivo de super_admin, **se elimina físicamente** y no queda traza recuperable. Por lo tanto, "ver envíos eliminados" hoy no es posible sin antes implementar soft-delete o un log de auditoría — eso sería un trabajo aparte si lo querés encarar.
+**3. Anular `pagos`** vinculados al envío si quedaron en estado cobrado/rendido por la marca de entregado (verificar y, si existen, marcar `anulado` con nota).
 
-Para el problema reportado (no ver ENV-Q8FXT4) la solución correcta es un **buscador global por tracking** que ignore los filtros de fecha/estado, porque el envío existe y solo está oculto por el rango.
+## Verificación
 
-## Plan
+- Confirmar `estado = 'primera_visita'` y `fecha_entrega IS NULL`
+- Confirmar historial limpio sin entradas "entregado"
+- Confirmar que no hay pagos activos huérfanos
 
-### 1. Buscador global por tracking en Gestión de Envíos
+## Notas
 
-Agregar un input "Buscar por tracking" arriba de la grilla en `src/pages/Shipments.tsx`. Comportamiento:
-
-- Si el input tiene texto (≥3 caracteres), la query a `envios`:
-  - **Ignora** `created_at`, `dateFrom`, `dateTo` y `statusFilter`.
-  - Filtra con `.or('tracking_number.ilike.%TXT%,tracking_externo.ilike.%TXT%')` respetando la prioridad estándar del proyecto (`tracking_externo || tracking_number`).
-  - Limita a 100 resultados ordenados por `created_at desc` para no traer toda la base.
-- Si el input está vacío, vuelve al comportamiento actual (filtro por fechas + estado).
-- Mostrar un cartel sutil cuando esté en "modo búsqueda global" indicando que los filtros de fecha/estado están desactivados, con botón "Limpiar búsqueda".
-
-`queryKey` se extiende con el texto de búsqueda para invalidar bien la caché de React Query.
-
-### 2. Aclaración visual cuando no hay resultados
-
-En el estado vacío de la tabla, si la búsqueda global no devuelve nada, mostrar: *"No se encontró ningún envío con ese tracking. Verificá el número o probá quitar el filtro."* Esto evita la confusión actual donde el usuario asume que el envío fue eliminado.
-
-### 3. Fuera de alcance (sugerencias para después)
-
-- Implementar soft-delete en `envios` (columna `deleted_at` + filtro en todas las queries) para poder "ver eliminados".
-- Tabla de auditoría `envios_eliminados` que dispare con un trigger `BEFORE DELETE` y guarde la fila completa + quién la borró. Esto sí permitiría una pestaña "Eliminados" real.
-
-Si querés alguna de esas dos, decímelo y armo un plan dedicado.
-
-## Archivos a modificar
-
-- `src/pages/Shipments.tsx` — agregar input de búsqueda, ajustar `useQuery` (`queryKey` + lógica condicional de filtros), banner de modo búsqueda y estado vacío.
-
-Sin migraciones, sin cambios de backend.
+Esta es una corrección puntual de datos. No se modifica código de aplicación. Se ejecuta vía `supabase--insert` (DELETE + UPDATE + INSERT del historial corregido).
