@@ -29,6 +29,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { MLSyncBadge } from '@/components/shipments/MLSyncBadge';
+import { MLSubstatusBadge } from '@/components/ecommerce/MLSubstatusBadge';
 import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
 import { ShipmentHistoryDialog } from '@/components/shipments/ShipmentHistoryDialog';
