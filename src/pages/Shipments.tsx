@@ -302,12 +302,12 @@ export default function Shipments() {
     },
   });
 
-  const { data: enviosData, isLoading, refetch } = useQuery({
-    queryKey: ['envios', statusFilter, dateFrom.toISOString(), dateTo.toISOString()],
-    queryFn: async () => {
-      const dayStart = startOfDay(dateFrom);
-      const dayEnd = endOfDay(dateTo);
+  const trimmedSearch = search.trim();
+  const isGlobalSearch = trimmedSearch.length >= 3;
 
+  const { data: enviosData, isLoading, refetch } = useQuery({
+    queryKey: ['envios', statusFilter, dateFrom.toISOString(), dateTo.toISOString(), isGlobalSearch ? trimmedSearch : ''],
+    queryFn: async () => {
       let query = supabase
         .from('envios')
         .select(`
@@ -318,12 +318,25 @@ export default function Shipments() {
           destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido),
           chofer_id
         `)
-        .gte('created_at', dayStart.toISOString())
-        .lte('created_at', dayEnd.toISOString())
         .order('created_at', { ascending: false });
 
-      if (statusFilter && statusFilter !== 'all') {
-        query = query.eq('estado', statusFilter as ShipmentStatus);
+      if (isGlobalSearch) {
+        // Búsqueda global por tracking: ignora rango de fechas y estado para
+        // poder encontrar envíos históricos sin tener que ajustar los filtros.
+        const pattern = `%${trimmedSearch.replace(/[%,]/g, '')}%`;
+        query = query
+          .or(`tracking_number.ilike.${pattern},tracking_externo.ilike.${pattern}`)
+          .limit(100);
+      } else {
+        const dayStart = startOfDay(dateFrom);
+        const dayEnd = endOfDay(dateTo);
+        query = query
+          .gte('created_at', dayStart.toISOString())
+          .lte('created_at', dayEnd.toISOString());
+
+        if (statusFilter && statusFilter !== 'all') {
+          query = query.eq('estado', statusFilter as ShipmentStatus);
+        }
       }
 
       const { data, error } = await query;
@@ -478,7 +491,7 @@ export default function Shipments() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar por tracking, remitente o destinatario..."
+                placeholder="Buscar por tracking, remitente o destinatario... (3+ caracteres ignora filtros de fecha/estado)"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-10"
@@ -550,6 +563,23 @@ export default function Shipments() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Global search banner */}
+      {isGlobalSearch && (
+        <Card className="border-primary/40 bg-primary/5">
+          <CardContent className="py-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm">
+              <Search className="h-4 w-4 text-primary" />
+              <span>
+                Buscando <strong>"{trimmedSearch}"</strong> por tracking en toda la base. Los filtros de fecha y estado están desactivados (máx. 100 resultados).
+              </span>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+              Limpiar búsqueda
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Bulk Actions Bar */}
       {isSuperAdmin() && selectedEnvioIds.size > 0 && (
@@ -814,6 +844,17 @@ export default function Shipments() {
                 ))}
               </TableBody>
             </Table>
+          ) : isGlobalSearch ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <Search className="h-12 w-12 text-muted-foreground/50 mb-4" />
+              <h3 className="text-lg font-semibold">No se encontró ningún envío con ese tracking</h3>
+              <p className="text-muted-foreground max-w-md">
+                Verificá el número o probá con tracking externo. La búsqueda recorre toda la base sin importar fecha ni estado.
+              </p>
+              <Button variant="outline" className="mt-4" onClick={() => setSearch('')}>
+                Limpiar búsqueda
+              </Button>
+            </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Package className="h-12 w-12 text-muted-foreground/50 mb-4" />

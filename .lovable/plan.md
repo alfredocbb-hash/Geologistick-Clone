@@ -1,79 +1,50 @@
-# Soportar nuevos substatus de Reprogramación de MercadoLibre
+## Diagnóstico del caso ENV-Q8FXT4
 
-## Contexto
+Verifiqué directamente en la base de datos: **el envío ENV-Q8FXT4 existe y NO está eliminado**.
 
-La API de ML ahora expone dos substatus específicos para reprogramación dentro de `status = shipped`:
+- Tenant: Beraexpress
+- Estado: `entregado` (entregado el 27/03/2026 en sucursal)
+- Creado: 16/03/2026
+- Chofer asignado, dirección en Hudson, etc.
 
-- `rescheduled_by_meli` — Reprogramado por MercadoLibre (logística/operativa de Meli)
-- `rescheduled_by_buyer` — Reprogramado por el comprador (desde su app)
+### Por qué no aparece en Gestión de Envíos
 
-Hoy la tabla `ml_status_mapping` solo tiene `shipped + rescheduled → reprogramado`. Los otros dos fueron eliminados explícitamente en la migración `20260427230959` para evitar duplicados, y nunca se volvieron a agregar. Resultado:
+`src/pages/Shipments.tsx` filtra la query por `created_at` entre `dateFrom` y `dateTo`, y ambos arrancan en `new Date()` (hoy ↔ hoy). Como ENV-Q8FXT4 fue creado hace ~2 meses, queda fuera del rango y no se muestra. No tiene nada que ver con un borrado.
 
-- El webhook (`mercadolibre-webhook`) y la sync polling (`mercadolibre-sync`) reciben `substatus = rescheduled_by_meli` o `rescheduled_by_buyer`, no encuentran mapping exacto, caen al fallback "sin substatus" (`shipped` → `en_reparto`) y se pierde el matiz de reprogramación. El envío queda como "en reparto" cuando debería estar "reprogramado".
-- En la UI de **Órdenes ML** (`OrderDetailsDialog`) y **Envíos** (`ShipmentDetailsDialog`, `Shipments.tsx`) no se muestra el substatus original de ML, solo nuestro `estado` interno. El operador no sabe quién reprogramó.
-- El componente `MLShipmentHistorySection` ya tiene los labels listos, pero ese historial solo se ve abriendo el detalle del envío ML.
+### Sobre "buscar en envíos eliminados"
 
-## Cambios
+Importante: hoy la tabla `envios` **no tiene soft-delete** (no existe columna `deleted_at` ni `anulado`). Cuando se borra un envío desde Gestión de Envíos (`from('envios').delete()`) o desde el borrado masivo de super_admin, **se elimina físicamente** y no queda traza recuperable. Por lo tanto, "ver envíos eliminados" hoy no es posible sin antes implementar soft-delete o un log de auditoría — eso sería un trabajo aparte si lo querés encarar.
 
-### 1. Migración: agregar mapping de substatus
+Para el problema reportado (no ver ENV-Q8FXT4) la solución correcta es un **buscador global por tracking** que ignore los filtros de fecha/estado, porque el envío existe y solo está oculto por el rango.
 
-Insertar en `ml_status_mapping` (estos dos faltan):
+## Plan
 
-```text
-shipped | rescheduled_by_meli  | reprogramado
-shipped | rescheduled_by_buyer | reprogramado
-```
+### 1. Buscador global por tracking en Gestión de Envíos
 
-Esto hace que el matching exacto en webhook/sync funcione y marque el envío como `reprogramado` (mismo estado interno que ya usamos).
+Agregar un input "Buscar por tracking" arriba de la grilla en `src/pages/Shipments.tsx`. Comportamiento:
 
-### 2. Persistir el substatus original
+- Si el input tiene texto (≥3 caracteres), la query a `envios`:
+  - **Ignora** `created_at`, `dateFrom`, `dateTo` y `statusFilter`.
+  - Filtra con `.or('tracking_number.ilike.%TXT%,tracking_externo.ilike.%TXT%')` respetando la prioridad estándar del proyecto (`tracking_externo || tracking_number`).
+  - Limita a 100 resultados ordenados por `created_at desc` para no traer toda la base.
+- Si el input está vacío, vuelve al comportamiento actual (filtro por fechas + estado).
+- Mostrar un cartel sutil cuando esté en "modo búsqueda global" indicando que los filtros de fecha/estado están desactivados, con botón "Limpiar búsqueda".
 
-Agregar columna `ml_substatus_actual TEXT` en `envios` (nullable) — guarda el último substatus crudo recibido de ML. Lo escriben:
+`queryKey` se extiende con el texto de búsqueda para invalidar bien la caché de React Query.
 
-- `mercadolibre-webhook/index.ts` — al actualizar el envío, también guardar `ml_substatus_actual = shipment.substatus`.
-- `mercadolibre-sync/index.ts` — idem cuando trae el shipment.
-- `mercadolibre-update-status/index.ts` — al sincronizar outbound, persistir el `mapping.ml_substatus`.
+### 2. Aclaración visual cuando no hay resultados
 
-Sin esto no podemos diferenciar "reprogramado por chofer" vs "reprogramado por comprador" vs "reprogramado por ML" en listados.
+En el estado vacío de la tabla, si la búsqueda global no devuelve nada, mostrar: *"No se encontró ningún envío con ese tracking. Verificá el número o probá quitar el filtro."* Esto evita la confusión actual donde el usuario asume que el envío fue eliminado.
 
-### 3. UI: badge de substatus reprogramado
+### 3. Fuera de alcance (sugerencias para después)
 
-Crear `src/components/ecommerce/MLSubstatusBadge.tsx` que reciba `ml_substatus_actual` y renderice un badge amarillo con el label legible (reutilizar el diccionario que ya existe en `MLShipmentHistorySection`, moverlo a `src/lib/mlSubstatusLabels.ts`).
+- Implementar soft-delete en `envios` (columna `deleted_at` + filtro en todas las queries) para poder "ver eliminados".
+- Tabla de auditoría `envios_eliminados` que dispare con un trigger `BEFORE DELETE` y guarde la fila completa + quién la borró. Esto sí permitiría una pestaña "Eliminados" real.
 
-Mostrarlo en:
+Si querés alguna de esas dos, decímelo y armo un plan dedicado.
 
-- **Órdenes ML** — `src/pages/ecommerce/Orders.tsx` (columna de estado) y `OrderDetailsDialog.tsx`.
-- **Envíos** — `src/pages/Shipments.tsx` (columna de estado, al lado del badge de estado interno) y `ShipmentDetailsDialog.tsx`.
+## Archivos a modificar
 
-Solo se muestra si `ml_shipment_id IS NOT NULL` y `ml_substatus_actual` está en el set de substatus relevantes (`rescheduled`, `rescheduled_by_meli`, `rescheduled_by_buyer`, `receiver_absent`, `second_visit`, `returning_to_hub`).
+- `src/pages/Shipments.tsx` — agregar input de búsqueda, ajustar `useQuery` (`queryKey` + lógica condicional de filtros), banner de modo búsqueda y estado vacío.
 
-### 4. Historial ML — sin cambios de código
-
-`MLShipmentHistorySection` ya tiene los labels. Confirmar que sigue funcionando contra `/shipments/{id}/history` de ML.
-
-## Detalles técnicos
-
-- La migración solo hace `INSERT ... ON CONFLICT DO NOTHING` en `ml_status_mapping` y `ALTER TABLE envios ADD COLUMN IF NOT EXISTS ml_substatus_actual TEXT`. No toca políticas RLS ni GRANTs (la tabla ya está expuesta).
-- El campo `ml_substatus_actual` se considera dato denormalizado/cache — no se valida en triggers, solo se sobrescribe.
-- El nuevo archivo `src/lib/mlSubstatusLabels.ts` exporta `ML_SUBSTATUS_LABELS` y un helper `isReprogramadoSubstatus(s)`. `MLShipmentHistorySection.tsx` pasa a importarlo (eliminar el duplicado local).
-- No se cambia el enum `shipment_status` ni la lógica de `reschedule_envio` (siguen siendo válidos).
-
-## Archivos afectados
-
-- Nueva migración SQL (mapping + columna)
-- `supabase/functions/mercadolibre-webhook/index.ts`
-- `supabase/functions/mercadolibre-sync/index.ts`
-- `supabase/functions/mercadolibre-update-status/index.ts`
-- `src/lib/mlSubstatusLabels.ts` (nuevo)
-- `src/components/ecommerce/MLSubstatusBadge.tsx` (nuevo)
-- `src/components/ecommerce/MLShipmentHistorySection.tsx` (usar el módulo compartido)
-- `src/pages/ecommerce/Orders.tsx`
-- `src/components/ecommerce/OrderDetailsDialog.tsx`
-- `src/pages/Shipments.tsx`
-- `src/components/shipments/ShipmentDetailsDialog.tsx`
-
-## Verificación
-
-1. Forzar un webhook ML simulando `substatus = rescheduled_by_meli` → el envío queda `estado = reprogramado` y `ml_substatus_actual = rescheduled_by_meli`.
-2. Abrir Envíos y Órdenes ML → ver el badge amarillo "Reprogramado por ML / por comprador".
-3. El historial ML ya existente sigue mostrando los eventos correctamente.
+Sin migraciones, sin cambios de backend.
