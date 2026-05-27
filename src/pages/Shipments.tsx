@@ -302,12 +302,12 @@ export default function Shipments() {
     },
   });
 
-  const { data: enviosData, isLoading, refetch } = useQuery({
-    queryKey: ['envios', statusFilter, dateFrom.toISOString(), dateTo.toISOString()],
-    queryFn: async () => {
-      const dayStart = startOfDay(dateFrom);
-      const dayEnd = endOfDay(dateTo);
+  const trimmedSearch = search.trim();
+  const isGlobalSearch = trimmedSearch.length >= 3;
 
+  const { data: enviosData, isLoading, refetch } = useQuery({
+    queryKey: ['envios', statusFilter, dateFrom.toISOString(), dateTo.toISOString(), isGlobalSearch ? trimmedSearch : ''],
+    queryFn: async () => {
       let query = supabase
         .from('envios')
         .select(`
@@ -318,12 +318,25 @@ export default function Shipments() {
           destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido),
           chofer_id
         `)
-        .gte('created_at', dayStart.toISOString())
-        .lte('created_at', dayEnd.toISOString())
         .order('created_at', { ascending: false });
 
-      if (statusFilter && statusFilter !== 'all') {
-        query = query.eq('estado', statusFilter as ShipmentStatus);
+      if (isGlobalSearch) {
+        // Búsqueda global por tracking: ignora rango de fechas y estado para
+        // poder encontrar envíos históricos sin tener que ajustar los filtros.
+        const pattern = `%${trimmedSearch.replace(/[%,]/g, '')}%`;
+        query = query
+          .or(`tracking_number.ilike.${pattern},tracking_externo.ilike.${pattern}`)
+          .limit(100);
+      } else {
+        const dayStart = startOfDay(dateFrom);
+        const dayEnd = endOfDay(dateTo);
+        query = query
+          .gte('created_at', dayStart.toISOString())
+          .lte('created_at', dayEnd.toISOString());
+
+        if (statusFilter && statusFilter !== 'all') {
+          query = query.eq('estado', statusFilter as ShipmentStatus);
+        }
       }
 
       const { data, error } = await query;
