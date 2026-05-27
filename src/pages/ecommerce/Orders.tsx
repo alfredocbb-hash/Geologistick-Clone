@@ -67,6 +67,7 @@ interface Order {
     tracking_number: string;
     estado: string | null;
     chofer_id: string | null;
+    ml_substatus_actual?: string | null;
   } | null;
 }
 
