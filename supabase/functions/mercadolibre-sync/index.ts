@@ -271,6 +271,7 @@ Deno.serve(async (req) => {
 
           const updatePayload: Record<string, any> = {
             estado_ml: newEnvioEstado,
+            ml_substatus_actual: realSubstatus,
             ml_sync_status: 'synced',
             ml_last_sync_at: new Date().toISOString(),
           };
