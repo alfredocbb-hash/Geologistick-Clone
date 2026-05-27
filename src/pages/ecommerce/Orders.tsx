@@ -24,6 +24,7 @@ import { CreateShipmentFromOrderDialog } from '@/components/ecommerce/CreateShip
 import { EditOrderAddressDialog } from '@/components/ecommerce/EditOrderAddressDialog';
 import { parseDateString } from '@/lib/dateUtils';
 import { cn } from '@/lib/utils';
+import { MLSubstatusBadge } from '@/components/ecommerce/MLSubstatusBadge';
 
 interface Order {
   id: string;
