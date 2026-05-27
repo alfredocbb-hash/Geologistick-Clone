@@ -255,7 +255,7 @@ export default function Orders() {
         .select(`
           *,
           seller:ecommerce_sellers(id, nombre, tarifa_id, sucursal_pickup_id, tiene_cuenta_corriente, store_id, activo),
-          envio:envios!ecommerce_orders_envio_id_fkey(tracking_number, estado, chofer_id)
+          envio:envios!ecommerce_orders_envio_id_fkey(tracking_number, estado, chofer_id, ml_substatus_actual)
         `)
         .eq('tenant_id', tenantId);
 
