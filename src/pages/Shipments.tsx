@@ -491,7 +491,7 @@ export default function Shipments() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar por tracking, remitente o destinatario..."
+                placeholder="Buscar por tracking, remitente o destinatario... (3+ caracteres ignora filtros de fecha/estado)"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-10"
