@@ -844,6 +844,17 @@ export default function Shipments() {
                 ))}
               </TableBody>
             </Table>
+          ) : isGlobalSearch ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <Search className="h-12 w-12 text-muted-foreground/50 mb-4" />
+              <h3 className="text-lg font-semibold">No se encontró ningún envío con ese tracking</h3>
+              <p className="text-muted-foreground max-w-md">
+                Verificá el número o probá con tracking externo. La búsqueda recorre toda la base sin importar fecha ni estado.
+              </p>
+              <Button variant="outline" className="mt-4" onClick={() => setSearch('')}>
+                Limpiar búsqueda
+              </Button>
+            </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Package className="h-12 w-12 text-muted-foreground/50 mb-4" />
