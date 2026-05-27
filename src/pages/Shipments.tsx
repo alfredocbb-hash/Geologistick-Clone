@@ -703,6 +703,7 @@ export default function Shipments() {
                              ml_last_sync_at={(envio as any).ml_last_sync_at}
                              compact
                            />
+                           <MLSubstatusBadge substatus={(envio as any).ml_substatus_actual} />
                          </div>
                        ) : null}
                      </TableCell>
