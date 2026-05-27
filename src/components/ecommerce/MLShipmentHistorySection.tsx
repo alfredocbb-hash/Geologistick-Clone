@@ -7,6 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Clock, Truck, Package, CheckCircle, AlertCircle, History, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { ML_SUBSTATUS_LABELS } from '@/lib/mlSubstatusLabels';
 
 interface MLShipmentHistorySectionProps {
   shipmentId: number;
