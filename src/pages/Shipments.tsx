@@ -564,6 +564,23 @@ export default function Shipments() {
         </CardContent>
       </Card>
 
+      {/* Global search banner */}
+      {isGlobalSearch && (
+        <Card className="border-primary/40 bg-primary/5">
+          <CardContent className="py-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm">
+              <Search className="h-4 w-4 text-primary" />
+              <span>
+                Buscando <strong>"{trimmedSearch}"</strong> por tracking en toda la base. Los filtros de fecha y estado están desactivados (máx. 100 resultados).
+              </span>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+              Limpiar búsqueda
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Bulk Actions Bar */}
       {isSuperAdmin() && selectedEnvioIds.size > 0 && (
         <Card className="border-destructive">
