@@ -501,9 +501,10 @@ export default function DriverSettlements() {
           (envio.precio_total > 0) ? envio.precio_total :
           findZoneTarifaPrecio((envio as any).ciudad_entrega, (envio as any).provincia);
         
-        const zonaRegla = chofer.comision_tipo === 'zona'
+        const zonaMatch = chofer.comision_tipo === 'zona'
           ? matchZonaRegla(zonaReglas, (envio as any).ciudad_entrega, (envio as any).provincia, (envio as any).cp_entrega)
           : null;
+        const zonaRegla = zonaMatch?.regla ?? null;
 
         const comisionCalculada = calcularComision(precioEfectivo, chofer, tarifa, zonaRegla);
 
@@ -522,7 +523,7 @@ export default function DriverSettlements() {
           estado_liquidacion: comision?.liquidacion_id ? 'liquidado' : 'a_liquidar',
           comision_calculada: comision?.liquidacion_id ? (comision.monto ?? comisionCalculada) : comisionCalculada,
           regla_aplicada: chofer.comision_tipo === 'zona'
-            ? (describeReglaAplicada(zonaRegla) ?? 'sin match → fallback chofer')
+            ? (describeReglaAplicada(zonaMatch, (envio as any).cp_entrega) ?? 'sin match → fallback chofer')
             : null,
         };
 
