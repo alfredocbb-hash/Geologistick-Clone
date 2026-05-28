@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
     }
 
     // Search for orders with date filter to avoid importing old history
-    const statuses = ['ready_to_ship', 'shipped', 'delivered', 'not_delivered'];
+    const statuses = ['ready_to_ship', 'shipped', 'delivered', 'not_delivered', 'cancelled'];
     console.log('[ML Sync] Fetching orders for statuses:', statuses.join(', '));
 
     // Active statuses: last 7 days; resolved statuses: last 3 days
