@@ -626,13 +626,141 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ============= RECONCILIATION PASS =============
+    // Catch envios that ML may have cancelled/delivered while our local state stayed stale
+    // (webhook lost, status not in search filter window, etc.)
+    let reconciled = 0;
+    let reconciledChanged = 0;
+    try {
+      const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+
+      // Find envíos linked to this seller via ecommerce_orders (most reliable join)
+      const { data: staleOrders } = await supabase
+        .from('ecommerce_orders')
+        .select('ml_shipment_id, envio_id')
+        .eq('seller_id', seller.id)
+        .not('ml_shipment_id', 'is', null)
+        .not('envio_id', 'is', null)
+        .limit(500);
+
+      const candidateEnvioIds = (staleOrders || [])
+        .map((o: any) => o.envio_id)
+        .filter(Boolean);
+
+      if (candidateEnvioIds.length > 0) {
+        // Filter to non-final, stale envíos
+        const { data: staleEnvios } = await supabase
+          .from('envios')
+          .select('id, ml_shipment_id, estado, ml_last_sync_at')
+          .in('id', candidateEnvioIds)
+          .not('estado', 'in', '("entregado","cancelado","devuelto","no_entregado")')
+          .not('ml_shipment_id', 'is', null)
+          .or(`ml_last_sync_at.is.null,ml_last_sync_at.lt.${sixHoursAgo}`)
+          .limit(100);
+
+        console.log('[ML Sync] Reconciliation: candidates=', staleEnvios?.length || 0);
+
+        for (const env of staleEnvios || []) {
+          try {
+            const shipResp = await fetch(`${ML_API_BASE}/shipments/${env.ml_shipment_id}`, {
+              headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            await new Promise(resolve => setTimeout(resolve, 150));
+            if (!shipResp.ok) {
+              console.error('[ML Sync] Reconcile fetch failed', env.ml_shipment_id, shipResp.status);
+              continue;
+            }
+            const shipData = await shipResp.json();
+            const realStatus = shipData.status;
+            const realSubstatus = shipData.substatus || null;
+            reconciled++;
+
+            // Look up mapping
+            let mappingQuery = supabase.from('ml_status_mapping')
+              .select('estado_interno, descripcion')
+              .eq('ml_status', realStatus);
+            if (realSubstatus) mappingQuery = mappingQuery.eq('ml_substatus', realSubstatus);
+            else mappingQuery = mappingQuery.is('ml_substatus', null);
+            let { data: mapping } = await mappingQuery.maybeSingle();
+            if (!mapping && realSubstatus) {
+              const { data: fb } = await supabase.from('ml_status_mapping')
+                .select('estado_interno, descripcion')
+                .eq('ml_status', realStatus)
+                .is('ml_substatus', null)
+                .maybeSingle();
+              mapping = fb;
+            }
+            const newEnvioEstado = mapping?.estado_interno || 'pendiente';
+
+            const STATE_PRIORITY: Record<string, number> = {
+              pendiente: 1, recogido: 2, en_sucursal: 3,
+              en_transito: 4, en_reparto: 5,
+              primera_visita: 6, segunda_visita: 6,
+              devuelto: 9, cancelado: 9, entregado: 10,
+            };
+            const newPriority = STATE_PRIORITY[newEnvioEstado] || 0;
+            const currentPriority = STATE_PRIORITY[env.estado] || 0;
+            const shouldApply = newPriority > currentPriority;
+
+            const updatePayload: Record<string, any> = {
+              estado_ml: newEnvioEstado,
+              ml_substatus_actual: realSubstatus,
+              ml_sync_status: 'synced',
+              ml_last_sync_at: new Date().toISOString(),
+            };
+
+            if (shouldApply) {
+              updatePayload.estado = newEnvioEstado;
+              // If cancelled, also unassign driver
+              if (newEnvioEstado === 'cancelado') {
+                updatePayload.chofer_id = null;
+                updatePayload.chofer_ultima_milla_id = null;
+              }
+            }
+
+            await supabase.from('envios').update(updatePayload).eq('id', env.id);
+
+            if (shouldApply) {
+              reconciledChanged++;
+              await supabase.from('envio_historial').insert({
+                envio_id: env.id,
+                estado_anterior: env.estado,
+                estado_nuevo: newEnvioEstado,
+                notas: 'Reconciliacion automatica MercadoLibre (estado detectado: ' + realStatus + (realSubstatus ? '/' + realSubstatus : '') + ')',
+                ubicacion: 'ML Sync Reconcile',
+              });
+
+              if (newEnvioEstado === 'cancelado') {
+                await supabase.from('ruta_paradas')
+                  .update({ estado: 'cancelada', completada_at: new Date().toISOString(), notas: 'Cancelado en Mercado Libre' })
+                  .eq('envio_id', env.id)
+                  .in('estado', ['pendiente', 'en_proceso']);
+              }
+
+              await supabase.from('ecommerce_orders').update({
+                ml_shipping_status: realStatus,
+                fulfillment_status: newEnvioEstado === 'entregado' ? 'fulfilled' : (newEnvioEstado === 'cancelado' ? 'cancelled' : 'pending'),
+                updated_at: new Date().toISOString(),
+              }).eq('ml_shipment_id', env.ml_shipment_id);
+
+              console.log('[ML Sync] Reconciled envio', env.id, env.estado, '->', newEnvioEstado);
+            }
+          } catch (e) {
+            console.error('[ML Sync] Reconcile error for envio', env.id, e);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[ML Sync] Reconciliation pass failed:', e);
+    }
+
     // Update seller's ultimo_sync
     await supabase
       .from('ecommerce_sellers')
       .update({ ultimo_sync: new Date().toISOString() })
       .eq('id', seller.id);
 
-    console.log('[ML Sync] Completed. Created:', created, 'Existing:', existing, 'Errors:', errors);
+    console.log('[ML Sync] Completed. Created:', created, 'Existing:', existing, 'Errors:', errors, 'Reconciled:', reconciled, 'Changed:', reconciledChanged);
 
     return new Response(
       JSON.stringify({ 
