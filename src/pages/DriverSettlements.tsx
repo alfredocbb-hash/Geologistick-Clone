@@ -145,7 +145,7 @@ function matchZonaRegla(
   ciudad: string | null | undefined,
   provincia: string | null | undefined,
   cp: string | null | undefined
-): ChoferZonaRegla | null {
+): { regla: ChoferZonaRegla; matchedBy: 'cp' | 'ciudad' | 'ciudad_parcial' | 'provincia' | 'global' } | null {
   if (!reglas || reglas.length === 0) return null;
   const cN = ciudad ? normalizeStr(ciudad) : '';
   const pN = provincia ? normalizeStr(provincia) : '';
@@ -153,26 +153,25 @@ function matchZonaRegla(
   const cpNum = cpStr ? extractCP(cpStr) : NaN;
   const sorted = [...reglas].filter(r => r.activa).sort((a, b) => a.prioridad - b.prioridad);
 
-  // 1. Ciudad exacta (sólo reglas con ciudad cargada)
-  if (cN) {
-    const hit = sorted.find(r => r.ciudad && normalizeStr(r.ciudad) === cN);
-    if (hit) return hit;
-  }
-  // 2. CP (sólo reglas SIN ciudad, con CP cargado: lista o rango)
+  // 1. CP (cualquier regla con CP cargado: lista o rango), independientemente de ciudad
   if (!isNaN(cpNum)) {
     const hit = sorted.find(r => {
-      if (r.ciudad) return false;
       const parsed = parseCPField(r.codigo_postal_desde, r.codigo_postal_hasta);
       if (parsed.mode === 'list') return parsed.cps.has(cpNum);
       if (parsed.mode === 'range') return cpNum >= parsed.from && cpNum <= parsed.to;
       return false;
     });
-    if (hit) return hit;
+    if (hit) return { regla: hit, matchedBy: 'cp' };
   }
-  // 3. Ciudad parcial (sólo reglas con ciudad cargada)
+  // 2. Ciudad exacta
+  if (cN) {
+    const hit = sorted.find(r => r.ciudad && normalizeStr(r.ciudad) === cN);
+    if (hit) return { regla: hit, matchedBy: 'ciudad' };
+  }
+  // 3. Ciudad parcial
   if (cN) {
     const hit = sorted.find(r => r.ciudad && (normalizeStr(r.ciudad).includes(cN) || cN.includes(normalizeStr(r.ciudad))));
-    if (hit) return hit;
+    if (hit) return { regla: hit, matchedBy: 'ciudad_parcial' };
   }
   // 4. Provincia catch-all (sólo reglas con provincia y SIN ciudad ni CP)
   if (pN) {
@@ -183,25 +182,26 @@ function matchZonaRegla(
       const rp = normalizeStr(r.provincia);
       return rp === pN || pN.includes(rp) || rp.includes(pN);
     });
-    if (hit) return hit;
+    if (hit) return { regla: hit, matchedBy: 'provincia' };
   }
-  // 5. Catch-all global (regla sin ciudad, sin CP, sin provincia)
+  // 5. Catch-all global
   const fallback = sorted.find(r => !r.ciudad && !r.codigo_postal_desde && !r.provincia);
-  if (fallback) return fallback;
+  if (fallback) return { regla: fallback, matchedBy: 'global' };
   return null;
 }
 
-function describeReglaAplicada(r: ChoferZonaRegla | null): string | null {
-  if (!r) return null;
-  if (r.ciudad) return r.ciudad;
-  if (r.codigo_postal_desde) {
-    if (r.codigo_postal_desde.includes(',')) return `CPs ${r.codigo_postal_desde}`;
-    if (r.codigo_postal_hasta && r.codigo_postal_hasta !== r.codigo_postal_desde) {
-      return `CP ${r.codigo_postal_desde}–${r.codigo_postal_hasta}`;
-    }
-    return `CP ${r.codigo_postal_desde}`;
+function describeReglaAplicada(
+  match: { regla: ChoferZonaRegla; matchedBy: 'cp' | 'ciudad' | 'ciudad_parcial' | 'provincia' | 'global' } | null,
+  envioCP?: string | null
+): string | null {
+  if (!match) return null;
+  const { regla: r, matchedBy } = match;
+  if (matchedBy === 'cp') {
+    if (envioCP) return `CP ${envioCP}${r.ciudad ? ` (${r.ciudad})` : ''}`;
+    return r.ciudad ? `${r.ciudad} (por CP)` : 'CP coincidente';
   }
-  if (r.provincia) return `${r.provincia} (resto)`;
+  if (matchedBy === 'ciudad' || matchedBy === 'ciudad_parcial') return r.ciudad || 'Ciudad';
+  if (matchedBy === 'provincia') return `${r.provincia} (resto)`;
   return 'Catch-all';
 }
 
@@ -501,9 +501,10 @@ export default function DriverSettlements() {
           (envio.precio_total > 0) ? envio.precio_total :
           findZoneTarifaPrecio((envio as any).ciudad_entrega, (envio as any).provincia);
         
-        const zonaRegla = chofer.comision_tipo === 'zona'
+        const zonaMatch = chofer.comision_tipo === 'zona'
           ? matchZonaRegla(zonaReglas, (envio as any).ciudad_entrega, (envio as any).provincia, (envio as any).cp_entrega)
           : null;
+        const zonaRegla = zonaMatch?.regla ?? null;
 
         const comisionCalculada = calcularComision(precioEfectivo, chofer, tarifa, zonaRegla);
 
@@ -522,7 +523,7 @@ export default function DriverSettlements() {
           estado_liquidacion: comision?.liquidacion_id ? 'liquidado' : 'a_liquidar',
           comision_calculada: comision?.liquidacion_id ? (comision.monto ?? comisionCalculada) : comisionCalculada,
           regla_aplicada: chofer.comision_tipo === 'zona'
-            ? (describeReglaAplicada(zonaRegla) ?? 'sin match → fallback chofer')
+            ? (describeReglaAplicada(zonaMatch, (envio as any).cp_entrega) ?? 'sin match → fallback chofer')
             : null,
         };
 
