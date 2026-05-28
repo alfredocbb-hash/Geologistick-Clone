@@ -130,7 +130,7 @@ Deno.serve(async (req) => {
     const MAX_OFFSET = 450;
 
     for (const status of statuses) {
-      const dateFrom = (status === 'delivered' || status === 'not_delivered') ? threeDaysAgo : sevenDaysAgo;
+      const dateFrom = (status === 'delivered' || status === 'not_delivered' || status === 'cancelled') ? threeDaysAgo : sevenDaysAgo;
       let offset = 0;
       while (offset <= MAX_OFFSET) {
         const url = `${ML_API_BASE}/orders/search?seller=${seller.store_id}&shipping.status=${status}&sort=date_desc&limit=${PAGE_LIMIT}&offset=${offset}&order.date_created.from=${dateFrom}`;
