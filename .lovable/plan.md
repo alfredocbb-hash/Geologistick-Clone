@@ -1,38 +1,50 @@
-## Contexto
+## Diagnóstico (causa raíz)
 
-El envío **ML-47149217113** (id `e0f0726f-391f-438c-a685-e9e3914738ca`, seller ABRAHAM ARDEBACO) figura como `en_reparto` en nuestro sistema, pero en Mercado Libre fue **cancelado por el comprador el 27/05/2026 13:11 (Arg)**. El chofer ve "cancelado" en la app de ML porque es la realidad. Hay que sincronizar nuestro registro y entender por qué no se actualizó solo.
+Hay **dos huecos** combinados que explican por qué ML-47149217113 quedó `en_reparto` aunque ML lo había cancelado:
 
-## Qué voy a hacer
+1. **`mercadolibre-sync` no busca envíos `cancelled`.** En `supabase/functions/mercadolibre-sync/index.ts` línea 119:
+   ```ts
+   const statuses = ['ready_to_ship', 'shipped', 'delivered', 'not_delivered'];
+   ```
+   Cuando ML cancela una orden, deja de aparecer en `/orders/search` para esos estados → el envío local nunca se vuelve a chequear contra `/shipments/{id}`, por lo que queda congelado en el último estado conocido (`shipped → en_reparto`).
 
-### 1. Corregir el envío puntual
+2. **El webhook puede haber fallado / no llegado** para este shipment (los logs disponibles son sólo de la última hora; no se ve la notificación del 27/05 13:11). Aunque hubiera llegado, depende de que ML reintente — no hay reconciliación nuestra que cubra el caso "el webhook se perdió".
 
-- Actualizar `envios` (id `e0f0726f-…`):
-  - `estado = 'cancelado'`
-  - `estado_ml = 'cancelled'`
-  - `ml_substatus_actual = NULL`
-  - `ml_sync_status = 'synced'`
-  - `ml_last_sync_at = now()`
-  - `chofer_id = NULL` y `chofer_ultima_milla_id = NULL` (sacarlo de la ruta del chofer)
-- Actualizar `ecommerce_orders` ligada: `ml_shipping_status = 'cancelled'`, `fulfillment_status = 'cancelled'`.
-- Marcar la parada de ruta correspondiente (`ruta_paradas`) como `cancelada` con nota "Cancelado por comprador en Mercado Libre el 27/05/2026".
-- Insertar entrada en `envio_historial`: `en_reparto → cancelado`, nota "Cancelado por el comprador en Mercado Libre (sincronización manual posterior). Fecha cancel ML: 27/05/2026 13:11".
-- Si el envío tenía cargos en `seller_cuenta_corriente` por este tracking, **no tocarlos** (el flete sigue corriendo); se lo informo al usuario y, si quiere, hago un segundo paso de ajuste.
+Como bonus, en `mercadolibre-sync` la política anti-downgrade castiga bien (cancelado tiene prioridad 9 vs en_reparto 5, así que **sí** se hubiera aplicado), pero nunca se ejecuta porque el envío ni siquiera entra al loop.
 
-### 2. Investigar la causa raíz (sin tocar código aún)
+## Cambios propuestos
 
-Revisar:
-- Logs de la edge function `mercadolibre-webhook` alrededor del 27/05 13:11 para ver si llegó la notificación de cancelación de este shipment y por qué no la procesó (firma HMAC, mapping de `cancelled`, etc.).
-- Revisar `ml_status_mapping` para confirmar que existe la fila `ml_status='cancelled' / ml_substatus=NULL → estado_interno='cancelado'`.
-- Revisar la función `mercadolibre-sync`/`auto_sync_ml_status` para entender por qué un sync posterior (28/05 12:29) volvió a aplicar `shipped → en_reparto` en lugar de leer el estado real `cancelled`.
+### 1. `supabase/functions/mercadolibre-sync/index.ts` — incluir cancelados y agregar pase de reconciliación
 
-Una vez tenga el diagnóstico, te lo paso y decidimos si hace falta parche en webhook/sync (lo haría en un plan aparte para no mezclar la corrección puntual con un cambio de lógica).
+- **Agregar `'cancelled'`** al array `statuses` (línea 119) con ventana de 7 días, igual que los activos.
+- **Nuevo pase de reconciliación al final del sync**, antes del `return`:
+  - Buscar en `envios` del tenant del seller (filtrando por `remitente_id` del seller o por presencia de `ml_shipment_id` ligado a una `ecommerce_order` del seller) los envíos con `ml_shipment_id IS NOT NULL` y `estado NOT IN ('entregado','cancelado','devuelto')` cuyo `ml_last_sync_at` sea > 6 h o NULL.
+  - Para cada uno (cap a 100 por corrida para no agotar rate-limit), pegar `GET /shipments/{id}` directo.
+  - Aplicar el mismo bloque de mapping + anti-downgrade que ya existe en líneas 230-308 (extraerlo a una función `applyShipmentStatus(envioId, realStatus, realSubstatus)` para reusar y no duplicar).
+  - Throttling 150 ms entre llamadas (mismo patrón que línea 225).
 
-## Lo que **no** hago en este plan
+### 2. `supabase/functions/mercadolibre-webhook/index.ts` — fast-path para cancelaciones
 
-- No modifico la lógica del webhook ni de las funciones de sync todavía (primero diagnóstico).
-- No toco pagos ni cuenta corriente del seller sin tu confirmación.
-- No cancelo ningún otro envío del seller — solo este.
+- En el bloque "For other statuses" (línea ~330 en adelante), **antes** de buscar mapping, si `shipment.status === 'cancelled'`, forzar:
+  - `envios.estado = 'cancelado'`, `estado_ml = 'cancelled'`, `chofer_id = NULL`, `chofer_ultima_milla_id = NULL`, `ml_sync_status='synced'`, `ml_last_sync_at = now()`.
+  - Marcar `ruta_paradas` correspondientes (`envio_id = existingEnvio.id AND estado = 'pendiente'`) como `cancelada` con nota "Cancelado en Mercado Libre".
+  - `ecommerce_orders.ml_shipping_status = 'cancelled'`, `fulfillment_status = 'cancelled'`.
+  - Insertar fila en `envio_historial` con la nota.
+- Esto garantiza que aunque el mapping falle o la prioridad cambie, una cancelación siempre se aplica.
 
-## Verificación final
+### 3. Cron diario de reconciliación (opcional, recomendado)
 
-Re-consulto el envío y confirmo: `estado = cancelado`, sin chofer asignado, historial con la nota de cancelación ML, parada de ruta marcada como cancelada y `ecommerce_orders.ml_shipping_status = 'cancelled'`.
+- Agregar a `supabase/config.toml` un schedule diario (06:00 ART = 09:00 UTC) que invoque `mercadolibre-sync` para cada seller activo de ML.
+- Si ya existe un scheduler externo, se aclara y se omite este paso. (Confirmo en código antes de tocar config.)
+
+## Lo que **no** voy a tocar
+
+- No cambio la lógica del bloque "ready_to_ship → crear envío" (es ortogonal).
+- No toco firmas HMAC ni autenticación del webhook.
+- No purgo errores históricos de `Seller not found` (es otro seller; merece otro análisis).
+
+## Verificación
+
+1. Confirmo que `mercadolibre-sync` ahora trae `cancelled` y el pase de reconciliación detecta y aplica el cancel sobre un envío de prueba (puedo simular cambiando `ml_last_sync_at` de algún envío activo y disparando el sync).
+2. Reviso logs de `mercadolibre-webhook` después del deploy para validar que el fast-path no rompe nada en los flujos normales (shipped, delivered, etc.).
+3. Te paso un resumen con los IDs de envíos a los que el primer pase de reconciliación les corrigió el estado (si los hay), para que valides.
