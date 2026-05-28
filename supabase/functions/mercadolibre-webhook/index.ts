@@ -521,7 +521,7 @@ Deno.serve(async (req) => {
         mapping = fallbackMapping;
       }
 
-      const now = new Date().toISOString();
+      
 
       // 2. Update estado if mapping found and different from current
       if (mapping && mapping.estado_interno !== existingEnvio.estado) {
