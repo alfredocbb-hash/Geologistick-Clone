@@ -532,7 +532,7 @@ Deno.serve(async (req) => {
           estado_ml: mapping.estado_interno,
           ml_substatus_actual: shipment.substatus ?? null,
           ml_sync_status: 'synced',
-          ml_last_sync_at: now,
+          ml_last_sync_at: nowIso,
         }).eq('id', existingEnvio.id);
 
         // 3. Register in history
@@ -567,7 +567,7 @@ Deno.serve(async (req) => {
           estado_ml: mapping?.estado_interno || shipment.status,
           ml_substatus_actual: shipment.substatus ?? null,
           ml_sync_status: 'synced',
-          ml_last_sync_at: now,
+          ml_last_sync_at: nowIso,
         }).eq('id', existingEnvio.id);
       }
     }
