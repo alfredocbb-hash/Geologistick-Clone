@@ -440,6 +440,62 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (existingEnvio) {
+      const nowIso = new Date().toISOString();
+
+      // FAST-PATH: ML cancellation must always be applied, regardless of mapping/priority
+      if (shipment.status === 'cancelled') {
+        if (existingEnvio.estado !== 'cancelado') {
+          console.log('[ML Webhook] Cancel fast-path for envio', existingEnvio.id, 'previous estado:', existingEnvio.estado);
+
+          await supabase.from('envios').update({
+            estado: 'cancelado',
+            estado_ml: 'cancelled',
+            ml_substatus_actual: shipment.substatus ?? null,
+            ml_sync_status: 'synced',
+            ml_last_sync_at: nowIso,
+            chofer_id: null,
+            chofer_ultima_milla_id: null,
+            updated_at: nowIso,
+          }).eq('id', existingEnvio.id);
+
+          await supabase.from('envio_historial').insert({
+            envio_id: existingEnvio.id,
+            estado_anterior: existingEnvio.estado,
+            estado_nuevo: 'cancelado',
+            notas: 'Cancelado en Mercado Libre' + (shipment.substatus ? ' [' + shipment.substatus + ']' : ''),
+            ubicacion: 'ML Webhook',
+          });
+
+          await supabase.from('ruta_paradas')
+            .update({
+              estado: 'cancelada',
+              completada_at: nowIso,
+              notas: 'Cancelado en Mercado Libre',
+            })
+            .eq('envio_id', existingEnvio.id)
+            .in('estado', ['pendiente', 'en_proceso']);
+
+          await supabase.from('ecommerce_orders')
+            .update({
+              ml_shipping_status: 'cancelled',
+              fulfillment_status: 'cancelled',
+              updated_at: nowIso,
+            })
+            .eq('ml_shipment_id', shipment.id);
+        } else {
+          await supabase.from('envios').update({
+            estado_ml: 'cancelled',
+            ml_substatus_actual: shipment.substatus ?? null,
+            ml_sync_status: 'synced',
+            ml_last_sync_at: nowIso,
+          }).eq('id', existingEnvio.id);
+        }
+
+        return new Response(
+          JSON.stringify({ success: true, envio_id: existingEnvio.id, estado_nuevo: 'cancelado' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
       // 1. Look up mapping: ML status+substatus -> internal estado
       let mappingQuery = supabase
         .from('ml_status_mapping')
