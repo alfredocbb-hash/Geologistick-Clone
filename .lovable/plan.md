@@ -1,35 +1,45 @@
-## Implementar rediseño v3 del comprobante PDF
+## Objetivo
+Configurar al chofer **Fernando Mauro** con comisiones por **zona / cordón AMBA**, según el mapa adjunto y los montos:
 
-Aplicar el layout "grilla industrial compacta" mostrado en el mockup a `src/lib/generateShipmentReceiptPDF.ts`.
+- CABA: $2.700
+- 1° Cordón: $3.300
+- 2° Cordón: $3.500
+- 3° Cordón: $6.000
 
-### Cambios
+Hoy tiene `comision_tipo = 'porcentaje'` y **0 zonas cargadas** en `chofer_comisiones_zona`.
 
-1. **Header en 3 filas** (sin superposición, 2mm de separación):
-   - Badge "COPIA AGENCIA" con borde negro 0.5mm
-   - "Guía: ENV-XXXX" en 11pt bold
-   - "Fecha: dd/mm/yyyy" en 8pt gris
+## Cambios
 
-2. **Código QR** 22mm en esquina inferior izquierda con label "Escaneá para seguir tu envío" arriba y código corto debajo en mono bold 11pt.
+### 1. Cambiar tipo de comisión del chofer
+`UPDATE profiles SET comision_tipo='zona'` para el chofer Fernando Mauro (id `e36b39bb-…c562dc`, tenant `94a9ea85-…c2ce`).
 
-3. **Barras ORIGEN/DESTINO**: fondo negro / gris 40% con texto blanco.
+### 2. Insertar 39 reglas en `chofer_comisiones_zona`
+Provincia = "Buenos Aires" (salvo CABA = "CABA"), `monto_fijo` según cordón, `activa = true`, `prioridad = 1`.
 
-4. **REMITENTE/DESTINATARIO**: header negro, dirección hasta 2 líneas (60 chars), teléfono/DNI en líneas separadas.
+**CABA — $2.700**
+- CABA / Capital Federal / Ciudad Autónoma de Buenos Aires (3 variantes para matching)
 
-5. **Tabla CONCEPTOS**: header gris, líneas finas negras, montos bold alineados a la derecha.
+**1° Cordón — $3.300**
+Vicente López, San Isidro, San Martín, Tres de Febrero, Hurlingham, Morón, Ituzaingó, La Matanza, Lanús, Avellaneda, Lomas de Zamora
 
-6. **Caja TOTAL**: borde negro 1.5mm, monto 16pt bold, indicador de tipo de pago arriba.
+**2° Cordón — $3.500**
+Tigre, San Fernando, Malvinas Argentinas, José C. Paz, San Miguel, Moreno, Merlo, Ezeiza, Esteban Echeverría, Almirante Brown, Florencio Varela, Quilmes, Berazategui
 
-7. **Firmas**: líneas sólidas 0.4mm, labels 7pt mayúsculas.
+**3° Cordón — $6.000**
+Zárate, Campana, Escobar, Pilar, Luján, General Rodríguez, Marcos Paz, Cañuelas, Presidente Perón, San Vicente, La Plata, Ensenada, Berisso
 
-8. **Línea de corte**: punteada gris con "✂ CORTAR POR AQUÍ ✂" en 7pt.
+> Nota: "Matanza Norte" y "Matanza Sur" del mapa se cargan ambas como **La Matanza** (1° cordón, $3.300), ya que el matching del motor de comisiones es por ciudad/partido (`ciudad_entrega`) y La Matanza es un solo partido. Si querés diferenciar Matanza Sur a $3.500 (2° cordón), decímelo antes y agrego variantes por CP.
 
-9. **Footer**: legal en 6pt itálica gris.
+### 3. Verificación
+- Re-consultar `chofer_comisiones_zona` para confirmar 39 filas activas.
+- Confirmar que `profiles.comision_tipo = 'zona'` para Fernando.
+- Las próximas liquidaciones de chofer aplicarán automáticamente el motor de zonas (ver memoria `comisiones-chofer-por-zona`).
 
-### Exclusiones
+## Detalles técnicos
+- Tabla: `public.chofer_comisiones_zona` (campos: `chofer_id`, `tenant_id`, `ciudad`, `provincia`, `monto_fijo`, `prioridad`, `activa`).
+- Matching usa normalización por ciudad → fallback por provincia (memoria `comisiones-chofer-mapping-fallback`), por eso cargo nombres con tildes correctas.
+- No se tocan tarifas de venta ni otros choferes.
 
-- No tocar `precio_total`, lógica de fallback de Flete, `loadLogoAsBase64`, `pdfHelpers.ts`, generación remota de QR, A4, ni split de 2 comprobantes.
-- `color_primario` solo como acento sutil en borde superior (todo lo crítico en negro/gris).
-
-### Verificación
-
-Generar PDF de prueba e inspeccionar con `pdftoppm` página por página para confirmar sin superposiciones, QR legible y todos los elementos visibles en B/N láser.
+## Preguntas antes de ejecutar
+1. ¿Confirmás unificar **Matanza Norte + Matanza Sur** como **La Matanza a $3.300**, o querés Matanza Sur a $3.500?
+2. ¿Querés que también agregue variantes sin tilde (ej. "Lanus", "Moron") para mejorar el matching con direcciones mal escritas? (Recomendado: sí.)
