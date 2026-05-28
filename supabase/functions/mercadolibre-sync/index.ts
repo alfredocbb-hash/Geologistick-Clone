@@ -768,7 +768,9 @@ Deno.serve(async (req) => {
         created, 
         existing, 
         errors,
-        total: orders.length
+        total: orders.length,
+        reconciled,
+        reconciledChanged,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
