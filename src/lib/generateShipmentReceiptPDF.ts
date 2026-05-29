@@ -263,8 +263,8 @@ function drawReceipt(
   y += odBarH + 2;
 
   // ========== REMITENTE / DESTINATARIO boxes ==========
-  const boxHeight = 34;
-  const boxHeaderH = 6;
+  const boxHeight = 26;
+  const boxHeaderH = 5;
 
   const drawPersonBox = (
     title: string,
@@ -281,28 +281,28 @@ function drawReceipt(
     doc.rect(x, boxY, boxWidth, boxHeight);
     doc.setFillColor(0, 0, 0);
     doc.rect(x, boxY, boxWidth, boxHeaderH, 'F');
-    doc.setFontSize(9);
+    doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(255, 255, 255);
-    doc.text(title, x + 2, boxY + 4.2);
+    doc.text(title, x + 2, boxY + 3.6);
 
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(20, 20, 20);
-    doc.setFontSize(11);
-    doc.text((name || '-').substring(0, 32), x + 2, boxY + boxHeaderH + 5);
+    doc.setFontSize(10);
+    doc.text((name || '-').substring(0, 32), x + 2, boxY + boxHeaderH + 4.5);
 
-    doc.setFontSize(9);
+    doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(50, 50, 50);
     const addrFull = (address || '-').substring(0, 90);
     const addrLines = doc.splitTextToSize(`Dir: ${addrFull}`, boxWidth - 4);
-    doc.text(addrLines.slice(0, 3), x + 2, boxY + boxHeaderH + 10);
+    doc.text(addrLines.slice(0, 2), x + 2, boxY + boxHeaderH + 9);
 
-    doc.setFontSize(9);
+    doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(40, 40, 40);
-    doc.text(`Tel: ${phone || '-'}`, x + 2, boxY + boxHeight - 3);
-    doc.text(`DNI: ${dni || '-'}`, x + boxWidth / 2, boxY + boxHeight - 3);
+    doc.text(`Tel: ${phone || '-'}`, x + 2, boxY + boxHeight - 2.5);
+    doc.text(`DNI: ${dni || '-'}`, x + boxWidth / 2, boxY + boxHeight - 2.5);
   };
 
   const remitenteNombre = shipment.nombre_remitente ||
