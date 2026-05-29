@@ -178,7 +178,7 @@ function drawReceipt(
 
   // ========== HEADER ==========
   const headerStart = y;
-  const logoSize = 18;
+  const logoSize = 14;
 
   if (logoToUse) {
     try {
@@ -186,18 +186,18 @@ function drawReceipt(
     } catch (e) {}
   }
 
-  doc.setFontSize(14);
+  doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(20, 20, 20);
-  doc.text(companyName, margin + logoSize + 4, y + 6.5);
+  doc.text(companyName, margin + logoSize + 4, y + 5.5);
 
-  doc.setFontSize(9);
+  doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(90, 90, 90);
   const branchInfo = shipment.sucursal_origen;
   if (branchInfo) {
     const branchLine = `${branchInfo.direccion || ''} ${branchInfo.ciudad || ''}${branchInfo.telefono ? ' • Tel: ' + branchInfo.telefono : ''}`;
-    doc.text(branchLine.substring(0, 60), margin + logoSize + 4, y + 12.5);
+    doc.text(branchLine.substring(0, 65), margin + logoSize + 4, y + 10.5);
   }
 
   const rightX = pageWidth - margin;
@@ -210,16 +210,16 @@ function drawReceipt(
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.5);
   doc.setFillColor(0, 0, 0);
-  doc.rect(rightX - labelWidth, badgeY, labelWidth, 5.5, 'FD');
+  doc.rect(rightX - labelWidth, badgeY, labelWidth, 5, 'FD');
   doc.setTextColor(255, 255, 255);
-  doc.text(copyLabel, rightX - labelWidth / 2, badgeY + 3.8, { align: 'center' });
+  doc.text(copyLabel, rightX - labelWidth / 2, badgeY + 3.5, { align: 'center' });
 
-  doc.setFontSize(13);
+  doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(20, 20, 20);
-  doc.text(`Guía: ${shipment.tracking_number}`, rightX, badgeY + 11.5, { align: 'right' });
+  doc.text(`Guía: ${shipment.tracking_number}`, rightX, badgeY + 10, { align: 'right' });
 
-  doc.setFontSize(10);
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(110, 110, 110);
   const fecha = new Date(shipment.created_at).toLocaleDateString('es-AR', {
@@ -227,9 +227,9 @@ function drawReceipt(
     month: '2-digit',
     day: '2-digit',
   });
-  doc.text(`Fecha: ${fecha}`, rightX, badgeY + 17, { align: 'right' });
+  doc.text(`Fecha: ${fecha}`, rightX, badgeY + 14.5, { align: 'right' });
 
-  y = headerStart + logoSize + 3;
+  y = headerStart + logoSize + 2;
 
   // Separator
   doc.setDrawColor(30, 30, 30);
@@ -263,8 +263,8 @@ function drawReceipt(
   y += odBarH + 2;
 
   // ========== REMITENTE / DESTINATARIO boxes ==========
-  const boxHeight = 34;
-  const boxHeaderH = 6;
+  const boxHeight = 26;
+  const boxHeaderH = 5;
 
   const drawPersonBox = (
     title: string,
@@ -281,28 +281,28 @@ function drawReceipt(
     doc.rect(x, boxY, boxWidth, boxHeight);
     doc.setFillColor(0, 0, 0);
     doc.rect(x, boxY, boxWidth, boxHeaderH, 'F');
-    doc.setFontSize(9);
+    doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(255, 255, 255);
-    doc.text(title, x + 2, boxY + 4.2);
+    doc.text(title, x + 2, boxY + 3.6);
 
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(20, 20, 20);
-    doc.setFontSize(11);
-    doc.text((name || '-').substring(0, 32), x + 2, boxY + boxHeaderH + 5);
+    doc.setFontSize(10);
+    doc.text((name || '-').substring(0, 32), x + 2, boxY + boxHeaderH + 4.5);
 
-    doc.setFontSize(9);
+    doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(50, 50, 50);
     const addrFull = (address || '-').substring(0, 90);
     const addrLines = doc.splitTextToSize(`Dir: ${addrFull}`, boxWidth - 4);
-    doc.text(addrLines.slice(0, 3), x + 2, boxY + boxHeaderH + 10);
+    doc.text(addrLines.slice(0, 2), x + 2, boxY + boxHeaderH + 9);
 
-    doc.setFontSize(9);
+    doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(40, 40, 40);
-    doc.text(`Tel: ${phone || '-'}`, x + 2, boxY + boxHeight - 3);
-    doc.text(`DNI: ${dni || '-'}`, x + boxWidth / 2, boxY + boxHeight - 3);
+    doc.text(`Tel: ${phone || '-'}`, x + 2, boxY + boxHeight - 2.5);
+    doc.text(`DNI: ${dni || '-'}`, x + boxWidth / 2, boxY + boxHeight - 2.5);
   };
 
   const remitenteNombre = shipment.nombre_remitente ||
@@ -332,8 +332,8 @@ function drawReceipt(
     ? detalles
     : [{ nombre_concepto: 'Flete', monto: fleteCalculado > 0 ? fleteCalculado : shipment.precio_total }, ...detalles];
 
-  const rowHeight = Math.max(30, 10 + conceptosAMostrar.length * 5);
-  const colHeaderH = 6;
+  const rowHeight = Math.max(24, 9 + conceptosAMostrar.length * 4.2);
+  const colHeaderH = 5;
 
   const drawColHeader = (title: string, x: number, w: number) => {
     doc.setFillColor(230, 230, 230);
@@ -341,36 +341,36 @@ function drawReceipt(
     doc.setDrawColor(30, 30, 30);
     doc.setLineWidth(0.3);
     doc.rect(x, y, w, rowHeight);
-    doc.setFontSize(9);
+    doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(20, 20, 20);
-    doc.text(title, x + 2, y + 4.2);
+    doc.text(title, x + 2, y + 3.6);
   };
 
   // PAGO
   drawColHeader('PAGO', margin, thirdWidth);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
+  doc.setFontSize(10);
   doc.setTextColor(20, 20, 20);
   const tipoPago = TIPO_PAGO_LABELS[shipment.tipo_pago || 'contado'] || shipment.tipo_pago || 'Contado';
-  doc.text(tipoPago, margin + 2, y + colHeaderH + 5);
-  doc.setFontSize(9);
+  doc.text(tipoPago, margin + 2, y + colHeaderH + 4.2);
+  doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(60, 60, 60);
-  doc.text(`Bultos: ${shipment.cantidad_bultos || 1}`, margin + 2, y + colHeaderH + 11);
+  doc.text(`Bultos: ${shipment.cantidad_bultos || 1}`, margin + 2, y + colHeaderH + 9);
   if (shipment.peso_kg) {
-    doc.text(`Peso: ${shipment.peso_kg} kg`, margin + 2, y + colHeaderH + 16);
+    doc.text(`Peso: ${shipment.peso_kg} kg`, margin + 2, y + colHeaderH + 13);
   }
 
   // DESCRIPCIÓN
   const descX = margin + thirdWidth + 2;
   drawColHeader('DESCRIPCIÓN', descX, thirdWidth);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
+  doc.setFontSize(8);
   doc.setTextColor(30, 30, 30);
   const desc = (shipment.descripcion || '-');
   const descLines = doc.splitTextToSize(desc, thirdWidth - 4);
-  doc.text(descLines.slice(0, 4), descX + 2, y + colHeaderH + 5);
+  doc.text(descLines.slice(0, 3), descX + 2, y + colHeaderH + 4);
   if (shipment.valor_declarado) {
     doc.setFont('helvetica', 'bold');
     doc.text(`V.Decl: ${formatCurrency(shipment.valor_declarado)}`, descX + 2, y + rowHeight - 2);
@@ -380,9 +380,9 @@ function drawReceipt(
   const concX = margin + (thirdWidth + 2) * 2;
   drawColHeader('CONCEPTOS', concX, thirdWidth);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
+  doc.setFontSize(8);
   doc.setTextColor(30, 30, 30);
-  let conceptY = y + colHeaderH + 4.5;
+  let conceptY = y + colHeaderH + 4;
   for (const detalle of conceptosAMostrar) {
     doc.setFont('helvetica', 'normal');
     doc.text(detalle.nombre_concepto.substring(0, 18), concX + 2, conceptY);
@@ -390,56 +390,56 @@ function drawReceipt(
     doc.text(formatCurrency(detalle.monto), concX + thirdWidth - 2, conceptY, { align: 'right' });
     doc.setDrawColor(210, 210, 210);
     doc.setLineWidth(0.1);
-    doc.line(concX + 2, conceptY + 1.2, concX + thirdWidth - 2, conceptY + 1.2);
-    conceptY += 5;
+    doc.line(concX + 2, conceptY + 1, concX + thirdWidth - 2, conceptY + 1);
+    conceptY += 4.2;
   }
 
   y += rowHeight + 2;
 
   // ========== QR + TOTAL + SIGNATURES ==========
-  const blockHeight = 38;
-  const qrSize = 30;
-  const qrBoxWidth = 34;
-  const totalBoxWidth = 56;
+  const blockHeight = 30;
+  const qrSize = 24;
+  const qrBoxWidth = 28;
+  const totalBoxWidth = 50;
   const sigWidth = (contentWidth - qrBoxWidth - totalBoxWidth - 6) / 2;
 
-  doc.setFontSize(8);
+  doc.setFontSize(7);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(80, 80, 80);
-  doc.text('Escaneá para seguir tu envío', margin, y + 3);
+  doc.text('Escaneá para seguir tu envío', margin, y + 2.5);
 
   if (assets.qrCodeBase64) {
     try {
-      doc.addImage(assets.qrCodeBase64, 'PNG', margin, y + 4.5, qrSize, qrSize);
+      doc.addImage(assets.qrCodeBase64, 'PNG', margin, y + 3.5, qrSize, qrSize);
     } catch (e) {}
   }
 
   const shortCode = shipment.tracking_number.split('-').pop() || shipment.tracking_number.slice(-6);
-  doc.setFontSize(10);
+  doc.setFontSize(8);
   doc.setFont('courier', 'bold');
   doc.setTextColor(20, 20, 20);
-  doc.text(shortCode, margin + qrSize / 2, y + 4.5 + qrSize + 3, { align: 'center' });
+  doc.text(shortCode, margin + qrSize / 2, y + 3.5 + qrSize + 2.5, { align: 'center' });
 
   // TOTAL box
   const totalX = margin + qrBoxWidth + 2;
   doc.setDrawColor(0, 0, 0);
-  doc.setLineWidth(1.8);
+  doc.setLineWidth(1.5);
   doc.rect(totalX, y, totalBoxWidth, blockHeight);
 
-  doc.setFontSize(9);
+  doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(80, 80, 80);
-  doc.text(tipoPago.toUpperCase(), totalX + totalBoxWidth / 2, y + 7, { align: 'center' });
+  doc.text(tipoPago.toUpperCase(), totalX + totalBoxWidth / 2, y + 5.5, { align: 'center' });
 
-  doc.setFontSize(11);
+  doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(50, 50, 50);
-  doc.text('TOTAL', totalX + totalBoxWidth / 2, y + 16, { align: 'center' });
+  doc.text('TOTAL', totalX + totalBoxWidth / 2, y + 12, { align: 'center' });
 
-  doc.setFontSize(22);
+  doc.setFontSize(18);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(0, 0, 0);
-  doc.text(formatCurrency(shipment.precio_total), totalX + totalBoxWidth / 2, y + 30, { align: 'center' });
+  doc.text(formatCurrency(shipment.precio_total), totalX + totalBoxWidth / 2, y + 23, { align: 'center' });
 
   // Signature boxes
   const sig1X = totalX + totalBoxWidth + 4;
@@ -449,20 +449,20 @@ function drawReceipt(
     doc.setDrawColor(30, 30, 30);
     doc.setLineWidth(0.3);
     doc.rect(x, y, sigWidth, blockHeight);
-    doc.setFontSize(9);
+    doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(20, 20, 20);
-    doc.text(label, x + sigWidth / 2, y + 5, { align: 'center' });
+    doc.text(label, x + sigWidth / 2, y + 4, { align: 'center' });
     doc.setLineWidth(0.4);
-    doc.line(x + 3, y + 24, x + sigWidth - 3, y + 24);
-    doc.setFontSize(8);
+    doc.line(x + 3, y + 19, x + sigWidth - 3, y + 19);
+    doc.setFontSize(7);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(100, 100, 100);
-    doc.text('Firma y aclaración', x + sigWidth / 2, y + 28, { align: 'center' });
+    doc.text('Firma y aclaración', x + sigWidth / 2, y + 22, { align: 'center' });
     doc.setLineWidth(0.4);
-    doc.line(x + 3, y + 33, x + sigWidth - 3, y + 33);
-    doc.setFontSize(8);
-    doc.text('DNI', x + sigWidth / 2, y + 36.5, { align: 'center' });
+    doc.line(x + 3, y + 26, x + sigWidth - 3, y + 26);
+    doc.setFontSize(7);
+    doc.text('DNI', x + sigWidth / 2, y + 29, { align: 'center' });
   };
 
   drawSigBox('REMITENTE', sig1X);
@@ -471,24 +471,24 @@ function drawReceipt(
   y += blockHeight + 2;
 
   // ========== OBSERVACIONES + FOOTER ==========
-  const obsBoxH = 14;
+  const obsBoxH = 10;
   doc.setDrawColor(180, 180, 180);
   doc.setLineWidth(0.2);
   doc.rect(margin, y, contentWidth, obsBoxH);
 
-  doc.setFontSize(8);
+  doc.setFontSize(7);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(80, 80, 80);
-  doc.text('OBS:', margin + 2, y + 4);
+  doc.text('OBS:', margin + 2, y + 3.5);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
+  doc.setFontSize(7);
   doc.setTextColor(50, 50, 50);
   const obs = (shipment.notas || '');
   const obsLines = doc.splitTextToSize(obs, contentWidth - 16);
-  doc.text(obsLines.slice(0, 2), margin + 12, y + 4);
+  doc.text(obsLines.slice(0, 1), margin + 12, y + 3.5);
 
-  doc.setFontSize(7);
+  doc.setFontSize(6.5);
   doc.setFont('helvetica', 'italic');
   doc.setTextColor(120, 120, 120);
   doc.text(
