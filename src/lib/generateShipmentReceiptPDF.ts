@@ -178,7 +178,7 @@ function drawReceipt(
 
   // ========== HEADER ==========
   const headerStart = y;
-  const logoSize = 18;
+  const logoSize = 14;
 
   if (logoToUse) {
     try {
@@ -186,18 +186,18 @@ function drawReceipt(
     } catch (e) {}
   }
 
-  doc.setFontSize(14);
+  doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(20, 20, 20);
-  doc.text(companyName, margin + logoSize + 4, y + 6.5);
+  doc.text(companyName, margin + logoSize + 4, y + 5.5);
 
-  doc.setFontSize(9);
+  doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(90, 90, 90);
   const branchInfo = shipment.sucursal_origen;
   if (branchInfo) {
     const branchLine = `${branchInfo.direccion || ''} ${branchInfo.ciudad || ''}${branchInfo.telefono ? ' • Tel: ' + branchInfo.telefono : ''}`;
-    doc.text(branchLine.substring(0, 60), margin + logoSize + 4, y + 12.5);
+    doc.text(branchLine.substring(0, 65), margin + logoSize + 4, y + 10.5);
   }
 
   const rightX = pageWidth - margin;
@@ -210,16 +210,16 @@ function drawReceipt(
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.5);
   doc.setFillColor(0, 0, 0);
-  doc.rect(rightX - labelWidth, badgeY, labelWidth, 5.5, 'FD');
+  doc.rect(rightX - labelWidth, badgeY, labelWidth, 5, 'FD');
   doc.setTextColor(255, 255, 255);
-  doc.text(copyLabel, rightX - labelWidth / 2, badgeY + 3.8, { align: 'center' });
+  doc.text(copyLabel, rightX - labelWidth / 2, badgeY + 3.5, { align: 'center' });
 
-  doc.setFontSize(13);
+  doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(20, 20, 20);
-  doc.text(`Guía: ${shipment.tracking_number}`, rightX, badgeY + 11.5, { align: 'right' });
+  doc.text(`Guía: ${shipment.tracking_number}`, rightX, badgeY + 10, { align: 'right' });
 
-  doc.setFontSize(10);
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(110, 110, 110);
   const fecha = new Date(shipment.created_at).toLocaleDateString('es-AR', {
@@ -227,9 +227,9 @@ function drawReceipt(
     month: '2-digit',
     day: '2-digit',
   });
-  doc.text(`Fecha: ${fecha}`, rightX, badgeY + 17, { align: 'right' });
+  doc.text(`Fecha: ${fecha}`, rightX, badgeY + 14.5, { align: 'right' });
 
-  y = headerStart + logoSize + 3;
+  y = headerStart + logoSize + 2;
 
   // Separator
   doc.setDrawColor(30, 30, 30);
