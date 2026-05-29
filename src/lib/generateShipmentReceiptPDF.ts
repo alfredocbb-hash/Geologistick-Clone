@@ -150,7 +150,7 @@ function drawCutLine(doc: jsPDF, yPosition: number, pageWidth: number) {
   doc.text('✂  CORTAR POR AQUÍ  ✂', pageWidth / 2, yPosition - 1.2, { align: 'center' });
 }
 
-// Draw a single compact receipt — Industrial grid layout v3
+// Draw a single receipt that fills half of A4 (~148.5mm) — Industrial grid layout v4
 function drawReceipt(
   doc: jsPDF,
   shipment: ShipmentData,
@@ -169,17 +169,16 @@ function drawReceipt(
   const primaryColor = branding?.color_primario || '#3B82F6';
   const primaryRgb = hexToRgb(primaryColor);
 
-  let y = yOffset + 4;
+  let y = yOffset + 5;
 
-  // ========== TOP ACCENT BAR (subtle brand color) ==========
+  // ========== TOP ACCENT BAR ==========
   doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-  doc.rect(margin, y, contentWidth, 0.8, 'F');
-  y += 3;
+  doc.rect(margin, y, contentWidth, 1.2, 'F');
+  y += 4;
 
-  // ========== HEADER: 3 STACKED ROWS (no overlap) ==========
-  // Logo + company on the LEFT, 3 vertical rows on the RIGHT
+  // ========== HEADER ==========
   const headerStart = y;
-  const logoSize = 14;
+  const logoSize = 18;
 
   if (logoToUse) {
     try {
@@ -187,45 +186,40 @@ function drawReceipt(
     } catch (e) {}
   }
 
-  // Company name + branch line (left column)
-  doc.setFontSize(12);
+  doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(20, 20, 20);
-  doc.text(companyName, margin + logoSize + 3, y + 5);
+  doc.text(companyName, margin + logoSize + 4, y + 6.5);
 
-  doc.setFontSize(7);
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(90, 90, 90);
   const branchInfo = shipment.sucursal_origen;
   if (branchInfo) {
     const branchLine = `${branchInfo.direccion || ''} ${branchInfo.ciudad || ''}${branchInfo.telefono ? ' • Tel: ' + branchInfo.telefono : ''}`;
-    doc.text(branchLine.substring(0, 60), margin + logoSize + 3, y + 10);
+    doc.text(branchLine.substring(0, 60), margin + logoSize + 4, y + 12.5);
   }
 
-  // RIGHT COLUMN — 3 stacked rows with 2mm spacing
   const rightX = pageWidth - margin;
 
-  // Row 1: COPIA AGENCIA/CLIENTE badge (black bordered)
   const copyLabel = copyType === 'agencia' ? 'COPIA AGENCIA' : 'COPIA CLIENTE';
-  doc.setFontSize(7);
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
-  const labelWidth = doc.getTextWidth(copyLabel) + 4;
+  const labelWidth = doc.getTextWidth(copyLabel) + 5;
   const badgeY = y;
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.5);
   doc.setFillColor(0, 0, 0);
-  doc.rect(rightX - labelWidth, badgeY, labelWidth, 4.5, 'FD');
+  doc.rect(rightX - labelWidth, badgeY, labelWidth, 5.5, 'FD');
   doc.setTextColor(255, 255, 255);
-  doc.text(copyLabel, rightX - labelWidth / 2, badgeY + 3.2, { align: 'center' });
+  doc.text(copyLabel, rightX - labelWidth / 2, badgeY + 3.8, { align: 'center' });
 
-  // Row 2: Guía (11pt bold) — 2mm gap below badge
-  doc.setFontSize(11);
+  doc.setFontSize(13);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(20, 20, 20);
-  doc.text(`Guía: ${shipment.tracking_number}`, rightX, badgeY + 4.5 + 2 + 3.5, { align: 'right' });
+  doc.text(`Guía: ${shipment.tracking_number}`, rightX, badgeY + 11.5, { align: 'right' });
 
-  // Row 3: Fecha (8pt gray) — 2mm gap below guía
-  doc.setFontSize(8);
+  doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(110, 110, 110);
   const fecha = new Date(shipment.created_at).toLocaleDateString('es-AR', {
@@ -233,44 +227,44 @@ function drawReceipt(
     month: '2-digit',
     day: '2-digit',
   });
-  doc.text(`Fecha: ${fecha}`, rightX, badgeY + 4.5 + 2 + 3.5 + 2 + 3, { align: 'right' });
+  doc.text(`Fecha: ${fecha}`, rightX, badgeY + 17, { align: 'right' });
 
-  y = headerStart + logoSize + 2;
+  y = headerStart + logoSize + 3;
 
   // Separator
   doc.setDrawColor(30, 30, 30);
-  doc.setLineWidth(0.6);
+  doc.setLineWidth(0.7);
   doc.line(margin, y, pageWidth - margin, y);
-  y += 3;
+  y += 4;
 
   // ========== ORIGEN / DESTINO bars ==========
   const halfWidth = contentWidth / 2 - 2;
+  const odBarH = 8;
 
-  // ORIGEN: solid black
   doc.setFillColor(0, 0, 0);
-  doc.rect(margin, y, halfWidth, 6, 'F');
-  // DESTINO: 40% gray with thin black border
+  doc.rect(margin, y, halfWidth, odBarH, 'F');
   doc.setFillColor(102, 102, 102);
-  doc.rect(margin + halfWidth + 4, y, halfWidth, 6, 'F');
+  doc.rect(margin + halfWidth + 4, y, halfWidth, odBarH, 'F');
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.3);
-  doc.rect(margin + halfWidth + 4, y, halfWidth, 6);
+  doc.rect(margin + halfWidth + 4, y, halfWidth, odBarH);
 
-  doc.setFontSize(8);
+  doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(255, 255, 255);
-  doc.text('ORIGEN', margin + 3, y + 4);
-  doc.text('DESTINO', margin + halfWidth + 7, y + 4);
+  doc.text('ORIGEN', margin + 3, y + 5.5);
+  doc.text('DESTINO', margin + halfWidth + 7, y + 5.5);
 
   const ciudadOrigen = shipment.sucursal_origen?.ciudad || shipment.ciudad_retiro || '-';
   const ciudadDestino = shipment.sucursal_destino?.ciudad || shipment.ciudad_entrega || '-';
-  doc.text(ciudadOrigen.substring(0, 22), margin + halfWidth - 3, y + 4, { align: 'right' });
-  doc.text(ciudadDestino.substring(0, 22), pageWidth - margin - 3, y + 4, { align: 'right' });
+  doc.text(ciudadOrigen.substring(0, 22), margin + halfWidth - 3, y + 5.5, { align: 'right' });
+  doc.text(ciudadDestino.substring(0, 22), pageWidth - margin - 3, y + 5.5, { align: 'right' });
 
-  y += 8;
+  y += odBarH + 2;
 
   // ========== REMITENTE / DESTINATARIO boxes ==========
-  const boxHeight = 24;
+  const boxHeight = 34;
+  const boxHeaderH = 6;
 
   const drawPersonBox = (
     title: string,
@@ -282,38 +276,33 @@ function drawReceipt(
     boxWidth: number
   ) => {
     const boxY = y;
-    // Outer box
     doc.setDrawColor(30, 30, 30);
     doc.setLineWidth(0.4);
     doc.rect(x, boxY, boxWidth, boxHeight);
-    // Black header
     doc.setFillColor(0, 0, 0);
-    doc.rect(x, boxY, boxWidth, 4.5, 'F');
-    doc.setFontSize(7);
+    doc.rect(x, boxY, boxWidth, boxHeaderH, 'F');
+    doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(255, 255, 255);
-    doc.text(title, x + 2, boxY + 3.2);
+    doc.text(title, x + 2, boxY + 4.2);
 
-    // Name
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(20, 20, 20);
-    doc.setFontSize(9);
-    doc.text((name || '-').substring(0, 32), x + 2, boxY + 9);
+    doc.setFontSize(11);
+    doc.text((name || '-').substring(0, 32), x + 2, boxY + boxHeaderH + 5);
 
-    // Address — wrap up to 2 lines (60 chars total)
-    doc.setFontSize(7);
+    doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(50, 50, 50);
-    const addrFull = (address || '-').substring(0, 60);
+    const addrFull = (address || '-').substring(0, 90);
     const addrLines = doc.splitTextToSize(`Dir: ${addrFull}`, boxWidth - 4);
-    doc.text(addrLines.slice(0, 2), x + 2, boxY + 13);
+    doc.text(addrLines.slice(0, 3), x + 2, boxY + boxHeaderH + 10);
 
-    // Phone + DNI on separate lines
-    doc.setFontSize(7);
+    doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(40, 40, 40);
-    doc.text(`Tel: ${phone || '-'}`, x + 2, boxY + 19);
-    doc.text(`DNI: ${dni || '-'}`, x + boxWidth / 2, boxY + 19);
+    doc.text(`Tel: ${phone || '-'}`, x + 2, boxY + boxHeight - 3);
+    doc.text(`DNI: ${dni || '-'}`, x + boxWidth / 2, boxY + boxHeight - 3);
   };
 
   const remitenteNombre = shipment.nombre_remitente ||
@@ -333,10 +322,9 @@ function drawReceipt(
 
   y += boxHeight + 2;
 
-  // ========== PAGO + DESCRIPCIÓN + CONCEPTOS (3 cols) ==========
+  // ========== PAGO + DESCRIPCIÓN + CONCEPTOS ==========
   const thirdWidth = contentWidth / 3 - 2;
 
-  // Detect Flete in details
   const fleteEnDetalles = detalles.find(d => d.nombre_concepto?.toLowerCase() === 'flete');
   const totalConceptos = detalles.reduce((sum, d) => sum + (d.monto || 0), 0);
   const fleteCalculado = shipment.precio_total - totalConceptos;
@@ -344,125 +332,116 @@ function drawReceipt(
     ? detalles
     : [{ nombre_concepto: 'Flete', monto: fleteCalculado > 0 ? fleteCalculado : shipment.precio_total }, ...detalles];
 
-  const conceptBoxHeight = Math.max(20, 6 + conceptosAMostrar.length * 3.8);
-  const rowHeight = conceptBoxHeight;
+  const rowHeight = Math.max(30, 10 + conceptosAMostrar.length * 5);
+  const colHeaderH = 6;
 
-  // Helper for column header
   const drawColHeader = (title: string, x: number, w: number) => {
     doc.setFillColor(230, 230, 230);
-    doc.rect(x, y, w, 4.5, 'F');
+    doc.rect(x, y, w, colHeaderH, 'F');
     doc.setDrawColor(30, 30, 30);
     doc.setLineWidth(0.3);
     doc.rect(x, y, w, rowHeight);
-    doc.setFontSize(7);
+    doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(20, 20, 20);
-    doc.text(title, x + 2, y + 3.2);
+    doc.text(title, x + 2, y + 4.2);
   };
 
   // PAGO
   drawColHeader('PAGO', margin, thirdWidth);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
+  doc.setFontSize(11);
   doc.setTextColor(20, 20, 20);
   const tipoPago = TIPO_PAGO_LABELS[shipment.tipo_pago || 'contado'] || shipment.tipo_pago || 'Contado';
-  doc.text(tipoPago, margin + 2, y + 10);
-  doc.setFontSize(7);
+  doc.text(tipoPago, margin + 2, y + colHeaderH + 5);
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(60, 60, 60);
-  doc.text(`Bultos: ${shipment.cantidad_bultos || 1}`, margin + 2, y + 15);
+  doc.text(`Bultos: ${shipment.cantidad_bultos || 1}`, margin + 2, y + colHeaderH + 11);
   if (shipment.peso_kg) {
-    doc.text(`Peso: ${shipment.peso_kg} kg`, margin + 2, y + 19);
+    doc.text(`Peso: ${shipment.peso_kg} kg`, margin + 2, y + colHeaderH + 16);
   }
 
   // DESCRIPCIÓN
   const descX = margin + thirdWidth + 2;
   drawColHeader('DESCRIPCIÓN', descX, thirdWidth);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
+  doc.setFontSize(9);
   doc.setTextColor(30, 30, 30);
   const desc = (shipment.descripcion || '-');
   const descLines = doc.splitTextToSize(desc, thirdWidth - 4);
-  doc.text(descLines.slice(0, 3), descX + 2, y + 9);
+  doc.text(descLines.slice(0, 4), descX + 2, y + colHeaderH + 5);
   if (shipment.valor_declarado) {
     doc.setFont('helvetica', 'bold');
     doc.text(`V.Decl: ${formatCurrency(shipment.valor_declarado)}`, descX + 2, y + rowHeight - 2);
   }
 
-  // CONCEPTOS (table with thin black lines)
+  // CONCEPTOS
   const concX = margin + (thirdWidth + 2) * 2;
   drawColHeader('CONCEPTOS', concX, thirdWidth);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
+  doc.setFontSize(9);
   doc.setTextColor(30, 30, 30);
-  let conceptY = y + 8;
+  let conceptY = y + colHeaderH + 4.5;
   for (const detalle of conceptosAMostrar) {
     doc.setFont('helvetica', 'normal');
     doc.text(detalle.nombre_concepto.substring(0, 18), concX + 2, conceptY);
     doc.setFont('helvetica', 'bold');
     doc.text(formatCurrency(detalle.monto), concX + thirdWidth - 2, conceptY, { align: 'right' });
-    // Thin separator
     doc.setDrawColor(210, 210, 210);
     doc.setLineWidth(0.1);
-    doc.line(concX + 2, conceptY + 1, concX + thirdWidth - 2, conceptY + 1);
-    conceptY += 3.8;
+    doc.line(concX + 2, conceptY + 1.2, concX + thirdWidth - 2, conceptY + 1.2);
+    conceptY += 5;
   }
 
   y += rowHeight + 2;
 
   // ========== QR + TOTAL + SIGNATURES ==========
-  const blockHeight = 28;
-  const qrSize = 22;
-  const qrBoxWidth = 28;
-  const totalBoxWidth = 48;
+  const blockHeight = 38;
+  const qrSize = 30;
+  const qrBoxWidth = 34;
+  const totalBoxWidth = 56;
   const sigWidth = (contentWidth - qrBoxWidth - totalBoxWidth - 6) / 2;
 
-  // QR block (bottom-left)
-  // Label above QR
-  doc.setFontSize(6);
+  doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(80, 80, 80);
-  doc.text('Escaneá para seguir tu envío', margin, y + 2.5);
+  doc.text('Escaneá para seguir tu envío', margin, y + 3);
 
-  // QR image
   if (assets.qrCodeBase64) {
     try {
-      doc.addImage(assets.qrCodeBase64, 'PNG', margin, y + 3.5, qrSize, qrSize);
+      doc.addImage(assets.qrCodeBase64, 'PNG', margin, y + 4.5, qrSize, qrSize);
     } catch (e) {}
   }
 
-  // Short code below QR
   const shortCode = shipment.tracking_number.split('-').pop() || shipment.tracking_number.slice(-6);
-  doc.setFontSize(9);
+  doc.setFontSize(10);
   doc.setFont('courier', 'bold');
   doc.setTextColor(20, 20, 20);
-  doc.text(shortCode, margin + qrSize / 2, y + 3.5 + qrSize + 3, { align: 'center' });
+  doc.text(shortCode, margin + qrSize / 2, y + 4.5 + qrSize + 3, { align: 'center' });
 
-  // TOTAL box — thick black border
+  // TOTAL box
   const totalX = margin + qrBoxWidth + 2;
   doc.setDrawColor(0, 0, 0);
-  doc.setLineWidth(1.5);
+  doc.setLineWidth(1.8);
   doc.rect(totalX, y, totalBoxWidth, blockHeight);
 
-  // Payment type indicator (top)
-  doc.setFontSize(7);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(80, 80, 80);
-  doc.text(tipoPago.toUpperCase(), totalX + totalBoxWidth / 2, y + 5, { align: 'center' });
-
-  // TOTAL label
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(50, 50, 50);
-  doc.text('TOTAL', totalX + totalBoxWidth / 2, y + 12, { align: 'center' });
+  doc.setTextColor(80, 80, 80);
+  doc.text(tipoPago.toUpperCase(), totalX + totalBoxWidth / 2, y + 7, { align: 'center' });
 
-  // Amount
-  doc.setFontSize(16);
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(50, 50, 50);
+  doc.text('TOTAL', totalX + totalBoxWidth / 2, y + 16, { align: 'center' });
+
+  doc.setFontSize(22);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(0, 0, 0);
-  doc.text(formatCurrency(shipment.precio_total), totalX + totalBoxWidth / 2, y + 22, { align: 'center' });
+  doc.text(formatCurrency(shipment.precio_total), totalX + totalBoxWidth / 2, y + 30, { align: 'center' });
 
-  // Signature boxes — solid lines
+  // Signature boxes
   const sig1X = totalX + totalBoxWidth + 4;
   const sig2X = sig1X + sigWidth + 2;
 
@@ -470,21 +449,20 @@ function drawReceipt(
     doc.setDrawColor(30, 30, 30);
     doc.setLineWidth(0.3);
     doc.rect(x, y, sigWidth, blockHeight);
-    doc.setFontSize(7);
+    doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(20, 20, 20);
-    doc.text(label, x + sigWidth / 2, y + 4, { align: 'center' });
-    // Solid signature line
+    doc.text(label, x + sigWidth / 2, y + 5, { align: 'center' });
     doc.setLineWidth(0.4);
-    doc.line(x + 3, y + 18, x + sigWidth - 3, y + 18);
-    doc.setFontSize(6);
+    doc.line(x + 3, y + 24, x + sigWidth - 3, y + 24);
+    doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(100, 100, 100);
-    doc.text('Firma y aclaración', x + sigWidth / 2, y + 21, { align: 'center' });
+    doc.text('Firma y aclaración', x + sigWidth / 2, y + 28, { align: 'center' });
     doc.setLineWidth(0.4);
-    doc.line(x + 3, y + 25, x + sigWidth - 3, y + 25);
-    doc.setFontSize(6);
-    doc.text('DNI', x + sigWidth / 2, y + 27.5, { align: 'center' });
+    doc.line(x + 3, y + 33, x + sigWidth - 3, y + 33);
+    doc.setFontSize(8);
+    doc.text('DNI', x + sigWidth / 2, y + 36.5, { align: 'center' });
   };
 
   drawSigBox('REMITENTE', sig1X);
@@ -493,28 +471,30 @@ function drawReceipt(
   y += blockHeight + 2;
 
   // ========== OBSERVACIONES + FOOTER ==========
+  const obsBoxH = 14;
   doc.setDrawColor(180, 180, 180);
   doc.setLineWidth(0.2);
-  doc.rect(margin, y, contentWidth, 10);
+  doc.rect(margin, y, contentWidth, obsBoxH);
 
-  doc.setFontSize(6);
+  doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(80, 80, 80);
-  doc.text('OBS:', margin + 2, y + 3.5);
+  doc.text('OBS:', margin + 2, y + 4);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6);
+  doc.setFontSize(8);
   doc.setTextColor(50, 50, 50);
-  const obs = (shipment.notas || '').substring(0, 110);
-  doc.text(obs, margin + 10, y + 3.5);
+  const obs = (shipment.notas || '');
+  const obsLines = doc.splitTextToSize(obs, contentWidth - 16);
+  doc.text(obsLines.slice(0, 2), margin + 12, y + 4);
 
-  doc.setFontSize(6);
+  doc.setFontSize(7);
   doc.setFont('helvetica', 'italic');
   doc.setTextColor(120, 120, 120);
   doc.text(
     'No contiene dinero en efectivo, cheques ni valores. Acepto los términos del servicio. DOCUMENTO NO VÁLIDO COMO FACTURA.',
     margin + 2,
-    y + 8
+    y + obsBoxH - 2
   );
 }
 
