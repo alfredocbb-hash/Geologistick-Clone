@@ -518,6 +518,40 @@ function drawReceipt(
   );
 }
 
+/**
+ * Anexa el comprobante (Copia Agencia + Copia Cliente) a un jsPDF existente.
+ * Si `startNewPage` es true, agrega una página A4 portrait nueva antes de dibujar.
+ * Si es false, dibuja en la página actual (asumida A4 portrait).
+ */
+export async function appendShipmentReceiptToDoc(
+  doc: jsPDF,
+  shipment: ShipmentData,
+  detalles: DetalleConcepto[],
+  branding: BrandingData | null,
+  trackingUrl: string,
+  startNewPage: boolean = true,
+): Promise<void> {
+  if (startNewPage) {
+    doc.addPage([210, 297], 'portrait');
+  }
+
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const halfHeight = pageHeight / 2;
+
+  const [tenantLogo, qrCodeBase64, defaultLogo] = await Promise.all([
+    branding?.logo_light ? loadImageAsBase64(branding.logo_light) : null,
+    loadImageAsBase64(generateQRCodeDataUrl(trackingUrl)),
+    loadLogoAsBase64(),
+  ]);
+
+  const assets: LoadedAssets = { tenantLogo, qrCodeBase64, defaultLogo };
+
+  drawReceipt(doc, shipment, detalles, branding, assets, 0, 'agencia');
+  drawCutLine(doc, halfHeight, pageWidth);
+  drawReceipt(doc, shipment, detalles, branding, assets, halfHeight, 'cliente');
+}
+
 export async function generateShipmentReceiptPDF(
   shipment: ShipmentData,
   detalles: DetalleConcepto[],
@@ -530,28 +564,7 @@ export async function generateShipmentReceiptPDF(
     format: 'a4',
   });
 
-  const pageHeight = doc.internal.pageSize.getHeight(); // 297mm
-  const pageWidth = doc.internal.pageSize.getWidth();   // 210mm
-  const halfHeight = pageHeight / 2;                     // ~148.5mm
+  await appendShipmentReceiptToDoc(doc, shipment, detalles, branding, trackingUrl, false);
 
-  // Load assets once
-  const [tenantLogo, qrCodeBase64, defaultLogo] = await Promise.all([
-    branding?.logo_light ? loadImageAsBase64(branding.logo_light) : null,
-    loadImageAsBase64(generateQRCodeDataUrl(trackingUrl)),
-    loadLogoAsBase64(),
-  ]);
-
-  const assets: LoadedAssets = { tenantLogo, qrCodeBase64, defaultLogo };
-
-  // Draw top receipt (COPIA AGENCIA)
-  drawReceipt(doc, shipment, detalles, branding, assets, 0, 'agencia');
-  
-  // Draw cut line
-  drawCutLine(doc, halfHeight, pageWidth);
-  
-  // Draw bottom receipt (COPIA CLIENTE)
-  drawReceipt(doc, shipment, detalles, branding, assets, halfHeight, 'cliente');
-
-  // Save PDF
   doc.save(`Comprobante_${shipment.tracking_number}.pdf`);
 }
