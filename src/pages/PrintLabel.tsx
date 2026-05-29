@@ -609,11 +609,12 @@ export default function PrintLabel() {
     try {
       const { tipoConfig, deliveryInfo, bultos, logoBase64, qrImages } = await preparePdfData(envio);
       const doc = generateLabelPdf(envio, tipoConfig, deliveryInfo, bultos, logoBase64, qrImages);
-      doc.save(`etiqueta-${envio.tracking_number}.pdf`);
-      toast.success('PDF descargado.');
+      await appendReceiptIfPossible(doc, envio);
+      doc.save(`etiqueta-comprobante-${envio.tracking_number}.pdf`);
+      toast.success('PDF descargado (etiqueta + comprobante).');
     } catch (e) {
       console.error('Error generating PDF:', e);
-      toast.error('Error al generar el PDF de etiquetas');
+      toast.error('Error al generar el PDF');
     } finally {
       setIsPrinting(false);
     }
@@ -625,13 +626,14 @@ export default function PrintLabel() {
     try {
       const { tipoConfig, deliveryInfo, bultos, logoBase64, qrImages } = await preparePdfData(envio);
       const doc = generateLabelPdf(envio, tipoConfig, deliveryInfo, bultos, logoBase64, qrImages);
+      await appendReceiptIfPossible(doc, envio);
       doc.autoPrint();
       const blobUrl = doc.output('bloburl');
       window.open(blobUrl, '_blank');
       toast.success('Abriendo diálogo de impresión...');
     } catch (e) {
       console.error('Error printing:', e);
-      toast.error('Error al imprimir las etiquetas');
+      toast.error('Error al imprimir');
     } finally {
       setIsPrinting(false);
     }
