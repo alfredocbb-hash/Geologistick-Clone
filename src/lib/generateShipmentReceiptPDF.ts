@@ -332,8 +332,8 @@ function drawReceipt(
     ? detalles
     : [{ nombre_concepto: 'Flete', monto: fleteCalculado > 0 ? fleteCalculado : shipment.precio_total }, ...detalles];
 
-  const rowHeight = Math.max(30, 10 + conceptosAMostrar.length * 5);
-  const colHeaderH = 6;
+  const rowHeight = Math.max(24, 9 + conceptosAMostrar.length * 4.2);
+  const colHeaderH = 5;
 
   const drawColHeader = (title: string, x: number, w: number) => {
     doc.setFillColor(230, 230, 230);
@@ -341,36 +341,36 @@ function drawReceipt(
     doc.setDrawColor(30, 30, 30);
     doc.setLineWidth(0.3);
     doc.rect(x, y, w, rowHeight);
-    doc.setFontSize(9);
+    doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(20, 20, 20);
-    doc.text(title, x + 2, y + 4.2);
+    doc.text(title, x + 2, y + 3.6);
   };
 
   // PAGO
   drawColHeader('PAGO', margin, thirdWidth);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
+  doc.setFontSize(10);
   doc.setTextColor(20, 20, 20);
   const tipoPago = TIPO_PAGO_LABELS[shipment.tipo_pago || 'contado'] || shipment.tipo_pago || 'Contado';
-  doc.text(tipoPago, margin + 2, y + colHeaderH + 5);
-  doc.setFontSize(9);
+  doc.text(tipoPago, margin + 2, y + colHeaderH + 4.2);
+  doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(60, 60, 60);
-  doc.text(`Bultos: ${shipment.cantidad_bultos || 1}`, margin + 2, y + colHeaderH + 11);
+  doc.text(`Bultos: ${shipment.cantidad_bultos || 1}`, margin + 2, y + colHeaderH + 9);
   if (shipment.peso_kg) {
-    doc.text(`Peso: ${shipment.peso_kg} kg`, margin + 2, y + colHeaderH + 16);
+    doc.text(`Peso: ${shipment.peso_kg} kg`, margin + 2, y + colHeaderH + 13);
   }
 
   // DESCRIPCIÓN
   const descX = margin + thirdWidth + 2;
   drawColHeader('DESCRIPCIÓN', descX, thirdWidth);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
+  doc.setFontSize(8);
   doc.setTextColor(30, 30, 30);
   const desc = (shipment.descripcion || '-');
   const descLines = doc.splitTextToSize(desc, thirdWidth - 4);
-  doc.text(descLines.slice(0, 4), descX + 2, y + colHeaderH + 5);
+  doc.text(descLines.slice(0, 3), descX + 2, y + colHeaderH + 4);
   if (shipment.valor_declarado) {
     doc.setFont('helvetica', 'bold');
     doc.text(`V.Decl: ${formatCurrency(shipment.valor_declarado)}`, descX + 2, y + rowHeight - 2);
@@ -380,9 +380,9 @@ function drawReceipt(
   const concX = margin + (thirdWidth + 2) * 2;
   drawColHeader('CONCEPTOS', concX, thirdWidth);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
+  doc.setFontSize(8);
   doc.setTextColor(30, 30, 30);
-  let conceptY = y + colHeaderH + 4.5;
+  let conceptY = y + colHeaderH + 4;
   for (const detalle of conceptosAMostrar) {
     doc.setFont('helvetica', 'normal');
     doc.text(detalle.nombre_concepto.substring(0, 18), concX + 2, conceptY);
@@ -390,8 +390,8 @@ function drawReceipt(
     doc.text(formatCurrency(detalle.monto), concX + thirdWidth - 2, conceptY, { align: 'right' });
     doc.setDrawColor(210, 210, 210);
     doc.setLineWidth(0.1);
-    doc.line(concX + 2, conceptY + 1.2, concX + thirdWidth - 2, conceptY + 1.2);
-    conceptY += 5;
+    doc.line(concX + 2, conceptY + 1, concX + thirdWidth - 2, conceptY + 1);
+    conceptY += 4.2;
   }
 
   y += rowHeight + 2;
