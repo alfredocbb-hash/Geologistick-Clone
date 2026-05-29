@@ -1,33 +1,33 @@
-## Objetivo
+## Problema
 
-En el flujo de etiqueta interna (`/print-label`), al generar o imprimir, producir **un único PDF** que contenga:
-1. La(s) etiqueta(s) actuales (100x150mm o A4 con 4 por hoja).
-2. A continuación, el **comprobante de envío** completo (el mismo que hoy genera `generateShipmentReceiptPDF`).
+En `src/lib/generateShipmentReceiptPDF.ts`, la función `drawReceipt` dibuja cada copia (agencia/cliente) con alturas fijas que totalizan ~110 mm, pero cada mitad de la A4 mide 148.5 mm. Resultado: el comprobante queda chico, centrado arriba de cada mitad, dejando ~35 mm de espacio en blanco abajo de cada copia.
 
-Así, con un solo clic, el operador imprime etiqueta + comprobante juntos en la misma pestaña.
+Lo mismo aplica cuando el comprobante se anexa al PDF de etiqueta interna (`PrintLabel`), porque usa la misma función de dibujo.
 
 ## Cambios
 
-### 1. `src/lib/generateShipmentReceiptPDF.ts`
-- Extraer la lógica de dibujo a una función reutilizable `drawShipmentReceipt(doc, shipment, options?, startNewPage = true)` que recibe un `jsPDF` existente y dibuja el comprobante en una página A4 (agregando `doc.addPage('a4','portrait')` si `startNewPage`).
-- Mantener `generateShipmentReceiptPDF(...)` como wrapper que crea un nuevo `jsPDF` A4, llama a `drawShipmentReceipt(doc, ..., false)` (primera página), y hace `doc.save(...)`. No rompe llamadas existentes (`PrintReceipt.tsx`).
+**Archivo único:** `src/lib/generateShipmentReceiptPDF.ts`
 
-### 2. `src/pages/PrintLabel.tsx`
-- En `handlePrint` y `handleDirectPrint`, después de `generateLabelPdf(...)`:
-  - Cargar los datos necesarios del comprobante (mismo `envio` ya consultado; si el comprobante necesita relaciones extra como `tenant_branding`, reutilizar las que ya trae el query o ampliarlo).
-  - Llamar `await drawShipmentReceipt(doc, envio, opts, true)` para anexar el comprobante como página(s) adicional(es).
-  - Mantener `doc.save(\`etiqueta-comprobante-${tracking}.pdf\`)` o `doc.autoPrint()` + `window.open(bloburl)`.
-- Actualizar el copy del header: subtítulo "Etiqueta + comprobante de envío" y textos de botones ("Imprimir etiqueta y comprobante" / "Generar PDF (etiqueta + comprobante)").
+1. **Calcular altura disponible por copia**
+   - `availableHeight = pageHeight / 2` (≈148.5 mm) menos un pequeño margen para la línea de corte.
+   - Definir alturas objetivo para cada bloque que sumen el total disponible, en lugar de los valores fijos actuales (`boxHeight = 24`, `blockHeight = 28`, `conceptBoxHeight ≈ 20`, barra obs = 10, etc.).
 
-### 3. Compatibilidad
-- `PrintReceipt.tsx` sigue funcionando igual (usa el wrapper).
-- No se tocan `ShipmentDetailsDialog`, rutas, ni `NewShipment` — siguen navegando a `/print-label?id=...`, pero ahora ese PDF ya incluye el comprobante.
+2. **Reescalar bloques de `drawReceipt`** proporcionalmente para llenar la mitad de A4:
+   - Header / logo: subir `logoSize` de 14 → ~18 mm y aumentar tipografías del header (companyName 12→14, guía 11→13, fecha 8→10).
+   - Barras ORIGEN/DESTINO: altura 6 → 8 mm, fuente 8 → 10.
+   - Cajas REMITENTE/DESTINATARIO: `boxHeight` 24 → ~34 mm, ampliar líneas de dirección (mostrar hasta 3 líneas en vez de 2) y subir fuentes de nombre (9→11) y datos (7→9).
+   - Fila PAGO / DESCRIPCIÓN / CONCEPTOS: `rowHeight` mínimo 20 → ~32 mm, fuente conceptos 7 → 9, separadores ajustados.
+   - Bloque QR + TOTAL + FIRMAS: `blockHeight` 28 → ~38 mm, `qrSize` 22 → 30 mm, fuente TOTAL 16 → 22, firmas con más altura para firmar cómodamente.
+   - Caja OBS + footer: altura 10 → ~14 mm, dos líneas para observaciones.
+   - Espaciados verticales (`y += …`) recalculados para que la suma encaje en ~146 mm dejando margen para la línea de corte.
 
-## Consideraciones técnicas
-- El comprobante actual ya es A4 portrait con jsPDF, así que se agrega vía `doc.addPage([210,297],'portrait')` independientemente de si la etiqueta fue 100x150mm o A4 — jsPDF acepta tamaño por página.
-- Si `generateShipmentReceiptPDF` requiere datos adicionales (logo, sucursal, etc.), revisar y ampliar el `select` del query de `PrintLabel` para no hacer un segundo round-trip.
-- Manejo de errores: si la carga del comprobante falla, igual entregar el PDF con solo etiquetas y mostrar un toast de warning.
+3. **Mantener el layout y la estética** (mismas columnas, colores, badges, línea de corte centrada en `pageHeight/2`). Solo cambian dimensiones y tipografías para ocupar toda la hoja.
 
-## Fuera de alcance
-- Etiqueta ML (MercadoLibre): no se modifica.
-- Página `/print-receipt`: queda como acceso directo al comprobante solo.
+4. **No tocar**:
+   - `PrintLabel.tsx`, `PrintReceipt.tsx`, ni la firma pública de `generateShipmentReceiptPDF` / `appendShipmentReceiptToDoc`.
+   - Lógica de datos, branding, QR ni de carga de imágenes.
+
+## QA
+
+- Generar el PDF combinado desde PrintLabel y verificar que cada copia ocupe su mitad de la A4 sin espacio muerto y sin que se corten elementos.
+- Generar el comprobante solo desde `PrintReceipt` y validar lo mismo.
