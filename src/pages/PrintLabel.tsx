@@ -702,6 +702,7 @@ export default function PrintLabel() {
               {envio.tracking_number} • {bultos} {bultos === 1 ? 'bulto' : 'bultos'}
               {bultos > 1 && ' • 4 por hoja A4'} • Incluye comprobante de envío
             </p>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <Button onClick={handleDirectPrint} variant="outline" disabled={isPrinting}>
