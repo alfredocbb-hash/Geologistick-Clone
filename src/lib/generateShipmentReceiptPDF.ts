@@ -397,49 +397,49 @@ function drawReceipt(
   y += rowHeight + 2;
 
   // ========== QR + TOTAL + SIGNATURES ==========
-  const blockHeight = 38;
-  const qrSize = 30;
-  const qrBoxWidth = 34;
-  const totalBoxWidth = 56;
+  const blockHeight = 30;
+  const qrSize = 24;
+  const qrBoxWidth = 28;
+  const totalBoxWidth = 50;
   const sigWidth = (contentWidth - qrBoxWidth - totalBoxWidth - 6) / 2;
 
-  doc.setFontSize(8);
+  doc.setFontSize(7);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(80, 80, 80);
-  doc.text('Escaneá para seguir tu envío', margin, y + 3);
+  doc.text('Escaneá para seguir tu envío', margin, y + 2.5);
 
   if (assets.qrCodeBase64) {
     try {
-      doc.addImage(assets.qrCodeBase64, 'PNG', margin, y + 4.5, qrSize, qrSize);
+      doc.addImage(assets.qrCodeBase64, 'PNG', margin, y + 3.5, qrSize, qrSize);
     } catch (e) {}
   }
 
   const shortCode = shipment.tracking_number.split('-').pop() || shipment.tracking_number.slice(-6);
-  doc.setFontSize(10);
+  doc.setFontSize(8);
   doc.setFont('courier', 'bold');
   doc.setTextColor(20, 20, 20);
-  doc.text(shortCode, margin + qrSize / 2, y + 4.5 + qrSize + 3, { align: 'center' });
+  doc.text(shortCode, margin + qrSize / 2, y + 3.5 + qrSize + 2.5, { align: 'center' });
 
   // TOTAL box
   const totalX = margin + qrBoxWidth + 2;
   doc.setDrawColor(0, 0, 0);
-  doc.setLineWidth(1.8);
+  doc.setLineWidth(1.5);
   doc.rect(totalX, y, totalBoxWidth, blockHeight);
 
-  doc.setFontSize(9);
+  doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(80, 80, 80);
-  doc.text(tipoPago.toUpperCase(), totalX + totalBoxWidth / 2, y + 7, { align: 'center' });
+  doc.text(tipoPago.toUpperCase(), totalX + totalBoxWidth / 2, y + 5.5, { align: 'center' });
 
-  doc.setFontSize(11);
+  doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(50, 50, 50);
-  doc.text('TOTAL', totalX + totalBoxWidth / 2, y + 16, { align: 'center' });
+  doc.text('TOTAL', totalX + totalBoxWidth / 2, y + 12, { align: 'center' });
 
-  doc.setFontSize(22);
+  doc.setFontSize(18);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(0, 0, 0);
-  doc.text(formatCurrency(shipment.precio_total), totalX + totalBoxWidth / 2, y + 30, { align: 'center' });
+  doc.text(formatCurrency(shipment.precio_total), totalX + totalBoxWidth / 2, y + 23, { align: 'center' });
 
   // Signature boxes
   const sig1X = totalX + totalBoxWidth + 4;
@@ -449,20 +449,20 @@ function drawReceipt(
     doc.setDrawColor(30, 30, 30);
     doc.setLineWidth(0.3);
     doc.rect(x, y, sigWidth, blockHeight);
-    doc.setFontSize(9);
+    doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(20, 20, 20);
-    doc.text(label, x + sigWidth / 2, y + 5, { align: 'center' });
+    doc.text(label, x + sigWidth / 2, y + 4, { align: 'center' });
     doc.setLineWidth(0.4);
-    doc.line(x + 3, y + 24, x + sigWidth - 3, y + 24);
-    doc.setFontSize(8);
+    doc.line(x + 3, y + 19, x + sigWidth - 3, y + 19);
+    doc.setFontSize(7);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(100, 100, 100);
-    doc.text('Firma y aclaración', x + sigWidth / 2, y + 28, { align: 'center' });
+    doc.text('Firma y aclaración', x + sigWidth / 2, y + 22, { align: 'center' });
     doc.setLineWidth(0.4);
-    doc.line(x + 3, y + 33, x + sigWidth - 3, y + 33);
-    doc.setFontSize(8);
-    doc.text('DNI', x + sigWidth / 2, y + 36.5, { align: 'center' });
+    doc.line(x + 3, y + 26, x + sigWidth - 3, y + 26);
+    doc.setFontSize(7);
+    doc.text('DNI', x + sigWidth / 2, y + 29, { align: 'center' });
   };
 
   drawSigBox('REMITENTE', sig1X);
@@ -471,24 +471,24 @@ function drawReceipt(
   y += blockHeight + 2;
 
   // ========== OBSERVACIONES + FOOTER ==========
-  const obsBoxH = 14;
+  const obsBoxH = 10;
   doc.setDrawColor(180, 180, 180);
   doc.setLineWidth(0.2);
   doc.rect(margin, y, contentWidth, obsBoxH);
 
-  doc.setFontSize(8);
+  doc.setFontSize(7);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(80, 80, 80);
-  doc.text('OBS:', margin + 2, y + 4);
+  doc.text('OBS:', margin + 2, y + 3.5);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
+  doc.setFontSize(7);
   doc.setTextColor(50, 50, 50);
   const obs = (shipment.notas || '');
   const obsLines = doc.splitTextToSize(obs, contentWidth - 16);
-  doc.text(obsLines.slice(0, 2), margin + 12, y + 4);
+  doc.text(obsLines.slice(0, 1), margin + 12, y + 3.5);
 
-  doc.setFontSize(7);
+  doc.setFontSize(6.5);
   doc.setFont('helvetica', 'italic');
   doc.setTextColor(120, 120, 120);
   doc.text(
