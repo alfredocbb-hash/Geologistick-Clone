@@ -15,6 +15,34 @@ import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { jsPDF } from 'jspdf';
 import geologistickLogo from '@/assets/geologistick-logo.png';
+import { appendShipmentReceiptToDoc } from '@/lib/generateShipmentReceiptPDF';
+
+async function appendReceiptIfPossible(doc: jsPDF, envio: any) {
+  try {
+    const [detallesRes, brandingRes] = await Promise.all([
+      supabase.from('envio_detalles').select('nombre_concepto, monto').eq('envio_id', envio.id),
+      envio.tenant_id
+        ? supabase
+            .from('tenant_branding')
+            .select('logo_light, nombre_app, color_primario')
+            .eq('tenant_id', envio.tenant_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null } as any),
+    ]);
+    const trackingUrl = `${window.location.origin}/tracking?code=${envio.tracking_number}`;
+    await appendShipmentReceiptToDoc(
+      doc,
+      envio,
+      detallesRes?.data || [],
+      (brandingRes as any)?.data || null,
+      trackingUrl,
+      true,
+    );
+  } catch (e) {
+    console.error('[PrintLabel] Error appending receipt:', e);
+    toast.warning('No se pudo anexar el comprobante al PDF');
+  }
+}
 
 const LABEL_SIZE = {
   widthMm: 100,
@@ -581,11 +609,12 @@ export default function PrintLabel() {
     try {
       const { tipoConfig, deliveryInfo, bultos, logoBase64, qrImages } = await preparePdfData(envio);
       const doc = generateLabelPdf(envio, tipoConfig, deliveryInfo, bultos, logoBase64, qrImages);
-      doc.save(`etiqueta-${envio.tracking_number}.pdf`);
-      toast.success('PDF descargado.');
+      await appendReceiptIfPossible(doc, envio);
+      doc.save(`etiqueta-comprobante-${envio.tracking_number}.pdf`);
+      toast.success('PDF descargado (etiqueta + comprobante).');
     } catch (e) {
       console.error('Error generating PDF:', e);
-      toast.error('Error al generar el PDF de etiquetas');
+      toast.error('Error al generar el PDF');
     } finally {
       setIsPrinting(false);
     }
@@ -597,13 +626,14 @@ export default function PrintLabel() {
     try {
       const { tipoConfig, deliveryInfo, bultos, logoBase64, qrImages } = await preparePdfData(envio);
       const doc = generateLabelPdf(envio, tipoConfig, deliveryInfo, bultos, logoBase64, qrImages);
+      await appendReceiptIfPossible(doc, envio);
       doc.autoPrint();
       const blobUrl = doc.output('bloburl');
       window.open(blobUrl, '_blank');
       toast.success('Abriendo diálogo de impresión...');
     } catch (e) {
       console.error('Error printing:', e);
-      toast.error('Error al imprimir las etiquetas');
+      toast.error('Error al imprimir');
     } finally {
       setIsPrinting(false);
     }
@@ -667,10 +697,10 @@ export default function PrintLabel() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">Imprimir Etiquetas</h1>
+            <h1 className="text-2xl font-bold">Imprimir Etiquetas + Comprobante</h1>
             <p className="text-muted-foreground">
               {envio.tracking_number} • {bultos} {bultos === 1 ? 'bulto' : 'bultos'}
-              {bultos > 1 && ' • 4 por hoja A4'}
+              {bultos > 1 && ' • 4 por hoja A4'} • Incluye comprobante de envío
             </p>
           </div>
         </div>

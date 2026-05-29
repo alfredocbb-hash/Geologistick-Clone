@@ -1,18 +1,33 @@
-Detecté por qué seguís viendo lo mismo: la base ya no tiene comisiones pendientes de $2.459,04 para Fernando, pero la pantalla al recalcular está priorizando match por ciudad antes que código postal. Además, la regla de CABA por CP está cargada como una lista larga con ciudad “CABA”, y el código actual sólo usa CP en reglas sin ciudad, entonces no entra por CP.
+## Objetivo
 
-Plan de ajuste:
+En el flujo de etiqueta interna (`/print-label`), al generar o imprimir, producir **un único PDF** que contenga:
+1. La(s) etiqueta(s) actuales (100x150mm o A4 con 4 por hoja).
+2. A continuación, el **comprobante de envío** completo (el mismo que hoy genera `generateShipmentReceiptPDF`).
 
-1. Corregir el matching de reglas por zona en `DriverSettlements`
-   - Priorizar código postal antes que ciudad.
-   - Permitir reglas con CP aunque también tengan ciudad cargada.
-   - Soportar listas largas de CP y rangos.
-   - Mantener fallback por ciudad/provincia sólo cuando no haya CP válido.
+Así, con un solo clic, el operador imprime etiqueta + comprobante juntos en la misma pestaña.
 
-2. Mejorar la clasificación visible en la grilla
-   - Mostrar como regla aplicada el CP/rango cuando matchee por CP, por ejemplo `CPs 1000...1439` o `CP 1000–1499`, en vez de “sin match → fallback chofer”.
+## Cambios
 
-3. Verificar contra datos reales
-   - Confirmar que la consulta de comisiones pendientes ya no tiene $2.459,04.
-   - Confirmar que el cálculo nuevo para los envíos con CP CABA devuelve $2.700 antes de generar la liquidación.
+### 1. `src/lib/generateShipmentReceiptPDF.ts`
+- Extraer la lógica de dibujo a una función reutilizable `drawShipmentReceipt(doc, shipment, options?, startNewPage = true)` que recibe un `jsPDF` existente y dibuja el comprobante en una página A4 (agregando `doc.addPage('a4','portrait')` si `startNewPage`).
+- Mantener `generateShipmentReceiptPDF(...)` como wrapper que crea un nuevo `jsPDF` A4, llama a `drawShipmentReceipt(doc, ..., false)` (primera página), y hace `doc.save(...)`. No rompe llamadas existentes (`PrintReceipt.tsx`).
 
-Resultado esperado: al apretar “Calcular” nuevamente, ya no debería aparecer el fallback de $2.459,04 para barrios/CP de CABA; debería tomar $2.700/$3.300/$3.500/$6.000 según CP/zona.
+### 2. `src/pages/PrintLabel.tsx`
+- En `handlePrint` y `handleDirectPrint`, después de `generateLabelPdf(...)`:
+  - Cargar los datos necesarios del comprobante (mismo `envio` ya consultado; si el comprobante necesita relaciones extra como `tenant_branding`, reutilizar las que ya trae el query o ampliarlo).
+  - Llamar `await drawShipmentReceipt(doc, envio, opts, true)` para anexar el comprobante como página(s) adicional(es).
+  - Mantener `doc.save(\`etiqueta-comprobante-${tracking}.pdf\`)` o `doc.autoPrint()` + `window.open(bloburl)`.
+- Actualizar el copy del header: subtítulo "Etiqueta + comprobante de envío" y textos de botones ("Imprimir etiqueta y comprobante" / "Generar PDF (etiqueta + comprobante)").
+
+### 3. Compatibilidad
+- `PrintReceipt.tsx` sigue funcionando igual (usa el wrapper).
+- No se tocan `ShipmentDetailsDialog`, rutas, ni `NewShipment` — siguen navegando a `/print-label?id=...`, pero ahora ese PDF ya incluye el comprobante.
+
+## Consideraciones técnicas
+- El comprobante actual ya es A4 portrait con jsPDF, así que se agrega vía `doc.addPage([210,297],'portrait')` independientemente de si la etiqueta fue 100x150mm o A4 — jsPDF acepta tamaño por página.
+- Si `generateShipmentReceiptPDF` requiere datos adicionales (logo, sucursal, etc.), revisar y ampliar el `select` del query de `PrintLabel` para no hacer un segundo round-trip.
+- Manejo de errores: si la carga del comprobante falla, igual entregar el PDF con solo etiquetas y mostrar un toast de warning.
+
+## Fuera de alcance
+- Etiqueta ML (MercadoLibre): no se modifica.
+- Página `/print-receipt`: queda como acceso directo al comprobante solo.
