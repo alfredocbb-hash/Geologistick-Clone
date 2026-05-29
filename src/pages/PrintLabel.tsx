@@ -697,12 +697,11 @@ export default function PrintLabel() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">Imprimir Etiquetas</h1>
+            <h1 className="text-2xl font-bold">Imprimir Etiquetas + Comprobante</h1>
             <p className="text-muted-foreground">
               {envio.tracking_number} • {bultos} {bultos === 1 ? 'bulto' : 'bultos'}
-              {bultos > 1 && ' • 4 por hoja A4'}
+              {bultos > 1 && ' • 4 por hoja A4'} • Incluye comprobante de envío
             </p>
-          </div>
         </div>
         <div className="flex items-center gap-3">
           <Button onClick={handleDirectPrint} variant="outline" disabled={isPrinting}>
