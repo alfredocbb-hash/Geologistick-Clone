@@ -525,13 +525,22 @@ function generateLabelPdf(
   const size = LABEL_SIZE;
 
   if (bultos <= 1) {
-    // Single label: 100x150mm page
+    // Etiqueta única en A4 con la etiqueta 100x150 centrada arriba.
+    // Mantenemos A4 para que el PDF combinado (etiqueta + comprobante)
+    // tenga páginas uniformes y Chrome no descalibre la escala de impresión.
     const doc = new jsPDF({
-      orientation: size.orientation,
+      orientation: 'portrait',
       unit: 'mm',
-      format: [size.widthMm, size.heightMm],
+      format: 'a4',
     });
-    drawLabel(doc, envio, 1, bultos, tipoConfig, deliveryInfo as any, logoBase64, qrImages[0], size.widthMm, size.heightMm, size.qrSize);
+    const offsetX = (210 - size.widthMm) / 2; // 55 mm
+    const offsetY = 10;
+    drawLabel(
+      doc, envio, 1, bultos, tipoConfig, deliveryInfo as any,
+      logoBase64, qrImages[0],
+      size.widthMm, size.heightMm, size.qrSize,
+      offsetX, offsetY,
+    );
     return doc;
   }
 
