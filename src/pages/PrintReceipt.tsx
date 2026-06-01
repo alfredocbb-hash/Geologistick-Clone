@@ -113,7 +113,7 @@ export default function PrintReceipt() {
         branding,
         trackingUrl
       );
-      toast.success('Comprobante descargado (Copia Agencia + Copia Cliente)');
+      toast.success('Comprobante descargado (2 hojas A4: Copia Agencia + Copia Cliente)');
     } catch (error) {
       console.error('Error generating receipt:', error);
       toast.error('Error al generar el comprobante');
