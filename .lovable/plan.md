@@ -1,26 +1,45 @@
-## Causa del problema
 
-En el tenant **Blackbox** el envío tiene 1 bulto. En ese caso `generateLabelPdf` crea el PDF con la primera página de **100×150 mm** (tamaño etiqueta térmica). Luego `appendShipmentReceiptToDoc` agrega 2 páginas A4 (210×297 mm) al mismo documento.
+## Objetivo
 
-Al imprimir desde Chrome con "Ajustar al ancho de página", Chrome usa el ancho de la **primera página (100 mm)** como referencia y aplica esa misma escala (~2.1×) a las páginas A4. Resultado: el comprobante se "agranda" fuera del A4 y solo se ve la esquina superior izquierda (lo que muestra la captura).
+Que el comprobante de envío se imprima en **una sola hoja A4** (portrait), con **Copia Agencia arriba y Copia Cliente abajo**, separadas por una línea de corte punteada. Hoy salen en 2 páginas A4 separadas.
 
-En **Beraexpress** sale bien porque seguramente se imprimen envíos con más de 1 bulto (PDF arranca en A4 con grilla 2×2) o se usa directamente `/print-receipt` (sin etiqueta), por lo que todas las páginas son del mismo tamaño y la escala es uniforme.
+## Cambios
 
-## Cambio propuesto
+### 1. `src/lib/generateShipmentReceiptPDF.ts`
 
-**`src/pages/PrintLabel.tsx`** — Unificar el tamaño de todas las páginas a **A4** cuando el PDF incluye etiqueta + comprobante:
+- Refactorizar `drawReceipt(doc, ...)` para que acepte un parámetro `offsetY` y dibuje el comprobante dentro de **media hoja A4** (≈148mm de alto) en lugar de una página completa de 297mm.
+- Reducir verticalmente los bloques internos del comprobante para que entren en ~140mm útiles:
+  - Header compacto (logo ~16mm, separador más fino)
+  - Barras Origen/Destino: altura ~9mm
+  - Cajas Remitente/Destinatario: alto ~30mm
+  - Strip Condición de Venta: ~7mm
+  - Descripción / Conceptos: altura dinámica menor, ~30mm
+  - Bloque QR + Total: ~30mm (QR 28mm)
+  - Firmas: ~22mm
+  - Observaciones: ~14mm
+  - Footer mini con nombre de empresa + etiqueta de copia
+- Mantener intactos: jerarquía visual, color primario, contenido (datos, conceptos, QR, firmas, observaciones, totales) y el logo con ratio real (fix Blackbox).
 
-1. Modificar `generateLabelPdf` (o introducir una variante usada por `handlePrint`/`handleDirectPrint`) para que, **cuando `bultos === 1`**, en lugar de generar una página de 100×150 mm, cree una página A4 portrait y dibuje la etiqueta centrada horizontalmente en la parte superior (mismas dimensiones 100×150 mm que ya usa `drawLabel`, con `offsetX = (210 − 100) / 2 = 55` y `offsetY = 10`).
+- Modificar `appendShipmentReceiptToDoc`:
+  - Si `startNewPage`, hacer `doc.addPage([210, 297], 'portrait')` **una sola vez**.
+  - Dibujar Copia Agencia en `offsetY = 0` (mitad superior).
+  - Dibujar **línea punteada de corte horizontal** en y ≈ 148.5mm con texto pequeño centrado "— Cortar aquí —".
+  - Dibujar Copia Cliente en `offsetY = 148.5mm` (mitad inferior).
+  - **No** agregar segunda página.
 
-2. Multi-bulto (`bultos > 1`) ya está en A4 con grilla 2×2 → sin cambios.
+- `generateShipmentReceiptPDF` queda igual (sigue llamando a `appendShipmentReceiptToDoc` con `startNewPage = false`).
 
-3. Resultado: el PDF combinado tendrá siempre **páginas A4 uniformes**, la escala de impresión de Chrome será correcta y el comprobante de Blackbox se verá completo, igual que en Beraexpress.
+### 2. `src/pages/PrintReceipt.tsx`
 
-**No se toca** `generateShipmentReceiptPDF.ts` (sigue funcionando bien desde `/print-receipt` solo) ni la lógica de datos, branding o logo. Solo se ajusta el tamaño/posición de la etiqueta dentro del PDF combinado.
+- Actualizar el texto del toast a algo como: `"1 hoja A4: Copia Agencia (arriba) + Copia Cliente (abajo)"`.
+
+### 3. `src/pages/PrintLabel.tsx`
+
+- Sin cambios funcionales. El combinado etiqueta + comprobante ahora será: 1 página A4 con la etiqueta centrada (ya implementado) + 1 página A4 con ambas copias. Total 2 hojas A4 en lugar de 3.
 
 ## QA
 
-- Probar `/print-label?id=...` con Blackbox (1 bulto): verificar que las 3 páginas A4 se ven completas en el preview de impresión.
-- Verificar que Beraexpress sigue saliendo bien.
-- Verificar multi-bulto (4 etiquetas por hoja) sin cambios.
-- Verificar que `/print-receipt` (sin etiqueta) sigue generando 2 páginas A4 correctas.
+- Imprimir desde `/print-receipt?id=...` con tenants Blackbox y Beraexpress: una sola hoja A4 con ambas copias, sin solapamientos, todo el contenido visible.
+- Imprimir desde `/print-label?id=...` con 1 bulto: 2 hojas A4 (etiqueta + comprobante doble).
+- Verificar logos de tenants con distintos aspect ratios.
+- Verificar envíos con muchos conceptos (que no se solapen con el bloque QR/Total).
