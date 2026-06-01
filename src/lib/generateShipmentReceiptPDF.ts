@@ -127,7 +127,7 @@ function hexToRgb(hex: string): [number, number, number] {
     : [59, 130, 246];
 }
 
-// Draws a single receipt copy within a half A4 (≈140mm usable height) at the given vertical offset.
+// Draws a single receipt copy within a half A4 (≈145mm usable height) at the given vertical offset.
 function drawReceipt(
   doc: jsPDF,
   shipment: ShipmentData,
@@ -138,25 +138,26 @@ function drawReceipt(
   offsetY: number,
 ) {
   const pageWidth = doc.internal.pageSize.getWidth(); // 210
-  const margin = 10;
-  const contentWidth = pageWidth - margin * 2; // 190
+  const margin = 8;
+  const contentWidth = pageWidth - margin * 2; // 194
 
   const logoToUse = assets.tenantLogo || assets.defaultLogo;
   const companyName = branding?.nombre_app || 'Geologistick';
   const primaryColor = branding?.color_primario || '#3B82F6';
   const primaryRgb = hexToRgb(primaryColor);
 
-  let y = offsetY + 3;
+  let y = offsetY + 2;
 
   // Top accent bar
   doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-  doc.rect(margin, y, contentWidth, 1.2, 'F');
-  y += 3;
+  doc.rect(margin, y, contentWidth, 1, 'F');
+  y += 2.5;
 
-  // ===== HEADER =====
+  // ===== HEADER (12mm de alto) =====
   const headerStart = y;
-  const logoMaxH = 14;
-  const logoMaxW = 30;
+  const headerH = 12;
+  const logoMaxH = 11;
+  const logoMaxW = 22;
   let logoDrawW = logoMaxH;
   let logoDrawH = logoMaxH;
   if (logoToUse) {
@@ -173,41 +174,40 @@ function drawReceipt(
     } catch (e) {}
   }
 
-  const textX = margin + logoDrawW + 4;
-  doc.setFontSize(12);
+  const textX = margin + logoDrawW + 3;
+  doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(20, 20, 20);
-  doc.text(companyName, textX, y + 5);
+  doc.text(companyName.substring(0, 30), textX, y + 4);
 
-  doc.setFontSize(7.5);
+  doc.setFontSize(6.8);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(90, 90, 90);
   const branchInfo = shipment.sucursal_origen;
   if (branchInfo) {
     const branchLine1 = `${branchInfo.direccion || ''} ${branchInfo.ciudad || ''}`.trim();
-    const branchLine2 = branchInfo.telefono ? `Tel: ${branchInfo.telefono}` : '';
-    doc.text(branchLine1.substring(0, 70), textX, y + 9);
-    if (branchLine2) doc.text(branchLine2, textX, y + 12.5);
+    const tel = branchInfo.telefono ? ` · Tel: ${branchInfo.telefono}` : '';
+    doc.text((branchLine1 + tel).substring(0, 75), textX, y + 7.5);
   }
 
   // Right side: badge + guía + fecha
   const rightX = pageWidth - margin;
   const copyLabel = copyType === 'agencia' ? 'COPIA AGENCIA' : 'COPIA CLIENTE';
 
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setFont('helvetica', 'bold');
-  const labelWidth = doc.getTextWidth(copyLabel) + 6;
+  const labelWidth = doc.getTextWidth(copyLabel) + 5;
   doc.setFillColor(0, 0, 0);
-  doc.rect(rightX - labelWidth, y, labelWidth, 5, 'F');
+  doc.rect(rightX - labelWidth, y, labelWidth, 4, 'F');
   doc.setTextColor(255, 255, 255);
-  doc.text(copyLabel, rightX - labelWidth / 2, y + 3.5, { align: 'center' });
+  doc.text(copyLabel, rightX - labelWidth / 2, y + 2.8, { align: 'center' });
 
-  doc.setFontSize(11);
+  doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-  doc.text(`Guía Nº: ${shipment.tracking_number}`, rightX, y + 10, { align: 'right' });
+  doc.text(`Guía: ${shipment.tracking_number}`, rightX, y + 8, { align: 'right' });
 
-  doc.setFontSize(7.5);
+  doc.setFontSize(6.8);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(110, 110, 110);
   const fecha = new Date(shipment.created_at).toLocaleDateString('es-AR', {
@@ -215,19 +215,19 @@ function drawReceipt(
     month: '2-digit',
     day: '2-digit',
   });
-  doc.text(`Fecha: ${fecha}`, rightX, y + 14, { align: 'right' });
+  doc.text(`Fecha: ${fecha}`, rightX, y + 11.5, { align: 'right' });
 
-  y = headerStart + Math.max(logoDrawH, 15) + 2;
+  y = headerStart + headerH;
 
   // Separator
   doc.setDrawColor(30, 30, 30);
   doc.setLineWidth(0.3);
   doc.line(margin, y, pageWidth - margin, y);
-  y += 3;
+  y += 2;
 
   // ===== ORIGEN / DESTINO bars =====
-  const halfWidth = contentWidth / 2 - 2;
-  const odBarH = 8;
+  const halfWidth = contentWidth / 2 - 1.5;
+  const odBarH = 6.5;
 
   doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
   doc.rect(margin, y, halfWidth, odBarH, 'F');
