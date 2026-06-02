@@ -590,6 +590,37 @@ export default function Cash() {
                 </div>
               </div>
 
+              {/* Totales por método de pago */}
+              {metodosConMovimiento.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-sm font-medium text-muted-foreground mb-2">
+                    Totales por método de pago
+                  </p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {metodosConMovimiento.map((metodo) => {
+                      const { ingresos, egresos } = totals.porMetodo[metodo];
+                      const neto = ingresos - egresos;
+                      return (
+                        <div key={metodo} className="p-3 rounded-xl bg-muted/40 border border-border/50">
+                          <p className="text-xs text-muted-foreground">
+                            {PAYMENT_METHOD_LABELS[metodo] || metodo}
+                          </p>
+                          <p className={`text-lg font-bold ${neto >= 0 ? 'text-success' : 'text-destructive'}`}>
+                            {neto >= 0 ? '+' : ''}{formatCurrency(neto)}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground mt-1">
+                            <span className="text-success">+{formatCurrency(ingresos)}</span>
+                            {' · '}
+                            <span className="text-destructive">-{formatCurrency(egresos)}</span>
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+
               {/* Action Buttons */}
               <div className="flex gap-3 mt-6">
                 <Button
