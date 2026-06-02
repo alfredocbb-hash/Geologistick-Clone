@@ -395,13 +395,16 @@ function drawLabel(
 
   // Payment info
   const tipoPagoLabel = TIPO_PAGO_LABELS[envio.tipo_pago || 'contado'];
+  const esCtaCte = envio.tipo_pago === 'cuenta_corriente';
   const precioStr = `$${envio.precio_total.toLocaleString('es-AR')}`;
   doc.setFontSize(fontBase - 2);
   doc.setFont('helvetica', 'bold');
   doc.rect(lx + 2, y + obsDataH - 7, 18, 4);
   doc.text(tipoPagoLabel, lx + 3, y + obsDataH - 4);
-  doc.setFontSize(isCompact ? 12 : 13);
-  doc.text(precioStr, lx + 22, y + obsDataH - 3.5);
+  if (!esCtaCte) {
+    doc.setFontSize(isCompact ? 12 : 13);
+    doc.text(precioStr, lx + 22, y + obsDataH - 3.5);
+  }
   y += obsDataH;
 
   // ── Row 7: Sucursal origen ──
@@ -833,7 +836,9 @@ export default function PrintLabel() {
                     <p className="text-[9px] leading-tight">{observaciones || '-'}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-[8px] font-bold px-1 py-0.5 border border-black">{tipoPagoLabel}</span>
-                      <span className="font-black text-base">${envio.precio_total.toLocaleString('es-AR')}</span>
+                      {envio.tipo_pago !== 'cuenta_corriente' && (
+                        <span className="font-black text-base">${envio.precio_total.toLocaleString('es-AR')}</span>
+                      )}
                     </div>
                   </div>
                   <div className="border-l border-black p-1.5 flex items-center justify-center">
