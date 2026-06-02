@@ -1,33 +1,45 @@
-## Objetivo
+## Problema
 
-Cuando el envío tiene `tipo_pago = 'cuenta_corriente'`, ocultar los **valores monetarios** (tarifa/precio total y montos de conceptos) en **etiquetas e impresiones** (label + comprobante). Se sigue mostrando el rótulo "Cta Cte" para que quede claro el tipo de pago, pero sin importes.
+En **Control de Caja** (`src/pages/Cash.tsx`) las tarjetas de totales solo muestran:
+- Monto Inicial
+- Ingresos (total)
+- Egresos (total)
+- Efectivo Esperado (solo efectivo)
+- Cantidad de Movimientos
 
-No se toca ninguna lógica de negocio (creación de envío, cuenta corriente, liquidaciones), solo presentación en los PDFs/HTML de impresión.
+No hay desglose por método de pago, así que el total movido por **Transferencia** (y otros métodos como MercadoPago, tarjeta) no se ve a simple vista, aunque los datos sí existen en cada movimiento (`metodo_pago`).
 
-## Cambios
+## Solución
 
-### 1. `src/pages/PrintLabel.tsx` — Etiqueta (PDF y vista HTML)
+Extender el cálculo de totales para desglosar por método de pago y agregar una tarjeta/sección que muestre el total de Transferencias (y otros métodos relevantes).
 
-- **PDF de etiqueta (función `drawLabel`, ~líneas 396-405):** si `envio.tipo_pago === 'cuenta_corriente'`, dibujar solo el recuadro con `tipoPagoLabel` ("Cta Cte") y omitir `precioStr`.
-- **Vista HTML de etiqueta (~líneas 829-846, Fila 6 Observaciones + QR):** si es cuenta corriente, ocultar el `<span>` con `${envio.precio_total}`, mantener el badge "CTA CTE".
+### Cambios en `src/pages/Cash.tsx`
 
-### 2. `src/lib/generateShipmentReceiptPDF.ts` — Comprobante A4
+1. **Ampliar el reduce de `totals`** (líneas 455-468) para acumular por método de pago:
+   - `ingresosTransferencia`, `egresosTransferencia`
+   - `ingresosTarjeta`, `egresosTarjeta`
+   - `ingresosMercadoPago`, `egresosMercadoPago`
+   - Mantener `ingresosEfectivo` / `egresosEfectivo` actuales.
 
-Cuando `shipment.tipo_pago === 'cuenta_corriente'`:
+2. **Agregar una fila de tarjetas "Totales por método de pago"** debajo del grid de stats actual (línea ~578), mostrando para cada método el neto (ingresos − egresos) con su ícono y color. Solo mostrar los métodos con monto distinto de 0 para no saturar.
 
-- **Bloque CONCEPTOS (~líneas 384-403):** mantener el encabezado y los nombres de los conceptos, pero **no imprimir los montos** (`formatCurrency(detalle.monto)`). Alternativa más limpia: mostrar un mensaje único centrado del tipo "Facturación en cuenta corriente" en lugar del listado de importes.
-- **Bloque QR + TOTAL (~líneas 429-442):** ocultar el rótulo "TOTAL" y el `formatCurrency(shipment.precio_total)`. En su lugar mostrar el texto "CUENTA CORRIENTE" donde iba el monto, manteniendo el QR, tracking y leyenda intactos.
-- El texto `tipoPago` debajo del total ya dice "Cta Cte" y se mantiene.
+   Ejemplo de tarjeta Transferencias:
+   ```
+   Transferencias
+   +$XX.XXX  (neto)
+   Ingresos: +$X · Egresos: -$X
+   ```
 
-### 3. No se modifica
+3. **Mantener** el cálculo de "Efectivo Esperado" igual (sigue siendo solo efectivo, que es lo que realmente debe estar en la caja física).
 
-- `src/lib/pdfHelpers.ts`, lógica de tarifas, conceptos almacenados en BD, ni la creación de envíos.
-- Otras impresiones (rendiciones, liquidaciones, hoja de ruta, factura) — el pedido es solo etiquetas y comprobante de envío.
+### Sin cambios en
+
+- Lógica de apertura/cierre de caja.
+- Modelo de datos ni queries.
+- Otros prints o reportes.
 
 ## QA
 
-Probar con un envío `tipo_pago = 'cuenta_corriente'`:
-- Imprimir etiqueta: no debe aparecer el `$importe`, sí el badge "Cta Cte".
-- Imprimir comprobante A4: ambas copias (Agencia y Cliente) sin montos por concepto y sin TOTAL numérico.
-
-Probar con un envío `tipo_pago = 'contado'`: todo se ve como hoy.
+- Crear movimientos de ingreso y egreso con método "transferencia" y verificar que aparece la tarjeta con el total correcto.
+- Verificar que con método efectivo, el "Efectivo Esperado" sigue calculándose igual que hoy.
+- Verificar que si no hay movimientos de cierto método, la tarjeta no se renderiza.
