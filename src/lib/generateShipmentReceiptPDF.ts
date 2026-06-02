@@ -382,24 +382,32 @@ function drawReceipt(
   }
 
   // CONCEPTOS
+  const esCtaCte = shipment.tipo_pago === 'cuenta_corriente';
   const concX = margin + halfWidth + 3;
   drawColHeader('CONCEPTOS', concX, halfWidth);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(30, 30, 30);
   let conceptY = y + colHeaderH + 3.5;
-  for (const detalle of conceptosVisibles) {
-    doc.setFont('helvetica', 'normal');
-    doc.text(detalle.nombre_concepto.substring(0, 28), concX + 2, conceptY);
-    doc.setFont('helvetica', 'bold');
-    doc.text(formatCurrency(detalle.monto), concX + halfWidth - 2, conceptY, { align: 'right' });
-    conceptY += 3.5;
-  }
-  if (conceptosRestantes > 0) {
+  if (esCtaCte) {
     doc.setFont('helvetica', 'italic');
-    doc.setFontSize(6.5);
-    doc.setTextColor(110, 110, 110);
-    doc.text(`+ ${conceptosRestantes} concepto(s) más`, concX + 2, conceptY);
+    doc.setFontSize(8);
+    doc.setTextColor(80, 80, 80);
+    doc.text('Facturación en cuenta corriente', concX + halfWidth / 2, conceptY + 4, { align: 'center' });
+  } else {
+    for (const detalle of conceptosVisibles) {
+      doc.setFont('helvetica', 'normal');
+      doc.text(detalle.nombre_concepto.substring(0, 28), concX + 2, conceptY);
+      doc.setFont('helvetica', 'bold');
+      doc.text(formatCurrency(detalle.monto), concX + halfWidth - 2, conceptY, { align: 'right' });
+      conceptY += 3.5;
+    }
+    if (conceptosRestantes > 0) {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(6.5);
+      doc.setTextColor(110, 110, 110);
+      doc.text(`+ ${conceptosRestantes} concepto(s) más`, concX + 2, conceptY);
+    }
   }
 
   y += rowHeight + 2;
@@ -426,20 +434,31 @@ function drawReceipt(
   doc.setTextColor(20, 20, 20);
   doc.text(shipment.tracking_number, margin + qrSize + 4, y + 12);
 
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(80, 80, 80);
-  doc.text('TOTAL', pageWidth - margin - 3, y + 6, { align: 'right' });
+  if (esCtaCte) {
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+    doc.text('CUENTA CORRIENTE', pageWidth - margin - 3, y + 12, { align: 'right' });
+    doc.setFontSize(6.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(120, 120, 120);
+    doc.text(tipoPago, pageWidth - margin - 3, y + 19, { align: 'right' });
+  } else {
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(80, 80, 80);
+    doc.text('TOTAL', pageWidth - margin - 3, y + 6, { align: 'right' });
 
-  doc.setFontSize(15);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-  doc.text(formatCurrency(shipment.precio_total), pageWidth - margin - 3, y + 14, { align: 'right' });
+    doc.setFontSize(15);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+    doc.text(formatCurrency(shipment.precio_total), pageWidth - margin - 3, y + 14, { align: 'right' });
 
-  doc.setFontSize(6.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(120, 120, 120);
-  doc.text(tipoPago, pageWidth - margin - 3, y + 19, { align: 'right' });
+    doc.setFontSize(6.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(120, 120, 120);
+    doc.text(tipoPago, pageWidth - margin - 3, y + 19, { align: 'right' });
+  }
 
   y += qrBlockH + 2;
 
