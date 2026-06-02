@@ -836,7 +836,9 @@ export default function PrintLabel() {
                     <p className="text-[9px] leading-tight">{observaciones || '-'}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-[8px] font-bold px-1 py-0.5 border border-black">{tipoPagoLabel}</span>
-                      <span className="font-black text-base">${envio.precio_total.toLocaleString('es-AR')}</span>
+                      {envio.tipo_pago !== 'cuenta_corriente' && (
+                        <span className="font-black text-base">${envio.precio_total.toLocaleString('es-AR')}</span>
+                      )}
                     </div>
                   </div>
                   <div className="border-l border-black p-1.5 flex items-center justify-center">
