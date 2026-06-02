@@ -462,10 +462,23 @@ export default function Cash() {
         acc.egresos += m.monto;
         if (m.metodo_pago === 'efectivo') acc.egresosEfectivo += m.monto;
       }
+      const key = m.metodo_pago as PaymentMethod;
+      if (!acc.porMetodo[key]) acc.porMetodo[key] = { ingresos: 0, egresos: 0 };
+      if (m.tipo === 'ingreso') acc.porMetodo[key].ingresos += m.monto;
+      else acc.porMetodo[key].egresos += m.monto;
       return acc;
     },
-    { ingresos: 0, egresos: 0, ingresosEfectivo: 0, egresosEfectivo: 0 }
+    {
+      ingresos: 0,
+      egresos: 0,
+      ingresosEfectivo: 0,
+      egresosEfectivo: 0,
+      porMetodo: {} as Record<PaymentMethod, { ingresos: number; egresos: number }>,
+    }
   );
+
+  const metodosConMovimiento = (Object.keys(totals.porMetodo) as PaymentMethod[])
+    .filter((k) => totals.porMetodo[k].ingresos > 0 || totals.porMetodo[k].egresos > 0);
 
   const saldoEsperado = currentSession
     ? currentSession.monto_inicial + totals.ingresosEfectivo - totals.egresosEfectivo
