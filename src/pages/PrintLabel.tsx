@@ -395,13 +395,16 @@ function drawLabel(
 
   // Payment info
   const tipoPagoLabel = TIPO_PAGO_LABELS[envio.tipo_pago || 'contado'];
+  const esCtaCte = envio.tipo_pago === 'cuenta_corriente';
   const precioStr = `$${envio.precio_total.toLocaleString('es-AR')}`;
   doc.setFontSize(fontBase - 2);
   doc.setFont('helvetica', 'bold');
   doc.rect(lx + 2, y + obsDataH - 7, 18, 4);
   doc.text(tipoPagoLabel, lx + 3, y + obsDataH - 4);
-  doc.setFontSize(isCompact ? 12 : 13);
-  doc.text(precioStr, lx + 22, y + obsDataH - 3.5);
+  if (!esCtaCte) {
+    doc.setFontSize(isCompact ? 12 : 13);
+    doc.text(precioStr, lx + 22, y + obsDataH - 3.5);
+  }
   y += obsDataH;
 
   // ── Row 7: Sucursal origen ──
