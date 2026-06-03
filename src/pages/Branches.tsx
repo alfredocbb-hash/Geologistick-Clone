@@ -4,6 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { BranchCoverageZonesDialog } from '@/components/branches/BranchCoverageZonesDialog';
 import { useTenant } from '@/hooks/useTenant';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { TenantFilterChip } from '@/components/common/TenantFilterChip';
 import { useFormDraft } from '@/hooks/useFormDraft';
 import { DraftIndicator, DraftSavingIndicator } from '@/components/ui/draft-indicator';
 import { Button } from '@/components/ui/button';
@@ -162,14 +164,16 @@ export default function Branches() {
   const [emisionCommissionData, setEmisionCommissionData] = useState<Record<string, CommissionValues>>({});
   const [recepcionCommissionData, setRecepcionCommissionData] = useState<Record<string, CommissionValues>>({});
 
-  // Fetch sucursales
+  // Fetch sucursales (filtered by super admin tenant selector when applicable)
+  const effectiveFilterTenantId = useEffectiveTenantId();
   const { data: sucursales = [], isLoading } = useQuery({
-    queryKey: ['sucursales-full'],
+    queryKey: ['sucursales-full', effectiveFilterTenantId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('sucursales')
-        .select('*')
-        .order('nombre');
+      let query = supabase.from('sucursales').select('*').order('nombre');
+      if (effectiveFilterTenantId) {
+        query = query.eq('tenant_id', effectiveFilterTenantId);
+      }
+      const { data, error } = await query;
       if (error) throw error;
       return data as Sucursal[];
     },
@@ -306,10 +310,12 @@ export default function Branches() {
   // Create/Update sucursal mutation
   const saveMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
-      // Guard: tenant_id is required for creating branches
-      if (!editingSucursal && !tenantId) {
-        throw new Error('No se encontró tu empresa. Por favor, recarga la página.');
+      // Resolve tenant_id: super admin can target the selected tenant; otherwise use own.
+      const createTenantId = effectiveFilterTenantId || tenantId;
+      if (!editingSucursal && !createTenantId) {
+        throw new Error('Seleccioná un tenant en el header para crear una sucursal.');
       }
+
 
       const sucursalData = {
         nombre: data.nombre,
@@ -346,7 +352,7 @@ export default function Branches() {
         // Include tenant_id when creating a new branch
         const { error } = await supabase.from('sucursales').insert({
           ...sucursalData,
-          tenant_id: tenantId,
+          tenant_id: createTenantId,
         });
         if (error) throw error;
       }
@@ -647,7 +653,10 @@ export default function Branches() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Sucursales</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-3xl font-bold text-foreground">Sucursales</h1>
+            <TenantFilterChip />
+          </div>
           <p className="text-muted-foreground">
             Administra las sucursales, capacidades y comisiones
           </p>

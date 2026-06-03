@@ -1,7 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
+import { useSuperAdminTenantFilter } from '@/components/providers/SuperAdminTenantFilterProvider';
+import { TenantFilterChip } from '@/components/common/TenantFilterChip';
 import { useFormDraft } from '@/hooks/useFormDraft';
 import { DraftIndicator, DraftSavingIndicator } from '@/components/ui/draft-indicator';
 import { Button } from '@/components/ui/button';
@@ -145,7 +147,16 @@ export default function Users() {
   const [deletingUser, setDeletingUser] = useState<Profile | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [viewMode, setViewMode] = useState<'flat' | 'grouped'>('grouped');
-  const [filterTenantId, setFilterTenantId] = useState<string>('all');
+  const { selectedTenantId: globalTenantId } = useSuperAdminTenantFilter();
+  const [filterTenantId, setFilterTenantId] = useState<string>(
+    globalTenantId === 'all' ? 'all' : globalTenantId,
+  );
+
+  // Sync local tenant filter with the global super-admin selector
+  useEffect(() => {
+    if (!isSuperAdmin()) return;
+    setFilterTenantId(globalTenantId === 'all' ? 'all' : globalTenantId);
+  }, [globalTenantId, isSuperAdmin]);
   const [formData, setFormData] = useState({
     nombre: '',
     apellido: '',
@@ -618,7 +629,10 @@ export default function Users() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Usuarios</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-3xl font-bold text-foreground">Usuarios</h1>
+            <TenantFilterChip />
+          </div>
           <p className="text-muted-foreground">
             Administra usuarios y roles del sistema
           </p>

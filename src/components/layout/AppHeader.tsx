@@ -18,6 +18,7 @@ import { NotificationPopover } from '@/components/notifications/NotificationPopo
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useTranslation } from 'react-i18next';
 import { LanguageSelector } from '@/components/i18n/LanguageSelector';
+import { SuperAdminTenantSelector } from '@/components/layout/SuperAdminTenantSelector';
 
 export function AppHeader() {
   const { profile, roles, signOut } = useAuth();
@@ -64,6 +65,9 @@ export function AppHeader() {
 
       {/* Spacer */}
       <div className="flex-1" />
+
+      {/* Super Admin Tenant Selector */}
+      <SuperAdminTenantSelector />
 
       {/* Language Selector */}
       <LanguageSelector persist variant="ghost" />

@@ -1,51 +1,90 @@
-## Problema
 
-En la liquidación del chofer (dialog de detalle, PDF y Excel) solo se muestra la columna "Comisión" por envío. No se ven los envíos con cobro contra entrega (COD) ni el monto descontado al chofer por esos cobros, aunque sí se descuentan al generar la liquidación (queda registrado solo como texto en "notas").
+## Objetivo
 
-## Causa
+Permitir al super admin filtrar la vista de cualquier módulo administrativo por tenant (ej. "Black Box"), para ver y gestionar (deshabilitar/eliminar) sus sucursales, usuarios y demás recursos cuando se le baja el plan.
 
-`SettlementDetailDialog.tsx` arma la tabla / PDF / Excel del chofer usando solo `comisiones.monto`. El query de `comisiones` trae `envio.precio_total` pero no `pago_contra_entrega`, y nunca se renderiza el dato de COD ni el descuento.
+## Enfoque
 
-## Cambios (solo UI / presentación, sin tocar lógica de generación ni base de datos)
+Filtro **híbrido**: un selector global persistente en el header + un selector local en cada página (que respeta el global pero permite override).
 
-### `src/components/settlements/SettlementDetailDialog.tsx`
+### 1. Estado global del tenant seleccionado
 
-1. **Query `driverComisiones`**: agregar `pago_contra_entrega` al select del envío:
-   ```
-   envio:envios(..., precio_total, pago_contra_entrega, ...)
-   ```
+Nuevo contexto `SuperAdminTenantFilterProvider` (`src/components/providers/SuperAdminTenantFilterProvider.tsx`):
+- Estado: `selectedTenantId: string | 'all'`, default `'all'`.
+- Persiste en `localStorage` (`sa_selected_tenant`) para recordar entre recargas.
+- Expone `setSelectedTenantId`, `selectedTenant` (objeto con nombre/slug), `tenants[]`.
+- Solo activo si `isSuperAdmin()`. Se monta dentro de `AuthProvider` en `App.tsx`.
+- Hook helper: `useSuperAdminTenantFilter()`.
 
-2. **Helpers derivados** (solo para chofer):
-   - `totalComisionesEnvios` = suma de `comision.monto`.
-   - `totalCobradoDestino` = suma de `envio.precio_total` de envíos con `pago_contra_entrega = true`.
-   - `totalDescontado` = `max(0, totalComisionesEnvios − driverData.monto_total)` (lo que efectivamente se le descontó al chofer al pagar las liquidaciones con COD).
+### 2. Selector global en el header
 
-3. **Tab "Resumen" (chofer)**: convertir la card "Monto Total a Pagar" en un grid de 3 cards cuando haya COD:
-   - Comisiones del período (`totalComisionesEnvios`).
-   - Cobros en destino (`totalCobradoDestino`) — verde si > 0.
-   - Descontado al chofer (`totalDescontado`) — rojo si > 0.
-   - Card final destacada "Monto Neto a Pagar" (`driverData.monto_total`).
+Nuevo componente `SuperAdminTenantSelector.tsx` insertado en `AppHeader.tsx`:
+- Solo visible para super admin.
+- Dropdown buscable con todos los tenants + opción "Todos los tenants" + "Sin tenant".
+- Muestra badge con nombre del tenant activo.
+- Al cambiar, invalida las queries afectadas (`queryClient.invalidateQueries()` por keys clave).
 
-4. **Tab "Detalle de Envíos" (chofer)**: agregar dos columnas:
-   - `COD` — badge "Sí / —" según `envio.pago_contra_entrega`.
-   - `Cobrado en Destino` — `$envio.precio_total` si COD, si no `—`.
-   - Mantener columna `Comisión` existente.
-   - Fila final de totales: Comisiones, Cobrado en Destino, Descontado, Neto a Pagar.
+### 3. Filtro reutilizable por página
 
-5. **PDF (`generatePDF`, rama chofer)**:
-   - Bloque de totales: agregar líneas "Comisiones", "Cobrado en Destino", "Descontado" y "MONTO NETO A PAGAR".
-   - Tabla de envíos: agregar columnas "COD" y "Cobrado Destino" (mostrar `$precio_total` solo en filas COD), reajustar anchos de columnas.
+Nuevo componente `<TenantFilterChip />` en la barra de filtros de cada módulo:
+- Solo visible para super admin.
+- Permite override local (no persiste): "Usar global" / elegir otro tenant.
+- Devuelve el `effectiveTenantId` aplicado.
 
-6. **Excel (`handleExportExcel`, rama chofer)**:
-   - Agregar al objeto `data`: `cod` ("Sí"/""), `cobrado_destino` (number, currency).
-   - Agregar en `columns` (solo chofer): "COD", "Cobrado en Destino" (format currency), manteniendo "Comisión".
+### 4. Aplicación en módulos
 
-### Sucursal y demás
+Hook único `useEffectiveTenantId(localOverride?)`:
+- Devuelve el `tenant_id` efectivo a usar en queries.
+- Retorna `null` cuando es "Todos".
 
-Sin cambios. La rama `isBranch` ya muestra Total Cobrado / Comisiones / Saldo y no necesita ajuste.
+Páginas a actualizar para que sus queries usen `useEffectiveTenantId`, agreguen la clave al `queryKey`, y muestren `<TenantFilterChip />` cuando es super admin:
+
+- **Administración**: `Branches.tsx`, `Users.tsx` (ya tiene local, unificar), `Drivers.tsx`, `Vehicles.tsx`, `Clients.tsx`, `Rates.tsx`, `Partners.tsx`, `ThirdPartyCompanies.tsx`.
+- **Operaciones**: `Shipments.tsx`, `Routes.tsx`, `RouteSheets.tsx`, `RoutePlanner.tsx`, `Incidents.tsx`, `ScanQR.tsx`.
+- **Finanzas**: `Cash.tsx`, `Gastos.tsx`, `Payments.tsx`, `Facturacion.tsx`, `FiscalDashboard.tsx`, `DriverSettlements.tsx`, `ClientSettlements.tsx`, `BranchSettlements.tsx`, `ThirdPartySettlements.tsx`.
+- **E-commerce**: `ecommerce/Orders.tsx`, `ecommerce/Sellers.tsx`, `ecommerce/Settlements.tsx`, `ecommerce/Dashboard.tsx`.
+- **Sistema**: `IntegrationSettings.tsx`, `BrandingSettings.tsx`, `SystemSettings.tsx`, `UserActivityAdmin.tsx`, `TenantApiDocs.tsx`, `Reports.tsx`, `LiveMap.tsx`, `Dashboard.tsx`.
+
+Patrón:
+```ts
+const effectiveTenantId = useEffectiveTenantId();
+const { data } = useQuery({
+  queryKey: ['branches', effectiveTenantId],
+  queryFn: async () => {
+    let q = supabase.from('sucursales').select('*');
+    if (effectiveTenantId) q = q.eq('tenant_id', effectiveTenantId);
+    return (await q).data;
+  },
+});
+```
+
+### 5. Acciones de eliminación / desactivación
+
+Los botones de eliminar/desactivar sucursales y usuarios ya existen para admin. Habilitarlos también para super admin cuando hay un tenant seleccionado:
+- `Branches.tsx`: agregar botones "Desactivar" y "Eliminar" visibles para super admin (delete con confirmación + cascada existente).
+- `Users.tsx`: ya soporta eliminar para super admin; verificar que funcione sobre cualquier tenant.
+
+### 6. RLS / Backend
+
+No requiere migraciones: el rol `super_admin` ya bypassa RLS por `is_super_admin()` en las policies existentes. Solo se ajusta el filtro del lado cliente.
+
+## Detalles técnicos
+
+- Archivos nuevos:
+  - `src/components/providers/SuperAdminTenantFilterProvider.tsx`
+  - `src/components/layout/SuperAdminTenantSelector.tsx`
+  - `src/components/common/TenantFilterChip.tsx`
+  - `src/hooks/useEffectiveTenantId.ts`
+- Modificados: `App.tsx` (montar provider), `AppHeader.tsx` (selector), y todas las páginas listadas.
+- `queryKey` debe incluir `effectiveTenantId` para refetch automático al cambiar.
+- Mutaciones de creación (ej. nueva sucursal) usan `selectedTenantId` cuando hay uno fijo; si es "Todos", se pide elegir tenant en el formulario (campo extra solo super admin).
 
 ## QA
 
-- Abrir liquidación de Ariel Kersul (25/05–30/05): la tabla, el PDF y el Excel deben mostrar los envíos con `pago_contra_entrega`, su precio cobrado y el descuento total reflejado.
-- Verificar liquidación sin COD: no aparecen las cards extras y la columna "Cobrado en Destino" queda en "—".
-- Verificar que el "Monto Neto a Pagar" mostrado coincide con `liquidacion.monto_total` ya guardado.
+1. Login como super admin → header muestra selector "Todos los tenants".
+2. Elegir Black Box → todos los módulos filtran por ese tenant.
+3. Ir a Sucursales → ver solo las de Black Box, eliminar una.
+4. Ir a Usuarios → ver solo los de Black Box, eliminar uno.
+5. Cambiar override local en una página → solo afecta esa vista.
+6. Cambiar a "Todos" → vuelve la vista agregada.
+7. Crear sucursal con tenant fijo seleccionado → se crea con ese `tenant_id`.

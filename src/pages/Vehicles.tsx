@@ -4,6 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useFormDraft } from '@/hooks/useFormDraft';
 import { DraftIndicator, DraftSavingIndicator } from '@/components/ui/draft-indicator';
 import { useAuth } from '@/lib/auth';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { TenantFilterChip } from '@/components/common/TenantFilterChip';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -98,34 +100,38 @@ export default function Vehicles() {
     hasDraft,
   } = useFormDraft<VehicleForm>('new-vehicle', defaultForm);
 
+  const effectiveTenantId = useEffectiveTenantId();
+
   const { data: vehicles, isLoading, refetch } = useQuery({
-    queryKey: ['vehiculos'],
+    queryKey: ['vehiculos', effectiveTenantId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('vehiculos')
         .select(`
           *,
           sucursal:sucursales(nombre)
         `)
         .order('patente');
-      
+      if (effectiveTenantId) q = q.eq('tenant_id', effectiveTenantId);
+      const { data, error } = await q;
+
       if (error) throw error;
-      
+
       // Fetch driver profiles separately
       const driverIds = [...new Set(data?.map(v => v.chofer_asignado_id).filter(Boolean))];
       let drivers: Record<string, { nombre: string; apellido: string | null }> = {};
-      
+
       if (driverIds.length > 0) {
         const { data: profileData } = await supabase
           .from('profiles')
           .select('user_id, nombre, apellido')
           .in('user_id', driverIds as string[]);
-        
+
         profileData?.forEach(p => {
           drivers[p.user_id] = { nombre: p.nombre, apellido: p.apellido };
         });
       }
-      
+
       return data?.map(v => ({
         ...v,
         chofer: v.chofer_asignado_id ? drivers[v.chofer_asignado_id] : null
@@ -133,6 +139,7 @@ export default function Vehicles() {
     },
     refetchOnWindowFocus: false,
   });
+
 
   const { data: sucursales } = useQuery({
     queryKey: ['sucursales-select'],
@@ -301,9 +308,10 @@ export default function Vehicles() {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3 flex-wrap">
             <Car className="h-8 w-8 text-primary" />
             Gestión de Vehículos
+            <TenantFilterChip />
           </h1>
           <p className="text-muted-foreground mt-1">
             Administra la flota de vehículos

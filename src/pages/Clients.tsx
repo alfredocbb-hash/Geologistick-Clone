@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { TenantFilterChip } from '@/components/common/TenantFilterChip';
 import { useFormDraft } from '@/hooks/useFormDraft';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -138,13 +140,18 @@ export default function Clients() {
   });
 
   // Fetch clients
+  const effectiveTenantId = useEffectiveTenantId();
   const { data: clients = [], isLoading } = useQuery({
-    queryKey: ['clients', searchTerm],
+    queryKey: ['clients', searchTerm, effectiveTenantId],
     queryFn: async () => {
       let query = supabase
         .from('clientes')
         .select('*')
         .order('created_at', { ascending: false });
+
+      if (effectiveTenantId) {
+        query = query.eq('tenant_id', effectiveTenantId);
+      }
 
       if (searchTerm) {
         query = query.or(
@@ -158,6 +165,7 @@ export default function Clients() {
     },
     refetchOnWindowFocus: false,
   });
+
 
   // Create/Update mutation
   const saveMutation = useMutation({
@@ -185,7 +193,7 @@ export default function Clients() {
       } else {
         const { error } = await supabase.from('clientes').insert({
           ...clientData,
-          tenant_id: profile?.tenant_id,
+          tenant_id: effectiveTenantId || profile?.tenant_id,
         });
         if (error) throw error;
       }
@@ -246,7 +254,10 @@ export default function Clients() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Clientes</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-3xl font-bold text-foreground">Clientes</h1>
+            <TenantFilterChip />
+          </div>
           <p className="text-muted-foreground">
             Gestiona la base de datos de clientes
           </p>

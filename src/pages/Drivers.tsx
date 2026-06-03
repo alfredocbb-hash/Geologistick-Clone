@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { TenantFilterChip } from '@/components/common/TenantFilterChip';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -50,8 +52,11 @@ export default function Drivers() {
   const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
 
   // Fetch drivers (users with chofer role)
+  const effectiveTenantId = useEffectiveTenantId();
+
+  // Fetch drivers (users with chofer role)
   const { data: drivers = [], isLoading: loadingDrivers } = useQuery({
-    queryKey: ['drivers'],
+    queryKey: ['drivers', effectiveTenantId],
     queryFn: async () => {
       // First get all users with chofer role
       const { data: userRoles, error: rolesError } = await supabase
@@ -65,7 +70,7 @@ export default function Drivers() {
       const userIds = userRoles.map(r => r.user_id);
 
       // Then get their profiles
-      const { data: profiles, error: profilesError } = await supabase
+      let q = supabase
         .from('profiles')
         .select(`
           id,
@@ -77,14 +82,18 @@ export default function Drivers() {
           avatar_url,
           sucursal_id,
           activo,
+          tenant_id,
           sucursal:sucursales(nombre)
         `)
         .in('user_id', userIds);
+      if (effectiveTenantId) q = q.eq('tenant_id', effectiveTenantId);
+      const { data: profiles, error: profilesError } = await q;
 
       if (profilesError) throw profilesError;
       return profiles as Driver[];
     },
   });
+
 
   // Fetch sucursales for filter
   const { data: sucursales = [] } = useQuery({
@@ -231,7 +240,10 @@ export default function Drivers() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Choferes Activos</h1>
+        <div className="flex items-center gap-2 flex-wrap">
+          <h1 className="text-3xl font-bold tracking-tight">Choferes Activos</h1>
+          <TenantFilterChip />
+        </div>
         <p className="text-muted-foreground">Gestión y monitoreo de choferes en ruta</p>
       </div>
 
