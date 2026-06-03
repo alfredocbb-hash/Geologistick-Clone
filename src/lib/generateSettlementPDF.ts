@@ -52,6 +52,8 @@ interface SettlementPDFData {
     monto: number;
     comision?: number;
     rol?: string;
+    cod?: boolean;
+    cobrado?: number;
   }>;
   shipments?: Array<{
     tracking: string;
@@ -403,6 +405,8 @@ export async function generateSettlementPDF(
   const tableData = !isSeller ? items : [];
   const shipmentData = isSeller && shipments ? shipments : [];
   const allRows = isSeller ? shipmentData : tableData;
+  const isDriver = data.type === 'driver';
+  const hasAnyCOD = isDriver && (items as any[]).some((i) => i.cod);
 
   doc.setTextColor(50, 50, 50);
   doc.setFont('helvetica', 'bold');
@@ -413,12 +417,14 @@ export async function generateSettlementPDF(
   // Column positions — redesigned to fit within 10–200mm (190mm usable)
   // Seller: Tracking | Fecha | Destinatario | Localidad | Monto
   // Branch: Tracking | Fecha | Destinatario | Rol | Monto
-  // Driver: Tracking | Fecha | Destinatario | Monto
+  // Driver: Tracking | Fecha | Destinatario | [COD | Cobrado] | Monto
   const colTracking = 12;
   const colFecha = isSeller ? 62 : 58;
   const colDest = isSeller ? 84 : 78;
   const colRol = isBranch ? 135 : null;
   const colEstado = isSeller ? 138 : null;
+  const colCOD = hasAnyCOD ? 138 : null;
+  const colCobrado = hasAnyCOD ? 168 : null;
   const colMonto = pageWidth - 12; // right-aligned
 
   const drawTableHeader = () => {
@@ -432,7 +438,9 @@ export async function generateSettlementPDF(
     doc.text('Destinatario', colDest, y);
     if (colRol) doc.text('Rol', colRol, y);
     if (colEstado) doc.text('Localidad', colEstado, y);
-    doc.text('Monto', colMonto, y, { align: 'right' });
+    if (colCOD) doc.text('COD', colCOD, y);
+    if (colCobrado) doc.text('Cobrado', colCobrado, y, { align: 'right' });
+    doc.text(isDriver ? 'Comisión' : 'Monto', colMonto, y, { align: 'right' });
   };
 
   drawTableHeader();
@@ -442,6 +450,7 @@ export async function generateSettlementPDF(
   doc.setTextColor(50, 50, 50);
 
   let rowTotal = 0;
+  let cobradoTotal = 0;
 
   allRows.forEach((row: any, index: number) => {
     if (y > pageHeight - 25) {
@@ -461,9 +470,11 @@ export async function generateSettlementPDF(
 
     doc.setFontSize(7.5);
 
-    const tracking = (row.tracking || '-').substring(0, isSeller ? 18 : 22);
+    const trackingMax = isSeller ? 18 : (hasAnyCOD ? 18 : 22);
+    const destMax = isSeller ? 20 : (hasAnyCOD ? 22 : 28);
+    const tracking = (row.tracking || '-').substring(0, trackingMax);
     const fecha = row.fecha || '-';
-    const dest = (row.destinatario || '-').substring(0, isSeller ? 20 : 28);
+    const dest = (row.destinatario || '-').substring(0, destMax);
     const monto = isSeller ? (row.precio || 0) : (row.monto || 0);
 
     doc.text(tracking, colTracking, y);
@@ -474,6 +485,20 @@ export async function generateSettlementPDF(
     }
     if (colEstado && isSeller) {
       doc.text((row.localidad || '-').substring(0, 14), colEstado, y);
+    }
+    if (hasAnyCOD) {
+      if (row.cod) {
+        doc.setTextColor(40, 140, 70);
+        doc.text('Sí', colCOD!, y);
+        doc.text(formatCurrency(row.cobrado || 0), colCobrado!, y, { align: 'right' });
+        doc.setTextColor(50, 50, 50);
+        cobradoTotal += Number(row.cobrado || 0);
+      } else {
+        doc.setTextColor(150, 150, 150);
+        doc.text('-', colCOD!, y);
+        doc.text('-', colCobrado!, y, { align: 'right' });
+        doc.setTextColor(50, 50, 50);
+      }
     }
     doc.text(formatCurrency(monto), colMonto, y, { align: 'right' });
     rowTotal += monto;
@@ -491,6 +516,12 @@ export async function generateSettlementPDF(
     doc.setFontSize(9);
     doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
     doc.text(`Total (${allRows.length} envíos): ${formatCurrency(rowTotal)}`, colMonto, y, { align: 'right' });
+    if (hasAnyCOD && cobradoTotal > 0) {
+      y += 6;
+      doc.setTextColor(40, 140, 70);
+      doc.text(`Total Cobrado en Destino: ${formatCurrency(cobradoTotal)}`, colMonto, y, { align: 'right' });
+      doc.setTextColor(50, 50, 50);
+    }
   }
 
   // Add footers to all pages
@@ -558,19 +589,21 @@ export async function downloadDriverSettlementPDF(liquidacion: {
     .from('comisiones')
     .select(`
       *,
-      envio:envios(tracking_number, estado, created_at, precio_total, nombre_destinatario, destinatario_id, 
+      envio:envios(tracking_number, tracking_externo, estado, created_at, precio_total, pago_contra_entrega, nombre_destinatario, destinatario_id, 
         clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
     `)
     .eq('liquidacion_id', liquidacion.id)
     .order('created_at', { ascending: false });
 
   const items = (comisiones || []).map((c: any) => ({
-    tracking: c.envio?.tracking_number || '-',
+    tracking: c.envio?.tracking_externo || c.envio?.tracking_number || '-',
     fecha: c.envio?.created_at ? format(new Date(c.envio.created_at), 'dd/MM/yy') : '-',
     destinatario: c.envio?.clientes
       ? `${c.envio.clientes.nombre || ''} ${c.envio.clientes.apellido || ''}`.trim()
       : c.envio?.nombre_destinatario || '-',
     monto: c.monto || 0,
+    cod: !!c.envio?.pago_contra_entrega,
+    cobrado: c.envio?.pago_contra_entrega ? Number(c.envio?.precio_total || 0) : 0,
   }));
 
   await generateSettlementPDF({
