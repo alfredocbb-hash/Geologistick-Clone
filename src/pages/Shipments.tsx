@@ -307,8 +307,10 @@ export default function Shipments() {
   const trimmedSearch = search.trim();
   const isGlobalSearch = trimmedSearch.length >= 3;
 
+  const effectiveTenantId = useEffectiveTenantId();
+
   const { data: enviosData, isLoading, refetch } = useQuery({
-    queryKey: ['envios', statusFilter, dateFrom.toISOString(), dateTo.toISOString(), isGlobalSearch ? trimmedSearch : ''],
+    queryKey: ['envios', statusFilter, dateFrom.toISOString(), dateTo.toISOString(), isGlobalSearch ? trimmedSearch : '', effectiveTenantId],
     queryFn: async () => {
       let query = supabase
         .from('envios')
@@ -321,6 +323,8 @@ export default function Shipments() {
           chofer_id
         `)
         .order('created_at', { ascending: false });
+
+      if (effectiveTenantId) query = query.eq('tenant_id', effectiveTenantId);
 
       if (isGlobalSearch) {
         // Búsqueda global por tracking: ignora rango de fechas y estado para
