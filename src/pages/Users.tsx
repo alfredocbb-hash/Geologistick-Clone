@@ -629,7 +629,10 @@ export default function Users() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Usuarios</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-3xl font-bold text-foreground">Usuarios</h1>
+            <TenantFilterChip />
+          </div>
           <p className="text-muted-foreground">
             Administra usuarios y roles del sistema
           </p>
