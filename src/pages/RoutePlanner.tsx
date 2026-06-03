@@ -132,6 +132,7 @@ export default function RoutePlanner() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const effectiveTenantId = useEffectiveTenantId();
   
   const [activeTab, setActiveTab] = usePersistedState('ui-tab-route-planner', "crear");
   // Persist critical selections in sessionStorage to prevent data loss on tab switch
