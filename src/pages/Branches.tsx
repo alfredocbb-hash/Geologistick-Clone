@@ -1583,6 +1583,15 @@ export default function Branches() {
           allSucursales={sucursales.map(s => ({ id: s.id, nombre: s.nombre, codigo: s.codigo }))}
         />
       )}
+
+      <PlanLimitExceededDialog
+        open={planLimitDialog.open}
+        onOpenChange={(open) => setPlanLimitDialog((p) => ({ ...p, open }))}
+        resourceType="sucursal"
+        planName={planLimitDialog.planName}
+        current={planLimitDialog.current}
+        max={planLimitDialog.max}
+      />
     </div>
   );
 }
