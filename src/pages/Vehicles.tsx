@@ -308,9 +308,10 @@ export default function Vehicles() {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3 flex-wrap">
             <Car className="h-8 w-8 text-primary" />
             Gestión de Vehículos
+            <TenantFilterChip />
           </h1>
           <p className="text-muted-foreground mt-1">
             Administra la flota de vehículos
