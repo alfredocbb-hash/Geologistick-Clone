@@ -371,14 +371,19 @@ export default function Shipments() {
   const choferMap = enviosData?.choferMap || {};
 
   const { data: stats } = useQuery({
-    queryKey: ['envios-stats'],
+    queryKey: ['envios-stats', effectiveTenantId],
     queryFn: async () => {
+      const base = () => {
+        let q = supabase.from('envios').select('*', { count: 'exact', head: true });
+        if (effectiveTenantId) q = q.eq('tenant_id', effectiveTenantId);
+        return q;
+      };
       const [totalRes, pendienteRes, transitoRes, entregadoRes, problemasRes] = await Promise.all([
-        supabase.from('envios').select('*', { count: 'exact', head: true }),
-        supabase.from('envios').select('*', { count: 'exact', head: true }).eq('estado', 'pendiente'),
-        supabase.from('envios').select('*', { count: 'exact', head: true }).in('estado', ['en_transito', 'en_reparto', 'recogido']),
-        supabase.from('envios').select('*', { count: 'exact', head: true }).eq('estado', 'entregado'),
-        supabase.from('envios').select('*', { count: 'exact', head: true }).in('estado', ['devuelto', 'cancelado']),
+        base(),
+        base().eq('estado', 'pendiente'),
+        base().in('estado', ['en_transito', 'en_reparto', 'recogido']),
+        base().eq('estado', 'entregado'),
+        base().in('estado', ['devuelto', 'cancelado']),
       ]);
 
       return {
