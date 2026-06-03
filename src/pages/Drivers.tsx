@@ -240,7 +240,10 @@ export default function Drivers() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Choferes Activos</h1>
+        <div className="flex items-center gap-2 flex-wrap">
+          <h1 className="text-3xl font-bold tracking-tight">Choferes Activos</h1>
+          <TenantFilterChip />
+        </div>
         <p className="text-muted-foreground">Gestión y monitoreo de choferes en ruta</p>
       </div>
 
