@@ -119,7 +119,7 @@ export function SettlementDetailDialog({
         .from('comisiones')
         .select(`
           *,
-          envio:envios(tracking_number, tracking_externo, estado, created_at, precio_total, nombre_destinatario, ciudad_entrega, direccion_entrega, destinatario_id, clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
+          envio:envios(tracking_number, tracking_externo, estado, created_at, precio_total, pago_contra_entrega, nombre_destinatario, ciudad_entrega, direccion_entrega, destinatario_id, clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
         `)
         .eq('liquidacion_id', settlementId)
         .order('created_at', { ascending: false });

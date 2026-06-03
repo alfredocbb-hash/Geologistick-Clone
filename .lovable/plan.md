@@ -1,45 +1,51 @@
 ## Problema
 
-En **Control de Caja** (`src/pages/Cash.tsx`) las tarjetas de totales solo muestran:
-- Monto Inicial
-- Ingresos (total)
-- Egresos (total)
-- Efectivo Esperado (solo efectivo)
-- Cantidad de Movimientos
+En la liquidación del chofer (dialog de detalle, PDF y Excel) solo se muestra la columna "Comisión" por envío. No se ven los envíos con cobro contra entrega (COD) ni el monto descontado al chofer por esos cobros, aunque sí se descuentan al generar la liquidación (queda registrado solo como texto en "notas").
 
-No hay desglose por método de pago, así que el total movido por **Transferencia** (y otros métodos como MercadoPago, tarjeta) no se ve a simple vista, aunque los datos sí existen en cada movimiento (`metodo_pago`).
+## Causa
 
-## Solución
+`SettlementDetailDialog.tsx` arma la tabla / PDF / Excel del chofer usando solo `comisiones.monto`. El query de `comisiones` trae `envio.precio_total` pero no `pago_contra_entrega`, y nunca se renderiza el dato de COD ni el descuento.
 
-Extender el cálculo de totales para desglosar por método de pago y agregar una tarjeta/sección que muestre el total de Transferencias (y otros métodos relevantes).
+## Cambios (solo UI / presentación, sin tocar lógica de generación ni base de datos)
 
-### Cambios en `src/pages/Cash.tsx`
+### `src/components/settlements/SettlementDetailDialog.tsx`
 
-1. **Ampliar el reduce de `totals`** (líneas 455-468) para acumular por método de pago:
-   - `ingresosTransferencia`, `egresosTransferencia`
-   - `ingresosTarjeta`, `egresosTarjeta`
-   - `ingresosMercadoPago`, `egresosMercadoPago`
-   - Mantener `ingresosEfectivo` / `egresosEfectivo` actuales.
-
-2. **Agregar una fila de tarjetas "Totales por método de pago"** debajo del grid de stats actual (línea ~578), mostrando para cada método el neto (ingresos − egresos) con su ícono y color. Solo mostrar los métodos con monto distinto de 0 para no saturar.
-
-   Ejemplo de tarjeta Transferencias:
+1. **Query `driverComisiones`**: agregar `pago_contra_entrega` al select del envío:
    ```
-   Transferencias
-   +$XX.XXX  (neto)
-   Ingresos: +$X · Egresos: -$X
+   envio:envios(..., precio_total, pago_contra_entrega, ...)
    ```
 
-3. **Mantener** el cálculo de "Efectivo Esperado" igual (sigue siendo solo efectivo, que es lo que realmente debe estar en la caja física).
+2. **Helpers derivados** (solo para chofer):
+   - `totalComisionesEnvios` = suma de `comision.monto`.
+   - `totalCobradoDestino` = suma de `envio.precio_total` de envíos con `pago_contra_entrega = true`.
+   - `totalDescontado` = `max(0, totalComisionesEnvios − driverData.monto_total)` (lo que efectivamente se le descontó al chofer al pagar las liquidaciones con COD).
 
-### Sin cambios en
+3. **Tab "Resumen" (chofer)**: convertir la card "Monto Total a Pagar" en un grid de 3 cards cuando haya COD:
+   - Comisiones del período (`totalComisionesEnvios`).
+   - Cobros en destino (`totalCobradoDestino`) — verde si > 0.
+   - Descontado al chofer (`totalDescontado`) — rojo si > 0.
+   - Card final destacada "Monto Neto a Pagar" (`driverData.monto_total`).
 
-- Lógica de apertura/cierre de caja.
-- Modelo de datos ni queries.
-- Otros prints o reportes.
+4. **Tab "Detalle de Envíos" (chofer)**: agregar dos columnas:
+   - `COD` — badge "Sí / —" según `envio.pago_contra_entrega`.
+   - `Cobrado en Destino` — `$envio.precio_total` si COD, si no `—`.
+   - Mantener columna `Comisión` existente.
+   - Fila final de totales: Comisiones, Cobrado en Destino, Descontado, Neto a Pagar.
+
+5. **PDF (`generatePDF`, rama chofer)**:
+   - Bloque de totales: agregar líneas "Comisiones", "Cobrado en Destino", "Descontado" y "MONTO NETO A PAGAR".
+   - Tabla de envíos: agregar columnas "COD" y "Cobrado Destino" (mostrar `$precio_total` solo en filas COD), reajustar anchos de columnas.
+
+6. **Excel (`handleExportExcel`, rama chofer)**:
+   - Agregar al objeto `data`: `cod` ("Sí"/""), `cobrado_destino` (number, currency).
+   - Agregar en `columns` (solo chofer): "COD", "Cobrado en Destino" (format currency), manteniendo "Comisión".
+
+### Sucursal y demás
+
+Sin cambios. La rama `isBranch` ya muestra Total Cobrado / Comisiones / Saldo y no necesita ajuste.
 
 ## QA
 
-- Crear movimientos de ingreso y egreso con método "transferencia" y verificar que aparece la tarjeta con el total correcto.
-- Verificar que con método efectivo, el "Efectivo Esperado" sigue calculándose igual que hoy.
-- Verificar que si no hay movimientos de cierto método, la tarjeta no se renderiza.
+- Abrir liquidación de Ariel Kersul (25/05–30/05): la tabla, el PDF y el Excel deben mostrar los envíos con `pago_contra_entrega`, su precio cobrado y el descuento total reflejado.
+- Verificar liquidación sin COD: no aparecen las cards extras y la columna "Cobrado en Destino" queda en "—".
+- Verificar que el "Monto Neto a Pagar" mostrado coincide con `liquidacion.monto_total` ya guardado.
