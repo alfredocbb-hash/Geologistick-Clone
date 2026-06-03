@@ -651,7 +651,10 @@ export default function Branches() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Sucursales</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-3xl font-bold text-foreground">Sucursales</h1>
+            <TenantFilterChip />
+          </div>
           <p className="text-muted-foreground">
             Administra las sucursales, capacidades y comisiones
           </p>
