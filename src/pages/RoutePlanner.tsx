@@ -198,20 +198,24 @@ export default function RoutePlanner() {
 
   // Fetch all branches with shipment counts
   const { data: sucursalesConEnvios = [] } = useQuery({
-    queryKey: ["sucursales-con-envios"],
+    queryKey: ["sucursales-con-envios", effectiveTenantId],
     queryFn: async () => {
-      const { data: sucursales, error: sucError } = await supabase
+      let sucQ = supabase
         .from("sucursales")
         .select("*")
         .eq("activa", true);
+      if (effectiveTenantId) sucQ = sucQ.eq("tenant_id", effectiveTenantId);
+      const { data: sucursales, error: sucError } = await sucQ;
 
       if (sucError) throw sucError;
 
-      const { data: enviosCounts, error: envError } = await supabase
+      let envQ = supabase
         .from("envios")
         .select("sucursal_origen_id")
         .in("estado", ["pendiente", "recogido", "en_sucursal"])
         .is("chofer_id", null);
+      if (effectiveTenantId) envQ = envQ.eq("tenant_id", effectiveTenantId);
+      const { data: enviosCounts, error: envError } = await envQ;
 
       if (envError) throw envError;
 
