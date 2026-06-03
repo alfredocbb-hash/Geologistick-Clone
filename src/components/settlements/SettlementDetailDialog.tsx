@@ -667,6 +667,8 @@ export function SettlementDetailDialog({
                      <TableHead>Destinatario</TableHead>
                      {isBranch && <TableHead>Rol</TableHead>}
                      <TableHead>Estado</TableHead>
+                     {!isBranch && <TableHead>COD</TableHead>}
+                     {!isBranch && <TableHead className="text-right">Cobrado en Destino</TableHead>}
                      <TableHead className="text-right">
                        {isBranch ? 'Monto Envío' : 'Comisión'}
                      </TableHead>
@@ -676,14 +678,16 @@ export function SettlementDetailDialog({
                 <TableBody>
                   {(isBranch ? branchDetalles : driverComisiones).length === 0 ? (
                      <TableRow>
-                       <TableCell colSpan={isBranch ? 7 : 5} className="text-center text-muted-foreground py-8">
+                       <TableCell colSpan={isBranch ? 7 : 7} className="text-center text-muted-foreground py-8">
                         No hay detalles disponibles
                       </TableCell>
                     </TableRow>
                   ) : (
-                    (isBranch ? branchDetalles : driverComisiones).map((item: any) => {
+                    <>
+                    {(isBranch ? branchDetalles : driverComisiones).map((item: any) => {
                       const envio = item.envio;
                       const destinatario = envio?.clientes;
+                      const isCOD = !isBranch && !!envio?.pago_contra_entrega;
                       return (
                         <TableRow key={item.id}>
                           <TableCell className="font-mono text-sm">
@@ -707,6 +711,20 @@ export function SettlementDetailDialog({
                               {envio?.estado || '-'}
                             </Badge>
                           </TableCell>
+                          {!isBranch && (
+                            <TableCell>
+                              {isCOD ? (
+                                <Badge variant="outline" className="text-xs bg-success/10 text-success border-success">Sí</Badge>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                          )}
+                          {!isBranch && (
+                            <TableCell className="text-right font-medium text-success">
+                              {isCOD ? `$${(Number(envio?.precio_total) || 0).toFixed(2)}` : '—'}
+                            </TableCell>
+                          )}
                           <TableCell className="text-right font-medium">
                             ${isBranch 
                               ? (item.monto_envio || 0).toFixed(2)
@@ -720,7 +738,34 @@ export function SettlementDetailDialog({
                           )}
                         </TableRow>
                       );
-                    })
+                    })}
+                    {!isBranch && (
+                      <TableRow className="bg-muted/40 font-semibold">
+                        <TableCell colSpan={3}>Totales</TableCell>
+                        <TableCell />
+                        <TableCell />
+                        <TableCell className="text-right text-success">
+                          ${driverTotalCobradoDestino.toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          ${driverTotalComisiones.toFixed(2)}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {!isBranch && driverHasCOD && (
+                      <TableRow className="bg-muted/20 text-sm">
+                        <TableCell colSpan={5} className="text-right text-muted-foreground">
+                          Descontado al chofer:
+                        </TableCell>
+                        <TableCell className="text-right text-destructive font-semibold">
+                          -${driverTotalDescontado.toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-right font-bold text-primary">
+                          Neto: ${driverData.monto_total.toFixed(2)}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    </>
                   )}
                 </TableBody>
               </Table>
