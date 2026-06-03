@@ -4,6 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useFormDraft } from '@/hooks/useFormDraft';
 import { DraftIndicator, DraftSavingIndicator } from '@/components/ui/draft-indicator';
 import { useAuth } from '@/lib/auth';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { TenantFilterChip } from '@/components/common/TenantFilterChip';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
