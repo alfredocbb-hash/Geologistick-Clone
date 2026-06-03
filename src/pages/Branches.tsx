@@ -115,7 +115,14 @@ type CommissionValues = {
 };
 
 export default function Branches() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isSuperAdmin } = useAuth();
+  const { checkBeforeActivate } = usePlanLimitCheck();
+  const [planLimitDialog, setPlanLimitDialog] = useState<{
+    open: boolean;
+    planName: string;
+    current: number;
+    max: number;
+  }>({ open: false, planName: '', current: 0, max: 0 });
   const { tenantId } = useTenant();
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
