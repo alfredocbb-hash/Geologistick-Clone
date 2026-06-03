@@ -281,7 +281,7 @@ export default function Routes() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Rutas de Entrega</h1>
+        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">Rutas de Entrega <TenantFilterChip /></h1>
         <p className="text-muted-foreground">Asigna envíos a los choferes disponibles</p>
       </div>
 
