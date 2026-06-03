@@ -310,10 +310,12 @@ export default function Branches() {
   // Create/Update sucursal mutation
   const saveMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
-      // Guard: tenant_id is required for creating branches
-      if (!editingSucursal && !tenantId) {
-        throw new Error('No se encontró tu empresa. Por favor, recarga la página.');
+      // Resolve tenant_id: super admin can target the selected tenant; otherwise use own.
+      const createTenantId = effectiveFilterTenantId || tenantId;
+      if (!editingSucursal && !createTenantId) {
+        throw new Error('Seleccioná un tenant en el header para crear una sucursal.');
       }
+
 
       const sucursalData = {
         nombre: data.nombre,
