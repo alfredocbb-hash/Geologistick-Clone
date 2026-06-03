@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { TenantProvider } from "@/components/providers/TenantProvider";
+import { SuperAdminTenantFilterProvider } from "@/components/providers/SuperAdminTenantFilterProvider";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { GoogleMapsProvider } from "@/components/maps/GoogleMapsProvider";
 import { MobileAppLayout } from "@/components/mobile/MobileAppLayout";
