@@ -337,11 +337,13 @@ const App = () => (
           <Sonner />
           <BrowserRouter>
             <AuthProvider>
-              <TenantProvider>
-                <ChunkErrorBoundary>
-                  <AppRoutes />
-                </ChunkErrorBoundary>
-              </TenantProvider>
+              <SuperAdminTenantFilterProvider>
+                <TenantProvider>
+                  <ChunkErrorBoundary>
+                    <AppRoutes />
+                  </ChunkErrorBoundary>
+                </TenantProvider>
+              </SuperAdminTenantFilterProvider>
             </AuthProvider>
           </BrowserRouter>
         </TooltipProvider>
