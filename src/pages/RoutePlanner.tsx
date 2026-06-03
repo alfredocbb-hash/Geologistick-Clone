@@ -392,9 +392,9 @@ export default function RoutePlanner() {
 
   // Fetch rutas activas
   const { data: rutasActivas = [] } = useQuery({
-    queryKey: ["rutas-activas"],
+    queryKey: ["rutas-activas", effectiveTenantId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from("rutas_planificadas")
         .select(`
           *,
@@ -402,6 +402,8 @@ export default function RoutePlanner() {
         `)
         .in("estado", ["confirmada", "en_curso"])
         .order("fecha", { ascending: true });
+      if (effectiveTenantId) q = q.eq("tenant_id", effectiveTenantId);
+      const { data, error } = await q;
       
       if (error) throw error;
 
