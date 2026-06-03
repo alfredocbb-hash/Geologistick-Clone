@@ -140,13 +140,18 @@ export default function Clients() {
   });
 
   // Fetch clients
+  const effectiveTenantId = useEffectiveTenantId();
   const { data: clients = [], isLoading } = useQuery({
-    queryKey: ['clients', searchTerm],
+    queryKey: ['clients', searchTerm, effectiveTenantId],
     queryFn: async () => {
       let query = supabase
         .from('clientes')
         .select('*')
         .order('created_at', { ascending: false });
+
+      if (effectiveTenantId) {
+        query = query.eq('tenant_id', effectiveTenantId);
+      }
 
       if (searchTerm) {
         query = query.or(
@@ -160,6 +165,7 @@ export default function Clients() {
     },
     refetchOnWindowFocus: false,
   });
+
 
   // Create/Update mutation
   const saveMutation = useMutation({
