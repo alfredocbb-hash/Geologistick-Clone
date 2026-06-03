@@ -100,34 +100,38 @@ export default function Vehicles() {
     hasDraft,
   } = useFormDraft<VehicleForm>('new-vehicle', defaultForm);
 
+  const effectiveTenantId = useEffectiveTenantId();
+
   const { data: vehicles, isLoading, refetch } = useQuery({
-    queryKey: ['vehiculos'],
+    queryKey: ['vehiculos', effectiveTenantId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('vehiculos')
         .select(`
           *,
           sucursal:sucursales(nombre)
         `)
         .order('patente');
-      
+      if (effectiveTenantId) q = q.eq('tenant_id', effectiveTenantId);
+      const { data, error } = await q;
+
       if (error) throw error;
-      
+
       // Fetch driver profiles separately
       const driverIds = [...new Set(data?.map(v => v.chofer_asignado_id).filter(Boolean))];
       let drivers: Record<string, { nombre: string; apellido: string | null }> = {};
-      
+
       if (driverIds.length > 0) {
         const { data: profileData } = await supabase
           .from('profiles')
           .select('user_id, nombre, apellido')
           .in('user_id', driverIds as string[]);
-        
+
         profileData?.forEach(p => {
           drivers[p.user_id] = { nombre: p.nombre, apellido: p.apellido };
         });
       }
-      
+
       return data?.map(v => ({
         ...v,
         chofer: v.chofer_asignado_id ? drivers[v.chofer_asignado_id] : null
@@ -135,6 +139,7 @@ export default function Vehicles() {
     },
     refetchOnWindowFocus: false,
   });
+
 
   const { data: sucursales } = useQuery({
     queryKey: ['sucursales-select'],
