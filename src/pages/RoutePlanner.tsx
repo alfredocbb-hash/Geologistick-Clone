@@ -427,7 +427,7 @@ export default function RoutePlanner() {
 
   // Fetch completed routes for history tab with GPS data check
   const { data: rutasHistorial = [], isLoading: loadingHistorial } = useQuery({
-    queryKey: ["rutas-historial", historyDateFrom?.toISOString(), historyDateTo?.toISOString()],
+    queryKey: ["rutas-historial", historyDateFrom?.toISOString(), historyDateTo?.toISOString(), effectiveTenantId],
     queryFn: async () => {
       let query = supabase
         .from("rutas_planificadas")
@@ -438,6 +438,7 @@ export default function RoutePlanner() {
         .eq("estado", "completada")
         .order("created_at", { ascending: false })
         .limit(100);
+      if (effectiveTenantId) query = query.eq("tenant_id", effectiveTenantId);
       
       // Apply date filters
       if (historyDateFrom) {
