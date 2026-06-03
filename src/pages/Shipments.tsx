@@ -442,6 +442,7 @@ export default function Shipments() {
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
             <Package className="h-8 w-8 text-shipments" />
             Gestión de Envíos
+            <TenantFilterChip />
           </h1>
           <p className="text-muted-foreground mt-1">
             Administra todos los envíos del sistema
