@@ -1305,10 +1305,7 @@ export default function Branches() {
                   <Switch
                     checked={sucursal.activa ?? true}
                     onCheckedChange={(checked) =>
-                      toggleActiveMutation.mutate({
-                        id: sucursal.id,
-                        activa: checked,
-                      })
+                      handleToggleActive(sucursal, checked)
                     }
                   />
                 </div>
