@@ -37,6 +37,8 @@ import { ShipmentDetailsDialog } from '@/components/shipments/ShipmentDetailsDia
 import { ChangeStatusDialog } from '@/components/shipments/ChangeStatusDialog';
 import { DeriveShipmentDialog } from '@/components/partners/DeriveShipmentDialog';
 import { parseDateString } from '@/lib/dateUtils';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { TenantFilterChip } from '@/components/common/TenantFilterChip';
 
 type ShipmentStatus = Database['public']['Enums']['shipment_status'];
 
