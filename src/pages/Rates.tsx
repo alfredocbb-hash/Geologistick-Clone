@@ -186,14 +186,15 @@ export default function Rates() {
 
   // Fetch tarifas with tenant and creator info for super admins
   const { data: tarifas = [], isLoading } = useQuery({
-    queryKey: ['tarifas'],
+    queryKey: ['tarifas', effectiveTenantId],
     queryFn: async () => {
       // Build query based on super admin status
       let query = supabase
         .from('tarifas')
         .select('*, tenant:tenants(id, nombre)')
         .order('nombre');
-        
+      if (effectiveTenantId) query = query.eq('tenant_id', effectiveTenantId);
+
       const { data, error } = await query;
       if (error) throw error;
       
