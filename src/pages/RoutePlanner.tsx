@@ -1464,6 +1464,7 @@ export default function RoutePlanner() {
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Route className="h-6 w-6" />
           Planificador de Rutas
+          <TenantFilterChip />
         </h1>
         <p className="text-muted-foreground">
           Optimiza y asigna rutas de entrega y retiro
