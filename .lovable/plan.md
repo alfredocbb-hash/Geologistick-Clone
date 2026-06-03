@@ -1,90 +1,71 @@
 
 ## Objetivo
 
-Permitir al super admin filtrar la vista de cualquier módulo administrativo por tenant (ej. "Black Box"), para ver y gestionar (deshabilitar/eliminar) sus sucursales, usuarios y demás recursos cuando se le baja el plan.
+Cuando un admin de tenant quiera **reactivar** una sucursal o usuario previamente deshabilitado por el super admin, validar que no se exceda el plan contratado (`max_usuarios`, `max_sucursales`). Si excede, bloquear la acción y mostrar aviso claro pidiendo contactar a soporte. El super admin sigue pudiendo reactivar sin restricción (bypass).
 
-## Enfoque
+## Alcance
 
-Filtro **híbrido**: un selector global persistente en el header + un selector local en cada página (que respeta el global pero permite override).
+Aplica a dos acciones:
+1. **Reactivar sucursal** (`sucursales.activa = false → true`) en `src/pages/Branches.tsx`.
+2. **Reactivar usuario** (`profiles.activo = false → true` / desbloqueo) en `src/pages/Users.tsx`.
 
-### 1. Estado global del tenant seleccionado
+No aplica a: creación de nuevos recursos (esa validación ya existe vía `useSubscription.isWithinLimits`) ni a desactivación.
 
-Nuevo contexto `SuperAdminTenantFilterProvider` (`src/components/providers/SuperAdminTenantFilterProvider.tsx`):
-- Estado: `selectedTenantId: string | 'all'`, default `'all'`.
-- Persiste en `localStorage` (`sa_selected_tenant`) para recordar entre recargas.
-- Expone `setSelectedTenantId`, `selectedTenant` (objeto con nombre/slug), `tenants[]`.
-- Solo activo si `isSuperAdmin()`. Se monta dentro de `AuthProvider` en `App.tsx`.
-- Hook helper: `useSuperAdminTenantFilter()`.
+## Diseño
 
-### 2. Selector global en el header
+### 1. Hook reutilizable `usePlanLimitCheck`
 
-Nuevo componente `SuperAdminTenantSelector.tsx` insertado en `AppHeader.tsx`:
-- Solo visible para super admin.
-- Dropdown buscable con todos los tenants + opción "Todos los tenants" + "Sin tenant".
-- Muestra badge con nombre del tenant activo.
-- Al cambiar, invalida las queries afectadas (`queryClient.invalidateQueries()` por keys clave).
+Nuevo archivo `src/hooks/usePlanLimitCheck.ts`:
+- Recibe `tenantId` (efectivo) y tipo (`'users' | 'branches'`).
+- Consulta:
+  - Límites del tenant: `tenants.max_usuarios`, `max_sucursales` (o `tenant_subscriptions` + `subscription_plans` vía `get_tenant_subscription_details` si hay suscripción activa — preferir ese si existe, sino fallback a `tenants.*`).
+  - Uso actual **activo**: `count` de `profiles` activos y `sucursales.activa = true` para ese tenant.
+- Devuelve `{ canActivate: boolean, current, max, planName }`.
+- Función `checkBeforeActivate()` que dispara la consulta on-demand (no en cada render).
 
-### 3. Filtro reutilizable por página
+### 2. Diálogo de aviso `PlanLimitExceededDialog`
 
-Nuevo componente `<TenantFilterChip />` en la barra de filtros de cada módulo:
-- Solo visible para super admin.
-- Permite override local (no persiste): "Usar global" / elegir otro tenant.
-- Devuelve el `effectiveTenantId` aplicado.
+Nuevo archivo `src/components/common/PlanLimitExceededDialog.tsx`:
+- AlertDialog con icono de warning.
+- Texto: "No se puede reactivar [sucursal/usuario] porque excede el plan contratado ([plan]). Límite: X. Actualmente activos: Y. Para ampliar tu plan, contactá a soporte."
+- Botón "Entendido" y "Contactar soporte" (link a `/support` o `mailto:`).
 
-### 4. Aplicación en módulos
+### 3. Integración en `Branches.tsx`
 
-Hook único `useEffectiveTenantId(localOverride?)`:
-- Devuelve el `tenant_id` efectivo a usar en queries.
-- Retorna `null` cuando es "Todos".
+En la mutación/handler de "Activar sucursal":
+- Si el usuario actual es `super_admin` → continuar sin validación.
+- Si es `admin` → llamar `checkBeforeActivate('branches')` antes del `UPDATE`.
+- Si `canActivate === false` → abrir `PlanLimitExceededDialog`, abortar.
+- Si `true` → ejecutar el update e invalidar queries.
 
-Páginas a actualizar para que sus queries usen `useEffectiveTenantId`, agreguen la clave al `queryKey`, y muestren `<TenantFilterChip />` cuando es super admin:
+### 4. Integración en `Users.tsx`
 
-- **Administración**: `Branches.tsx`, `Users.tsx` (ya tiene local, unificar), `Drivers.tsx`, `Vehicles.tsx`, `Clients.tsx`, `Rates.tsx`, `Partners.tsx`, `ThirdPartyCompanies.tsx`.
-- **Operaciones**: `Shipments.tsx`, `Routes.tsx`, `RouteSheets.tsx`, `RoutePlanner.tsx`, `Incidents.tsx`, `ScanQR.tsx`.
-- **Finanzas**: `Cash.tsx`, `Gastos.tsx`, `Payments.tsx`, `Facturacion.tsx`, `FiscalDashboard.tsx`, `DriverSettlements.tsx`, `ClientSettlements.tsx`, `BranchSettlements.tsx`, `ThirdPartySettlements.tsx`.
-- **E-commerce**: `ecommerce/Orders.tsx`, `ecommerce/Sellers.tsx`, `ecommerce/Settlements.tsx`, `ecommerce/Dashboard.tsx`.
-- **Sistema**: `IntegrationSettings.tsx`, `BrandingSettings.tsx`, `SystemSettings.tsx`, `UserActivityAdmin.tsx`, `TenantApiDocs.tsx`, `Reports.tsx`, `LiveMap.tsx`, `Dashboard.tsx`.
+Mismo patrón en la acción de reactivar usuario (toggle `activo` o desbloqueo).
+- Bypass para `super_admin`.
+- Validar contra `max_usuarios`.
+- Mostrar diálogo si excede.
 
-Patrón:
-```ts
-const effectiveTenantId = useEffectiveTenantId();
-const { data } = useQuery({
-  queryKey: ['branches', effectiveTenantId],
-  queryFn: async () => {
-    let q = supabase.from('sucursales').select('*');
-    if (effectiveTenantId) q = q.eq('tenant_id', effectiveTenantId);
-    return (await q).data;
-  },
-});
-```
+### 5. Backend
 
-### 5. Acciones de eliminación / desactivación
+No requiere migraciones. RLS y triggers existentes ya permiten el update; la validación es client-side (consistente con el patrón actual de `useSubscription`). El super admin ya bypassa por su rol.
 
-Los botones de eliminar/desactivar sucursales y usuarios ya existen para admin. Habilitarlos también para super admin cuando hay un tenant seleccionado:
-- `Branches.tsx`: agregar botones "Desactivar" y "Eliminar" visibles para super admin (delete con confirmación + cascada existente).
-- `Users.tsx`: ya soporta eliminar para super admin; verificar que funcione sobre cualquier tenant.
+Opcional (no incluido en este plan, recomendado a futuro): trigger DB que valide en `BEFORE UPDATE` para defensa en profundidad.
 
-### 6. RLS / Backend
+## Archivos
 
-No requiere migraciones: el rol `super_admin` ya bypassa RLS por `is_super_admin()` en las policies existentes. Solo se ajusta el filtro del lado cliente.
+**Nuevos:**
+- `src/hooks/usePlanLimitCheck.ts`
+- `src/components/common/PlanLimitExceededDialog.tsx`
 
-## Detalles técnicos
-
-- Archivos nuevos:
-  - `src/components/providers/SuperAdminTenantFilterProvider.tsx`
-  - `src/components/layout/SuperAdminTenantSelector.tsx`
-  - `src/components/common/TenantFilterChip.tsx`
-  - `src/hooks/useEffectiveTenantId.ts`
-- Modificados: `App.tsx` (montar provider), `AppHeader.tsx` (selector), y todas las páginas listadas.
-- `queryKey` debe incluir `effectiveTenantId` para refetch automático al cambiar.
-- Mutaciones de creación (ej. nueva sucursal) usan `selectedTenantId` cuando hay uno fijo; si es "Todos", se pide elegir tenant en el formulario (campo extra solo super admin).
+**Modificados:**
+- `src/pages/Branches.tsx` — interceptar reactivación.
+- `src/pages/Users.tsx` — interceptar reactivación.
 
 ## QA
 
-1. Login como super admin → header muestra selector "Todos los tenants".
-2. Elegir Black Box → todos los módulos filtran por ese tenant.
-3. Ir a Sucursales → ver solo las de Black Box, eliminar una.
-4. Ir a Usuarios → ver solo los de Black Box, eliminar uno.
-5. Cambiar override local en una página → solo afecta esa vista.
-6. Cambiar a "Todos" → vuelve la vista agregada.
-7. Crear sucursal con tenant fijo seleccionado → se crea con ese `tenant_id`.
+1. Tenant Black Box con plan: 5 usuarios / 3 sucursales. Super admin deshabilita 2 sucursales (quedan 1 activa).
+2. Admin del tenant intenta reactivar 1 sucursal → permitido (queda 2/3).
+3. Admin intenta reactivar la 3ra → permitido (3/3).
+4. Super admin baja el plan a 2 sucursales. Admin intenta reactivar una más → diálogo "excede el plan, contactar soporte", no se ejecuta el update.
+5. Mismo flujo con usuarios.
+6. Super admin reactivando con tenant filter activo → siempre permitido.
