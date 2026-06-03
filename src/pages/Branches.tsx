@@ -6,6 +6,8 @@ import { BranchCoverageZonesDialog } from '@/components/branches/BranchCoverageZ
 import { useTenant } from '@/hooks/useTenant';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { TenantFilterChip } from '@/components/common/TenantFilterChip';
+import { PlanLimitExceededDialog } from '@/components/common/PlanLimitExceededDialog';
+import { usePlanLimitCheck } from '@/hooks/usePlanLimitCheck';
 import { useFormDraft } from '@/hooks/useFormDraft';
 import { DraftIndicator, DraftSavingIndicator } from '@/components/ui/draft-indicator';
 import { Button } from '@/components/ui/button';
@@ -113,7 +115,14 @@ type CommissionValues = {
 };
 
 export default function Branches() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isSuperAdmin } = useAuth();
+  const { checkBeforeActivate } = usePlanLimitCheck();
+  const [planLimitDialog, setPlanLimitDialog] = useState<{
+    open: boolean;
+    planName: string;
+    current: number;
+    max: number;
+  }>({ open: false, planName: '', current: 0, max: 0 });
   const { tenantId } = useTenant();
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -459,6 +468,24 @@ export default function Branches() {
       toast.error('Error: ' + error.message);
     },
   });
+
+  // Handler with plan validation before reactivating
+  const handleToggleActive = async (sucursal: Sucursal, activa: boolean) => {
+    // Validate plan limits only when activating (not deactivating) and not super_admin
+    if (activa && !isSuperAdmin() && sucursal.tenant_id) {
+      const result = await checkBeforeActivate(sucursal.tenant_id, 'branches');
+      if (!result.canActivate) {
+        setPlanLimitDialog({
+          open: true,
+          planName: result.planName,
+          current: result.current,
+          max: result.max,
+        });
+        return;
+      }
+    }
+    toggleActiveMutation.mutate({ id: sucursal.id, activa });
+  };
 
   // State for geocoding
   const [geocodingId, setGeocodingId] = useState<string | null>(null);
@@ -1278,10 +1305,7 @@ export default function Branches() {
                   <Switch
                     checked={sucursal.activa ?? true}
                     onCheckedChange={(checked) =>
-                      toggleActiveMutation.mutate({
-                        id: sucursal.id,
-                        activa: checked,
-                      })
+                      handleToggleActive(sucursal, checked)
                     }
                   />
                 </div>
@@ -1559,6 +1583,15 @@ export default function Branches() {
           allSucursales={sucursales.map(s => ({ id: s.id, nombre: s.nombre, codigo: s.codigo }))}
         />
       )}
+
+      <PlanLimitExceededDialog
+        open={planLimitDialog.open}
+        onOpenChange={(open) => setPlanLimitDialog((p) => ({ ...p, open }))}
+        resourceType="sucursal"
+        planName={planLimitDialog.planName}
+        current={planLimitDialog.current}
+        max={planLimitDialog.max}
+      />
     </div>
   );
 }

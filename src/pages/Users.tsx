@@ -4,6 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { useSuperAdminTenantFilter } from '@/components/providers/SuperAdminTenantFilterProvider';
 import { TenantFilterChip } from '@/components/common/TenantFilterChip';
+import { PlanLimitExceededDialog } from '@/components/common/PlanLimitExceededDialog';
+import { usePlanLimitCheck } from '@/hooks/usePlanLimitCheck';
 import { useFormDraft } from '@/hooks/useFormDraft';
 import { DraftIndicator, DraftSavingIndicator } from '@/components/ui/draft-indicator';
 import { Button } from '@/components/ui/button';
@@ -134,6 +136,13 @@ const ROLE_COLORS: Record<AppRole, string> = {
 
 export default function Users() {
   const { isAdmin, isSuperAdmin, user: currentUser } = useAuth();
+  const { checkBeforeActivate } = usePlanLimitCheck();
+  const [planLimitDialog, setPlanLimitDialog] = useState<{
+    open: boolean;
+    planName: string;
+    current: number;
+    max: number;
+  }>({ open: false, planName: '', current: 0, max: 0 });
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -471,8 +480,28 @@ export default function Users() {
 
     const isChofer = editingRoles.includes('chofer');
 
+    // Validate plan limits when reactivating a previously inactive user
+    const isReactivating = formData.activo === true && editingProfile.activo === false;
+    const targetTenantId = (isSuperAdmin() && formData.tenant_id)
+      ? formData.tenant_id
+      : editingProfile.tenant_id;
+
+    if (isReactivating && !isSuperAdmin() && targetTenantId) {
+      const result = await checkBeforeActivate(targetTenantId, 'users');
+      if (!result.canActivate) {
+        setPlanLimitDialog({
+          open: true,
+          planName: result.planName,
+          current: result.current,
+          max: result.max,
+        });
+        return;
+      }
+    }
+
     // Close dialog immediately for better UX (optimistic update will show changes)
     setIsDialogOpen(false);
+    
     
     updateProfileMutation.mutate({
       profileId: editingProfile.id,
@@ -1381,6 +1410,15 @@ export default function Users() {
         user={deletingUser}
         onConfirm={handleDeleteUser}
         isDeleting={isDeleting}
+      />
+
+      <PlanLimitExceededDialog
+        open={planLimitDialog.open}
+        onOpenChange={(open) => setPlanLimitDialog((p) => ({ ...p, open }))}
+        resourceType="usuario"
+        planName={planLimitDialog.planName}
+        current={planLimitDialog.current}
+        max={planLimitDialog.max}
       />
     </div>
   );
