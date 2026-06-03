@@ -4,6 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { useSuperAdminTenantFilter } from '@/components/providers/SuperAdminTenantFilterProvider';
 import { TenantFilterChip } from '@/components/common/TenantFilterChip';
+import { PlanLimitExceededDialog } from '@/components/common/PlanLimitExceededDialog';
+import { usePlanLimitCheck } from '@/hooks/usePlanLimitCheck';
 import { useFormDraft } from '@/hooks/useFormDraft';
 import { DraftIndicator, DraftSavingIndicator } from '@/components/ui/draft-indicator';
 import { Button } from '@/components/ui/button';
