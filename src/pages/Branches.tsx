@@ -6,6 +6,8 @@ import { BranchCoverageZonesDialog } from '@/components/branches/BranchCoverageZ
 import { useTenant } from '@/hooks/useTenant';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { TenantFilterChip } from '@/components/common/TenantFilterChip';
+import { PlanLimitExceededDialog } from '@/components/common/PlanLimitExceededDialog';
+import { usePlanLimitCheck } from '@/hooks/usePlanLimitCheck';
 import { useFormDraft } from '@/hooks/useFormDraft';
 import { DraftIndicator, DraftSavingIndicator } from '@/components/ui/draft-indicator';
 import { Button } from '@/components/ui/button';
