@@ -4,6 +4,8 @@ import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea
 import { supabase } from "@/integrations/supabase/client";
 import { parseDateString } from "@/lib/dateUtils";
 import { useAuth } from "@/lib/auth";
+import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
+import { TenantFilterChip } from "@/components/common/TenantFilterChip";
 import { usePersistedState, useClearPersistedState } from "@/hooks/usePersistedState";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
