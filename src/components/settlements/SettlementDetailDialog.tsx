@@ -285,13 +285,40 @@ export function SettlementDetailDialog({
         doc.rect(20, y - 4, pageWidth - 40, 7, 'F');
       }
 
-      doc.text(String(tracking).substring(0, 16), 22, y);
-      doc.text(fecha, 60, y);
-      doc.text(nombre.substring(0, 22), 85, y);
-      doc.text(String(localidad).substring(0, 18), 130, y);
-      doc.text(monto, 175, y);
+      doc.text(String(tracking).substring(0, 14), 22, y);
+      doc.text(fecha, 55, y);
+      doc.text(nombre.substring(0, 20), 78, y);
+      doc.text(String(localidad).substring(0, 14), 120, y);
+      if (!isBranch) {
+        const isCOD = !!envio?.pago_contra_entrega;
+        doc.text(isCOD ? 'Sí' : '—', 150, y);
+        doc.text(isCOD ? `$${(Number(envio?.precio_total) || 0).toFixed(2)}` : '—', 162, y);
+        doc.text(`$${(item.monto || 0).toFixed(2)}`, 185, y);
+      } else {
+        doc.text(monto, 175, y);
+      }
       y += 7;
     });
+
+    // Totales del chofer al cierre de la tabla
+    if (!isBranch) {
+      if (y > 260) { doc.addPage(); y = 20; }
+      y += 4;
+      doc.setDrawColor(200, 200, 200);
+      doc.line(20, y, pageWidth - 20, y);
+      y += 6;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.text(`Total Comisiones: $${driverTotalComisiones.toFixed(2)}`, 22, y);
+      y += 6;
+      if (driverHasCOD) {
+        doc.text(`Total Cobrado en Destino: $${driverTotalCobradoDestino.toFixed(2)}`, 22, y);
+        y += 6;
+        doc.text(`Total Descontado: $${driverTotalDescontado.toFixed(2)}`, 22, y);
+        y += 6;
+      }
+      doc.text(`Neto a Pagar: $${driverData.monto_total.toFixed(2)}`, 22, y);
+    }
 
     // Footer
     y = doc.internal.pageSize.getHeight() - 20;
