@@ -52,8 +52,11 @@ export default function Drivers() {
   const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
 
   // Fetch drivers (users with chofer role)
+  const effectiveTenantId = useEffectiveTenantId();
+
+  // Fetch drivers (users with chofer role)
   const { data: drivers = [], isLoading: loadingDrivers } = useQuery({
-    queryKey: ['drivers'],
+    queryKey: ['drivers', effectiveTenantId],
     queryFn: async () => {
       // First get all users with chofer role
       const { data: userRoles, error: rolesError } = await supabase
@@ -67,7 +70,7 @@ export default function Drivers() {
       const userIds = userRoles.map(r => r.user_id);
 
       // Then get their profiles
-      const { data: profiles, error: profilesError } = await supabase
+      let q = supabase
         .from('profiles')
         .select(`
           id,
@@ -79,14 +82,18 @@ export default function Drivers() {
           avatar_url,
           sucursal_id,
           activo,
+          tenant_id,
           sucursal:sucursales(nombre)
         `)
         .in('user_id', userIds);
+      if (effectiveTenantId) q = q.eq('tenant_id', effectiveTenantId);
+      const { data: profiles, error: profilesError } = await q;
 
       if (profilesError) throw profilesError;
       return profiles as Driver[];
     },
   });
+
 
   // Fetch sucursales for filter
   const { data: sucursales = [] } = useQuery({
