@@ -135,6 +135,18 @@ export function SettlementDetailDialog({
   const branchData = settlement as BranchSettlement;
   const driverData = settlement as DriverSettlement;
 
+  // Driver COD derived totals
+  const driverTotalComisiones = !isBranch
+    ? (driverComisiones as any[]).reduce((s, c) => s + (Number(c.monto) || 0), 0)
+    : 0;
+  const driverTotalCobradoDestino = !isBranch
+    ? (driverComisiones as any[]).reduce((s, c) => s + (c.envio?.pago_contra_entrega ? (Number(c.envio?.precio_total) || 0) : 0), 0)
+    : 0;
+  const driverTotalDescontado = !isBranch
+    ? Math.max(0, driverTotalComisiones - (driverData.monto_total || 0))
+    : 0;
+  const driverHasCOD = !isBranch && (driverComisiones as any[]).some((c: any) => c.envio?.pago_contra_entrega);
+
   const getEstadoBadge = (estado: string | null) => {
     const config: Record<string, { label: string; className: string }> = {
       pendiente: { label: 'Pendiente', className: 'bg-warning/10 text-warning border-warning' },
