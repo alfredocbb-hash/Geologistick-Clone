@@ -480,8 +480,28 @@ export default function Users() {
 
     const isChofer = editingRoles.includes('chofer');
 
+    // Validate plan limits when reactivating a previously inactive user
+    const isReactivating = formData.activo === true && editingProfile.activo === false;
+    const targetTenantId = (isSuperAdmin() && formData.tenant_id)
+      ? formData.tenant_id
+      : editingProfile.tenant_id;
+
+    if (isReactivating && !isSuperAdmin() && targetTenantId) {
+      const result = await checkBeforeActivate(targetTenantId, 'users');
+      if (!result.canActivate) {
+        setPlanLimitDialog({
+          open: true,
+          planName: result.planName,
+          current: result.current,
+          max: result.max,
+        });
+        return;
+      }
+    }
+
     // Close dialog immediately for better UX (optimistic update will show changes)
     setIsDialogOpen(false);
+    
     
     updateProfileMutation.mutate({
       profileId: editingProfile.id,
