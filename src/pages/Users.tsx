@@ -136,6 +136,13 @@ const ROLE_COLORS: Record<AppRole, string> = {
 
 export default function Users() {
   const { isAdmin, isSuperAdmin, user: currentUser } = useAuth();
+  const { checkBeforeActivate } = usePlanLimitCheck();
+  const [planLimitDialog, setPlanLimitDialog] = useState<{
+    open: boolean;
+    planName: string;
+    current: number;
+    max: number;
+  }>({ open: false, planName: '', current: 0, max: 0 });
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
