@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { TenantFilterChip } from '@/components/common/TenantFilterChip';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -64,9 +66,11 @@ export default function Routes() {
   const isGlobalView = (isSuperAdmin() || isAdmin?.()) && !profile?.sucursal_id;
   const userBranchId = profile?.sucursal_id;
 
+  const effectiveTenantId = useEffectiveTenantId();
+
   // Fetch unassigned shipments (no chofer_id or pending status)
   const { data: unassignedShipments = [], isLoading: loadingShipments } = useQuery({
-    queryKey: ['unassigned-shipments', userBranchId, isGlobalView],
+    queryKey: ['unassigned-shipments', userBranchId, isGlobalView, effectiveTenantId],
     queryFn: async () => {
       let query = supabase
         .from('envios')
@@ -85,6 +89,8 @@ export default function Routes() {
         .in('estado', ['pendiente', 'recogido', 'en_sucursal'])
         .order('created_at', { ascending: true });
 
+      if (effectiveTenantId) query = query.eq('tenant_id', effectiveTenantId);
+
       // Branch users: only shipments physically at their branch + home delivery types
       if (!isGlobalView && userBranchId) {
         query = query
@@ -100,7 +106,7 @@ export default function Routes() {
 
   // Fetch drivers with their current shipments
   const { data: driversWithShipments = [], isLoading: loadingDrivers } = useQuery({
-    queryKey: ['drivers-with-shipments', userBranchId, isGlobalView],
+    queryKey: ['drivers-with-shipments', userBranchId, isGlobalView, effectiveTenantId],
     queryFn: async () => {
       // Get drivers
       const { data: userRoles, error: rolesError } = await supabase
@@ -113,7 +119,7 @@ export default function Routes() {
 
       const userIds = userRoles.map(r => r.user_id);
 
-      const { data: profiles, error: profilesError } = await supabase
+      let profilesQuery = supabase
         .from('profiles')
         .select(`
           id,
@@ -122,10 +128,13 @@ export default function Routes() {
           apellido,
           avatar_url,
           sucursal_id,
+          tenant_id,
           sucursal:sucursales(nombre)
         `)
         .in('user_id', userIds)
         .eq('activo', true);
+      if (effectiveTenantId) profilesQuery = profilesQuery.eq('tenant_id', effectiveTenantId);
+      const { data: profiles, error: profilesError } = await profilesQuery;
 
       if (profilesError) throw profilesError;
 
@@ -272,7 +281,7 @@ export default function Routes() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Rutas de Entrega</h1>
+        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">Rutas de Entrega <TenantFilterChip /></h1>
         <p className="text-muted-foreground">Asigna envíos a los choferes disponibles</p>
       </div>
 

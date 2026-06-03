@@ -4,6 +4,8 @@ import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea
 import { supabase } from "@/integrations/supabase/client";
 import { parseDateString } from "@/lib/dateUtils";
 import { useAuth } from "@/lib/auth";
+import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
+import { TenantFilterChip } from "@/components/common/TenantFilterChip";
 import { usePersistedState, useClearPersistedState } from "@/hooks/usePersistedState";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -130,6 +132,7 @@ export default function RoutePlanner() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const effectiveTenantId = useEffectiveTenantId();
   
   const [activeTab, setActiveTab] = usePersistedState('ui-tab-route-planner', "crear");
   // Persist critical selections in sessionStorage to prevent data loss on tab switch
@@ -195,20 +198,24 @@ export default function RoutePlanner() {
 
   // Fetch all branches with shipment counts
   const { data: sucursalesConEnvios = [] } = useQuery({
-    queryKey: ["sucursales-con-envios"],
+    queryKey: ["sucursales-con-envios", effectiveTenantId],
     queryFn: async () => {
-      const { data: sucursales, error: sucError } = await supabase
+      let sucQ = supabase
         .from("sucursales")
         .select("*")
         .eq("activa", true);
+      if (effectiveTenantId) sucQ = sucQ.eq("tenant_id", effectiveTenantId);
+      const { data: sucursales, error: sucError } = await sucQ;
 
       if (sucError) throw sucError;
 
-      const { data: enviosCounts, error: envError } = await supabase
+      let envQ = supabase
         .from("envios")
         .select("sucursal_origen_id")
         .in("estado", ["pendiente", "recogido", "en_sucursal"])
         .is("chofer_id", null);
+      if (effectiveTenantId) envQ = envQ.eq("tenant_id", effectiveTenantId);
+      const { data: enviosCounts, error: envError } = await envQ;
 
       if (envError) throw envError;
 
@@ -222,7 +229,7 @@ export default function RoutePlanner() {
 
   // Fetch envíos pendientes
   const { data: enviosPendientes = [], isLoading: loadingEnvios } = useQuery({
-    queryKey: ["envios-planificador", profile?.sucursal_id],
+    queryKey: ["envios-planificador", profile?.sucursal_id, effectiveTenantId],
     queryFn: async () => {
       // IDs explicitly selected from ecommerce module via URL
       const urlEnvioIdsArray = (searchParams.get('envios') || '').split(',').filter(Boolean);
@@ -239,6 +246,8 @@ export default function RoutePlanner() {
         .in("estado", ["pendiente", "recogido", "en_sucursal", "en_reparto", "reprogramado", "primera_visita", "segunda_visita"])
         .or("chofer_id.is.null,reprogramado_count.gt.0,estado.in.(primera_visita,segunda_visita)")
         .order("created_at", { ascending: false });
+
+      if (effectiveTenantId) query.eq("tenant_id", effectiveTenantId);
 
       // Filter by sucursal if not admin
       if (!roles.includes("admin") && !roles.includes("supervisor") && profile?.sucursal_id) {
@@ -383,9 +392,9 @@ export default function RoutePlanner() {
 
   // Fetch rutas activas
   const { data: rutasActivas = [] } = useQuery({
-    queryKey: ["rutas-activas"],
+    queryKey: ["rutas-activas", effectiveTenantId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from("rutas_planificadas")
         .select(`
           *,
@@ -393,6 +402,8 @@ export default function RoutePlanner() {
         `)
         .in("estado", ["confirmada", "en_curso"])
         .order("fecha", { ascending: true });
+      if (effectiveTenantId) q = q.eq("tenant_id", effectiveTenantId);
+      const { data, error } = await q;
       
       if (error) throw error;
 
@@ -416,7 +427,7 @@ export default function RoutePlanner() {
 
   // Fetch completed routes for history tab with GPS data check
   const { data: rutasHistorial = [], isLoading: loadingHistorial } = useQuery({
-    queryKey: ["rutas-historial", historyDateFrom?.toISOString(), historyDateTo?.toISOString()],
+    queryKey: ["rutas-historial", historyDateFrom?.toISOString(), historyDateTo?.toISOString(), effectiveTenantId],
     queryFn: async () => {
       let query = supabase
         .from("rutas_planificadas")
@@ -427,6 +438,7 @@ export default function RoutePlanner() {
         .eq("estado", "completada")
         .order("created_at", { ascending: false })
         .limit(100);
+      if (effectiveTenantId) query = query.eq("tenant_id", effectiveTenantId);
       
       // Apply date filters
       if (historyDateFrom) {
@@ -1452,6 +1464,7 @@ export default function RoutePlanner() {
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Route className="h-6 w-6" />
           Planificador de Rutas
+          <TenantFilterChip />
         </h1>
         <p className="text-muted-foreground">
           Optimiza y asigna rutas de entrega y retiro

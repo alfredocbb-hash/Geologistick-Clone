@@ -37,6 +37,8 @@ import { ShipmentDetailsDialog } from '@/components/shipments/ShipmentDetailsDia
 import { ChangeStatusDialog } from '@/components/shipments/ChangeStatusDialog';
 import { DeriveShipmentDialog } from '@/components/partners/DeriveShipmentDialog';
 import { parseDateString } from '@/lib/dateUtils';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { TenantFilterChip } from '@/components/common/TenantFilterChip';
 
 type ShipmentStatus = Database['public']['Enums']['shipment_status'];
 
@@ -305,8 +307,10 @@ export default function Shipments() {
   const trimmedSearch = search.trim();
   const isGlobalSearch = trimmedSearch.length >= 3;
 
+  const effectiveTenantId = useEffectiveTenantId();
+
   const { data: enviosData, isLoading, refetch } = useQuery({
-    queryKey: ['envios', statusFilter, dateFrom.toISOString(), dateTo.toISOString(), isGlobalSearch ? trimmedSearch : ''],
+    queryKey: ['envios', statusFilter, dateFrom.toISOString(), dateTo.toISOString(), isGlobalSearch ? trimmedSearch : '', effectiveTenantId],
     queryFn: async () => {
       let query = supabase
         .from('envios')
@@ -319,6 +323,8 @@ export default function Shipments() {
           chofer_id
         `)
         .order('created_at', { ascending: false });
+
+      if (effectiveTenantId) query = query.eq('tenant_id', effectiveTenantId);
 
       if (isGlobalSearch) {
         // Búsqueda global por tracking: ignora rango de fechas y estado para
@@ -365,14 +371,19 @@ export default function Shipments() {
   const choferMap = enviosData?.choferMap || {};
 
   const { data: stats } = useQuery({
-    queryKey: ['envios-stats'],
+    queryKey: ['envios-stats', effectiveTenantId],
     queryFn: async () => {
+      const base = () => {
+        let q = supabase.from('envios').select('*', { count: 'exact', head: true });
+        if (effectiveTenantId) q = q.eq('tenant_id', effectiveTenantId);
+        return q;
+      };
       const [totalRes, pendienteRes, transitoRes, entregadoRes, problemasRes] = await Promise.all([
-        supabase.from('envios').select('*', { count: 'exact', head: true }),
-        supabase.from('envios').select('*', { count: 'exact', head: true }).eq('estado', 'pendiente'),
-        supabase.from('envios').select('*', { count: 'exact', head: true }).in('estado', ['en_transito', 'en_reparto', 'recogido']),
-        supabase.from('envios').select('*', { count: 'exact', head: true }).eq('estado', 'entregado'),
-        supabase.from('envios').select('*', { count: 'exact', head: true }).in('estado', ['devuelto', 'cancelado']),
+        base(),
+        base().eq('estado', 'pendiente'),
+        base().in('estado', ['en_transito', 'en_reparto', 'recogido']),
+        base().eq('estado', 'entregado'),
+        base().in('estado', ['devuelto', 'cancelado']),
       ]);
 
       return {
@@ -431,6 +442,7 @@ export default function Shipments() {
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
             <Package className="h-8 w-8 text-shipments" />
             Gestión de Envíos
+            <TenantFilterChip />
           </h1>
           <p className="text-muted-foreground mt-1">
             Administra todos los envíos del sistema

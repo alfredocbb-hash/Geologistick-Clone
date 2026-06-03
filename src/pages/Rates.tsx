@@ -4,6 +4,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { TenantFilterChip } from '@/components/common/TenantFilterChip';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -128,6 +130,7 @@ interface TarifaConceptoPrecio {
 export default function Rates() {
   const { isAdmin, isSuperAdmin, profile, user } = useAuth();
   const queryClient = useQueryClient();
+  const effectiveTenantId = useEffectiveTenantId();
   const [activeTab, setActiveTab] = usePersistedState('ui-tab-rates', 'tarifas');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isConceptDialogOpen, setIsConceptDialogOpen] = useState(false);
@@ -183,14 +186,15 @@ export default function Rates() {
 
   // Fetch tarifas with tenant and creator info for super admins
   const { data: tarifas = [], isLoading } = useQuery({
-    queryKey: ['tarifas'],
+    queryKey: ['tarifas', effectiveTenantId],
     queryFn: async () => {
       // Build query based on super admin status
       let query = supabase
         .from('tarifas')
         .select('*, tenant:tenants(id, nombre)')
         .order('nombre');
-        
+      if (effectiveTenantId) query = query.eq('tenant_id', effectiveTenantId);
+
       const { data, error } = await query;
       if (error) throw error;
       
@@ -780,7 +784,7 @@ export default function Rates() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Tarifas</h1>
+          <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">Tarifas <TenantFilterChip /></h1>
           <p className="text-muted-foreground">
             Configura las tarifas de envío y conceptos
           </p>
