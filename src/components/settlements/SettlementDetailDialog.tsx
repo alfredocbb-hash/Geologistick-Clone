@@ -522,17 +522,56 @@ export function SettlementDetailDialog({
                   </Card>
                 </>
               ) : (
-                <Card className="bg-success/5 border-success/20 col-span-full">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-2 mb-1">
-                      <DollarSign className="h-4 w-4 text-success" />
-                      <span className="text-sm text-muted-foreground">Monto Total a Pagar</span>
-                    </div>
-                    <p className="text-3xl font-bold text-success">
-                      ${driverData.monto_total.toFixed(2)}
-                    </p>
-                  </CardContent>
-                </Card>
+                <>
+                  <Card className="bg-warning/5 border-warning/20">
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2 mb-1">
+                        <DollarSign className="h-4 w-4 text-warning" />
+                        <span className="text-sm text-muted-foreground">Comisiones</span>
+                      </div>
+                      <p className="text-2xl font-bold text-warning">
+                        ${driverTotalComisiones.toFixed(2)}
+                      </p>
+                    </CardContent>
+                  </Card>
+                  {driverHasCOD && (
+                    <>
+                      <Card className="bg-success/5 border-success/20">
+                        <CardContent className="p-4">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Wallet className="h-4 w-4 text-success" />
+                            <span className="text-sm text-muted-foreground">Cobrado en Destino</span>
+                          </div>
+                          <p className="text-2xl font-bold text-success">
+                            ${driverTotalCobradoDestino.toFixed(2)}
+                          </p>
+                        </CardContent>
+                      </Card>
+                      <Card className="bg-destructive/5 border-destructive/20">
+                        <CardContent className="p-4">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Receipt className="h-4 w-4 text-destructive" />
+                            <span className="text-sm text-muted-foreground">Descontado al chofer</span>
+                          </div>
+                          <p className="text-2xl font-bold text-destructive">
+                            ${driverTotalDescontado.toFixed(2)}
+                          </p>
+                        </CardContent>
+                      </Card>
+                    </>
+                  )}
+                  <Card className="bg-primary/5 border-primary/20 col-span-full">
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2 mb-1">
+                        <DollarSign className="h-4 w-4 text-primary" />
+                        <span className="text-sm text-muted-foreground">Monto Neto a Pagar</span>
+                      </div>
+                      <p className="text-3xl font-bold text-primary">
+                        ${driverData.monto_total.toFixed(2)}
+                      </p>
+                    </CardContent>
+                  </Card>
+                </>
               )}
             </div>
 
