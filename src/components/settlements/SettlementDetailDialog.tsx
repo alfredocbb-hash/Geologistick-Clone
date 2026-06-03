@@ -119,7 +119,7 @@ export function SettlementDetailDialog({
         .from('comisiones')
         .select(`
           *,
-          envio:envios(tracking_number, tracking_externo, estado, created_at, precio_total, nombre_destinatario, ciudad_entrega, direccion_entrega, destinatario_id, clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
+          envio:envios(tracking_number, tracking_externo, estado, created_at, precio_total, pago_contra_entrega, nombre_destinatario, ciudad_entrega, direccion_entrega, destinatario_id, clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
         `)
         .eq('liquidacion_id', settlementId)
         .order('created_at', { ascending: false });
@@ -134,6 +134,18 @@ export function SettlementDetailDialog({
   const isBranch = type === 'branch';
   const branchData = settlement as BranchSettlement;
   const driverData = settlement as DriverSettlement;
+
+  // Driver COD derived totals
+  const driverTotalComisiones = !isBranch
+    ? (driverComisiones as any[]).reduce((s, c) => s + (Number(c.monto) || 0), 0)
+    : 0;
+  const driverTotalCobradoDestino = !isBranch
+    ? (driverComisiones as any[]).reduce((s, c) => s + (c.envio?.pago_contra_entrega ? (Number(c.envio?.precio_total) || 0) : 0), 0)
+    : 0;
+  const driverTotalDescontado = !isBranch
+    ? Math.max(0, driverTotalComisiones - (driverData.monto_total || 0))
+    : 0;
+  const driverHasCOD = !isBranch && (driverComisiones as any[]).some((c: any) => c.envio?.pago_contra_entrega);
 
   const getEstadoBadge = (estado: string | null) => {
     const config: Record<string, { label: string; className: string }> = {
@@ -213,8 +225,16 @@ export function SettlementDetailDialog({
     } else {
       doc.text(`Cantidad de Envíos: ${driverData.cantidad_envios || 0}`, 25, y);
       y += 7;
+      doc.text(`Comisiones: $${driverTotalComisiones.toFixed(2)}`, 25, y);
+      y += 7;
+      if (driverHasCOD) {
+        doc.text(`Cobrado en Destino: $${driverTotalCobradoDestino.toFixed(2)}`, 25, y);
+        y += 7;
+        doc.text(`Descontado al chofer: $${driverTotalDescontado.toFixed(2)}`, 25, y);
+        y += 7;
+      }
       doc.setFontSize(13);
-      doc.text(`MONTO TOTAL: $${driverData.monto_total.toFixed(2)}`, 25, y);
+      doc.text(`MONTO NETO A PAGAR: $${driverData.monto_total.toFixed(2)}`, 25, y);
     }
     y += 15;
 
@@ -229,10 +249,16 @@ export function SettlementDetailDialog({
     doc.setFillColor(230, 230, 230);
     doc.rect(20, y - 4, pageWidth - 40, 8, 'F');
     doc.text('Tracking', 22, y);
-    doc.text('Fecha', 60, y);
-    doc.text('Destinatario', 85, y);
-    doc.text('Localidad', 130, y);
-    doc.text('Monto', 175, y);
+    doc.text('Fecha', 55, y);
+    doc.text('Destinatario', 78, y);
+    doc.text('Localidad', 120, y);
+    if (!isBranch) {
+      doc.text('COD', 150, y);
+      doc.text('Cobrado', 162, y);
+      doc.text('Comisión', 185, y);
+    } else {
+      doc.text('Monto', 175, y);
+    }
     y += 8;
 
     doc.setFont('helvetica', 'normal');
@@ -259,13 +285,40 @@ export function SettlementDetailDialog({
         doc.rect(20, y - 4, pageWidth - 40, 7, 'F');
       }
 
-      doc.text(String(tracking).substring(0, 16), 22, y);
-      doc.text(fecha, 60, y);
-      doc.text(nombre.substring(0, 22), 85, y);
-      doc.text(String(localidad).substring(0, 18), 130, y);
-      doc.text(monto, 175, y);
+      doc.text(String(tracking).substring(0, 14), 22, y);
+      doc.text(fecha, 55, y);
+      doc.text(nombre.substring(0, 20), 78, y);
+      doc.text(String(localidad).substring(0, 14), 120, y);
+      if (!isBranch) {
+        const isCOD = !!envio?.pago_contra_entrega;
+        doc.text(isCOD ? 'Sí' : '—', 150, y);
+        doc.text(isCOD ? `$${(Number(envio?.precio_total) || 0).toFixed(2)}` : '—', 162, y);
+        doc.text(`$${(item.monto || 0).toFixed(2)}`, 185, y);
+      } else {
+        doc.text(monto, 175, y);
+      }
       y += 7;
     });
+
+    // Totales del chofer al cierre de la tabla
+    if (!isBranch) {
+      if (y > 260) { doc.addPage(); y = 20; }
+      y += 4;
+      doc.setDrawColor(200, 200, 200);
+      doc.line(20, y, pageWidth - 20, y);
+      y += 6;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.text(`Total Comisiones: $${driverTotalComisiones.toFixed(2)}`, 22, y);
+      y += 6;
+      if (driverHasCOD) {
+        doc.text(`Total Cobrado en Destino: $${driverTotalCobradoDestino.toFixed(2)}`, 22, y);
+        y += 6;
+        doc.text(`Total Descontado: $${driverTotalDescontado.toFixed(2)}`, 22, y);
+        y += 6;
+      }
+      doc.text(`Neto a Pagar: $${driverData.monto_total.toFixed(2)}`, 22, y);
+    }
 
     // Footer
     y = doc.internal.pageSize.getHeight() - 20;
@@ -300,6 +353,8 @@ export function SettlementDetailDialog({
         direccion: envio?.direccion_entrega || '',
         rol: isBranch ? (item.rol === 'recepcion' ? 'Recepción' : 'Emisión') : '',
         estado: envio?.estado || '',
+        cod: isBranch ? '' : (envio?.pago_contra_entrega ? 'Sí' : ''),
+        cobrado_destino: isBranch ? 0 : (envio?.pago_contra_entrega ? Number(envio?.precio_total || 0) : 0),
         monto: isBranch ? Number(item.monto_envio || 0) : Number(item.monto || 0),
         comision: isBranch ? Number(item.comision_aplicada || 0) : Number(item.monto || 0),
       };
@@ -323,6 +378,8 @@ export function SettlementDetailDialog({
       : [
           ...baseCols,
           { header: 'Estado', key: 'estado' as const },
+          { header: 'COD', key: 'cod' as const },
+          { header: 'Cobrado en Destino', key: 'cobrado_destino' as const, format: 'currency' as const },
           { header: 'Comisión', key: 'comision' as const, format: 'currency' as const },
         ];
 
@@ -465,17 +522,56 @@ export function SettlementDetailDialog({
                   </Card>
                 </>
               ) : (
-                <Card className="bg-success/5 border-success/20 col-span-full">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-2 mb-1">
-                      <DollarSign className="h-4 w-4 text-success" />
-                      <span className="text-sm text-muted-foreground">Monto Total a Pagar</span>
-                    </div>
-                    <p className="text-3xl font-bold text-success">
-                      ${driverData.monto_total.toFixed(2)}
-                    </p>
-                  </CardContent>
-                </Card>
+                <>
+                  <Card className="bg-warning/5 border-warning/20">
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2 mb-1">
+                        <DollarSign className="h-4 w-4 text-warning" />
+                        <span className="text-sm text-muted-foreground">Comisiones</span>
+                      </div>
+                      <p className="text-2xl font-bold text-warning">
+                        ${driverTotalComisiones.toFixed(2)}
+                      </p>
+                    </CardContent>
+                  </Card>
+                  {driverHasCOD && (
+                    <>
+                      <Card className="bg-success/5 border-success/20">
+                        <CardContent className="p-4">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Wallet className="h-4 w-4 text-success" />
+                            <span className="text-sm text-muted-foreground">Cobrado en Destino</span>
+                          </div>
+                          <p className="text-2xl font-bold text-success">
+                            ${driverTotalCobradoDestino.toFixed(2)}
+                          </p>
+                        </CardContent>
+                      </Card>
+                      <Card className="bg-destructive/5 border-destructive/20">
+                        <CardContent className="p-4">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Receipt className="h-4 w-4 text-destructive" />
+                            <span className="text-sm text-muted-foreground">Descontado al chofer</span>
+                          </div>
+                          <p className="text-2xl font-bold text-destructive">
+                            ${driverTotalDescontado.toFixed(2)}
+                          </p>
+                        </CardContent>
+                      </Card>
+                    </>
+                  )}
+                  <Card className="bg-primary/5 border-primary/20 col-span-full">
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2 mb-1">
+                        <DollarSign className="h-4 w-4 text-primary" />
+                        <span className="text-sm text-muted-foreground">Monto Neto a Pagar</span>
+                      </div>
+                      <p className="text-3xl font-bold text-primary">
+                        ${driverData.monto_total.toFixed(2)}
+                      </p>
+                    </CardContent>
+                  </Card>
+                </>
               )}
             </div>
 
@@ -571,6 +667,8 @@ export function SettlementDetailDialog({
                      <TableHead>Destinatario</TableHead>
                      {isBranch && <TableHead>Rol</TableHead>}
                      <TableHead>Estado</TableHead>
+                     {!isBranch && <TableHead>COD</TableHead>}
+                     {!isBranch && <TableHead className="text-right">Cobrado en Destino</TableHead>}
                      <TableHead className="text-right">
                        {isBranch ? 'Monto Envío' : 'Comisión'}
                      </TableHead>
@@ -580,14 +678,16 @@ export function SettlementDetailDialog({
                 <TableBody>
                   {(isBranch ? branchDetalles : driverComisiones).length === 0 ? (
                      <TableRow>
-                       <TableCell colSpan={isBranch ? 7 : 5} className="text-center text-muted-foreground py-8">
+                       <TableCell colSpan={isBranch ? 7 : 7} className="text-center text-muted-foreground py-8">
                         No hay detalles disponibles
                       </TableCell>
                     </TableRow>
                   ) : (
-                    (isBranch ? branchDetalles : driverComisiones).map((item: any) => {
+                    <>
+                    {(isBranch ? branchDetalles : driverComisiones).map((item: any) => {
                       const envio = item.envio;
                       const destinatario = envio?.clientes;
+                      const isCOD = !isBranch && !!envio?.pago_contra_entrega;
                       return (
                         <TableRow key={item.id}>
                           <TableCell className="font-mono text-sm">
@@ -611,6 +711,20 @@ export function SettlementDetailDialog({
                               {envio?.estado || '-'}
                             </Badge>
                           </TableCell>
+                          {!isBranch && (
+                            <TableCell>
+                              {isCOD ? (
+                                <Badge variant="outline" className="text-xs bg-success/10 text-success border-success">Sí</Badge>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                          )}
+                          {!isBranch && (
+                            <TableCell className="text-right font-medium text-success">
+                              {isCOD ? `$${(Number(envio?.precio_total) || 0).toFixed(2)}` : '—'}
+                            </TableCell>
+                          )}
                           <TableCell className="text-right font-medium">
                             ${isBranch 
                               ? (item.monto_envio || 0).toFixed(2)
@@ -624,7 +738,34 @@ export function SettlementDetailDialog({
                           )}
                         </TableRow>
                       );
-                    })
+                    })}
+                    {!isBranch && (
+                      <TableRow className="bg-muted/40 font-semibold">
+                        <TableCell colSpan={3}>Totales</TableCell>
+                        <TableCell />
+                        <TableCell />
+                        <TableCell className="text-right text-success">
+                          ${driverTotalCobradoDestino.toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          ${driverTotalComisiones.toFixed(2)}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {!isBranch && driverHasCOD && (
+                      <TableRow className="bg-muted/20 text-sm">
+                        <TableCell colSpan={5} className="text-right text-muted-foreground">
+                          Descontado al chofer:
+                        </TableCell>
+                        <TableCell className="text-right text-destructive font-semibold">
+                          -${driverTotalDescontado.toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-right font-bold text-primary">
+                          Neto: ${driverData.monto_total.toFixed(2)}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    </>
                   )}
                 </TableBody>
               </Table>
