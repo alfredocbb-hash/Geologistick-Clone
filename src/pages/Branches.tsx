@@ -469,6 +469,24 @@ export default function Branches() {
     },
   });
 
+  // Handler with plan validation before reactivating
+  const handleToggleActive = async (sucursal: Sucursal, activa: boolean) => {
+    // Validate plan limits only when activating (not deactivating) and not super_admin
+    if (activa && !isSuperAdmin() && sucursal.tenant_id) {
+      const result = await checkBeforeActivate(sucursal.tenant_id, 'branches');
+      if (!result.canActivate) {
+        setPlanLimitDialog({
+          open: true,
+          planName: result.planName,
+          current: result.current,
+          max: result.max,
+        });
+        return;
+      }
+    }
+    toggleActiveMutation.mutate({ id: sucursal.id, activa });
+  };
+
   // State for geocoding
   const [geocodingId, setGeocodingId] = useState<string | null>(null);
   const [geocodingAll, setGeocodingAll] = useState(false);
