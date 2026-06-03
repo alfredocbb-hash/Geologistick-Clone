@@ -193,7 +193,7 @@ export default function Clients() {
       } else {
         const { error } = await supabase.from('clientes').insert({
           ...clientData,
-          tenant_id: profile?.tenant_id,
+          tenant_id: effectiveTenantId || profile?.tenant_id,
         });
         if (error) throw error;
       }
