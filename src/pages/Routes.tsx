@@ -106,7 +106,7 @@ export default function Routes() {
 
   // Fetch drivers with their current shipments
   const { data: driversWithShipments = [], isLoading: loadingDrivers } = useQuery({
-    queryKey: ['drivers-with-shipments', userBranchId, isGlobalView],
+    queryKey: ['drivers-with-shipments', userBranchId, isGlobalView, effectiveTenantId],
     queryFn: async () => {
       // Get drivers
       const { data: userRoles, error: rolesError } = await supabase
@@ -119,7 +119,7 @@ export default function Routes() {
 
       const userIds = userRoles.map(r => r.user_id);
 
-      const { data: profiles, error: profilesError } = await supabase
+      let profilesQuery = supabase
         .from('profiles')
         .select(`
           id,
@@ -128,10 +128,13 @@ export default function Routes() {
           apellido,
           avatar_url,
           sucursal_id,
+          tenant_id,
           sucursal:sucursales(nombre)
         `)
         .in('user_id', userIds)
         .eq('activo', true);
+      if (effectiveTenantId) profilesQuery = profilesQuery.eq('tenant_id', effectiveTenantId);
+      const { data: profiles, error: profilesError } = await profilesQuery;
 
       if (profilesError) throw profilesError;
 
