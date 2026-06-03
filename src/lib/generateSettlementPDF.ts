@@ -560,19 +560,21 @@ export async function downloadDriverSettlementPDF(liquidacion: {
     .from('comisiones')
     .select(`
       *,
-      envio:envios(tracking_number, estado, created_at, precio_total, nombre_destinatario, destinatario_id, 
+      envio:envios(tracking_number, tracking_externo, estado, created_at, precio_total, pago_contra_entrega, nombre_destinatario, destinatario_id, 
         clientes:clientes!envios_destinatario_id_fkey(nombre, apellido))
     `)
     .eq('liquidacion_id', liquidacion.id)
     .order('created_at', { ascending: false });
 
   const items = (comisiones || []).map((c: any) => ({
-    tracking: c.envio?.tracking_number || '-',
+    tracking: c.envio?.tracking_externo || c.envio?.tracking_number || '-',
     fecha: c.envio?.created_at ? format(new Date(c.envio.created_at), 'dd/MM/yy') : '-',
     destinatario: c.envio?.clientes
       ? `${c.envio.clientes.nombre || ''} ${c.envio.clientes.apellido || ''}`.trim()
       : c.envio?.nombre_destinatario || '-',
     monto: c.monto || 0,
+    cod: !!c.envio?.pago_contra_entrega,
+    cobrado: c.envio?.pago_contra_entrega ? Number(c.envio?.precio_total || 0) : 0,
   }));
 
   await generateSettlementPDF({
