@@ -352,7 +352,7 @@ export default function Branches() {
         // Include tenant_id when creating a new branch
         const { error } = await supabase.from('sucursales').insert({
           ...sucursalData,
-          tenant_id: tenantId,
+          tenant_id: createTenantId,
         });
         if (error) throw error;
       }
