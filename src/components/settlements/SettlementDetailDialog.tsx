@@ -353,6 +353,8 @@ export function SettlementDetailDialog({
         direccion: envio?.direccion_entrega || '',
         rol: isBranch ? (item.rol === 'recepcion' ? 'Recepción' : 'Emisión') : '',
         estado: envio?.estado || '',
+        cod: isBranch ? '' : (envio?.pago_contra_entrega ? 'Sí' : ''),
+        cobrado_destino: isBranch ? 0 : (envio?.pago_contra_entrega ? Number(envio?.precio_total || 0) : 0),
         monto: isBranch ? Number(item.monto_envio || 0) : Number(item.monto || 0),
         comision: isBranch ? Number(item.comision_aplicada || 0) : Number(item.monto || 0),
       };
@@ -376,6 +378,8 @@ export function SettlementDetailDialog({
       : [
           ...baseCols,
           { header: 'Estado', key: 'estado' as const },
+          { header: 'COD', key: 'cod' as const },
+          { header: 'Cobrado en Destino', key: 'cobrado_destino' as const, format: 'currency' as const },
           { header: 'Comisión', key: 'comision' as const, format: 'currency' as const },
         ];
 
