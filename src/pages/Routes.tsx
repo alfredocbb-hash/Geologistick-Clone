@@ -66,9 +66,11 @@ export default function Routes() {
   const isGlobalView = (isSuperAdmin() || isAdmin?.()) && !profile?.sucursal_id;
   const userBranchId = profile?.sucursal_id;
 
+  const effectiveTenantId = useEffectiveTenantId();
+
   // Fetch unassigned shipments (no chofer_id or pending status)
   const { data: unassignedShipments = [], isLoading: loadingShipments } = useQuery({
-    queryKey: ['unassigned-shipments', userBranchId, isGlobalView],
+    queryKey: ['unassigned-shipments', userBranchId, isGlobalView, effectiveTenantId],
     queryFn: async () => {
       let query = supabase
         .from('envios')
@@ -86,6 +88,8 @@ export default function Routes() {
         .is('chofer_id', null)
         .in('estado', ['pendiente', 'recogido', 'en_sucursal'])
         .order('created_at', { ascending: true });
+
+      if (effectiveTenantId) query = query.eq('tenant_id', effectiveTenantId);
 
       // Branch users: only shipments physically at their branch + home delivery types
       if (!isGlobalView && userBranchId) {
