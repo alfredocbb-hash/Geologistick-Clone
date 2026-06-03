@@ -66,6 +66,9 @@ export function AppHeader() {
       {/* Spacer */}
       <div className="flex-1" />
 
+      {/* Super Admin Tenant Selector */}
+      <SuperAdminTenantSelector />
+
       {/* Language Selector */}
       <LanguageSelector persist variant="ghost" />
 
