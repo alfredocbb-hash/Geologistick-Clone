@@ -229,7 +229,7 @@ export default function RoutePlanner() {
 
   // Fetch envíos pendientes
   const { data: enviosPendientes = [], isLoading: loadingEnvios } = useQuery({
-    queryKey: ["envios-planificador", profile?.sucursal_id],
+    queryKey: ["envios-planificador", profile?.sucursal_id, effectiveTenantId],
     queryFn: async () => {
       // IDs explicitly selected from ecommerce module via URL
       const urlEnvioIdsArray = (searchParams.get('envios') || '').split(',').filter(Boolean);
@@ -246,6 +246,8 @@ export default function RoutePlanner() {
         .in("estado", ["pendiente", "recogido", "en_sucursal", "en_reparto", "reprogramado", "primera_visita", "segunda_visita"])
         .or("chofer_id.is.null,reprogramado_count.gt.0,estado.in.(primera_visita,segunda_visita)")
         .order("created_at", { ascending: false });
+
+      if (effectiveTenantId) query.eq("tenant_id", effectiveTenantId);
 
       // Filter by sucursal if not admin
       if (!roles.includes("admin") && !roles.includes("supervisor") && profile?.sucursal_id) {
