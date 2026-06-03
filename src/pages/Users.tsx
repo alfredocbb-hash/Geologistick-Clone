@@ -1411,6 +1411,15 @@ export default function Users() {
         onConfirm={handleDeleteUser}
         isDeleting={isDeleting}
       />
+
+      <PlanLimitExceededDialog
+        open={planLimitDialog.open}
+        onOpenChange={(open) => setPlanLimitDialog((p) => ({ ...p, open }))}
+        resourceType="usuario"
+        planName={planLimitDialog.planName}
+        current={planLimitDialog.current}
+        max={planLimitDialog.max}
+      />
     </div>
   );
 }
