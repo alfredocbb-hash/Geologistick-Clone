@@ -162,14 +162,16 @@ export default function Branches() {
   const [emisionCommissionData, setEmisionCommissionData] = useState<Record<string, CommissionValues>>({});
   const [recepcionCommissionData, setRecepcionCommissionData] = useState<Record<string, CommissionValues>>({});
 
-  // Fetch sucursales
+  // Fetch sucursales (filtered by super admin tenant selector when applicable)
+  const effectiveFilterTenantId = useEffectiveTenantId();
   const { data: sucursales = [], isLoading } = useQuery({
-    queryKey: ['sucursales-full'],
+    queryKey: ['sucursales-full', effectiveFilterTenantId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('sucursales')
-        .select('*')
-        .order('nombre');
+      let query = supabase.from('sucursales').select('*').order('nombre');
+      if (effectiveFilterTenantId) {
+        query = query.eq('tenant_id', effectiveFilterTenantId);
+      }
+      const { data, error } = await query;
       if (error) throw error;
       return data as Sucursal[];
     },
