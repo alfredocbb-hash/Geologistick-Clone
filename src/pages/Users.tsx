@@ -147,7 +147,16 @@ export default function Users() {
   const [deletingUser, setDeletingUser] = useState<Profile | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [viewMode, setViewMode] = useState<'flat' | 'grouped'>('grouped');
-  const [filterTenantId, setFilterTenantId] = useState<string>('all');
+  const { selectedTenantId: globalTenantId } = useSuperAdminTenantFilter();
+  const [filterTenantId, setFilterTenantId] = useState<string>(
+    globalTenantId === 'all' ? 'all' : globalTenantId,
+  );
+
+  // Sync local tenant filter with the global super-admin selector
+  useEffect(() => {
+    if (!isSuperAdmin()) return;
+    setFilterTenantId(globalTenantId === 'all' ? 'all' : globalTenantId);
+  }, [globalTenantId, isSuperAdmin]);
   const [formData, setFormData] = useState({
     nombre: '',
     apellido: '',
