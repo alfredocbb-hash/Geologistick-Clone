@@ -225,8 +225,16 @@ export function SettlementDetailDialog({
     } else {
       doc.text(`Cantidad de Envíos: ${driverData.cantidad_envios || 0}`, 25, y);
       y += 7;
+      doc.text(`Comisiones: $${driverTotalComisiones.toFixed(2)}`, 25, y);
+      y += 7;
+      if (driverHasCOD) {
+        doc.text(`Cobrado en Destino: $${driverTotalCobradoDestino.toFixed(2)}`, 25, y);
+        y += 7;
+        doc.text(`Descontado al chofer: $${driverTotalDescontado.toFixed(2)}`, 25, y);
+        y += 7;
+      }
       doc.setFontSize(13);
-      doc.text(`MONTO TOTAL: $${driverData.monto_total.toFixed(2)}`, 25, y);
+      doc.text(`MONTO NETO A PAGAR: $${driverData.monto_total.toFixed(2)}`, 25, y);
     }
     y += 15;
 
@@ -241,10 +249,16 @@ export function SettlementDetailDialog({
     doc.setFillColor(230, 230, 230);
     doc.rect(20, y - 4, pageWidth - 40, 8, 'F');
     doc.text('Tracking', 22, y);
-    doc.text('Fecha', 60, y);
-    doc.text('Destinatario', 85, y);
-    doc.text('Localidad', 130, y);
-    doc.text('Monto', 175, y);
+    doc.text('Fecha', 55, y);
+    doc.text('Destinatario', 78, y);
+    doc.text('Localidad', 120, y);
+    if (!isBranch) {
+      doc.text('COD', 150, y);
+      doc.text('Cobrado', 162, y);
+      doc.text('Comisión', 185, y);
+    } else {
+      doc.text('Monto', 175, y);
+    }
     y += 8;
 
     doc.setFont('helvetica', 'normal');
