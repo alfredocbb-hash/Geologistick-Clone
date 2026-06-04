@@ -157,9 +157,14 @@ export function PaymentMethodDialog({
   };
 
   const handleConfirmMercadoPago = async () => {
-    if (mpPayment) {
-      await onConfirm('mercado_pago', mpPayment.preference_id);
+    if (!mpPayment) return;
+    // Re-verificar pago en MP antes de confirmar
+    const estado = await checkMpStatus();
+    if (estado !== 'pagado') {
+      toast.error('El pago aún no fue acreditado en Mercado Pago. Esperá a la confirmación o cambiá de método.');
+      return;
     }
+    await onConfirm('mercado_pago', mpPayment.preference_id);
   };
 
   const handleConfirm = async () => {
