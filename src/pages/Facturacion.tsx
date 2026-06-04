@@ -319,12 +319,25 @@ export default function Facturacion() {
   const handleBatchInvoice = async () => {
     const ids = Array.from(selected);
     const enviosToInvoice = pendientes.filter(e => ids.includes(e.id));
+
+    // Defensa: revalidar estado actual antes de emitir (puede haber cambiado tras cargar la lista)
+    const { data: estadosActuales } = await supabase
+      .from('envios')
+      .select('id, estado')
+      .in('id', enviosToInvoice.map(e => e.id));
+    const estadoMap = new Map((estadosActuales || []).map((e: any) => [e.id, e.estado]));
+
     setBatchProgress({ current: 0, total: enviosToInvoice.length, running: true });
     setBatchResults([]);
     const results: typeof batchResults = [];
     for (let i = 0; i < enviosToInvoice.length; i++) {
       const envio = enviosToInvoice[i];
       setBatchProgress(p => ({ ...p, current: i + 1 }));
+      const estadoActual = estadoMap.get(envio.id);
+      if (estadoActual === 'cancelado' || estadoActual === 'devuelto') {
+        results.push({ id: envio.id, tracking: envio.tracking_number, ok: false, error: `Envío ${estadoActual}, no facturable` });
+        continue;
+      }
       const importeTotalConIva = ivaIncluido ? envio.precio_total : Math.round(envio.precio_total * 1.21 * 100) / 100;
       try {
         const { data, error } = await supabase.functions.invoke('arca-factura', {
