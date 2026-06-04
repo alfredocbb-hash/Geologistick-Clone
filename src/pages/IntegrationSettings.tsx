@@ -185,7 +185,14 @@ export default function IntegrationSettings() {
   } | null>(null);
   const [arcaTesting, setArcaTesting] = useState(false);
   const queryClient = useQueryClient();
-  const { tenantId, isLoading: tenantLoading } = useTenant();
+  const { tenantId: ownTenantId, isLoading: tenantLoading } = useTenant();
+  const { isSuperAdmin } = useAuth();
+  const effectiveTenantId = useEffectiveTenantId();
+  const isSA = isSuperAdmin();
+  // Para super admin, el tenantId efectivo viene del selector global.
+  // Para el resto, siempre su propio tenant.
+  const tenantId = isSA ? effectiveTenantId : ownTenantId;
+  const needsTenantSelection = isSA && !effectiveTenantId;
 
   // Fetch all configurations for current integration type and environment (filtered by tenant)
   const { data: configs, isLoading } = useQuery({
@@ -231,7 +238,9 @@ export default function IntegrationSettings() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!tenantId) {
-        throw new Error('No se encontró tu empresa. Por favor, cierra sesión y vuelve a entrar.');
+        throw new Error(needsTenantSelection
+          ? 'Seleccioná un tenant específico para guardar su configuración.'
+          : 'No se encontró tu empresa. Por favor, cierra sesión y vuelve a entrar.');
       }
       
       const integrationConfig = INTEGRATIONS_CONFIG[activeTab];
