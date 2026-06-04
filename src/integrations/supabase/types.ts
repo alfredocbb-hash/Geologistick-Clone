@@ -210,6 +210,7 @@ export type Database = {
           saldo_cuenta_corriente: number | null
           sucursal_id: string | null
           telefono: string
+          telefono_normalizado: string | null
           tenant_id: string | null
           tiene_cuenta_corriente: boolean | null
           tipo_contribuyente: string | null
@@ -235,6 +236,7 @@ export type Database = {
           saldo_cuenta_corriente?: number | null
           sucursal_id?: string | null
           telefono: string
+          telefono_normalizado?: string | null
           tenant_id?: string | null
           tiene_cuenta_corriente?: boolean | null
           tipo_contribuyente?: string | null
@@ -260,6 +262,7 @@ export type Database = {
           saldo_cuenta_corriente?: number | null
           sucursal_id?: string | null
           telefono?: string
+          telefono_normalizado?: string | null
           tenant_id?: string | null
           tiene_cuenta_corriente?: boolean | null
           tipo_contribuyente?: string | null
@@ -5305,6 +5308,7 @@ export type Database = {
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
+      normalizar_telefono_ar: { Args: { p_phone: string }; Returns: string }
       receive_rendition: {
         Args: {
           p_chofer_id: string
