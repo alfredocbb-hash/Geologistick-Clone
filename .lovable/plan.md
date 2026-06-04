@@ -1,70 +1,67 @@
-## Contexto
+# Documentación de Integraciones para Devs
 
-En el video se reproducen dos problemas al crear un envío Puerta a Puerta + Retiro para Almacenaje, origen PERON (San Justo, 1754) → destino CHURRINCHES 150, VILLA VENTANA, CP 8163:
+Crear un único archivo `docs/INTEGRATIONS.md` en AR Spanish con toda la información de dónde viven las credenciales del sistema.
 
-1. La sección **Tarifa** muestra el aviso "Ingresá ciudad destino — Precio automático por zona" aun teniendo cargada la ciudad/CP del destino → el matcher por zona no encuentra Villa Ventana 8163.
-2. Al hacer click en **Crear Envío**, la app cae al `ChunkErrorBoundary` global ("Algo salió mal — Se produjo un error inesperado"). No es un toast de la mutación: es una excepción en render que sube hasta el boundary.
+## Contenido del archivo
 
-Resultado deseado: bloquear el submit con un mensaje claro cuando no hay tarifa configurada para la zona, y eliminar la posibilidad de crash en render.
+### 1. Overview
+Dos patrones de almacenamiento:
+- **App credentials globales** → Lovable Secrets (env de edge functions)
+- **Credenciales por tenant/cliente** → tablas dedicadas con RLS por `tenant_id`
 
-## Plan
+### 2. Supabase / Lovable Cloud
+- `.env`: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_SUPABASE_PROJECT_ID` (publishable, OK en repo)
+- Cliente: `src/integrations/supabase/client.ts` (auto-generado, no editar)
+- Tipos: `src/integrations/supabase/types.ts` (auto-generado)
 
-### 1. Tests del flujo de creación de envío (Vitest + Testing Library)
+### 3. Google Maps
+- Sin hardcode. Edge function `get-maps-config` devuelve la key en runtime
+- Fallback dev: `VITE_GOOGLE_MAPS_API_KEY`
+- Mobile: inicialización global vía `GoogleMapsProvider`
 
-Setup mínimo (instalar `vitest`, `@testing-library/react`, `@testing-library/jest-dom`, `jsdom`, `vitest.config.ts`, `src/test/setup.ts` — si no están).
+### 4. Mercado Pago
+- **Tabla**: `system_integrations` (config JSONB, `integration_type='mercadopago'`)
+- Por tenant: `access_token`, `public_key`
+- Edge function: `mercadopago-webhook` (verifica HMAC clonando request)
+- UI: Configuración → Integraciones
 
-Suite `src/pages/__tests__/NewShipment.test.tsx` con mocks de `@/integrations/supabase/client`, `@/lib/auth` y `react-router-dom`. Casos:
+### 5. Mercado Libre
+- **Globales** (Lovable Secrets): `ML_CLIENT_ID`, `ML_CLIENT_SECRET`
+- **Por seller** (tabla `ecommerce_sellers`): `access_token`, `refresh_token`, `token_expires_at`
+- Edge functions: `mercadolibre-oauth`, `mercadolibre-sync`, `mercadolibre-webhook`
 
-- **TC1 — Tarifa no resuelta**: render con destino "Villa Ventana / 8163" sin tarifa matcheada. Esperar: warning visible, `precioCalculado === 0`, botón "Crear Envío" deshabilitado con tooltip/mensaje "No hay tarifa configurada para esta zona". NO debe dispararse la mutación.
-- **TC2 — Tarifa OK**: render con destino que matchea zona. Botón habilitado, click dispara `findOrCreateClient` + `insert` en `envios` con `precio_total > 0`.
-- **TC3 — findOrCreateClient cross-tenant**: simular DNI duplicado en otro tenant. Esperar que NO retorne el id ajeno y cree cliente nuevo en el tenant actual (ya cubierto por los filtros `.eq('tenant_id', …)`, pero queremos un regression test).
-- **TC4 — Preflight teléfono**: simular `clientes` que ya tiene el mismo `telefono_normalizado`. Esperar reuse sin lanzar 23505.
-- **TC5 — Render no crashea con datos nulos**: `tarifa = null`, `conceptosPreciosFiltrados = []`, `origenCoords = null`, `destinoCoords = null`, `montosEditables = {}`. El componente debe montar sin tirar.
-- **TC6 — Submit con tarifa null**: si por alguna razón se intenta submit sin tarifa (TC5 + click forzado), el handler debe abortar limpio (early-return + toast) en vez de llamar a `insert`.
+### 6. ARCA / AFIP
+- **Tabla**: `arca_config` por tenant
+- Columnas: `cuit`, `certificado` (.crt), `clave_privada` (.key), `punto_venta`, `ambiente`, `token`, `sign`, `token_expires_at` (cache 12hs)
+- Edge functions: `arca-wsaa` (autenticación SOAP), `arca-facturar`
 
-Estos tests se corren con la herramienta de tests interna (`bunx vitest run`).
+### 7. Tenant Public API Keys
+- **Tabla**: `tenant_api_keys`
+- Hash HMAC-SHA256 + prefijo plano para identificación
+- Edge function: `manage-api-keys`
+- Validación SQL: `validate_api_key(p_api_key text)`
 
-### 2. Guard de submit cuando no hay tarifa (UI + lógica)
+### 8. Lovable AI Gateway
+- Secret auto-provisto: `LOVABLE_API_KEY`
+- Usado por edge functions de IA (live-map AI, analyze-driver-route, etc.)
 
-- Calcular `tarifaResuelta = boolean` en función de: zona matcheada O `tarifa_id` seleccionado manualmente O `precioCalculado > 0` con override manual.
-- Deshabilitar el botón "Crear Envío" cuando `!tarifaResuelta && !esRetiroAlmacenaje` (almacenaje puede no requerirla).
-- Mostrar mensaje inline arriba del botón: "No hay tarifa configurada para esta zona (Villa Ventana / 8163). Cargala en Tarifas → Zonas o seleccioná una tarifa manual".
-- En `createShipmentMutation.mutationFn`, agregar un early-throw temprano con el mismo mensaje si por algún flow se llega al submit sin tarifa.
+### 9. Build Secrets
+- Para paquetes npm privados, configurados en Workspace Settings → Build Secrets
+- Referenciados en `.npmrc`
 
-### 3. Hardening anti-crash en render
+### 10. Tabla resumen
+Matriz: Integración | Globales | Por tenant | Edge functions
 
-Aplicar fixes defensivos en los puntos identificados como vulnerables:
+### 11. Cómo agregar una nueva integración
+Checklist:
+1. ¿Es global o por tenant? → Secrets vs tabla nueva
+2. Si es tabla nueva: RLS + GRANT obligatorios
+3. Edge function lee secrets con `Deno.env.get()`
+4. UI de configuración en Settings
+5. Documentar acá
 
-- `conceptosPreciosFiltrados?.forEach(...)` y `.find(...)` con optional chaining + fallback a `[]`.
-- `Number(cp.porcentaje)` / `Number(cp.monto)` envueltos para evitar `NaN` propagado a `precio_total` (`Number.isFinite` check, si no → 0).
-- `c.codigo?.toLowerCase()` y `c.nombre?.toLowerCase()` (ya está, validar resto del archivo).
-- En el render del bloque Tarifa, evitar `tarifa.zona.precio.toFixed(2)` sin verificar nulos.
-- Wrap del subtree de NewShipment con un `ErrorBoundary` local que:
-  - persista la excepción en `system_error_logs` (vía `logError`),
-  - muestre un fallback contextual ("Hubo un error al preparar el envío") con botón "Volver" en vez del boundary global anónimo.
+## Archivos
 
-### 4. Aviso "Ingresá ciudad destino" mejorado
+- **Crear**: `docs/INTEGRATIONS.md`
 
-Aunque la ciudad esté cargada, el aviso aparece porque el matcher de zona devuelve null. Cambiar el copy según el estado real:
-
-- Ciudad/CP vacío → "Ingresá ciudad destino para calcular el precio".
-- Ciudad/CP cargado pero zona no matcheada → "No hay tarifa por zona para {ciudad} ({cp}). Configurá la zona o ingresá precio manual".
-
-### 5. QA manual (post-implementación)
-
-1. Reproducir el caso del video (Villa Ventana / 8163): el botón debe quedar deshabilitado con el mensaje claro y NO ocurrir crash.
-2. Cambiar destino a una ciudad con zona configurada: precio se autocompleta y submit funciona.
-3. Cargar tarifa para Villa Ventana 8163 desde Tarifas: el aviso desaparece y submit funciona.
-4. Verificar en `system_error_logs` que no haya nuevos eventos del path NewShipment.
-
-## Detalles técnicos
-
-- Archivos a tocar: `src/pages/NewShipment.tsx` (guard + hardening), nuevo `src/pages/__tests__/NewShipment.test.tsx`, nuevo `src/components/shipments/NewShipmentBoundary.tsx`, posible `vitest.config.ts` + `src/test/setup.ts` si no existen.
-- Sin cambios de schema ni RLS. Sin migraciones.
-- Memoria: tarifa por zona ya documentada en `mem://features/tarifa/motor-de-tarifas-matching-y-seguridad` — no requiere update.
-
-## Fuera de alcance
-
-- Crear automáticamente tarifas para CPs no configurados.
-- Geocoding o validación de cobertura adicional.
-- Cambios en `findOrCreateClient` (ya quedó robusto en el iteración anterior; solo lo cubrimos con regression tests).
+No se tocan archivos de código ni schema.
