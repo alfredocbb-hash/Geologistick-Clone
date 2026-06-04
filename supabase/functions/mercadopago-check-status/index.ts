@@ -86,14 +86,19 @@ serve(async (req) => {
     }
 
     // Get access token for tenant
-    const { data: tokenConfig } = await supabaseClient
+    // Prefer production, fallback to sandbox. Multiple rows may exist (one per env).
+    const { data: tokenRows } = await supabaseClient
       .from("system_integrations")
-      .select("config_value")
+      .select("config_value, environment")
       .eq("integration_type", "mercado_pago")
       .eq("config_key", "access_token")
       .eq("is_active", true)
-      .eq("tenant_id", tenantId)
-      .maybeSingle();
+      .eq("tenant_id", tenantId);
+
+    const tokenConfig =
+      tokenRows?.find((r: any) => r.environment === "production") ??
+      tokenRows?.find((r: any) => r.environment === "sandbox") ??
+      null;
 
     if (!tokenConfig?.config_value) {
       return new Response(
