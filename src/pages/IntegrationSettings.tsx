@@ -6,6 +6,10 @@ import { generarDiagramaSecuenciaPDF } from '@/lib/generateDiagramaSecuenciaPDF'
 import { generarFAQsHomologacionPDF } from '@/lib/generateFAQsHomologacionPDF';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { useAuth } from '@/lib/auth';
+import { TenantFilterChip } from '@/components/common/TenantFilterChip';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
