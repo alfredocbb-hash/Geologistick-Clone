@@ -50,6 +50,8 @@ export function PaymentMethodDialog({
   const [isCreatingMpPayment, setIsCreatingMpPayment] = useState(false);
   const [mpPayment, setMpPayment] = useState<MercadoPagoPayment | null>(null);
   const [isWaitingForPayment, setIsWaitingForPayment] = useState(false);
+  const [mpEstado, setMpEstado] = useState<'pendiente' | 'pagado' | 'fallido' | 'reembolsado' | null>(null);
+  const [isCheckingMp, setIsCheckingMp] = useState(false);
 
   const { isConfigured: isMpConfigured, isLoading: isMpLoading, environment: mpEnvironment } = useMercadoPagoConfig();
 
@@ -66,8 +68,36 @@ export function PaymentMethodDialog({
       setMpPayment(null);
       setIsWaitingForPayment(false);
       setIsCreatingMpPayment(false);
+      setMpEstado(null);
     }
   }, [open]);
+
+  // Poll Mercado Pago status while waiting for payment
+  const checkMpStatus = async (silent = false) => {
+    if (!envioId) return;
+    if (!silent) setIsCheckingMp(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('mercadopago-check-status', {
+        body: { envio_id: envioId },
+      });
+      if (error) throw error;
+      const estado = data?.estado as typeof mpEstado;
+      if (estado) setMpEstado(estado);
+      return estado;
+    } catch (err) {
+      console.error('Error checking MP status:', err);
+    } finally {
+      if (!silent) setIsCheckingMp(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!open || !mpPayment || !envioId) return;
+    if (mpEstado === 'pagado' || mpEstado === 'fallido') return;
+    const interval = setInterval(() => { checkMpStatus(true); }, 5000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, mpPayment, envioId, mpEstado]);
 
   const handleCreateMercadoPagoPayment = async () => {
     if (!envioId) {
