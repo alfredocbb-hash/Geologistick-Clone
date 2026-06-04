@@ -1684,17 +1684,35 @@ export default function NewShipment() {
     
     setIsProcessingPayment(true);
     try {
-      const { error } = await supabase.from('pagos').insert({
-        envio_id: createdEnvio.id,
-        cliente_id: createdEnvio.remitente_id || null,
-        monto: createdEnvio.precio_total,
-        metodo: method,
-        referencia: reference || null,
-        estado: 'pagado',
-        created_by: user?.id,
-      });
+      if (method === 'mercado_pago') {
+        // Re-verificar contra MP que el pago esté acreditado antes de continuar.
+        const { data: checkData, error: checkErr } = await supabase.functions.invoke('mercadopago-check-status', {
+          body: { envio_id: createdEnvio.id },
+        });
+        if (checkErr) throw checkErr;
+        if (checkData?.estado !== 'pagado') {
+          toast({
+            title: 'Pago aún no acreditado',
+            description: 'Mercado Pago todavía no confirmó el pago. Esperá unos segundos o cambiá de método.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        // El registro en `pagos` lo creó `mercadopago-payment` y lo actualiza el webhook/check-status.
+        // No insertamos uno nuevo para evitar duplicados.
+      } else {
+        const { error } = await supabase.from('pagos').insert({
+          envio_id: createdEnvio.id,
+          cliente_id: createdEnvio.remitente_id || null,
+          monto: createdEnvio.precio_total,
+          metodo: method,
+          referencia: reference || null,
+          estado: 'pagado',
+          created_by: user?.id,
+        });
 
-      if (error) throw error;
+        if (error) throw error;
+      }
 
       // Register cash movement if there's an open cash session
       if (cajaAbierta?.id) {
