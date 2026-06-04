@@ -1,71 +1,88 @@
+## Análisis
 
-## Objetivo
+### 1. Facturación de envíos cancelados
+En `src/pages/Facturacion.tsx` la query de "pendientes" ya filtra `estado = 'entregado'`, pero hay puertas abiertas:
+- **Batch / individual desde Facturación**: la mutación llama a `arca-factura` con `envio_id` sin re-verificar el estado actual (un envío podría haber sido cancelado después de cargar la lista).
+- **Duplicar factura**: usa `duplicateSource.envio_id` sin chequear estado.
+- **Edge function `arca-factura`**: no valida el estado del envío recibido. Es la última línea de defensa.
 
-Cuando un admin de tenant quiera **reactivar** una sucursal o usuario previamente deshabilitado por el super admin, validar que no se exceda el plan contratado (`max_usuarios`, `max_sucursales`). Si excede, bloquear la acción y mostrar aviso claro pidiendo contactar a soporte. El super admin sigue pudiendo reactivar sin restricción (bypass).
+Faltan validaciones tanto en cliente como en backend.
 
-## Alcance
+### 2. Pago Mercado Pago no confirmado antes de etiqueta
+En `src/components/shipments/PaymentMethodDialog.tsx`, cuando el método es `mercado_pago`:
+- Se genera la preferencia (QR + link) vía `mercadopago-payment`.
+- El botón "Confirmar Pago" llama directo `onConfirm('mercado_pago', preference_id)` sin verificar si el pago fue aprobado.
+- En `src/pages/NewShipment.tsx → handlePaymentConfirm` se inserta el pago con `estado='pagado'` y se redirige a la etiqueta.
 
-Aplica a dos acciones:
-1. **Reactivar sucursal** (`sucursales.activa = false → true`) en `src/pages/Branches.tsx`.
-2. **Reactivar usuario** (`profiles.activo = false → true` / desbloqueo) en `src/pages/Users.tsx`.
+Existe ya `mercadopago-check-status` (mapea `approved → pagado`, `pending/in_process → pendiente`, `rejected/cancelled → fallido`) y un webhook que actualiza la tabla `pagos`. No se está consultando antes de confirmar.
 
-No aplica a: creación de nuevos recursos (esa validación ya existe vía `useSubscription.isWithinLimits`) ni a desactivación.
+### 3. Super admin en Integraciones no usa el tenant seleccionado
+`src/pages/IntegrationSettings.tsx` consume `useTenant()` (siempre el tenant del usuario logueado). Cuando un super admin selecciona otro tenant en el `SuperAdminTenantSelector` global, esta página sigue mostrando/guardando configuraciones del tenant propio del super admin, no del tenant seleccionado.
 
-## Diseño
+Hay que reemplazar `useTenant()` por `useEffectiveTenantId()` para que el super admin pueda ver y editar las integraciones (Mercado Pago, Google Maps, WhatsApp, SMTP, SMS, ARCA, Tiendanube, MercadoLibre) del tenant que tiene seleccionado en el selector global.
 
-### 1. Hook reutilizable `usePlanLimitCheck`
+---
 
-Nuevo archivo `src/hooks/usePlanLimitCheck.ts`:
-- Recibe `tenantId` (efectivo) y tipo (`'users' | 'branches'`).
-- Consulta:
-  - Límites del tenant: `tenants.max_usuarios`, `max_sucursales` (o `tenant_subscriptions` + `subscription_plans` vía `get_tenant_subscription_details` si hay suscripción activa — preferir ese si existe, sino fallback a `tenants.*`).
-  - Uso actual **activo**: `count` de `profiles` activos y `sucursales.activa = true` para ese tenant.
-- Devuelve `{ canActivate: boolean, current, max, planName }`.
-- Función `checkBeforeActivate()` que dispara la consulta on-demand (no en cada render).
+## Plan
 
-### 2. Diálogo de aviso `PlanLimitExceededDialog`
+### Punto 1 — Bloqueo de facturación de envíos cancelados
 
-Nuevo archivo `src/components/common/PlanLimitExceededDialog.tsx`:
-- AlertDialog con icono de warning.
-- Texto: "No se puede reactivar [sucursal/usuario] porque excede el plan contratado ([plan]). Límite: X. Actualmente activos: Y. Para ampliar tu plan, contactá a soporte."
-- Botón "Entendido" y "Contactar soporte" (link a `/support` o `mailto:`).
+**`src/pages/Facturacion.tsx`**
+- En `batchMutation` / handler individual: antes de invocar `arca-factura`, releer `envios.estado` por id y saltar (con resultado `ok: false, error: 'Envío cancelado/devuelto'`) los que estén en `cancelado` o `devuelto`. Mostrar toast resumen.
+- En `handleDuplicate` / mutación de duplicado: si `duplicateSource.envio_id`, validar estado actual antes de emitir.
+- En el render de la tabla "pendientes", excluir defensivamente cualquier envío con estado != `entregado` (la query ya lo hace, pero blindarlo).
 
-### 3. Integración en `Branches.tsx`
+**`src/components/invoicing/EmitirFacturaDialog.tsx`**
+- (Es manual, sin envío vinculado) no requiere cambios salvo que se agregue selector de envío en el futuro.
 
-En la mutación/handler de "Activar sucursal":
-- Si el usuario actual es `super_admin` → continuar sin validación.
-- Si es `admin` → llamar `checkBeforeActivate('branches')` antes del `UPDATE`.
-- Si `canActivate === false` → abrir `PlanLimitExceededDialog`, abortar.
-- Si `true` → ejecutar el update e invalidar queries.
+**`supabase/functions/arca-factura/index.ts`** (defensa en profundidad)
+- Cuando el body trae `envio_id`, leer el envío y rechazar con 400 (`{ success: false, error: 'No se puede facturar un envío cancelado/devuelto' }`) si `estado IN ('cancelado','devuelto')`.
 
-### 4. Integración en `Users.tsx`
+### Punto 2 — Validar cobro de Mercado Pago antes de emitir etiqueta
 
-Mismo patrón en la acción de reactivar usuario (toggle `activo` o desbloqueo).
-- Bypass para `super_admin`.
-- Validar contra `max_usuarios`.
-- Mostrar diálogo si excede.
+**`src/components/shipments/PaymentMethodDialog.tsx`**
+- Cuando hay `mpPayment` (preferencia generada), agregar polling con `mercadopago-check-status` mientras el dialog está abierto: cada 4–5 s consultar el estado por `preference_id` (o `envio_id`).
+- Mostrar badge de estado en tiempo real ("Esperando pago…", "Pago aprobado ✓", "Pago rechazado").
+- Deshabilitar el botón "Confirmar Pago" hasta que el estado sea `pagado` (approved). Si está `pendiente`, seguir esperando; si es `fallido`/`rechazado`, mostrar error y permitir cambiar método.
+- Al hacer "Confirmar Pago", re-verificar una última vez vía `check-status` y solo entonces llamar `onConfirm`.
+- Botón secundario: "Verificar pago ahora" para forzar el check.
 
-### 5. Backend
+**`src/pages/NewShipment.tsx` → `handlePaymentConfirm`**
+- Para `method === 'mercado_pago'`: antes de insertar en `pagos`, invocar `mercadopago-check-status` con `envio_id` o `preference_id`; si no devuelve `pagado`, abortar y mostrar error ("El pago aún no fue confirmado por Mercado Pago").
+- Si está `pagado`, dejar que el webhook/check-status ya haya actualizado el registro de `pagos` (creado por `mercadopago-payment`), y solo registrar movimiento de caja + redirigir a etiqueta. Evitar duplicar el insert de `pagos`.
 
-No requiere migraciones. RLS y triggers existentes ya permiten el update; la validación es client-side (consistente con el patrón actual de `useSubscription`). El super admin ya bypassa por su rol.
+**`supabase/functions/mercadopago-check-status/index.ts`**
+- Aceptar opcionalmente `preference_id` además de `payment_id` para consultar por preferencia (búsqueda en MP `/v1/payments/search?preference_id=...`).
+- Devolver `{ estado: 'pagado' | 'pendiente' | 'fallido', mp_payment_id }`.
 
-Opcional (no incluido en este plan, recomendado a futuro): trigger DB que valide en `BEFORE UPDATE` para defensa en profundidad.
+### Punto 3 — Integraciones por tenant seleccionado (super admin)
+
+**`src/pages/IntegrationSettings.tsx`**
+- Reemplazar `const { tenantId, isLoading: tenantLoading } = useTenant()` por:
+  - `useEffectiveTenantId()` para el id efectivo.
+  - Mantener `useTenant()` solo si se necesita info adicional, o usar fallback al perfil para no-super-admins.
+- Agregar `<TenantFilterChip />` arriba del título para feedback visual.
+- En `useQuery(queryKey)` incluir el `effectiveTenantId` para refetch automático al cambiar de tenant.
+- En `saveMutation`: usar `effectiveTenantId` en lugar de `tenantId` propio.
+- Si `effectiveTenantId === null` (super admin con "Todos") deshabilitar el formulario y mostrar aviso: "Seleccioná un tenant específico para ver/editar sus integraciones".
+- El trigger `set_integration_tenant_id` en DB ya respeta el `tenant_id` cuando el usuario es super_admin, así que insert/update funcionarán sin tocar backend.
+
+---
 
 ## Archivos
 
-**Nuevos:**
-- `src/hooks/usePlanLimitCheck.ts`
-- `src/components/common/PlanLimitExceededDialog.tsx`
-
 **Modificados:**
-- `src/pages/Branches.tsx` — interceptar reactivación.
-- `src/pages/Users.tsx` — interceptar reactivación.
+- `src/pages/Facturacion.tsx` — validar estado antes de batch/duplicar.
+- `src/components/shipments/PaymentMethodDialog.tsx` — polling + bloqueo confirmar hasta `approved`.
+- `src/pages/NewShipment.tsx` — re-verificar MP antes de cerrar y evitar doble insert de `pagos`.
+- `src/pages/IntegrationSettings.tsx` — usar `useEffectiveTenantId`, chip, manejar caso "Todos".
+- `supabase/functions/arca-factura/index.ts` — rechazar envíos cancelados/devueltos.
+- `supabase/functions/mercadopago-check-status/index.ts` — soportar consulta por `preference_id`.
+
+**Sin cambios de schema/migraciones.**
 
 ## QA
 
-1. Tenant Black Box con plan: 5 usuarios / 3 sucursales. Super admin deshabilita 2 sucursales (quedan 1 activa).
-2. Admin del tenant intenta reactivar 1 sucursal → permitido (queda 2/3).
-3. Admin intenta reactivar la 3ra → permitido (3/3).
-4. Super admin baja el plan a 2 sucursales. Admin intenta reactivar una más → diálogo "excede el plan, contactar soporte", no se ejecuta el update.
-5. Mismo flujo con usuarios.
-6. Super admin reactivando con tenant filter activo → siempre permitido.
+1. **Factura cancelada**: cancelar un envío entregado, intentar facturarlo individual y en lote → bloqueado con mensaje claro. Llamar `arca-factura` directo con `envio_id` cancelado → 400.
+2. **MP pendiente**: crear envío con MP, generar QR, no pagar, intentar confirmar → bloqueado ("pago no confirmado"). Pagar en MP sandbox, esperar polling → botón se habilita y al confirmar se emite etiqueta. Rechazar pago → mostrar fallido, permitir cambiar método.
+3. **Super admin / Integraciones**: como super_admin, seleccionar tenant Black Box → ver sus claves de MP/ARCA/etc., editarlas, guardar → verificar en DB que el `tenant_id` quedó en Black Box, no en el del super admin. Cambiar a "Todos" → formulario deshabilitado con aviso.
