@@ -291,14 +291,18 @@ export default function NewShipment() {
   const [createdEnvio, setCreatedEnvio] = useState<{ id: string; tracking_number: string; precio_total: number; remitente_id: string } | null>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
-  // Client match alert state
+  // Client match alert state (puede contener uno o varios resultados)
   const [pendingClientMatch, setPendingClientMatch] = useState<{
-    client: Client;
+    matches: Client[];
     target: 'remitente' | 'destinatario';
+    reason: 'dni' | 'nombre';
   } | null>(null);
-  
+
   // Flag to prevent redundant alerts when client was loaded from ContactAutocomplete
   const [clientLoadedManually, setClientLoadedManually] = useState<{ remitente: boolean; destinatario: boolean }>({ remitente: false, destinatario: false });
+
+  // Sugerencias descartadas por el usuario en esta sesión del form (clave: `${target}:${reason}:${valor}`)
+  const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(new Set());
   
   // Sucursal destino combobox state
   const [sucursalDestinoOpen, setSucursalDestinoOpen] = useState(false);
@@ -542,48 +546,69 @@ export default function NewShipment() {
     enabled: !!user && !!profile?.tenant_id,
   });
 
-  // Check existing client on DNI blur (nombre+apellido+DNI)
-  const checkExistingClient = async (dniValue: string, target: 'remitente' | 'destinatario') => {
-    // Skip if client was loaded manually from ContactAutocomplete
+  // Búsqueda por DNI/CUIT: identificador único. Alerta si el DNI ya existe.
+  const checkExistingClientByDni = async (dniValue: string, target: 'remitente' | 'destinatario') => {
     if (clientLoadedManually[target]) return;
-    
     const dni = dniValue?.trim();
-    if (!dni || dni.length < 6) return;
-    
-    const nombre = target === 'remitente' ? formData.remitente_nombre?.trim() : formData.destinatario_nombre?.trim();
-    if (!nombre) return;
-    
-    let query = supabase
+    if (!dni || dni.length < 7) return;
+
+    const key = `${target}:dni:${dni.toLowerCase()}`;
+    if (dismissedSuggestions.has(key)) return;
+
+    const { data: found } = await supabase
       .from('clientes')
       .select('*')
-      .ilike('nombre', nombre)
-      .ilike('dni_cuit', dni);
-    
-    const apellido = target === 'remitente' ? formData.remitente_apellido?.trim() : formData.destinatario_apellido?.trim();
-    if (apellido) {
-      query = query.ilike('apellido', apellido);
+      .ilike('dni_cuit', dni)
+      .limit(5);
+
+    if (!found || found.length === 0) return;
+
+    // Si los datos del primer match ya coinciden con lo cargado, no alertar
+    const currentName = target === 'remitente' ? formData.remitente_nombre?.trim() : formData.destinatario_nombre?.trim();
+    const currentDir = target === 'remitente' ? formData.remitente_direccion?.trim() : formData.destinatario_direccion?.trim();
+    if (
+      found.length === 1 &&
+      found[0].nombre?.toLowerCase() === currentName?.toLowerCase() &&
+      found[0].direccion?.toLowerCase() === currentDir?.toLowerCase()
+    ) {
+      return;
     }
-    
-    const { data: found } = await query.limit(1).maybeSingle();
-    if (found) {
-      // Si los datos ya coinciden con el formulario, es el mismo cliente cargado — no alertar
-      const currentName = target === 'remitente' ? formData.remitente_nombre?.trim() : formData.destinatario_nombre?.trim();
-      const currentDir = target === 'remitente' ? formData.remitente_direccion?.trim() : formData.destinatario_direccion?.trim();
-      
-      if (
-        found.nombre?.toLowerCase() === currentName?.toLowerCase() &&
-        found.direccion?.toLowerCase() === currentDir?.toLowerCase()
-      ) {
-        return;
-      }
-      
-      setPendingClientMatch({ client: found as Client, target });
-    }
+
+    setPendingClientMatch({ matches: found as Client[], target, reason: 'dni' });
   };
 
-  const applyClientMatch = () => {
+  // Búsqueda por nombre/apellido (sin DNI). Sugerencia preventiva.
+  const checkExistingClientByName = async (target: 'remitente' | 'destinatario') => {
+    if (clientLoadedManually[target]) return;
+
+    const nombre = (target === 'remitente' ? formData.remitente_nombre : formData.destinatario_nombre)?.trim() || '';
+    const apellido = (target === 'remitente' ? formData.remitente_apellido : formData.destinatario_apellido)?.trim() || '';
+    const dniCargado = (target === 'remitente' ? formData.remitente_dni : formData.destinatario_dni)?.trim() || '';
+
+    // Si ya tipearon un DNI, la búsqueda por DNI es más precisa
+    if (dniCargado.length >= 7) return;
+    if (nombre.length < 3 && apellido.length < 3) return;
+
+    const key = `${target}:nombre:${nombre.toLowerCase()}|${apellido.toLowerCase()}`;
+    if (dismissedSuggestions.has(key)) return;
+
+    let query = supabase.from('clientes').select('*').limit(5);
+    if (apellido.length >= 3) {
+      query = query.ilike('apellido', `%${apellido}%`);
+      if (nombre.length >= 3) query = query.ilike('nombre', `%${nombre}%`);
+    } else {
+      query = query.ilike('nombre', `%${nombre}%`);
+    }
+
+    const { data: found } = await query;
+    if (!found || found.length === 0) return;
+
+    setPendingClientMatch({ matches: found as Client[], target, reason: 'nombre' });
+  };
+
+  const applyClientMatch = (client: Client) => {
     if (!pendingClientMatch) return;
-    const { client, target } = pendingClientMatch;
+    const { target } = pendingClientMatch;
     if (target === 'remitente') {
       setFormData(prev => ({
         ...prev,
@@ -609,6 +634,26 @@ export default function NewShipment() {
         destinatario_dni: client.dni_cuit || '',
       }));
     }
+    setClientLoadedManually(prev => ({ ...prev, [target]: true }));
+    setPendingClientMatch(null);
+  };
+
+  const dismissClientMatch = () => {
+    if (!pendingClientMatch) { return; }
+    const { target, reason } = pendingClientMatch;
+    let value = '';
+    if (reason === 'dni') {
+      value = ((target === 'remitente' ? formData.remitente_dni : formData.destinatario_dni) || '').toLowerCase().trim();
+    } else {
+      const n = ((target === 'remitente' ? formData.remitente_nombre : formData.destinatario_nombre) || '').toLowerCase().trim();
+      const a = ((target === 'remitente' ? formData.remitente_apellido : formData.destinatario_apellido) || '').toLowerCase().trim();
+      value = `${n}|${a}`;
+    }
+    setDismissedSuggestions(prev => {
+      const next = new Set(prev);
+      next.add(`${target}:${reason}:${value}`);
+      return next;
+    });
     setPendingClientMatch(null);
   };
 
