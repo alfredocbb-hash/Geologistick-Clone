@@ -192,9 +192,27 @@ export default function Clients() {
           .eq('id', editingClient.id);
         if (error) throw error;
       } else {
+        // Prevent duplicates by normalized phone within the tenant.
+        const tenantIdToUse = effectiveTenantId || profile?.tenant_id;
+        const telNorm = normalizePhoneAR(data.telefono);
+        if (telNorm && tenantIdToUse) {
+          const { data: existing } = await supabase
+            .from('clientes')
+            .select('id, nombre, apellido')
+            .eq('tenant_id', tenantIdToUse)
+            .eq('telefono_normalizado', telNorm)
+            .limit(1)
+            .maybeSingle();
+          if (existing) {
+            const full = [existing.nombre, existing.apellido].filter(Boolean).join(' ');
+            throw new Error(
+              `Ya existe un cliente con ese teléfono (${full || 'sin nombre'}). Editalo en lugar de crear uno nuevo.`
+            );
+          }
+        }
         const { error } = await supabase.from('clientes').insert({
           ...clientData,
-          tenant_id: effectiveTenantId || profile?.tenant_id,
+          tenant_id: tenantIdToUse,
         });
         if (error) throw error;
       }
