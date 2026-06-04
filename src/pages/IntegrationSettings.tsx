@@ -34,7 +34,8 @@ import {
   ExternalLink,
   FileText,
   Store,
-  Package
+  Package,
+  AlertCircle
 } from 'lucide-react';
 
 type IntegrationType = 'mercado_pago' | 'google_maps' | 'whatsapp' | 'email_smtp' | 'sms' | 'arca' | 'tiendanube' | 'mercadolibre';
