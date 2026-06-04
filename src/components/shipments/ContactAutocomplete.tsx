@@ -16,6 +16,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
+import { normalizePhoneAR } from '@/lib/phoneNormalize';
 
 interface Client {
   id: string;
@@ -50,15 +51,39 @@ export default function ContactAutocomplete({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
 
-  // Deduplicate clients by phone+name
+  // Deduplicate clients: by normalized phone when available (so "Av." vs "Avenida"
+  // variants collapse), else fallback to name+address.
   const uniqueClients = useMemo(() => {
+    const byPhone = new Map<string, Client>();
+    const rest: Client[] = [];
+
+    for (const client of clients) {
+      const phone = normalizePhoneAR(client.telefono);
+      if (phone) {
+        const existing = byPhone.get(phone);
+        // Prefer the one with cuenta corriente, then more complete address.
+        if (
+          !existing ||
+          (client.tiene_cuenta_corriente && !existing.tiene_cuenta_corriente) ||
+          (client.tiene_cuenta_corriente === existing.tiene_cuenta_corriente &&
+            (client.direccion?.length || 0) > (existing.direccion?.length || 0))
+        ) {
+          byPhone.set(phone, client);
+        }
+      } else {
+        rest.push(client);
+      }
+    }
+
     const seen = new Set<string>();
-    return clients.filter((client) => {
+    const deduped = [...byPhone.values()];
+    for (const client of rest) {
       const key = `${client.nombre}-${client.apellido || ''}-${client.direccion || ''}`.toLowerCase();
-      if (seen.has(key)) return false;
+      if (seen.has(key)) continue;
       seen.add(key);
-      return true;
-    });
+      deduped.push(client);
+    }
+    return deduped;
   }, [clients]);
 
   const filteredClients = useMemo(() => {

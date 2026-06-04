@@ -32,6 +32,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import ContactAutocomplete from '@/components/shipments/ContactAutocomplete';
+import { normalizePhoneAR } from '@/lib/phoneNormalize';
 import { AddressAutocomplete, type AddressDetails } from '@/components/maps';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DraftIndicator, DraftSavingIndicator } from '@/components/ui/draft-indicator';
@@ -920,7 +921,45 @@ export default function NewShipment() {
     dni_cuit?: string;
     sucursal_id?: string | null;
   }) => {
-    // 1. Buscar PRIMERO en la base de datos por DNI/CUIT (más confiable que la caché)
+    const tenantId = profile?.tenant_id ?? null;
+
+    // 0. Buscar PRIMERO por teléfono normalizado (señal más confiable y evita duplicados
+    //    por variaciones de dirección como "Av." vs "Avenida").
+    const telNorm = normalizePhoneAR(data.telefono);
+    if (telNorm && tenantId) {
+      const { data: clientByPhone, error: phoneError } = await supabase
+        .from('clientes')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('telefono_normalizado', telNorm)
+        .limit(1)
+        .maybeSingle();
+
+      if (phoneError) {
+        console.error('Error buscando cliente por teléfono:', phoneError);
+      }
+
+      if (clientByPhone) {
+        const { error: updateError } = await supabase
+          .from('clientes')
+          .update({
+            nombre: data.nombre || clientByPhone.nombre,
+            apellido: data.apellido || clientByPhone.apellido,
+            email: data.email || clientByPhone.email,
+            direccion: data.direccion || clientByPhone.direccion,
+            ciudad: data.ciudad || clientByPhone.ciudad,
+            codigo_postal: data.codigo_postal || clientByPhone.codigo_postal,
+            dni_cuit: data.dni_cuit || clientByPhone.dni_cuit,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', clientByPhone.id);
+
+        if (updateError) console.error('Error actualizando cliente por teléfono:', updateError);
+        return clientByPhone.id;
+      }
+    }
+
+    // 1. Buscar por DNI/CUIT (más confiable que la caché)
     if (data.dni_cuit && data.dni_cuit.trim()) {
       const { data: clientByDni, error: dniError } = await supabase
         .from('clientes')
@@ -1001,7 +1040,6 @@ export default function NewShipment() {
     }
 
     // 4. Solo si no existe, crear nuevo cliente
-    const tenantId = profile?.tenant_id ?? null;
     if (!tenantId) {
       throw new Error('No se pudo determinar el tenant del usuario. Cerrá sesión e ingresá nuevamente.');
     }
