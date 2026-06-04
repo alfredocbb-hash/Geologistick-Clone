@@ -32,6 +32,9 @@ const Onboarding = lazy(() => import("./pages/Onboarding"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Shipments = lazy(() => import("./pages/Shipments"));
 const NewShipment = lazy(() => import("./pages/NewShipment"));
+const NewShipmentBoundary = lazy(() =>
+  import("./components/shipments/NewShipmentBoundary").then((m) => ({ default: m.NewShipmentBoundary }))
+);
 const PrintLabel = lazy(() => import("./pages/PrintLabel"));
 const Tracking = lazy(() => import("./pages/Tracking"));
 const Clients = lazy(() => import("./pages/Clients"));
@@ -225,7 +228,7 @@ function AppRoutes() {
 
           {/* Envíos */}
           <Route path="/shipments" element={<Shipments />} />
-          <Route path="/shipments/new" element={<GoogleMapsProvider><NewShipment /></GoogleMapsProvider>} />
+          <Route path="/shipments/new" element={<GoogleMapsProvider><NewShipmentBoundary><NewShipment /></NewShipmentBoundary></GoogleMapsProvider>} />
 
           {/* Operaciones */}
           <Route path="/scan" element={<ScanQR />} />
