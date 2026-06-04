@@ -287,11 +287,45 @@ export function PaymentMethodDialog({
                 <ExternalLink className="h-4 w-4 mr-2" />
                 Abrir Link de Pago
               </Button>
-              
-              <p className="text-xs text-muted-foreground text-center">
-                El cliente puede escanear el QR o abrir el link para pagar.
-                Presiona "Confirmar" cuando el pago se haya completado.
-              </p>
+
+              {/* Estado en vivo del pago */}
+              <div className="rounded-lg border bg-background p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Estado del pago</span>
+                  {mpEstado === 'pagado' ? (
+                    <Badge className="bg-green-500 hover:bg-green-500">
+                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                      Aprobado
+                    </Badge>
+                  ) : mpEstado === 'fallido' ? (
+                    <Badge variant="destructive">
+                      <AlertCircle className="h-3 w-3 mr-1" />
+                      Rechazado
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary">
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      Esperando pago…
+                    </Badge>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => checkMpStatus()}
+                  disabled={isCheckingMp}
+                >
+                  {isCheckingMp ? (
+                    <><Loader2 className="h-3 w-3 mr-2 animate-spin" />Verificando…</>
+                  ) : (
+                    'Verificar pago ahora'
+                  )}
+                </Button>
+                <p className="text-xs text-muted-foreground text-center">
+                  La verificación se actualiza automáticamente cada 5 segundos. Solo se podrá confirmar cuando MP acredite el pago.
+                </p>
+              </div>
             </div>
           )}
 
