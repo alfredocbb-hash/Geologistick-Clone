@@ -1,67 +1,52 @@
-# Documentación de Integraciones para Devs
+## Objetivo
 
-Crear un único archivo `docs/INTEGRATIONS.md` en AR Spanish con toda la información de dónde viven las credenciales del sistema.
+Evitar crear clientes duplicados al cargar un nuevo envío, validando tanto por DNI/CUIT como por nombre, en remitente y destinatario.
 
-## Contenido del archivo
+## Estado actual
 
-### 1. Overview
-Dos patrones de almacenamiento:
-- **App credentials globales** → Lovable Secrets (env de edge functions)
-- **Credenciales por tenant/cliente** → tablas dedicadas con RLS por `tenant_id`
+`src/pages/NewShipment.tsx` ya tiene `checkExistingClient` que se dispara en el **blur del DNI**, pero solo busca si ya hay nombre cargado y exige coincidencia exacta de DNI+nombre. No hay validación si el usuario empieza tipeando el nombre sin DNI, ni alerta cuando el DNI ingresado pertenece a otro cliente con nombre distinto.
 
-### 2. Supabase / Lovable Cloud
-- `.env`: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_SUPABASE_PROJECT_ID` (publishable, OK en repo)
-- Cliente: `src/integrations/supabase/client.ts` (auto-generado, no editar)
-- Tipos: `src/integrations/supabase/types.ts` (auto-generado)
+## Estrategia propuesta (mejor opción)
 
-### 3. Google Maps
-- Sin hardcode. Edge function `get-maps-config` devuelve la key en runtime
-- Fallback dev: `VITE_GOOGLE_MAPS_API_KEY`
-- Mobile: inicialización global vía `GoogleMapsProvider`
+Validación en dos niveles, no bloqueante, con un diálogo de confirmación tipo "¿Es este cliente?":
 
-### 4. Mercado Pago
-- **Tabla**: `system_integrations` (config JSONB, `integration_type='mercadopago'`)
-- Por tenant: `access_token`, `public_key`
-- Edge function: `mercadopago-webhook` (verifica HMAC clonando request)
-- UI: Configuración → Integraciones
+### 1. Búsqueda por DNI/CUIT (identificador único)
 
-### 5. Mercado Libre
-- **Globales** (Lovable Secrets): `ML_CLIENT_ID`, `ML_CLIENT_SECRET`
-- **Por seller** (tabla `ecommerce_sellers`): `access_token`, `refresh_token`, `token_expires_at`
-- Edge functions: `mercadolibre-oauth`, `mercadolibre-sync`, `mercadolibre-webhook`
+- Disparador: `onBlur` del campo DNI, si tiene ≥7 dígitos.
+- Query: `clientes` filtrando por `tenant_id` + `dni_cuit = valor`.
+- Resultado:
+  - **1 match** → mostrar diálogo "Encontramos un cliente con este DNI: *Juan Pérez, Av. Corrientes 123*. ¿Querés usar sus datos?" con acciones **Sí, usar** / **No, es otro**.
+  - **0 matches** → seguir cargando normalmente.
 
-### 6. ARCA / AFIP
-- **Tabla**: `arca_config` por tenant
-- Columnas: `cuit`, `certificado` (.crt), `clave_privada` (.key), `punto_venta`, `ambiente`, `token`, `sign`, `token_expires_at` (cache 12hs)
-- Edge functions: `arca-wsaa` (autenticación SOAP), `arca-facturar`
+### 2. Búsqueda por nombre (sin DNI todavía)
 
-### 7. Tenant Public API Keys
-- **Tabla**: `tenant_api_keys`
-- Hash HMAC-SHA256 + prefijo plano para identificación
-- Edge function: `manage-api-keys`
-- Validación SQL: `validate_api_key(p_api_key text)`
+- Disparador: `onBlur` del campo Apellido (o Nombre si no hay apellido), con ≥3 caracteres.
+- Query: `clientes` filtrando por `tenant_id` + `ilike nombre %valor%` y/o `ilike apellido %valor%`, con `limit 5`.
+- Resultado:
+  - **1-5 matches** → diálogo "Encontramos clientes con nombre similar" con lista (nombre, dirección, DNI, teléfono) y acciones por fila: **Usar este** / botón global **Ninguno, es nuevo**.
+  - **0 matches** → seguir cargando.
 
-### 8. Lovable AI Gateway
-- Secret auto-provisto: `LOVABLE_API_KEY`
-- Usado por edge functions de IA (live-map AI, analyze-driver-route, etc.)
+### 3. Reglas comunes
 
-### 9. Build Secrets
-- Para paquetes npm privados, configurados en Workspace Settings → Build Secrets
-- Referenciados en `.npmrc`
+- Solo se dispara si el cliente NO fue cargado manualmente desde el autocomplete (`clientLoadedManually[target]` ya existe).
+- Se aplica idéntico a remitente y destinatario, parametrizado por `target`.
+- Si el usuario elige "usar", se autocompletan todos los campos (nombre, apellido, teléfono, email, dirección, ciudad, CP, DNI) — ya está implementado en `applyClientMatch`.
+- Si elige "es otro/nuevo", se marca un flag local para no volver a preguntar lo mismo en esta sesión del form.
+- Al guardar el envío, el upsert de cliente sigue funcionando por DNI como hoy (no se duplica a nivel DB).
 
-### 10. Tabla resumen
-Matriz: Integración | Globales | Por tenant | Edge functions
+## Cambios técnicos
 
-### 11. Cómo agregar una nueva integración
-Checklist:
-1. ¿Es global o por tenant? → Secrets vs tabla nueva
-2. Si es tabla nueva: RLS + GRANT obligatorios
-3. Edge function lee secrets con `Deno.env.get()`
-4. UI de configuración en Settings
-5. Documentar acá
+Archivo único: `src/pages/NewShipment.tsx`
 
-## Archivos
+1. Extender `checkExistingClient` para soportar dos modos: `'dni'` y `'nombre'`, devolviendo array de matches.
+2. Cambiar `pendingClientMatch` de `{ client, target }` a `{ matches: Client[], target, reason: 'dni' | 'nombre' }`.
+3. Reemplazar el diálogo actual (single-match) por uno con lista seleccionable cuando `matches.length > 1`.
+4. Agregar `onBlur` en inputs de `*_apellido` (y fallback `*_nombre`) que llame al check por nombre.
+5. Mantener el `onBlur` actual de DNI pero quitar la pre-condición de que ya exista nombre cargado (buscar por DNI solo).
+6. Agregar `dismissedSuggestions` (Set por target) para no re-preguntar tras un "No".
 
-- **Crear**: `docs/INTEGRATIONS.md`
+## Notas
 
-No se tocan archivos de código ni schema.
+- Sin cambios de DB ni de backend.
+- Sin cambios visuales fuera del diálogo de confirmación.
+- Performance: queries puntuales con `limit 5` y trigger en blur (no en cada tecla).
