@@ -409,6 +409,18 @@ export default function Facturacion() {
         toast.error('Para Servicios o Productos+Servicios, las fechas de período y vto. pago son obligatorias');
         return;
       }
+      // Defensa: si la duplicada está atada a un envío, validar estado
+      if (duplicateSource?.envio_id) {
+        const { data: envioActual } = await supabase
+          .from('envios')
+          .select('estado')
+          .eq('id', duplicateSource.envio_id)
+          .maybeSingle();
+        if (envioActual && (envioActual.estado === 'cancelado' || envioActual.estado === 'devuelto')) {
+          toast.error(`No se puede facturar: el envío está en estado "${envioActual.estado}"`);
+          return;
+        }
+      }
       const importeTotal = ivaIncluido ? duplicateImporte : Math.round(duplicateImporte * 1.21 * 100) / 100;
       const { data, error } = await supabase.functions.invoke('arca-factura', {
         body: {
