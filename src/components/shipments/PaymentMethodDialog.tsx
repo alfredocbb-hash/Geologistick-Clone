@@ -411,14 +411,16 @@ export function PaymentMethodDialog({
               <Button variant="outline" onClick={handleCancelMpPayment} disabled={isLoading}>
                 Cambiar método de pago
               </Button>
-              <Button onClick={handleConfirmMercadoPago} disabled={isLoading}>
+              <Button onClick={handleConfirmMercadoPago} disabled={isLoading || mpEstado !== 'pagado'}>
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Procesando...
                   </>
-                ) : (
+                ) : mpEstado === 'pagado' ? (
                   'Confirmar Pago'
+                ) : (
+                  'Esperando pago…'
                 )}
               </Button>
             </>
