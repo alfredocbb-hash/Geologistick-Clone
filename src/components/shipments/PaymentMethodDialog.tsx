@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
-import { DollarSign, Banknote, CreditCard, Building2, Smartphone, Loader2, ExternalLink, AlertCircle } from 'lucide-react';
+import { DollarSign, Banknote, CreditCard, Building2, Smartphone, Loader2, ExternalLink, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useMercadoPagoConfig } from '@/hooks/useIntegrationConfig';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -50,6 +50,8 @@ export function PaymentMethodDialog({
   const [isCreatingMpPayment, setIsCreatingMpPayment] = useState(false);
   const [mpPayment, setMpPayment] = useState<MercadoPagoPayment | null>(null);
   const [isWaitingForPayment, setIsWaitingForPayment] = useState(false);
+  const [mpEstado, setMpEstado] = useState<'pendiente' | 'pagado' | 'fallido' | 'reembolsado' | null>(null);
+  const [isCheckingMp, setIsCheckingMp] = useState(false);
 
   const { isConfigured: isMpConfigured, isLoading: isMpLoading, environment: mpEnvironment } = useMercadoPagoConfig();
 
@@ -66,8 +68,36 @@ export function PaymentMethodDialog({
       setMpPayment(null);
       setIsWaitingForPayment(false);
       setIsCreatingMpPayment(false);
+      setMpEstado(null);
     }
   }, [open]);
+
+  // Poll Mercado Pago status while waiting for payment
+  const checkMpStatus = async (silent = false) => {
+    if (!envioId) return;
+    if (!silent) setIsCheckingMp(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('mercadopago-check-status', {
+        body: { envio_id: envioId },
+      });
+      if (error) throw error;
+      const estado = data?.estado as typeof mpEstado;
+      if (estado) setMpEstado(estado);
+      return estado;
+    } catch (err) {
+      console.error('Error checking MP status:', err);
+    } finally {
+      if (!silent) setIsCheckingMp(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!open || !mpPayment || !envioId) return;
+    if (mpEstado === 'pagado' || mpEstado === 'fallido') return;
+    const interval = setInterval(() => { checkMpStatus(true); }, 5000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, mpPayment, envioId, mpEstado]);
 
   const handleCreateMercadoPagoPayment = async () => {
     if (!envioId) {
@@ -127,9 +157,14 @@ export function PaymentMethodDialog({
   };
 
   const handleConfirmMercadoPago = async () => {
-    if (mpPayment) {
-      await onConfirm('mercado_pago', mpPayment.preference_id);
+    if (!mpPayment) return;
+    // Re-verificar pago en MP antes de confirmar
+    const estado = await checkMpStatus();
+    if (estado !== 'pagado') {
+      toast.error('El pago aún no fue acreditado en Mercado Pago. Esperá a la confirmación o cambiá de método.');
+      return;
     }
+    await onConfirm('mercado_pago', mpPayment.preference_id);
   };
 
   const handleConfirm = async () => {
@@ -252,11 +287,45 @@ export function PaymentMethodDialog({
                 <ExternalLink className="h-4 w-4 mr-2" />
                 Abrir Link de Pago
               </Button>
-              
-              <p className="text-xs text-muted-foreground text-center">
-                El cliente puede escanear el QR o abrir el link para pagar.
-                Presiona "Confirmar" cuando el pago se haya completado.
-              </p>
+
+              {/* Estado en vivo del pago */}
+              <div className="rounded-lg border bg-background p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Estado del pago</span>
+                  {mpEstado === 'pagado' ? (
+                    <Badge className="bg-green-500 hover:bg-green-500">
+                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                      Aprobado
+                    </Badge>
+                  ) : mpEstado === 'fallido' ? (
+                    <Badge variant="destructive">
+                      <AlertCircle className="h-3 w-3 mr-1" />
+                      Rechazado
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary">
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      Esperando pago…
+                    </Badge>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => checkMpStatus()}
+                  disabled={isCheckingMp}
+                >
+                  {isCheckingMp ? (
+                    <><Loader2 className="h-3 w-3 mr-2 animate-spin" />Verificando…</>
+                  ) : (
+                    'Verificar pago ahora'
+                  )}
+                </Button>
+                <p className="text-xs text-muted-foreground text-center">
+                  La verificación se actualiza automáticamente cada 5 segundos. Solo se podrá confirmar cuando MP acredite el pago.
+                </p>
+              </div>
             </div>
           )}
 
@@ -342,14 +411,16 @@ export function PaymentMethodDialog({
               <Button variant="outline" onClick={handleCancelMpPayment} disabled={isLoading}>
                 Cambiar método de pago
               </Button>
-              <Button onClick={handleConfirmMercadoPago} disabled={isLoading}>
+              <Button onClick={handleConfirmMercadoPago} disabled={isLoading || mpEstado !== 'pagado'}>
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Procesando...
                   </>
-                ) : (
+                ) : mpEstado === 'pagado' ? (
                   'Confirmar Pago'
+                ) : (
+                  'Esperando pago…'
                 )}
               </Button>
             </>

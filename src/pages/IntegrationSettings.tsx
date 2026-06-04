@@ -6,6 +6,10 @@ import { generarDiagramaSecuenciaPDF } from '@/lib/generateDiagramaSecuenciaPDF'
 import { generarFAQsHomologacionPDF } from '@/lib/generateFAQsHomologacionPDF';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { useAuth } from '@/lib/auth';
+import { TenantFilterChip } from '@/components/common/TenantFilterChip';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -30,7 +34,8 @@ import {
   ExternalLink,
   FileText,
   Store,
-  Package
+  Package,
+  AlertCircle
 } from 'lucide-react';
 
 type IntegrationType = 'mercado_pago' | 'google_maps' | 'whatsapp' | 'email_smtp' | 'sms' | 'arca' | 'tiendanube' | 'mercadolibre';
@@ -181,7 +186,14 @@ export default function IntegrationSettings() {
   } | null>(null);
   const [arcaTesting, setArcaTesting] = useState(false);
   const queryClient = useQueryClient();
-  const { tenantId, isLoading: tenantLoading } = useTenant();
+  const { tenantId: ownTenantId, isLoading: tenantLoading } = useTenant();
+  const { isSuperAdmin } = useAuth();
+  const effectiveTenantId = useEffectiveTenantId();
+  const isSA = isSuperAdmin();
+  // Para super admin, el tenantId efectivo viene del selector global.
+  // Para el resto, siempre su propio tenant.
+  const tenantId = isSA ? effectiveTenantId : ownTenantId;
+  const needsTenantSelection = isSA && !effectiveTenantId;
 
   // Fetch all configurations for current integration type and environment (filtered by tenant)
   const { data: configs, isLoading } = useQuery({
@@ -227,7 +239,9 @@ export default function IntegrationSettings() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!tenantId) {
-        throw new Error('No se encontró tu empresa. Por favor, cierra sesión y vuelve a entrar.');
+        throw new Error(needsTenantSelection
+          ? 'Seleccioná un tenant específico para guardar su configuración.'
+          : 'No se encontró tu empresa. Por favor, cierra sesión y vuelve a entrar.');
       }
       
       const integrationConfig = INTEGRATIONS_CONFIG[activeTab];
@@ -362,7 +376,7 @@ export default function IntegrationSettings() {
     );
   }
 
-  if (!tenantId) {
+  if (!tenantId && !isSA) {
     return (
       <div className="space-y-6">
         <div>
@@ -377,12 +391,26 @@ export default function IntegrationSettings() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Configuración de Integraciones</h1>
-        <p className="text-muted-foreground">
-          Configura las API keys y credenciales de servicios externos
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold tracking-tight">Configuración de Integraciones</h1>
+            <TenantFilterChip />
+          </div>
+          <p className="text-muted-foreground">
+            Configura las API keys y credenciales de servicios externos
+          </p>
+        </div>
       </div>
+
+      {needsTenantSelection && (
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Seleccioná un tenant específico desde el selector superior para ver y editar sus integraciones.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as IntegrationType)}>
         <TabsList className="grid w-full grid-cols-8">

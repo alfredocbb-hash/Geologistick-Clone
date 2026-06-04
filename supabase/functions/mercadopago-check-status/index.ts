@@ -72,11 +72,15 @@ serve(async (req) => {
 
     const tenantId = profile.tenant_id;
 
-    // Parse body for optional pago_id
+    // Parse body for optional pago_id / envio_id / preference_id
     let pagoId: string | null = null;
+    let envioId: string | null = null;
+    let preferenceId: string | null = null;
     try {
       const body = await req.json();
       pagoId = body.pago_id || null;
+      envioId = body.envio_id || null;
+      preferenceId = body.preference_id || null;
     } catch {
       // No body or invalid JSON, sync all
     }
@@ -100,17 +104,18 @@ serve(async (req) => {
 
     const accessToken = tokenConfig.config_value;
 
-    // Get pending MP payments
+    // Get pending MP payments (filter by envio/preference if provided)
     let query = supabaseClient
       .from("pagos")
-      .select("id, envio_id, mercado_pago_id, monto")
+      .select("id, envio_id, mercado_pago_id, monto, estado, mercado_pago_status")
       .eq("metodo", "mercado_pago")
-      .eq("estado", "pendiente")
       .eq("tenant_id", tenantId);
 
-    if (pagoId) {
-      query = query.eq("id", pagoId);
-    }
+    if (pagoId) query = query.eq("id", pagoId);
+    if (envioId) query = query.eq("envio_id", envioId);
+    if (preferenceId) query = query.eq("mercado_pago_id", preferenceId);
+    // Only filter by "pendiente" when no specific identifier given (legacy bulk sync)
+    if (!pagoId && !envioId && !preferenceId) query = query.eq("estado", "pendiente");
 
     const { data: pendingPayments, error: queryError } = await query;
 
@@ -124,34 +129,34 @@ serve(async (req) => {
 
     if (!pendingPayments || pendingPayments.length === 0) {
       return new Response(
-        JSON.stringify({ message: "No hay pagos pendientes para sincronizar", updated: 0 }),
+        JSON.stringify({ message: "No se encontró pago para los filtros dados", updated: 0, estado: null }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`Found ${pendingPayments.length} pending MP payments to check`);
+    console.log(`Found ${pendingPayments.length} MP payments to check`);
 
     let updatedCount = 0;
-    const results: Array<{ pago_id: string; status: string; mp_status: string | null }> = [];
+    const results: Array<{ pago_id: string; status: string; mp_status: string | null; estado: string | null }> = [];
 
     for (const pago of pendingPayments) {
       try {
         if (!pago.envio_id) {
           console.log(`Pago ${pago.id} has no envio_id, skipping`);
-          results.push({ pago_id: pago.id, status: "skipped", mp_status: null });
+          results.push({ pago_id: pago.id, status: "skipped", mp_status: null, estado: pago.estado });
           continue;
         }
 
         // Search MP payments by external_reference (envio_id)
         const searchUrl = `https://api.mercadopago.com/v1/payments/search?external_reference=${pago.envio_id}&sort=date_created&criteria=desc&limit=5`;
-        
+
         const mpResponse = await fetch(searchUrl, {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
 
         if (!mpResponse.ok) {
           console.error(`MP API error for pago ${pago.id}: ${mpResponse.status}`);
-          results.push({ pago_id: pago.id, status: "error", mp_status: null });
+          results.push({ pago_id: pago.id, status: "error", mp_status: null, estado: pago.estado });
           continue;
         }
 
@@ -160,7 +165,7 @@ serve(async (req) => {
 
         if (mpPayments.length === 0) {
           console.log(`No MP payments found for envio ${pago.envio_id}`);
-          results.push({ pago_id: pago.id, status: "no_mp_payment", mp_status: null });
+          results.push({ pago_id: pago.id, status: "no_mp_payment", mp_status: null, estado: pago.estado });
           continue;
         }
 
@@ -170,13 +175,14 @@ serve(async (req) => {
 
         console.log(`Pago ${pago.id}: MP status=${latestPayment.status} -> ${newStatus}`);
 
-        // Update the payment record
+        // Update the payment record (preserve preference id reference if needed)
         const { error: updateError } = await supabaseClient
           .from("pagos")
           .update({
             estado: newStatus,
             mercado_pago_status: latestPayment.status,
-            mercado_pago_id: latestPayment.id?.toString(),
+            // Only overwrite mercado_pago_id if we have a real payment id (not preference)
+            mercado_pago_id: latestPayment.id?.toString() ?? pago.mercado_pago_id,
             referencia: latestPayment.id?.toString(),
             updated_at: new Date().toISOString(),
           })
@@ -184,25 +190,29 @@ serve(async (req) => {
 
         if (updateError) {
           console.error(`Error updating pago ${pago.id}:`, updateError.message);
-          results.push({ pago_id: pago.id, status: "update_error", mp_status: latestPayment.status });
+          results.push({ pago_id: pago.id, status: "update_error", mp_status: latestPayment.status, estado: newStatus });
         } else {
           updatedCount++;
-          results.push({ pago_id: pago.id, status: "updated", mp_status: latestPayment.status });
+          results.push({ pago_id: pago.id, status: "updated", mp_status: latestPayment.status, estado: newStatus });
         }
       } catch (err) {
         console.error(`Error processing pago ${pago.id}:`, err);
-        results.push({ pago_id: pago.id, status: "error", mp_status: null });
+        results.push({ pago_id: pago.id, status: "error", mp_status: null, estado: pago.estado });
       }
     }
 
     console.log(`Sync complete: ${updatedCount}/${pendingPayments.length} payments updated`);
 
+    // Convenience top-level estado when a single specific record was queried
+    const primary = results[0];
     return new Response(
-      JSON.stringify({ 
-        message: `${updatedCount} pagos actualizados de ${pendingPayments.length} pendientes`,
+      JSON.stringify({
+        message: `${updatedCount} pagos actualizados de ${pendingPayments.length}`,
         updated: updatedCount,
         total: pendingPayments.length,
-        results 
+        estado: primary?.estado ?? null,
+        mp_status: primary?.mp_status ?? null,
+        results,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

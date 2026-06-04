@@ -319,12 +319,25 @@ export default function Facturacion() {
   const handleBatchInvoice = async () => {
     const ids = Array.from(selected);
     const enviosToInvoice = pendientes.filter(e => ids.includes(e.id));
+
+    // Defensa: revalidar estado actual antes de emitir (puede haber cambiado tras cargar la lista)
+    const { data: estadosActuales } = await supabase
+      .from('envios')
+      .select('id, estado')
+      .in('id', enviosToInvoice.map(e => e.id));
+    const estadoMap = new Map((estadosActuales || []).map((e: any) => [e.id, e.estado]));
+
     setBatchProgress({ current: 0, total: enviosToInvoice.length, running: true });
     setBatchResults([]);
     const results: typeof batchResults = [];
     for (let i = 0; i < enviosToInvoice.length; i++) {
       const envio = enviosToInvoice[i];
       setBatchProgress(p => ({ ...p, current: i + 1 }));
+      const estadoActual = estadoMap.get(envio.id);
+      if (estadoActual === 'cancelado' || estadoActual === 'devuelto') {
+        results.push({ id: envio.id, tracking: envio.tracking_number, ok: false, error: `Envío ${estadoActual}, no facturable` });
+        continue;
+      }
       const importeTotalConIva = ivaIncluido ? envio.precio_total : Math.round(envio.precio_total * 1.21 * 100) / 100;
       try {
         const { data, error } = await supabase.functions.invoke('arca-factura', {
@@ -395,6 +408,18 @@ export default function Facturacion() {
       if (duplicateNeedsServiceDates && (!duplicateFechaServicioDesde || !duplicateFechaServicioHasta || !duplicateFechaVtoPago)) {
         toast.error('Para Servicios o Productos+Servicios, las fechas de período y vto. pago son obligatorias');
         return;
+      }
+      // Defensa: si la duplicada está atada a un envío, validar estado
+      if (duplicateSource?.envio_id) {
+        const { data: envioActual } = await supabase
+          .from('envios')
+          .select('estado')
+          .eq('id', duplicateSource.envio_id)
+          .maybeSingle();
+        if (envioActual && (envioActual.estado === 'cancelado' || envioActual.estado === 'devuelto')) {
+          toast.error(`No se puede facturar: el envío está en estado "${envioActual.estado}"`);
+          return;
+        }
       }
       const importeTotal = ivaIncluido ? duplicateImporte : Math.round(duplicateImporte * 1.21 * 100) / 100;
       const { data, error } = await supabase.functions.invoke('arca-factura', {
