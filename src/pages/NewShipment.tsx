@@ -959,11 +959,12 @@ export default function NewShipment() {
       }
     }
 
-    // 1. Buscar por DNI/CUIT (más confiable que la caché)
-    if (data.dni_cuit && data.dni_cuit.trim()) {
+    // 1. Buscar por DNI/CUIT (más confiable que la caché) — SIEMPRE filtrado por tenant
+    if (data.dni_cuit && data.dni_cuit.trim() && tenantId) {
       const { data: clientByDni, error: dniError } = await supabase
         .from('clientes')
         .select('*')
+        .eq('tenant_id', tenantId)
         .ilike('dni_cuit', data.dni_cuit.trim())
         .limit(1)
         .maybeSingle();
@@ -994,13 +995,15 @@ export default function NewShipment() {
     }
     
     // Helper: busca con wildcards (tolerante a whitespace) y filtra match exacto trimmed/lowercase
+    // SIEMPRE filtrado por tenant para evitar matches cross-tenant.
     const findByNameAddr = async (nombre: string, direccion: string) => {
       const n = nombre.trim();
       const d = direccion.trim();
-      if (!n || !d) return null;
+      if (!n || !d || !tenantId) return null;
       const { data: candidates, error } = await supabase
         .from('clientes')
         .select('*')
+        .eq('tenant_id', tenantId)
         .ilike('nombre', `%${n}%`)
         .ilike('direccion', `%${d}%`)
         .limit(20);
