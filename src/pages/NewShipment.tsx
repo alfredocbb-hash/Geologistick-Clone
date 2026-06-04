@@ -291,14 +291,18 @@ export default function NewShipment() {
   const [createdEnvio, setCreatedEnvio] = useState<{ id: string; tracking_number: string; precio_total: number; remitente_id: string } | null>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
-  // Client match alert state
+  // Client match alert state (puede contener uno o varios resultados)
   const [pendingClientMatch, setPendingClientMatch] = useState<{
-    client: Client;
+    matches: Client[];
     target: 'remitente' | 'destinatario';
+    reason: 'dni' | 'nombre';
   } | null>(null);
-  
+
   // Flag to prevent redundant alerts when client was loaded from ContactAutocomplete
   const [clientLoadedManually, setClientLoadedManually] = useState<{ remitente: boolean; destinatario: boolean }>({ remitente: false, destinatario: false });
+
+  // Sugerencias descartadas por el usuario en esta sesión del form (clave: `${target}:${reason}:${valor}`)
+  const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(new Set());
   
   // Sucursal destino combobox state
   const [sucursalDestinoOpen, setSucursalDestinoOpen] = useState(false);
@@ -542,48 +546,69 @@ export default function NewShipment() {
     enabled: !!user && !!profile?.tenant_id,
   });
 
-  // Check existing client on DNI blur (nombre+apellido+DNI)
-  const checkExistingClient = async (dniValue: string, target: 'remitente' | 'destinatario') => {
-    // Skip if client was loaded manually from ContactAutocomplete
+  // Búsqueda por DNI/CUIT: identificador único. Alerta si el DNI ya existe.
+  const checkExistingClientByDni = async (dniValue: string, target: 'remitente' | 'destinatario') => {
     if (clientLoadedManually[target]) return;
-    
     const dni = dniValue?.trim();
-    if (!dni || dni.length < 6) return;
-    
-    const nombre = target === 'remitente' ? formData.remitente_nombre?.trim() : formData.destinatario_nombre?.trim();
-    if (!nombre) return;
-    
-    let query = supabase
+    if (!dni || dni.length < 7) return;
+
+    const key = `${target}:dni:${dni.toLowerCase()}`;
+    if (dismissedSuggestions.has(key)) return;
+
+    const { data: found } = await supabase
       .from('clientes')
       .select('*')
-      .ilike('nombre', nombre)
-      .ilike('dni_cuit', dni);
-    
-    const apellido = target === 'remitente' ? formData.remitente_apellido?.trim() : formData.destinatario_apellido?.trim();
-    if (apellido) {
-      query = query.ilike('apellido', apellido);
+      .ilike('dni_cuit', dni)
+      .limit(5);
+
+    if (!found || found.length === 0) return;
+
+    // Si los datos del primer match ya coinciden con lo cargado, no alertar
+    const currentName = target === 'remitente' ? formData.remitente_nombre?.trim() : formData.destinatario_nombre?.trim();
+    const currentDir = target === 'remitente' ? formData.remitente_direccion?.trim() : formData.destinatario_direccion?.trim();
+    if (
+      found.length === 1 &&
+      found[0].nombre?.toLowerCase() === currentName?.toLowerCase() &&
+      found[0].direccion?.toLowerCase() === currentDir?.toLowerCase()
+    ) {
+      return;
     }
-    
-    const { data: found } = await query.limit(1).maybeSingle();
-    if (found) {
-      // Si los datos ya coinciden con el formulario, es el mismo cliente cargado — no alertar
-      const currentName = target === 'remitente' ? formData.remitente_nombre?.trim() : formData.destinatario_nombre?.trim();
-      const currentDir = target === 'remitente' ? formData.remitente_direccion?.trim() : formData.destinatario_direccion?.trim();
-      
-      if (
-        found.nombre?.toLowerCase() === currentName?.toLowerCase() &&
-        found.direccion?.toLowerCase() === currentDir?.toLowerCase()
-      ) {
-        return;
-      }
-      
-      setPendingClientMatch({ client: found as Client, target });
-    }
+
+    setPendingClientMatch({ matches: found as Client[], target, reason: 'dni' });
   };
 
-  const applyClientMatch = () => {
+  // Búsqueda por nombre/apellido (sin DNI). Sugerencia preventiva.
+  const checkExistingClientByName = async (target: 'remitente' | 'destinatario') => {
+    if (clientLoadedManually[target]) return;
+
+    const nombre = (target === 'remitente' ? formData.remitente_nombre : formData.destinatario_nombre)?.trim() || '';
+    const apellido = (target === 'remitente' ? formData.remitente_apellido : formData.destinatario_apellido)?.trim() || '';
+    const dniCargado = (target === 'remitente' ? formData.remitente_dni : formData.destinatario_dni)?.trim() || '';
+
+    // Si ya tipearon un DNI, la búsqueda por DNI es más precisa
+    if (dniCargado.length >= 7) return;
+    if (nombre.length < 3 && apellido.length < 3) return;
+
+    const key = `${target}:nombre:${nombre.toLowerCase()}|${apellido.toLowerCase()}`;
+    if (dismissedSuggestions.has(key)) return;
+
+    let query = supabase.from('clientes').select('*').limit(5);
+    if (apellido.length >= 3) {
+      query = query.ilike('apellido', `%${apellido}%`);
+      if (nombre.length >= 3) query = query.ilike('nombre', `%${nombre}%`);
+    } else {
+      query = query.ilike('nombre', `%${nombre}%`);
+    }
+
+    const { data: found } = await query;
+    if (!found || found.length === 0) return;
+
+    setPendingClientMatch({ matches: found as Client[], target, reason: 'nombre' });
+  };
+
+  const applyClientMatch = (client: Client) => {
     if (!pendingClientMatch) return;
-    const { client, target } = pendingClientMatch;
+    const { target } = pendingClientMatch;
     if (target === 'remitente') {
       setFormData(prev => ({
         ...prev,
@@ -609,6 +634,26 @@ export default function NewShipment() {
         destinatario_dni: client.dni_cuit || '',
       }));
     }
+    setClientLoadedManually(prev => ({ ...prev, [target]: true }));
+    setPendingClientMatch(null);
+  };
+
+  const dismissClientMatch = () => {
+    if (!pendingClientMatch) { return; }
+    const { target, reason } = pendingClientMatch;
+    let value = '';
+    if (reason === 'dni') {
+      value = ((target === 'remitente' ? formData.remitente_dni : formData.destinatario_dni) || '').toLowerCase().trim();
+    } else {
+      const n = ((target === 'remitente' ? formData.remitente_nombre : formData.destinatario_nombre) || '').toLowerCase().trim();
+      const a = ((target === 'remitente' ? formData.remitente_apellido : formData.destinatario_apellido) || '').toLowerCase().trim();
+      value = `${n}|${a}`;
+    }
+    setDismissedSuggestions(prev => {
+      const next = new Set(prev);
+      next.add(`${target}:${reason}:${value}`);
+      return next;
+    });
     setPendingClientMatch(null);
   };
 
@@ -2204,17 +2249,22 @@ export default function NewShipment() {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <Label className="text-xs text-muted-foreground">Nombre *</Label>
-                  <Input className="h-8 text-sm" value={formData.remitente_nombre} onChange={(e) => handleChange('remitente_nombre', e.target.value)} required />
+                  <Input className="h-8 text-sm" value={formData.remitente_nombre}
+                    onChange={(e) => handleChange('remitente_nombre', e.target.value)}
+                    onBlur={() => checkExistingClientByName('remitente')}
+                    required />
                 </div>
                 <div>
                   <Label className="text-xs text-muted-foreground">Apellido</Label>
-                  <Input className="h-8 text-sm" value={formData.remitente_apellido} onChange={(e) => handleChange('remitente_apellido', e.target.value)} />
+                  <Input className="h-8 text-sm" value={formData.remitente_apellido}
+                    onChange={(e) => handleChange('remitente_apellido', e.target.value)}
+                    onBlur={() => checkExistingClientByName('remitente')} />
                 </div>
                 <div>
                   <Label className="text-xs text-muted-foreground">DNI/CUIT</Label>
                   <Input className="h-8 text-sm" value={formData.remitente_dni}
                     onChange={(e) => { handleChange('remitente_dni', e.target.value); setClientLoadedManually(prev => ({ ...prev, remitente: false })); }}
-                    onBlur={(e) => checkExistingClient(e.target.value, 'remitente')}
+                    onBlur={(e) => checkExistingClientByDni(e.target.value, 'remitente')}
                     placeholder="12345678" />
                 </div>
                 <div>
@@ -2293,17 +2343,22 @@ export default function NewShipment() {
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <Label className="text-xs text-muted-foreground">Nombre *</Label>
-                      <Input className="h-8 text-sm" value={formData.destinatario_nombre} onChange={(e) => handleChange('destinatario_nombre', e.target.value)} required />
+                      <Input className="h-8 text-sm" value={formData.destinatario_nombre}
+                        onChange={(e) => handleChange('destinatario_nombre', e.target.value)}
+                        onBlur={() => checkExistingClientByName('destinatario')}
+                        required />
                     </div>
                     <div>
                       <Label className="text-xs text-muted-foreground">Apellido</Label>
-                      <Input className="h-8 text-sm" value={formData.destinatario_apellido} onChange={(e) => handleChange('destinatario_apellido', e.target.value)} />
+                      <Input className="h-8 text-sm" value={formData.destinatario_apellido}
+                        onChange={(e) => handleChange('destinatario_apellido', e.target.value)}
+                        onBlur={() => checkExistingClientByName('destinatario')} />
                     </div>
                     <div>
                       <Label className="text-xs text-muted-foreground">DNI/CUIT</Label>
                       <Input className="h-8 text-sm" value={formData.destinatario_dni}
                         onChange={(e) => { handleChange('destinatario_dni', e.target.value); setClientLoadedManually(prev => ({ ...prev, destinatario: false })); }}
-                        onBlur={(e) => checkExistingClient(e.target.value, 'destinatario')} />
+                        onBlur={(e) => checkExistingClientByDni(e.target.value, 'destinatario')} />
                     </div>
                     <div>
                       <Label className="text-xs text-muted-foreground">Teléfono / WhatsApp *</Label>
@@ -2575,29 +2630,44 @@ export default function NewShipment() {
         isLoading={isProcessingPayment}
       />
 
-      {/* Alert dialog for existing client match */}
-      <AlertDialog open={!!pendingClientMatch} onOpenChange={(open) => { if (!open) setPendingClientMatch(null); }}>
-        <AlertDialogContent>
+      {/* Alert dialog for existing client match (DNI o nombre) */}
+      <AlertDialog open={!!pendingClientMatch} onOpenChange={(open) => { if (!open) dismissClientMatch(); }}>
+        <AlertDialogContent className="max-w-lg">
           <AlertDialogHeader>
-            <AlertDialogTitle>Cliente encontrado</AlertDialogTitle>
+            <AlertDialogTitle>
+              {pendingClientMatch?.reason === 'dni'
+                ? 'DNI/CUIT ya registrado'
+                : `Clientes con nombre similar (${pendingClientMatch?.matches.length ?? 0})`}
+            </AlertDialogTitle>
             <AlertDialogDescription asChild>
-              <div className="space-y-3">
-                <p>Se encontró un cliente ya registrado en el sistema:</p>
-                <div className="p-3 bg-muted rounded-lg space-y-1 text-sm">
-                  <p className="font-medium text-foreground">
-                    {pendingClientMatch?.client.nombre} {pendingClientMatch?.client.apellido || ''}
-                  </p>
-                  {pendingClientMatch?.client.telefono && <p>📞 {pendingClientMatch.client.telefono}</p>}
-                  {pendingClientMatch?.client.direccion && <p>📍 {pendingClientMatch.client.direccion}{pendingClientMatch.client.ciudad ? `, ${pendingClientMatch.client.ciudad}` : ''}</p>}
-                  {pendingClientMatch?.client.dni_cuit && <p>🪪 {pendingClientMatch.client.dni_cuit}</p>}
+              <div className="space-y-2">
+                <p>
+                  {pendingClientMatch?.reason === 'dni'
+                    ? 'Encontramos un cliente con este DNI/CUIT. ¿Es el mismo?'
+                    : 'Ya existen clientes con un nombre parecido. Seleccioná uno para reutilizarlo o continuá cargando uno nuevo.'}
+                </p>
+                <div className="max-h-72 overflow-y-auto space-y-2">
+                  {pendingClientMatch?.matches.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => applyClientMatch(c)}
+                      className="w-full text-left p-3 bg-muted hover:bg-muted/70 rounded-lg space-y-1 text-sm border border-transparent hover:border-primary transition"
+                    >
+                      <p className="font-medium text-foreground">{c.nombre} {c.apellido || ''}</p>
+                      {c.dni_cuit && <p className="text-xs">🪪 {c.dni_cuit}</p>}
+                      {c.telefono && <p className="text-xs">📞 {c.telefono}</p>}
+                      {c.direccion && <p className="text-xs">📍 {c.direccion}{c.ciudad ? `, ${c.ciudad}` : ''}</p>}
+                    </button>
+                  ))}
                 </div>
-                <p>¿Deseas cargar los datos de este cliente?</p>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>No, continuar manual</AlertDialogCancel>
-            <AlertDialogAction onClick={applyClientMatch}>Sí, cargar datos</AlertDialogAction>
+            <AlertDialogCancel onClick={dismissClientMatch}>
+              {pendingClientMatch?.reason === 'dni' ? 'No, es otro cliente' : 'Ninguno, es nuevo'}
+            </AlertDialogCancel>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
