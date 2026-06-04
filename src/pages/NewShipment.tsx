@@ -1040,7 +1040,6 @@ export default function NewShipment() {
     }
 
     // 4. Solo si no existe, crear nuevo cliente
-    const tenantId = profile?.tenant_id ?? null;
     if (!tenantId) {
       throw new Error('No se pudo determinar el tenant del usuario. Cerrá sesión e ingresá nuevamente.');
     }
