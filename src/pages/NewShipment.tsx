@@ -959,11 +959,12 @@ export default function NewShipment() {
       }
     }
 
-    // 1. Buscar por DNI/CUIT (más confiable que la caché)
-    if (data.dni_cuit && data.dni_cuit.trim()) {
+    // 1. Buscar por DNI/CUIT (más confiable que la caché) — SIEMPRE filtrado por tenant
+    if (data.dni_cuit && data.dni_cuit.trim() && tenantId) {
       const { data: clientByDni, error: dniError } = await supabase
         .from('clientes')
         .select('*')
+        .eq('tenant_id', tenantId)
         .ilike('dni_cuit', data.dni_cuit.trim())
         .limit(1)
         .maybeSingle();
@@ -994,13 +995,15 @@ export default function NewShipment() {
     }
     
     // Helper: busca con wildcards (tolerante a whitespace) y filtra match exacto trimmed/lowercase
+    // SIEMPRE filtrado por tenant para evitar matches cross-tenant.
     const findByNameAddr = async (nombre: string, direccion: string) => {
       const n = nombre.trim();
       const d = direccion.trim();
-      if (!n || !d) return null;
+      if (!n || !d || !tenantId) return null;
       const { data: candidates, error } = await supabase
         .from('clientes')
         .select('*')
+        .eq('tenant_id', tenantId)
         .ilike('nombre', `%${n}%`)
         .ilike('direccion', `%${d}%`)
         .limit(20);
@@ -1048,6 +1051,19 @@ export default function NewShipment() {
     const sucursalIdToUse = data.sucursal_id ?? profile?.sucursal_id ?? null;
 
     try {
+      // Preflight: si el teléfono normalizado ya existe en este tenant, reusar
+      // (evita 23505 por el índice único parcial).
+      if (telNorm) {
+        const { data: existingByPhone } = await supabase
+          .from('clientes')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .eq('telefono_normalizado', telNorm)
+          .limit(1)
+          .maybeSingle();
+        if (existingByPhone) return existingByPhone.id;
+      }
+
       const { data: newClient, error: createError } = await supabase
         .from('clientes')
         .insert({
@@ -1069,18 +1085,31 @@ export default function NewShipment() {
         // Si es error de duplicado (23505), intentar recuperar el cliente existente
         if (createError.code === '23505') {
           console.warn('Cliente duplicado detectado, recuperando existente...', createError.message);
-          
+
+          // Buscar por teléfono normalizado en el tenant (caso más probable)
+          if (telNorm) {
+            const { data: byPhone } = await supabase
+              .from('clientes')
+              .select('id')
+              .eq('tenant_id', tenantId)
+              .eq('telefono_normalizado', telNorm)
+              .limit(1)
+              .maybeSingle();
+            if (byPhone) return byPhone.id;
+          }
+
           // Buscar por nombre+dirección como fallback (tolerante a whitespace)
           const existingClient = await findByNameAddr(data.nombre, data.direccion);
           if (existingClient) {
             return existingClient.id;
           }
           
-          // Si tampoco encuentra, buscar por DNI
+          // Si tampoco encuentra, buscar por DNI dentro del tenant
           if (data.dni_cuit) {
             const { data: existByDni } = await supabase
               .from('clientes')
               .select('id')
+              .eq('tenant_id', tenantId)
               .ilike('dni_cuit', data.dni_cuit.trim())
               .limit(1)
               .maybeSingle();
