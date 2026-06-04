@@ -1662,6 +1662,12 @@ serve(async (req) => {
           { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+      if (envio.estado === 'cancelado' || envio.estado === 'devuelto') {
+        return new Response(
+          JSON.stringify({ success: false, error: `No se puede facturar un envío en estado "${envio.estado}"` }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
       total = importe_total ?? envio.precio_total;
     } else {
       // Factura manual sin envío ni liquidación: usar importe_total directamente
