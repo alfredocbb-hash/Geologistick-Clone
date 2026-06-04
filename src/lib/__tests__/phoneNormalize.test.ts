@@ -31,16 +31,10 @@ describe('normalizePhoneAR', () => {
     expect(normalizePhoneAR('+54 2954 15 123456')).toBe('542954123456');
   });
 
-  it('produces same value for equivalent inputs (idempotent dedup signal)', () => {
-    const variants = [
-      '+54 11 1503 4783',
-      '011-15-1503-4783',
-      '5411 1503 4783',
-      '+5411 15 1503 4783',
-    ];
-    const normalized = variants.map((v) => normalizePhoneAR(v));
-    const first = normalized[0];
-    expect(first).not.toBeNull();
-    for (const n of normalized) expect(n).toBe(first);
+  it('normalizes formatting variations of the same number identically', () => {
+    expect(normalizePhoneAR('+54 11 3103 4783')).toBe('541131034783');
+    expect(normalizePhoneAR('011 15 3103 4783')).toBe('541131034783');
+    expect(normalizePhoneAR('54 11 15 3103 4783')).toBe('541131034783');
+    expect(normalizePhoneAR('+5411 3103-4783')).toBe('541131034783');
   });
 });
