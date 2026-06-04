@@ -375,7 +375,7 @@ export default function IntegrationSettings() {
     );
   }
 
-  if (!tenantId) {
+  if (!tenantId && !isSA) {
     return (
       <div className="space-y-6">
         <div>
@@ -390,12 +390,26 @@ export default function IntegrationSettings() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Configuración de Integraciones</h1>
-        <p className="text-muted-foreground">
-          Configura las API keys y credenciales de servicios externos
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold tracking-tight">Configuración de Integraciones</h1>
+            <TenantFilterChip />
+          </div>
+          <p className="text-muted-foreground">
+            Configura las API keys y credenciales de servicios externos
+          </p>
+        </div>
       </div>
+
+      {needsTenantSelection && (
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Seleccioná un tenant específico desde el selector superior para ver y editar sus integraciones.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as IntegrationType)}>
         <TabsList className="grid w-full grid-cols-8">
