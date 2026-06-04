@@ -72,11 +72,15 @@ serve(async (req) => {
 
     const tenantId = profile.tenant_id;
 
-    // Parse body for optional pago_id
+    // Parse body for optional pago_id / envio_id / preference_id
     let pagoId: string | null = null;
+    let envioId: string | null = null;
+    let preferenceId: string | null = null;
     try {
       const body = await req.json();
       pagoId = body.pago_id || null;
+      envioId = body.envio_id || null;
+      preferenceId = body.preference_id || null;
     } catch {
       // No body or invalid JSON, sync all
     }
@@ -100,17 +104,18 @@ serve(async (req) => {
 
     const accessToken = tokenConfig.config_value;
 
-    // Get pending MP payments
+    // Get pending MP payments (filter by envio/preference if provided)
     let query = supabaseClient
       .from("pagos")
-      .select("id, envio_id, mercado_pago_id, monto")
+      .select("id, envio_id, mercado_pago_id, monto, estado, mercado_pago_status")
       .eq("metodo", "mercado_pago")
-      .eq("estado", "pendiente")
       .eq("tenant_id", tenantId);
 
-    if (pagoId) {
-      query = query.eq("id", pagoId);
-    }
+    if (pagoId) query = query.eq("id", pagoId);
+    if (envioId) query = query.eq("envio_id", envioId);
+    if (preferenceId) query = query.eq("mercado_pago_id", preferenceId);
+    // Only filter by "pendiente" when no specific identifier given (legacy bulk sync)
+    if (!pagoId && !envioId && !preferenceId) query = query.eq("estado", "pendiente");
 
     const { data: pendingPayments, error: queryError } = await query;
 
