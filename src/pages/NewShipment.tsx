@@ -2630,29 +2630,44 @@ export default function NewShipment() {
         isLoading={isProcessingPayment}
       />
 
-      {/* Alert dialog for existing client match */}
-      <AlertDialog open={!!pendingClientMatch} onOpenChange={(open) => { if (!open) setPendingClientMatch(null); }}>
-        <AlertDialogContent>
+      {/* Alert dialog for existing client match (DNI o nombre) */}
+      <AlertDialog open={!!pendingClientMatch} onOpenChange={(open) => { if (!open) dismissClientMatch(); }}>
+        <AlertDialogContent className="max-w-lg">
           <AlertDialogHeader>
-            <AlertDialogTitle>Cliente encontrado</AlertDialogTitle>
+            <AlertDialogTitle>
+              {pendingClientMatch?.reason === 'dni'
+                ? 'DNI/CUIT ya registrado'
+                : `Clientes con nombre similar (${pendingClientMatch?.matches.length ?? 0})`}
+            </AlertDialogTitle>
             <AlertDialogDescription asChild>
-              <div className="space-y-3">
-                <p>Se encontró un cliente ya registrado en el sistema:</p>
-                <div className="p-3 bg-muted rounded-lg space-y-1 text-sm">
-                  <p className="font-medium text-foreground">
-                    {pendingClientMatch?.client.nombre} {pendingClientMatch?.client.apellido || ''}
-                  </p>
-                  {pendingClientMatch?.client.telefono && <p>📞 {pendingClientMatch.client.telefono}</p>}
-                  {pendingClientMatch?.client.direccion && <p>📍 {pendingClientMatch.client.direccion}{pendingClientMatch.client.ciudad ? `, ${pendingClientMatch.client.ciudad}` : ''}</p>}
-                  {pendingClientMatch?.client.dni_cuit && <p>🪪 {pendingClientMatch.client.dni_cuit}</p>}
+              <div className="space-y-2">
+                <p>
+                  {pendingClientMatch?.reason === 'dni'
+                    ? 'Encontramos un cliente con este DNI/CUIT. ¿Es el mismo?'
+                    : 'Ya existen clientes con un nombre parecido. Seleccioná uno para reutilizarlo o continuá cargando uno nuevo.'}
+                </p>
+                <div className="max-h-72 overflow-y-auto space-y-2">
+                  {pendingClientMatch?.matches.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => applyClientMatch(c)}
+                      className="w-full text-left p-3 bg-muted hover:bg-muted/70 rounded-lg space-y-1 text-sm border border-transparent hover:border-primary transition"
+                    >
+                      <p className="font-medium text-foreground">{c.nombre} {c.apellido || ''}</p>
+                      {c.dni_cuit && <p className="text-xs">🪪 {c.dni_cuit}</p>}
+                      {c.telefono && <p className="text-xs">📞 {c.telefono}</p>}
+                      {c.direccion && <p className="text-xs">📍 {c.direccion}{c.ciudad ? `, ${c.ciudad}` : ''}</p>}
+                    </button>
+                  ))}
                 </div>
-                <p>¿Deseas cargar los datos de este cliente?</p>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>No, continuar manual</AlertDialogCancel>
-            <AlertDialogAction onClick={applyClientMatch}>Sí, cargar datos</AlertDialogAction>
+            <AlertDialogCancel onClick={dismissClientMatch}>
+              {pendingClientMatch?.reason === 'dni' ? 'No, es otro cliente' : 'Ninguno, es nuevo'}
+            </AlertDialogCancel>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
