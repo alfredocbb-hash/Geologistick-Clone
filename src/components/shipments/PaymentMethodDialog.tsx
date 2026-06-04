@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
-import { DollarSign, Banknote, CreditCard, Building2, Smartphone, Loader2, ExternalLink, AlertCircle } from 'lucide-react';
+import { DollarSign, Banknote, CreditCard, Building2, Smartphone, Loader2, ExternalLink, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useMercadoPagoConfig } from '@/hooks/useIntegrationConfig';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
