@@ -2249,17 +2249,22 @@ export default function NewShipment() {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <Label className="text-xs text-muted-foreground">Nombre *</Label>
-                  <Input className="h-8 text-sm" value={formData.remitente_nombre} onChange={(e) => handleChange('remitente_nombre', e.target.value)} required />
+                  <Input className="h-8 text-sm" value={formData.remitente_nombre}
+                    onChange={(e) => handleChange('remitente_nombre', e.target.value)}
+                    onBlur={() => checkExistingClientByName('remitente')}
+                    required />
                 </div>
                 <div>
                   <Label className="text-xs text-muted-foreground">Apellido</Label>
-                  <Input className="h-8 text-sm" value={formData.remitente_apellido} onChange={(e) => handleChange('remitente_apellido', e.target.value)} />
+                  <Input className="h-8 text-sm" value={formData.remitente_apellido}
+                    onChange={(e) => handleChange('remitente_apellido', e.target.value)}
+                    onBlur={() => checkExistingClientByName('remitente')} />
                 </div>
                 <div>
                   <Label className="text-xs text-muted-foreground">DNI/CUIT</Label>
                   <Input className="h-8 text-sm" value={formData.remitente_dni}
                     onChange={(e) => { handleChange('remitente_dni', e.target.value); setClientLoadedManually(prev => ({ ...prev, remitente: false })); }}
-                    onBlur={(e) => checkExistingClient(e.target.value, 'remitente')}
+                    onBlur={(e) => checkExistingClientByDni(e.target.value, 'remitente')}
                     placeholder="12345678" />
                 </div>
                 <div>
@@ -2338,17 +2343,22 @@ export default function NewShipment() {
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <Label className="text-xs text-muted-foreground">Nombre *</Label>
-                      <Input className="h-8 text-sm" value={formData.destinatario_nombre} onChange={(e) => handleChange('destinatario_nombre', e.target.value)} required />
+                      <Input className="h-8 text-sm" value={formData.destinatario_nombre}
+                        onChange={(e) => handleChange('destinatario_nombre', e.target.value)}
+                        onBlur={() => checkExistingClientByName('destinatario')}
+                        required />
                     </div>
                     <div>
                       <Label className="text-xs text-muted-foreground">Apellido</Label>
-                      <Input className="h-8 text-sm" value={formData.destinatario_apellido} onChange={(e) => handleChange('destinatario_apellido', e.target.value)} />
+                      <Input className="h-8 text-sm" value={formData.destinatario_apellido}
+                        onChange={(e) => handleChange('destinatario_apellido', e.target.value)}
+                        onBlur={() => checkExistingClientByName('destinatario')} />
                     </div>
                     <div>
                       <Label className="text-xs text-muted-foreground">DNI/CUIT</Label>
                       <Input className="h-8 text-sm" value={formData.destinatario_dni}
                         onChange={(e) => { handleChange('destinatario_dni', e.target.value); setClientLoadedManually(prev => ({ ...prev, destinatario: false })); }}
-                        onBlur={(e) => checkExistingClient(e.target.value, 'destinatario')} />
+                        onBlur={(e) => checkExistingClientByDni(e.target.value, 'destinatario')} />
                     </div>
                     <div>
                       <Label className="text-xs text-muted-foreground">Teléfono / WhatsApp *</Label>
