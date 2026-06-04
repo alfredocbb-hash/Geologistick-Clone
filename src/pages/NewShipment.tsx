@@ -32,6 +32,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import ContactAutocomplete from '@/components/shipments/ContactAutocomplete';
+import { normalizePhoneAR } from '@/lib/phoneNormalize';
 import { AddressAutocomplete, type AddressDetails } from '@/components/maps';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DraftIndicator, DraftSavingIndicator } from '@/components/ui/draft-indicator';
