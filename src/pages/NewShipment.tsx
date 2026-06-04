@@ -1340,33 +1340,36 @@ export default function NewShipment() {
       // 2. Add other concepts with CALCULATED amounts
       conceptosPreciosFiltrados.forEach((cp) => {
         // Skip flete if already included above (avoid duplicates)
-        const conceptoCode = cp.concepto?.codigo?.toLowerCase();
-        const conceptoName = cp.concepto?.nombre?.toLowerCase();
+        const conceptoCode = cp?.concepto?.codigo?.toLowerCase();
+        const conceptoName = cp?.concepto?.nombre?.toLowerCase();
         if (conceptoCode?.includes('flete') || conceptoName?.includes('flete')) {
           return;
         }
-        
+
         let montoConcepto = 0;
         // Use operator-entered amount for editable concepts
-        if (cp.concepto?.monto_editable && montosEditables[cp.concepto_id]) {
-          montoConcepto = parseFloat(montosEditables[cp.concepto_id]) || 0;
-        } else if (cp.es_porcentaje && cp.porcentaje) {
+        if (cp?.concepto?.monto_editable && montosEditables[cp.concepto_id]) {
+          const parsed = parseFloat(montosEditables[cp.concepto_id]);
+          montoConcepto = Number.isFinite(parsed) ? parsed : 0;
+        } else if (cp?.es_porcentaje && cp?.porcentaje) {
           // Calculate percentage-based amount from declared value
-          montoConcepto = valorDeclaradoReal * Number(cp.porcentaje) / 100;
+          const pct = Number(cp.porcentaje);
+          montoConcepto = Number.isFinite(pct) ? (valorDeclaradoReal * pct) / 100 : 0;
         } else {
-          montoConcepto = Number(cp.monto);
+          const monto = Number(cp?.monto);
+          montoConcepto = Number.isFinite(monto) ? monto : 0;
         }
-        
+
         // Multiply by package count if configured
-        if (cp.multiplicar_por_bultos) {
+        if (cp?.multiplicar_por_bultos) {
           montoConcepto *= cantidadBultosReal;
         }
-        
-        if (montoConcepto > 0) {
+
+        if (Number.isFinite(montoConcepto) && montoConcepto > 0) {
           detallesEnvio.push({
             envio_id: envio.id,
             concepto_id: cp.concepto_id,
-            nombre_concepto: cp.concepto?.nombre || 'Sin nombre',
+            nombre_concepto: cp?.concepto?.nombre || 'Sin nombre',
             monto: montoConcepto,
           });
         }
@@ -2128,13 +2131,33 @@ export default function NewShipment() {
                     )}
                   </div>
                 ) : (
-                  <div className="p-2 bg-destructive/10 border border-destructive/20 rounded-md flex items-start gap-1.5">
-                    <AlertCircle className="h-3.5 w-3.5 text-destructive mt-0.5 shrink-0" />
-                    <div>
-                      <p className="text-xs font-medium text-destructive">Ingresá ciudad destino</p>
-                      <p className="text-xs text-muted-foreground">Precio automático por zona</p>
-                    </div>
-                  </div>
+                  (() => {
+                    const ciudad = (formData.destinatario_ciudad || '').trim();
+                    const cp = (formData.destinatario_codigo_postal || '').trim();
+                    const tieneDestino = ciudad.length > 0 || cp.length > 0;
+                    return (
+                      <div className="p-2 bg-destructive/10 border border-destructive/20 rounded-md flex items-start gap-1.5">
+                        <AlertCircle className="h-3.5 w-3.5 text-destructive mt-0.5 shrink-0" />
+                        <div>
+                          {tieneDestino ? (
+                            <>
+                              <p className="text-xs font-medium text-destructive">
+                                Sin tarifa por zona para {ciudad || 'destino'}{cp ? ` (${cp})` : ''}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Configurá la zona en Tarifas o seleccioná una tarifa manual.
+                              </p>
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-xs font-medium text-destructive">Ingresá ciudad destino</p>
+                              <p className="text-xs text-muted-foreground">Precio automático por zona</p>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()
                 )
               ) : tarifasDisponibles.length > 1 ? (
                 <Select value={formData.tarifa_id} onValueChange={(v) => handleChange('tarifa_id', v)} disabled={loadingTarifas}>
