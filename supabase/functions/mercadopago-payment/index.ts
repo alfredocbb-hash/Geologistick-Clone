@@ -74,7 +74,7 @@ serve(async (req) => {
       );
     }
     
-    const { envio_id, tracking_number, amount, description, payer_email, payer_name, environment = "production" } = body;
+    const { envio_id, tracking_number, amount, description, payer_email, payer_name, environment = "production", app_url } = body;
 
     if (!envio_id || typeof envio_id !== "string" || envio_id.length > 100) {
       return new Response(
@@ -164,9 +164,9 @@ serve(async (req) => {
       external_reference: envio_id,
       notification_url: `${Deno.env.get("SUPABASE_URL")}/functions/v1/mercadopago-webhook`,
       back_urls: {
-        success: `${req.headers.get("origin") || ""}/shipments?payment=success`,
-        failure: `${req.headers.get("origin") || ""}/shipments?payment=failure`,
-        pending: `${req.headers.get("origin") || ""}/shipments?payment=pending`,
+        success: `${app_url || req.headers.get("origin") || Deno.env.get("SITE_URL") || ""}/shipments?payment=success`,
+        failure: `${app_url || req.headers.get("origin") || Deno.env.get("SITE_URL") || ""}/shipments?payment=failure`,
+        pending: `${app_url || req.headers.get("origin") || Deno.env.get("SITE_URL") || ""}/shipments?payment=pending`,
       },
       auto_return: "approved",
       statement_descriptor: "LOGISTICA",

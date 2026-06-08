@@ -123,6 +123,7 @@ export function PaymentMethodDialog({
             amount: amount,
             description: `Envío ${trackingNumber}`,
             environment: mpEnvironment,
+            app_url: window.location.origin,
           }),
         }
       );
@@ -132,8 +133,17 @@ export function PaymentMethodDialog({
       if (!response.ok) {
         if (data.code === 'MP_NOT_CONFIGURED') {
           toast.error('Mercado Pago no está configurado. Contacte al administrador.');
+        } else if (data.code === 'MP_UNAUTHORIZED') {
+          toast.error('El Access Token de Mercado Pago es inválido o venció. Actualizalo en Configuración → Integraciones.');
+        } else if (data.code === 'MP_NO_TOKEN') {
+          toast.error('Falta el Access Token de Mercado Pago. Configuralo en Integraciones.');
+        } else if (data.code === 'MP_INVALID_TOKEN') {
+          toast.error('El formato del Access Token de Mercado Pago es incorrecto. Debe empezar con APP_USR- o TEST-.');
         } else {
-          toast.error(data.error || 'Error al crear pago de Mercado Pago');
+          // Show the actual MP API error detail if available
+          const detail = data.details?.message || data.details?.cause?.[0]?.description || data.error || 'Error desconocido';
+          toast.error(`Error Mercado Pago: ${detail}`);
+          console.error('MP error details:', data);
         }
         return;
       }
