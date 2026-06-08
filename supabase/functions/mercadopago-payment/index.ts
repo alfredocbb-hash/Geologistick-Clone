@@ -145,8 +145,12 @@ serve(async (req) => {
 
     console.log(`Creating MP preference: env=${environment}, token_prefix=${tokenPrefix}, token_len=${config.access_token.length}`);
 
+    // Determine base URL — localhost is not accepted by MercadoPago
+    const resolvedUrl = app_url || req.headers.get("origin") || Deno.env.get("SITE_URL") || "";
+    const isLocal = resolvedUrl.includes("localhost") || resolvedUrl.includes("127.0.0.1");
+
     // Create preference in Mercado Pago
-    const preferenceData = {
+    const preferenceData: Record<string, unknown> = {
       items: [
         {
           id: envio_id,
@@ -163,17 +167,21 @@ serve(async (req) => {
       },
       external_reference: envio_id,
       notification_url: `${Deno.env.get("SUPABASE_URL")}/functions/v1/mercadopago-webhook`,
-      back_urls: {
-        success: `${app_url || req.headers.get("origin") || Deno.env.get("SITE_URL") || ""}/shipments?payment=success`,
-        failure: `${app_url || req.headers.get("origin") || Deno.env.get("SITE_URL") || ""}/shipments?payment=failure`,
-        pending: `${app_url || req.headers.get("origin") || Deno.env.get("SITE_URL") || ""}/shipments?payment=pending`,
-      },
-      auto_return: "approved",
       statement_descriptor: "LOGISTICA",
       expires: true,
       expiration_date_from: new Date().toISOString(),
       expiration_date_to: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     };
+
+    // back_urls y auto_return solo si la URL es pública (MP rechaza localhost)
+    if (!isLocal && resolvedUrl) {
+      preferenceData.back_urls = {
+        success: `${resolvedUrl}/shipments?payment=success`,
+        failure: `${resolvedUrl}/shipments?payment=failure`,
+        pending: `${resolvedUrl}/shipments?payment=pending`,
+      };
+      preferenceData.auto_return = "approved";
+    }
 
     const mpResponse = await fetch("https://api.mercadopago.com/checkout/preferences", {
       method: "POST",
