@@ -1,52 +1,45 @@
-## Objetivo
+ary
+# Migración a PostgreSQL 17: Exportación completa
 
-Evitar crear clientes duplicados al cargar un nuevo envío, validando tanto por DNI/CUIT como por nombre, en remitente y destinatario.
+Generaré tres archivos `.sql` descargables en `/mnt/documents/` que podrás importar en tu nuevo PostgreSQL 17.
 
-## Estado actual
+## Archivos a generar
 
-`src/pages/NewShipment.tsx` ya tiene `checkExistingClient` que se dispara en el **blur del DNI**, pero solo busca si ya hay nombre cargado y exige coincidencia exacta de DNI+nombre. No hay validación si el usuario empieza tipeando el nombre sin DNI, ni alerta cuando el DNI ingresado pertenece a otro cliente con nombre distinto.
+### 1. `01_schema.sql` — Estructura
+- ~85 tablas del esquema `public` con `CREATE TABLE`, PK, FK, índices, constraints
+- Tipos ENUM personalizados (app_role, shipment_status, payment_method, etc.)
+- ~50 funciones del esquema `public` (incluye `has_role`, `current_user_tenant`, `start_ruta_planificada`, triggers, etc.)
+- Triggers de `public`
+- Políticas RLS (las líneas con `auth.uid()` quedarán comentadas con nota, ya que PostgreSQL puro no tiene el esquema `auth` de Supabase)
+- GRANTs
 
-## Estrategia propuesta (mejor opción)
+### 2. `02_data.sql` — Datos
+- `INSERT` statements por tabla, en orden de dependencias (FKs)
+- Envuelto en una transacción con `SET session_replication_role = replica` para desactivar triggers durante la carga masiva
+- Manejo correcto de `jsonb`, `uuid`, `timestamptz`, arrays, caracteres especiales
+- Si alguna tabla supera ~100MB de INSERTs, se divide en `02_data_<tabla>.sql`
 
-Validación en dos niveles, no bloqueante, con un diálogo de confirmación tipo "¿Es este cliente?":
+### 3. `03_auth_users.sql` — Usuarios
+- Tabla `public._migrated_auth_users` con: `id`, `email`, `encrypted_password` (bcrypt de GoTrue), `created_at`, `last_sign_in_at`, `raw_user_meta_data`, `email_confirmed_at`
+- Nota: si tu nuevo sistema de auth no es compatible con bcrypt de GoTrue, los usuarios deberán resetear contraseña
 
-### 1. Búsqueda por DNI/CUIT (identificador único)
+## Orden de importación
+```text
+psql < 01_schema.sql
+psql < 03_auth_users.sql
+psql < 02_data.sql
+```
 
-- Disparador: `onBlur` del campo DNI, si tiene ≥7 dígitos.
-- Query: `clientes` filtrando por `tenant_id` + `dni_cuit = valor`.
-- Resultado:
-  - **1 match** → mostrar diálogo "Encontramos un cliente con este DNI: *Juan Pérez, Av. Corrientes 123*. ¿Querés usar sus datos?" con acciones **Sí, usar** / **No, es otro**.
-  - **0 matches** → seguir cargando normalmente.
+## Qué NO se incluye (limitaciones de Lovable Cloud)
+- Esquemas gestionados por Supabase: `auth`, `storage`, `realtime`, `vault`, `supabase_functions`
+- Edge Functions (código TypeScript) — debes portarlas manualmente
+- Secrets / variables de entorno
+- Archivos de Storage buckets
+- Cron jobs (`pg_cron`), webhooks de DB, extensión `pg_net`
 
-### 2. Búsqueda por nombre (sin DNI todavía)
+## Detalles técnicos
+- Construcción del esquema desde `information_schema` + `pg_catalog` (`pg_class`, `pg_attribute`, `pg_constraint`, `pg_proc`, `pg_policy`, `pg_trigger`)
+- Datos vía `COPY (SELECT ...) TO STDOUT` y script Python que reconstruye `INSERT`s seguros
+- Reporte final `MIGRATION_REPORT.md` con conteo de filas por tabla y notas de adaptación
 
-- Disparador: `onBlur` del campo Apellido (o Nombre si no hay apellido), con ≥3 caracteres.
-- Query: `clientes` filtrando por `tenant_id` + `ilike nombre %valor%` y/o `ilike apellido %valor%`, con `limit 5`.
-- Resultado:
-  - **1-5 matches** → diálogo "Encontramos clientes con nombre similar" con lista (nombre, dirección, DNI, teléfono) y acciones por fila: **Usar este** / botón global **Ninguno, es nuevo**.
-  - **0 matches** → seguir cargando.
-
-### 3. Reglas comunes
-
-- Solo se dispara si el cliente NO fue cargado manualmente desde el autocomplete (`clientLoadedManually[target]` ya existe).
-- Se aplica idéntico a remitente y destinatario, parametrizado por `target`.
-- Si el usuario elige "usar", se autocompletan todos los campos (nombre, apellido, teléfono, email, dirección, ciudad, CP, DNI) — ya está implementado en `applyClientMatch`.
-- Si elige "es otro/nuevo", se marca un flag local para no volver a preguntar lo mismo en esta sesión del form.
-- Al guardar el envío, el upsert de cliente sigue funcionando por DNI como hoy (no se duplica a nivel DB).
-
-## Cambios técnicos
-
-Archivo único: `src/pages/NewShipment.tsx`
-
-1. Extender `checkExistingClient` para soportar dos modos: `'dni'` y `'nombre'`, devolviendo array de matches.
-2. Cambiar `pendingClientMatch` de `{ client, target }` a `{ matches: Client[], target, reason: 'dni' | 'nombre' }`.
-3. Reemplazar el diálogo actual (single-match) por uno con lista seleccionable cuando `matches.length > 1`.
-4. Agregar `onBlur` en inputs de `*_apellido` (y fallback `*_nombre`) que llame al check por nombre.
-5. Mantener el `onBlur` actual de DNI pero quitar la pre-condición de que ya exista nombre cargado (buscar por DNI solo).
-6. Agregar `dismissedSuggestions` (Set por target) para no re-preguntar tras un "No".
-
-## Notas
-
-- Sin cambios de DB ni de backend.
-- Sin cambios visuales fuera del diálogo de confirmación.
-- Performance: queries puntuales con `limit 5` y trigger en blur (no en cada tecla).
+Al aprobar este plan ejecutaré la exportación y te entregaré los archivos para descarga.
