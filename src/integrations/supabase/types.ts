@@ -386,6 +386,41 @@ export type Database = {
           },
         ]
       }
+      conductores: {
+        Row: {
+          creado_en: string | null
+          estado: string | null
+          id: string
+          nombre: string
+          telefono: string | null
+          vehiculo_id: string | null
+        }
+        Insert: {
+          creado_en?: string | null
+          estado?: string | null
+          id?: string
+          nombre: string
+          telefono?: string | null
+          vehiculo_id?: string | null
+        }
+        Update: {
+          creado_en?: string | null
+          estado?: string | null
+          id?: string
+          nombre?: string
+          telefono?: string | null
+          vehiculo_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conductores_vehiculo_id_fkey"
+            columns: ["vehiculo_id"]
+            isOneToOne: false
+            referencedRelation: "vehiculos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       configuracion_seguro: {
         Row: {
           activo: boolean | null
@@ -429,6 +464,57 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      configuracion_sistema: {
+        Row: {
+          actualizado_en: string | null
+          clave: string
+          creado_en: string | null
+          descripcion: string | null
+          id: string
+          valor: string
+        }
+        Insert: {
+          actualizado_en?: string | null
+          clave: string
+          creado_en?: string | null
+          descripcion?: string | null
+          id?: string
+          valor: string
+        }
+        Update: {
+          actualizado_en?: string | null
+          clave?: string
+          creado_en?: string | null
+          descripcion?: string | null
+          id?: string
+          valor?: string
+        }
+        Relationships: []
+      }
+      costos_envio: {
+        Row: {
+          actualizado_en: string | null
+          creado_en: string | null
+          id: string
+          precio: number
+          zona: string
+        }
+        Insert: {
+          actualizado_en?: string | null
+          creado_en?: string | null
+          id?: string
+          precio: number
+          zona: string
+        }
+        Update: {
+          actualizado_en?: string | null
+          creado_en?: string | null
+          id?: string
+          precio?: number
+          zona?: string
+        }
+        Relationships: []
       }
       driver_checkins: {
         Row: {
@@ -1485,6 +1571,41 @@ export type Database = {
           },
         ]
       }
+      estados_envio: {
+        Row: {
+          comentario: string | null
+          creado_en: string | null
+          envio_id: string | null
+          estado: string
+          fecha: string | null
+          id: string
+        }
+        Insert: {
+          comentario?: string | null
+          creado_en?: string | null
+          envio_id?: string | null
+          estado: string
+          fecha?: string | null
+          id?: string
+        }
+        Update: {
+          comentario?: string | null
+          creado_en?: string | null
+          envio_id?: string | null
+          estado?: string
+          fecha?: string | null
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estados_envio_envio_id_fkey"
+            columns: ["envio_id"]
+            isOneToOne: false
+            referencedRelation: "envios"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       factura_detalles: {
         Row: {
           alicuota_iva: number
@@ -1886,6 +2007,51 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      historial_envio: {
+        Row: {
+          conductor_id: string | null
+          envio_id: string | null
+          estado_anterior: string | null
+          estado_nuevo: string
+          fecha_cambio: string | null
+          id: string
+          notas: string | null
+        }
+        Insert: {
+          conductor_id?: string | null
+          envio_id?: string | null
+          estado_anterior?: string | null
+          estado_nuevo: string
+          fecha_cambio?: string | null
+          id?: string
+          notas?: string | null
+        }
+        Update: {
+          conductor_id?: string | null
+          envio_id?: string | null
+          estado_anterior?: string | null
+          estado_nuevo?: string
+          fecha_cambio?: string | null
+          id?: string
+          notas?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "historial_envio_conductor_id_fkey"
+            columns: ["conductor_id"]
+            isOneToOne: false
+            referencedRelation: "conductores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "historial_envio_envio_id_fkey"
+            columns: ["envio_id"]
+            isOneToOne: false
+            referencedRelation: "envios"
             referencedColumns: ["id"]
           },
         ]
@@ -2835,6 +3001,41 @@ export type Database = {
           },
         ]
       }
+      notificaciones: {
+        Row: {
+          creado_en: string | null
+          id: string
+          leido: boolean | null
+          mensaje: string
+          titulo: string
+          usuario_id: string | null
+        }
+        Insert: {
+          creado_en?: string | null
+          id?: string
+          leido?: boolean | null
+          mensaje: string
+          titulo: string
+          usuario_id?: string | null
+        }
+        Update: {
+          creado_en?: string | null
+          id?: string
+          leido?: boolean | null
+          mensaje?: string
+          titulo?: string
+          usuario_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notificaciones_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: false
+            referencedRelation: "perfiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           created_at: string | null
@@ -3140,6 +3341,30 @@ export type Database = {
           },
         ]
       }
+      perfiles: {
+        Row: {
+          creado_en: string | null
+          email: string | null
+          id: string
+          nombre: string | null
+          rol: string
+        }
+        Insert: {
+          creado_en?: string | null
+          email?: string | null
+          id: string
+          nombre?: string | null
+          rol: string
+        }
+        Update: {
+          creado_en?: string | null
+          email?: string | null
+          id?: string
+          nombre?: string | null
+          rol?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           activo: boolean | null
@@ -3290,6 +3515,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      reportes: {
+        Row: {
+          creado_en: string | null
+          datos: Json | null
+          fecha_fin: string
+          fecha_inicio: string
+          id: string
+          tipo: string
+        }
+        Insert: {
+          creado_en?: string | null
+          datos?: Json | null
+          fecha_fin: string
+          fecha_inicio: string
+          id?: string
+          tipo: string
+        }
+        Update: {
+          creado_en?: string | null
+          datos?: Json | null
+          fecha_fin?: string
+          fecha_inicio?: string
+          id?: string
+          tipo?: string
+        }
+        Relationships: []
       }
       role_permissions: {
         Row: {
@@ -5082,6 +5334,41 @@ export type Database = {
         }
         Relationships: []
       }
+      turnos: {
+        Row: {
+          cliente_id: string | null
+          creado_en: string | null
+          estado: string | null
+          fecha: string
+          id: string
+          notas: string | null
+        }
+        Insert: {
+          cliente_id?: string | null
+          creado_en?: string | null
+          estado?: string | null
+          fecha: string
+          id?: string
+          notas?: string | null
+        }
+        Update: {
+          cliente_id?: string | null
+          creado_en?: string | null
+          estado?: string | null
+          fecha?: string
+          id?: string
+          notas?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "turnos_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_activity_logs: {
         Row: {
           action: string
@@ -5209,6 +5496,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      zonas: {
+        Row: {
+          creado_en: string | null
+          descripcion: string | null
+          id: string
+          nombre: string
+        }
+        Insert: {
+          creado_en?: string | null
+          descripcion?: string | null
+          id?: string
+          nombre: string
+        }
+        Update: {
+          creado_en?: string | null
+          descripcion?: string | null
+          id?: string
+          nombre?: string
+        }
+        Relationships: []
       }
     }
     Views: {
