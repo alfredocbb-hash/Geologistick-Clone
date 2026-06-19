@@ -250,13 +250,29 @@ Deno.serve(async (req) => {
             mapping = fb;
           }
 
-          const newEnvioEstado = mapping?.estado_interno || 'pendiente';
+          let newEnvioEstado = mapping?.estado_interno || 'pendiente';
 
           // Obtener estado actual para comparar
           const { data: envioActual } = await supabase.from('envios')
-            .select('estado, estado_ml').eq('id', existingEnvioId).single();
+            .select('estado, estado_ml, reprogramado_count').eq('id', existingEnvioId).single();
 
           const currentEstado = envioActual?.estado || 'pendiente';
+
+          // Visit counting: receiver_absent / second_visit -> primera/segunda visita
+          if (realSubstatus === 'receiver_absent' || realSubstatus === 'second_visit') {
+            const { data: prevVisit } = await supabase
+              .from('envio_historial')
+              .select('id')
+              .eq('envio_id', existingEnvioId)
+              .eq('estado_nuevo', 'primera_visita')
+              .limit(1)
+              .maybeSingle();
+            const yaTuvoPrimera = !!prevVisit;
+            const reprog = envioActual?.reprogramado_count ?? 0;
+            const esSegunda = realSubstatus === 'second_visit' || yaTuvoPrimera || reprog >= 1;
+            newEnvioEstado = esSegunda ? 'segunda_visita' : 'primera_visita';
+            console.log('[ML Sync] Visit count resolved:', existingEnvioId, '->', newEnvioEstado);
+          }
 
           // Prioridades de estado (mayor = más avanzado en el flujo)
           const STATE_PRIORITY: Record<string, number> = {
@@ -265,6 +281,14 @@ Deno.serve(async (req) => {
             primera_visita: 6, segunda_visita: 6,
             devuelto: 9, cancelado: 9, entregado: 10,
           };
+
+          // Substatuses que fuerzan aplicar el mapping aunque baje el rank (devoluciones / retorno a centro)
+          const FORCE_OVERRIDE_SUBSTATUS = new Set([
+            'returning_to_hub', 'returning_to_sender',
+            'waiting_for_withdrawal', 'in_hub',
+          ]);
+          // Estados finales que nunca se deben pisar por sync
+          const FINAL_ESTADOS = new Set(['entregado', 'cancelado', 'devuelto', 'no_entregado']);
 
           const newPriority = STATE_PRIORITY[newEnvioEstado] || 0;
           const currentPriority = STATE_PRIORITY[currentEstado] || 0;
@@ -276,11 +300,14 @@ Deno.serve(async (req) => {
             ml_last_sync_at: new Date().toISOString(),
           };
 
-          // Auto-aplicar estado ML si es más avanzado que el interno
-          const shouldAutoApply = newPriority > currentPriority;
+          // Auto-aplicar estado ML si es más avanzado, o si el substatus fuerza override
+          const forceOverride = !!realSubstatus && FORCE_OVERRIDE_SUBSTATUS.has(realSubstatus)
+            && !FINAL_ESTADOS.has(currentEstado);
+          const shouldAutoApply = (newPriority > currentPriority || forceOverride)
+            && newEnvioEstado !== currentEstado;
           if (shouldAutoApply) {
             updatePayload.estado = newEnvioEstado;
-            console.log('[ML Sync] Auto-applying ML status:', existingEnvioId, currentEstado, '->', newEnvioEstado);
+            console.log('[ML Sync] Auto-applying ML status:', existingEnvioId, currentEstado, '->', newEnvioEstado, forceOverride ? '(override)' : '');
           }
 
           await supabase.from('envios').update(updatePayload).eq('id', existingEnvioId);

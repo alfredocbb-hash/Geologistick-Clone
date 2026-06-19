@@ -521,6 +521,27 @@ Deno.serve(async (req) => {
         mapping = fallbackMapping;
       }
 
+      // Visit counting: receiver_absent / second_visit -> primera/segunda visita
+      if (mapping && (shipment.substatus === 'receiver_absent' || shipment.substatus === 'second_visit')) {
+        const { data: envFull } = await supabase
+          .from('envios')
+          .select('reprogramado_count')
+          .eq('id', existingEnvio.id)
+          .maybeSingle();
+        const { data: prevVisit } = await supabase
+          .from('envio_historial')
+          .select('id')
+          .eq('envio_id', existingEnvio.id)
+          .eq('estado_nuevo', 'primera_visita')
+          .limit(1)
+          .maybeSingle();
+        const yaTuvoPrimera = !!prevVisit;
+        const reprog = envFull?.reprogramado_count ?? 0;
+        const esSegunda = shipment.substatus === 'second_visit' || yaTuvoPrimera || reprog >= 1;
+        mapping = { ...mapping, estado_interno: esSegunda ? 'segunda_visita' : 'primera_visita' };
+        console.log('[ML Webhook] Visit count resolved:', existingEnvio.id, '->', mapping.estado_interno);
+      }
+
       
 
       // 2. Update estado if mapping found and different from current

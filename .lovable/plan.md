@@ -1,45 +1,69 @@
-ary
-# Migración a PostgreSQL 17: Exportación completa
+# Sincronizar subestados ML con estados internos
 
-Generaré tres archivos `.sql` descargables en `/mnt/documents/` que podrás importar en tu nuevo PostgreSQL 17.
+## Problema
 
-## Archivos a generar
+ML reporta `status=shipped` + `substatus=receiver_absent` ("Destinatario ausente"), pero `ml_status_mapping` solo tiene `receiver_absent` bajo `status=not_delivered`. Sin mapping aplicable, el envío queda en `en_reparto` y el operador no ve el subestado real.
 
-### 1. `01_schema.sql` — Estructura
-- ~85 tablas del esquema `public` con `CREATE TABLE`, PK, FK, índices, constraints
-- Tipos ENUM personalizados (app_role, shipment_status, payment_method, etc.)
-- ~50 funciones del esquema `public` (incluye `has_role`, `current_user_tenant`, `start_ruta_planificada`, triggers, etc.)
-- Triggers de `public`
-- Políticas RLS (las líneas con `auth.uid()` quedarán comentadas con nota, ya que PostgreSQL puro no tiene el esquema `auth` de Supabase)
-- GRANTs
+## Cambios
 
-### 2. `02_data.sql` — Datos
-- `INSERT` statements por tabla, en orden de dependencias (FKs)
-- Envuelto en una transacción con `SET session_replication_role = replica` para desactivar triggers durante la carga masiva
-- Manejo correcto de `jsonb`, `uuid`, `timestamptz`, arrays, caracteres especiales
-- Si alguna tabla supera ~100MB de INSERTs, se divide en `02_data_<tabla>.sql`
+### 1. Mappings nuevos en `ml_status_mapping`
 
-### 3. `03_auth_users.sql` — Usuarios
-- Tabla `public._migrated_auth_users` con: `id`, `email`, `encrypted_password` (bcrypt de GoTrue), `created_at`, `last_sign_in_at`, `raw_user_meta_data`, `email_confirmed_at`
-- Nota: si tu nuevo sistema de auth no es compatible con bcrypt de GoTrue, los usuarios deberán resetear contraseña
+Agregar combinaciones `shipped + <substatus>` faltantes:
 
-## Orden de importación
-```text
-psql < 01_schema.sql
-psql < 03_auth_users.sql
-psql < 02_data.sql
-```
+| ml_status | ml_substatus           | estado_interno   |
+|-----------|------------------------|------------------|
+| shipped   | receiver_absent        | primera_visita * |
+| shipped   | returning_to_hub       | en_transito      |
+| shipped   | returning_to_sender    | devuelto         |
+| shipped   | buyer_refused          | no_entregado     |
+| shipped   | damaged                | incidencia       |
+| shipped   | stolen                 | incidencia       |
+| shipped   | lost                   | incidencia       |
+| shipped   | waiting_for_withdrawal | en_sucursal      |
+| shipped   | in_hub                 | en_sucursal      |
 
-## Qué NO se incluye (limitaciones de Lovable Cloud)
-- Esquemas gestionados por Supabase: `auth`, `storage`, `realtime`, `vault`, `supabase_functions`
-- Edge Functions (código TypeScript) — debes portarlas manualmente
-- Secrets / variables de entorno
-- Archivos de Storage buckets
-- Cron jobs (`pg_cron`), webhooks de DB, extensión `pg_net`
+\* `receiver_absent` se resuelve dinámicamente (ver paso 2).
 
-## Detalles técnicos
-- Construcción del esquema desde `information_schema` + `pg_catalog` (`pg_class`, `pg_attribute`, `pg_constraint`, `pg_proc`, `pg_policy`, `pg_trigger`)
-- Datos vía `COPY (SELECT ...) TO STDOUT` y script Python que reconstruye `INSERT`s seguros
-- Reporte final `MIGRATION_REPORT.md` con conteo de filas por tabla y notas de adaptación
+### 2. Conteo de visitas (primera / segunda)
 
-Al aprobar este plan ejecutaré la exportación y te entregaré los archivos para descarga.
+En `mercadolibre-sync` y `mercadolibre-webhook`, al detectar `substatus IN ('receiver_absent','second_visit')`:
+
+- Leer el estado actual del envío.
+- Si `estado` ∈ {`en_reparto`,`en_transito`,`en_sucursal`,`recogido`} y `reprogramado_count = 0` y nunca pasó por `primera_visita` → marcar **`primera_visita`** e incrementar contador.
+- Si ya estuvo en `primera_visita` (o `reprogramado_count >= 1`, o el substatus es explícitamente `second_visit`) → marcar **`segunda_visita`**.
+- Verificación rápida del historial vía `envio_historial` (`SELECT 1 FROM envio_historial WHERE envio_id=$1 AND estado_nuevo='primera_visita' LIMIT 1`).
+
+Esto reemplaza al mapping estático para `receiver_absent` (el mapping sirve como fallback si la consulta falla).
+
+### 3. Override controlado del anti-downgrade
+
+Hoy un envío en `en_reparto` (rank 4) no puede pasar a `en_transito`/`en_sucursal` (rank 2-3). Agregar set `FORCE_OVERRIDE_SUBSTATUS = {returning_to_hub, returning_to_sender, waiting_for_withdrawal, in_hub}`: si el substatus está en el set, se aplica el mapping aunque baje el rank. Estados finales (`entregado`/`cancelado`/`devuelto`/`no_entregado`) siguen bloqueados salvo super_admin.
+
+### 4. Resincronización de envíos existentes
+
+`UPDATE envios SET estado=<correcto>` para cada envío con `ml_substatus_actual` en la lista, respetando la lógica de visitas y registrando entrada en `envio_historial` con nota "Resincronización subestados ML".
+
+Tablas afectadas:
+- `receiver_absent` + `en_reparto`/`en_transito`/`en_sucursal` → `primera_visita` (o `segunda_visita` si ya tuvo una visita previa)
+- `returning_to_hub` → `en_transito`
+- `returning_to_sender` → `devuelto`
+- `waiting_for_withdrawal`/`in_hub` → `en_sucursal`
+- `buyer_refused` → `no_entregado`
+- `damaged`/`stolen`/`lost` → `incidencia`
+
+### 5. Badge inline en la columna "Estado"
+
+En la tabla de envíos (`src/components/shipments/ShipmentsTable.tsx` o equivalente), cuando `isNoteworthyMLSubstatus(env.ml_substatus_actual)` sea true, mostrar debajo del badge de estado interno un mini-badge con `getMLSubstatusLabel(...)` (ej. "Destinatario ausente"). Usa los helpers ya existentes en `src/lib/mlSubstatusLabels.ts`.
+
+## Archivos
+
+- **Migración 1**: `INSERT ... ON CONFLICT DO NOTHING` en `ml_status_mapping` (9 filas).
+- **Migración 2**: `UPDATE` de resincronización + inserts en `envio_historial`.
+- **Edge function** `supabase/functions/mercadolibre-sync/index.ts`: lógica de visitas + override.
+- **Edge function** `supabase/functions/mercadolibre-webhook/index.ts`: mismas dos lógicas.
+- **Frontend**: localizar la tabla de envíos y añadir el badge inline.
+
+## Riesgos
+
+- Si un envío legítimamente está en `en_transito` por otro motivo y llega `receiver_absent` viejo en cache de ML, podría marcarse como visita. Mitigado por el chequeo de `reprogramado_count` y por consultar historial.
+- La resincronización es una operación masiva: la ejecuto envío por envío dentro de un solo statement con CTE para que sea atómico y cuente filas afectadas.
