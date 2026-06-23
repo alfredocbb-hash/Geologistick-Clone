@@ -5527,6 +5527,14 @@ export type Database = {
         Args: { p_factor: number; p_tarifa_ids: string[] }
         Returns: undefined
       }
+      assign_envios_to_chofer_retroactivo: {
+        Args: {
+          p_chofer_user_id: string
+          p_envio_ids: string[]
+          p_motivo?: string
+        }
+        Returns: Json
+      }
       can_access_sucursal: {
         Args: { _sucursal_id: string; _user_id: string }
         Returns: boolean
