@@ -859,17 +859,26 @@ export default function DriverSettlements() {
                 onChange={(e) => setFechaFin(e.target.value)}
               />
             </div>
-            <div className="flex items-end">
+            <div className="flex items-end gap-2">
               <Button
                 onClick={() => calculateMutation.mutate()}
                 disabled={calculateMutation.isPending || !selectedChofer || !fechaInicio || !fechaFin}
-                className="w-full"
+                className="flex-1"
               >
                 <Calculator className="h-4 w-4 mr-2" />
                 {calculateMutation.isPending ? 'Buscando...' : 'Buscar Envíos'}
               </Button>
+              <Button
+                variant="outline"
+                title="Asignar envíos retroactivos al chofer"
+                onClick={() => setShowAssignRetro(true)}
+                disabled={!selectedChofer}
+              >
+                <UserPlus className="h-4 w-4" />
+              </Button>
             </div>
           </div>
+
 
           {/* Results */}
           {enviosParaLiquidar.length > 0 && (
