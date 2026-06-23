@@ -49,6 +49,8 @@ import { es } from 'date-fns/locale';
 import type { Database } from '@/integrations/supabase/types';
 import { SettlementDetailDialog } from '@/components/settlements/SettlementDetailDialog';
 import { toLocalISOStart, toLocalISOEnd, parseDateString } from '@/lib/dateUtils';
+import { AssignShipmentsRetroactiveDialog } from '@/components/drivers/AssignShipmentsRetroactiveDialog';
+import { UserPlus } from 'lucide-react';
 
 type PaymentMethod = Database['public']['Enums']['payment_method'];
 
@@ -258,6 +260,7 @@ export default function DriverSettlements() {
   const [descuentosCOD, setDescuentosCOD] = useState<Record<string, boolean>>({});
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [liquidacionToCancel, setLiquidacionToCancel] = useState<Liquidacion | null>(null);
+  const [showAssignRetro, setShowAssignRetro] = useState(false);
 
   // Fetch choferes with commission config
   const { data: choferes = [] } = useQuery({
@@ -856,17 +859,26 @@ export default function DriverSettlements() {
                 onChange={(e) => setFechaFin(e.target.value)}
               />
             </div>
-            <div className="flex items-end">
+            <div className="flex items-end gap-2">
               <Button
                 onClick={() => calculateMutation.mutate()}
                 disabled={calculateMutation.isPending || !selectedChofer || !fechaInicio || !fechaFin}
-                className="w-full"
+                className="flex-1"
               >
                 <Calculator className="h-4 w-4 mr-2" />
                 {calculateMutation.isPending ? 'Buscando...' : 'Buscar Envíos'}
               </Button>
+              <Button
+                variant="outline"
+                title="Asignar envíos retroactivos al chofer"
+                onClick={() => setShowAssignRetro(true)}
+                disabled={!selectedChofer}
+              >
+                <UserPlus className="h-4 w-4" />
+              </Button>
             </div>
           </div>
+
 
           {/* Results */}
           {enviosParaLiquidar.length > 0 && (
@@ -1307,6 +1319,26 @@ export default function DriverSettlements() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {selectedChofer && (() => {
+        const chofer = choferes.find(c => c.id === selectedChofer);
+        if (!chofer) return null;
+        return (
+          <AssignShipmentsRetroactiveDialog
+            open={showAssignRetro}
+            onOpenChange={setShowAssignRetro}
+            choferUserId={chofer.user_id}
+            choferNombre={`${chofer.nombre}${chofer.apellido ? ' ' + chofer.apellido : ''}`}
+            tenantId={profile?.tenant_id}
+            defaultFechaInicio={fechaInicio}
+            defaultFechaFin={fechaFin}
+            onAssigned={() => {
+              if (fechaInicio && fechaFin) calculateMutation.mutate();
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }
+

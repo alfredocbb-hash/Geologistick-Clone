@@ -1,69 +1,41 @@
-# Sincronizar subestados ML con estados internos
+# Asignación retroactiva de envíos a chofer
 
-## Problema
+Permitir que un admin asigne en bloque envíos "sin chofer" a un chofer (ej. Ariel Kersul) filtrando por rango de fechas y sucursal, para que entren en su próxima liquidación con la comisión recalculada según sus reglas vigentes.
 
-ML reporta `status=shipped` + `substatus=receiver_absent` ("Destinatario ausente"), pero `ml_status_mapping` solo tiene `receiver_absent` bajo `status=not_delivered`. Sin mapping aplicable, el envío queda en `en_reparto` y el operador no ve el subestado real.
+## Flujo de usuario
 
-## Cambios
+1. En la página de **Choferes** (o en **Liquidaciones de Chofer**), agregar un botón **"Asignar envíos retroactivos"** en la fila/detalle de cada chofer (visible solo para `admin` y `super_admin`).
+2. Se abre un diálogo con:
+   - Chofer (pre-seleccionado).
+   - Sucursal (default: sucursal del chofer; editable).
+   - Rango de fechas (desde / hasta) sobre `created_at` del envío.
+   - Filtro opcional por estado (default: `entregado`, `en_reparto`, `en_sucursal`, `en_transito`, `recogido`).
+   - Checkbox "Solo envíos sin chofer asignado" (default ON).
+3. Tabla con los envíos coincidentes (tracking, fecha, destinatario, ciudad, estado, precio). Selección múltiple con "seleccionar todos".
+4. Botón **"Asignar a [Chofer]"** confirma y ejecuta.
 
-### 1. Mappings nuevos en `ml_status_mapping`
+## Reglas de negocio
 
-Agregar combinaciones `shipped + <substatus>` faltantes:
+- Solo se asignan envíos del mismo `tenant_id` que el chofer.
+- Solo envíos con `chofer_id IS NULL` (si el checkbox está activo).
+- No se modifica el `estado` del envío — se respeta el actual (incluyendo `entregado`).
+- Se setean: `chofer_id`, `chofer_ultima_milla_id`, `fecha_asignacion_ultima_milla = now()`.
+- **Comisión:** se recalcula usando las reglas vigentes de Ariel: prioridad `chofer_comisiones_zona` activa por ciudad/provincia/CP de entrega → fallback a tarifa de zona. Se inserta/actualiza fila en `comisiones` con `estado = 'pendiente'` para que entre en la próxima liquidación.
+- Se registra entrada en `envio_historial` con nota "Chofer asignado retroactivamente por [admin] - motivo: liquidación física".
+- Envíos ya incluidos en una liquidación de chofer activa (`liquidacion_id IS NOT NULL` en `comisiones`) se excluyen del listado para evitar doble cobro.
 
-| ml_status | ml_substatus           | estado_interno   |
-|-----------|------------------------|------------------|
-| shipped   | receiver_absent        | primera_visita * |
-| shipped   | returning_to_hub       | en_transito      |
-| shipped   | returning_to_sender    | devuelto         |
-| shipped   | buyer_refused          | no_entregado     |
-| shipped   | damaged                | incidencia       |
-| shipped   | stolen                 | incidencia       |
-| shipped   | lost                   | incidencia       |
-| shipped   | waiting_for_withdrawal | en_sucursal      |
-| shipped   | in_hub                 | en_sucursal      |
+## Detalles técnicos
 
-\* `receiver_absent` se resuelve dinámicamente (ver paso 2).
+- **Migración** — función RPC `assign_envios_to_chofer_retroactivo(p_chofer_id uuid, p_envio_ids uuid[], p_motivo text)`:
+  - `SECURITY DEFINER`, valida `is_admin(auth.uid())` y mismo tenant.
+  - Itera envíos: UPDATE de chofer + INSERT en `envio_historial` + UPSERT en `comisiones` calculando monto vía lógica de `chofer_comisiones_zona` → fallback tarifa de zona (replica de la lógica existente en cálculo de comisiones).
+  - Devuelve `jsonb` con `success`, `asignados`, `omitidos`, `errores`.
+- **Frontend** — nuevo componente `src/components/drivers/AssignShipmentsRetroactiveDialog.tsx`:
+  - Query a `envios` con filtros (rango, sucursal origen/entrega, estado, `chofer_id IS NULL`, excluyendo los ya liquidados).
+  - Tabla con selección múltiple (shadcn `Checkbox` + `Table`).
+  - Llama al RPC y muestra toast con resultado; invalida queries de `useReportsData` y liquidaciones.
+- **Punto de entrada** — botón en `src/pages/Drivers.tsx` (acción en la fila) y/o en `src/pages/DriverSettlements.tsx` (header del detalle del chofer).
 
-### 2. Conteo de visitas (primera / segunda)
+## Auditoría
 
-En `mercadolibre-sync` y `mercadolibre-webhook`, al detectar `substatus IN ('receiver_absent','second_visit')`:
-
-- Leer el estado actual del envío.
-- Si `estado` ∈ {`en_reparto`,`en_transito`,`en_sucursal`,`recogido`} y `reprogramado_count = 0` y nunca pasó por `primera_visita` → marcar **`primera_visita`** e incrementar contador.
-- Si ya estuvo en `primera_visita` (o `reprogramado_count >= 1`, o el substatus es explícitamente `second_visit`) → marcar **`segunda_visita`**.
-- Verificación rápida del historial vía `envio_historial` (`SELECT 1 FROM envio_historial WHERE envio_id=$1 AND estado_nuevo='primera_visita' LIMIT 1`).
-
-Esto reemplaza al mapping estático para `receiver_absent` (el mapping sirve como fallback si la consulta falla).
-
-### 3. Override controlado del anti-downgrade
-
-Hoy un envío en `en_reparto` (rank 4) no puede pasar a `en_transito`/`en_sucursal` (rank 2-3). Agregar set `FORCE_OVERRIDE_SUBSTATUS = {returning_to_hub, returning_to_sender, waiting_for_withdrawal, in_hub}`: si el substatus está en el set, se aplica el mapping aunque baje el rank. Estados finales (`entregado`/`cancelado`/`devuelto`/`no_entregado`) siguen bloqueados salvo super_admin.
-
-### 4. Resincronización de envíos existentes
-
-`UPDATE envios SET estado=<correcto>` para cada envío con `ml_substatus_actual` en la lista, respetando la lógica de visitas y registrando entrada en `envio_historial` con nota "Resincronización subestados ML".
-
-Tablas afectadas:
-- `receiver_absent` + `en_reparto`/`en_transito`/`en_sucursal` → `primera_visita` (o `segunda_visita` si ya tuvo una visita previa)
-- `returning_to_hub` → `en_transito`
-- `returning_to_sender` → `devuelto`
-- `waiting_for_withdrawal`/`in_hub` → `en_sucursal`
-- `buyer_refused` → `no_entregado`
-- `damaged`/`stolen`/`lost` → `incidencia`
-
-### 5. Badge inline en la columna "Estado"
-
-En la tabla de envíos (`src/components/shipments/ShipmentsTable.tsx` o equivalente), cuando `isNoteworthyMLSubstatus(env.ml_substatus_actual)` sea true, mostrar debajo del badge de estado interno un mini-badge con `getMLSubstatusLabel(...)` (ej. "Destinatario ausente"). Usa los helpers ya existentes en `src/lib/mlSubstatusLabels.ts`.
-
-## Archivos
-
-- **Migración 1**: `INSERT ... ON CONFLICT DO NOTHING` en `ml_status_mapping` (9 filas).
-- **Migración 2**: `UPDATE` de resincronización + inserts en `envio_historial`.
-- **Edge function** `supabase/functions/mercadolibre-sync/index.ts`: lógica de visitas + override.
-- **Edge function** `supabase/functions/mercadolibre-webhook/index.ts`: mismas dos lógicas.
-- **Frontend**: localizar la tabla de envíos y añadir el badge inline.
-
-## Riesgos
-
-- Si un envío legítimamente está en `en_transito` por otro motivo y llega `receiver_absent` viejo en cache de ML, podría marcarse como visita. Mitigado por el chequeo de `reprogramado_count` y por consultar historial.
-- La resincronización es una operación masiva: la ejecuto envío por envío dentro de un solo statement con CTE para que sea atómico y cuente filas afectadas.
+Cada asignación queda trazada en `envio_historial` con `created_by = auth.uid()` y nota explícita, y la comisión queda con `created_at = now()` para que sea identificable en reportes.
