@@ -49,6 +49,8 @@ import { es } from 'date-fns/locale';
 import type { Database } from '@/integrations/supabase/types';
 import { SettlementDetailDialog } from '@/components/settlements/SettlementDetailDialog';
 import { toLocalISOStart, toLocalISOEnd, parseDateString } from '@/lib/dateUtils';
+import { AssignShipmentsRetroactiveDialog } from '@/components/drivers/AssignShipmentsRetroactiveDialog';
+import { UserPlus } from 'lucide-react';
 
 type PaymentMethod = Database['public']['Enums']['payment_method'];
 
