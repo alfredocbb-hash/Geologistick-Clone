@@ -260,6 +260,7 @@ export default function DriverSettlements() {
   const [descuentosCOD, setDescuentosCOD] = useState<Record<string, boolean>>({});
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [liquidacionToCancel, setLiquidacionToCancel] = useState<Liquidacion | null>(null);
+  const [showAssignRetro, setShowAssignRetro] = useState(false);
 
   // Fetch choferes with commission config
   const { data: choferes = [] } = useQuery({
