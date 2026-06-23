@@ -1319,6 +1319,26 @@ export default function DriverSettlements() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {selectedChofer && (() => {
+        const chofer = choferes.find(c => c.id === selectedChofer);
+        if (!chofer) return null;
+        return (
+          <AssignShipmentsRetroactiveDialog
+            open={showAssignRetro}
+            onOpenChange={setShowAssignRetro}
+            choferUserId={chofer.user_id}
+            choferNombre={`${chofer.nombre}${chofer.apellido ? ' ' + chofer.apellido : ''}`}
+            tenantId={profile?.tenant_id}
+            defaultFechaInicio={fechaInicio}
+            defaultFechaFin={fechaFin}
+            onAssigned={() => {
+              if (fechaInicio && fechaFin) calculateMutation.mutate();
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }
+
