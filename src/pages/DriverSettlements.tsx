@@ -570,7 +570,7 @@ export default function DriverSettlements() {
 
       // Calculate COD discounts
       const totalDescuentosCOD = aLiquidar
-        .filter(e => e.pago_contra_entrega && descuentosCOD[e.id])
+        .filter(e => e.cobra_en_destino && descuentosCOD[e.id])
         .reduce((sum, e) => sum + e.precio_efectivo, 0);
 
       // Final amount (commissions - COD)
@@ -798,11 +798,11 @@ export default function DriverSettlements() {
   const enviosLiquidados = enviosParaLiquidar.filter(e => e.estado_liquidacion === 'liquidado');
   const totalComisiones = enviosALiquidar.reduce((sum, e) => sum + (montosEditados[e.id] ?? e.comision_calculada), 0);
   const totalDescuentosCOD = enviosALiquidar
-    .filter(e => e.pago_contra_entrega && descuentosCOD[e.id])
+    .filter(e => e.cobra_en_destino && descuentosCOD[e.id])
     .reduce((sum, e) => sum + e.precio_efectivo, 0);
   const saldoFinal = totalComisiones - totalDescuentosCOD;
   const totalLiquidados = enviosLiquidados.reduce((sum, e) => sum + e.comision_calculada, 0);
-  const enviosCOD = enviosALiquidar.filter(e => e.pago_contra_entrega);
+  const enviosCOD = enviosALiquidar.filter(e => e.cobra_en_destino);
 
   const toggleDescuentoCOD = (envioId: string) => {
     setDescuentosCOD(prev => ({
