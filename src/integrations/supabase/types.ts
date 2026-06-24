@@ -5635,6 +5635,7 @@ export type Database = {
         }
         Returns: Json
       }
+      reconcile_seller_liquidacion_payments: { Args: never; Returns: Json }
       register_cod_payment: {
         Args: {
           p_envio_id: string
