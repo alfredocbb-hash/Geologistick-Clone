@@ -295,14 +295,32 @@ export default function Settlements() {
       // Fetch all payments at once
       const { data: allPayments } = await supabase
         .from('seller_cuenta_corriente')
-        .select('seller_id, monto, tipo')
+        .select('seller_id, monto, tipo, liquidacion_id')
         .in('seller_id', sellerIds)
         .eq('tipo', 'pago');
 
       const paymentsBySeller = new Map<string, number>();
+      const paidLiquidacionIdsWithMov = new Set<string>();
       (allPayments || []).forEach(p => {
         const current = paymentsBySeller.get(p.seller_id) || 0;
         paymentsBySeller.set(p.seller_id, current + Math.abs(p.monto || 0));
+        if ((p as any).liquidacion_id) paidLiquidacionIdsWithMov.add((p as any).liquidacion_id);
+      });
+
+      // Fallback: include 'pagada' liquidaciones without an associated payment movement
+      // (legacy data or failed auto-insert). Ensures the balance reflects them regardless.
+      const { data: paidLiqs } = await supabase
+        .from('liquidaciones_seller')
+        .select('id, seller_id, saldo_periodo')
+        .in('seller_id', sellerIds)
+        .eq('estado', 'pagada');
+
+      (paidLiqs || []).forEach(l => {
+        if (paidLiquidacionIdsWithMov.has(l.id)) return;
+        const monto = Math.abs(Number(l.saldo_periodo) || 0);
+        if (monto === 0) return;
+        const current = paymentsBySeller.get(l.seller_id) || 0;
+        paymentsBySeller.set(l.seller_id, current + monto);
       });
 
       // 3. Batch check visitas for all cancelled envios
