@@ -72,6 +72,8 @@ interface EnvioParaLiquidar {
   precio_efectivo: number;
   fecha_entrega: string;
   pago_contra_entrega: boolean;
+  tipo_pago?: string | null;
+  cobra_en_destino: boolean;
   tarifa?: {
     comision_chofer_porcentaje: number | null;
     comision_chofer_fija: number | null;
