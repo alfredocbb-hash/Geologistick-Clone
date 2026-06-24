@@ -1034,7 +1034,7 @@ export default function DriverSettlements() {
                             ${envio.precio_efectivo.toFixed(2)}
                           </TableCell>
                           <TableCell>
-                            {envio.pago_contra_entrega ? (
+                            {envio.cobra_en_destino ? (
                               <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500">
                                 <Banknote className="h-3 w-3 mr-1" />
                                 ${envio.precio_efectivo.toFixed(2)}
@@ -1078,7 +1078,7 @@ export default function DriverSettlements() {
                             )}
                           </TableCell>
                           <TableCell className="text-center">
-                            {envio.pago_contra_entrega && isALiquidar ? (
+                            {envio.cobra_en_destino && isALiquidar ? (
                               <Button
                                 size="sm"
                                 variant={descuentosCOD[envio.id] ? "default" : "outline"}
