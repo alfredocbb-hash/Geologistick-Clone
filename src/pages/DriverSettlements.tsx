@@ -72,6 +72,8 @@ interface EnvioParaLiquidar {
   precio_efectivo: number;
   fecha_entrega: string;
   pago_contra_entrega: boolean;
+  tipo_pago?: string | null;
+  cobra_en_destino: boolean;
   tarifa?: {
     comision_chofer_porcentaje: number | null;
     comision_chofer_fija: number | null;
@@ -327,7 +329,7 @@ export default function DriverSettlements() {
 
       const selectFields = `
           id, tracking_number, tracking_externo, precio_total, precio_tarifa_vigente, fecha_entrega, tarifa_id,
-          chofer_id, chofer_ultima_milla_id, pago_contra_entrega, ciudad_entrega, provincia, cp_entrega,
+          chofer_id, chofer_ultima_milla_id, pago_contra_entrega, tipo_pago, ciudad_entrega, provincia, cp_entrega,
           tarifas:tarifas(comision_chofer_porcentaje, comision_chofer_fija)
         `;
 
@@ -519,6 +521,8 @@ export default function DriverSettlements() {
           precio_efectivo: precioEfectivo,
           fecha_entrega: envio.fecha_entrega!,
           pago_contra_entrega: envio.pago_contra_entrega || false,
+          tipo_pago: (envio as any).tipo_pago ?? null,
+          cobra_en_destino: !!envio.pago_contra_entrega || (envio as any).tipo_pago === 'destino',
           tarifa,
           comision_id: comision?.id || null,
           comision_monto: comision?.monto ?? null,
@@ -566,7 +570,7 @@ export default function DriverSettlements() {
 
       // Calculate COD discounts
       const totalDescuentosCOD = aLiquidar
-        .filter(e => e.pago_contra_entrega && descuentosCOD[e.id])
+        .filter(e => e.cobra_en_destino && descuentosCOD[e.id])
         .reduce((sum, e) => sum + e.precio_efectivo, 0);
 
       // Final amount (commissions - COD)
@@ -794,11 +798,11 @@ export default function DriverSettlements() {
   const enviosLiquidados = enviosParaLiquidar.filter(e => e.estado_liquidacion === 'liquidado');
   const totalComisiones = enviosALiquidar.reduce((sum, e) => sum + (montosEditados[e.id] ?? e.comision_calculada), 0);
   const totalDescuentosCOD = enviosALiquidar
-    .filter(e => e.pago_contra_entrega && descuentosCOD[e.id])
+    .filter(e => e.cobra_en_destino && descuentosCOD[e.id])
     .reduce((sum, e) => sum + e.precio_efectivo, 0);
   const saldoFinal = totalComisiones - totalDescuentosCOD;
   const totalLiquidados = enviosLiquidados.reduce((sum, e) => sum + e.comision_calculada, 0);
-  const enviosCOD = enviosALiquidar.filter(e => e.pago_contra_entrega);
+  const enviosCOD = enviosALiquidar.filter(e => e.cobra_en_destino);
 
   const toggleDescuentoCOD = (envioId: string) => {
     setDescuentosCOD(prev => ({
@@ -1030,7 +1034,7 @@ export default function DriverSettlements() {
                             ${envio.precio_efectivo.toFixed(2)}
                           </TableCell>
                           <TableCell>
-                            {envio.pago_contra_entrega ? (
+                            {envio.cobra_en_destino ? (
                               <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500">
                                 <Banknote className="h-3 w-3 mr-1" />
                                 ${envio.precio_efectivo.toFixed(2)}
@@ -1074,7 +1078,7 @@ export default function DriverSettlements() {
                             )}
                           </TableCell>
                           <TableCell className="text-center">
-                            {envio.pago_contra_entrega && isALiquidar ? (
+                            {envio.cobra_en_destino && isALiquidar ? (
                               <Button
                                 size="sm"
                                 variant={descuentosCOD[envio.id] ? "default" : "outline"}

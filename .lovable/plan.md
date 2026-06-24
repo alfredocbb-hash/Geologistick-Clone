@@ -1,41 +1,32 @@
-# Asignación retroactiva de envíos a chofer
+## Problema
 
-Permitir que un admin asigne en bloque envíos "sin chofer" a un chofer (ej. Ariel Kersul) filtrando por rango de fechas y sucursal, para que entren en su próxima liquidación con la comisión recalculada según sus reglas vigentes.
+En la liquidación de Ariel Kersul hay un envío con **pago en destino** pero el botón "Descontar" no apareció, por lo que la cobranza no pudo descontarse de la comisión.
 
-## Flujo de usuario
+## Causa
 
-1. En la página de **Choferes** (o en **Liquidaciones de Chofer**), agregar un botón **"Asignar envíos retroactivos"** en la fila/detalle de cada chofer (visible solo para `admin` y `super_admin`).
-2. Se abre un diálogo con:
-   - Chofer (pre-seleccionado).
-   - Sucursal (default: sucursal del chofer; editable).
-   - Rango de fechas (desde / hasta) sobre `created_at` del envío.
-   - Filtro opcional por estado (default: `entregado`, `en_reparto`, `en_sucursal`, `en_transito`, `recogido`).
-   - Checkbox "Solo envíos sin chofer asignado" (default ON).
-3. Tabla con los envíos coincidentes (tracking, fecha, destinatario, ciudad, estado, precio). Selección múltiple con "seleccionar todos".
-4. Botón **"Asignar a [Chofer]"** confirma y ejecuta.
+En `src/pages/DriverSettlements.tsx` el botón "Descontar" y todos los cálculos COD se basan **solo** en el flag `pago_contra_entrega`:
 
-## Reglas de negocio
+```ts
+{envio.pago_contra_entrega && isALiquidar ? <Button …Descontar… /> : '-'}
+```
 
-- Solo se asignan envíos del mismo `tenant_id` que el chofer.
-- Solo envíos con `chofer_id IS NULL` (si el checkbox está activo).
-- No se modifica el `estado` del envío — se respeta el actual (incluyendo `entregado`).
-- Se setean: `chofer_id`, `chofer_ultima_milla_id`, `fecha_asignacion_ultima_milla = now()`.
-- **Comisión:** se recalcula usando las reglas vigentes de Ariel: prioridad `chofer_comisiones_zona` activa por ciudad/provincia/CP de entrega → fallback a tarifa de zona. Se inserta/actualiza fila en `comisiones` con `estado = 'pendiente'` para que entre en la próxima liquidación.
-- Se registra entrada en `envio_historial` con nota "Chofer asignado retroactivamente por [admin] - motivo: liquidación física".
-- Envíos ya incluidos en una liquidación de chofer activa (`liquidacion_id IS NOT NULL` en `comisiones`) se excluyen del listado para evitar doble cobro.
+En la base hay 4 envíos con `tipo_pago = 'destino'` pero `pago_contra_entrega = false` (datos cargados desde OCR / ML / importaciones antiguas donde no se seteó el flag). Para esos envíos el chofer cobra en destino pero la UI no ofrece descontarlo.
 
-## Detalles técnicos
+## Solución (solo frontend)
 
-- **Migración** — función RPC `assign_envios_to_chofer_retroactivo(p_chofer_id uuid, p_envio_ids uuid[], p_motivo text)`:
-  - `SECURITY DEFINER`, valida `is_admin(auth.uid())` y mismo tenant.
-  - Itera envíos: UPDATE de chofer + INSERT en `envio_historial` + UPSERT en `comisiones` calculando monto vía lógica de `chofer_comisiones_zona` → fallback tarifa de zona (replica de la lógica existente en cálculo de comisiones).
-  - Devuelve `jsonb` con `success`, `asignados`, `omitidos`, `errores`.
-- **Frontend** — nuevo componente `src/components/drivers/AssignShipmentsRetroactiveDialog.tsx`:
-  - Query a `envios` con filtros (rango, sucursal origen/entrega, estado, `chofer_id IS NULL`, excluyendo los ya liquidados).
-  - Tabla con selección múltiple (shadcn `Checkbox` + `Table`).
-  - Llama al RPC y muestra toast con resultado; invalida queries de `useReportsData` y liquidaciones.
-- **Punto de entrada** — botón en `src/pages/Drivers.tsx` (acción en la fila) y/o en `src/pages/DriverSettlements.tsx` (header del detalle del chofer).
+Tratar como "pago a descontar" cualquier envío donde `pago_contra_entrega = true` **o** `tipo_pago = 'destino'`.
 
-## Auditoría
+Cambios en `src/pages/DriverSettlements.tsx`:
 
-Cada asignación queda trazada en `envio_historial` con `created_by = auth.uid()` y nota explícita, y la comisión queda con `created_at = now()` para que sea identificable en reportes.
+1. Agregar `tipo_pago` al `selectFields` (línea ~328) y al tipo `EnvioParaLiquidar` (línea ~70).
+2. Propagar `tipo_pago` al objeto retornado (línea ~514) y derivar un campo unificado, ej. `cobra_en_destino = pago_contra_entrega || tipo_pago === 'destino'`.
+3. Reemplazar los 4 usos de `e.pago_contra_entrega` (líneas 569, 797, 801, 1077) por `e.cobra_en_destino`.
+4. Etiqueta/columna COD: mostrar el mismo importe (`precio_efectivo`) en ambos casos.
+
+No se tocan migraciones ni lógica de negocio del backend — el cálculo de descuento sigue siendo `comisiones − Σ precio_efectivo de envíos marcados`.
+
+## Verificación
+
+- Abrir liquidación de Ariel y confirmar que el envío reportado ahora muestra el botón "Descontar".
+- Marcar y comprobar que el saldo final resta correctamente.
+- Envíos `contado` / `cuenta_corriente` siguen mostrando "-".
