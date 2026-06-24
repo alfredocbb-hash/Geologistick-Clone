@@ -521,6 +521,8 @@ export default function DriverSettlements() {
           precio_efectivo: precioEfectivo,
           fecha_entrega: envio.fecha_entrega!,
           pago_contra_entrega: envio.pago_contra_entrega || false,
+          tipo_pago: (envio as any).tipo_pago ?? null,
+          cobra_en_destino: !!envio.pago_contra_entrega || (envio as any).tipo_pago === 'destino',
           tarifa,
           comision_id: comision?.id || null,
           comision_monto: comision?.monto ?? null,
