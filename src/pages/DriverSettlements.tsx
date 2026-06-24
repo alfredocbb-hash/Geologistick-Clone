@@ -329,7 +329,7 @@ export default function DriverSettlements() {
 
       const selectFields = `
           id, tracking_number, tracking_externo, precio_total, precio_tarifa_vigente, fecha_entrega, tarifa_id,
-          chofer_id, chofer_ultima_milla_id, pago_contra_entrega, ciudad_entrega, provincia, cp_entrega,
+          chofer_id, chofer_ultima_milla_id, pago_contra_entrega, tipo_pago, ciudad_entrega, provincia, cp_entrega,
           tarifas:tarifas(comision_chofer_porcentaje, comision_chofer_fija)
         `;
 
