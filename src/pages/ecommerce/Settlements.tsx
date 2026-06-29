@@ -478,6 +478,19 @@ export default function Settlements() {
       const selectedSellerObjs = sellers?.filter(s => calcSellers.includes(s.id)) || [];
       const uniqueClienteIds = [...new Set(selectedSellerObjs.map(s => s.cliente_id).filter(Boolean))] as string[];
 
+      // 0. Si el modo es webhook ML: obtener los envio_ids que salieron a reparto desde fechaInicio
+      let webhookEnvioIds: Set<string> | null = null;
+      if (tipoFechaDesde === 'webhook_reparto') {
+        const { data: histRows, error: histError } = await supabase
+          .from('envio_historial')
+          .select('envio_id, created_at')
+          .eq('estado_nuevo', 'en_reparto')
+          .gte('created_at', fechaInicioStr)
+          .or('ubicacion.ilike.%ML Webhook%,notas.ilike.%out_for_delivery%');
+        if (histError) throw histError;
+        webhookEnvioIds = new Set((histRows || []).map((h: any) => h.envio_id).filter(Boolean));
+      }
+
       // 1. Fetch movimientos for all selected sellers
       for (const sellerId of calcSellers) {
         const { data: movs, error } = await supabase
@@ -494,13 +507,26 @@ export default function Settlements() {
       }
 
       // 2. Buscar envíos de ecommerce_orders filtrados por fecha_entrega_estimada (fecha de reparto)
-      const { data: sellerOrdersWithSeller, error: ordersError } = await supabase
+      //    o por envio_ids del webhook ML si ese modo está activo.
+      let ordersQuery = supabase
         .from('ecommerce_orders')
         .select('envio_id, seller_id')
         .in('seller_id', calcSellers)
         .not('envio_id', 'is', null)
-        .gte('fecha_entrega_estimada', fechaInicioStr)
         .lte('fecha_entrega_estimada', fechaFinStr);
+
+      if (tipoFechaDesde === 'webhook_reparto') {
+        const ids = Array.from(webhookEnvioIds || []);
+        if (ids.length === 0) {
+          ordersQuery = ordersQuery.in('envio_id', ['00000000-0000-0000-0000-000000000000']);
+        } else {
+          ordersQuery = ordersQuery.in('envio_id', ids);
+        }
+      } else {
+        ordersQuery = ordersQuery.gte('fecha_entrega_estimada', fechaInicioStr);
+      }
+
+      const { data: sellerOrdersWithSeller, error: ordersError } = await ordersQuery;
 
       if (ordersError) throw ordersError;
 
