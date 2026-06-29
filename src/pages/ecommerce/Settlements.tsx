@@ -125,6 +125,7 @@ export default function Settlements() {
   const [sellerPopoverOpen, setSellerPopoverOpen] = useState(false);
   const [fechaInicio, setFechaInicio] = useState<Date>(startOfMonth(new Date()));
   const [fechaFin, setFechaFin] = useState<Date>(endOfMonth(new Date()));
+  const [tipoFechaDesde, setTipoFechaDesde] = useState<'estimada' | 'webhook_reparto'>('estimada');
   const [calculatedMovements, setCalculatedMovements] = useState<CalculatedMovement[]>([]);
   const [calculatedEnvios, setCalculatedEnvios] = useState<CalculatedEnvio[]>([]);
   const [calculatedTotals, setCalculatedTotals] = useState<{
