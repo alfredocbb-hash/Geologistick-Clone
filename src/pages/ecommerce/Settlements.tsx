@@ -576,35 +576,50 @@ export default function Settlements() {
         const uniqueOnlyClienteIds = uniqueClienteIds.filter(cid => (clienteIdFullCount.get(cid) || 0) <= 1);
 
         if (uniqueOnlyClienteIds.length > 0) {
-          // Query 1: envíos comunes filtrados por fecha_entrega en el rango
-          const { data: commonEnvios, error: commonError } = await supabase
-            .from('envios')
-            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
-            .in('remitente_id', uniqueOnlyClienteIds)
-            .gte('fecha_entrega', fechaInicioStr)
-            .lte('fecha_entrega', fechaFinStr)
-            .order('created_at', { ascending: true });
-
-          if (commonError) throw commonError;
-
-          // Query 2: envíos sin fecha_entrega, filtrados por created_at en el rango
-          const { data: commonEnviosNoDate, error: commonNoDateError } = await (supabase
+          // Query 1: envíos comunes filtrados por fecha_entrega en el rango (o por webhook ML)
+          let commonQuery = (supabase
             .from('envios') as any)
             .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
             .in('remitente_id', uniqueOnlyClienteIds)
-            .is('fecha_entrega', null)
-            .gte('created_at', fechaInicioStr)
-            .lte('created_at', fechaFinStr)
-            .order('created_at', { ascending: true });
+            .lte('fecha_entrega', fechaFinStr);
 
-          if (commonNoDateError) throw commonNoDateError;
+          if (tipoFechaDesde === 'webhook_reparto') {
+            const ids = Array.from(webhookEnvioIds || []);
+            if (ids.length === 0) {
+              commonQuery = commonQuery.in('id', ['00000000-0000-0000-0000-000000000000']);
+            } else {
+              commonQuery = commonQuery.in('id', ids);
+            }
+          } else {
+            commonQuery = commonQuery.gte('fecha_entrega', fechaInicioStr);
+          }
+
+          const { data: commonEnvios, error: commonError } = await commonQuery.order('created_at', { ascending: true });
+          if (commonError) throw commonError;
+
+          // Query 2: envíos sin fecha_entrega, filtrados por created_at en el rango.
+          // En modo webhook esta rama no aplica (los envíos elegibles ya están acotados por envio_historial).
+          let commonEnviosNoDate: any[] = [];
+          if (tipoFechaDesde !== 'webhook_reparto') {
+            const { data: noDateRows, error: commonNoDateError } = await (supabase
+              .from('envios') as any)
+              .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
+              .in('remitente_id', uniqueOnlyClienteIds)
+              .is('fecha_entrega', null)
+              .gte('created_at', fechaInicioStr)
+              .lte('created_at', fechaFinStr)
+              .order('created_at', { ascending: true });
+            if (commonNoDateError) throw commonNoDateError;
+            commonEnviosNoDate = noDateRows || [];
+          }
 
           // Combinar sin duplicados
           const commonEnvioIds = new Set((commonEnvios || []).map((e: any) => e.id));
           const mergedCommonEnvios = [
             ...(commonEnvios || []),
-            ...(commonEnviosNoDate || []).filter((e: any) => !commonEnvioIds.has(e.id))
+            ...commonEnviosNoDate.filter((e: any) => !commonEnvioIds.has(e.id))
           ];
+
 
           // Filtrar envíos comunes: excluir los que están vinculados a cualquier orden e-commerce
           filteredCommonEnvios = mergedCommonEnvios.filter(e => !allOrderEnvioIds.has(e.id));
