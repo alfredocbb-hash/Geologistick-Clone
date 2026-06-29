@@ -1,48 +1,49 @@
-## Problema
+## Objetivo
 
-En la pestaña **Cuenta Corriente por Seller** (Liquidaciones Seller → tab Sellers), la columna **Pagos** y el **Saldo** sólo consideran movimientos `tipo='pago'` registrados en `seller_cuenta_corriente`. Las liquidaciones marcadas como **pagada** antes de la automatización (o pagadas sin que se haya disparado el insert del movimiento) no se restan, por lo que el saldo aparece inflado.
+En **Liquidaciones de Seller**, agregar la opción de que el **"Desde"** del rango sea interpretado como la **fecha real en que el envío salió a reparto** (registrada por el webhook de MercadoLibre como `out_for_delivery` → `estado='en_reparto'`). El **"Hasta"** mantiene la lógica actual sin cambios.
 
-Además, la columna `ecommerce_sellers.saldo_cuenta_corriente` (que se muestra en la lista de Sellers y en el header del seller) queda desincronizada con el saldo real.
+## UX
 
-## Solución
+En el panel de filtros de cálculo, sobre el date picker "Desde", agregar un selector pequeño:
 
-Dos frentes: corregir el cálculo en vivo + reconciliar el histórico.
+**"Filtro Desde"**
+- `Fecha de reparto estimada` (default — comportamiento actual)
+- `Fecha real de salida a reparto (ML webhook)` (nuevo)
 
-### 1. Cálculo en vivo (frontend)
+El selector de "Hasta" no cambia y sigue aplicando sobre las mismas columnas de fecha que hoy (`fecha_entrega_estimada`, `fecha_entrega`, `created_at`).
 
-En `src/pages/ecommerce/Settlements.tsx`, dentro del query `sellerBalances`:
+## Lógica
 
-- Además de sumar movimientos `tipo='pago'` de `seller_cuenta_corriente`, traer todas las `liquidaciones_seller` con `estado='pagada'` por seller.
-- Para cada liquidación pagada, verificar si ya existe un movimiento de pago con `liquidacion_id` igual.
-- Si NO existe, sumar `Math.abs(saldo_periodo)` al `totalPagos` del seller (así el saldo refleja la liquidación pagada aunque no tenga el movimiento).
-- Mantener el resto del cálculo igual: `saldoCalculado = totalEnvios − totalPagos`.
+Cuando se elige **"Fecha real de salida a reparto"** para el Desde:
 
-Esto garantiza que el saldo mostrado en la tabla Sellers (línea ~1349) y en las stats (totalSaldo, sellersConDeuda, sellersAFavor) refleje siempre las liquidaciones pagadas, sin depender del histórico.
+1. Antes de armar la lista de envíos, consultar `envio_historial`:
+   - `estado_nuevo = 'en_reparto'`
+   - `created_at >= fechaInicio` (sin tope superior — el tope lo aplican luego los filtros existentes del "Hasta" sobre las columnas de envío).
+   - Defensivo: `ubicacion ilike '%ML Webhook%'` OR `notas ilike '%out_for_delivery%'` para asegurar que sea el webhook ML y no un cambio manual.
+   - Conservar el primer evento por `envio_id`.
+   - Resultado: `Set<envio_id>` que cumplen "salieron a reparto desde X en adelante".
 
-### 2. Reconciliación histórica (one-shot)
+2. En las queries de envíos:
+   - **ecommerce_orders**: quitar el `.gte('fecha_entrega_estimada', fechaInicioStr)` y agregar `.in('envio_id', [...set])`. Mantener el `.lte('fecha_entrega_estimada', fechaFinStr)` para el tope Hasta.
+   - **envios comunes (con `fecha_entrega`)**: quitar `.gte('fecha_entrega', fechaInicioStr)` y agregar `.in('id', [...set])`. Mantener el `.lte('fecha_entrega', fechaFinStr)`.
+   - **envios comunes sin `fecha_entrega`** (rama que filtra por `created_at`): cuando el modo es webhook, esta rama no aplica (los envíos elegibles ya están acotados por el `envio_historial`); se omite para evitar mezclar criterios.
+   - **seller_cuenta_corriente** (movimientos manuales y cargos cta cte): se mantiene el filtro por `created_at` (no tiene fecha de webhook).
 
-Generar y ejecutar una migración SQL única que, para cada `liquidaciones_seller` con `estado='pagada'` que no tenga un movimiento asociado en `seller_cuenta_corriente`:
+3. Si el set del paso 1 está vacío, las queries de envíos devuelven vacío (solo quedan movimientos cta cte si los hay).
 
-1. Inserte un movimiento `tipo='pago'`, `monto = -ABS(saldo_periodo)`, `liquidacion_id`, `descripcion = 'Reconciliación: pago liquidación ...'`, `metodo_pago`, `referencia` y `created_by` tomados de la liquidación.
-2. `saldo_anterior` = saldo actual del seller; `saldo_nuevo` = `saldo_anterior − monto`. El trigger existente `update_seller_balance` actualizará `ecommerce_sellers.saldo_cuenta_corriente` automáticamente.
-3. Procesarlas ordenadas por `fecha_pago` para que los saldos encadenen bien.
+## Persistencia
 
-Implementar como una función PL/pgSQL `public.reconcile_seller_liquidacion_payments()` que recorra y devuelva la cantidad de movimientos creados, y ejecutarla una vez en la misma migración. Queda disponible para ejecuciones futuras si surgen casos.
+El modo elegido vive en el estado local del componente. La liquidación generada sigue grabando `periodo_inicio` / `periodo_fin` como hoy.
 
-### 3. Mostrar el saldo calculado en la lista de Sellers
+## Archivos a modificar
 
-En `src/pages/ecommerce/Sellers.tsx` (línea 737) y en `SellerDetailsDialog.tsx`, además de mostrar `seller.saldo_cuenta_corriente`, dejar una nota visual o usar el mismo cálculo para evitar discrepancias percibidas. **Opcional / a confirmar**: si tras la reconciliación los valores ya coinciden, no hace falta tocar esos componentes.
+- `src/pages/ecommerce/Settlements.tsx`
+  - Nuevo estado `tipoFechaDesde: 'estimada' | 'webhook_reparto'`.
+  - `<Select>` arriba/al lado del date picker "Desde" (~líneas 1500-1520).
+  - En `calculateMutation.mutationFn` (líneas 466-620): si `tipoFechaDesde === 'webhook_reparto'`, query previa a `envio_historial` y ajuste de los `.gte` / `.in` descrito arriba.
 
 ## Validación
 
-1. Antes: anotar 2-3 sellers con liquidaciones pagadas conocidas y su saldo actual.
-2. Aplicar migración de reconciliación → comprobar que se crearon N movimientos y que `saldo_cuenta_corriente` bajó en cada caso por el monto esperado.
-3. Refrescar la pestaña Cuenta Corriente por Seller → columna Pagos suma las liquidaciones pagadas, columna Saldo coincide con el balance esperado.
-4. Generar una nueva liquidación y pagarla → el flujo automatizado existente sigue funcionando (no se duplican movimientos).
-
-## Detalles técnicos
-
-- Archivos a editar: `src/pages/ecommerce/Settlements.tsx` (query `sellerBalances`).
-- Migración nueva: función `reconcile_seller_liquidacion_payments()` + `SELECT public.reconcile_seller_liquidacion_payments();` al final.
-- Sin cambios en RLS ni en esquema de tablas.
-- El insert defensivo en el frontend (paso 1) cubre casos futuros donde el insert automático del pago falle por cualquier motivo.
+- Modo default: resultado idéntico al actual.
+- Modo webhook: con un rango cuyo Desde sea anterior a la fecha del webhook ML del ejemplo (ML-4734391416 9 → 23/06 11:27), el envío aparece; con un Desde posterior, no aparece.
+- Rango sin eventos `en_reparto` en el modo webhook: no se devuelven envíos.

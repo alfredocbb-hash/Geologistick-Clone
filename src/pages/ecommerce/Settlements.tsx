@@ -125,6 +125,7 @@ export default function Settlements() {
   const [sellerPopoverOpen, setSellerPopoverOpen] = useState(false);
   const [fechaInicio, setFechaInicio] = useState<Date>(startOfMonth(new Date()));
   const [fechaFin, setFechaFin] = useState<Date>(endOfMonth(new Date()));
+  const [tipoFechaDesde, setTipoFechaDesde] = useState<'estimada' | 'webhook_reparto'>('estimada');
   const [calculatedMovements, setCalculatedMovements] = useState<CalculatedMovement[]>([]);
   const [calculatedEnvios, setCalculatedEnvios] = useState<CalculatedEnvio[]>([]);
   const [calculatedTotals, setCalculatedTotals] = useState<{
@@ -477,6 +478,19 @@ export default function Settlements() {
       const selectedSellerObjs = sellers?.filter(s => calcSellers.includes(s.id)) || [];
       const uniqueClienteIds = [...new Set(selectedSellerObjs.map(s => s.cliente_id).filter(Boolean))] as string[];
 
+      // 0. Si el modo es webhook ML: obtener los envio_ids que salieron a reparto desde fechaInicio
+      let webhookEnvioIds: Set<string> | null = null;
+      if (tipoFechaDesde === 'webhook_reparto') {
+        const { data: histRows, error: histError } = await supabase
+          .from('envio_historial')
+          .select('envio_id, created_at')
+          .eq('estado_nuevo', 'en_reparto')
+          .gte('created_at', fechaInicioStr)
+          .or('ubicacion.ilike.%ML Webhook%,notas.ilike.%out_for_delivery%');
+        if (histError) throw histError;
+        webhookEnvioIds = new Set((histRows || []).map((h: any) => h.envio_id).filter(Boolean));
+      }
+
       // 1. Fetch movimientos for all selected sellers
       for (const sellerId of calcSellers) {
         const { data: movs, error } = await supabase
@@ -493,13 +507,26 @@ export default function Settlements() {
       }
 
       // 2. Buscar envíos de ecommerce_orders filtrados por fecha_entrega_estimada (fecha de reparto)
-      const { data: sellerOrdersWithSeller, error: ordersError } = await supabase
+      //    o por envio_ids del webhook ML si ese modo está activo.
+      let ordersQuery = supabase
         .from('ecommerce_orders')
         .select('envio_id, seller_id')
         .in('seller_id', calcSellers)
         .not('envio_id', 'is', null)
-        .gte('fecha_entrega_estimada', fechaInicioStr)
         .lte('fecha_entrega_estimada', fechaFinStr);
+
+      if (tipoFechaDesde === 'webhook_reparto') {
+        const ids = Array.from(webhookEnvioIds || []);
+        if (ids.length === 0) {
+          ordersQuery = ordersQuery.in('envio_id', ['00000000-0000-0000-0000-000000000000']);
+        } else {
+          ordersQuery = ordersQuery.in('envio_id', ids);
+        }
+      } else {
+        ordersQuery = ordersQuery.gte('fecha_entrega_estimada', fechaInicioStr);
+      }
+
+      const { data: sellerOrdersWithSeller, error: ordersError } = await ordersQuery;
 
       if (ordersError) throw ordersError;
 
@@ -549,35 +576,50 @@ export default function Settlements() {
         const uniqueOnlyClienteIds = uniqueClienteIds.filter(cid => (clienteIdFullCount.get(cid) || 0) <= 1);
 
         if (uniqueOnlyClienteIds.length > 0) {
-          // Query 1: envíos comunes filtrados por fecha_entrega en el rango
-          const { data: commonEnvios, error: commonError } = await supabase
-            .from('envios')
-            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
-            .in('remitente_id', uniqueOnlyClienteIds)
-            .gte('fecha_entrega', fechaInicioStr)
-            .lte('fecha_entrega', fechaFinStr)
-            .order('created_at', { ascending: true });
-
-          if (commonError) throw commonError;
-
-          // Query 2: envíos sin fecha_entrega, filtrados por created_at en el rango
-          const { data: commonEnviosNoDate, error: commonNoDateError } = await (supabase
+          // Query 1: envíos comunes filtrados por fecha_entrega en el rango (o por webhook ML)
+          let commonQuery = (supabase
             .from('envios') as any)
             .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
             .in('remitente_id', uniqueOnlyClienteIds)
-            .is('fecha_entrega', null)
-            .gte('created_at', fechaInicioStr)
-            .lte('created_at', fechaFinStr)
-            .order('created_at', { ascending: true });
+            .lte('fecha_entrega', fechaFinStr);
 
-          if (commonNoDateError) throw commonNoDateError;
+          if (tipoFechaDesde === 'webhook_reparto') {
+            const ids = Array.from(webhookEnvioIds || []);
+            if (ids.length === 0) {
+              commonQuery = commonQuery.in('id', ['00000000-0000-0000-0000-000000000000']);
+            } else {
+              commonQuery = commonQuery.in('id', ids);
+            }
+          } else {
+            commonQuery = commonQuery.gte('fecha_entrega', fechaInicioStr);
+          }
+
+          const { data: commonEnvios, error: commonError } = await commonQuery.order('created_at', { ascending: true });
+          if (commonError) throw commonError;
+
+          // Query 2: envíos sin fecha_entrega, filtrados por created_at en el rango.
+          // En modo webhook esta rama no aplica (los envíos elegibles ya están acotados por envio_historial).
+          let commonEnviosNoDate: any[] = [];
+          if (tipoFechaDesde !== 'webhook_reparto') {
+            const { data: noDateRows, error: commonNoDateError } = await (supabase
+              .from('envios') as any)
+              .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
+              .in('remitente_id', uniqueOnlyClienteIds)
+              .is('fecha_entrega', null)
+              .gte('created_at', fechaInicioStr)
+              .lte('created_at', fechaFinStr)
+              .order('created_at', { ascending: true });
+            if (commonNoDateError) throw commonNoDateError;
+            commonEnviosNoDate = noDateRows || [];
+          }
 
           // Combinar sin duplicados
           const commonEnvioIds = new Set((commonEnvios || []).map((e: any) => e.id));
           const mergedCommonEnvios = [
             ...(commonEnvios || []),
-            ...(commonEnviosNoDate || []).filter((e: any) => !commonEnvioIds.has(e.id))
+            ...commonEnviosNoDate.filter((e: any) => !commonEnvioIds.has(e.id))
           ];
+
 
           // Filtrar envíos comunes: excluir los que están vinculados a cualquier orden e-commerce
           filteredCommonEnvios = mergedCommonEnvios.filter(e => !allOrderEnvioIds.has(e.id));
@@ -1498,6 +1540,15 @@ export default function Settlements() {
 
                 <div className="space-y-2">
                   <Label>Fecha Inicio</Label>
+                  <Select value={tipoFechaDesde} onValueChange={(v) => setTipoFechaDesde(v as 'estimada' | 'webhook_reparto')}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="estimada">Fecha de reparto estimada</SelectItem>
+                      <SelectItem value="webhook_reparto">Fecha real de salida a reparto (ML)</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !fechaInicio && "text-muted-foreground")}>
@@ -1516,6 +1567,7 @@ export default function Settlements() {
                     </PopoverContent>
                   </Popover>
                 </div>
+
 
                 <div className="space-y-2">
                   <Label>Fecha Fin</Label>
