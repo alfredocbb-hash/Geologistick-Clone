@@ -1540,6 +1540,15 @@ export default function Settlements() {
 
                 <div className="space-y-2">
                   <Label>Fecha Inicio</Label>
+                  <Select value={tipoFechaDesde} onValueChange={(v) => setTipoFechaDesde(v as 'estimada' | 'webhook_reparto')}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="estimada">Fecha de reparto estimada</SelectItem>
+                      <SelectItem value="webhook_reparto">Fecha real de salida a reparto (ML)</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !fechaInicio && "text-muted-foreground")}>
@@ -1558,6 +1567,7 @@ export default function Settlements() {
                     </PopoverContent>
                   </Popover>
                 </div>
+
 
                 <div className="space-y-2">
                   <Label>Fecha Fin</Label>
