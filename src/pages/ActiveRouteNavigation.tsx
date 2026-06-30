@@ -575,8 +575,13 @@ export default function ActiveRouteNavigation() {
     // Normalize Argentine phone for WhatsApp (handles missing +54, 0xx, 15 prefix)
     const formatted = formatArgentinaPhone(phone);
     const cleanPhone = formatted.replace(/\D/g, '');
-    const trackingLink = trackingNum 
-      ? `\n\nSeguí mi ubicación en vivo: ${window.location.origin}/tracking/${trackingNum}`
+    const PUBLIC_TRACKING_BASE = 'https://www.geologistick.com';
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const baseUrl = (!origin || /localhost|127\.0\.0\.1|capacitor:|file:/i.test(origin))
+      ? PUBLIC_TRACKING_BASE
+      : origin;
+    const trackingLink = trackingNum
+      ? `\n\nSeguí mi ubicación en vivo: ${baseUrl}/tracking/${trackingNum}`
       : '';
     const message = encodeURIComponent(`Hola ${name}, soy el repartidor. Estoy llegando con su envío.${trackingLink}`);
     window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank');
