@@ -283,6 +283,22 @@ export default function Facturacion() {
       f.cae?.includes(q)
     );
   }, [emitidas, searchEmitidas, tipoFilter, fechaDesde, fechaHasta]);
+  const emitidasTotals = useMemo(() => {
+    let cantidad = 0, neto = 0, iva = 0, total = 0;
+    const porTipo: Record<string, { cantidad: number; total: number }> = {};
+    filteredEmitidas.forEach((f: any) => {
+      const sign = f.es_nota_credito ? -1 : 1;
+      cantidad += 1;
+      neto += Number(f.importe_neto || 0) * sign;
+      iva += Number(f.importe_iva || 0) * sign;
+      total += Number(f.importe_total || 0) * sign;
+      const key = f.es_nota_credito ? `NC ${f.tipo_comprobante || ''}`.trim() : `Factura ${f.tipo_comprobante || ''}`.trim();
+      if (!porTipo[key]) porTipo[key] = { cantidad: 0, total: 0 };
+      porTipo[key].cantidad += 1;
+      porTipo[key].total += Number(f.importe_total || 0) * sign;
+    });
+    return { cantidad, neto, iva, total, porTipo };
+  }, [filteredEmitidas]);
 
 
 
