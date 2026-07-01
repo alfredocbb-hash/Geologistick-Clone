@@ -266,6 +266,8 @@ export default function Facturacion() {
     let list = emitidas;
     if (tipoFilter === 'facturas') list = list.filter((f: any) => !f.es_nota_credito);
     else if (tipoFilter === 'nc') list = list.filter((f: any) => f.es_nota_credito);
+    if (fechaDesde) list = list.filter((f: any) => f.fecha_emision && f.fecha_emision >= fechaDesde);
+    if (fechaHasta) list = list.filter((f: any) => f.fecha_emision && f.fecha_emision <= fechaHasta);
     if (!searchEmitidas) return list;
     const q = searchEmitidas.toLowerCase();
     return list.filter((f: any) =>
@@ -274,7 +276,7 @@ export default function Facturacion() {
       String(f.numero_comprobante)?.includes(q) ||
       f.cae?.includes(q)
     );
-  }, [emitidas, searchEmitidas, tipoFilter]);
+  }, [emitidas, searchEmitidas, tipoFilter, fechaDesde, fechaHasta]);
 
 
 
