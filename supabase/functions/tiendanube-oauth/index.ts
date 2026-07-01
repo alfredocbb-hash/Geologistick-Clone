@@ -211,13 +211,28 @@ Deno.serve(async (req) => {
       // Generate webhook secret
       const webhookSecret = crypto.randomUUID().replace(/-/g, '');
 
-      // Update seller with OAuth data
-      const { error: updateError } = await supabase
-        .from("ecommerce_sellers")
-        .update({
+      // Save tokens in protected table
+      const { error: tokenSaveError } = await supabase
+        .from("ecommerce_seller_tokens")
+        .upsert({
+          seller_id: sellerId,
+          tenant_id: seller.tenant_id,
           access_token: accessToken,
           refresh_token: refreshToken,
           token_expires_at: tokenExpiresAt,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "seller_id" });
+
+      if (tokenSaveError) {
+        console.error("Failed to save tokens:", tokenSaveError);
+        return redirectError("Error al guardar", "No se pudieron guardar las credenciales de conexión.");
+      }
+
+      // Update seller with non-sensitive OAuth data
+      const { error: updateError } = await supabase
+        .from("ecommerce_sellers")
+        .update({
+          has_valid_token: true,
           store_id: storeId,
           store_url: storeUrl,
           webhook_secret: webhookSecret,
