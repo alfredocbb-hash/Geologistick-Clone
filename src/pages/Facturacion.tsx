@@ -45,8 +45,12 @@ export default function Facturacion() {
   const [activeTab, setActiveTab] = useState('pendientes');
   const [search, setSearch] = useState('');
   const [searchEmitidas, setSearchEmitidas] = useState('');
-  const [fechaDesde, setFechaDesde] = useState('');
-  const [fechaHasta, setFechaHasta] = useState('');
+  const [fechaDesde, setFechaDesde] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [fechaHasta, setFechaHasta] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+  const resetFechas = () => {
+    setFechaDesde(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+    setFechaHasta(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+  };
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchOpen, setBatchOpen] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, running: false });
