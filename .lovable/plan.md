@@ -1,45 +1,55 @@
-# Plan: Seguridad tokens ML + Filtros de fecha en Facturación
+# Plan: Totales y comparativa Ingresos vs Gastos en Facturación
 
-## 1) Proteger tokens de Mercado Libre
+## Objetivo
+Sumar a la pestaña **Emitidas** (y una nueva vista de resumen) totales agregados y una comparación contra gastos e ingresos reales, respetando el filtro de fechas `Desde`/`Hasta` que ya vamos a agregar.
 
-**Problema:** hoy `ecommerce_sellers` contiene `access_token`, `refresh_token` y `token_expires_at`, y los admins del tenant pueden leerlos vía las policies de `ecommerce_sellers`.
+## 1) Totales en la pestaña Emitidas
+Debajo de los filtros (búsqueda, tipo, fechas), agregar 4 tarjetas KPI que se recalculan con `useMemo` sobre `filteredEmitidas`:
 
-**Solución:** mover los tokens a una tabla nueva `ecommerce_seller_tokens`, accesible únicamente por `service_role` (las Edge Functions). Ningún admin/usuario podrá leerlos desde el cliente.
+- **Cantidad de facturas** emitidas en el rango
+- **Neto gravado** (suma de `neto` / subtotal)
+- **IVA** (suma de `iva`)
+- **Total facturado** (suma de `total`)
 
-Pasos:
+Desglose adicional debajo (chips o mini-tabla): totales por tipo de comprobante (A / B / C / Nota de Crédito). Las Notas de Crédito restan al total facturado.
 
-1. Crear tabla `public.ecommerce_seller_tokens` con:
-   - `seller_id` (FK a `ecommerce_sellers`, PK)
-   - `tenant_id`
-   - `access_token`, `refresh_token`, `token_expires_at`
-   - `created_at`, `updated_at`
-2. GRANTs solo a `service_role`. RLS habilitada con policy que niega todo a `authenticated`/`anon` (SELECT/INSERT/UPDATE/DELETE `USING (false)`).
-3. Migrar los valores actuales desde `ecommerce_sellers` a la nueva tabla.
-4. Eliminar las columnas `access_token`, `refresh_token`, `token_expires_at` de `ecommerce_sellers` (dejamos un flag `has_valid_token boolean` para que la UI pueda mostrar el estado de conexión sin exponer el token).
-5. Actualizar todas las Edge Functions que leen/escriben tokens para usar la nueva tabla:
-   - `mercadolibre-oauth`
-   - `mercadolibre-sync`
-   - `mercadolibre-webhook`
-   - `mercadolibre-shipment-history`
-   - `mercadolibre-update-status`
-   - `mercadolibre-label`
-   - `recover-ml-shipments`, `recover-ml-timeframes`, `register-ml-shipment` (si aplica)
-6. Ajustar cualquier consulta cliente que filtre por `access_token IS NOT NULL` para usar el nuevo flag `has_valid_token`.
+## 2) Nueva pestaña "Resumen" en Facturación
+Nueva tab al lado de Emitidas / Recibidas / Configuración. Comparte los mismos filtros de fecha (`Desde` / `Hasta`, default = mes actual).
 
-Resultado: los tokens dejan de estar accesibles a admins de tenant; solo las funciones edge (service_role) pueden leerlos/refrescarlos.
+Contenido:
 
-## 2) Filtros de fecha en Facturación → Emitidas
+### a) Tarjetas comparativas
+- **Ingresos facturados** — suma de `facturas` emitidas (total) en el rango, menos notas de crédito.
+- **Ingresos cobrados** — suma de `pagos` en el rango con `estado IN ('cobrado_chofer','rendido','pagado')` (COD + otros).
+- **Gastos** — suma de `gastos` en el rango.
+- **Facturas de compra** — suma de `facturas_compra` (IVA crédito fiscal + total) en el rango.
+- **Resultado** = Ingresos facturados − Gastos − Facturas de compra. Color verde/rojo según signo.
 
-En `src/pages/Facturacion.tsx`, tab "Emitidas":
+### b) IVA (posición fiscal del período)
+- **IVA débito fiscal** (de `facturas` emitidas)
+- **IVA crédito fiscal** (de `facturas_compra`)
+- **Saldo IVA** = débito − crédito
 
-- Agregar dos inputs `Desde` y `Hasta` (tipo date) junto al buscador y al filtro "Todas".
-- Aplicar el filtro sobre `fecha_emision` dentro del `useMemo` de `filteredEmitidas` (junto con búsqueda y tipo).
-- Botón "Limpiar" para resetear ambas fechas.
-- Persistir en `useState` local (sin cambios en query; el filtrado se hace en cliente igual que el buscador actual).
+### c) Gráfico comparativo
+Bar chart (recharts, ya usado en el proyecto) con series **Ingresos** vs **Gastos** agrupadas por mes dentro del rango. Si el rango es de un solo mes, agrupa por semana.
 
-## Detalles técnicos
+### d) Top categorías de gasto
+Lista/tabla con las 5 categorías de `gastos` con mayor monto en el rango.
 
-- Migración SQL (una sola) que crea tabla, GRANTs, RLS, policies, copia datos y drop de columnas.
-- Trigger `update_updated_at_column` en la nueva tabla.
-- Las Edge Functions ya usan `service_role`, así que solo cambia el nombre de la tabla en los `.from(...)`.
-- El cambio en el frontend de Facturación es puramente presentacional (no toca lógica de negocio ni queries).
+## 3) Fuentes de datos
+Todo cliente-side sobre queries ya existentes o nuevas, filtradas por `tenant_id` y rango:
+- `facturas` + `factura_detalles` (ya cargadas en Facturación)
+- `facturas_compra` (ya cargadas)
+- `gastos` (nueva query en la pestaña Resumen)
+- `pagos` (nueva query, filtrada por `created_at` en rango)
+
+Sin cambios en base de datos ni Edge Functions.
+
+## 4) UX
+- Filtros `Desde` / `Hasta` compartidos entre Emitidas y Resumen mediante `useState` en `Facturacion.tsx` (o un pequeño contexto local).
+- Botón **Limpiar** resetea a mes actual.
+- Formato de moneda ARS consistente con el resto del módulo.
+- Los KPIs usan los componentes `Card` existentes; el gráfico usa `ChartContainer` con tokens semánticos (`hsl(var(--chart-1))`, etc.), sin colores hardcodeados.
+
+## Alcance
+Solo frontend + queries de lectura. No toca lógica fiscal, ARCA, ni tablas.
