@@ -47,7 +47,7 @@ const TiendanubeConfig = () => {
       try {
         const { data, error: fetchError } = await supabase
           .from("ecommerce_sellers")
-          .select("id, nombre, store_id, store_url, activo, ultimo_sync, access_token")
+          .select("id, nombre, store_id, store_url, activo, ultimo_sync, has_valid_token")
           .eq("store_id", storeId)
           .eq("plataforma", "tiendanube")
           .maybeSingle();
