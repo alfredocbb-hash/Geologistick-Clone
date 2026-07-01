@@ -43,6 +43,8 @@ export default function Facturacion() {
   const [activeTab, setActiveTab] = useState('pendientes');
   const [search, setSearch] = useState('');
   const [searchEmitidas, setSearchEmitidas] = useState('');
+  const [fechaDesde, setFechaDesde] = useState('');
+  const [fechaHasta, setFechaHasta] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchOpen, setBatchOpen] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, running: false });
