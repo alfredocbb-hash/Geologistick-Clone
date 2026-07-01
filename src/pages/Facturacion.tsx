@@ -689,6 +689,17 @@ export default function Facturacion() {
                     <SelectItem value="nc">Solo Notas de Crédito</SelectItem>
                   </SelectContent>
                 </Select>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="fecha-desde" className="text-sm text-muted-foreground whitespace-nowrap">Desde</Label>
+                  <Input id="fecha-desde" type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} className="w-[150px]" />
+                  <Label htmlFor="fecha-hasta" className="text-sm text-muted-foreground whitespace-nowrap">Hasta</Label>
+                  <Input id="fecha-hasta" type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} className="w-[150px]" />
+                  {(fechaDesde || fechaHasta) && (
+                    <Button variant="ghost" size="sm" onClick={() => { setFechaDesde(''); setFechaHasta(''); }}>
+                      Limpiar
+                    </Button>
+                  )}
+                </div>
                 <Button
                   variant="outline"
                   onClick={() => setManualOpen(true)}
