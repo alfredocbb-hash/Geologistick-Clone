@@ -33,8 +33,7 @@ interface Seller {
   plataforma: string;
   store_id: string | null;
   store_url: string | null;
-  access_token: string | null;
-  token_expires_at: string | null;
+  has_valid_token: boolean | null;
   sucursal_pickup_id: string | null;
   tarifa_id: string | null;
   activo: boolean;
