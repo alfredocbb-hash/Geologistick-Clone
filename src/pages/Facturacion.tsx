@@ -28,6 +28,8 @@ import { VoidInvoiceDialog } from '@/components/invoicing/VoidInvoiceDialog';
 import { CreditNoteDialog } from '@/components/invoicing/CreditNoteDialog';
 import { InvoiceLineItems, type LineItem } from '@/components/invoicing/InvoiceLineItems';
 import { CONCEPTO_OPTIONS } from '@/components/invoicing/afipConstants';
+import { FacturacionResumen } from '@/components/invoicing/FacturacionResumen';
+import { startOfMonth, endOfMonth } from 'date-fns';
 
 const CONDICION_IVA_OPTIONS = [
   { value: 'responsable_inscripto', label: 'Responsable Inscripto', requiresCuit: true },
@@ -43,8 +45,12 @@ export default function Facturacion() {
   const [activeTab, setActiveTab] = useState('pendientes');
   const [search, setSearch] = useState('');
   const [searchEmitidas, setSearchEmitidas] = useState('');
-  const [fechaDesde, setFechaDesde] = useState('');
-  const [fechaHasta, setFechaHasta] = useState('');
+  const [fechaDesde, setFechaDesde] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [fechaHasta, setFechaHasta] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+  const resetFechas = () => {
+    setFechaDesde(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+    setFechaHasta(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+  };
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchOpen, setBatchOpen] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, running: false });
@@ -277,6 +283,22 @@ export default function Facturacion() {
       f.cae?.includes(q)
     );
   }, [emitidas, searchEmitidas, tipoFilter, fechaDesde, fechaHasta]);
+  const emitidasTotals = useMemo(() => {
+    let cantidad = 0, neto = 0, iva = 0, total = 0;
+    const porTipo: Record<string, { cantidad: number; total: number }> = {};
+    filteredEmitidas.forEach((f: any) => {
+      const sign = f.es_nota_credito ? -1 : 1;
+      cantidad += 1;
+      neto += Number(f.importe_neto || 0) * sign;
+      iva += Number(f.importe_iva || 0) * sign;
+      total += Number(f.importe_total || 0) * sign;
+      const key = f.es_nota_credito ? `NC ${f.tipo_comprobante || ''}`.trim() : `Factura ${f.tipo_comprobante || ''}`.trim();
+      if (!porTipo[key]) porTipo[key] = { cantidad: 0, total: 0 };
+      porTipo[key].cantidad += 1;
+      porTipo[key].total += Number(f.importe_total || 0) * sign;
+    });
+    return { cantidad, neto, iva, total, porTipo };
+  }, [filteredEmitidas]);
 
 
 
@@ -593,7 +615,21 @@ export default function Facturacion() {
               <Badge variant="secondary" className="ml-2">{emitidas.length}</Badge>
             )}
           </TabsTrigger>
+          <TabsTrigger value="resumen">Resumen</TabsTrigger>
         </TabsList>
+
+        {/* ══════ TAB RESUMEN ══════ */}
+        <TabsContent value="resumen">
+          <FacturacionResumen
+            tenantId={profile?.tenant_id}
+            fechaDesde={fechaDesde}
+            fechaHasta={fechaHasta}
+            onChangeDesde={setFechaDesde}
+            onChangeHasta={setFechaHasta}
+            onReset={resetFechas}
+          />
+        </TabsContent>
+
 
         {/* ══════ TAB PENDIENTES ══════ */}
         <TabsContent value="pendientes">
@@ -726,6 +762,48 @@ export default function Facturacion() {
                 </Button>
               </CardContent>
             </Card>
+
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-xs text-muted-foreground">Cantidad de comprobantes</div>
+                  <div className="text-2xl font-bold">{emitidasTotals.cantidad}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-xs text-muted-foreground">Neto gravado</div>
+                  <div className="text-2xl font-bold">{formatCurrency(emitidasTotals.neto)}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-xs text-muted-foreground">IVA</div>
+                  <div className="text-2xl font-bold">{formatCurrency(emitidasTotals.iva)}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-xs text-muted-foreground">Total facturado (neto de NC)</div>
+                  <div className="text-2xl font-bold">{formatCurrency(emitidasTotals.total)}</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {Object.keys(emitidasTotals.porTipo).length > 0 && (
+              <Card>
+                <CardContent className="pt-4 flex flex-wrap gap-2">
+                  {Object.entries(emitidasTotals.porTipo).map(([tipo, v]) => (
+                    <Badge key={tipo} variant="outline" className="text-xs py-1 px-2">
+                      {tipo}: <span className="font-semibold ml-1">{v.cantidad}</span>
+                      <span className="mx-1 text-muted-foreground">·</span>
+                      {formatCurrency(v.total)}
+                    </Badge>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+
 
             <Card>
               <CardContent className="p-0">
