@@ -615,7 +615,21 @@ export default function Facturacion() {
               <Badge variant="secondary" className="ml-2">{emitidas.length}</Badge>
             )}
           </TabsTrigger>
+          <TabsTrigger value="resumen">Resumen</TabsTrigger>
         </TabsList>
+
+        {/* ══════ TAB RESUMEN ══════ */}
+        <TabsContent value="resumen">
+          <FacturacionResumen
+            tenantId={profile?.tenant_id}
+            fechaDesde={fechaDesde}
+            fechaHasta={fechaHasta}
+            onChangeDesde={setFechaDesde}
+            onChangeHasta={setFechaHasta}
+            onReset={resetFechas}
+          />
+        </TabsContent>
+
 
         {/* ══════ TAB PENDIENTES ══════ */}
         <TabsContent value="pendientes">
