@@ -288,7 +288,7 @@ Saludos`;
 
   // Bulk sync all active connected sellers
   const handleBulkSync = async () => {
-    const connectedSellers = sellers?.filter(s => s.activo && s.access_token && s.store_id) || [];
+    const connectedSellers = sellers?.filter(s => s.activo && s.has_valid_token && s.store_id) || [];
     if (connectedSellers.length === 0) {
       toast({ title: 'Sin tiendas conectadas', description: 'No hay sellers activos con conexión para sincronizar', variant: 'destructive' });
       return;
