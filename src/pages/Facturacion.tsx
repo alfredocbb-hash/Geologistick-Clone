@@ -28,6 +28,8 @@ import { VoidInvoiceDialog } from '@/components/invoicing/VoidInvoiceDialog';
 import { CreditNoteDialog } from '@/components/invoicing/CreditNoteDialog';
 import { InvoiceLineItems, type LineItem } from '@/components/invoicing/InvoiceLineItems';
 import { CONCEPTO_OPTIONS } from '@/components/invoicing/afipConstants';
+import { FacturacionResumen } from '@/components/invoicing/FacturacionResumen';
+import { startOfMonth, endOfMonth } from 'date-fns';
 
 const CONDICION_IVA_OPTIONS = [
   { value: 'responsable_inscripto', label: 'Responsable Inscripto', requiresCuit: true },
