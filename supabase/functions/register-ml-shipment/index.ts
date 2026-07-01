@@ -95,15 +95,20 @@ serve(async (req) => {
       );
     }
 
-    // 2. Check if access_token is valid, refresh if needed
-    let accessToken = seller.access_token;
-    const tokenExpiresAt = seller.token_expires_at ? new Date(seller.token_expires_at) : null;
+    // 2. Load tokens from protected table; refresh if needed
+    const { data: tokenRow } = await supabase
+      .from('ecommerce_seller_tokens')
+      .select('access_token, refresh_token, token_expires_at')
+      .eq('seller_id', seller.id)
+      .maybeSingle();
+
+    let accessToken = tokenRow?.access_token ?? null;
+    const tokenExpiresAt = tokenRow?.token_expires_at ? new Date(tokenRow.token_expires_at) : null;
     const now = new Date();
 
     if (!accessToken || (tokenExpiresAt && tokenExpiresAt < now)) {
       console.log('[register-ml-shipment] Token expired, refreshing...');
-      
-      // Get ML credentials from system_integrations
+
       const { data: credentials } = await supabase
         .from('system_integrations')
         .select('config_key, config_value')
@@ -112,15 +117,14 @@ serve(async (req) => {
         .in('config_key', ['client_id', 'client_secret']);
 
       const credMap = Object.fromEntries((credentials || []).map(c => [c.config_key, c.config_value]));
-      
-      if (!credMap.client_id || !credMap.client_secret || !seller.refresh_token) {
+
+      if (!credMap.client_id || !credMap.client_secret || !tokenRow?.refresh_token) {
         return new Response(
           JSON.stringify({ error: 'Seller sin credenciales válidas de MercadoLibre' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      // Refresh token
       const tokenResponse = await fetch('https://api.mercadolibre.com/oauth/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -128,7 +132,7 @@ serve(async (req) => {
           grant_type: 'refresh_token',
           client_id: credMap.client_id,
           client_secret: credMap.client_secret,
-          refresh_token: seller.refresh_token,
+          refresh_token: tokenRow.refresh_token,
         }),
       });
 
@@ -144,15 +148,20 @@ serve(async (req) => {
       const tokenData = await tokenResponse.json();
       accessToken = tokenData.access_token;
 
-      // Update seller tokens
       await supabase
-        .from('ecommerce_sellers')
-        .update({
+        .from('ecommerce_seller_tokens')
+        .upsert({
+          seller_id: seller.id,
+          tenant_id: seller.tenant_id,
           access_token: tokenData.access_token,
           refresh_token: tokenData.refresh_token,
           token_expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
           updated_at: new Date().toISOString(),
-        })
+        }, { onConflict: 'seller_id' });
+
+      await supabase
+        .from('ecommerce_sellers')
+        .update({ has_valid_token: true, updated_at: new Date().toISOString() })
         .eq('id', seller.id);
 
       console.log('[register-ml-shipment] Token refreshed successfully');
