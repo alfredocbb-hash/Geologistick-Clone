@@ -190,14 +190,24 @@ Deno.serve(async (req) => {
       const expiresAt = new Date();
       expiresAt.setSeconds(expiresAt.getSeconds() + tokenData.expires_in);
 
-      // Update seller with tokens
+      // Save tokens in protected table
+      await supabase
+        .from('ecommerce_seller_tokens')
+        .upsert({
+          seller_id: sellerId,
+          tenant_id: seller.tenant_id,
+          access_token: tokenData.access_token,
+          refresh_token: tokenData.refresh_token,
+          token_expires_at: expiresAt.toISOString(),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'seller_id' });
+
+      // Update seller (no tokens here anymore)
       const { error: updateError } = await supabase
         .from('ecommerce_sellers')
         .update({
           store_id: String(mlUserId),
-          access_token: tokenData.access_token,
-          refresh_token: tokenData.refresh_token,
-          token_expires_at: expiresAt.toISOString(),
+          has_valid_token: true,
           plataforma: 'mercadolibre',
           updated_at: new Date().toISOString(),
         })
