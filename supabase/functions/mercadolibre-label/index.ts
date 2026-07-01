@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
       .eq('tenant_id', envio.tenant_id)
       .eq('plataforma', 'mercadolibre')
       .eq('activo', true)
-      .not('access_token', 'is', null)
+      .eq('has_valid_token', true)
       .limit(1)
       .single();
 
