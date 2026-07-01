@@ -439,7 +439,7 @@ Saludos`;
   };
 
   // Check if seller is connected
-  const isConnected = (seller: Seller) => !!seller.access_token && !!seller.store_id;
+  const isConnected = (seller: Seller) => !!seller.has_valid_token && !!seller.store_id;
 
   if (!tenantId) {
     return (
