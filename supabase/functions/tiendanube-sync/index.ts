@@ -98,6 +98,16 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Load tokens from protected table
+    const { data: tokenRow } = await supabase
+      .from("ecommerce_seller_tokens")
+      .select("access_token, refresh_token, token_expires_at")
+      .eq("seller_id", seller.id)
+      .maybeSingle();
+    seller.access_token = tokenRow?.access_token ?? null;
+    seller.refresh_token = tokenRow?.refresh_token ?? null;
+    seller.token_expires_at = tokenRow?.token_expires_at ?? null;
+
     if (!seller.access_token || !seller.store_id) {
       return new Response(
         JSON.stringify({ error: "Seller not connected to Tiendanube. Please authorize first." }),
