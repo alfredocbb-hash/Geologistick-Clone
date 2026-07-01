@@ -33,8 +33,7 @@ interface Seller {
   plataforma: string;
   store_id: string | null;
   store_url: string | null;
-  access_token: string | null;
-  token_expires_at: string | null;
+  has_valid_token: boolean | null;
   sucursal_pickup_id: string | null;
   tarifa_id: string | null;
   activo: boolean;
@@ -289,7 +288,7 @@ Saludos`;
 
   // Bulk sync all active connected sellers
   const handleBulkSync = async () => {
-    const connectedSellers = sellers?.filter(s => s.activo && s.access_token && s.store_id) || [];
+    const connectedSellers = sellers?.filter(s => s.activo && s.has_valid_token && s.store_id) || [];
     if (connectedSellers.length === 0) {
       toast({ title: 'Sin tiendas conectadas', description: 'No hay sellers activos con conexión para sincronizar', variant: 'destructive' });
       return;
@@ -440,7 +439,7 @@ Saludos`;
   };
 
   // Check if seller is connected
-  const isConnected = (seller: Seller) => !!seller.access_token && !!seller.store_id;
+  const isConnected = (seller: Seller) => !!seller.has_valid_token && !!seller.store_id;
 
   if (!tenantId) {
     return (

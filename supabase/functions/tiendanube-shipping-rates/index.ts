@@ -103,6 +103,16 @@ Deno.serve(async (req) => {
 
     const sellerData = seller as SellerData;
 
+    // Load tokens from protected table
+    const { data: tokenRow } = await supabase
+      .from("ecommerce_seller_tokens")
+      .select("access_token, refresh_token, token_expires_at")
+      .eq("seller_id", sellerData.id)
+      .maybeSingle();
+    sellerData.access_token = tokenRow?.access_token ?? null;
+    sellerData.refresh_token = tokenRow?.refresh_token ?? null;
+    sellerData.token_expires_at = tokenRow?.token_expires_at ?? null;
+
     // Check if token is expired and needs refresh
     if (sellerData.token_expires_at && new Date(sellerData.token_expires_at) < new Date()) {
       console.log("Token expired for seller, attempting refresh...");
@@ -347,15 +357,21 @@ async function refreshAccessToken(
       ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
       : null;
 
-    // Update tokens in database
+    // Save tokens in protected table
     await supabase
-      .from("ecommerce_sellers")
-      .update({
+      .from("ecommerce_seller_tokens")
+      .upsert({
+        seller_id: seller.id,
+        tenant_id: seller.tenant_id,
         access_token: tokenData.access_token,
         refresh_token: tokenData.refresh_token || seller.refresh_token,
         token_expires_at: expiresAt,
         updated_at: new Date().toISOString(),
-      })
+      }, { onConflict: "seller_id" });
+
+    await supabase
+      .from("ecommerce_sellers")
+      .update({ has_valid_token: true, updated_at: new Date().toISOString() })
       .eq("id", seller.id);
 
     return { success: true, newToken: tokenData.access_token };

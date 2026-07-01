@@ -43,6 +43,8 @@ export default function Facturacion() {
   const [activeTab, setActiveTab] = useState('pendientes');
   const [search, setSearch] = useState('');
   const [searchEmitidas, setSearchEmitidas] = useState('');
+  const [fechaDesde, setFechaDesde] = useState('');
+  const [fechaHasta, setFechaHasta] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchOpen, setBatchOpen] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, running: false });
@@ -264,6 +266,8 @@ export default function Facturacion() {
     let list = emitidas;
     if (tipoFilter === 'facturas') list = list.filter((f: any) => !f.es_nota_credito);
     else if (tipoFilter === 'nc') list = list.filter((f: any) => f.es_nota_credito);
+    if (fechaDesde) list = list.filter((f: any) => f.fecha_emision && f.fecha_emision >= fechaDesde);
+    if (fechaHasta) list = list.filter((f: any) => f.fecha_emision && f.fecha_emision <= fechaHasta);
     if (!searchEmitidas) return list;
     const q = searchEmitidas.toLowerCase();
     return list.filter((f: any) =>
@@ -272,7 +276,7 @@ export default function Facturacion() {
       String(f.numero_comprobante)?.includes(q) ||
       f.cae?.includes(q)
     );
-  }, [emitidas, searchEmitidas, tipoFilter]);
+  }, [emitidas, searchEmitidas, tipoFilter, fechaDesde, fechaHasta]);
 
 
 
@@ -685,6 +689,17 @@ export default function Facturacion() {
                     <SelectItem value="nc">Solo Notas de Crédito</SelectItem>
                   </SelectContent>
                 </Select>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="fecha-desde" className="text-sm text-muted-foreground whitespace-nowrap">Desde</Label>
+                  <Input id="fecha-desde" type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} className="w-[150px]" />
+                  <Label htmlFor="fecha-hasta" className="text-sm text-muted-foreground whitespace-nowrap">Hasta</Label>
+                  <Input id="fecha-hasta" type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} className="w-[150px]" />
+                  {(fechaDesde || fechaHasta) && (
+                    <Button variant="ghost" size="sm" onClick={() => { setFechaDesde(''); setFechaHasta(''); }}>
+                      Limpiar
+                    </Button>
+                  )}
+                </div>
                 <Button
                   variant="outline"
                   onClick={() => setManualOpen(true)}

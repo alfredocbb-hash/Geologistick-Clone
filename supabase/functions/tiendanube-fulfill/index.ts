@@ -98,8 +98,25 @@ Deno.serve(async (req) => {
       ? ecommerceOrder.seller[0] 
       : ecommerceOrder.seller;
 
-    if (!seller || !seller.store_id || !seller.access_token) {
-      console.error("Seller not found or missing credentials");
+    if (!seller || !seller.store_id) {
+      console.error("Seller not found or missing store_id");
+      return new Response(
+        JSON.stringify({ error: "Seller credentials not found" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Load tokens from protected table
+    const { data: tokenRow } = await supabase
+      .from("ecommerce_seller_tokens")
+      .select("access_token, refresh_token, token_expires_at")
+      .eq("seller_id", seller.id)
+      .maybeSingle();
+    seller.access_token = tokenRow?.access_token ?? null;
+    seller.refresh_token = tokenRow?.refresh_token ?? null;
+    seller.token_expires_at = tokenRow?.token_expires_at ?? null;
+
+    if (!seller.access_token) {
       return new Response(
         JSON.stringify({ error: "Seller credentials not found" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -259,15 +276,21 @@ async function refreshAccessToken(
       ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
       : null;
 
-    // Update tokens in database
+    // Save new tokens in protected table
     await supabase
-      .from("ecommerce_sellers")
-      .update({
+      .from("ecommerce_seller_tokens")
+      .upsert({
+        seller_id: seller.id,
+        tenant_id: seller.tenant_id,
         access_token: tokenData.access_token,
         refresh_token: tokenData.refresh_token || seller.refresh_token,
         token_expires_at: expiresAt,
         updated_at: new Date().toISOString(),
-      })
+      }, { onConflict: "seller_id" });
+
+    await supabase
+      .from("ecommerce_sellers")
+      .update({ has_valid_token: true, updated_at: new Date().toISOString() })
       .eq("id", seller.id);
 
     return { success: true, newToken: tokenData.access_token };

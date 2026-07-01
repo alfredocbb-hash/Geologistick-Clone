@@ -26,7 +26,7 @@ interface SellerData {
   store_url: string | null;
   activo: boolean;
   ultimo_sync: string | null;
-  access_token: string | null;
+  has_valid_token: boolean | null;
 }
 
 const TiendanubeConfig = () => {
@@ -47,7 +47,7 @@ const TiendanubeConfig = () => {
       try {
         const { data, error: fetchError } = await supabase
           .from("ecommerce_sellers")
-          .select("id, nombre, store_id, store_url, activo, ultimo_sync, access_token")
+          .select("id, nombre, store_id, store_url, activo, ultimo_sync, has_valid_token")
           .eq("store_id", storeId)
           .eq("plataforma", "tiendanube")
           .maybeSingle();
@@ -69,7 +69,7 @@ const TiendanubeConfig = () => {
     fetchSellerByStoreId();
   }, [storeId]);
 
-  const isConnected = seller?.access_token !== null;
+  const isConnected = !!seller?.has_valid_token;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">

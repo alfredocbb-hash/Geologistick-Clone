@@ -745,9 +745,46 @@ export type Database = {
           },
         ]
       }
-      ecommerce_sellers: {
+      ecommerce_seller_tokens: {
         Row: {
           access_token: string | null
+          created_at: string
+          refresh_token: string | null
+          seller_id: string
+          tenant_id: string
+          token_expires_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token?: string | null
+          created_at?: string
+          refresh_token?: string | null
+          seller_id: string
+          tenant_id: string
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string | null
+          created_at?: string
+          refresh_token?: string | null
+          seller_id?: string
+          tenant_id?: string
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ecommerce_seller_tokens_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: true
+            referencedRelation: "ecommerce_sellers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ecommerce_sellers: {
+        Row: {
           activo: boolean | null
           ciudad: string | null
           cliente_id: string | null
@@ -761,6 +798,7 @@ export type Database = {
           es_cuenta_logistica: boolean | null
           express_delivery_days: number | null
           express_surcharge: number | null
+          has_valid_token: boolean
           horario_retiro: string | null
           id: string
           limite_credito: number | null
@@ -772,7 +810,6 @@ export type Database = {
           plataforma: string
           provincia: string | null
           razon_social: string | null
-          refresh_token: string | null
           saldo_cuenta_corriente: number | null
           shipping_carrier_id: string | null
           store_id: string | null
@@ -783,14 +820,12 @@ export type Database = {
           telefono: string | null
           tenant_id: string
           tiene_cuenta_corriente: boolean | null
-          token_expires_at: string | null
           ultimo_sync: string | null
           updated_at: string | null
           user_id: string | null
           webhook_secret: string | null
         }
         Insert: {
-          access_token?: string | null
           activo?: boolean | null
           ciudad?: string | null
           cliente_id?: string | null
@@ -804,6 +839,7 @@ export type Database = {
           es_cuenta_logistica?: boolean | null
           express_delivery_days?: number | null
           express_surcharge?: number | null
+          has_valid_token?: boolean
           horario_retiro?: string | null
           id?: string
           limite_credito?: number | null
@@ -815,7 +851,6 @@ export type Database = {
           plataforma?: string
           provincia?: string | null
           razon_social?: string | null
-          refresh_token?: string | null
           saldo_cuenta_corriente?: number | null
           shipping_carrier_id?: string | null
           store_id?: string | null
@@ -826,14 +861,12 @@ export type Database = {
           telefono?: string | null
           tenant_id: string
           tiene_cuenta_corriente?: boolean | null
-          token_expires_at?: string | null
           ultimo_sync?: string | null
           updated_at?: string | null
           user_id?: string | null
           webhook_secret?: string | null
         }
         Update: {
-          access_token?: string | null
           activo?: boolean | null
           ciudad?: string | null
           cliente_id?: string | null
@@ -847,6 +880,7 @@ export type Database = {
           es_cuenta_logistica?: boolean | null
           express_delivery_days?: number | null
           express_surcharge?: number | null
+          has_valid_token?: boolean
           horario_retiro?: string | null
           id?: string
           limite_credito?: number | null
@@ -858,7 +892,6 @@ export type Database = {
           plataforma?: string
           provincia?: string | null
           razon_social?: string | null
-          refresh_token?: string | null
           saldo_cuenta_corriente?: number | null
           shipping_carrier_id?: string | null
           store_id?: string | null
@@ -869,7 +902,6 @@ export type Database = {
           telefono?: string | null
           tenant_id?: string
           tiene_cuenta_corriente?: boolean | null
-          token_expires_at?: string | null
           ultimo_sync?: string | null
           updated_at?: string | null
           user_id?: string | null

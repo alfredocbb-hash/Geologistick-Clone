@@ -190,14 +190,24 @@ Deno.serve(async (req) => {
       const expiresAt = new Date();
       expiresAt.setSeconds(expiresAt.getSeconds() + tokenData.expires_in);
 
-      // Update seller with tokens
+      // Save tokens in protected table
+      await supabase
+        .from('ecommerce_seller_tokens')
+        .upsert({
+          seller_id: sellerId,
+          tenant_id: seller.tenant_id,
+          access_token: tokenData.access_token,
+          refresh_token: tokenData.refresh_token,
+          token_expires_at: expiresAt.toISOString(),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'seller_id' });
+
+      // Update seller (no tokens here anymore)
       const { error: updateError } = await supabase
         .from('ecommerce_sellers')
         .update({
           store_id: String(mlUserId),
-          access_token: tokenData.access_token,
-          refresh_token: tokenData.refresh_token,
-          token_expires_at: expiresAt.toISOString(),
+          has_valid_token: true,
           plataforma: 'mercadolibre',
           updated_at: new Date().toISOString(),
         })
@@ -241,7 +251,20 @@ Deno.serve(async (req) => {
         .eq('id', seller_id)
         .single();
 
-      if (sellerError || !seller?.refresh_token) {
+      // Get seller (tenant only) and tokens (from protected table)
+      const { data: seller, error: sellerError } = await supabase
+        .from('ecommerce_sellers')
+        .select('tenant_id')
+        .eq('id', seller_id)
+        .single();
+
+      const { data: tokenRow } = await supabase
+        .from('ecommerce_seller_tokens')
+        .select('refresh_token')
+        .eq('seller_id', seller_id)
+        .maybeSingle();
+
+      if (sellerError || !seller || !tokenRow?.refresh_token) {
         return new Response(
           JSON.stringify({ error: 'Seller not found or no refresh token' }),
           { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -266,7 +289,7 @@ Deno.serve(async (req) => {
           grant_type: 'refresh_token',
           client_id: config.client_id,
           client_secret: config.client_secret,
-          refresh_token: seller.refresh_token,
+          refresh_token: tokenRow.refresh_token,
         }),
       });
 
@@ -285,15 +308,21 @@ Deno.serve(async (req) => {
       const expiresAt = new Date();
       expiresAt.setSeconds(expiresAt.getSeconds() + tokenData.expires_in);
 
-      // Update seller
+      // Save new tokens
       await supabase
-        .from('ecommerce_sellers')
-        .update({
+        .from('ecommerce_seller_tokens')
+        .upsert({
+          seller_id,
+          tenant_id: seller.tenant_id,
           access_token: tokenData.access_token,
           refresh_token: tokenData.refresh_token,
           token_expires_at: expiresAt.toISOString(),
           updated_at: new Date().toISOString(),
-        })
+        }, { onConflict: 'seller_id' });
+
+      await supabase
+        .from('ecommerce_sellers')
+        .update({ has_valid_token: true, updated_at: new Date().toISOString() })
         .eq('id', seller_id);
 
       return new Response(

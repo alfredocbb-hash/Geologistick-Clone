@@ -432,16 +432,22 @@ Deno.serve(async (req) => {
   }
 });
 
-// Helper: get valid access token, refresh if needed (same as mercadolibre-sync)
+// Helper: get valid access token, refresh if needed (tokens in ecommerce_seller_tokens)
 async function getValidAccessToken(supabase: any, seller: any): Promise<string | null> {
-  const now = new Date();
-  const expiresAt = seller.token_expires_at ? new Date(seller.token_expires_at) : null;
+  const { data: tokenRow } = await supabase
+    .from('ecommerce_seller_tokens')
+    .select('access_token, refresh_token, token_expires_at')
+    .eq('seller_id', seller.id)
+    .maybeSingle();
 
-  if (seller.access_token && expiresAt && expiresAt.getTime() - now.getTime() > 5 * 60 * 1000) {
-    return seller.access_token;
+  const now = new Date();
+  const expiresAt = tokenRow?.token_expires_at ? new Date(tokenRow.token_expires_at) : null;
+
+  if (tokenRow?.access_token && expiresAt && expiresAt.getTime() - now.getTime() > 5 * 60 * 1000) {
+    return tokenRow.access_token;
   }
 
-  if (!seller.refresh_token) {
+  if (!tokenRow?.refresh_token) {
     console.error('[Recovery] No refresh token for seller:', seller.nombre);
     return null;
   }
@@ -456,9 +462,7 @@ async function getValidAccessToken(supabase: any, seller: any): Promise<string |
     .in('config_key', ['client_id', 'client_secret']);
 
   const config: Record<string, string> = {};
-  for (const row of credentials || []) {
-    config[row.config_key] = row.config_value;
-  }
+  for (const row of credentials || []) config[row.config_key] = row.config_value;
 
   if (!config.client_id || !config.client_secret) {
     console.error('[Recovery] Missing ML credentials for tenant');
@@ -472,7 +476,7 @@ async function getValidAccessToken(supabase: any, seller: any): Promise<string |
       grant_type: 'refresh_token',
       client_id: config.client_id,
       client_secret: config.client_secret,
-      refresh_token: seller.refresh_token,
+      refresh_token: tokenRow.refresh_token,
     }),
   });
 
@@ -483,21 +487,21 @@ async function getValidAccessToken(supabase: any, seller: any): Promise<string |
   }
 
   const tokenData = await tokenResponse.json();
+  const newExpiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
 
-  const newExpiresAt = new Date();
-  newExpiresAt.setSeconds(newExpiresAt.getSeconds() + tokenData.expires_in);
-
-  await supabase.from('ecommerce_sellers').update({
+  await supabase.from('ecommerce_seller_tokens').upsert({
+    seller_id: seller.id,
+    tenant_id: seller.tenant_id,
     access_token: tokenData.access_token,
     refresh_token: tokenData.refresh_token,
     token_expires_at: newExpiresAt.toISOString(),
     updated_at: new Date().toISOString(),
-  }).eq('id', seller.id);
+  }, { onConflict: 'seller_id' });
 
-  // Update in-memory seller object for subsequent calls
-  seller.access_token = tokenData.access_token;
-  seller.refresh_token = tokenData.refresh_token;
-  seller.token_expires_at = newExpiresAt.toISOString();
+  await supabase
+    .from('ecommerce_sellers')
+    .update({ has_valid_token: true, updated_at: new Date().toISOString() })
+    .eq('id', seller.id);
 
   console.log('[Recovery] Token refreshed for:', seller.nombre);
   return tokenData.access_token;

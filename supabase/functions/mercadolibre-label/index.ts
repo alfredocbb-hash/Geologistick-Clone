@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
       .eq('tenant_id', envio.tenant_id)
       .eq('plataforma', 'mercadolibre')
       .eq('activo', true)
-      .not('access_token', 'is', null)
+      .eq('has_valid_token', true)
       .limit(1)
       .single();
 
@@ -58,9 +58,15 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get valid access token (refresh if needed)
-    let accessToken = seller.access_token;
-    const tokenExpiresAt = seller.token_expires_at ? new Date(seller.token_expires_at) : null;
+    // Get valid access token (refresh if needed) from protected tokens table
+    const { data: tokenRow } = await supabase
+      .from('ecommerce_seller_tokens')
+      .select('access_token, refresh_token, token_expires_at')
+      .eq('seller_id', seller.id)
+      .maybeSingle();
+
+    let accessToken = tokenRow?.access_token ?? null;
+    const tokenExpiresAt = tokenRow?.token_expires_at ? new Date(tokenRow.token_expires_at) : null;
     const now = new Date();
 
     if (!accessToken || (tokenExpiresAt && tokenExpiresAt < now)) {
@@ -73,7 +79,7 @@ Deno.serve(async (req) => {
 
       const credMap = Object.fromEntries((credentials || []).map((c: any) => [c.config_key, c.config_value]));
 
-      if (!credMap.client_id || !credMap.client_secret || !seller.refresh_token) {
+      if (!credMap.client_id || !credMap.client_secret || !tokenRow?.refresh_token) {
         return new Response(
           JSON.stringify({ error: 'Credenciales ML no disponibles' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -87,7 +93,7 @@ Deno.serve(async (req) => {
           grant_type: 'refresh_token',
           client_id: credMap.client_id,
           client_secret: credMap.client_secret,
-          refresh_token: seller.refresh_token,
+          refresh_token: tokenRow.refresh_token,
         }),
       });
 
@@ -102,13 +108,19 @@ Deno.serve(async (req) => {
       accessToken = tokenData.access_token;
 
       await supabase
-        .from('ecommerce_sellers')
-        .update({
+        .from('ecommerce_seller_tokens')
+        .upsert({
+          seller_id: seller.id,
+          tenant_id: seller.tenant_id,
           access_token: tokenData.access_token,
           refresh_token: tokenData.refresh_token,
           token_expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
           updated_at: new Date().toISOString(),
-        })
+        }, { onConflict: 'seller_id' });
+
+      await supabase
+        .from('ecommerce_sellers')
+        .update({ has_valid_token: true, updated_at: new Date().toISOString() })
         .eq('id', seller.id);
     }
 

@@ -134,16 +134,22 @@ Deno.serve(async (req) => {
   }
 });
 
-// Helper to get valid access token, refreshing if needed
+// Helper to get valid access token, refreshing if needed (tokens in ecommerce_seller_tokens)
 async function getValidAccessToken(supabase: any, seller: any): Promise<string | null> {
-  const now = new Date();
-  const expiresAt = seller.token_expires_at ? new Date(seller.token_expires_at) : null;
+  const { data: tokenRow } = await supabase
+    .from('ecommerce_seller_tokens')
+    .select('access_token, refresh_token, token_expires_at')
+    .eq('seller_id', seller.id)
+    .maybeSingle();
 
-  if (seller.access_token && expiresAt && expiresAt.getTime() - now.getTime() > 5 * 60 * 1000) {
-    return seller.access_token;
+  const now = new Date();
+  const expiresAt = tokenRow?.token_expires_at ? new Date(tokenRow.token_expires_at) : null;
+
+  if (tokenRow?.access_token && expiresAt && expiresAt.getTime() - now.getTime() > 5 * 60 * 1000) {
+    return tokenRow.access_token;
   }
 
-  if (!seller.refresh_token) {
+  if (!tokenRow?.refresh_token) {
     console.error('[ML History] No refresh token available');
     return null;
   }
@@ -158,9 +164,7 @@ async function getValidAccessToken(supabase: any, seller: any): Promise<string |
   if (!credentials || credentials.length === 0) return null;
 
   const config: Record<string, string> = {};
-  for (const row of credentials) {
-    config[row.config_key] = row.config_value;
-  }
+  for (const row of credentials) config[row.config_key] = row.config_value;
 
   if (!config.client_id || !config.client_secret) return null;
 
@@ -171,24 +175,29 @@ async function getValidAccessToken(supabase: any, seller: any): Promise<string |
       grant_type: 'refresh_token',
       client_id: config.client_id,
       client_secret: config.client_secret,
-      refresh_token: seller.refresh_token,
+      refresh_token: tokenRow.refresh_token,
     }),
   });
 
   if (!tokenResponse.ok) return null;
 
   const tokenData = await tokenResponse.json();
-  const newExpiresAt = new Date();
-  newExpiresAt.setSeconds(newExpiresAt.getSeconds() + tokenData.expires_in);
+  const newExpiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
 
   await supabase
-    .from('ecommerce_sellers')
-    .update({
+    .from('ecommerce_seller_tokens')
+    .upsert({
+      seller_id: seller.id,
+      tenant_id: seller.tenant_id,
       access_token: tokenData.access_token,
       refresh_token: tokenData.refresh_token,
       token_expires_at: newExpiresAt.toISOString(),
       updated_at: new Date().toISOString(),
-    })
+    }, { onConflict: 'seller_id' });
+
+  await supabase
+    .from('ecommerce_sellers')
+    .update({ has_valid_token: true, updated_at: new Date().toISOString() })
     .eq('id', seller.id);
 
   return tokenData.access_token;

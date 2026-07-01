@@ -47,14 +47,26 @@ Deno.serve(async (req) => {
     // Handle app/uninstalled event (REQUIRED for TiendaNube marketplace approval)
     if (event === "app/uninstalled") {
       console.log("App uninstalled for store:", storeId);
-      
-      // Clean up sensitive credentials (GDPR compliance)
+
+      // Find seller first, then remove tokens from protected table
+      const { data: uninstalledSeller } = await supabase
+        .from("ecommerce_sellers")
+        .select("id")
+        .eq("store_id", storeId)
+        .maybeSingle();
+
+      if (uninstalledSeller?.id) {
+        await supabase
+          .from("ecommerce_seller_tokens")
+          .delete()
+          .eq("seller_id", uninstalledSeller.id);
+      }
+
+      // Clean up non-token credentials on seller row
       const { error } = await supabase
         .from("ecommerce_sellers")
-        .update({ 
-          access_token: null,
-          refresh_token: null,
-          token_expires_at: null,
+        .update({
+          has_valid_token: false,
           webhook_secret: null,
           shipping_carrier_id: null,
           updated_at: new Date().toISOString(),
@@ -66,8 +78,7 @@ Deno.serve(async (req) => {
       } else {
         console.log("Credentials cleaned successfully for store:", storeId);
       }
-      
-      // Always respond 200 OK so TiendaNube doesn't retry
+
       return new Response(
         JSON.stringify({ success: true }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -77,7 +88,7 @@ Deno.serve(async (req) => {
     // Find the seller by store_id
     const { data: seller, error: sellerError } = await supabase
       .from("ecommerce_sellers")
-      .select("id, tenant_id, access_token, webhook_secret, tarifa_id, sucursal_pickup_id, tiene_cuenta_corriente, refresh_token, token_expires_at")
+      .select("id, tenant_id, webhook_secret, tarifa_id, sucursal_pickup_id, tiene_cuenta_corriente")
       .eq("store_id", storeId)
       .single();
 
@@ -125,6 +136,16 @@ Deno.serve(async (req) => {
       console.warn("No webhook_secret configured for seller, skipping HMAC validation");
     }
 
+    // Load tokens from protected table
+    const { data: tokenRow } = await supabase
+      .from("ecommerce_seller_tokens")
+      .select("access_token, refresh_token, token_expires_at")
+      .eq("seller_id", seller.id)
+      .maybeSingle();
+    seller.access_token = tokenRow?.access_token ?? null;
+    seller.refresh_token = tokenRow?.refresh_token ?? null;
+    seller.token_expires_at = tokenRow?.token_expires_at ?? null;
+
     // Check if token needs refresh before making API calls
     let accessToken = seller.access_token;
     if (seller.token_expires_at && new Date(seller.token_expires_at) < new Date()) {
@@ -135,7 +156,6 @@ Deno.serve(async (req) => {
         console.log("Token refreshed successfully");
       } else {
         console.warn("Token refresh failed:", refreshResult.error);
-        // Continue with old token, it might still work
       }
     }
 
@@ -321,15 +341,21 @@ async function refreshAccessToken(
       ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
       : null;
 
-    // Update tokens in database
+    // Save tokens in protected table
     await supabase
-      .from("ecommerce_sellers")
-      .update({
+      .from("ecommerce_seller_tokens")
+      .upsert({
+        seller_id: seller.id,
+        tenant_id: seller.tenant_id,
         access_token: tokenData.access_token,
         refresh_token: tokenData.refresh_token || seller.refresh_token,
         token_expires_at: expiresAt,
         updated_at: new Date().toISOString(),
-      })
+      }, { onConflict: "seller_id" });
+
+    await supabase
+      .from("ecommerce_sellers")
+      .update({ has_valid_token: true, updated_at: new Date().toISOString() })
       .eq("id", seller.id);
 
     return { success: true, newToken: tokenData.access_token };
