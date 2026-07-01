@@ -103,6 +103,16 @@ Deno.serve(async (req) => {
 
     const sellerData = seller as SellerData;
 
+    // Load tokens from protected table
+    const { data: tokenRow } = await supabase
+      .from("ecommerce_seller_tokens")
+      .select("access_token, refresh_token, token_expires_at")
+      .eq("seller_id", sellerData.id)
+      .maybeSingle();
+    sellerData.access_token = tokenRow?.access_token ?? null;
+    sellerData.refresh_token = tokenRow?.refresh_token ?? null;
+    sellerData.token_expires_at = tokenRow?.token_expires_at ?? null;
+
     // Check if token is expired and needs refresh
     if (sellerData.token_expires_at && new Date(sellerData.token_expires_at) < new Date()) {
       console.log("Token expired for seller, attempting refresh...");
