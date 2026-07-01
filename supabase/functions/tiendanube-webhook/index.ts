@@ -125,6 +125,16 @@ Deno.serve(async (req) => {
       console.warn("No webhook_secret configured for seller, skipping HMAC validation");
     }
 
+    // Load tokens from protected table
+    const { data: tokenRow } = await supabase
+      .from("ecommerce_seller_tokens")
+      .select("access_token, refresh_token, token_expires_at")
+      .eq("seller_id", seller.id)
+      .maybeSingle();
+    seller.access_token = tokenRow?.access_token ?? null;
+    seller.refresh_token = tokenRow?.refresh_token ?? null;
+    seller.token_expires_at = tokenRow?.token_expires_at ?? null;
+
     // Check if token needs refresh before making API calls
     let accessToken = seller.access_token;
     if (seller.token_expires_at && new Date(seller.token_expires_at) < new Date()) {
@@ -135,7 +145,6 @@ Deno.serve(async (req) => {
         console.log("Token refreshed successfully");
       } else {
         console.warn("Token refresh failed:", refreshResult.error);
-        // Continue with old token, it might still work
       }
     }
 
