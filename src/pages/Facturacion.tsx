@@ -763,6 +763,48 @@ export default function Facturacion() {
               </CardContent>
             </Card>
 
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-xs text-muted-foreground">Cantidad de comprobantes</div>
+                  <div className="text-2xl font-bold">{emitidasTotals.cantidad}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-xs text-muted-foreground">Neto gravado</div>
+                  <div className="text-2xl font-bold">{formatCurrency(emitidasTotals.neto)}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-xs text-muted-foreground">IVA</div>
+                  <div className="text-2xl font-bold">{formatCurrency(emitidasTotals.iva)}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-xs text-muted-foreground">Total facturado (neto de NC)</div>
+                  <div className="text-2xl font-bold">{formatCurrency(emitidasTotals.total)}</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {Object.keys(emitidasTotals.porTipo).length > 0 && (
+              <Card>
+                <CardContent className="pt-4 flex flex-wrap gap-2">
+                  {Object.entries(emitidasTotals.porTipo).map(([tipo, v]) => (
+                    <Badge key={tipo} variant="outline" className="text-xs py-1 px-2">
+                      {tipo}: <span className="font-semibold ml-1">{v.cantidad}</span>
+                      <span className="mx-1 text-muted-foreground">·</span>
+                      {formatCurrency(v.total)}
+                    </Badge>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+
+
             <Card>
               <CardContent className="p-0">
                 {loadingEmitidas ? (
