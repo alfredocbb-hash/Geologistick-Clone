@@ -69,7 +69,7 @@ const TiendanubeConfig = () => {
     fetchSellerByStoreId();
   }, [storeId]);
 
-  const isConnected = seller?.access_token !== null;
+  const isConnected = !!seller?.has_valid_token;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
