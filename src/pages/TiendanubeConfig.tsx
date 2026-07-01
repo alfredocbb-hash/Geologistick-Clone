@@ -26,7 +26,7 @@ interface SellerData {
   store_url: string | null;
   activo: boolean;
   ultimo_sync: string | null;
-  access_token: string | null;
+  has_valid_token: boolean | null;
 }
 
 const TiendanubeConfig = () => {
