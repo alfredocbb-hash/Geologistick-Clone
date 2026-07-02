@@ -73,18 +73,20 @@ export function LiquidacionManualFormDialog({ open, onOpenChange, liquidacion, o
       }));
     }
   }, [liquidacion, open]);
-
   const { data: empresas } = useQuery({
     queryKey: ["empresas-terciarizadas-min", profile?.tenant_id],
     queryFn: async () => {
-      const { data } = await (supabase as any)
-        .from("empresas_terciarizadas")
-        .select("id,nombre")
-        .eq("activo", true)
-        .order("nombre");
+      let q = (supabase as any).from("empresas_terciarizadas").select("id,nombre").eq("activo", true).order("nombre");
+
+      // Agregamos la condición del tenant_id si existe el perfil
+      if (profile?.tenant_id) {
+        q = q.eq("tenant_id", profile.tenant_id);
+      }
+      const { data, error } = await q;
+      if (error) throw error; // Es buena práctica capturar si Supabase arroja un error
       return data || [];
     },
-    enabled: open,
+    enabled: !!open && !!profile?.tenant_id, // Se ejecuta solo si el diálogo está abierto y hay un usuario autenticado con tenant
   });
 
   const { data: facturas } = useQuery({
