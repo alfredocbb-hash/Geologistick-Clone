@@ -78,7 +78,7 @@ export function LiquidacionManualFormDialog({ open, onOpenChange, liquidacion, o
   const { data: facturas } = useQuery({
     queryKey: ['facturas-emitidas-min', profile?.tenant_id],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await (supabase as any)
         .from('facturas')
         .select('id, tipo_comprobante, punto_venta, numero_comprobante, importe_total, estado')
         .in('estado', ['emitida', 'pagada'])
