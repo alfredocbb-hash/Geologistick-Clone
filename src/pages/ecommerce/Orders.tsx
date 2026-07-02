@@ -105,7 +105,8 @@ export default function Orders() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [fulfillmentFilter, setFulfillmentFilter] = useState<string>('all');
-  // Use fecha_entrega_estimada for filtering (delivery date, not creation date)
+  // Field used for date range filtering: creation date (default) or estimated delivery date
+  const [dateField, setDateField] = useState<'created_at' | 'fecha_entrega_estimada'>('created_at');
   const [dateFrom, setDateFrom] = useState<Date>(new Date());
   const [dateTo, setDateTo] = useState<Date>(new Date());
   const [sellerFilter, setSellerFilter] = useState<string>('all');
@@ -249,7 +250,7 @@ export default function Orders() {
 
   // Fetch orders with seller info — filtered by date server-side
   const { data: ordersData, isLoading } = useQuery({
-    queryKey: ['ecommerce-orders', tenantId, dateFrom.toISOString().slice(0, 10), dateTo.toISOString().slice(0, 10), sellerFilter],
+    queryKey: ['ecommerce-orders', tenantId, dateField, dateFrom.toISOString().slice(0, 10), dateTo.toISOString().slice(0, 10), sellerFilter],
     queryFn: async () => {
       let query = supabase
         .from('ecommerce_orders')
@@ -260,17 +261,22 @@ export default function Orders() {
         `)
         .eq('tenant_id', tenantId);
 
-      // Date range filter using fecha_entrega_estimada (delivery date)
+      // Date range filter — creation date by default, or estimated delivery date
       const fromStr = format(dateFrom, 'yyyy-MM-dd');
       const toStr = format(dateTo, 'yyyy-MM-dd');
-      query = query.gte('fecha_entrega_estimada', fromStr).lte('fecha_entrega_estimada', toStr);
+      if (dateField === 'created_at') {
+        query = query.gte('created_at', `${fromStr}T00:00:00`).lte('created_at', `${toStr}T23:59:59.999`);
+      } else {
+        query = query.gte('fecha_entrega_estimada', fromStr).lte('fecha_entrega_estimada', toStr);
+      }
 
       // Seller filter
       if (sellerFilter !== 'all') {
         query = query.eq('seller_id', sellerFilter);
       }
 
-      const { data, error } = await query.order('fecha_entrega_estimada', { ascending: false }).order('created_at', { ascending: false });
+      const orderField = dateField === 'created_at' ? 'created_at' : 'fecha_entrega_estimada';
+      const { data, error } = await query.order(orderField, { ascending: false }).order('created_at', { ascending: false });
 
       if (error) throw error;
 
@@ -396,6 +402,15 @@ export default function Orders() {
             className="pl-9"
           />
         </div>
+        <Select value={dateField} onValueChange={(v) => setDateField(v as 'created_at' | 'fecha_entrega_estimada')}>
+          <SelectTrigger className="w-[170px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="created_at">Fecha de creación</SelectItem>
+            <SelectItem value="fecha_entrega_estimada">Fecha de entrega</SelectItem>
+          </SelectContent>
+        </Select>
         <Popover>
           <PopoverTrigger asChild>
             <Button variant="outline" className="w-[160px] justify-start text-left font-normal">
