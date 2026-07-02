@@ -92,15 +92,23 @@ export function LiquidacionManualFormDialog({ open, onOpenChange, liquidacion, o
   const { data: facturas } = useQuery({
     queryKey: ["facturas-emitidas-min", profile?.tenant_id],
     queryFn: async () => {
-      const { data } = await (supabase as any)
+      let q = (supabase as any)
         .from("facturas")
         .select("id, tipo_comprobante, punto_venta, numero_comprobante, importe_total, estado")
         .in("estado", ["emitida", "pagada"])
         .order("created_at", { ascending: false })
         .limit(500);
+
+      // Agregamos también el filtro de tenant acá para asegurar el aislamiento de datos
+      if (profile?.tenant_id) {
+        q = q.eq("tenant_id", profile.tenant_id);
+      }
+
+      const { data, error } = await q;
+      if (error) throw error;
       return data || [];
     },
-    enabled: open,
+    enabled: !!open && !!profile?.tenant_id, // Se ejecuta en sintonía con las empresas
   });
 
   const monto = Number(form.monto) || 0;
