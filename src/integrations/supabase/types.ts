@@ -2444,6 +2444,114 @@ export type Database = {
           },
         ]
       }
+      liquidaciones_manuales: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          descripcion: string | null
+          empresa_id: string | null
+          estado: string
+          factura_id: string | null
+          fecha_movimiento: string | null
+          id: string
+          metodo_pago: Database["public"]["Enums"]["payment_method"] | null
+          moneda: string
+          monto: number
+          movimiento_caja_id: string | null
+          notas: string | null
+          numero: string
+          periodo_desde: string
+          periodo_hasta: string
+          referencia_pago: string | null
+          sesion_caja_id: string | null
+          tenant_id: string
+          tipo: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          descripcion?: string | null
+          empresa_id?: string | null
+          estado?: string
+          factura_id?: string | null
+          fecha_movimiento?: string | null
+          id?: string
+          metodo_pago?: Database["public"]["Enums"]["payment_method"] | null
+          moneda?: string
+          monto: number
+          movimiento_caja_id?: string | null
+          notas?: string | null
+          numero: string
+          periodo_desde: string
+          periodo_hasta: string
+          referencia_pago?: string | null
+          sesion_caja_id?: string | null
+          tenant_id: string
+          tipo?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          descripcion?: string | null
+          empresa_id?: string | null
+          estado?: string
+          factura_id?: string | null
+          fecha_movimiento?: string | null
+          id?: string
+          metodo_pago?: Database["public"]["Enums"]["payment_method"] | null
+          moneda?: string
+          monto?: number
+          movimiento_caja_id?: string | null
+          notas?: string | null
+          numero?: string
+          periodo_desde?: string
+          periodo_hasta?: string
+          referencia_pago?: string | null
+          sesion_caja_id?: string | null
+          tenant_id?: string
+          tipo?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "liquidaciones_manuales_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_terciarizadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "liquidaciones_manuales_factura_id_fkey"
+            columns: ["factura_id"]
+            isOneToOne: false
+            referencedRelation: "facturas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "liquidaciones_manuales_movimiento_caja_id_fkey"
+            columns: ["movimiento_caja_id"]
+            isOneToOne: false
+            referencedRelation: "movimientos_caja"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "liquidaciones_manuales_sesion_caja_id_fkey"
+            columns: ["sesion_caja_id"]
+            isOneToOne: false
+            referencedRelation: "sesiones_caja"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "liquidaciones_manuales_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       liquidaciones_partner: {
         Row: {
           cantidad_envios: number | null
@@ -4692,6 +4800,47 @@ export type Database = {
           },
         ]
       }
+      tenant_features: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          enabled_at: string
+          enabled_by: string | null
+          feature_key: string
+          id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          enabled_at?: string
+          enabled_by?: string | null
+          feature_key: string
+          id?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          enabled_at?: string
+          enabled_by?: string | null
+          feature_key?: string
+          id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_features_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_partners: {
         Row: {
           created_at: string
@@ -5367,6 +5516,15 @@ export type Database = {
         }
         Returns: Json
       }
+      registrar_movimiento_liquidacion_manual: {
+        Args: {
+          p_fecha?: string
+          p_id: string
+          p_metodo: Database["public"]["Enums"]["payment_method"]
+          p_referencia?: string
+        }
+        Returns: Json
+      }
       reopen_ruta_planificada: { Args: { p_ruta_id: string }; Returns: Json }
       reschedule_envio: {
         Args: { p_envio_id: string; p_new_date: string; p_reason?: string }
@@ -5374,6 +5532,10 @@ export type Database = {
       }
       start_hoja_ruta: { Args: { p_hoja_id: string }; Returns: Json }
       start_ruta_planificada: { Args: { p_ruta_id: string }; Returns: Json }
+      tenant_has_feature: {
+        Args: { _feature_key: string; _tenant_id: string }
+        Returns: boolean
+      }
       upsert_sucursal_conceptos: {
         Args: {
           p_assignments: Json
