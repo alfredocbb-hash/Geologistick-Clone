@@ -662,7 +662,53 @@ async function getValidAccessToken(supabase: any, seller: any): Promise<string |
   });
 
   if (!tokenResponse.ok) {
-    console.error('[ML Webhook] Token refresh failed');
+    const errBody = await tokenResponse.text();
+    console.error('[ML Webhook] Token refresh failed:', tokenResponse.status, errBody);
+
+    // Concurrent-refresh race: ML refresh tokens are single-use. Another
+    // simultaneous webhook worker may have already refreshed for this seller,
+    // which invalidates our copy of the refresh_token.
+    await new Promise((r) => setTimeout(r, 500));
+    const { data: retryRow } = await supabase
+      .from('ecommerce_seller_tokens')
+      .select('access_token, refresh_token, token_expires_at')
+      .eq('seller_id', seller.id)
+      .maybeSingle();
+
+    const retryExpires = retryRow?.token_expires_at ? new Date(retryRow.token_expires_at) : null;
+    if (retryRow?.access_token && retryExpires && retryExpires.getTime() - Date.now() > 5 * 60 * 1000) {
+      console.log('[ML Webhook] Recovered fresh token from concurrent refresh');
+      return retryRow.access_token;
+    }
+
+    if (retryRow?.refresh_token && retryRow.refresh_token !== tokenRow.refresh_token) {
+      console.log('[ML Webhook] Retrying refresh with updated refresh_token');
+      const retry = await fetch('https://api.mercadolibre.com/oauth/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          client_id: config.client_id,
+          client_secret: config.client_secret,
+          refresh_token: retryRow.refresh_token,
+        }),
+      });
+      if (retry.ok) {
+        const td = await retry.json();
+        const exp = new Date(Date.now() + td.expires_in * 1000);
+        await supabase.from('ecommerce_seller_tokens').upsert({
+          seller_id: seller.id,
+          tenant_id: seller.tenant_id,
+          access_token: td.access_token,
+          refresh_token: td.refresh_token,
+          token_expires_at: exp.toISOString(),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'seller_id' });
+        return td.access_token;
+      } else {
+        console.error('[ML Webhook] Retry refresh also failed:', retry.status, await retry.text());
+      }
+    }
     return null;
   }
 
