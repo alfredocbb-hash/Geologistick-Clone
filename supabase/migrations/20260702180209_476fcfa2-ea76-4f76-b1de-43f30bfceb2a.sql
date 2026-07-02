@@ -1,0 +1,1 @@
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.ecommerce_sellers TO authenticated; GRANT ALL ON public.ecommerce_sellers TO service_role;
