@@ -310,7 +310,8 @@ export function AppSidebar() {
   const {
     profile,
     signOut,
-    isSuperAdmin
+    isSuperAdmin,
+    isAdmin
   } = useAuth();
   const {
     hasPermission,
@@ -327,6 +328,22 @@ export function AppSidebar() {
   const queryClient = useQueryClient();
   const collapsed = state === 'collapsed';
   const { t } = useTranslation();
+
+  // Tenant feature flags (opt-in modules)
+  const { data: enabledFeatures = [] } = useQuery({
+    queryKey: ['tenant-features-enabled', profile?.tenant_id],
+    queryFn: async () => {
+      if (!profile?.tenant_id) return [];
+      const { data } = await (supabase as any)
+        .from('tenant_features')
+        .select('feature_key')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('enabled', true);
+      return (data || []).map((r: any) => r.feature_key as string);
+    },
+    enabled: !!profile?.tenant_id,
+    staleTime: 60_000,
+  });
 
   const handleSignOut = async () => {
     try {
