@@ -638,8 +638,14 @@ export default function Orders() {
                       {group.orders.map((order) => {
                         // Use ML shipping status for ML orders, fallback to generic order_status
                         const useMLStatus = order.plataforma === 'mercadolibre' && order.ml_shipping_status;
+                        // ML "shipped" con substatus printed/ready_to_print/handling sigue en depósito (Listo para enviar)
+                        const preShipSubs = ['printed', 'ready_to_print', 'handling', 'invoice_pending'];
+                        const effectiveMLStatus = useMLStatus && order.ml_shipping_status === 'shipped'
+                          && preShipSubs.includes(order.envio?.ml_substatus_actual || '')
+                          ? 'ready_to_ship'
+                          : order.ml_shipping_status;
                         const status = useMLStatus
-                          ? (ML_SHIPPING_CONFIG[order.ml_shipping_status!] || STATUS_CONFIG[order.order_status] || STATUS_CONFIG.pending)
+                          ? (ML_SHIPPING_CONFIG[effectiveMLStatus!] || STATUS_CONFIG[order.order_status] || STATUS_CONFIG.pending)
                           : (STATUS_CONFIG[order.order_status] || STATUS_CONFIG.pending);
                         const fulfillment = FULFILLMENT_CONFIG[order.fulfillment_status] || FULFILLMENT_CONFIG.pending;
                         const StatusIcon = status.icon;
