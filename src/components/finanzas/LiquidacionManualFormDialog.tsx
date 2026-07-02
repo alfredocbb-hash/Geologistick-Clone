@@ -69,7 +69,7 @@ export function LiquidacionManualFormDialog({ open, onOpenChange, liquidacion, o
   const { data: empresas } = useQuery({
     queryKey: ['empresas-terciarizadas-min', profile?.tenant_id],
     queryFn: async () => {
-      const { data } = await supabase.from('empresas_terciarizadas').select('id,nombre').eq('activo', true).order('nombre');
+      const { data } = await (supabase as any).from('empresas_terciarizadas').select('id,nombre').eq('activo', true).order('nombre');
       return data || [];
     },
     enabled: open,
