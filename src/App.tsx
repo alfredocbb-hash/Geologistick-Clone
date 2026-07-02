@@ -88,6 +88,7 @@ const MercadoLibreOAuthResult = lazy(() => import("./pages/MercadoLibreOAuthResu
 const Facturacion = lazy(() => import("./pages/Facturacion"));
 const GastosPage = lazy(() => import("./pages/Gastos"));
 const FiscalDashboard = lazy(() => import("./pages/FiscalDashboard"));
+const Finanzas = lazy(() => import("./pages/Finanzas"));
 
 // Seller Portal Pages
 const SellerLayout = lazy(() => import("./components/seller/SellerLayout").then(m => ({ default: m.SellerLayout })));
@@ -254,6 +255,8 @@ function AppRoutes() {
           <Route path="/facturacion" element={<Facturacion />} />
           <Route path="/gastos" element={<GastosPage />} />
           <Route path="/fiscal" element={<FiscalDashboard />} />
+          <Route path="/finanzas" element={<Finanzas />} />
+
 
           {/* Terciarizados */}
           <Route path="/admin/third-party-companies" element={<ThirdPartyCompanies />} />

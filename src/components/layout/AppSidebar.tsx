@@ -170,6 +170,11 @@ const navigation: NavGroup[] = [{
     url: '/payments',
     icon: CreditCard,
     permissionKey: 'settlements.driver.manage'
+  }, {
+    title: 'Finanzas',
+    url: '/finanzas',
+    icon: Wallet,
+    permissionKey: '__finanzas_feature__'
   }],
   permissionKeys: ['cash.manage', 'invoicing.view', 'gastos.manage', 'fiscal.view', 'settlements.branch.view', 'settlements.driver.view', 'settlements.client.view', 'commissions.view']
 }, {
