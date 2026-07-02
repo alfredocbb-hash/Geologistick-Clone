@@ -402,6 +402,15 @@ export default function Orders() {
             className="pl-9"
           />
         </div>
+        <Select value={dateField} onValueChange={(v) => setDateField(v as 'created_at' | 'fecha_entrega_estimada')}>
+          <SelectTrigger className="w-[170px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="created_at">Fecha de creación</SelectItem>
+            <SelectItem value="fecha_entrega_estimada">Fecha de entrega</SelectItem>
+          </SelectContent>
+        </Select>
         <Popover>
           <PopoverTrigger asChild>
             <Button variant="outline" className="w-[160px] justify-start text-left font-normal">
