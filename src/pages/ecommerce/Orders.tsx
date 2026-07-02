@@ -105,7 +105,8 @@ export default function Orders() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [fulfillmentFilter, setFulfillmentFilter] = useState<string>('all');
-  // Use fecha_entrega_estimada for filtering (delivery date, not creation date)
+  // Field used for date range filtering: creation date (default) or estimated delivery date
+  const [dateField, setDateField] = useState<'created_at' | 'fecha_entrega_estimada'>('created_at');
   const [dateFrom, setDateFrom] = useState<Date>(new Date());
   const [dateTo, setDateTo] = useState<Date>(new Date());
   const [sellerFilter, setSellerFilter] = useState<string>('all');
