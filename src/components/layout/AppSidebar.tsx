@@ -19,6 +19,8 @@ interface NavItem {
   permissionKey?: string;
   requiresBranchDelivery?: boolean;
   requiresPlanificador?: boolean;
+  requiresFeature?: string;
+  requiresAdmin?: boolean;
 }
 interface NavGroup {
   label: string; // i18n key
@@ -174,7 +176,8 @@ const navigation: NavGroup[] = [{
     title: 'Finanzas',
     url: '/finanzas',
     icon: Wallet,
-    permissionKey: '__finanzas_feature__'
+    requiresFeature: 'finanzas',
+    requiresAdmin: true
   }],
   permissionKeys: ['cash.manage', 'invoicing.view', 'gastos.manage', 'fiscal.view', 'settlements.branch.view', 'settlements.driver.view', 'settlements.client.view', 'commissions.view']
 }, {
