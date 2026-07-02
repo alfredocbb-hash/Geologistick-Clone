@@ -1,55 +1,117 @@
-# Plan: Totales y comparativa Ingresos vs Gastos en Facturación
 
-## Objetivo
-Sumar a la pestaña **Emitidas** (y una nueva vista de resumen) totales agregados y una comparación contra gastos e ingresos reales, respetando el filtro de fechas `Desde`/`Hasta` que ya vamos a agregar.
+# Módulo Finanzas
 
-## 1) Totales en la pestaña Emitidas
-Debajo de los filtros (búsqueda, tipo, fechas), agregar 4 tarjetas KPI que se recalculan con `useMemo` sobre `filteredEmitidas`:
+Módulo nuevo, más amplio, que agrupa carga manual de liquidaciones a terceros (terciarizados/proveedores/socios) con vinculación a factura emitida e impacto en caja. Habilitable por tenant vía feature flags gestionadas por super_admin.
 
-- **Cantidad de facturas** emitidas en el rango
-- **Neto gravado** (suma de `neto` / subtotal)
-- **IVA** (suma de `iva`)
-- **Total facturado** (suma de `total`)
+## 1) Base de datos
 
-Desglose adicional debajo (chips o mini-tabla): totales por tipo de comprobante (A / B / C / Nota de Crédito). Las Notas de Crédito restan al total facturado.
+### 1.1 Feature flags por tenant (nueva tabla)
+`tenant_features`
+- `tenant_id` (FK tenants, unique junto con `feature_key`)
+- `feature_key` TEXT (p.ej. `finanzas`)
+- `enabled` BOOLEAN
+- `enabled_by` UUID, `enabled_at` timestamptz
+- RLS:
+  - super_admin: full access
+  - authenticated: SELECT solo su tenant
+- GRANT SELECT a authenticated, ALL a service_role
+- Helper SQL: `public.tenant_has_feature(_tenant uuid, _key text) returns boolean` (security definer)
 
-## 2) Nueva pestaña "Resumen" en Facturación
-Nueva tab al lado de Emitidas / Recibidas / Configuración. Comparte los mismos filtros de fecha (`Desde` / `Hasta`, default = mes actual).
+### 1.2 Liquidaciones manuales (nueva tabla)
+`liquidaciones_manuales`
+- `numero` TEXT (visible: número de caja / liquidación que ingresa el usuario)
+- `tipo` TEXT check ('terciarizado','proveedor','partner','otro')
+- `empresa_id` UUID nullable (FK empresas_terciarizadas cuando aplica)
+- `descripcion` TEXT
+- `periodo_desde` DATE, `periodo_hasta` DATE
+- `monto` NUMERIC (positivo = a pagar, negativo = a cobrar)
+- `moneda` TEXT default 'ARS'
+- `estado` TEXT check ('pendiente','pagada','cobrada','anulada') default 'pendiente'
+- `factura_id` UUID nullable (FK `facturas` — factura de venta emitida)
+- `fecha_movimiento` timestamptz (cuándo se pagó/cobró)
+- `metodo_pago` payment_method nullable
+- `referencia_pago` TEXT
+- `sesion_caja_id` UUID nullable (FK sesiones_caja — movimiento generado)
+- `movimiento_caja_id` UUID nullable (FK movimientos_caja)
+- `notas` TEXT
+- `tenant_id`, `created_by`, `created_at`, `updated_at`
+- RLS:
+  - SELECT: usuarios del tenant
+  - INSERT/UPDATE/DELETE: admin del tenant + super_admin
+  - Guard adicional: sólo si `tenant_has_feature(tenant_id, 'finanzas')`
+- Trigger `set_tenant_id`, trigger `update_updated_at`
 
-Contenido:
+### 1.3 Función RPC `registrar_movimiento_liquidacion_manual(p_id, p_metodo, p_referencia, p_fecha)`
+- Valida permisos (admin) y feature habilitada
+- Determina signo: `monto > 0` → egreso; `monto < 0` → ingreso (usa ABS)
+- Busca `sesiones_caja` abierta de la sucursal del usuario
+- Inserta `movimientos_caja` (tipo ingreso/egreso, concepto = "Liq. manual #<numero> — <empresa/desc>")
+- Actualiza `liquidaciones_manuales`: estado (`pagada` o `cobrada`), `sesion_caja_id`, `movimiento_caja_id`, `fecha_movimiento`, `metodo_pago`, `referencia_pago`
+- Devuelve jsonb con resultado
 
-### a) Tarjetas comparativas
-- **Ingresos facturados** — suma de `facturas` emitidas (total) en el rango, menos notas de crédito.
-- **Ingresos cobrados** — suma de `pagos` en el rango con `estado IN ('cobrado_chofer','rendido','pagado')` (COD + otros).
-- **Gastos** — suma de `gastos` en el rango.
-- **Facturas de compra** — suma de `facturas_compra` (IVA crédito fiscal + total) en el rango.
-- **Resultado** = Ingresos facturados − Gastos − Facturas de compra. Color verde/rojo según signo.
+## 2) Backend / integraciones existentes
+No requiere Edge Functions nuevas. Reutiliza tablas `facturas`, `sesiones_caja`, `movimientos_caja`, `empresas_terciarizadas`.
 
-### b) IVA (posición fiscal del período)
-- **IVA débito fiscal** (de `facturas` emitidas)
-- **IVA crédito fiscal** (de `facturas_compra`)
-- **Saldo IVA** = débito − crédito
+## 3) Frontend
 
-### c) Gráfico comparativo
-Bar chart (recharts, ya usado en el proyecto) con series **Ingresos** vs **Gastos** agrupadas por mes dentro del rango. Si el rango es de un solo mes, agrupa por semana.
+### 3.1 Habilitación (super_admin)
+- Nueva sección en `Tenants.tsx` (detalle del tenant) o en `SystemSettings.tsx`: "Módulos opcionales" con toggle `finanzas`
+- Hook `useTenantFeature('finanzas')` que consulta `tenant_features` y cachea
 
-### d) Top categorías de gasto
-Lista/tabla con las 5 categorías de `gastos` con mayor monto en el rango.
+### 3.2 Ruta y navegación
+- Ruta `/finanzas` protegida por `useTenantFeature('finanzas')` + rol admin
+- Ítem de menú "Finanzas" (icono Wallet) visible sólo si feature habilitada
+- Página `src/pages/Finanzas.tsx` con tabs:
+  1. **Liquidaciones manuales** (foco de este pedido)
+  2. **Resumen** (reutiliza `FacturacionResumen` filtrado)
+  3. Placeholder para futuras subsecciones
 
-## 3) Fuentes de datos
-Todo cliente-side sobre queries ya existentes o nuevas, filtradas por `tenant_id` y rango:
-- `facturas` + `factura_detalles` (ya cargadas en Facturación)
-- `facturas_compra` (ya cargadas)
-- `gastos` (nueva query en la pestaña Resumen)
-- `pagos` (nueva query, filtrada por `created_at` en rango)
+### 3.3 Tab "Liquidaciones manuales"
+- Filtros: rango de fechas (desde/hasta sobre `periodo_desde`/`periodo_hasta`), tipo, empresa, estado, búsqueda por número
+- KPIs: total a pagar (suma positivos pendientes), total a cobrar (suma abs negativos pendientes), neto del período
+- Tabla: Nº, tipo, empresa/descr, período, monto (con badge "A pagar" verde / "A cobrar" azul según signo), estado, factura vinculada, acciones
+- Acciones fila: Ver detalle · Registrar pago/cobro · Editar · Anular
 
-Sin cambios en base de datos ni Edge Functions.
+### 3.4 Dialogs
+- `LiquidacionManualFormDialog`:
+  - Campos: número, tipo, empresa (autocomplete de `empresas_terciarizadas` si tipo=terciarizado), descripción, período desde/hasta, monto (con indicador visual del signo → "A pagar/A cobrar"), factura emitida (autocomplete sobre `facturas` estado `emitida` del tenant), notas
+  - Validación zod
+- `RegistrarMovimientoDialog`:
+  - Muestra monto y signo, pide método de pago, referencia y fecha
+  - Llama a la RPC; si no hay caja abierta, muestra error indicando abrir sesión de caja
+- `LiquidacionManualDetailDialog`:
+  - Resumen, link a factura asociada (abre `PrintInvoice`), link al movimiento de caja generado
 
-## 4) UX
-- Filtros `Desde` / `Hasta` compartidos entre Emitidas y Resumen mediante `useState` en `Facturacion.tsx` (o un pequeño contexto local).
-- Botón **Limpiar** resetea a mes actual.
-- Formato de moneda ARS consistente con el resto del módulo.
-- Los KPIs usan los componentes `Card` existentes; el gráfico usa `ChartContainer` con tokens semánticos (`hsl(var(--chart-1))`, etc.), sin colores hardcodeados.
+### 3.5 Reutilización en Facturación
+- En `Facturacion.tsx` tab "Emitidas", al seleccionar una factura, mostrar si está vinculada a una liquidación manual
 
-## Alcance
-Solo frontend + queries de lectura. No toca lógica fiscal, ARCA, ni tablas.
+## 4) Consideraciones
+- Todo en pesos por defecto; dejar `moneda` para futuro sin UI aún
+- Anular: sólo permitido si aún no se generó movimiento de caja; si ya se generó, requiere revertir manualmente (mensaje claro)
+- No modificar el módulo `ThirdPartySettlements` existente (queda para liquidaciones automáticas por envíos)
+- Textos en español AR
+
+## Detalles técnicos
+
+**Archivos nuevos:**
+- Migración: `tenant_features`, `liquidaciones_manuales`, `tenant_has_feature`, `registrar_movimiento_liquidacion_manual`, RLS, GRANTs, triggers
+- `src/hooks/useTenantFeature.ts`
+- `src/pages/Finanzas.tsx`
+- `src/components/finanzas/LiquidacionesManualesTab.tsx`
+- `src/components/finanzas/LiquidacionManualFormDialog.tsx`
+- `src/components/finanzas/RegistrarMovimientoDialog.tsx`
+- `src/components/finanzas/LiquidacionManualDetailDialog.tsx`
+- `src/components/tenants/TenantFeaturesManager.tsx` (toggle super_admin)
+
+**Archivos modificados:**
+- `src/App.tsx` → ruta `/finanzas`
+- `src/components/layout/` (sidebar) → ítem condicional
+- `src/pages/Tenants.tsx` (o `SystemSettings.tsx`) → integrar `TenantFeaturesManager`
+- `src/integrations/supabase/types.ts` (regenerado tras migración)
+
+**Flujo signo de monto:**
+```text
+monto > 0  → "A PAGAR"  → estado pagada  → egreso en caja
+monto < 0  → "A COBRAR" → estado cobrada → ingreso en caja (ABS)
+monto = 0  → no permitido
+```
