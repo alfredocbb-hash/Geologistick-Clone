@@ -101,7 +101,37 @@ export async function getValidMLAccessToken(
   });
 
   if (!tokenResponse.ok) {
-    console.error('[ML Tokens] Refresh failed:', await tokenResponse.text());
+    const errBody = await tokenResponse.text();
+    console.error('[ML Tokens] Refresh failed:', tokenResponse.status, errBody);
+
+    // Concurrent-refresh race handling — ML refresh tokens are single-use.
+    await new Promise((r) => setTimeout(r, 500));
+    const fresh = await getSellerTokens(supabase, seller.id);
+    const freshExp = fresh.token_expires_at ? new Date(fresh.token_expires_at) : null;
+    if (fresh.access_token && freshExp && freshExp.getTime() - Date.now() > 5 * 60 * 1000) {
+      console.log('[ML Tokens] Recovered fresh token from concurrent refresh');
+      return fresh.access_token;
+    }
+
+    if (fresh.refresh_token && fresh.refresh_token !== tokens.refresh_token) {
+      console.log('[ML Tokens] Retrying refresh with updated refresh_token');
+      const retry = await fetch('https://api.mercadolibre.com/oauth/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          client_id: config.client_id,
+          client_secret: config.client_secret,
+          refresh_token: fresh.refresh_token,
+        }),
+      });
+      if (retry.ok) {
+        const td = await retry.json();
+        await saveSellerTokens(supabase, seller.id, seller.tenant_id, td);
+        return td.access_token as string;
+      }
+      console.error('[ML Tokens] Retry refresh also failed:', retry.status, await retry.text());
+    }
     return null;
   }
 
