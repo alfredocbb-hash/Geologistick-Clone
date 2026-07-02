@@ -380,6 +380,12 @@ export function AppSidebar() {
     // Planificador module flag applies to everyone (incl. super admin sees it because flag defaults true)
     if (item.requiresPlanificador && tenant?.planificador_enabled === false && !isSuperAdmin()) return false;
 
+    // Feature flag (opt-in module)
+    if (item.requiresFeature && !isSuperAdmin() && !enabledFeatures.includes(item.requiresFeature)) return false;
+
+    // Admin-only item
+    if (item.requiresAdmin && !isSuperAdmin() && !isAdmin()) return false;
+
     if (isSuperAdmin()) return true;
 
     // Check permission first
