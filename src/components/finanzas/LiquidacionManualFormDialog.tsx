@@ -80,7 +80,7 @@ export function LiquidacionManualFormDialog({ open, onOpenChange, liquidacion, o
       const { data } = await (supabase as any)
         .from("empresas_terciarizadas")
         .select("id,nombre")
-        .eq("activo", true)
+        .eq("activa", true)
         .order("nombre");
       return data || [];
     },
