@@ -1877,15 +1877,35 @@ export default function Settlements() {
             </CardHeader>
             <CardContent>
               {/* Filters */}
-              <div className="flex flex-col md:flex-row gap-3 mb-4">
-                <div className="flex-1">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-4 items-end">
+                <div>
+                  <Label className="text-xs">Filtrar por</Label>
+                  <Select value={histTipoFecha} onValueChange={(v: 'fecha_pago' | 'periodo') => setHistTipoFecha(v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="fecha_pago">Fecha de pago</SelectItem>
+                      <SelectItem value="periodo">Período de liquidación</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Desde</Label>
+                  <Input type="date" value={histDesde} onChange={(e) => setHistDesde(e.target.value)} />
+                </div>
+                <div>
+                  <Label className="text-xs">Hasta</Label>
+                  <Input type="date" value={histHasta} onChange={(e) => setHistHasta(e.target.value)} />
+                </div>
+                <div>
+                  <Label className="text-xs">Buscar seller</Label>
                   <Input
-                    placeholder="Buscar por seller..."
+                    placeholder="Nombre..."
                     value={filterSellerSearch}
                     onChange={(e) => setFilterSellerSearch(e.target.value)}
                   />
                 </div>
-                <div className="w-full md:w-56">
+                <div>
+                  <Label className="text-xs">Estado</Label>
                   <Select value={filterEstado} onValueChange={setFilterEstado}>
                     <SelectTrigger>
                       <SelectValue placeholder="Estado" />
@@ -1900,6 +1920,21 @@ export default function Settlements() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+              <div className="flex justify-end mb-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setHistDesde(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+                    setHistHasta(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+                    setFilterEstado('all');
+                    setFilterSellerSearch('');
+                    setHistTipoFecha('fecha_pago');
+                  }}
+                >
+                  Limpiar filtros
+                </Button>
               </div>
 
               {/* Totalizadores */}
