@@ -860,6 +860,7 @@ export default function Cash() {
               </div>
             )}
           </Card>
+        </div>
       ) : (
         <Card className="glass">
           <CardContent className="p-12 text-center">
