@@ -151,6 +151,9 @@ export default function Settlements() {
   // Historial filters
   const [filterEstado, setFilterEstado] = useState<string>('all');
   const [filterSellerSearch, setFilterSellerSearch] = useState('');
+  const [histDesde, setHistDesde] = useState<string>(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [histHasta, setHistHasta] = useState<string>(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [histTipoFecha, setHistTipoFecha] = useState<'fecha_pago' | 'periodo'>('fecha_pago');
 
   // Fetch sellers with account
   const { data: sellers, isLoading: loadingSellers } = useQuery({
