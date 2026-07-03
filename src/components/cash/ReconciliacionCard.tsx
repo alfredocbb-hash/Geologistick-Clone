@@ -47,7 +47,7 @@ export function ReconciliacionCard({ session, cajaPorMetodo, formatCurrency }: P
           count: number;
           por_metodo: Record<string, number>;
         };
-        mp_balance: { available: number; currency: string; nickname: string | null } | null;
+        mp_balance: { available: number | null; total?: number | null; unavailable?: number | null; currency: string; nickname: string | null; collector_id?: number | string | null; environment?: string } | null;
         mp_cobros_dia: { total: number; count: number } | null;
         mp_error: string | null;
       };
@@ -197,7 +197,7 @@ export function ReconciliacionCard({ session, cajaPorMetodo, formatCurrency }: P
                   <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
                     <Wallet className="h-4 w-4" /> Mercado Pago (API)
                   </h3>
-                  {data.mp_error ? (
+                  {data.mp_error && !data.mp_balance ? (
                     <div className="p-3 rounded-xl bg-warning/10 border border-warning/30 text-sm">
                       <p className="text-warning font-medium">{data.mp_error}</p>
                       <p className="text-xs text-muted-foreground mt-1">
@@ -205,44 +205,61 @@ export function ReconciliacionCard({ session, cajaPorMetodo, formatCurrency }: P
                       </p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div className="p-3 rounded-xl bg-primary/10 border border-primary/20">
-                        <p className="text-xs text-muted-foreground">Saldo disponible MP</p>
-                        <p className="text-lg font-bold text-primary">
-                          {data.mp_balance?.available != null
-                            ? formatCurrency(data.mp_balance.available)
-                            : '—'}
-                        </p>
-                        {data.mp_balance?.nickname && (
-                          <p className="text-[11px] text-muted-foreground mt-1">
-                            Cuenta: {data.mp_balance.nickname}
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="p-3 rounded-xl bg-primary/10 border border-primary/20">
+                          <p className="text-xs text-muted-foreground">Saldo disponible MP</p>
+                          <p className="text-lg font-bold text-primary">
+                            {data.mp_balance?.available != null
+                              ? formatCurrency(data.mp_balance.available)
+                              : '—'}
                           </p>
-                        )}
-                      </div>
-                      <div className="p-3 rounded-xl bg-muted/40 border border-border/50">
-                        <p className="text-xs text-muted-foreground">Cobros MP aprobados (rango)</p>
-                        <p className="text-lg font-bold text-success">
-                          +{formatCurrency(data.mp_cobros_dia?.total || 0)}
-                        </p>
-                        <p className="text-[11px] text-muted-foreground mt-1">
-                          {data.mp_cobros_dia?.count || 0} pagos
-                        </p>
-                      </div>
-                      <div className="p-3 rounded-xl bg-muted/40 border border-border/50">
-                        <p className="text-xs text-muted-foreground">Diferencia con Caja</p>
-                        {(() => {
-                          const api = data.mp_cobros_dia?.total || 0;
-                          const caja = cajaPorMetodo['mercado_pago']?.ingresos || 0;
-                          const d = api - caja;
-                          const hay = diff(api, caja);
-                          return (
-                            <p className={`text-lg font-bold ${hay ? 'text-destructive' : 'text-success'}`}>
-                              {formatCurrency(d)}
+                          {data.mp_balance?.total != null &&
+                           data.mp_balance.total !== data.mp_balance.available && (
+                            <p className="text-[11px] text-muted-foreground mt-1">
+                              Total: {formatCurrency(data.mp_balance.total)}
+                              {data.mp_balance.unavailable != null &&
+                                ` · Retenido: ${formatCurrency(data.mp_balance.unavailable)}`}
                             </p>
-                          );
-                        })()}
+                          )}
+                          {(data.mp_balance?.nickname || data.mp_balance?.collector_id) && (
+                            <p className="text-[11px] text-muted-foreground mt-1">
+                              Cuenta: {data.mp_balance?.nickname ?? '—'}
+                              {data.mp_balance?.collector_id && ` · ID ${data.mp_balance.collector_id}`}
+                              {data.mp_balance?.environment && ` · ${data.mp_balance.environment}`}
+                            </p>
+                          )}
+                        </div>
+                        <div className="p-3 rounded-xl bg-muted/40 border border-border/50">
+                          <p className="text-xs text-muted-foreground">Cobros MP aprobados (rango)</p>
+                          <p className="text-lg font-bold text-success">
+                            +{formatCurrency(data.mp_cobros_dia?.total || 0)}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground mt-1">
+                            {data.mp_cobros_dia?.count || 0} pagos
+                          </p>
+                        </div>
+                        <div className="p-3 rounded-xl bg-muted/40 border border-border/50">
+                          <p className="text-xs text-muted-foreground">Diferencia con Caja</p>
+                          {(() => {
+                            const api = data.mp_cobros_dia?.total || 0;
+                            const caja = cajaPorMetodo['mercado_pago']?.ingresos || 0;
+                            const d = api - caja;
+                            const hay = diff(api, caja);
+                            return (
+                              <p className={`text-lg font-bold ${hay ? 'text-destructive' : 'text-success'}`}>
+                                {formatCurrency(d)}
+                              </p>
+                            );
+                          })()}
+                        </div>
                       </div>
-                    </div>
+                      {data.mp_error && (
+                        <p className="text-[11px] text-warning mt-2 italic">
+                          Aviso: {data.mp_error}
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
               </>
