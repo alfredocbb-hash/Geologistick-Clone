@@ -264,6 +264,13 @@ export default function DriverSettlements() {
   const [liquidacionToCancel, setLiquidacionToCancel] = useState<Liquidacion | null>(null);
   const [showAssignRetro, setShowAssignRetro] = useState(false);
 
+  // Historial filters
+  const [histDesde, setHistDesde] = useState<string>(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [histHasta, setHistHasta] = useState<string>(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [histTipoFecha, setHistTipoFecha] = useState<'periodo' | 'pago'>('periodo');
+  const [histEstado, setHistEstado] = useState<string>('all');
+  const [histChoferSearch, setHistChoferSearch] = useState<string>('');
+
   // Fetch choferes with commission config
   const { data: choferes = [] } = useQuery({
     queryKey: ['choferes-for-settlements'],
