@@ -373,6 +373,7 @@ export default function SuperAdminSubscriptionManager() {
     switch (m) {
       case "efectivo": return "Efectivo";
       case "transferencia": return "Transferencia";
+      case "mercado_pago":
       case "mercadopago": return "Mercado Pago";
       default: return m;
     }

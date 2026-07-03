@@ -172,7 +172,7 @@ export function RequestWithdrawalDialog({ open, onOpenChange }: RequestWithdrawa
               onChange={(e) => setDatosBancarios(e.target.value)}
               placeholder={
                 metodoPago === 'transferencia' ? 'Ingresa tu CBU o alias bancario' :
-                metodoPago === 'mercadopago' ? 'Ingresa tu email o CVU de Mercado Pago' :
+                metodoPago === 'mercado_pago' ? 'Ingresa tu email o CVU de Mercado Pago' :
                 'Indica cómo prefieres recibir el efectivo'
               }
               rows={2}
