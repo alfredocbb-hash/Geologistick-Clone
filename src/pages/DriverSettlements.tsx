@@ -44,7 +44,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { downloadDriverSettlementPDF } from '@/lib/generateSettlementPDF';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Database } from '@/integrations/supabase/types';
 import { SettlementDetailDialog } from '@/components/settlements/SettlementDetailDialog';
