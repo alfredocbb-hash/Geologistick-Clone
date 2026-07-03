@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, Wallet } from 'lucide-react';
 import { LiquidacionesManualesTab } from '@/components/finanzas/LiquidacionesManualesTab';
 import { LiquidacionesEcommerceTab } from '@/components/finanzas/LiquidacionesEcommerceTab';
+import { LiquidacionesChoferesTab } from '@/components/finanzas/LiquidacionesChoferesTab';
 
 export default function Finanzas() {
   const { enabled, isLoading } = useTenantFeature('finanzas');
@@ -37,12 +38,16 @@ export default function Finanzas() {
         <TabsList>
           <TabsTrigger value="liquidaciones">Liquidaciones manuales</TabsTrigger>
           <TabsTrigger value="ecommerce">Liquidaciones eCommerce</TabsTrigger>
+          <TabsTrigger value="choferes">Liquidaciones Choferes</TabsTrigger>
         </TabsList>
         <TabsContent value="liquidaciones" className="mt-4">
           <LiquidacionesManualesTab />
         </TabsContent>
         <TabsContent value="ecommerce" className="mt-4">
           <LiquidacionesEcommerceTab />
+        </TabsContent>
+        <TabsContent value="choferes" className="mt-4">
+          <LiquidacionesChoferesTab />
         </TabsContent>
       </Tabs>
     </div>

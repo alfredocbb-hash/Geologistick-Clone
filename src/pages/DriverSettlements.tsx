@@ -44,7 +44,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { downloadDriverSettlementPDF } from '@/lib/generateSettlementPDF';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Database } from '@/integrations/supabase/types';
 import { SettlementDetailDialog } from '@/components/settlements/SettlementDetailDialog';
@@ -264,6 +264,13 @@ export default function DriverSettlements() {
   const [liquidacionToCancel, setLiquidacionToCancel] = useState<Liquidacion | null>(null);
   const [showAssignRetro, setShowAssignRetro] = useState(false);
 
+  // Historial filters
+  const [histDesde, setHistDesde] = useState<string>(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [histHasta, setHistHasta] = useState<string>(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [histTipoFecha, setHistTipoFecha] = useState<'periodo' | 'pago'>('periodo');
+  const [histEstado, setHistEstado] = useState<string>('all');
+  const [histChoferSearch, setHistChoferSearch] = useState<string>('');
+
   // Fetch choferes with commission config
   const { data: choferes = [] } = useQuery({
     queryKey: ['choferes-for-settlements'],
@@ -290,29 +297,61 @@ export default function DriverSettlements() {
     },
   });
 
-  // Fetch existing liquidaciones
+  // Fetch existing liquidaciones (con filtros de fecha)
   const { data: liquidaciones = [], isLoading: loadingLiquidaciones } = useQuery({
-    queryKey: ['liquidaciones-choferes'],
+    queryKey: ['liquidaciones-choferes', histDesde, histHasta, histTipoFecha],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('liquidaciones')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(500);
+
+      if (histTipoFecha === 'pago') {
+        query = query
+          .gte('fecha_pago', toLocalISOStart(histDesde))
+          .lte('fecha_pago', toLocalISOEnd(histHasta));
+      } else {
+        query = query
+          .gte('periodo_inicio', histDesde)
+          .lte('periodo_fin', histHasta);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
-      
+
       const choferIds = [...new Set(data?.map(l => l.chofer_id) || [])];
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('user_id, nombre, apellido')
-        .in('user_id', choferIds);
-      
+      const { data: profiles } = choferIds.length
+        ? await supabase
+            .from('profiles')
+            .select('user_id, nombre, apellido')
+            .in('user_id', choferIds)
+        : { data: [] as any[] };
+
       return (data || []).map(l => ({
         ...l,
         chofer: profiles?.find(p => p.user_id === l.chofer_id),
       })) as Liquidacion[];
     },
   });
+
+  // Filtrado en cliente (estado + búsqueda chofer)
+  const filteredLiquidaciones = liquidaciones.filter(l => {
+    if (histEstado !== 'all' && (l.estado || 'generada') !== histEstado) return false;
+    if (histChoferSearch.trim()) {
+      const q = histChoferSearch.trim().toLowerCase();
+      const nom = `${l.chofer?.nombre || ''} ${l.chofer?.apellido || ''}`.toLowerCase();
+      if (!nom.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const histTotals = {
+    count: filteredLiquidaciones.length,
+    totalPagado: filteredLiquidaciones.filter(l => l.estado === 'pagada').reduce((s, l) => s + (Number(l.monto_total) || 0), 0),
+    totalGenerado: filteredLiquidaciones.reduce((s, l) => s + (Number(l.monto_total) || 0), 0),
+    envios: filteredLiquidaciones.reduce((s, l) => s + (Number(l.cantidad_envios) || 0), 0),
+  };
 
   // Calculate: fetch envíos completados por el chofer en el rango de fechas
   const calculateMutation = useMutation({
@@ -1120,12 +1159,81 @@ export default function DriverSettlements() {
             Historial de Liquidaciones
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {/* Filtros */}
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+            <div>
+              <Label className="text-xs">Tipo de fecha</Label>
+              <Select value={histTipoFecha} onValueChange={(v) => setHistTipoFecha(v as 'periodo' | 'pago')}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="periodo">Período de liquidación</SelectItem>
+                  <SelectItem value="pago">Fecha de pago</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Desde</Label>
+              <Input type="date" value={histDesde} onChange={(e) => setHistDesde(e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Hasta</Label>
+              <Input type="date" value={histHasta} onChange={(e) => setHistHasta(e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Estado</Label>
+              <Select value={histEstado} onValueChange={setHistEstado}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="generada">Generada</SelectItem>
+                  <SelectItem value="pagada">Pagada</SelectItem>
+                  <SelectItem value="cancelada">Cancelada</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Buscar chofer</Label>
+              <Input value={histChoferSearch} onChange={(e) => setHistChoferSearch(e.target.value)} placeholder="Nombre..." />
+            </div>
+            <div>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setHistDesde(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+                  setHistHasta(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+                }}
+              >
+                Mes actual
+              </Button>
+            </div>
+          </div>
+
+          {/* KPIs */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Card><CardContent className="pt-4">
+              <p className="text-xs text-muted-foreground">Liquidaciones</p>
+              <p className="text-2xl font-bold">{histTotals.count}</p>
+            </CardContent></Card>
+            <Card><CardContent className="pt-4">
+              <p className="text-xs text-muted-foreground">Total pagado</p>
+              <p className="text-2xl font-bold text-success">${histTotals.totalPagado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            </CardContent></Card>
+            <Card><CardContent className="pt-4">
+              <p className="text-xs text-muted-foreground">Total generado</p>
+              <p className="text-2xl font-bold">${histTotals.totalGenerado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            </CardContent></Card>
+            <Card><CardContent className="pt-4">
+              <p className="text-xs text-muted-foreground">Envíos</p>
+              <p className="text-2xl font-bold">{histTotals.envios}</p>
+            </CardContent></Card>
+          </div>
+
           {loadingLiquidaciones ? (
             <div className="text-center py-8 text-muted-foreground">Cargando...</div>
-          ) : liquidaciones.length === 0 ? (
+          ) : filteredLiquidaciones.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              No hay liquidaciones registradas
+              No hay liquidaciones en el rango seleccionado
             </div>
           ) : (
             <Table>
@@ -1133,6 +1241,7 @@ export default function DriverSettlements() {
                 <TableRow>
                   <TableHead>Chofer</TableHead>
                   <TableHead>Período</TableHead>
+                  <TableHead>Fecha pago</TableHead>
                   <TableHead>Envíos</TableHead>
                   <TableHead>Monto</TableHead>
                   <TableHead>Estado</TableHead>
@@ -1140,7 +1249,7 @@ export default function DriverSettlements() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {liquidaciones.map((liq) => (
+                {filteredLiquidaciones.map((liq) => (
                   <TableRow key={liq.id}>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
@@ -1154,6 +1263,9 @@ export default function DriverSettlements() {
                         {format(parseDateString(liq.periodo_inicio), 'dd/MM/yy', { locale: es })} -
                         {format(parseDateString(liq.periodo_fin), 'dd/MM/yy', { locale: es })}
                       </div>
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {liq.fecha_pago ? format(new Date(liq.fecha_pago), 'dd/MM/yy HH:mm', { locale: es }) : '—'}
                     </TableCell>
                     <TableCell>{liq.cantidad_envios}</TableCell>
                     <TableCell className="font-bold text-success">
