@@ -1264,6 +1264,9 @@ export default function DriverSettlements() {
                         {format(parseDateString(liq.periodo_fin), 'dd/MM/yy', { locale: es })}
                       </div>
                     </TableCell>
+                    <TableCell className="text-xs">
+                      {liq.fecha_pago ? format(new Date(liq.fecha_pago), 'dd/MM/yy HH:mm', { locale: es }) : '—'}
+                    </TableCell>
                     <TableCell>{liq.cantidad_envios}</TableCell>
                     <TableCell className="font-bold text-success">
                       ${liq.monto_total.toFixed(2)}
