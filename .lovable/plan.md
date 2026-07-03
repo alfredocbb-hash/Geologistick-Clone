@@ -1,30 +1,38 @@
+## Objetivo
 
-## Problema
-
-Los webhooks de Mercado Libre están fallando en dos frentes visibles en los logs:
-
-1. **Race condition en el refresh de tokens** — ML envía múltiples webhooks casi simultáneos para el mismo seller. Todos los workers ven el token expirado y disparan `refresh_token` en paralelo. Como ML invalida el `refresh_token` apenas se usa una vez, sólo el primero triunfa; el resto recibe `invalid_grant` y termina con "Token refresh failed" → "Could not get valid access token" → el webhook responde 401 y **no se actualizan los estados**.
-2. **Sellers inactivos** — `KINGDOM VINTAGE` (user_id 222370892) y `RUEDAS NG` (user_id 70517482) tienen `activo=false`, por eso salen "Seller not found". Si el usuario quiere que sincronicen, hay que reactivarlos.
+1. En **Ecommerce → Liquidaciones → Historial**: filtrar por rango de fechas y ver el total pagado del período.
+2. En **Finanzas**: mostrar un resumen de "Liquidaciones de eCommerce" con el total pagado del mes según el filtro de fechas.
 
 ## Cambios
 
-### 1. `supabase/functions/mercadolibre-webhook/index.ts`
-Al fallar el `POST /oauth/token`:
-- Loguear `status` + body real de ML (hoy sólo dice "failed" a ciegas).
-- Esperar ~500ms, releer `ecommerce_seller_tokens` para ese seller.
-- Si otro worker ya guardó un token vigente → devolverlo.
-- Si el `refresh_token` en la tabla cambió respecto al que usamos → reintentar el refresh con el nuevo.
-- Sólo devolver `null` si ambas rutas fallan.
+### 1. `src/pages/ecommerce/Settlements.tsx` — Historial de Liquidaciones
 
-### 2. `supabase/functions/_shared/ml-tokens.ts`
-Aplicar el mismo patrón (log + re-read + retry) en `getValidMLAccessToken` para que también se beneficien `mercadolibre-sync` y el resto de funciones que ya usan el helper compartido.
+- Agregar estado `histDesde` / `histHasta` (default: primer y último día del mes actual).
+- Agregar selector `histTipoFecha` con dos opciones:
+  - **Fecha de pago** (default) → filtra por `fecha_pago` (solo aparecen las pagadas en el rango).
+  - **Período de liquidación** → filtra por `periodo_inicio`/`periodo_fin` solapando el rango.
+- Actualizar la query `seller-liquidaciones` para incluir estas fechas en la `queryKey` y aplicar el filtro en Supabase (subir el `limit` a 500 dentro del rango en vez del top 50 histórico).
+- Agregar los inputs de fecha + selector arriba de los filtros existentes de estado/seller.
+- El KPI "Total Pagado" ya existe → queda restringido al rango automáticamente.
+- Agregar botón "Limpiar" que resetea al mes actual.
 
-### 3. Datos
-Confirmar con el usuario si reactivamos (`activo=true`) los sellers **KINGDOM VINTAGE** y **RUEDAS NG**, o si se desconectan definitivamente de ML (en cuyo caso conviene desregistrar el webhook del lado de ML para no seguir recibiendo notificaciones inútiles).
+### 2. `src/components/finanzas/LiquidacionesManualesTab.tsx` (o nueva tarjeta en `Finanzas.tsx`)
 
-## Fuera de alcance
-- No se toca la lógica de mapeo de estados ni el flujo de `mercadolibre-sync` más allá del helper compartido.
-- No se cambia el esquema de `ecommerce_seller_tokens`.
+Agregar una nueva tarjeta/sección **"Liquidaciones de eCommerce"** dentro de la página Finanzas, usando el mismo rango `desde`/`hasta` que ya tiene el módulo:
 
-## Verificación
-- Después de deploy: mirar `edge_function_logs` de `mercadolibre-webhook` por 5 minutos y confirmar que los "Token refresh failed" concurrentes se reemplazan por "Recovered fresh token from concurrent refresh" o refresh exitoso, y que llegan updates de estado a `envios`.
+- Query a `liquidaciones_seller` filtrando por `fecha_pago` entre `desde` y `hasta` y `estado = 'pagada'`.
+- Mostrar KPIs:
+  - Cantidad de liquidaciones pagadas
+  - Total pagado (suma `total_pagos`)
+  - Total cargos del período
+- Tabla compacta (últimas 10) con seller, período, fecha de pago, monto y link "Ver" que abre `/ecommerce/settlements` (o el detalle existente).
+
+### 3. Ubicación en Finanzas
+
+Agregar un nuevo `TabsTrigger` **"Liquidaciones eCommerce"** en `src/pages/Finanzas.tsx` junto al de "Liquidaciones manuales", renderizando el nuevo componente `LiquidacionesEcommerceTab.tsx`.
+
+## Detalles técnicos
+
+- La columna `fecha_pago` es `timestamp` nullable → usar `.gte()` / `.lte()` con `toLocalISOStart` / `toLocalISOEnd` de `src/lib/dateUtils.ts`.
+- Los filtros de estado/seller existentes en Historial se mantienen y se aplican encima del filtro por fechas.
+- El componente nuevo `LiquidacionesEcommerceTab` es read-only (no edita/paga desde Finanzas — solo visualiza y linkea).
