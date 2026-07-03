@@ -132,26 +132,61 @@ serve(async (req) => {
       mpError = "Mercado Pago no está configurado";
     } else {
       const accessToken = tokenConfig.config_value;
+      const environment = tokenConfig.environment;
+      console.log(`[cash-reconciliation] MP environment: ${environment}`);
       try {
+        // /users/me — identify collector
         const meRes = await fetch("https://api.mercadopago.com/users/me", {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
         const me = meRes.ok ? await meRes.json() : null;
+        console.log(`[cash-reconciliation] /users/me status=${meRes.status} nickname=${me?.nickname ?? "?"} id=${me?.id ?? "?"}`);
 
-        const balRes = await fetch("https://api.mercadopago.com/v1/account/balance", {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (balRes.ok) {
-          const bal = await balRes.json();
+        // Try owner endpoint first, then fallback
+        let balancePayload: any = null;
+        let balanceEndpoint = "";
+        let balanceStatus = 0;
+
+        if (me?.id) {
+          balanceEndpoint = `/users/${me.id}/mercadopago_account/balance`;
+          const r = await fetch(`https://api.mercadopago.com${balanceEndpoint}`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          balanceStatus = r.status;
+          console.log(`[cash-reconciliation] ${balanceEndpoint} status=${r.status}`);
+          if (r.ok) balancePayload = await r.json();
+        }
+
+        if (!balancePayload) {
+          balanceEndpoint = "/v1/account/balance";
+          const r = await fetch(`https://api.mercadopago.com${balanceEndpoint}`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          balanceStatus = r.status;
+          console.log(`[cash-reconciliation] ${balanceEndpoint} status=${r.status}`);
+          if (r.ok) balancePayload = await r.json();
+        }
+
+        if (balancePayload) {
+          const available =
+            balancePayload.available_balance ??
+            balancePayload.total_amount ??
+            balancePayload.amount ??
+            null;
+          const total = balancePayload.total_amount ?? balancePayload.amount ?? null;
+          const unavailable = balancePayload.unavailable_balance ?? null;
           mpBalance = {
-            available: bal.available_balance ?? bal.total_amount ?? null,
-            currency: bal.currency_id ?? "ARS",
+            available,
+            total,
+            unavailable,
+            currency: balancePayload.currency_id ?? "ARS",
             nickname: me?.nickname ?? null,
             collector_id: me?.id ?? null,
-            raw: bal,
+            environment,
+            raw: balancePayload,
           };
         } else {
-          mpError = `MP balance HTTP ${balRes.status}`;
+          mpError = `No se pudo obtener el saldo MP (endpoint ${balanceEndpoint} HTTP ${balanceStatus}). Verificá que el access_token sea de la cuenta titular.`;
         }
 
         // Cobros aprobados del día (paginado)
@@ -162,7 +197,10 @@ serve(async (req) => {
         for (let offset = 0; offset < 1000; offset += 200) {
           const url = `https://api.mercadopago.com/v1/payments/search?sort=date_created&criteria=desc&status=approved&range=date_created&begin_date=${beginDate}&end_date=${endDate}&limit=200&offset=${offset}`;
           const r = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-          if (!r.ok) break;
+          if (!r.ok) {
+            console.log(`[cash-reconciliation] /v1/payments/search status=${r.status}`);
+            break;
+          }
           const j = await r.json();
           const results = j.results || [];
           for (const p of results) total += Number(p.transaction_amount || 0);
@@ -172,6 +210,7 @@ serve(async (req) => {
         mpCobrosDia = { total, count };
       } catch (e) {
         mpError = e instanceof Error ? e.message : "Error MP";
+        console.error(`[cash-reconciliation] MP error:`, mpError);
       }
     }
 
