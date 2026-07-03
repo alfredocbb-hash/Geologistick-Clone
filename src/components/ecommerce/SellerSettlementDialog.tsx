@@ -131,7 +131,7 @@ export function SellerSettlementDialog({ open, onOpenChange, seller }: SellerSet
                   <SelectItem value="efectivo">Efectivo</SelectItem>
                   <SelectItem value="transferencia">Transferencia</SelectItem>
                   <SelectItem value="cheque">Cheque</SelectItem>
-                  <SelectItem value="mercadopago">MercadoPago</SelectItem>
+                  <SelectItem value="mercado_pago">Mercado Pago</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -373,6 +373,7 @@ export default function SuperAdminSubscriptionManager() {
     switch (m) {
       case "efectivo": return "Efectivo";
       case "transferencia": return "Transferencia";
+      case "mercado_pago":
       case "mercadopago": return "Mercado Pago";
       default: return m;
     }
@@ -700,7 +701,7 @@ export default function SuperAdminSubscriptionManager() {
                   <SelectContent>
                     <SelectItem value="efectivo">Efectivo</SelectItem>
                     <SelectItem value="transferencia">Transferencia</SelectItem>
-                    <SelectItem value="mercadopago">Mercado Pago</SelectItem>
+                    <SelectItem value="mercado_pago">Mercado Pago</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

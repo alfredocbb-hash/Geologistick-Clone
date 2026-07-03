@@ -1,48 +1,44 @@
-
 ## Objetivo
 
-Nueva tarjeta "Conciliación" en `src/pages/Cash.tsx` que compare movimientos de caja con las otras fuentes reales del sistema (pagos, facturas, MP) para el día de la sesión abierta.
+Asegurar que **todos** los selectores de método de cobro incluyan las tres opciones: **Efectivo**, **Transferencia** y **Mercado Pago**, y unificar el valor `mercado_pago` (evitar variantes como `mercadopago`) para que la conciliación de Caja cuadre.
 
-## Cambios
+## Análisis — dónde faltan opciones
 
-### 1. Nueva edge function `supabase/functions/cash-reconciliation/index.ts`
-Autenticada. Recibe `{ sucursal_id, desde, hasta }`. Con service role devuelve por tenant del usuario:
+Revisé todos los componentes/páginas que muestran un selector de método de pago:
 
-- `pagos_por_metodo`: suma de `pagos.monto` con `estado IN ('pagado','cobrado_chofer','rendido')` agrupada por `metodo` en el rango, y para MP también `mercado_pago_status='approved'` cuando aplique.
-- `facturas`: `SUM(importe_total) FILTER (WHERE es_nota_credito=false) - SUM(importe_total) FILTER (WHERE es_nota_credito=true)` de facturas con `estado='emitida'` en el rango, más `count`. Como `facturas` no guarda método de pago, el desglose por método se toma del `pago` asociado al `envio_id` (LEFT JOIN pagos): sumas `importe_total` agrupadas por `pagos.metodo`, y un bucket `sin_metodo` para las que no tienen pago vinculado.
-- `mp_balance`: llama `GET https://api.mercadopago.com/users/me` + `GET https://api.mercadopago.com/v1/account/balance` con el access_token de `system_integrations` (mismo patrón que `mercadopago-check-status`). Si falla o no está configurado, devuelve `null` con `error`.
-- `mp_cobros_dia`: `GET /v1/payments/search?range=date_created&begin_date=…&end_date=…&status=approved`, suma `transaction_amount` (paginando hasta 200) para el mismo rango. Devuelve total y cantidad.
+| Ubicación | Estado actual | Acción |
+|---|---|---|
+| `src/pages/Cash.tsx` | efectivo, transferencia, mercado_pago | OK |
+| `src/pages/Payments.tsx` | efectivo, transferencia, mercado_pago | OK |
+| `src/pages/DriverSettlements.tsx` | efectivo, transferencia, mercado_pago | OK |
+| `src/pages/ClientSettlements.tsx` | efectivo, transferencia, mercado_pago | OK |
+| `src/pages/BranchSettlements.tsx` | efectivo, transferencia, mercado_pago | OK |
+| `src/components/finanzas/RegistrarMovimientoDialog.tsx` | efectivo, transferencia, mercado_pago | OK |
+| `src/components/shipments/PaymentMethodDialog.tsx` | efectivo, transferencia, mercado_pago, tarjeta | OK |
+| `src/components/delivery/DeliveryConfirmation.tsx` | efectivo, transferencia, mercado_pago | OK |
+| **`src/components/renditions/ReceiveRenditionDialog.tsx`** | **falta `mercado_pago`** (solo efectivo + transferencia) | **Agregar Mercado Pago** |
+| **`src/components/ecommerce/SellerSettlementDialog.tsx`** | usa valor `"mercadopago"` (sin guion bajo) | **Cambiar a `mercado_pago`** para unificar |
+| **`src/components/subscriptions/SuperAdminSubscriptionManager.tsx`** | usa valor `"mercadopago"` | **Cambiar a `mercado_pago`** |
+| **`src/components/seller/RequestWithdrawalDialog.tsx`** | usa valor `"mercadopago"` | **Cambiar a `mercado_pago`** |
 
-Rango por defecto: día de apertura → ahora (usa `sesiones_caja.fecha_apertura`).
+## Cambios a realizar
 
-### 2. `src/pages/Cash.tsx` — nueva sección "Conciliación del día"
-Se muestra debajo de "Resumen por Categoría" cuando hay `currentSession`. Usa `useQuery` que invoca la edge function.
+### 1. `ReceiveRenditionDialog.tsx`
+Agregar `<SelectItem value="mercado_pago">Mercado Pago</SelectItem>` en el selector de método de pago de la rendición (línea ~324), junto a Efectivo y Transferencia.
 
-Tarjetas:
+### 2. Unificación del valor `mercado_pago`
+En los 3 archivos que usan `"mercadopago"`, reemplazar el `value` del `SelectItem` por `"mercado_pago"` para que:
+- Coincida con el enum usado por `pagos.metodo` y `movimientos_caja.metodo_pago`.
+- La conciliación de Caja (`ReconciliacionCard`) sume correctamente los MP de todos los orígenes.
 
-**a) Cobros por método — Caja vs. Sistema**
-Tabla comparativa por método (Efectivo, Transferencia, Mercado Pago, Tarjeta):
-| Método | En Caja (ingresos) | En `pagos` (aprobados) | Diferencia |
-Diferencia > 0.01 se pinta en `text-destructive` con ícono ⚠️.
+Archivos:
+- `src/components/ecommerce/SellerSettlementDialog.tsx` (línea 134)
+- `src/components/subscriptions/SuperAdminSubscriptionManager.tsx` (línea 703)
+- `src/components/seller/RequestWithdrawalDialog.tsx` (línea 157)
 
-**b) Facturación del día**
-- Total facturado (neto de notas de crédito), cantidad de facturas.
-- Desglose por método (a partir del pago asociado al envío) con las mismas columnas que arriba: Facturado vs. Cobrado en Caja vs. Diferencia.
-- Bucket "Sin método asignado" si hay facturas sin pago vinculado.
+Se ajustará también cualquier `useState` inicial, comparación o `switch` que use el literal `"mercadopago"` en esos mismos archivos para evitar romper la lógica existente.
 
-**c) Mercado Pago real (API)**
-- Saldo disponible actual de la cuenta MP (`available_balance`), moneda ARS.
-- Cobros MP aprobados hoy según API, con comparación contra "MP en Caja" y "MP en `pagos`".
-- Botón "Actualizar" que dispara `refetch`.
-- Si MP no está configurado o falla el token: mensaje "Mercado Pago no configurado o token inválido" con link a `/settings/integrations`.
-
-### 3. Sin cambios de datos
-
-No se modifican esquemas. Sólo lectura. La sección se colapsa (accordion) por defecto para no saturar la vista.
-
-## Notas técnicas
-
-- `facturas` no tiene columna método; el desglose por método usa el `pago` del `envio_id`. Se documenta en el header de la tarjeta ("Método inferido del pago asociado al envío").
-- El endpoint MP `/v1/account/balance` devuelve el saldo de la cuenta cuya `access_token` está guardada (típicamente el `collector_id` del tenant). Se muestra ese saldo tal cual, indicando "Cuenta: {nickname/collector_id}".
-- Se reutiliza el patrón de token de `mercadopago-check-status` (prefer `production`, fallback `sandbox`).
-- Rate limits MP: paginación de `payments/search` con `limit=200` y máximo 5 páginas por request para acotar costo.
+### Notas
+- No se tocan esquemas de BD ni migraciones.
+- No se agrega "tarjeta" a los selectores que no la tenían (solo se pidieron efectivo/transferencia/MP).
+- `EditSellerDialog` / `CreateSellerDialog` usan `"mercadolibre"` como plataforma del seller (no es un método de cobro) — se dejan como están.

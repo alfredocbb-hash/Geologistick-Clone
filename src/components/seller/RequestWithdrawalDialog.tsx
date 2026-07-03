@@ -154,7 +154,7 @@ export function RequestWithdrawalDialog({ open, onOpenChange }: RequestWithdrawa
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="transferencia">Transferencia bancaria</SelectItem>
-                <SelectItem value="mercadopago">Mercado Pago</SelectItem>
+                <SelectItem value="mercado_pago">Mercado Pago</SelectItem>
                 <SelectItem value="efectivo">Efectivo</SelectItem>
               </SelectContent>
             </Select>
@@ -163,7 +163,7 @@ export function RequestWithdrawalDialog({ open, onOpenChange }: RequestWithdrawa
           <div className="space-y-2">
             <Label htmlFor="datos">
               {metodoPago === 'transferencia' ? 'CBU / Alias' : 
-               metodoPago === 'mercadopago' ? 'Email o CVU' : 
+               metodoPago === 'mercado_pago' ? 'Email o CVU' : 
                'Notas adicionales'}
             </Label>
             <Textarea
@@ -172,7 +172,7 @@ export function RequestWithdrawalDialog({ open, onOpenChange }: RequestWithdrawa
               onChange={(e) => setDatosBancarios(e.target.value)}
               placeholder={
                 metodoPago === 'transferencia' ? 'Ingresa tu CBU o alias bancario' :
-                metodoPago === 'mercadopago' ? 'Ingresa tu email o CVU de Mercado Pago' :
+                metodoPago === 'mercado_pago' ? 'Ingresa tu email o CVU de Mercado Pago' :
                 'Indica cómo prefieres recibir el efectivo'
               }
               rows={2}
