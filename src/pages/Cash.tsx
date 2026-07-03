@@ -51,6 +51,7 @@ import {
 } from 'lucide-react';
 import type { Database } from '@/integrations/supabase/types';
 import { ReceiveRenditionDialog } from '@/components/renditions/ReceiveRenditionDialog';
+import { ReconciliacionCard } from '@/components/cash/ReconciliacionCard';
 
 type PaymentMethod = Database['public']['Enums']['payment_method'];
 type CashSessionStatus = Database['public']['Enums']['cash_session_status'];
