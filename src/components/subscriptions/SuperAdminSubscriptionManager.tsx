@@ -700,7 +700,7 @@ export default function SuperAdminSubscriptionManager() {
                   <SelectContent>
                     <SelectItem value="efectivo">Efectivo</SelectItem>
                     <SelectItem value="transferencia">Transferencia</SelectItem>
-                    <SelectItem value="mercadopago">Mercado Pago</SelectItem>
+                    <SelectItem value="mercado_pago">Mercado Pago</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

@@ -322,6 +322,7 @@ export function ReceiveRenditionDialog({ open, onOpenChange }: ReceiveRenditionD
                         <SelectContent>
                           <SelectItem value="efectivo">Efectivo</SelectItem>
                           <SelectItem value="transferencia">Transferencia</SelectItem>
+                          <SelectItem value="mercado_pago">Mercado Pago</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
