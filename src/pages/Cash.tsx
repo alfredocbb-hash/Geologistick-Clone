@@ -689,12 +689,17 @@ export default function Cash() {
                     }),
                   };
 
-                  const sumCategory = (items: CashMovement[]) => ({
-                    total: items.reduce((s, m) => s + m.monto, 0),
-                    efectivo: items.filter(m => m.metodo_pago === 'efectivo').reduce((s, m) => s + m.monto, 0),
-                    digital: items.filter(m => m.metodo_pago !== 'efectivo').reduce((s, m) => s + m.monto, 0),
-                    count: items.length,
-                  });
+                  const sumCategory = (items: CashMovement[]) => {
+                    const porMetodo: Record<string, number> = {};
+                    for (const m of items) {
+                      porMetodo[m.metodo_pago] = (porMetodo[m.metodo_pago] || 0) + m.monto;
+                    }
+                    return {
+                      total: items.reduce((s, m) => s + m.monto, 0),
+                      porMetodo,
+                      count: items.length,
+                    };
+                  };
 
                   const cats = [
                     { key: 'rendiciones', label: 'Rendiciones COD', data: sumCategory(categorias.rendiciones), icon: Banknote, color: 'text-primary', bg: 'bg-primary/10', tipo: 'ingreso' },
@@ -702,6 +707,8 @@ export default function Cash() {
                     { key: 'liquidaciones', label: 'Liquidaciones Pagadas', data: sumCategory(categorias.liquidaciones), icon: ArrowDownCircle, color: 'text-destructive', bg: 'bg-destructive/10', tipo: 'egreso' },
                     { key: 'otros', label: 'Otros Movimientos', data: sumCategory(categorias.otros), icon: DollarSign, color: 'text-muted-foreground', bg: 'bg-muted/50', tipo: 'mixto' },
                   ].filter(c => c.data.count > 0);
+
+                  const metodoOrden: PaymentMethod[] = ['efectivo', 'transferencia', 'mercado_pago', 'tarjeta'];
 
                   return (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -718,8 +725,14 @@ export default function Cash() {
                             </p>
                             <div className="mt-2 space-y-1 text-xs text-muted-foreground">
                               <p>{cat.data.count} movimiento{cat.data.count !== 1 ? 's' : ''}</p>
-                              {cat.data.efectivo > 0 && <p>Efectivo: {formatCurrency(cat.data.efectivo)}</p>}
-                              {cat.data.digital > 0 && <p>Digital: {formatCurrency(cat.data.digital)}</p>}
+                              {metodoOrden
+                                .filter(m => (cat.data.porMetodo[m] || 0) > 0)
+                                .map(m => (
+                                  <p key={m} className="flex justify-between gap-2">
+                                    <span>{PAYMENT_METHOD_LABELS[m]}:</span>
+                                    <span className="font-medium text-foreground">{formatCurrency(cat.data.porMetodo[m])}</span>
+                                  </p>
+                                ))}
                             </div>
                           </div>
                         );
