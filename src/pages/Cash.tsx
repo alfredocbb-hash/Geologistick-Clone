@@ -831,8 +831,35 @@ export default function Cash() {
                 </Table>
               )}
             </CardContent>
+            {movements.length > 0 && metodosConMovimiento.length > 0 && (
+              <div className="px-6 pb-6 pt-2 border-t border-border/50">
+                <p className="text-sm font-medium text-muted-foreground mb-3 mt-4">
+                  Totales por método (movimientos del día)
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {metodosConMovimiento.map((metodo) => {
+                    const { ingresos, egresos } = totals.porMetodo[metodo];
+                    const neto = ingresos - egresos;
+                    return (
+                      <div key={metodo} className="p-3 rounded-xl bg-muted/40 border border-border/50">
+                        <p className="text-xs text-muted-foreground">
+                          {PAYMENT_METHOD_LABELS[metodo] || metodo}
+                        </p>
+                        <p className={`text-lg font-bold ${neto >= 0 ? 'text-success' : 'text-destructive'}`}>
+                          {neto >= 0 ? '+' : ''}{formatCurrency(neto)}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          <span className="text-success">+{formatCurrency(ingresos)}</span>
+                          {' · '}
+                          <span className="text-destructive">-{formatCurrency(egresos)}</span>
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </Card>
-        </div>
       ) : (
         <Card className="glass">
           <CardContent className="p-12 text-center">
