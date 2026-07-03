@@ -151,6 +151,9 @@ export default function Settlements() {
   // Historial filters
   const [filterEstado, setFilterEstado] = useState<string>('all');
   const [filterSellerSearch, setFilterSellerSearch] = useState('');
+  const [histDesde, setHistDesde] = useState<string>(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [histHasta, setHistHasta] = useState<string>(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [histTipoFecha, setHistTipoFecha] = useState<'fecha_pago' | 'periodo'>('fecha_pago');
 
   // Fetch sellers with account
   const { data: sellers, isLoading: loadingSellers } = useQuery({
@@ -445,17 +448,25 @@ export default function Settlements() {
 
   // Fetch liquidaciones
   const { data: liquidaciones, isLoading: loadingLiquidaciones } = useQuery({
-    queryKey: ['seller-liquidaciones', tenantId],
+    queryKey: ['seller-liquidaciones', tenantId, histDesde, histHasta, histTipoFecha],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('liquidaciones_seller')
         .select(`
           *,
           seller:ecommerce_sellers(nombre)
         `)
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(500);
 
+      if (histTipoFecha === 'fecha_pago') {
+        q = q.gte('fecha_pago', `${histDesde}T00:00:00`).lte('fecha_pago', `${histHasta}T23:59:59`);
+      } else {
+        // Período que solape el rango: periodo_fin >= desde AND periodo_inicio <= hasta
+        q = q.gte('periodo_fin', histDesde).lte('periodo_inicio', histHasta);
+      }
+
+      const { data, error } = await q;
       if (error) throw error;
       return data as SellerLiquidacion[];
     },
@@ -1866,15 +1877,35 @@ export default function Settlements() {
             </CardHeader>
             <CardContent>
               {/* Filters */}
-              <div className="flex flex-col md:flex-row gap-3 mb-4">
-                <div className="flex-1">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-4 items-end">
+                <div>
+                  <Label className="text-xs">Filtrar por</Label>
+                  <Select value={histTipoFecha} onValueChange={(v: 'fecha_pago' | 'periodo') => setHistTipoFecha(v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="fecha_pago">Fecha de pago</SelectItem>
+                      <SelectItem value="periodo">Período de liquidación</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Desde</Label>
+                  <Input type="date" value={histDesde} onChange={(e) => setHistDesde(e.target.value)} />
+                </div>
+                <div>
+                  <Label className="text-xs">Hasta</Label>
+                  <Input type="date" value={histHasta} onChange={(e) => setHistHasta(e.target.value)} />
+                </div>
+                <div>
+                  <Label className="text-xs">Buscar seller</Label>
                   <Input
-                    placeholder="Buscar por seller..."
+                    placeholder="Nombre..."
                     value={filterSellerSearch}
                     onChange={(e) => setFilterSellerSearch(e.target.value)}
                   />
                 </div>
-                <div className="w-full md:w-56">
+                <div>
+                  <Label className="text-xs">Estado</Label>
                   <Select value={filterEstado} onValueChange={setFilterEstado}>
                     <SelectTrigger>
                       <SelectValue placeholder="Estado" />
@@ -1889,6 +1920,21 @@ export default function Settlements() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+              <div className="flex justify-end mb-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setHistDesde(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+                    setHistHasta(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+                    setFilterEstado('all');
+                    setFilterSellerSearch('');
+                    setHistTipoFecha('fecha_pago');
+                  }}
+                >
+                  Limpiar filtros
+                </Button>
               </div>
 
               {/* Totalizadores */}
