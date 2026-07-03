@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/auth';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, Wallet } from 'lucide-react';
 import { LiquidacionesManualesTab } from '@/components/finanzas/LiquidacionesManualesTab';
+import { LiquidacionesEcommerceTab } from '@/components/finanzas/LiquidacionesEcommerceTab';
 
 export default function Finanzas() {
   const { enabled, isLoading } = useTenantFeature('finanzas');
