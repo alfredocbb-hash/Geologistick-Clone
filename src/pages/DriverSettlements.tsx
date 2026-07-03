@@ -297,29 +297,61 @@ export default function DriverSettlements() {
     },
   });
 
-  // Fetch existing liquidaciones
+  // Fetch existing liquidaciones (con filtros de fecha)
   const { data: liquidaciones = [], isLoading: loadingLiquidaciones } = useQuery({
-    queryKey: ['liquidaciones-choferes'],
+    queryKey: ['liquidaciones-choferes', histDesde, histHasta, histTipoFecha],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('liquidaciones')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(500);
+
+      if (histTipoFecha === 'pago') {
+        query = query
+          .gte('fecha_pago', toLocalISOStart(histDesde))
+          .lte('fecha_pago', toLocalISOEnd(histHasta));
+      } else {
+        query = query
+          .gte('periodo_inicio', histDesde)
+          .lte('periodo_fin', histHasta);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
-      
+
       const choferIds = [...new Set(data?.map(l => l.chofer_id) || [])];
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('user_id, nombre, apellido')
-        .in('user_id', choferIds);
-      
+      const { data: profiles } = choferIds.length
+        ? await supabase
+            .from('profiles')
+            .select('user_id, nombre, apellido')
+            .in('user_id', choferIds)
+        : { data: [] as any[] };
+
       return (data || []).map(l => ({
         ...l,
         chofer: profiles?.find(p => p.user_id === l.chofer_id),
       })) as Liquidacion[];
     },
   });
+
+  // Filtrado en cliente (estado + búsqueda chofer)
+  const filteredLiquidaciones = liquidaciones.filter(l => {
+    if (histEstado !== 'all' && (l.estado || 'generada') !== histEstado) return false;
+    if (histChoferSearch.trim()) {
+      const q = histChoferSearch.trim().toLowerCase();
+      const nom = `${l.chofer?.nombre || ''} ${l.chofer?.apellido || ''}`.toLowerCase();
+      if (!nom.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const histTotals = {
+    count: filteredLiquidaciones.length,
+    totalPagado: filteredLiquidaciones.filter(l => l.estado === 'pagada').reduce((s, l) => s + (Number(l.monto_total) || 0), 0),
+    totalGenerado: filteredLiquidaciones.reduce((s, l) => s + (Number(l.monto_total) || 0), 0),
+    envios: filteredLiquidaciones.reduce((s, l) => s + (Number(l.cantidad_envios) || 0), 0),
+  };
 
   // Calculate: fetch envíos completados por el chofer en el rango de fechas
   const calculateMutation = useMutation({
