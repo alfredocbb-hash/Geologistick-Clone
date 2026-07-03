@@ -38,12 +38,16 @@ export default function Finanzas() {
         <TabsList>
           <TabsTrigger value="liquidaciones">Liquidaciones manuales</TabsTrigger>
           <TabsTrigger value="ecommerce">Liquidaciones eCommerce</TabsTrigger>
+          <TabsTrigger value="choferes">Liquidaciones Choferes</TabsTrigger>
         </TabsList>
         <TabsContent value="liquidaciones" className="mt-4">
           <LiquidacionesManualesTab />
         </TabsContent>
         <TabsContent value="ecommerce" className="mt-4">
           <LiquidacionesEcommerceTab />
+        </TabsContent>
+        <TabsContent value="choferes" className="mt-4">
+          <LiquidacionesChoferesTab />
         </TabsContent>
       </Tabs>
     </div>
