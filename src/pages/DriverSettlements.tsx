@@ -1159,12 +1159,81 @@ export default function DriverSettlements() {
             Historial de Liquidaciones
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {/* Filtros */}
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+            <div>
+              <Label className="text-xs">Tipo de fecha</Label>
+              <Select value={histTipoFecha} onValueChange={(v) => setHistTipoFecha(v as 'periodo' | 'pago')}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="periodo">Período de liquidación</SelectItem>
+                  <SelectItem value="pago">Fecha de pago</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Desde</Label>
+              <Input type="date" value={histDesde} onChange={(e) => setHistDesde(e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Hasta</Label>
+              <Input type="date" value={histHasta} onChange={(e) => setHistHasta(e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Estado</Label>
+              <Select value={histEstado} onValueChange={setHistEstado}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="generada">Generada</SelectItem>
+                  <SelectItem value="pagada">Pagada</SelectItem>
+                  <SelectItem value="cancelada">Cancelada</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Buscar chofer</Label>
+              <Input value={histChoferSearch} onChange={(e) => setHistChoferSearch(e.target.value)} placeholder="Nombre..." />
+            </div>
+            <div>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setHistDesde(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+                  setHistHasta(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+                }}
+              >
+                Mes actual
+              </Button>
+            </div>
+          </div>
+
+          {/* KPIs */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Card><CardContent className="pt-4">
+              <p className="text-xs text-muted-foreground">Liquidaciones</p>
+              <p className="text-2xl font-bold">{histTotals.count}</p>
+            </CardContent></Card>
+            <Card><CardContent className="pt-4">
+              <p className="text-xs text-muted-foreground">Total pagado</p>
+              <p className="text-2xl font-bold text-success">${histTotals.totalPagado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            </CardContent></Card>
+            <Card><CardContent className="pt-4">
+              <p className="text-xs text-muted-foreground">Total generado</p>
+              <p className="text-2xl font-bold">${histTotals.totalGenerado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            </CardContent></Card>
+            <Card><CardContent className="pt-4">
+              <p className="text-xs text-muted-foreground">Envíos</p>
+              <p className="text-2xl font-bold">{histTotals.envios}</p>
+            </CardContent></Card>
+          </div>
+
           {loadingLiquidaciones ? (
             <div className="text-center py-8 text-muted-foreground">Cargando...</div>
-          ) : liquidaciones.length === 0 ? (
+          ) : filteredLiquidaciones.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              No hay liquidaciones registradas
+              No hay liquidaciones en el rango seleccionado
             </div>
           ) : (
             <Table>
@@ -1172,6 +1241,7 @@ export default function DriverSettlements() {
                 <TableRow>
                   <TableHead>Chofer</TableHead>
                   <TableHead>Período</TableHead>
+                  <TableHead>Fecha pago</TableHead>
                   <TableHead>Envíos</TableHead>
                   <TableHead>Monto</TableHead>
                   <TableHead>Estado</TableHead>
@@ -1179,7 +1249,7 @@ export default function DriverSettlements() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {liquidaciones.map((liq) => (
+                {filteredLiquidaciones.map((liq) => (
                   <TableRow key={liq.id}>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
