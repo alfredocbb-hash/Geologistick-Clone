@@ -286,11 +286,15 @@ export function InvoiceDataDialog({
               {cuitLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
               {cuitMatch && (
                 <Badge variant="secondary" className="text-xs">
-                  {cuitMatch.source === 'cliente' ? 'Cliente' : 'Empresa Terciarizada'}
+                  {cuitMatch.source === 'cliente'
+                    ? 'Cliente'
+                    : cuitMatch.source === 'empresa_terciarizada'
+                    ? 'Empresa Terciarizada'
+                    : 'AFIP'}
                 </Badge>
               )}
             </div>
-            <Input id="cuit" placeholder="XX-XXXXXXXX-X" value={cuit} onChange={(e) => setCuit(e.target.value)} className={cuitError ? 'border-destructive' : ''} />
+            <Input id="cuit" placeholder="CUIT (11 díg.) o DNI (7-8 díg.)" value={cuit} onChange={(e) => setCuit(e.target.value)} className={cuitError ? 'border-destructive' : ''} />
             {cuitError && <p className="text-xs text-destructive">{cuitError}</p>}
           </div>
 
