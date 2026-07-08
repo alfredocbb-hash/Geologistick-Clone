@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "sdk_version": "0.20.0",
+  "path": "/mcp",
+  "auth": {
+    "type": "oauth",
+    "issuer": "https://uhlgimnmfifmrxraorrl.supabase.co/auth/v1",
+    "accepted_audiences": [
+      "authenticated"
+    ]
+  },
+  "mcp": {
+    "server": {
+      "name": "geologistick-mcp",
+      "version": "0.1.0",
+      "title": "Geologistick MCP"
+    },
+    "tools": [
+      {
+        "name": "whoami",
+        "title": "Quién soy",
+        "description": "Devuelve el usuario autenticado (id, email, tenant y roles).",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "list_shipments",
+        "title": "Listar envíos",
+        "description": "Lista los envíos del tenant del usuario, con filtros opcionales por estado, ciudad y rango de fechas.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "estado": {
+              "type": "string",
+              "description": "Estado interno (ej: pendiente, en_reparto, entregado, cancelado)."
+            },
+            "ciudad": {
+              "type": "string",
+              "description": "Filtro por ciudad de entrega (coincidencia parcial)."
+            },
+            "desde": {
+              "type": "string",
+              "description": "Fecha ISO (creado desde)."
+            },
+            "hasta": {
+              "type": "string",
+              "description": "Fecha ISO (creado hasta)."
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            }
+          },
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "get_shipment",
+        "title": "Detalle de envío",
+        "description": "Busca un envío por tracking (interno o externo) y devuelve su detalle completo.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "tracking": {
+              "type": "string",
+              "minLength": 1,
+              "description": "tracking_number o tracking_externo."
+            }
+          },
+          "required": [
+            "tracking"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "shipment_stats",
+        "title": "Estadísticas de envíos",
+        "description": "Conteos de envíos por estado en un rango de fechas (por defecto últimos 30 días).",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "desde": {
+              "type": "string",
+              "description": "ISO date inicio"
+            },
+            "hasta": {
+              "type": "string",
+              "description": "ISO date fin"
+            }
+          },
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      }
+    ]
+  }
+}
