@@ -78,6 +78,28 @@ export function useCuitLookup({ tenantId }: UseCuitLookupOptions) {
         return;
       }
 
+      // Fallback: consultar padrón AFIP
+      try {
+        const { data: padron } = await supabase.functions.invoke('arca-consultar-padron', {
+          body: { cuit: clean },
+        });
+        if (padron?.found) {
+          setMatch({
+            source: 'afip',
+            sourceId: clean,
+            nombre: padron.razon_social || padron.nombre || '',
+            razonSocial: padron.razon_social || null,
+            direccion: padron.domicilio || null,
+            condicionIva: padron.condicion_iva || null,
+            cuit: formatted,
+          });
+          setLoading(false);
+          return;
+        }
+      } catch {
+        // ignore, sigue sin match
+      }
+
       setMatch(null);
     } catch {
       setMatch(null);
