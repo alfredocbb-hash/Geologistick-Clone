@@ -62,6 +62,47 @@ export function InvoiceDataDialog({
   const { isConfigured, config, environment: activeEnvironment, isLoading: arcaLoading } = useARCAIntegration('production');
   const { match: cuitMatch, loading: cuitLoading, lookup: lookupCuit, clear: clearCuitMatch, updateSourceRecord } = useCuitLookup({ tenantId: profile?.tenant_id });
 
+  // Prefill from envío destinatario on open
+  useEffect(() => {
+    if (!open || !envioId) return;
+    let cancelled = false;
+    (async () => {
+      const { data: envio } = await supabase
+        .from('envios')
+        .select('nombre_destinatario, dni_destinatario, direccion_entrega, ciudad_entrega, destinatario_id')
+        .eq('id', envioId)
+        .maybeSingle();
+      if (cancelled || !envio) return;
+
+      let prefNombre = envio.nombre_destinatario || '';
+      let prefDoc = (envio.dni_destinatario || '').toString();
+      let prefDom = [envio.direccion_entrega, envio.ciudad_entrega].filter(Boolean).join(', ');
+      let prefCondIva: CondicionIVA | null = null;
+
+      if (envio.destinatario_id) {
+        const { data: cli } = await supabase
+          .from('clientes')
+          .select('nombre, razon_social, dni_cuit, direccion, condicion_iva')
+          .eq('id', envio.destinatario_id)
+          .maybeSingle();
+        if (cli) {
+          prefNombre = cli.razon_social || cli.nombre || prefNombre;
+          prefDoc = (cli.dni_cuit || prefDoc || '').toString();
+          prefDom = cli.direccion || prefDom;
+          const valid = CONDICION_IVA_OPTIONS.find(o => o.value === cli.condicion_iva);
+          if (valid) prefCondIva = valid.value;
+        }
+      }
+
+      if (cancelled) return;
+      setNombre((prev) => prev || prefNombre);
+      setCuit((prev) => prev || prefDoc);
+      setDomicilio((prev) => prev || prefDom);
+      if (prefCondIva) setCondicionIva((prev) => (prev === 'consumidor_final' ? prefCondIva! : prev));
+    })();
+    return () => { cancelled = true; };
+  }, [open, envioId]);
+
   // CUIT/DNI auto-lookup
   useEffect(() => {
     const clean = cuit.replace(/\D/g, '');
