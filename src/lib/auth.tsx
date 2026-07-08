@@ -53,6 +53,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .maybeSingle();
 
       if (profileData) {
+        // Block inactive users immediately
+        if ((profileData as any).activo === false) {
+          console.warn('[Auth] Inactive profile detected, signing out');
+          try {
+            const { toast } = await import('sonner');
+            toast.error('Tu cuenta fue desactivada. Contactá al administrador.');
+          } catch { /* ignore */ }
+          await supabase.auth.signOut();
+          setUser(null);
+          setSession(null);
+          setProfile(null);
+          setRoles([]);
+          return;
+        }
+
         setProfile(profileData as Profile);
         // Apply saved language preference
         const savedLang = (profileData as any).idioma;
@@ -74,6 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('Error fetching user data:', error);
     }
   };
+
 
   useEffect(() => {
     let mounted = true;
