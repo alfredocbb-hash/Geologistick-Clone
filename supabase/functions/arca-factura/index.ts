@@ -555,9 +555,8 @@ async function solicitarCAE(
   
   // Use explicit tipo_documento from opts if provided, otherwise infer from IVA condition
   const docTipo = opts?.tipoDocumento ?? ivaCondition.docTipo;
-  const docNro = docTipo === 99
-    ? '0'
-    : (receptor.cuit?.replace(/[-]/g, '') || receptor.dni || '0');
+  const rawDoc = (receptor.cuit || receptor.dni || '').replace(/\D/g, '');
+  const docNro = docTipo === 99 ? '0' : (rawDoc || '0');
 
   const nowMs = Date.now();
   const AR_OFFSET_MS = 3 * 60 * 60 * 1000;
