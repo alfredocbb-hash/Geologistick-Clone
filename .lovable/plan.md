@@ -1,17 +1,56 @@
 ## Objetivo
-Al abrir el diálogo de facturación desde un envío, precargar los datos del destinatario (nombre, DNI/CUIT, domicilio) editables por el usuario antes de emitir la factura.
+Crear un documento técnico de alto nivel en `docs/ARQUITECTURA.md` que explique cómo fluyen todos los procesos del sistema, con diagramas Mermaid embebidos.
 
-## Cambios
+## Contenido del documento
 
-### `src/components/invoicing/InvoiceDataDialog.tsx`
-- Agregar un `useEffect` que, cuando `open === true` y hay `envioId`, consulte `envios` (columnas `nombre_destinatario`, `dni_destinatario`, `direccion_entrega`, `ciudad_entrega`, `destinatario_id`) y, si existe `destinatario_id`, complete con un join opcional a `clientes` (razón social, condición IVA, dirección) que tiene prioridad sobre los campos del envío.
-- Precargar los estados `nombre`, `cuit` (con `dni_destinatario`) y `domicilio` (armando `direccion_entrega, ciudad_entrega`) solo si el usuario aún no editó (comparación contra los valores iniciales vacíos, para no pisar edición manual).
-- El `useEffect` existente que dispara `lookupCuit` seguirá corriendo con el DNI precargado, así que si el cliente ya está en base o AFIP responde, se autocompletan condición IVA/razón social/domicilio como hoy.
-- Los inputs siguen editables — sin cambios de UI, solo el prefill inicial.
-- Al cerrar (`handleClose`) mantener el reset actual para que la próxima apertura vuelva a precargar.
+### 1. Panorama general
+- Stack: React/Vite + Lovable Cloud (Supabase) + Edge Functions.
+- Multi-tenant: `tenant_id` en todas las tablas + RLS por `current_user_tenant()`.
+- Roles: `super_admin`, `admin`, `chofer`, `sucursal`, `seller`.
+- Diagrama de contexto: frontend / edge functions / DB / integraciones externas / apps móviles.
+
+### 2. Núcleo operativo
+- **Ciclo de vida del envío**: `pendiente → recogido → en_transito → en_sucursal → en_reparto → entregado` (+ reprogramación, incidencia, devuelto, cancelado). Diagrama de estados.
+- **Creación**: manual, OCR, ML/Tiendanube, API pública.
+- **Rutas planificadas y hojas de ruta**: planificador → asignación a chofer → inicio → paradas (entrega/retiro) → cierre.
+- **Chofer / última milla**: check-in diario, navegación de paradas, entrega con firma/foto, reprogramación, cierre de jornada.
+- **Trazabilidad física entre sucursales** (`hoja_ruta` flex).
+- Diagrama de flujo: creación → planificación → ejecución → entrega.
+
+### 3. Facturación y cobros
+- **ARCA/AFIP**: autenticación WSAA (cache 12 h) → padrón A13 → emisión de comprobante (CAE) → QR.
+- **Facturación del envío**: al entregar → diálogo `InvoiceDataDialog` → prefill destinatario/cliente → lookup DNI/CUIT → edge `arca-factura`.
+- **Pagos**: contado, contra entrega, MP webhook, tarjeta.
+- **Caja y rendiciones**: sesiones de caja abiertas, movimientos, rendición de choferes, reconciliación.
+- **Cuentas corrientes**: cliente, seller, terciarizado.
+- Diagrama de flujo facturación + secuencia ARCA.
+
+### 4. Liquidaciones
+- **Chofer**: por comisión de zona / tarifa activa, excluye entregas en sucursal, comisiones históricas vs pendientes.
+- **Sucursal**: emisión vs recepción, agrupa por fecha de entrega, fallback por concepto.
+- **Seller (e-commerce)**: saldo dinámico = envíos − pagos, incluye cargos de `seller_cuenta_corriente`, jerarquía de tarifas (exclusiva > default > general).
+- **Terciarizado**: por operación (retiro/entrega), IVA.
+- **Partner**: acuerdos comerciales, sincronización.
+- Diagrama por rol con inputs/outputs.
+
+### 5. Integraciones externas
+- **Mercado Libre**: OAuth, sync 12 h, estados duales (interno vs ML), anti-downgrade, webhook.
+- **Mercado Pago**: webhook con HMAC clonado, suscripciones, cobros contra entrega.
+- **Tiendanube**: OAuth, tarifas, fulfillment, sync de órdenes.
+- **Partners (federación de tenants)**: `partner_shipments`, `estado_sync`, propagación de estados.
+- **Public API**: `x-api-key`, endpoints públicos (tracking, tarifas, sucursales).
+- **MCP (agentes)**: OAuth interno, tools `whoami / list_shipments / get_shipment / shipment_stats`.
+- Diagrama de contexto de integraciones.
+
+### 6. Seguridad y multi-tenant
+- Resumen corto: RLS + `has_role` + `current_user_tenant` + GRANTs.
+- Bypass de super_admin (estados finales, tenants).
+
+## Formato
+- Un solo archivo `docs/ARQUITECTURA.md`.
+- Diagramas Mermaid embebidos como bloques ```mermaid.
+- Español (AR), tono técnico pero de alto nivel: sin nombres de columnas ni edge functions salvo cuando aporten claridad.
 
 ## Validación
-1. Abrir "solicitar factura" desde un envío con destinatario cargado → los tres campos aparecen precargados y editables.
-2. Editar cualquiera manualmente antes de emitir → se envía el valor editado.
-3. Si el envío tiene `destinatario_id` con datos fiscales en `clientes`, prevalecen esos (razón social, condición IVA).
-4. Abrir sin envío (liquidación) → comportamiento actual, campos vacíos.
+- El archivo abre en el visor Markdown del repo con los diagramas renderizados.
+- Cubre los 4 dominios pedidos con al menos 1 diagrama por dominio.
