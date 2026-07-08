@@ -208,6 +208,8 @@ function AppRoutes() {
         <Route path="/oauth/tiendanube/result" element={<TiendanubeOAuthResult />} />
         <Route path="/oauth/mercadolibre/result" element={<MercadoLibreOAuthResult />} />
         <Route path="/docs/tiendanube" element={<TiendanubeDocsPublic />} />
+        <Route path="/.lovable/oauth/consent" element={<OAuthConsent />} />
+
 
         {/* Print pages (no layout) */}
         <Route path="/print-label" element={<PrintLabel />} />
