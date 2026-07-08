@@ -142,11 +142,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     });
 
+    // Periodic revalidation: if profile.activo becomes false, signOut kicks in.
+    const revalidateInterval = setInterval(() => {
+      if (!mounted) return;
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (mounted && session?.user) fetchUserData(session.user.id);
+      });
+    }, 60_000);
+
+    // Revalidate on window focus too
+    const onFocus = () => {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (mounted && session?.user) fetchUserData(session.user.id);
+      });
+    };
+    window.addEventListener('focus', onFocus);
+
     return () => {
       mounted = false;
       subscription.unsubscribe();
+      clearInterval(revalidateInterval);
+      window.removeEventListener('focus', onFocus);
     };
   }, []);
+
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
