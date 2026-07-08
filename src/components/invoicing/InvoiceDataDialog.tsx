@@ -62,10 +62,12 @@ export function InvoiceDataDialog({
   const { isConfigured, config, environment: activeEnvironment, isLoading: arcaLoading } = useARCAIntegration('production');
   const { match: cuitMatch, loading: cuitLoading, lookup: lookupCuit, clear: clearCuitMatch, updateSourceRecord } = useCuitLookup({ tenantId: profile?.tenant_id });
 
-  // CUIT auto-lookup
+  // CUIT/DNI auto-lookup
   useEffect(() => {
     const clean = cuit.replace(/\D/g, '');
-    if (clean.length === 11 && validateCUIT(clean)) {
+    const isCuitOk = clean.length === 11 && validateCUIT(clean);
+    const isDniOk = clean.length >= 7 && clean.length <= 8;
+    if (isCuitOk || isDniOk) {
       lookupCuit(cuit);
     } else {
       clearCuitMatch();
