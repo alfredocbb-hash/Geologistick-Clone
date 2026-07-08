@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { validateCUIT, formatCUIT } from '@/hooks/useARCAConfig';
 
 export interface CuitMatch {
-  source: 'cliente' | 'empresa_terciarizada';
+  source: 'cliente' | 'empresa_terciarizada' | 'afip';
   sourceId: string;
   nombre: string;
   razonSocial: string | null;

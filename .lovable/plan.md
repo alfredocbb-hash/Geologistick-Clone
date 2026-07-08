@@ -1,47 +1,61 @@
-## Objetivo
-
-Asegurar que el **saldo real de Mercado Pago** aparezca correctamente en la sección "Conciliación del día" del módulo Caja para BeraExpress (que ya tiene el token de MP configurado en producción).
+# Facturación: autocompletar desde AFIP y corregir Documento del Receptor
 
 ## Diagnóstico
 
-Verifiqué que:
-- BeraExpress (`tenant_id: 94a9ea85-...`) tiene `access_token` activo en `system_integrations` para MP producción (`APP_USR-...`).
-- La edge function `cash-reconciliation` está desplegada y bootea correctamente.
-- La lógica actual llama a `GET https://api.mercadopago.com/v1/account/balance`, pero este endpoint es inestable — a menudo devuelve 404 o un payload que no incluye `available_balance` (según el tipo de cuenta y credenciales usadas). Cuando eso pasa, el card muestra `—` en "Saldo disponible MP" y no queda claro por qué.
+**Problema 1 – No trae datos desde AFIP al ingresar CUIT/DNI.**
+`InvoiceDataDialog` sólo usa `useCuitLookup`, que busca en `clientes` y `empresas_terciarizadas` locales. Nunca invoca la función `arca-consultar-padron` (que ya existe y funciona con WSAA + Padrón A13). Por eso, para receptores nuevos, no se autocompleta razón social / domicilio / condición IVA.
 
-Además no hay logs propios en el edge function que ayuden a debuggear, y el `mp_error` que se muestra al usuario es genérico ("MP balance HTTP 404").
+**Problema 2 – AFIP muestra "99 – Doc. (otro)" y sin número.**
+En `supabase/functions/arca-factura/index.ts`:
+- Cuando la condición IVA es `consumidor_final`, `IVA_CONDITIONS.consumidor_final.docTipo = 99` y `DocNro = '0'`.
+- El fallback `tipoDocumento = rawBody.tipo_documento ?? (receptor?.cuit ? 80 : 99)` asume que cualquier valor en `cuit` es CUIT (80). Si el usuario carga un DNI de 8 dígitos, igual va como 80 y AFIP lo rechaza o el flujo termina enviando 99/0.
+- El diálogo nunca envía `tipo_documento` explícito, y no distingue DNI (8 dígitos → DocTipo 96) de CUIT (11 dígitos → DocTipo 80).
+
+Resultado: la factura B a Consumidor Final se emite con DocTipo=99, DocNro=0, aunque el PDF local muestre el CUIT/DNI ingresado.
 
 ## Cambios
 
-### 1. `supabase/functions/cash-reconciliation/index.ts` — obtención robusta del saldo MP
+### 1. `src/hooks/useCuitLookup.ts` – fallback a AFIP
+Agregar un paso extra en `lookup(rawCuit)`: si no hay match en `clientes` ni `empresas_terciarizadas`, invocar `supabase.functions.invoke('arca-consultar-padron', { body: { cuit: clean } })` y, si `found: true`, devolver un `CuitMatch` nuevo con `source: 'afip'` que contenga `nombre / razon_social / direccion / condicion_iva / cuit`.
 
-- Después de obtener `me` (`/users/me`) usar el `me.id` (collector_id) para intentar primero el endpoint recomendado para cuentas propias:
-  - `GET https://api.mercadopago.com/users/{collector_id}/mercadopago_account/balance`
-  - Este endpoint devuelve `{ total_amount, available_balance, unavailable_balance }` para el titular de la cuenta.
-- Si falla (401/403/404), hacer fallback a `GET /v1/account/balance` (comportamiento actual).
-- Normalizar la respuesta a `{ available, total, unavailable, currency, nickname, collector_id }` — leyendo `available_balance` (prioritario), `total_amount` o `amount` según cuál esté presente.
-- Loggear (`console.log`) cada intento con endpoint + status para que quede rastro en los edge logs. No loggear el token.
-- Loggear también el `me.nickname` y la `environment` (production/sandbox) elegida.
-- Mejorar `mp_error` para incluir el endpoint que falló y un mensaje legible (ej: "No se pudo obtener el saldo MP (endpoint balance 404). Verificá que el token sea de la cuenta titular.").
+Extender el tipo `CuitMatch['source']` a `'cliente' | 'empresa_terciarizada' | 'afip'`.
 
-### 2. `src/components/cash/ReconciliacionCard.tsx` — mostrar más info del saldo
+### 2. `src/components/invoicing/InvoiceDataDialog.tsx`
+- Mostrar el badge "AFIP" cuando `cuitMatch.source === 'afip'`.
+- Detectar tipo de documento a partir de la longitud del input:
+  - 11 dígitos válidos → `tipoDocumento = 80` (CUIT), enviar formateado.
+  - 7–8 dígitos → `tipoDocumento = 96` (DNI), enviar sin formato.
+  - vacío → `tipoDocumento = 99`, `DocNro = 0`.
+- Enviar `tipo_documento` y el número correcto en el body de `arca-factura`, además del actual `receptor.cuit` / `receptor.dni`:
+  - Si es CUIT: `receptor.cuit = "XX-XXXXXXXX-X"`, `receptor.dni = undefined`.
+  - Si es DNI: `receptor.cuit = undefined`, `receptor.dni = "XXXXXXXX"`, `tipo_documento = 96`.
+- Ajustar el label ("CUIT o DNI") y aceptar el largo variable sin marcar error cuando IVA es Consumidor Final.
 
-- Extender el tipo `mp_balance` con `total` y `unavailable` opcionales.
-- En el card "Saldo disponible MP", si viene `total` distinto de `available`, mostrar también en pequeño: "Total: $X · Retenido: $Y".
-- Mostrar el `nickname` y `collector_id` juntos cuando estén disponibles ("Cuenta: NICKNAME · ID 12345").
-- Si `mp_error` está presente pero `mp_balance` también, mostrar ambos (nota de advertencia debajo del saldo).
+### 3. `supabase/functions/arca-factura/index.ts` – fallback robusto
+En el bloque que arma `tipoDocumento` (~línea 1588), reemplazar por:
 
-### 3. Verificación
+```ts
+const rawDoc = (receptor?.cuit || receptor?.dni || '').replace(/\D/g, '');
+const inferredDocTipo =
+  rawDoc.length === 11 ? 80 :
+  (rawDoc.length >= 7 && rawDoc.length <= 8) ? 96 : 99;
+const tipoDocumento: number = (rawBody.tipo_documento as number) ?? inferredDocTipo;
+```
 
-Después de deployar, abrir la sección "Conciliación del día" en `/cash` y confirmar que:
-- Aparece el nickname/ID de la cuenta MP de BeraExpress.
-- Aparece un monto en "Saldo disponible MP" (distinto de `—`).
-- Aparece un valor en "Cobros MP aprobados (rango)".
+En `solicitarCAE` (línea 557) ajustar `docNro` para que use `rawDoc` cuando `docTipo !== 99`, y `'0'` cuando sea 99.
 
-Si aún falla, revisar los logs del edge function `cash-reconciliation` (ahora tendrán detalle suficiente) y decidir el siguiente paso.
+Persistir el `tipo_documento` real en el registro de `facturas` (`receptor_tipo_documento` si existe la columna; si no, guardarlo en `arca_response.docTipo`) para trazabilidad.
 
-## Fuera de alcance
+## Verificación
 
-- No se toca el esquema de la BD ni las políticas RLS.
-- No se cambia dónde/cómo se configura el token MP (Ajustes → Integraciones sigue igual).
-- No se toca la lógica de conciliación por método (esa parte ya funciona).
+1. Cargar un CUIT válido no existente en clientes: debe aparecer badge "AFIP" y autocompletarse Razón Social + Domicilio + Condición IVA (llamada real a `arca-consultar-padron`).
+2. Emitir Factura B a Consumidor Final con CUIT (11 dígitos) → verificar en AFIP: DocTipo = 80 – CUIT, DocNro = CUIT ingresado.
+3. Emitir Factura B a Consumidor Final con DNI (8 dígitos) → DocTipo = 96 – DNI, DocNro = DNI ingresado.
+4. Emitir Factura B sin identificar receptor → DocTipo = 99, DocNro = 0.
+5. Revisar `supabase/functions/arca-factura` logs: `DocTipo` y `DocNro` deben coincidir con lo mostrado en AFIP.
+
+## Notas técnicas
+
+- La función `arca-consultar-padron` requiere que el certificado del tenant tenga habilitado el servicio `ws_sr_padron_a13` en AFIP. Si no está autorizado, devuelve `error_code: "SERVICE_NOT_AUTHORIZED"`; en ese caso el hook simplemente sigue sin autocompletar y el usuario carga los datos a mano (no se rompe el flujo).
+- El fallback por longitud (11 → CUIT, 7–8 → DNI) cubre el 100% de los casos B2C. Casos raros (CDI, LE, LC, Pasaporte) siguen pudiendo pasarse vía `tipo_documento` explícito desde otros formularios (factura manual), sin cambios de contrato.
+- No se toca el motor SOAP ni el manejo de CAE / caché WSAA.
