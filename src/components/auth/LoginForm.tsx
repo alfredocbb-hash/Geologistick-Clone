@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,9 @@ export function LoginForm() {
   const [showContent, setShowContent] = useState(false);
   const { signIn } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const nextParam = searchParams.get("next");
+  const safeNext = nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : null;
   const { toast } = useToast();
   const { t } = useTranslation('auth');
 
@@ -45,7 +48,11 @@ export function LoginForm() {
         title: t('login.welcome'),
         description: t('login.welcomeMessage'),
       });
-      navigate("/dashboard");
+      if (safeNext) {
+        window.location.href = safeNext;
+      } else {
+        navigate("/dashboard");
+      }
     }
 
     setIsLoading(false);

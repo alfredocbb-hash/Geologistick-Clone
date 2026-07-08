@@ -73,6 +73,7 @@ const Tenants = lazy(() => import("./pages/Tenants"));
 const TrackingEmbed = lazy(() => import("./pages/TrackingEmbed"));
 const ShipmentStatusGuide = lazy(() => import("./pages/ShipmentStatusGuide"));
 const LandingContentAdmin = lazy(() => import("./pages/LandingContentAdmin"));
+const OAuthConsent = lazy(() => import("./pages/OAuthConsent"));
 const TrialRequests = lazy(() => import("./pages/TrialRequests"));
 const Reports = lazy(() => import("./pages/Reports"));
 const Incidents = lazy(() => import("./pages/Incidents"));
