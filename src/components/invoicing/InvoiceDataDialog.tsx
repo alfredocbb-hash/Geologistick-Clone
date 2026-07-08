@@ -105,13 +105,20 @@ export function InvoiceDataDialog({
     }
   }, [cuit, condicionIva]);
 
+  // Determine document type/number from user input
+  const docInput = cuit.replace(/\D/g, '');
+  const isCuit = docInput.length === 11 && validateCUIT(docInput);
+  const isDni = docInput.length >= 7 && docInput.length <= 8;
+  const tipoDocumento = isCuit ? 80 : isDni ? 96 : 99;
+
   const emitirFacturaMutation = useMutation({
     mutationFn: async () => {
       const selectedCondition = CONDICION_IVA_OPTIONS.find(o => o.value === condicionIva);
 
       if (!nombre.trim()) throw new Error('Nombre o Razón Social es requerido');
       if (selectedCondition?.requiresCuit && !cuit.trim()) throw new Error('CUIT es requerido para esta condición de IVA');
-      if (tipoComprobante === 'A' && !validateCUIT(cuit)) throw new Error('Factura A requiere CUIT válido');
+      if (selectedCondition?.requiresCuit && !isCuit) throw new Error('CUIT inválido para esta condición de IVA');
+      if (tipoComprobante === 'A' && !isCuit) throw new Error('Factura A requiere CUIT válido');
 
       const importeTotalConIva = ivaIncluido ? importeTotal : Math.round(importeTotal * 1.21 * 100) / 100;
 
@@ -122,8 +129,10 @@ export function InvoiceDataDialog({
           liquidacion_terciarizado_id: liquidacionTerciarizadoId || undefined,
           tipo_comprobante: tipoComprobante,
           environment: activeEnvironment || 'production',
+          tipo_documento: tipoDocumento,
           receptor: {
-            cuit: cuit ? formatCUIT(cuit) : undefined,
+            cuit: isCuit ? formatCUIT(docInput) : undefined,
+            dni: isDni ? docInput : undefined,
             nombre: nombre.trim(),
             condicion_iva: condicionIva,
             domicilio: domicilio.trim() || undefined,
