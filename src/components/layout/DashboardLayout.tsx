@@ -15,7 +15,7 @@ function getSidebarCookieState(): boolean {
 }
 
 export function DashboardLayout() {
-  const { user, loading } = useAuth();
+  const { user, profile, roles, loading } = useAuth();
   const { isBlocked, reason } = useSubscriptionBlock();
 
   if (loading) {
@@ -33,9 +33,21 @@ export function DashboardLayout() {
     return <Navigate to="/login" replace />;
   }
 
+  // Inactive profile: block access
+  if (profile && profile.activo === false) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // Seller-only users must use /seller portal
+  const isOnlySeller = roles.length > 0 && roles.every((r) => r === 'seller');
+  if (isOnlySeller) {
+    return <Navigate to="/seller" replace />;
+  }
+
   if (isBlocked) {
     return <SubscriptionBlockScreen reason={reason} />;
   }
+
 
   return (
     <SidebarProvider defaultOpen={getSidebarCookieState()}>

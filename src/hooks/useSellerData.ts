@@ -50,7 +50,10 @@ export function useSellerData() {
       return data as SellerData | null;
     },
     enabled: !!user?.id,
+    refetchOnWindowFocus: true,
+    refetchInterval: 60_000,
   });
+
 
   const { data: movements, isLoading: isLoadingMovements } = useQuery({
     queryKey: ['seller-movements', seller?.id],

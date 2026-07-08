@@ -1,56 +1,39 @@
-## Objetivo
-Crear un documento técnico de alto nivel en `docs/ARQUITECTURA.md` que explique cómo fluyen todos los procesos del sistema, con diagramas Mermaid embebidos.
 
-## Contenido del documento
+## Problemas detectados
 
-### 1. Panorama general
-- Stack: React/Vite + Lovable Cloud (Supabase) + Edge Functions.
-- Multi-tenant: `tenant_id` en todas las tablas + RLS por `current_user_tenant()`.
-- Roles: `super_admin`, `admin`, `chofer`, `sucursal`, `seller`.
-- Diagrama de contexto: frontend / edge functions / DB / integraciones externas / apps móviles.
+1. **Sellers pueden ver Liquidaciones eCommerce (y otras vistas admin)**
+   - `DashboardLayout` (`src/components/layout/DashboardLayout.tsx`) sólo valida `user` + suscripción. No revisa roles.
+   - `Login.tsx` redirige a `/seller` sólo cuando el usuario tiene **exclusivamente** `seller`, pero si el seller navega manualmente a `/ecommerce/settlements`, `/finanzas`, `/dashboard`, etc., entra al layout admin. La página `ecommerce/Settlements.tsx` no tiene guard de rol (sólo confía en RLS).
+   - Resultado: `pruebafull@beraexpress.com` puede ver la pantalla de liquidaciones eCommerce.
 
-### 2. Núcleo operativo
-- **Ciclo de vida del envío**: `pendiente → recogido → en_transito → en_sucursal → en_reparto → entregado` (+ reprogramación, incidencia, devuelto, cancelado). Diagrama de estados.
-- **Creación**: manual, OCR, ML/Tiendanube, API pública.
-- **Rutas planificadas y hojas de ruta**: planificador → asignación a chofer → inicio → paradas (entrega/retiro) → cierre.
-- **Chofer / última milla**: check-in diario, navegación de paradas, entrega con firma/foto, reprogramación, cierre de jornada.
-- **Trazabilidad física entre sucursales** (`hoja_ruta` flex).
-- Diagrama de flujo: creación → planificación → ejecución → entrega.
+2. **Sellers/usuarios inactivos siguen entrando**
+   - `SellerLayout` chequea `hasRole('seller')` y `seller` existente, pero **no** `seller.activo`. Un seller marcado inactivo en `ecommerce_sellers` mantiene su sesión y sigue entrando.
+   - `AuthProvider` / `DashboardLayout` no chequean `profiles.activo`. Un usuario cualquiera desactivado desde `/admin/users` sigue teniendo sesión y navegando.
 
-### 3. Facturación y cobros
-- **ARCA/AFIP**: autenticación WSAA (cache 12 h) → padrón A13 → emisión de comprobante (CAE) → QR.
-- **Facturación del envío**: al entregar → diálogo `InvoiceDataDialog` → prefill destinatario/cliente → lookup DNI/CUIT → edge `arca-factura`.
-- **Pagos**: contado, contra entrega, MP webhook, tarjeta.
-- **Caja y rendiciones**: sesiones de caja abiertas, movimientos, rendición de choferes, reconciliación.
-- **Cuentas corrientes**: cliente, seller, terciarizado.
-- Diagrama de flujo facturación + secuencia ARCA.
+## Solución
 
-### 4. Liquidaciones
-- **Chofer**: por comisión de zona / tarifa activa, excluye entregas en sucursal, comisiones históricas vs pendientes.
-- **Sucursal**: emisión vs recepción, agrupa por fecha de entrega, fallback por concepto.
-- **Seller (e-commerce)**: saldo dinámico = envíos − pagos, incluye cargos de `seller_cuenta_corriente`, jerarquía de tarifas (exclusiva > default > general).
-- **Terciarizado**: por operación (retiro/entrega), IVA.
-- **Partner**: acuerdos comerciales, sincronización.
-- Diagrama por rol con inputs/outputs.
+### A. Guard de rol para el layout admin
+- En `DashboardLayout`: si el usuario tiene rol `seller` y **ningún** rol admin/operativo (admin, super_admin, supervisor, operador, chofer, bodega, despachador, atencion_cliente, sucursal, cliente), redirigir a `/seller`. Esto cubre `/ecommerce/settlements`, `/finanzas`, `/dashboard` y cualquier otra ruta bajo el layout.
+- Complementar en `ecommerce/Settlements.tsx` con un guard explícito `isAdmin() || isSuperAdmin()` → `Navigate` a `/dashboard`, igual que hace `Finanzas.tsx`, para defender en profundidad contra futuras rutas.
 
-### 5. Integraciones externas
-- **Mercado Libre**: OAuth, sync 12 h, estados duales (interno vs ML), anti-downgrade, webhook.
-- **Mercado Pago**: webhook con HMAC clonado, suscripciones, cobros contra entrega.
-- **Tiendanube**: OAuth, tarifas, fulfillment, sync de órdenes.
-- **Partners (federación de tenants)**: `partner_shipments`, `estado_sync`, propagación de estados.
-- **Public API**: `x-api-key`, endpoints públicos (tracking, tarifas, sucursales).
-- **MCP (agentes)**: OAuth interno, tools `whoami / list_shipments / get_shipment / shipment_stats`.
-- Diagrama de contexto de integraciones.
+### B. Bloqueo de usuarios inactivos (a nivel app)
+- En `AuthProvider.fetchUserData`: si `profiles.activo === false`, forzar `signOut()` y limpiar estado. Mostrar toast "Tu cuenta fue desactivada. Contactá al administrador."
+- Añadir el mismo check en `DashboardLayout` y `SellerLayout` como fallback (por si `activo` cambia durante la sesión y llega vía `refetch`).
 
-### 6. Seguridad y multi-tenant
-- Resumen corto: RLS + `has_role` + `current_user_tenant` + GRANTs.
-- Bypass de super_admin (estados finales, tenants).
+### C. Bloqueo de sellers inactivos
+- En `SellerLayout`: si `seller.activo === false`, forzar `signOut()` y redirigir a `/login` con toast "Tu tienda fue desactivada."
+- En `useSellerData`: exponer `seller.activo` (ya lo hace) y agregar `refetchOnWindowFocus: true` en el query del seller para detectar la desactivación sin recargar.
 
-## Formato
-- Un solo archivo `docs/ARQUITECTURA.md`.
-- Diagramas Mermaid embebidos como bloques ```mermaid.
-- Español (AR), tono técnico pero de alto nivel: sin nombres de columnas ni edge functions salvo cuando aporten claridad.
+### D. Revalidación periódica
+- En `AuthProvider`, agregar un `refetchInterval` liviano (cada 60s) o revalidar `profiles.activo` en cada `SIGNED_IN`/`TOKEN_REFRESHED`. Con esto una desactivación del admin cierra la sesión activa en la próxima ventana de refresco (max ~1 minuto).
 
-## Validación
-- El archivo abre en el visor Markdown del repo con los diagramas renderizados.
-- Cubre los 4 dominios pedidos con al menos 1 diagrama por dominio.
+## Archivos a modificar
+- `src/components/layout/DashboardLayout.tsx` — guard de rol + chequeo `profiles.activo`.
+- `src/components/seller/SellerLayout.tsx` — chequeo `seller.activo` + signOut.
+- `src/lib/auth.tsx` — signOut automático si `profiles.activo === false`; revalidación periódica.
+- `src/pages/ecommerce/Settlements.tsx` — guard `isAdmin/isSuperAdmin`.
+- `src/hooks/useSellerData.ts` — `refetchOnWindowFocus`.
+
+## Notas
+- Sólo cambios de frontend/presentación. No se tocan RLS ni migraciones (RLS ya filtra datos; esto corrige la superficie visual y el acceso indebido).
+- El super_admin sigue con acceso irrestricto (no se le aplica el guard de seller).

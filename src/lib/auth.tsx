@@ -53,6 +53,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .maybeSingle();
 
       if (profileData) {
+        // Block inactive users immediately
+        if ((profileData as any).activo === false) {
+          console.warn('[Auth] Inactive profile detected, signing out');
+          try {
+            const { toast } = await import('sonner');
+            toast.error('Tu cuenta fue desactivada. Contactá al administrador.');
+          } catch { /* ignore */ }
+          await supabase.auth.signOut();
+          setUser(null);
+          setSession(null);
+          setProfile(null);
+          setRoles([]);
+          return;
+        }
+
         setProfile(profileData as Profile);
         // Apply saved language preference
         const savedLang = (profileData as any).idioma;
@@ -74,6 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('Error fetching user data:', error);
     }
   };
+
 
   useEffect(() => {
     let mounted = true;
@@ -126,11 +142,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     });
 
+    // Periodic revalidation: if profile.activo becomes false, signOut kicks in.
+    const revalidateInterval = setInterval(() => {
+      if (!mounted) return;
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (mounted && session?.user) fetchUserData(session.user.id);
+      });
+    }, 60_000);
+
+    // Revalidate on window focus too
+    const onFocus = () => {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (mounted && session?.user) fetchUserData(session.user.id);
+      });
+    };
+    window.addEventListener('focus', onFocus);
+
     return () => {
       mounted = false;
       subscription.unsubscribe();
+      clearInterval(revalidateInterval);
+      window.removeEventListener('focus', onFocus);
     };
   }, []);
+
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
