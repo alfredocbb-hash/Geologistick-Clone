@@ -110,8 +110,13 @@ const METODOS_PAGO = [
 
 export default function Settlements() {
   const { tenantId } = useTenant();
-  const { user, profile } = useAuth();
+  const { user, profile, isAdmin, isSuperAdmin, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
+
+  // Role guard: only admin/super_admin can access eCommerce settlements
+  if (!authLoading && !isAdmin() && !isSuperAdmin()) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   // Tab state
   const [activeTab, setActiveTab] = usePersistedState('ui-tab-ecommerce-settlements', 'sellers');
