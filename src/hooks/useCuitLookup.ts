@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { validateCUIT, formatCUIT } from '@/hooks/useARCAConfig';
 
 export interface CuitMatch {
-  source: 'cliente' | 'empresa_terciarizada';
+  source: 'cliente' | 'empresa_terciarizada' | 'afip';
   sourceId: string;
   nombre: string;
   razonSocial: string | null;
@@ -76,6 +76,28 @@ export function useCuitLookup({ tenantId }: UseCuitLookupOptions) {
         });
         setLoading(false);
         return;
+      }
+
+      // Fallback: consultar padrón AFIP
+      try {
+        const { data: padron } = await supabase.functions.invoke('arca-consultar-padron', {
+          body: { cuit: clean },
+        });
+        if (padron?.found) {
+          setMatch({
+            source: 'afip',
+            sourceId: clean,
+            nombre: padron.razon_social || padron.nombre || '',
+            razonSocial: padron.razon_social || null,
+            direccion: padron.domicilio || null,
+            condicionIva: padron.condicion_iva || null,
+            cuit: formatted,
+          });
+          setLoading(false);
+          return;
+        }
+      } catch {
+        // ignore, sigue sin match
       }
 
       setMatch(null);

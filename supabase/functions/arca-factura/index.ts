@@ -555,9 +555,8 @@ async function solicitarCAE(
   
   // Use explicit tipo_documento from opts if provided, otherwise infer from IVA condition
   const docTipo = opts?.tipoDocumento ?? ivaCondition.docTipo;
-  const docNro = docTipo === 99
-    ? '0'
-    : (receptor.cuit?.replace(/[-]/g, '') || receptor.dni || '0');
+  const rawDoc = (receptor.cuit || receptor.dni || '').replace(/\D/g, '');
+  const docNro = docTipo === 99 ? '0' : (rawDoc || '0');
 
   const nowMs = Date.now();
   const AR_OFFSET_MS = 3 * 60 * 60 * 1000;
@@ -1585,7 +1584,11 @@ serve(async (req) => {
 
     // Extra AFIP fields (factura manual / completos)
     const concepto: number = (rawBody.concepto as number) ?? 1;
-    const tipoDocumento: number = (rawBody.tipo_documento as number) ?? (receptor?.cuit ? 80 : 99);
+    const rawDocDigits = String(rawBody?.receptor?.cuit || rawBody?.receptor?.dni || '').replace(/\D/g, '');
+    const inferredDocTipo = rawDocDigits.length === 11 ? 80
+      : (rawDocDigits.length >= 7 && rawDocDigits.length <= 8) ? 96
+      : 99;
+    const tipoDocumento: number = (rawBody.tipo_documento as number) ?? inferredDocTipo;
     const condicionVenta: string | undefined = rawBody.condicion_venta;
     const fechaServicioDesde: string | undefined = rawBody.fecha_servicio_desde;
     const fechaServicioHasta: string | undefined = rawBody.fecha_servicio_hasta;
