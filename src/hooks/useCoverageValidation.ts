@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { ciudadMatchPartial } from '@/lib/ciudadMatch';
 
 interface CoverageZone {
   ciudad: string | null;
@@ -75,12 +76,9 @@ export function useCoverageValidation(sucursalId: string | undefined | null) {
       let matchesProvincia = false;
       let matchesCp = false;
 
-      // Check ciudad match
-      if (zone.ciudad && destCiudad) {
-        const zoneCiudad = normalize(zone.ciudad);
-        if (zoneCiudad === destCiudad || 
-            destCiudad.includes(zoneCiudad) || 
-            zoneCiudad.includes(destCiudad)) {
+      // Check ciudad match (CABA-aware por CP)
+      if (zone.ciudad && destino.ciudad) {
+        if (ciudadMatchPartial(zone.ciudad, destino.ciudad, destino.codigo_postal)) {
           matchesCiudad = true;
         }
       }

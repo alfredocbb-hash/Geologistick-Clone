@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { ciudadMatchExact, ciudadMatchPartial } from '../_shared/ciudadMatch.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -353,22 +354,21 @@ Deno.serve(async (req) => {
           .eq('activa', true);
         
         if (zonaTarifas && zonaTarifas.length > 0) {
-          const cityNorm = city.toLowerCase().trim();
-          // First try exact match, then substring
+          // Exact match (CABA-aware por CP)
           for (const t of zonaTarifas) {
             if (!t.zona_destino) continue;
-            const destinos = t.zona_destino.split(',').map((d: string) => d.toLowerCase().trim());
-            if (destinos.includes(cityNorm)) {
+            const destinos = t.zona_destino.split(',').map((d: string) => d.trim());
+            if (destinos.some((d: string) => ciudadMatchExact(d, city, zipCode))) {
               precioCalculado = t.precio_base || 0;
               break;
             }
           }
-          // Substring fallback
+          // Substring fallback (CABA-aware por CP)
           if (precioCalculado === 0) {
             for (const t of zonaTarifas) {
               if (!t.zona_destino) continue;
-              const destinos = t.zona_destino.split(',').map((d: string) => d.toLowerCase().trim());
-              if (destinos.some((d: string) => d.includes(cityNorm) || cityNorm.includes(d))) {
+              const destinos = t.zona_destino.split(',').map((d: string) => d.trim());
+              if (destinos.some((d: string) => ciudadMatchPartial(d, city, zipCode))) {
                 precioCalculado = t.precio_base || 0;
                 break;
               }

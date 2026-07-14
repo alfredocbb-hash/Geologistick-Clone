@@ -1,56 +1,76 @@
 
-## Problema
+## Contexto
 
-Cuando Google Places devuelve una dirección de CABA, el campo `locality` es siempre **"Buenos Aires"** (o "Ciudad Autónoma de Buenos Aires"). El barrio real (Palermo, Villa Crespo, Villa del Parque, etc.) viene en `sublocality_level_1` / `neighborhood`. Hoy `AddressAutocomplete.tsx` sólo lee `locality`, por lo que todos los envíos de CABA quedan con ciudad "Buenos Aires".
+El backfill dejó los envíos CABA con la ciudad del barrio (Palermo, Belgrano, Villa Crespo, etc.) en lugar de "Buenos Aires". Todos los motores de matching por ciudad de las liquidaciones y tarifas siguen comparando texto plano, por lo que:
 
-## Cambios propuestos
+- Un chofer con regla de zona configurada como "Buenos Aires" / "CABA" / "Capital Federal" **ya no matchea** contra un envío cuya ciudad ahora es "Palermo".
+- Las tarifas por zona (`tarifas.zona_destino`) configuradas con "CABA" tampoco matchean, y se cae al fallback por provincia (o a 0).
+- Las tarifas de terciarizados (`tarifas_terciarizadas.zonas`) tienen el mismo problema.
+- Público (`public-rates`) y creación desde ML devuelven precio 0 / sin tarifa.
+- La validación de cobertura de sucursales rechaza destinos que antes aceptaba.
 
-### 1. Autocomplete: preferir barrio para CABA (`src/components/maps/AddressAutocomplete.tsx`)
+Todo esto afecta directamente el cálculo de liquidaciones (chofer, terciarizados, sellers, sucursales).
 
-Al extraer los `address_components`:
+## Objetivo
 
-- Capturar también `sublocality_level_1`, `sublocality`, `neighborhood` y `administrative_area_level_2`.
-- Regla nueva para el campo `city`:
-  - Si `administrative_area_level_1` es "Ciudad Autónoma de Buenos Aires" (o `locality` == "Buenos Aires" con CP que empiece en `C`/`1`): usar `sublocality_level_1` → `sublocality` → `neighborhood` como ciudad, en ese orden.
-  - Caso contrario: mantener `locality` actual, con fallback a `administrative_area_level_2`.
-- Si el barrio devuelto por Google viene distinto al del CP (rara vez), priorizar Google y dejar el CP como está.
+Que cualquier regla configurada con nombre CABA-genérico (Buenos Aires, CABA, Capital Federal, Ciudad Autónoma) o con nombre de barrio siga matcheando contra los envíos CABA independientemente de que la ciudad guardada sea el barrio, siempre que el CP pertenezca a CABA. Sin tocar el resto de la lógica.
 
-### 2. Fallback por código postal (nuevo helper `src/lib/cabaBarriosByCP.ts`)
+## Cambios
 
-Tabla de mapeo CP CABA → barrio (los 48 barrios oficiales). Se usa cuando:
-- La dirección se ingresa manualmente sin autocomplete.
-- Google no devolvió `sublocality_level_1` pero el CP empieza con `C1` o `1` y cae en CABA.
+### 1. Nuevo helper compartido `src/lib/ciudadMatch.ts`
 
-El helper expone `getBarrioByCP(cp: string): string | null`.
+Exporta:
 
-Se llama desde `AddressAutocomplete` como último fallback, y se expone para que el resto del sistema (OCR, edición manual) también lo pueda usar.
+- `CABA_GENERICS`: set de nombres normalizados que representan "CABA a nivel ciudad" (buenos aires, caba, capital federal, ciudad autonoma de buenos aires, ciudad de buenos aires).
+- `isCABACP(cp)`: reutiliza el rango existente de `cabaBarriosByCP` (C1xxx y 1000-1499) para saber si un CP es CABA.
+- `isCABABarrio(nombre)`: chequea contra los valores del mapa `CABA_BARRIOS_BY_CP`.
+- `ciudadMatch(zoneCity, shipmentCity, shipmentCP?)`: devuelve `boolean`.
+  - Normaliza ambos (lowercase + strip acentos + trim).
+  - Match directo (igualdad o substring en cualquier dirección) → true.
+  - Si `shipmentCP` es CABA **y** (zoneCity es CABA genérico **o** zoneCity es barrio CABA) → true.
+  - Si zoneCity es barrio CABA **y** shipmentCity es CABA genérico → true.
+  - Si zoneCity es CABA genérico **y** shipmentCity es barrio CABA → true.
+- `ciudadMatchExact(...)` y `ciudadMatchPartial(...)` para respetar los niveles de prioridad donde hoy se diferencian ambos.
 
-### 3. Aplicar la misma lógica en el resto de puntos de entrada
+### 2. Copia en `supabase/functions/_shared/ciudadMatch.ts`
 
-- `src/lib/ocrParser.ts`: cuando el OCR detecte CP de CABA y ciudad = "Buenos Aires"/"CABA"/"Capital Federal", reemplazar por el barrio del helper.
-- `src/components/routes/EditShipmentLocationDialog.tsx`: ya usa `AddressAutocomplete`, hereda el fix automáticamente.
-- Edge function `supabase/functions/geocode-address/index.ts`: aplicar la misma preferencia de `sublocality_level_1` sobre `locality` en CABA (para geocode server-side usado en imports/ML).
+Versión Deno del mismo helper (sin `import` a `src/`) para reutilizar en edge functions.
 
-### 4. Backfill de datos históricos
+### 3. Puntos de integración (usar el helper, sin cambiar el flujo)
 
-Migración one-shot que actualiza envíos existentes donde `ciudad_entrega` ∈ {"Buenos Aires","CABA","Capital Federal","Ciudad Autónoma de Buenos Aires"} y `cp_entrega` está poblado:
+Frontend:
 
-```sql
-UPDATE envios
-SET ciudad_entrega = <barrio del CP>
-WHERE ciudad_entrega ILIKE ANY (ARRAY['buenos aires','caba','capital federal','ciudad aut%'])
-  AND cp_entrega IS NOT NULL
-  AND <CP matchea alguno de los del mapa>;
-```
+- `src/pages/DriverSettlements.tsx`
+  - `matchZonaRegla`: reemplaza los pasos 2 y 3 (ciudad exacta / parcial) por `ciudadMatchExact` y `ciudadMatchPartial` pasando el CP del envío.
+  - `findZoneTarifaPrecio` y `findZoneTarifaComision`: reemplazar los dos bucles de ciudad por `ciudadMatch` pasando `cp_entrega`.
+- `src/pages/ecommerce/Settlements.tsx` (bloques `zona_destino` para sellers y default): mismo reemplazo, pasando el CP del envío.
+- `src/pages/NewShipment.tsx` (`encontrarTarifaPorDestino`): pasar CP y usar `ciudadMatch`.
+- `src/components/ecommerce/CreateShipmentFromOrderDialog.tsx`: idem donde matchea `zona_destino`.
+- `src/lib/resolveTerciarizadoPrice.ts`: aceptar `cp_entrega` en `EnvioForPricing` (ya existe en la tabla) y usar `ciudadMatch` para comparaciones exact/partial de `zonas.ciudades`.
+- `src/hooks/useCoverageValidation.ts`: usar `ciudadMatch` para el chequeo de ciudad, priorizando el match por CP existente.
 
-Se hace vía función PL/pgSQL con `CASE` sobre los prefijos de CP (C1000..C1499 y equivalentes numéricos). Misma actualización en `ciudad_retiro`/`cp_retiro`. Se registra un `envio_historial` opcional? — por defecto NO, para no ensuciar el historial con un cambio administrativo.
+Edge functions:
 
-### 5. Verificación
+- `supabase/functions/public-rates/index.ts` → `encontrarTarifaPorDestino` usa el helper compartido y recibe el CP.
+- `supabase/functions/mercadolibre-webhook/index.ts` → sección "Calculate price by zone matching" (línea ~331) usa el helper.
 
-- Probar en `/shipments/new` con las direcciones del screenshot (Av. Las Heras 2900 → Palermo/Recoleta; Villa Crespo; Villa del Parque).
-- Confirmar que envíos ya cargados en Buenos Aires quedan reasignados a su barrio correcto post-migración.
+### 4. Sin migración de datos
 
-## Fuera de alcance
+No se necesita modificar filas: el helper resuelve la equivalencia en tiempo de query. Se mantiene el orden actual de prioridad (CP > ciudad exacta > ciudad parcial > provincia > global).
 
-- No se toca la lógica de tarifas por ciudad (las reglas por "Buenos Aires" existentes seguirán matcheando por provincia/CP si están configuradas así; si un tenant tenía tarifas por barrio, el cambio las hará matchear mejor).
-- No se agregan barrios de GBA ni de otras ciudades grandes en esta iteración; sólo CABA. Si más adelante hace falta La Plata, Rosario, Córdoba capital, se extiende el helper.
+## Verificación
+
+1. Envío con `ciudad_entrega = 'Palermo'`, `cp_entrega = 'C1425'`:
+   - Regla chofer con `ciudad = 'Buenos Aires'` → matchea (nuevo).
+   - Regla chofer con `ciudad = 'Palermo'` → matchea (ya funcionaba).
+   - Regla chofer con `codigo_postal_desde = 1425` → matchea (ya funcionaba, sin cambios).
+2. Tarifa por zona con `zona_destino = 'CABA'` y envío Palermo → devuelve precio_base.
+3. Terciarizado con `ciudades = ['Capital Federal']` y envío Villa Crespo (CP 1414) → devuelve precio de la zona.
+4. Envío interior (ej. Córdoba capital, CP 5000) no debe matchear ninguna regla CABA → sin regresión.
+5. Correr una liquidación de prueba del chofer que motivó el reporte y confirmar que los envíos CABA vuelven a tomar la comisión de zona configurada.
+
+## Notas técnicas
+
+- El helper trata CABA como caso especial; no se agrega lógica genérica por provincia para evitar cambiar el comportamiento del interior.
+- El fallback por provincia y el catch-all global existentes se dejan intactos.
+- No hay cambios de schema ni de datos; solo lógica de comparación.

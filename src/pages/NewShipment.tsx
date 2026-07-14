@@ -43,6 +43,7 @@ import {
 } from 'lucide-react';
 import { PaymentMethodDialog } from '@/components/shipments/PaymentMethodDialog';
 import { useCoverageValidation } from '@/hooks/useCoverageValidation';
+import { ciudadMatchPartial } from '@/lib/ciudadMatch';
 
 interface TarifaConcepto {
   id: string;
@@ -183,9 +184,9 @@ function encontrarTarifaPorDestino(
   // El tipo_tarifa define CÓMO se calcula el precio, no DÓNDE aplica la tarifa
   const coincidentesZona = tarifas.filter(t => {
     if (!t.zona_destino) return false;
-    const destinos = t.zona_destino.split(',').map((d: string) => normalizarTexto(d.trim()));
-    if (ciudadNorm && destinos.some((d: string) => d.includes(ciudadNorm) || ciudadNorm.includes(d))) return true;
-    if (cpTrim && destinos.some((d: string) => d === cpTrim)) return true;
+    const destinos = t.zona_destino.split(',').map((d: string) => d.trim());
+    if (ciudad && destinos.some((d: string) => ciudadMatchPartial(d, ciudad, cp))) return true;
+    if (cpTrim && destinos.some((d: string) => d.trim() === cpTrim)) return true;
     return false;
   });
 

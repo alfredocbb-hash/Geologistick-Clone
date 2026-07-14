@@ -29,6 +29,7 @@ import { toast } from 'sonner';
 import { SellerSettlementDialog } from '@/components/ecommerce/SellerSettlementDialog';
 import { SellerLiquidacionDetailDialog } from '@/components/ecommerce/SellerLiquidacionDetailDialog';
 import { downloadSellerSettlementPDF } from '@/lib/generateSettlementPDF';
+import { ciudadMatchExact, ciudadMatchPartial } from '@/lib/ciudadMatch';
 
 interface Seller {
   id: string;
@@ -247,7 +248,7 @@ export default function Settlements() {
           const chunk = allEnvioIds.slice(i, i + 500);
           const { data: enviosData } = await supabase
             .from('envios')
-            .select('id, ciudad_entrega, precio_total, precio_tarifa_vigente, estado')
+            .select('id, ciudad_entrega, cp_entrega, precio_total, precio_tarifa_vigente, estado')
             .in('id', chunk);
           (enviosData || []).forEach(e => enviosMap.set(e.id, e));
         }
@@ -262,7 +263,7 @@ export default function Settlements() {
           if (!seller.cliente_id) continue;
           const { data: commonEnvios } = await supabase
             .from('envios')
-            .select('id, ciudad_entrega, precio_total, estado')
+            .select('id, ciudad_entrega, cp_entrega, precio_total, estado')
             .eq('remitente_id', seller.cliente_id);
           const filtered = (commonEnvios || []).filter(e => !allOrderEnvioIds.has(e.id));
           filtered.forEach(e => enviosMap.set(e.id, e));
@@ -296,7 +297,7 @@ export default function Settlements() {
           const chunk = missingCtaCteIds.slice(i, i + 500);
           const { data: ctaCteEnviosData } = await supabase
             .from('envios')
-            .select('id, ciudad_entrega, precio_total, precio_tarifa_vigente, estado')
+            .select('id, ciudad_entrega, cp_entrega, precio_total, precio_tarifa_vigente, estado')
             .in('id', chunk);
           (ctaCteEnviosData || []).forEach(e => enviosMap.set(e.id, e));
         }
@@ -378,21 +379,20 @@ export default function Settlements() {
 
             // Only do zone/tarifa lookup if precio_total is 0 or null (truly missing price)
             if (precio === 0) {
-              // Helper to match city against a list of zone tarifas
-              const matchZoneIn = (ciudad: string, tarifaList: any[]): number | null => {
+              // Helper to match city against a list of zone tarifas (CABA-aware por CP)
+              const matchZoneIn = (ciudad: string, cp: string | null | undefined, tarifaList: any[]): number | null => {
                 if (!ciudad || tarifaList.length === 0) return null;
-                const ciudadNorm = normalize(ciudad);
                 for (const zt of tarifaList) {
                   if (!zt.zona_destino) continue;
-                  const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-                  if (zonas.some((z: string) => z === ciudadNorm)) {
+                  const zonas = zt.zona_destino.split(',').map((z: string) => z.trim());
+                  if (zonas.some((z: string) => ciudadMatchExact(z, ciudad, cp))) {
                     return zt.precio_base || 0;
                   }
                 }
                 for (const zt of tarifaList) {
                   if (!zt.zona_destino) continue;
-                  const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-                  if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) {
+                  const zonas = zt.zona_destino.split(',').map((z: string) => z.trim());
+                  if (zonas.some((z: string) => ciudadMatchPartial(z, ciudad, cp))) {
                     return zt.precio_base || 0;
                   }
                 }
@@ -405,7 +405,7 @@ export default function Settlements() {
               // Priority: 1) seller exclusive tarifas, 2) assigned tarifa, 3) general zone tarifas
               const sellerExclusives = exclusiveTarifasBySeller.get(seller.id) || [];
               if (sellerExclusives.length > 0 && envio.ciudad_entrega) {
-                const exclPrice = matchZoneIn(envio.ciudad_entrega, sellerExclusives);
+                const exclPrice = matchZoneIn(envio.ciudad_entrega, (envio as any).cp_entrega, sellerExclusives);
                 if (exclPrice !== null) precio = exclPrice;
               }
 
@@ -413,7 +413,7 @@ export default function Settlements() {
                 const tarifa = tarifasMap.get(seller.tarifa_id);
                 if (tarifa) {
                   if (tarifa.tipo_tarifa === 'zona' && envio.ciudad_entrega) {
-                    const zonePrice = matchZoneIn(envio.ciudad_entrega, allZoneTarifas);
+                    const zonePrice = matchZoneIn(envio.ciudad_entrega, (envio as any).cp_entrega, allZoneTarifas);
                     if (zonePrice !== null) precio = zonePrice;
                   } else {
                     precio = tarifa.precio_base || 0;
@@ -422,7 +422,7 @@ export default function Settlements() {
               }
               
               if (precio === 0 && allZoneTarifas.length > 0 && envio.ciudad_entrega) {
-                const zonePrice = matchZoneIn(envio.ciudad_entrega, allZoneTarifas);
+                const zonePrice = matchZoneIn(envio.ciudad_entrega, (envio as any).cp_entrega, allZoneTarifas);
                 if (zonePrice !== null) precio = zonePrice;
               }
             }
@@ -562,7 +562,7 @@ export default function Settlements() {
       if (sellerEnvioIds.length > 0) {
         const { data: ecomEnvios, error: ecomError } = await (supabase
           .from('envios') as any)
-          .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
+          .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, cp_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
           .in('id', sellerEnvioIds)
           .order('created_at', { ascending: true });
 
@@ -596,7 +596,7 @@ export default function Settlements() {
           // Query 1: envíos comunes filtrados por fecha_entrega en el rango (o por webhook ML)
           let commonQuery = (supabase
             .from('envios') as any)
-            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
+            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, cp_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
             .in('remitente_id', uniqueOnlyClienteIds)
             .lte('fecha_entrega', fechaFinStr);
 
@@ -620,7 +620,7 @@ export default function Settlements() {
           if (tipoFechaDesde !== 'webhook_reparto') {
             const { data: noDateRows, error: commonNoDateError } = await (supabase
               .from('envios') as any)
-              .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
+              .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, cp_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
               .in('remitente_id', uniqueOnlyClienteIds)
               .is('fecha_entrega', null)
               .gte('created_at', fechaInicioStr)
@@ -683,7 +683,7 @@ export default function Settlements() {
         if (ctaCteEnvioIds.length > 0) {
           const { data: fetchedEnvios } = await (supabase
             .from('envios') as any)
-            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
+            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, cp_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
             .in('id', ctaCteEnvioIds)
             .order('created_at', { ascending: true });
 
@@ -824,20 +824,19 @@ export default function Settlements() {
             const ownerSellerId = envioToSellerMap.get(e.id) || calcSellers[0];
             const sellerTarifaId = sellerTarifaMap.get(ownerSellerId);
 
-            const matchZoneIn = (ciudad: string, tarifaList: any[]): { precio: number; zona: string; tarifaId: string } | null => {
+            const matchZoneIn = (ciudad: string, cp: string | null | undefined, tarifaList: any[]): { precio: number; zona: string; tarifaId: string } | null => {
               if (!ciudad || tarifaList.length === 0) return null;
-              const ciudadNorm = normalize(ciudad);
               for (const zt of tarifaList) {
                 if (!zt.zona_destino) continue;
-                const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-                if (zonas.some((z: string) => z === ciudadNorm)) {
+                const zonas = zt.zona_destino.split(',').map((z: string) => z.trim());
+                if (zonas.some((z: string) => ciudadMatchExact(z, ciudad, cp))) {
                   return { precio: zt.precio_base || 0, zona: zt.nombre || zt.zona_destino, tarifaId: zt.id };
                 }
               }
               for (const zt of tarifaList) {
                 if (!zt.zona_destino) continue;
-                const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-                if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) {
+                const zonas = zt.zona_destino.split(',').map((z: string) => z.trim());
+                if (zonas.some((z: string) => ciudadMatchPartial(z, ciudad, cp))) {
                   return { precio: zt.precio_base || 0, zona: zt.nombre || zt.zona_destino, tarifaId: zt.id };
                 }
               }
@@ -849,7 +848,7 @@ export default function Settlements() {
 
             const sellerExclusives = mutExclusiveBySeller.get(ownerSellerId) || [];
             if (sellerExclusives.length > 0 && e.ciudad_entrega) {
-              const match = matchZoneIn(e.ciudad_entrega, sellerExclusives);
+              const match = matchZoneIn(e.ciudad_entrega, (e as any).cp_entrega, sellerExclusives);
               if (match) {
                 precioFinal = match.precio;
                 precioCalculado = true;
@@ -862,7 +861,7 @@ export default function Settlements() {
               const tarifa = tarifasMap.get(sellerTarifaId);
               if (tarifa) {
                 if (tarifa.tipo_tarifa === 'zona' && e.ciudad_entrega) {
-                  const match = matchZoneIn(e.ciudad_entrega, allZoneTarifas);
+                  const match = matchZoneIn(e.ciudad_entrega, (e as any).cp_entrega, allZoneTarifas);
                   if (match) {
                     precioFinal = match.precio;
                     precioCalculado = true;
@@ -879,7 +878,7 @@ export default function Settlements() {
             }
             
             if (precioFinal === 0 && allZoneTarifas.length > 0 && e.ciudad_entrega) {
-              const match = matchZoneIn(e.ciudad_entrega, allZoneTarifas);
+              const match = matchZoneIn(e.ciudad_entrega, (e as any).cp_entrega, allZoneTarifas);
               if (match) {
                 precioFinal = match.precio;
                 precioCalculado = true;

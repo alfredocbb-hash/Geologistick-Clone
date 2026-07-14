@@ -51,6 +51,7 @@ import { SettlementDetailDialog } from '@/components/settlements/SettlementDetai
 import { toLocalISOStart, toLocalISOEnd, parseDateString } from '@/lib/dateUtils';
 import { AssignShipmentsRetroactiveDialog } from '@/components/drivers/AssignShipmentsRetroactiveDialog';
 import { UserPlus } from 'lucide-react';
+import { ciudadMatchExact, ciudadMatchPartial, ciudadMatch } from '@/lib/ciudadMatch';
 
 type PaymentMethod = Database['public']['Enums']['payment_method'];
 
@@ -167,14 +168,14 @@ function matchZonaRegla(
     });
     if (hit) return { regla: hit, matchedBy: 'cp' };
   }
-  // 2. Ciudad exacta
+  // 2. Ciudad exacta (con equivalencia CABA por CP)
   if (cN) {
-    const hit = sorted.find(r => r.ciudad && normalizeStr(r.ciudad) === cN);
+    const hit = sorted.find(r => r.ciudad && ciudadMatchExact(r.ciudad, ciudad, cpStr));
     if (hit) return { regla: hit, matchedBy: 'ciudad' };
   }
-  // 3. Ciudad parcial
+  // 3. Ciudad parcial (con equivalencia CABA por CP)
   if (cN) {
-    const hit = sorted.find(r => r.ciudad && (normalizeStr(r.ciudad).includes(cN) || cN.includes(normalizeStr(r.ciudad))));
+    const hit = sorted.find(r => r.ciudad && ciudadMatchPartial(r.ciudad, ciudad, cpStr));
     if (hit) return { regla: hit, matchedBy: 'ciudad_parcial' };
   }
   // 4. Provincia catch-all (sólo reglas con provincia y SIN ciudad ni CP)
@@ -447,20 +448,21 @@ export default function DriverSettlements() {
         .eq('activa', true);
       const allZoneTarifas = zoneTarifasData || [];
 
-      // Helper: find zone tarifa precio_base by ciudad_entrega
-      const findZoneTarifaPrecio = (ciudad: string | null, provincia?: string | null): number => {
+      // Helper: find zone tarifa precio_base by ciudad_entrega (con equivalencia CABA por CP)
+      const findZoneTarifaPrecio = (ciudad: string | null, provincia?: string | null, cp?: string | null): number => {
         if (allZoneTarifas.length === 0) return 0;
         if (ciudad) {
-          const ciudadNorm = normalize(ciudad);
+          // Exact
           for (const zt of allZoneTarifas) {
             if (!zt.zona_destino) continue;
-            const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-            if (zonas.some((z: string) => z === ciudadNorm)) return zt.precio_base || 0;
+            const zonas = zt.zona_destino.split(',').map((z: string) => z.trim());
+            if (zonas.some((z: string) => ciudadMatchExact(z, ciudad, cp))) return zt.precio_base || 0;
           }
+          // Partial
           for (const zt of allZoneTarifas) {
             if (!zt.zona_destino) continue;
-            const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-            if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) return zt.precio_base || 0;
+            const zonas = zt.zona_destino.split(',').map((z: string) => z.trim());
+            if (zonas.some((z: string) => ciudadMatchPartial(z, ciudad, cp))) return zt.precio_base || 0;
           }
         }
         // Fallback: match by provincia
@@ -478,24 +480,23 @@ export default function DriverSettlements() {
       const normalize = (str: string) => str.toLowerCase().trim()
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-      // Helper: find zone tarifa commission config by ciudad_entrega
-      const findZoneTarifaComision = (ciudad: string | null, provincia?: string | null): { comision_chofer_porcentaje: number | null; comision_chofer_fija: number | null } | null => {
+      // Helper: find zone tarifa commission config by ciudad_entrega (con equivalencia CABA por CP)
+      const findZoneTarifaComision = (ciudad: string | null, provincia?: string | null, cp?: string | null): { comision_chofer_porcentaje: number | null; comision_chofer_fija: number | null } | null => {
         if (allZoneTarifas.length === 0) return null;
         if (ciudad) {
-          const ciudadNorm = normalize(ciudad);
           // Exact match first
           for (const zt of allZoneTarifas) {
             if (!zt.zona_destino) continue;
-            const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-            if (zonas.some((z: string) => z === ciudadNorm)) {
+            const zonas = zt.zona_destino.split(',').map((z: string) => z.trim());
+            if (zonas.some((z: string) => ciudadMatchExact(z, ciudad, cp))) {
               return { comision_chofer_porcentaje: zt.comision_chofer_porcentaje, comision_chofer_fija: zt.comision_chofer_fija };
             }
           }
           // Substring match
           for (const zt of allZoneTarifas) {
             if (!zt.zona_destino) continue;
-            const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-            if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) {
+            const zonas = zt.zona_destino.split(',').map((z: string) => z.trim());
+            if (zonas.some((z: string) => ciudadMatchPartial(z, ciudad, cp))) {
               return { comision_chofer_porcentaje: zt.comision_chofer_porcentaje, comision_chofer_fija: zt.comision_chofer_fija };
             }
           }
@@ -535,7 +536,7 @@ export default function DriverSettlements() {
         
         // If no tarifa from envio join and driver uses 'tarifa' commission type, try zone fallback
         if (!tarifa && (chofer.comision_tipo === 'tarifa' || !chofer.comision_tipo)) {
-          tarifa = findZoneTarifaComision((envio as any).ciudad_entrega, (envio as any).provincia);
+          tarifa = findZoneTarifaComision((envio as any).ciudad_entrega, (envio as any).provincia, (envio as any).cp_entrega);
         }
 
         // Price hierarchy: precio_tarifa_vigente → precio_total → zone precio_base
@@ -543,7 +544,7 @@ export default function DriverSettlements() {
         const precioEfectivo =
           (ptv && ptv > 0) ? ptv :
           (envio.precio_total > 0) ? envio.precio_total :
-          findZoneTarifaPrecio((envio as any).ciudad_entrega, (envio as any).provincia);
+          findZoneTarifaPrecio((envio as any).ciudad_entrega, (envio as any).provincia, (envio as any).cp_entrega);
         
         const zonaMatch = chofer.comision_tipo === 'zona'
           ? matchZonaRegla(zonaReglas, (envio as any).ciudad_entrega, (envio as any).provincia, (envio as any).cp_entrega)

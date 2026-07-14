@@ -5,7 +5,7 @@
  * para inferir el barrio a partir del CP (4 dígitos o CPA "C" + 4).
  */
 
-const CABA_BARRIO_BY_CP: Record<string, string> = {
+export const CABA_BARRIO_BY_CP: Record<string, string> = {
   // San Nicolás / Microcentro
   "1001": "San Nicolás", "1002": "San Nicolás", "1003": "San Nicolás",
   "1004": "San Nicolás", "1005": "San Nicolás", "1006": "San Nicolás",
