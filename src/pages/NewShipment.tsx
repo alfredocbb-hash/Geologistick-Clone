@@ -43,6 +43,7 @@ import {
 } from 'lucide-react';
 import { PaymentMethodDialog } from '@/components/shipments/PaymentMethodDialog';
 import { useCoverageValidation } from '@/hooks/useCoverageValidation';
+import { ciudadMatchPartial } from '@/lib/ciudadMatch';
 
 interface TarifaConcepto {
   id: string;
