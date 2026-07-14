@@ -536,7 +536,7 @@ export default function DriverSettlements() {
         
         // If no tarifa from envio join and driver uses 'tarifa' commission type, try zone fallback
         if (!tarifa && (chofer.comision_tipo === 'tarifa' || !chofer.comision_tipo)) {
-          tarifa = findZoneTarifaComision((envio as any).ciudad_entrega, (envio as any).provincia);
+          tarifa = findZoneTarifaComision((envio as any).ciudad_entrega, (envio as any).provincia, (envio as any).cp_entrega);
         }
 
         // Price hierarchy: precio_tarifa_vigente → precio_total → zone precio_base
@@ -544,7 +544,7 @@ export default function DriverSettlements() {
         const precioEfectivo =
           (ptv && ptv > 0) ? ptv :
           (envio.precio_total > 0) ? envio.precio_total :
-          findZoneTarifaPrecio((envio as any).ciudad_entrega, (envio as any).provincia);
+          findZoneTarifaPrecio((envio as any).ciudad_entrega, (envio as any).provincia, (envio as any).cp_entrega);
         
         const zonaMatch = chofer.comision_tipo === 'zona'
           ? matchZonaRegla(zonaReglas, (envio as any).ciudad_entrega, (envio as any).provincia, (envio as any).cp_entrega)
