@@ -68,28 +68,46 @@ export function AddressAutocomplete({
         // Extract address components
         let streetNumber = '';
         let route = '';
-        let city = '';
+        let locality = '';
+        let sublocality1 = '';
+        let sublocality = '';
+        let neighborhood = '';
+        let adminArea2 = '';
         let province = '';
         let postalCode = '';
 
         for (const component of place.address_components || []) {
           const types = component.types;
 
-          if (types.includes('street_number')) {
-            streetNumber = component.long_name;
+          if (types.includes('street_number')) streetNumber = component.long_name;
+          if (types.includes('route')) route = component.long_name;
+          if (types.includes('locality')) locality = component.long_name;
+          if (types.includes('sublocality_level_1')) sublocality1 = component.long_name;
+          if (types.includes('sublocality') && !types.includes('sublocality_level_1')) {
+            sublocality = component.long_name;
           }
-          if (types.includes('route')) {
-            route = component.long_name;
-          }
-          if (types.includes('locality')) {
-            city = component.long_name;
-          }
-          if (types.includes('administrative_area_level_1')) {
-            province = component.long_name;
-          }
-          if (types.includes('postal_code')) {
-            postalCode = component.long_name;
-          }
+          if (types.includes('neighborhood')) neighborhood = component.long_name;
+          if (types.includes('administrative_area_level_2')) adminArea2 = component.long_name;
+          if (types.includes('administrative_area_level_1')) province = component.long_name;
+          if (types.includes('postal_code')) postalCode = component.long_name;
+        }
+
+        // Para CABA: preferir el barrio (sublocality/neighborhood) sobre "Buenos Aires"
+        const isCABA =
+          /ciudad aut[óo]noma/i.test(province) ||
+          isGenericCabaCity(locality);
+
+        let city = '';
+        if (isCABA) {
+          city =
+            sublocality1 ||
+            sublocality ||
+            neighborhood ||
+            getBarrioByCP(postalCode) ||
+            locality ||
+            'Buenos Aires';
+        } else {
+          city = locality || adminArea2 || sublocality1 || neighborhood || '';
         }
 
         const streetAddress = route ? `${route} ${streetNumber}`.trim() : (place.name || '');
