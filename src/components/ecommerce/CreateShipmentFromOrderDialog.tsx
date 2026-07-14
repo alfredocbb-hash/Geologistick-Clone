@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, MapPin, User, Package, DollarSign, Printer, CheckCircle, XCircle, AlertTriangle, Edit } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { EditOrderAddressDialog } from './EditOrderAddressDialog';
+import { ciudadMatchPartial } from '@/lib/ciudadMatch';
 
 interface Order {
   id: string;
