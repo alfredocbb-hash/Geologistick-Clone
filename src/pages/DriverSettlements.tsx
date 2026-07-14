@@ -168,14 +168,14 @@ function matchZonaRegla(
     });
     if (hit) return { regla: hit, matchedBy: 'cp' };
   }
-  // 2. Ciudad exacta
+  // 2. Ciudad exacta (con equivalencia CABA por CP)
   if (cN) {
-    const hit = sorted.find(r => r.ciudad && normalizeStr(r.ciudad) === cN);
+    const hit = sorted.find(r => r.ciudad && ciudadMatchExact(r.ciudad, ciudad, cpStr));
     if (hit) return { regla: hit, matchedBy: 'ciudad' };
   }
-  // 3. Ciudad parcial
+  // 3. Ciudad parcial (con equivalencia CABA por CP)
   if (cN) {
-    const hit = sorted.find(r => r.ciudad && (normalizeStr(r.ciudad).includes(cN) || cN.includes(normalizeStr(r.ciudad))));
+    const hit = sorted.find(r => r.ciudad && ciudadMatchPartial(r.ciudad, ciudad, cpStr));
     if (hit) return { regla: hit, matchedBy: 'ciudad_parcial' };
   }
   // 4. Provincia catch-all (sólo reglas con provincia y SIN ciudad ni CP)
