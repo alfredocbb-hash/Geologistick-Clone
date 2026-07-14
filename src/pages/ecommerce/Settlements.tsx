@@ -824,20 +824,19 @@ export default function Settlements() {
             const ownerSellerId = envioToSellerMap.get(e.id) || calcSellers[0];
             const sellerTarifaId = sellerTarifaMap.get(ownerSellerId);
 
-            const matchZoneIn = (ciudad: string, tarifaList: any[]): { precio: number; zona: string; tarifaId: string } | null => {
+            const matchZoneIn = (ciudad: string, cp: string | null | undefined, tarifaList: any[]): { precio: number; zona: string; tarifaId: string } | null => {
               if (!ciudad || tarifaList.length === 0) return null;
-              const ciudadNorm = normalize(ciudad);
               for (const zt of tarifaList) {
                 if (!zt.zona_destino) continue;
-                const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-                if (zonas.some((z: string) => z === ciudadNorm)) {
+                const zonas = zt.zona_destino.split(',').map((z: string) => z.trim());
+                if (zonas.some((z: string) => ciudadMatchExact(z, ciudad, cp))) {
                   return { precio: zt.precio_base || 0, zona: zt.nombre || zt.zona_destino, tarifaId: zt.id };
                 }
               }
               for (const zt of tarifaList) {
                 if (!zt.zona_destino) continue;
-                const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-                if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) {
+                const zonas = zt.zona_destino.split(',').map((z: string) => z.trim());
+                if (zonas.some((z: string) => ciudadMatchPartial(z, ciudad, cp))) {
                   return { precio: zt.precio_base || 0, zona: zt.nombre || zt.zona_destino, tarifaId: zt.id };
                 }
               }
@@ -849,7 +848,7 @@ export default function Settlements() {
 
             const sellerExclusives = mutExclusiveBySeller.get(ownerSellerId) || [];
             if (sellerExclusives.length > 0 && e.ciudad_entrega) {
-              const match = matchZoneIn(e.ciudad_entrega, sellerExclusives);
+              const match = matchZoneIn(e.ciudad_entrega, (e as any).cp_entrega, sellerExclusives);
               if (match) {
                 precioFinal = match.precio;
                 precioCalculado = true;
@@ -862,7 +861,7 @@ export default function Settlements() {
               const tarifa = tarifasMap.get(sellerTarifaId);
               if (tarifa) {
                 if (tarifa.tipo_tarifa === 'zona' && e.ciudad_entrega) {
-                  const match = matchZoneIn(e.ciudad_entrega, allZoneTarifas);
+                  const match = matchZoneIn(e.ciudad_entrega, (e as any).cp_entrega, allZoneTarifas);
                   if (match) {
                     precioFinal = match.precio;
                     precioCalculado = true;
@@ -879,7 +878,7 @@ export default function Settlements() {
             }
             
             if (precioFinal === 0 && allZoneTarifas.length > 0 && e.ciudad_entrega) {
-              const match = matchZoneIn(e.ciudad_entrega, allZoneTarifas);
+              const match = matchZoneIn(e.ciudad_entrega, (e as any).cp_entrega, allZoneTarifas);
               if (match) {
                 precioFinal = match.precio;
                 precioCalculado = true;
