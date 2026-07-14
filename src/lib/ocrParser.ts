@@ -170,13 +170,37 @@ function extractBarrio(text: string): string | null {
 export function parseOCRText(rawText: string): OCRExtractedData {
   const text = rawText.replace(/\r\n/g, '\n');
 
+  const codigoPostal = extractPostalCode(text);
+  let localidad = extractLocality(text);
+  const barrio = extractBarrio(text);
+
+  // Si localidad es genérica de CABA, intentar reemplazar por barrio real (del texto o del CP)
+  if (localidad) {
+    const norm = localidad.trim().toLowerCase();
+    const isGenericCaba =
+      norm === 'buenos aires' ||
+      norm === 'caba' ||
+      norm === 'capital federal' ||
+      norm.startsWith('ciudad aut');
+    if (isGenericCaba) {
+      if (barrio) {
+        localidad = barrio;
+      } else if (codigoPostal) {
+        // Import dinámico evita ciclos si el helper crece
+        const { getBarrioByCP } = require('./cabaBarriosByCP') as typeof import('./cabaBarriosByCP');
+        const inferred = getBarrioByCP(codigoPostal);
+        if (inferred) localidad = inferred;
+      }
+    }
+  }
+
   return {
     direccion: extractAddress(text),
-    localidad: extractLocality(text),
-    codigoPostal: extractPostalCode(text),
+    localidad,
+    codigoPostal,
     nombreDestinatario: extractRecipientName(text),
     mlShipmentId: extractMLShipmentId(text),
     referencia: extractReferencia(text),
-    barrio: extractBarrio(text),
+    barrio,
   };
 }
