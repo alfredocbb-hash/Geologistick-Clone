@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { ciudadMatchExact, ciudadMatchPartial } from '../_shared/ciudadMatch.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
