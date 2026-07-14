@@ -379,21 +379,20 @@ export default function Settlements() {
 
             // Only do zone/tarifa lookup if precio_total is 0 or null (truly missing price)
             if (precio === 0) {
-              // Helper to match city against a list of zone tarifas
-              const matchZoneIn = (ciudad: string, tarifaList: any[]): number | null => {
+              // Helper to match city against a list of zone tarifas (CABA-aware por CP)
+              const matchZoneIn = (ciudad: string, cp: string | null | undefined, tarifaList: any[]): number | null => {
                 if (!ciudad || tarifaList.length === 0) return null;
-                const ciudadNorm = normalize(ciudad);
                 for (const zt of tarifaList) {
                   if (!zt.zona_destino) continue;
-                  const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-                  if (zonas.some((z: string) => z === ciudadNorm)) {
+                  const zonas = zt.zona_destino.split(',').map((z: string) => z.trim());
+                  if (zonas.some((z: string) => ciudadMatchExact(z, ciudad, cp))) {
                     return zt.precio_base || 0;
                   }
                 }
                 for (const zt of tarifaList) {
                   if (!zt.zona_destino) continue;
-                  const zonas = zt.zona_destino.split(',').map((z: string) => normalize(z.trim()));
-                  if (zonas.some((z: string) => ciudadNorm.includes(z) || z.includes(ciudadNorm))) {
+                  const zonas = zt.zona_destino.split(',').map((z: string) => z.trim());
+                  if (zonas.some((z: string) => ciudadMatchPartial(z, ciudad, cp))) {
                     return zt.precio_base || 0;
                   }
                 }
