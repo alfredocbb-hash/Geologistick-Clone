@@ -1,6 +1,8 @@
 // Motor de resolución de precios para envíos terciarizados
 // Match: provincia/ciudad exacta -> substring -> provincia. Tipos: fija | por_zona | por_kg
 
+import { ciudadMatchExact, ciudadMatchPartial } from './ciudadMatch';
+
 export interface TarifaTerciarizada {
   id: string;
   nombre: string;
@@ -17,6 +19,8 @@ export interface EnvioForPricing {
   ciudad_retiro?: string | null;
   provincia_entrega?: string | null;
   provincia_retiro?: string | null;
+  cp_entrega?: string | null;
+  cp_retiro?: string | null;
   requiere_retiro?: boolean | null;
   peso_kg?: number | null;
 }
@@ -26,19 +30,19 @@ const norm = (s: string) => s.trim().toLowerCase();
 function matchZona(envio: EnvioForPricing, tarifa: TarifaTerciarizada): number | null {
   const ciudad = envio.requiere_retiro ? envio.ciudad_retiro : envio.ciudad_entrega;
   const provincia = envio.requiere_retiro ? envio.provincia_retiro : envio.provincia_entrega;
+  const cp = envio.requiere_retiro ? envio.cp_retiro : envio.cp_entrega;
   const zonas = tarifa.zonas || [];
   if (!zonas.length) return null;
 
-  const cN = ciudad ? norm(ciudad) : '';
   const pN = provincia ? norm(provincia) : '';
 
-  // 1. Ciudad exacta
+  // 1. Ciudad exacta (con equivalencia CABA por CP)
   for (const z of zonas) {
-    if (z.ciudades?.some(c => norm(c) === cN && cN)) return z.precio;
+    if (z.ciudades?.some(c => ciudadMatchExact(c, ciudad, cp))) return z.precio;
   }
-  // 2. Ciudad substring
+  // 2. Ciudad substring (con equivalencia CABA por CP)
   for (const z of zonas) {
-    if (z.ciudades?.some(c => cN && (norm(c).includes(cN) || cN.includes(norm(c))))) return z.precio;
+    if (z.ciudades?.some(c => ciudadMatchPartial(c, ciudad, cp))) return z.precio;
   }
   // 3. Provincia
   for (const z of zonas) {
