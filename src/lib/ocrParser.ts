@@ -187,8 +187,6 @@ export function parseOCRText(rawText: string): OCRExtractedData {
       if (barrio) {
         localidad = barrio;
       } else if (codigoPostal) {
-        // Import dinámico evita ciclos si el helper crece
-        const { getBarrioByCP } = require('./cabaBarriosByCP') as typeof import('./cabaBarriosByCP');
         const inferred = getBarrioByCP(codigoPostal);
         if (inferred) localidad = inferred;
       }
