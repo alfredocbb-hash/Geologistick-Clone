@@ -248,7 +248,7 @@ export default function Settlements() {
           const chunk = allEnvioIds.slice(i, i + 500);
           const { data: enviosData } = await supabase
             .from('envios')
-            .select('id, ciudad_entrega, precio_total, precio_tarifa_vigente, estado')
+            .select('id, ciudad_entrega, cp_entrega, precio_total, precio_tarifa_vigente, estado')
             .in('id', chunk);
           (enviosData || []).forEach(e => enviosMap.set(e.id, e));
         }
@@ -263,7 +263,7 @@ export default function Settlements() {
           if (!seller.cliente_id) continue;
           const { data: commonEnvios } = await supabase
             .from('envios')
-            .select('id, ciudad_entrega, precio_total, estado')
+            .select('id, ciudad_entrega, cp_entrega, precio_total, estado')
             .eq('remitente_id', seller.cliente_id);
           const filtered = (commonEnvios || []).filter(e => !allOrderEnvioIds.has(e.id));
           filtered.forEach(e => enviosMap.set(e.id, e));
@@ -297,7 +297,7 @@ export default function Settlements() {
           const chunk = missingCtaCteIds.slice(i, i + 500);
           const { data: ctaCteEnviosData } = await supabase
             .from('envios')
-            .select('id, ciudad_entrega, precio_total, precio_tarifa_vigente, estado')
+            .select('id, ciudad_entrega, cp_entrega, precio_total, precio_tarifa_vigente, estado')
             .in('id', chunk);
           (ctaCteEnviosData || []).forEach(e => enviosMap.set(e.id, e));
         }
@@ -563,7 +563,7 @@ export default function Settlements() {
       if (sellerEnvioIds.length > 0) {
         const { data: ecomEnvios, error: ecomError } = await (supabase
           .from('envios') as any)
-          .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
+          .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, cp_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
           .in('id', sellerEnvioIds)
           .order('created_at', { ascending: true });
 
@@ -597,7 +597,7 @@ export default function Settlements() {
           // Query 1: envíos comunes filtrados por fecha_entrega en el rango (o por webhook ML)
           let commonQuery = (supabase
             .from('envios') as any)
-            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
+            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, cp_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
             .in('remitente_id', uniqueOnlyClienteIds)
             .lte('fecha_entrega', fechaFinStr);
 
@@ -621,7 +621,7 @@ export default function Settlements() {
           if (tipoFechaDesde !== 'webhook_reparto') {
             const { data: noDateRows, error: commonNoDateError } = await (supabase
               .from('envios') as any)
-              .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
+              .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, cp_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
               .in('remitente_id', uniqueOnlyClienteIds)
               .is('fecha_entrega', null)
               .gte('created_at', fechaInicioStr)
@@ -684,7 +684,7 @@ export default function Settlements() {
         if (ctaCteEnvioIds.length > 0) {
           const { data: fetchedEnvios } = await (supabase
             .from('envios') as any)
-            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
+            .select('id, tracking_number, nombre_destinatario, direccion_entrega, ciudad_entrega, cp_entrega, precio_total, precio_tarifa_vigente, estado, created_at, liquidacion_seller_id, tarifa_id, cantidad_bultos, destinatario:clientes!envios_destinatario_id_fkey(nombre, apellido)')
             .in('id', ctaCteEnvioIds)
             .order('created_at', { ascending: true });
 
