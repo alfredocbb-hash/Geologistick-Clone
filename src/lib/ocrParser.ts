@@ -2,6 +2,7 @@
  * OCR text parser for Argentine shipping labels (especially MercadoLibre).
  * Extracts address, city, postal code, recipient, ML shipment ID, referencia, barrio.
  */
+import { getBarrioByCP } from './cabaBarriosByCP';
 
 export interface OCRExtractedData {
   direccion: string | null;
