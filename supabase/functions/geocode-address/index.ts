@@ -122,21 +122,35 @@ serve(async (req) => {
     const location = result.geometry.location;
 
     // Extract address components
-    let extractedCity = '';
+    let extractedLocality = '';
+    let sublocality1 = '';
+    let sublocality = '';
+    let neighborhood = '';
+    let adminArea2 = '';
     let extractedProvince = '';
     let postalCode = '';
 
     for (const component of result.address_components) {
-      if (component.types.includes('locality')) {
-        extractedCity = component.long_name;
+      const types = component.types;
+      if (types.includes('locality')) extractedLocality = component.long_name;
+      if (types.includes('sublocality_level_1')) sublocality1 = component.long_name;
+      if (types.includes('sublocality') && !types.includes('sublocality_level_1')) {
+        sublocality = component.long_name;
       }
-      if (component.types.includes('administrative_area_level_1')) {
-        extractedProvince = component.long_name;
-      }
-      if (component.types.includes('postal_code')) {
-        postalCode = component.long_name;
-      }
+      if (types.includes('neighborhood')) neighborhood = component.long_name;
+      if (types.includes('administrative_area_level_2')) adminArea2 = component.long_name;
+      if (types.includes('administrative_area_level_1')) extractedProvince = component.long_name;
+      if (types.includes('postal_code')) postalCode = component.long_name;
     }
+
+    // Para CABA: preferir barrio (sublocality) sobre "Buenos Aires"
+    const isCABA =
+      /ciudad aut[óo]noma/i.test(extractedProvince) ||
+      /^(buenos aires|caba|capital federal)$/i.test(extractedLocality.trim());
+
+    const extractedCity = isCABA
+      ? (sublocality1 || sublocality || neighborhood || extractedLocality || 'Buenos Aires')
+      : (extractedLocality || adminArea2 || sublocality1 || neighborhood || '');
 
     const geocodeResponse: GeocodeResponse = {
       lat: location.lat,
