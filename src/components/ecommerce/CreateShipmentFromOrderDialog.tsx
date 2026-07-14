@@ -125,18 +125,19 @@ export function CreateShipmentFromOrderDialog({
     enabled: !!seller?.id && open && !alreadyHasShipment,
   });
 
-  // Determine which tarifa to use based on zone matching
+  // Determine which tarifa to use based on zone matching (CABA-aware por CP)
   const matchedTarifaId = (() => {
     if (!sellerTarifas?.length) return seller?.tarifa_id || null;
     
-    const ciudad = order.shipping_city?.toLowerCase().trim() || '';
-    const provincia = order.shipping_province?.toLowerCase().trim() || '';
+    const ciudad = order.shipping_city || '';
+    const provincia = (order.shipping_province || '').toLowerCase().trim();
+    const cp = order.shipping_postal_code || '';
     
     // Try to match by city in zona_destino
     for (const t of sellerTarifas) {
       if (!t.zona_destino) continue;
-      const destinos = t.zona_destino.split(',').map((d: string) => d.trim().toLowerCase());
-      if (destinos.some(d => ciudad.includes(d) || d.includes(ciudad))) return t.id;
+      const destinos = t.zona_destino.split(',').map((d: string) => d.trim());
+      if (destinos.some(d => ciudadMatchPartial(d, ciudad, cp))) return t.id;
     }
     // Try province match
     for (const t of sellerTarifas) {
