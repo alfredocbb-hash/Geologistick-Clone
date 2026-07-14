@@ -405,7 +405,7 @@ export default function Settlements() {
               // Priority: 1) seller exclusive tarifas, 2) assigned tarifa, 3) general zone tarifas
               const sellerExclusives = exclusiveTarifasBySeller.get(seller.id) || [];
               if (sellerExclusives.length > 0 && envio.ciudad_entrega) {
-                const exclPrice = matchZoneIn(envio.ciudad_entrega, sellerExclusives);
+                const exclPrice = matchZoneIn(envio.ciudad_entrega, (envio as any).cp_entrega, sellerExclusives);
                 if (exclPrice !== null) precio = exclPrice;
               }
 
@@ -413,7 +413,7 @@ export default function Settlements() {
                 const tarifa = tarifasMap.get(seller.tarifa_id);
                 if (tarifa) {
                   if (tarifa.tipo_tarifa === 'zona' && envio.ciudad_entrega) {
-                    const zonePrice = matchZoneIn(envio.ciudad_entrega, allZoneTarifas);
+                    const zonePrice = matchZoneIn(envio.ciudad_entrega, (envio as any).cp_entrega, allZoneTarifas);
                     if (zonePrice !== null) precio = zonePrice;
                   } else {
                     precio = tarifa.precio_base || 0;
@@ -422,7 +422,7 @@ export default function Settlements() {
               }
               
               if (precio === 0 && allZoneTarifas.length > 0 && envio.ciudad_entrega) {
-                const zonePrice = matchZoneIn(envio.ciudad_entrega, allZoneTarifas);
+                const zonePrice = matchZoneIn(envio.ciudad_entrega, (envio as any).cp_entrega, allZoneTarifas);
                 if (zonePrice !== null) precio = zonePrice;
               }
             }
