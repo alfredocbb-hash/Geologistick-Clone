@@ -51,6 +51,7 @@ import { SettlementDetailDialog } from '@/components/settlements/SettlementDetai
 import { toLocalISOStart, toLocalISOEnd, parseDateString } from '@/lib/dateUtils';
 import { AssignShipmentsRetroactiveDialog } from '@/components/drivers/AssignShipmentsRetroactiveDialog';
 import { UserPlus } from 'lucide-react';
+import { ciudadMatchExact, ciudadMatchPartial, ciudadMatch } from '@/lib/ciudadMatch';
 
 type PaymentMethod = Database['public']['Enums']['payment_method'];
 
