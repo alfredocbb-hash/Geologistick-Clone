@@ -3,6 +3,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { MapPin, Loader2 } from 'lucide-react';
 import { useGoogleMapsLoaded } from './GoogleMapsProvider';
+import { getBarrioByCP, isGenericCabaCity } from '@/lib/cabaBarriosByCP';
 
 export interface AddressDetails {
   address: string;
