@@ -29,6 +29,7 @@ import { toast } from 'sonner';
 import { SellerSettlementDialog } from '@/components/ecommerce/SellerSettlementDialog';
 import { SellerLiquidacionDetailDialog } from '@/components/ecommerce/SellerLiquidacionDetailDialog';
 import { downloadSellerSettlementPDF } from '@/lib/generateSettlementPDF';
+import { ciudadMatchExact, ciudadMatchPartial } from '@/lib/ciudadMatch';
 
 interface Seller {
   id: string;
