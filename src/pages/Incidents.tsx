@@ -212,10 +212,24 @@ export default function Incidents() {
     );
   });
 
+  // Filter cancelled shipments by search term
+  const filteredCanceladas = canceladas?.filter(row => {
+    if (!searchTerm) return true;
+    const s = searchTerm.toLowerCase();
+    return (
+      row.envio?.tracking_number?.toLowerCase().includes(s) ||
+      row.envio?.tracking_externo?.toLowerCase().includes(s) ||
+      row.envio?.nombre_destinatario?.toLowerCase().includes(s) ||
+      row.envio?.direccion_entrega?.toLowerCase().includes(s) ||
+      row.motivo?.toLowerCase().includes(s)
+    );
+  });
+
   // Count pending incidents
   const pendingCount = activeTab === 'pendiente' 
     ? filteredIncidents?.length || 0
     : incidents?.length || 0;
+
 
   const getIncidentTypeInfo = (tipo: string) => {
     return INCIDENT_TYPE_CONFIG[tipo] || INCIDENT_TYPE_CONFIG.otro;
