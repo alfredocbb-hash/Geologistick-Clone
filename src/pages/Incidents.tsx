@@ -429,6 +429,22 @@ export default function Incidents() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-1">
+                              {row.envio.estado === 'cancelado' && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-destructive border-destructive/40 hover:bg-destructive/10"
+                                  onClick={() => setReturnEnvio({
+                                    id: row.envio.id,
+                                    tracking,
+                                    destinatario: row.envio.nombre_destinatario,
+                                    estado: row.envio.estado,
+                                  })}
+                                >
+                                  <Undo2 className="h-4 w-4 mr-1" />
+                                  Devolver
+                                </Button>
+                              )}
                               <Button
                                 variant="ghost"
                                 size="sm"
