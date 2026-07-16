@@ -605,7 +605,15 @@ export default function Incidents() {
         open={!!selectedShipmentId}
         onOpenChange={(open) => !open && setSelectedShipmentId(null)}
         envioId={selectedShipmentId}
+
+      {/* Shipment History Dialog */}
+      <ShipmentHistoryDialog
+        open={!!historyEnvio}
+        onOpenChange={(open) => !open && setHistoryEnvio(null)}
+        envioId={historyEnvio?.id ?? null}
+        trackingNumber={historyEnvio?.tracking ?? ''}
       />
     </div>
   );
 }
+
