@@ -301,18 +301,19 @@ export default function Incidents() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="p-3 rounded-full bg-amber-500/10">
-                <UserX className="h-6 w-6 text-amber-500" />
+              <div className="p-3 rounded-full bg-red-500/10">
+                <PackageX className="h-6 w-6 text-red-500" />
               </div>
               <div>
                 <p className="text-2xl font-bold">
-                  {incidents?.filter(i => i.tipo === 'ausente').length || 0}
+                  {canceladas?.length ?? 0}
                 </p>
-                <p className="text-sm text-muted-foreground">Cliente Ausente</p>
+                <p className="text-sm text-muted-foreground">Canceladas / Devoluciones</p>
               </div>
             </div>
           </CardContent>
         </Card>
+
       </div>
 
       {/* Main Content */}
