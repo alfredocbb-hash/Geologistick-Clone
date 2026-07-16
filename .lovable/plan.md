@@ -1,53 +1,42 @@
 ## Objetivo
 
-Permitir que los tenants vean en **Incidencias** los envíos **cancelados** (y devueltos al remitente) para llevar registro de devoluciones, y asegurar que ese estado + motivo se vea claramente en el **tracking público**.
+Permitir marcar un envío como **Devuelto al remitente** desde la pestaña **Canceladas / Devoluciones** de Incidencias, sin depender de crear una incidencia previa. Choferes, operadores y admins habilitados.
 
 ## Cambios
 
-### 1. Nueva pestaña "Canceladas / Devoluciones" en `src/pages/Incidents.tsx`
+### 1. Botón "Devolver al remitente" en la tabla de Canceladas — `src/pages/Incidents.tsx`
 
-- Agregar una tercera tab en el `Tabs` actual (junto a Pendientes / Resueltos): **"Canceladas"**.
-- Al seleccionarla, la query cambia de fuente: en vez de leer `incidentes`, lee `envios` filtrado por:
-  - `tenant_id = profile.tenant_id`
-  - `estado IN ('cancelado', 'devuelto')`
-- Traer también:
-  - Última entrada de `envio_historial` (notas + fecha) para mostrar motivo de cancelación / devolución.
-  - Incidencia asociada si existe (`incidentes` con `accion_tomada IN ('cancelar','devolver')`) para vincular con quién lo cerró.
-- Columnas de la tabla en esta pestaña:
-  - Tracking (clickeable → abre `ShipmentDetailsDialog`)
-  - Estado (badge Cancelado / Devuelto)
-  - Destinatario + dirección
-  - Motivo (de la incidencia o última nota de historial)
-  - Cerrado por (chofer / usuario)
-  - Fecha
-  - Acción: ver detalle (`ShipmentDetailsDialog`) y ver historial (`ShipmentHistoryDialog`).
-- Actualizar KPI cards: agregar una card "Canceladas / Devoluciones" con el conteo del mes.
-- Buscador existente sigue funcionando (tracking, destinatario, dirección).
+En la columna **Acciones** de cada fila de la pestaña Canceladas:
 
-### 2. Tracking público — mostrar motivo cuando está cancelado/devuelto
+- Si `estado === 'cancelado'`: mostrar botón **Devolver al remitente** (ícono `Undo2`, variante destructive-outline).
+- Si `estado === 'devuelto'`: no mostrar el botón (ya está devuelto). Mantener acceso a detalle e historial.
 
-Archivo: `src/pages/Tracking.tsx` (y `TrackingEmbed.tsx` si comparte estructura).
+Al hacer clic abre un nuevo diálogo `ReturnToSenderDialog` con:
+- Tracking + destinatario (readonly, contexto).
+- Textarea **Motivo de devolución** (obligatorio, mínimo 5 caracteres).
+- Botones **Cancelar** / **Confirmar devolución**.
 
-- Los estados `cancelado` y `devuelto` ya se renderizan, pero no exponen el **motivo**.
-- Cuando el estado actual sea uno de esos dos, mostrar un bloque destacado con:
-  - Título: "Envío cancelado" o "Devuelto al remitente".
-  - Motivo: última `nota` del `envio_historial` cuya transición terminó en ese estado.
-  - Fecha del cierre.
-- Los datos ya vienen del historial que se consulta; solo hay que derivar el motivo de la última entrada relevante y renderizarlo por encima del timeline.
+### 2. Nuevo componente `src/components/incidents/ReturnToSenderDialog.tsx`
 
-### 3. Sin cambios de base de datos
+Al confirmar:
+1. `UPDATE envios SET estado = 'devuelto' WHERE id = :envioId` — el trigger `log_envio_estado_change` ya inserta el historial con el nombre de la sucursal.
+2. `INSERT INTO envio_historial` con `estado_anterior = estado actual`, `estado_nuevo = 'devuelto'`, `notas = 'Devolución al remitente. Motivo: ' || motivo`, `created_by = auth.uid()`. Esta entrada complementa la del trigger con el motivo escrito.
+3. Invalida las queries `['canceladas-devoluciones']`, `['envios']`, `['envio-historial', envioId]` y muestra `toast.success`.
 
-- Los datos ya existen en `envios` (`estado`), `envio_historial` (`notas`, `estado_nuevo`) e `incidentes` (`accion_tomada`, `resolucion`).
-- Las policies RLS actuales de `envios` y `envio_historial` ya permiten a los usuarios del tenant leer estos registros — no se toca RLS ni se crean migraciones.
+No se anulan pagos ni movimientos de caja (a diferencia de cancelación); una devolución no revierte cobros ya rendidos.
 
-## Detalles técnicos
+### 3. Alcance de permisos
 
-- El `useQuery` de Incidents se ramifica por `activeTab`: para `'canceladas'` retorna un shape distinto (envío + motivo derivado), así que el render de la tabla usa un branch específico para esa pestaña (mantiene el render actual para pendiente/resuelto sin cambios).
-- Motivo mostrado: `incidentes.resolucion` si hay incidencia con `accion_tomada IN ('cancelar','devolver')`, sino la `notas` de la última entrada de `envio_historial` con `estado_nuevo = estado actual`.
-- En tracking, misma regla para elegir el motivo, usando el historial ya cargado por la página (no requiere endpoint nuevo).
+- El botón se muestra siempre en la pestaña; las RLS existentes de `envios` ya permiten a admins/operadores/choferes de la sucursal actualizar el estado. Si el `UPDATE` devuelve `0 filas`, mostrar toast de error con "Sin permisos para modificar este envío".
+- Choferes: la pestaña Incidencias ya es accesible para su rol operativo; el mismo botón queda disponible sin cambios adicionales de ruteo.
+
+### 4. Tracking público
+
+Sin cambios: el banner de "Devuelto al remitente" con motivo y fecha ya se renderiza (implementado en la iteración anterior); la nueva entrada de historial con motivo alimenta ese banner automáticamente.
 
 ## Fuera de alcance
 
-- No se modifica `incidentes` ni cómo se cierran las incidencias hoy.
-- No se agregan permisos ni cambios de RLS.
-- No se toca el flujo de creación de devolución (`devolver`), solo la visualización/registro.
+- No se crea incidencia previa ni se toca `IncidentActionDialog`.
+- No se modifican RLS ni el esquema de la base de datos.
+- No se agrega la acción en la lista general de Envíos ni en el detalle — el usuario eligió centralizarlo en la pestaña Canceladas.
+- No se altera la lógica financiera (pagos/caja).

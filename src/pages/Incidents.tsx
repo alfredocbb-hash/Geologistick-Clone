@@ -21,11 +21,13 @@ import {
   Loader2,
   CheckCircle,
   Clock,
-  Eye
+  Eye,
+  Undo2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import IncidentActionDialog from '@/components/incidents/IncidentActionDialog';
+import ReturnToSenderDialog from '@/components/incidents/ReturnToSenderDialog';
 import { ShipmentDetailsDialog } from '@/components/shipments/ShipmentDetailsDialog';
 import { ShipmentHistoryDialog } from '@/components/shipments/ShipmentHistoryDialog';
 
@@ -76,6 +78,7 @@ export default function Incidents() {
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
   const [historyEnvio, setHistoryEnvio] = useState<{ id: string; tracking: string } | null>(null);
+  const [returnEnvio, setReturnEnvio] = useState<{ id: string; tracking: string; destinatario: string | null; estado: string } | null>(null);
 
 
   // Fetch incidents
@@ -426,6 +429,22 @@ export default function Incidents() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-1">
+                              {row.envio.estado === 'cancelado' && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-destructive border-destructive/40 hover:bg-destructive/10"
+                                  onClick={() => setReturnEnvio({
+                                    id: row.envio.id,
+                                    tracking,
+                                    destinatario: row.envio.nombre_destinatario,
+                                    estado: row.envio.estado,
+                                  })}
+                                >
+                                  <Undo2 className="h-4 w-4 mr-1" />
+                                  Devolver
+                                </Button>
+                              )}
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -615,6 +634,16 @@ export default function Incidents() {
         onOpenChange={(open) => !open && setHistoryEnvio(null)}
         envioId={historyEnvio?.id ?? null}
         trackingNumber={historyEnvio?.tracking ?? ''}
+      />
+
+      {/* Return to sender */}
+      <ReturnToSenderDialog
+        open={!!returnEnvio}
+        onOpenChange={(open) => !open && setReturnEnvio(null)}
+        envioId={returnEnvio?.id ?? null}
+        currentStatus={returnEnvio?.estado ?? 'cancelado'}
+        tracking={returnEnvio?.tracking ?? ''}
+        destinatario={returnEnvio?.destinatario ?? null}
       />
     </div>
   );
