@@ -340,10 +340,40 @@ export default function Tracking() {
               </CardContent>
             </Card>
 
+            {/* Cancellation / Return banner */}
+            {(envio.estado === 'cancelado' || envio.estado === 'devuelto') && (() => {
+              const closingEntry = envio.historial?.find(h => h.estado_nuevo === envio.estado);
+              const isReturn = envio.estado === 'devuelto';
+              return (
+                <Card className={isReturn ? 'border-red-300 bg-red-50/50' : 'border-gray-300 bg-gray-50/50'}>
+                  <CardContent className="py-5 flex gap-4 items-start">
+                    <AlertCircle className={`h-6 w-6 mt-0.5 shrink-0 ${isReturn ? 'text-red-600' : 'text-gray-600'}`} />
+                    <div className="space-y-1">
+                      <h3 className="font-semibold">
+                        {isReturn ? 'Devuelto al remitente' : 'Envío cancelado'}
+                      </h3>
+                      {closingEntry?.notas && (
+                        <p className="text-sm text-muted-foreground">
+                          <span className="font-medium text-foreground">Motivo: </span>
+                          {closingEntry.notas}
+                        </p>
+                      )}
+                      {closingEntry?.fecha && (
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(closingEntry.fecha), "d 'de' MMMM yyyy, HH:mm", { locale: es })}
+                        </p>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })()}
+
             {/* Live Driver Map (only when en_reparto and driver is within 4km) */}
             {envio.estado === 'en_reparto' && (
               <LiveDriverMap trackingNumber={envio.tracking_number} />
             )}
+
 
             {/* Details */}
             <div className="grid gap-6 md:grid-cols-2">
