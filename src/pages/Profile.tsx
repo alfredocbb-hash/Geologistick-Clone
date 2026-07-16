@@ -132,14 +132,6 @@ export default function Profile() {
                   <Moon className="h-4 w-4 mr-2" />
                   {t('profile.themeDark')}
                 </ToggleGroupItem>
-                <ToggleGroupItem value="midnight" aria-label="Midnight">
-                  <Star className="h-4 w-4 mr-2" />
-                  {t('profile.themeMidnight')}
-                </ToggleGroupItem>
-                <ToggleGroupItem value="logistics-blue" aria-label="Logistics Blue">
-                  <Ship className="h-4 w-4 mr-2" />
-                  {t('profile.themeLogistics')}
-                </ToggleGroupItem>
                 <ToggleGroupItem value="system" aria-label={t('profile.themeSystem')}>
                   <Monitor className="h-4 w-4 mr-2" />
                   {t('profile.themeSystem')}
