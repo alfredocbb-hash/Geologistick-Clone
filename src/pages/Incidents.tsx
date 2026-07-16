@@ -261,10 +261,11 @@ export default function Incidents() {
             Gestiona los envíos con problemas reportados por choferes
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>
+        <Button variant="outline" size="sm" onClick={() => { refetch(); refetchCanceladas(); }}>
           <RefreshCw className="h-4 w-4 mr-2" />
           Actualizar
         </Button>
+
       </div>
 
       {/* Stats Cards */}
