@@ -78,6 +78,7 @@ export default function Incidents() {
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
   const [historyEnvio, setHistoryEnvio] = useState<{ id: string; tracking: string } | null>(null);
+  const [returnEnvio, setReturnEnvio] = useState<{ id: string; tracking: string; destinatario: string | null; estado: string } | null>(null);
 
 
   // Fetch incidents
