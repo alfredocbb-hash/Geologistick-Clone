@@ -6,7 +6,7 @@ import { SecurityCard } from '@/components/profile/SecurityCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
-import { Package, TrendingUp, Route, Sun, Moon, Monitor, Star, Ship } from 'lucide-react';
+import { Package, TrendingUp, Route, Sun, Moon, Monitor } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useTheme } from 'next-themes';
 import { Label } from '@/components/ui/label';
