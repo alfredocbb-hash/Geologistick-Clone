@@ -72,9 +72,11 @@ export default function Incidents() {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = usePersistedState<'pendiente' | 'resuelto'>('ui-tab-incidents', 'pendiente');
+  const [activeTab, setActiveTab] = usePersistedState<'pendiente' | 'resuelto' | 'canceladas'>('ui-tab-incidents', 'pendiente');
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
+  const [historyEnvio, setHistoryEnvio] = useState<{ id: string; tracking: string } | null>(null);
+
 
   // Fetch incidents
   const { data: incidents, isLoading, error, refetch } = useQuery({
