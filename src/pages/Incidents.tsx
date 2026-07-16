@@ -126,11 +126,78 @@ export default function Incidents() {
       
       return incidentsWithResolver as Incident[];
     },
-    enabled: !!profile?.tenant_id,
+    enabled: !!profile?.tenant_id && activeTab !== 'canceladas',
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
   });
+
+  // Cancelled / returned shipments (separate source)
+  const { data: canceladas, isLoading: isLoadingCanceladas, refetch: refetchCanceladas } = useQuery({
+    queryKey: ['incidents-canceladas', profile?.tenant_id],
+    queryFn: async () => {
+      if (!profile?.tenant_id) return [];
+
+      const { data: envios, error: enviosError } = await supabase
+        .from('envios')
+        .select(`
+          id, tracking_number, tracking_externo, estado, updated_at,
+          nombre_destinatario, direccion_entrega, ciudad_entrega
+        `)
+        .eq('tenant_id', profile.tenant_id)
+        .in('estado', ['cancelado', 'devuelto'])
+        .order('updated_at', { ascending: false })
+        .limit(500);
+
+      if (enviosError) throw enviosError;
+      if (!envios?.length) return [];
+
+      const envioIds = envios.map(e => e.id);
+
+      // Last history entry that transitioned into the final state
+      const { data: historial } = await supabase
+        .from('envio_historial')
+        .select('envio_id, estado_nuevo, notas, created_at, created_by')
+        .in('envio_id', envioIds)
+        .in('estado_nuevo', ['cancelado', 'devuelto'])
+        .order('created_at', { ascending: false });
+
+      // Related incident with cancelar/devolver action
+      const { data: incidenciasRel } = await supabase
+        .from('incidentes')
+        .select('envio_id, accion_tomada, resolucion, resuelto_at, resuelto_por')
+        .in('envio_id', envioIds)
+        .in('accion_tomada', ['cancelar', 'devolver']);
+
+      const userIds = Array.from(new Set([
+        ...(historial || []).map((h: any) => h.created_by).filter(Boolean),
+        ...(incidenciasRel || []).map((i: any) => i.resuelto_por).filter(Boolean),
+      ]));
+
+      let profilesMap: Record<string, { nombre: string; apellido: string | null }> = {};
+      if (userIds.length) {
+        const { data: profs } = await supabase
+          .from('profiles')
+          .select('user_id, nombre, apellido')
+          .in('user_id', userIds as string[]);
+        profs?.forEach((p: any) => { profilesMap[p.user_id] = { nombre: p.nombre, apellido: p.apellido }; });
+      }
+
+      return envios.map((env: any) => {
+        const inc = incidenciasRel?.find((i: any) => i.envio_id === env.id);
+        const hist = historial?.find((h: any) => h.envio_id === env.id && h.estado_nuevo === env.estado);
+        const motivo = inc?.resolucion || hist?.notas || null;
+        const fecha = inc?.resuelto_at || hist?.created_at || env.updated_at;
+        const cerradoPor = (inc?.resuelto_por && profilesMap[inc.resuelto_por])
+          || (hist?.created_by && profilesMap[hist.created_by])
+          || null;
+        return { envio: env, motivo, fecha, cerrado_por: cerradoPor, accion: inc?.accion_tomada || null };
+      });
+    },
+    enabled: !!profile?.tenant_id && activeTab === 'canceladas',
+    staleTime: 0,
+  });
+
 
   // Filter incidents by search term
   const filteredIncidents = incidents?.filter(incident => {
