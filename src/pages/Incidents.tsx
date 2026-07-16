@@ -320,7 +320,7 @@ export default function Incidents() {
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'pendiente' | 'resuelto')}>
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'pendiente' | 'resuelto' | 'canceladas')}>
               <TabsList>
                 <TabsTrigger value="pendiente" className="gap-2">
                   <Clock className="h-4 w-4" />
@@ -333,8 +333,16 @@ export default function Incidents() {
                   <CheckCircle className="h-4 w-4" />
                   Resueltos
                 </TabsTrigger>
+                <TabsTrigger value="canceladas" className="gap-2">
+                  <PackageX className="h-4 w-4" />
+                  Canceladas / Devoluciones
+                  {(canceladas?.length ?? 0) > 0 && (
+                    <Badge variant="secondary" className="ml-1">{canceladas!.length}</Badge>
+                  )}
+                </TabsTrigger>
               </TabsList>
             </Tabs>
+
             <div className="relative w-full sm:w-64">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
