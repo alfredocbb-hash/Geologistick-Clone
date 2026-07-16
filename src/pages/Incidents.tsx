@@ -635,6 +635,16 @@ export default function Incidents() {
         envioId={historyEnvio?.id ?? null}
         trackingNumber={historyEnvio?.tracking ?? ''}
       />
+
+      {/* Return to sender */}
+      <ReturnToSenderDialog
+        open={!!returnEnvio}
+        onOpenChange={(open) => !open && setReturnEnvio(null)}
+        envioId={returnEnvio?.id ?? null}
+        currentStatus={returnEnvio?.estado ?? 'cancelado'}
+        tracking={returnEnvio?.tracking ?? ''}
+        destinatario={returnEnvio?.destinatario ?? null}
+      />
     </div>
   );
 }
