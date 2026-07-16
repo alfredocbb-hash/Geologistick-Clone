@@ -27,6 +27,8 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import IncidentActionDialog from '@/components/incidents/IncidentActionDialog';
 import { ShipmentDetailsDialog } from '@/components/shipments/ShipmentDetailsDialog';
+import { ShipmentHistoryDialog } from '@/components/shipments/ShipmentHistoryDialog';
+
 
 const INCIDENT_TYPE_CONFIG: Record<string, { label: string; icon: React.ElementType; color: string }> = {
   ausente: { label: 'Cliente Ausente', icon: UserX, color: 'bg-amber-500' },
