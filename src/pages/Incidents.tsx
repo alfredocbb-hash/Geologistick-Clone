@@ -27,6 +27,8 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import IncidentActionDialog from '@/components/incidents/IncidentActionDialog';
 import { ShipmentDetailsDialog } from '@/components/shipments/ShipmentDetailsDialog';
+import { ShipmentHistoryDialog } from '@/components/shipments/ShipmentHistoryDialog';
+
 
 const INCIDENT_TYPE_CONFIG: Record<string, { label: string; icon: React.ElementType; color: string }> = {
   ausente: { label: 'Cliente Ausente', icon: UserX, color: 'bg-amber-500' },
@@ -70,9 +72,11 @@ export default function Incidents() {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = usePersistedState<'pendiente' | 'resuelto'>('ui-tab-incidents', 'pendiente');
+  const [activeTab, setActiveTab] = usePersistedState<'pendiente' | 'resuelto' | 'canceladas'>('ui-tab-incidents', 'pendiente');
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
+  const [historyEnvio, setHistoryEnvio] = useState<{ id: string; tracking: string } | null>(null);
+
 
   // Fetch incidents
   const { data: incidents, isLoading, error, refetch } = useQuery({
@@ -122,11 +126,78 @@ export default function Incidents() {
       
       return incidentsWithResolver as Incident[];
     },
-    enabled: !!profile?.tenant_id,
+    enabled: !!profile?.tenant_id && activeTab !== 'canceladas',
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
   });
+
+  // Cancelled / returned shipments (separate source)
+  const { data: canceladas, isLoading: isLoadingCanceladas, refetch: refetchCanceladas } = useQuery({
+    queryKey: ['incidents-canceladas', profile?.tenant_id],
+    queryFn: async () => {
+      if (!profile?.tenant_id) return [];
+
+      const { data: envios, error: enviosError } = await supabase
+        .from('envios')
+        .select(`
+          id, tracking_number, tracking_externo, estado, updated_at,
+          nombre_destinatario, direccion_entrega, ciudad_entrega
+        `)
+        .eq('tenant_id', profile.tenant_id)
+        .in('estado', ['cancelado', 'devuelto'])
+        .order('updated_at', { ascending: false })
+        .limit(500);
+
+      if (enviosError) throw enviosError;
+      if (!envios?.length) return [];
+
+      const envioIds = envios.map(e => e.id);
+
+      // Last history entry that transitioned into the final state
+      const { data: historial } = await supabase
+        .from('envio_historial')
+        .select('envio_id, estado_nuevo, notas, created_at, created_by')
+        .in('envio_id', envioIds)
+        .in('estado_nuevo', ['cancelado', 'devuelto'])
+        .order('created_at', { ascending: false });
+
+      // Related incident with cancelar/devolver action
+      const { data: incidenciasRel } = await supabase
+        .from('incidentes')
+        .select('envio_id, accion_tomada, resolucion, resuelto_at, resuelto_por')
+        .in('envio_id', envioIds)
+        .in('accion_tomada', ['cancelar', 'devolver']);
+
+      const userIds = Array.from(new Set([
+        ...(historial || []).map((h: any) => h.created_by).filter(Boolean),
+        ...(incidenciasRel || []).map((i: any) => i.resuelto_por).filter(Boolean),
+      ]));
+
+      let profilesMap: Record<string, { nombre: string; apellido: string | null }> = {};
+      if (userIds.length) {
+        const { data: profs } = await supabase
+          .from('profiles')
+          .select('user_id, nombre, apellido')
+          .in('user_id', userIds as string[]);
+        profs?.forEach((p: any) => { profilesMap[p.user_id] = { nombre: p.nombre, apellido: p.apellido }; });
+      }
+
+      return envios.map((env: any) => {
+        const inc = incidenciasRel?.find((i: any) => i.envio_id === env.id);
+        const hist = historial?.find((h: any) => h.envio_id === env.id && h.estado_nuevo === env.estado);
+        const motivo = inc?.resolucion || hist?.notas || null;
+        const fecha = inc?.resuelto_at || hist?.created_at || env.updated_at;
+        const cerradoPor = (inc?.resuelto_por && profilesMap[inc.resuelto_por])
+          || (hist?.created_by && profilesMap[hist.created_by])
+          || null;
+        return { envio: env, motivo, fecha, cerrado_por: cerradoPor, accion: inc?.accion_tomada || null };
+      });
+    },
+    enabled: !!profile?.tenant_id && activeTab === 'canceladas',
+    staleTime: 0,
+  });
+
 
   // Filter incidents by search term
   const filteredIncidents = incidents?.filter(incident => {
@@ -141,10 +212,24 @@ export default function Incidents() {
     );
   });
 
+  // Filter cancelled shipments by search term
+  const filteredCanceladas = canceladas?.filter(row => {
+    if (!searchTerm) return true;
+    const s = searchTerm.toLowerCase();
+    return (
+      row.envio?.tracking_number?.toLowerCase().includes(s) ||
+      row.envio?.tracking_externo?.toLowerCase().includes(s) ||
+      row.envio?.nombre_destinatario?.toLowerCase().includes(s) ||
+      row.envio?.direccion_entrega?.toLowerCase().includes(s) ||
+      row.motivo?.toLowerCase().includes(s)
+    );
+  });
+
   // Count pending incidents
   const pendingCount = activeTab === 'pendiente' 
     ? filteredIncidents?.length || 0
     : incidents?.length || 0;
+
 
   const getIncidentTypeInfo = (tipo: string) => {
     return INCIDENT_TYPE_CONFIG[tipo] || INCIDENT_TYPE_CONFIG.otro;
@@ -176,10 +261,11 @@ export default function Incidents() {
             Gestiona los envíos con problemas reportados por choferes
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>
+        <Button variant="outline" size="sm" onClick={() => { refetch(); refetchCanceladas(); }}>
           <RefreshCw className="h-4 w-4 mr-2" />
           Actualizar
         </Button>
+
       </div>
 
       {/* Stats Cards */}
@@ -215,25 +301,26 @@ export default function Incidents() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="p-3 rounded-full bg-amber-500/10">
-                <UserX className="h-6 w-6 text-amber-500" />
+              <div className="p-3 rounded-full bg-red-500/10">
+                <PackageX className="h-6 w-6 text-red-500" />
               </div>
               <div>
                 <p className="text-2xl font-bold">
-                  {incidents?.filter(i => i.tipo === 'ausente').length || 0}
+                  {canceladas?.length ?? 0}
                 </p>
-                <p className="text-sm text-muted-foreground">Cliente Ausente</p>
+                <p className="text-sm text-muted-foreground">Canceladas / Devoluciones</p>
               </div>
             </div>
           </CardContent>
         </Card>
+
       </div>
 
       {/* Main Content */}
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'pendiente' | 'resuelto')}>
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'pendiente' | 'resuelto' | 'canceladas')}>
               <TabsList>
                 <TabsTrigger value="pendiente" className="gap-2">
                   <Clock className="h-4 w-4" />
@@ -246,8 +333,16 @@ export default function Incidents() {
                   <CheckCircle className="h-4 w-4" />
                   Resueltos
                 </TabsTrigger>
+                <TabsTrigger value="canceladas" className="gap-2">
+                  <PackageX className="h-4 w-4" />
+                  Canceladas / Devoluciones
+                  {(canceladas?.length ?? 0) > 0 && (
+                    <Badge variant="secondary" className="ml-1">{canceladas!.length}</Badge>
+                  )}
+                </TabsTrigger>
               </TabsList>
             </Tabs>
+
             <div className="relative w-full sm:w-64">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -260,7 +355,104 @@ export default function Incidents() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {activeTab === 'canceladas' ? (
+            isLoadingCanceladas ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : !filteredCanceladas?.length ? (
+              <div className="text-center py-12">
+                <PackageX className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
+                <p className="text-muted-foreground">No hay envíos cancelados ni devoluciones</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tracking</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead>Destinatario</TableHead>
+                      <TableHead>Motivo</TableHead>
+                      <TableHead>Cerrado por</TableHead>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead className="text-right">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredCanceladas.map((row) => {
+                      const tracking = row.envio.tracking_externo || row.envio.tracking_number;
+                      const isDevuelto = row.envio.estado === 'devuelto';
+                      return (
+                        <TableRow key={row.envio.id}>
+                          <TableCell>
+                            <button
+                              onClick={() => setSelectedShipmentId(row.envio.id)}
+                              className="font-mono text-sm font-medium text-primary hover:underline"
+                            >
+                              {tracking}
+                            </button>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={isDevuelto ? 'destructive' : 'secondary'}>
+                              {isDevuelto ? 'Devuelto' : 'Cancelado'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium">{row.envio.nombre_destinatario || '-'}</p>
+                              <p className="text-xs text-muted-foreground truncate max-w-[240px]">
+                                {row.envio.direccion_entrega}{row.envio.ciudad_entrega ? `, ${row.envio.ciudad_entrega}` : ''}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <p className="text-sm text-muted-foreground max-w-[280px] whitespace-pre-wrap">
+                              {row.motivo || <span className="italic">Sin motivo registrado</span>}
+                            </p>
+                          </TableCell>
+                          <TableCell>
+                            {row.cerrado_por
+                              ? `${row.cerrado_por.nombre || ''} ${row.cerrado_por.apellido || ''}`.trim() || '-'
+                              : '-'}
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              <p>{format(new Date(row.fecha), 'dd/MM/yyyy', { locale: es })}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {format(new Date(row.fecha), 'HH:mm', { locale: es })}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setHistoryEnvio({ id: row.envio.id, tracking })}
+                                title="Ver historial"
+                              >
+                                <Clock className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setSelectedShipmentId(row.envio.id)}
+                                title="Ver detalle"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )
+          ) : isLoading ? (
+
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
@@ -414,6 +606,17 @@ export default function Incidents() {
         onOpenChange={(open) => !open && setSelectedShipmentId(null)}
         envioId={selectedShipmentId}
       />
+
+
+
+      {/* Shipment History Dialog */}
+      <ShipmentHistoryDialog
+        open={!!historyEnvio}
+        onOpenChange={(open) => !open && setHistoryEnvio(null)}
+        envioId={historyEnvio?.id ?? null}
+        trackingNumber={historyEnvio?.tracking ?? ''}
+      />
     </div>
   );
 }
+
