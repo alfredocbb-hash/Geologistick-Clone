@@ -355,7 +355,104 @@ export default function Incidents() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {activeTab === 'canceladas' ? (
+            isLoadingCanceladas ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : !filteredCanceladas?.length ? (
+              <div className="text-center py-12">
+                <PackageX className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
+                <p className="text-muted-foreground">No hay envíos cancelados ni devoluciones</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tracking</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead>Destinatario</TableHead>
+                      <TableHead>Motivo</TableHead>
+                      <TableHead>Cerrado por</TableHead>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead className="text-right">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredCanceladas.map((row) => {
+                      const tracking = row.envio.tracking_externo || row.envio.tracking_number;
+                      const isDevuelto = row.envio.estado === 'devuelto';
+                      return (
+                        <TableRow key={row.envio.id}>
+                          <TableCell>
+                            <button
+                              onClick={() => setSelectedShipmentId(row.envio.id)}
+                              className="font-mono text-sm font-medium text-primary hover:underline"
+                            >
+                              {tracking}
+                            </button>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={isDevuelto ? 'destructive' : 'secondary'}>
+                              {isDevuelto ? 'Devuelto' : 'Cancelado'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium">{row.envio.nombre_destinatario || '-'}</p>
+                              <p className="text-xs text-muted-foreground truncate max-w-[240px]">
+                                {row.envio.direccion_entrega}{row.envio.ciudad_entrega ? `, ${row.envio.ciudad_entrega}` : ''}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <p className="text-sm text-muted-foreground max-w-[280px] whitespace-pre-wrap">
+                              {row.motivo || <span className="italic">Sin motivo registrado</span>}
+                            </p>
+                          </TableCell>
+                          <TableCell>
+                            {row.cerrado_por
+                              ? `${row.cerrado_por.nombre || ''} ${row.cerrado_por.apellido || ''}`.trim() || '-'
+                              : '-'}
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              <p>{format(new Date(row.fecha), 'dd/MM/yyyy', { locale: es })}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {format(new Date(row.fecha), 'HH:mm', { locale: es })}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setHistoryEnvio({ id: row.envio.id, tracking })}
+                                title="Ver historial"
+                              >
+                                <Clock className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setSelectedShipmentId(row.envio.id)}
+                                title="Ver detalle"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )
+          ) : isLoading ? (
+
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
