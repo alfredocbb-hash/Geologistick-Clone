@@ -339,7 +339,7 @@ function GlobalErrorBoundary({ children }: { children: React.ReactNode }) {
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem themes={['light', 'dark', 'midnight', 'logistics-blue', 'system']}>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem themes={['light', 'dark', 'system']}>
       <GlobalErrorBoundary>
         <TooltipProvider>
           <Toaster />

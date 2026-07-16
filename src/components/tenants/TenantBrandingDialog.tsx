@@ -264,177 +264,35 @@ export function TenantBrandingDialog({ open, onOpenChange, tenant, onSuccess }: 
                         <Palette className="h-4 w-4" />
                         Paleta de Colores
                       </CardTitle>
-                      <CardDescription>Personaliza los colores de la interfaz</CardDescription>
+                      <CardDescription>
+                        La paleta es global para todos los tenants. Personalizá tu identidad con logo,
+                        favicon, nombre y textos.
+                      </CardDescription>
                     </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label>Color Primario</Label>
-                          <div className="flex gap-2">
-                            <Input
-                              type="color"
-                              value={formData.color_primario}
-                              onChange={(e) => handleChange("color_primario", e.target.value)}
-                              className="w-14 h-10 p-1 cursor-pointer"
-                            />
-                            <Input
-                              value={formData.color_primario}
-                              onChange={(e) => handleChange("color_primario", e.target.value)}
-                              className="flex-1"
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Texto sobre Primario</Label>
-                          <div className="flex gap-2">
-                            <Input
-                              type="color"
-                              value={formData.color_primario_foreground}
-                              onChange={(e) => handleChange("color_primario_foreground", e.target.value)}
-                              className="w-14 h-10 p-1 cursor-pointer"
-                            />
-                            <Input
-                              value={formData.color_primario_foreground}
-                              onChange={(e) => handleChange("color_primario_foreground", e.target.value)}
-                              className="flex-1"
-                            />
-                          </div>
-                        </div>
+                    <CardContent className="space-y-3">
+                      <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
+                        <p className="mb-2 font-medium text-foreground">Tema unificado</p>
+                        <p>
+                          Los colores del sistema (primario, sidebar, fondos, acentos) son los mismos
+                          para todos los clientes y respetan el tema Claro / Oscuro que elige cada usuario.
+                        </p>
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label>Color Secundario</Label>
-                          <div className="flex gap-2">
-                            <Input
-                              type="color"
-                              value={formData.color_secundario}
-                              onChange={(e) => handleChange("color_secundario", e.target.value)}
-                              className="w-14 h-10 p-1 cursor-pointer"
-                            />
-                            <Input
-                              value={formData.color_secundario}
-                              onChange={(e) => handleChange("color_secundario", e.target.value)}
-                              className="flex-1"
-                            />
-                          </div>
+                      <div className="grid grid-cols-4 gap-3">
+                        <div className="rounded-md border p-3 text-center">
+                          <div className="mx-auto mb-2 h-8 w-8 rounded-full bg-primary" />
+                          <p className="text-xs text-muted-foreground">Primario</p>
                         </div>
-                        <div className="space-y-2">
-                          <Label>Color de Acento</Label>
-                          <div className="flex gap-2">
-                            <Input
-                              type="color"
-                              value={formData.color_acento}
-                              onChange={(e) => handleChange("color_acento", e.target.value)}
-                              className="w-14 h-10 p-1 cursor-pointer"
-                            />
-                            <Input
-                              value={formData.color_acento}
-                              onChange={(e) => handleChange("color_acento", e.target.value)}
-                              className="flex-1"
-                            />
-                          </div>
+                        <div className="rounded-md border p-3 text-center">
+                          <div className="mx-auto mb-2 h-8 w-8 rounded-full bg-secondary" />
+                          <p className="text-xs text-muted-foreground">Secundario</p>
                         </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label>Menú lateral — Tema Claro</Label>
-                          <div className="flex gap-2">
-                            <Input
-                              type="color"
-                              value={formData.color_sidebar}
-                              onChange={(e) => handleChange("color_sidebar", e.target.value)}
-                              className="w-14 h-10 p-1 cursor-pointer"
-                            />
-                            <Input
-                              value={formData.color_sidebar}
-                              onChange={(e) => handleChange("color_sidebar", e.target.value)}
-                              className="flex-1"
-                            />
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            Se usa cuando el usuario tiene el tema claro activo. Recomendado un color claro (ej. #F8FAFC).
-                          </p>
+                        <div className="rounded-md border p-3 text-center">
+                          <div className="mx-auto mb-2 h-8 w-8 rounded-full bg-accent" />
+                          <p className="text-xs text-muted-foreground">Acento</p>
                         </div>
-                        <div className="space-y-2">
-                          <Label>Menú lateral — Tema Oscuro</Label>
-                          <div className="flex gap-2">
-                            <Input
-                              type="color"
-                              value={formData.color_sidebar_dark}
-                              onChange={(e) => handleChange("color_sidebar_dark", e.target.value)}
-                              className="w-14 h-10 p-1 cursor-pointer"
-                            />
-                            <Input
-                              value={formData.color_sidebar_dark}
-                              onChange={(e) => handleChange("color_sidebar_dark", e.target.value)}
-                              className="flex-1"
-                            />
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            Se usa cuando el usuario tiene el tema oscuro activo. Recomendado un color oscuro (ej. #1A1A2E).
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {/* Preview */}
-                  <Card>
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-base">Vista Previa</CardTitle>
-                      <CardDescription>Así se verá el menú según el tema activo del usuario.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="flex gap-4">
-                        <div
-                          className="flex-1 h-24 rounded-lg flex items-center justify-center text-sm font-medium"
-                          style={{
-                            backgroundColor: formData.color_primario,
-                            color: formData.color_primario_foreground,
-                          }}
-                        >
-                          Primario
-                        </div>
-                        <div
-                          className="flex-1 h-24 rounded-lg flex items-center justify-center text-sm font-medium text-white"
-                          style={{ backgroundColor: formData.color_secundario }}
-                        >
-                          Secundario
-                        </div>
-                        <div
-                          className="flex-1 h-24 rounded-lg flex items-center justify-center text-sm font-medium text-white"
-                          style={{ backgroundColor: formData.color_acento }}
-                        >
-                          Acento
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="rounded-lg border overflow-hidden">
-                          <div className="text-xs px-3 py-1.5 bg-muted/60 font-medium">Tema Claro</div>
-                          <div className="flex h-28">
-                            <div className="w-16 p-2" style={{ backgroundColor: formData.color_sidebar }}>
-                              <div className="w-full h-3 rounded mb-1.5" style={{ backgroundColor: formData.color_primario }} />
-                              <div className="w-3/4 h-2 rounded mb-1 bg-black/20" />
-                              <div className="w-2/3 h-2 rounded bg-black/20" />
-                            </div>
-                            <div className="flex-1 bg-white p-2">
-                              <div className="text-[10px] font-bold" style={{ color: formData.color_primario }}>{formData.nombre_app || 'App'}</div>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="rounded-lg border overflow-hidden">
-                          <div className="text-xs px-3 py-1.5 bg-muted/60 font-medium">Tema Oscuro</div>
-                          <div className="flex h-28">
-                            <div className="w-16 p-2" style={{ backgroundColor: formData.color_sidebar_dark }}>
-                              <div className="w-full h-3 rounded mb-1.5" style={{ backgroundColor: formData.color_primario }} />
-                              <div className="w-3/4 h-2 rounded mb-1 bg-white/20" />
-                              <div className="w-2/3 h-2 rounded bg-white/20" />
-                            </div>
-                            <div className="flex-1 p-2" style={{ backgroundColor: '#0f172a' }}>
-                              <div className="text-[10px] font-bold text-white">{formData.nombre_app || 'App'}</div>
-                            </div>
-                          </div>
+                        <div className="rounded-md border p-3 text-center">
+                          <div className="mx-auto mb-2 h-8 w-8 rounded-full bg-sidebar border" />
+                          <p className="text-xs text-muted-foreground">Sidebar</p>
                         </div>
                       </div>
                     </CardContent>

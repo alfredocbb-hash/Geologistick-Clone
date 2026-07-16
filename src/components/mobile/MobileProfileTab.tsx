@@ -307,8 +307,6 @@ export function MobileProfileTab({ onCheckOut }: MobileProfileTabProps = {}) {
             {[
               { value: 'light', label: 'Claro', Icon: Sun },
               { value: 'dark', label: 'Oscuro', Icon: Moon },
-              { value: 'midnight', label: 'Midnight', Icon: Moon },
-              { value: 'logistics-blue', label: 'Logistics', Icon: Moon },
               { value: 'system', label: 'Sistema', Icon: Moon },
             ].map(({ value, label, Icon }) => (
               <button
