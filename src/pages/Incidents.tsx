@@ -21,11 +21,13 @@ import {
   Loader2,
   CheckCircle,
   Clock,
-  Eye
+  Eye,
+  Undo2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import IncidentActionDialog from '@/components/incidents/IncidentActionDialog';
+import ReturnToSenderDialog from '@/components/incidents/ReturnToSenderDialog';
 import { ShipmentDetailsDialog } from '@/components/shipments/ShipmentDetailsDialog';
 import { ShipmentHistoryDialog } from '@/components/shipments/ShipmentHistoryDialog';
 
