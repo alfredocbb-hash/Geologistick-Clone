@@ -171,6 +171,7 @@ export default function Settlements() {
         .select('id, nombre, saldo_cuenta_corriente, tiene_cuenta_corriente, cliente_id, tarifa_id')
         .eq('tenant_id', tenantId)
         .eq('tiene_cuenta_corriente', true)
+        .eq('activo', true)
         .order('nombre');
 
       if (error) throw error;
