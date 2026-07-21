@@ -155,7 +155,20 @@ export default function Incidents() {
       if (enviosError) throw enviosError;
       if (!envios?.length) return [];
 
-      const envioIds = envios.map(e => e.id);
+      const allEnvioIds = envios.map(e => e.id);
+
+      // Only include shipments that actually went out for delivery at some point
+      const { data: reparto } = await supabase
+        .from('envio_historial')
+        .select('envio_id')
+        .in('envio_id', allEnvioIds)
+        .eq('estado_nuevo', 'en_reparto');
+
+      const salieronReparto = new Set((reparto || []).map((r: any) => r.envio_id));
+      const enviosFiltrados = envios.filter(e => salieronReparto.has(e.id));
+      if (!enviosFiltrados.length) return [];
+
+      const envioIds = enviosFiltrados.map(e => e.id);
 
       // Last history entry that transitioned into the final state
       const { data: historial } = await supabase
@@ -186,7 +199,7 @@ export default function Incidents() {
         profs?.forEach((p: any) => { profilesMap[p.user_id] = { nombre: p.nombre, apellido: p.apellido }; });
       }
 
-      return envios.map((env: any) => {
+      return enviosFiltrados.map((env: any) => {
         const inc = incidenciasRel?.find((i: any) => i.envio_id === env.id);
         const hist = historial?.find((h: any) => h.envio_id === env.id && h.estado_nuevo === env.estado);
         const motivo = inc?.resolucion || hist?.notas || null;

@@ -1,19 +1,21 @@
 ## Causa
 
-En `src/pages/ecommerce/Settlements.tsx` (línea ~166), la query `ecommerce-sellers-cta-cte` que puebla el selector de sellers filtra sólo por `tenant_id` y `tiene_cuenta_corriente = true`, pero **no filtra por `activo = true`**. Por eso aparecen sellers dados de baja mientras conserven cuenta corriente.
+En `src/pages/Incidents.tsx` (query `incidents-canceladas`, línea ~144) se traen todos los envíos del tenant con `estado ∈ ('cancelado','devuelto')`, sin importar si el paquete llegó a salir a reparto. Por eso aparecen también cancelaciones tempranas (p. ej. pedidos anulados en `pendiente` / `en_sucursal`).
 
 ## Cambio
 
-Agregar `.eq('activo', true)` a esa query para que:
+Filtrar la lista de "Canceladas / Devoluciones" para que sólo incluya envíos que en algún momento pasaron por `en_reparto`.
 
-- La lista "Saldos por Seller"
-- El multi-selector "Seleccionar sellers..." de nueva liquidación
-- Las KPIs (total saldo, sellers con deuda, sellers a favor)
+Pasos:
 
-sólo consideren sellers activos.
+1. En esa query, después de traer los envíos cancelados/devueltos, consultar `envio_historial` con `estado_nuevo = 'en_reparto'` para ese conjunto de `envio_ids` (una sola query, sin N+1).
+2. Construir un `Set<envio_id>` de los que tuvieron al menos un evento `en_reparto`.
+3. Filtrar `envios` por ese set antes de mapear el resultado final. El resto del pipeline (historial de cierre, incidencias, perfiles) queda igual, sólo opera sobre el subconjunto filtrado.
+4. El KPI "Canceladas / Devoluciones" y el badge del tab usan `canceladas?.length`, así que quedan automáticamente alineados.
 
-Los sellers inactivos con cuenta corriente seguirán existiendo en la base y en el historial de liquidaciones ya generadas; simplemente no aparecerán para nuevas liquidaciones.
+No se toca la pestaña de Tracking ni la lógica de `ReturnToSenderDialog`; el filtro es sólo de visualización en Incidencias.
 
 ## Nota
 
-Reviso también los otros lugares donde se listan sellers para liquidar (por ejemplo el balance dinámico y el detalle de liquidaciones) para confirmar que dependen de esta misma query y no requieren fix adicional. Si aparece otro sitio con el mismo bug (por ejemplo `LiquidacionesEcommerceTab` en Finanzas), lo corrijo en la misma tanda.
+- No aplica a envíos importados desde ML donde el estado interno saltó directo a `cancelado` sin registrar `en_reparto` en `envio_historial`; ésos quedarán fuera (que es lo pedido).
+- Si más adelante querés incluir también `primera_visita` / `segunda_visita` como "salió a reparto", se extiende el filtro sumando esos estados al `in()`.
