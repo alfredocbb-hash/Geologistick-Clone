@@ -244,13 +244,6 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Get seller
-      const { data: seller, error: sellerError } = await supabase
-        .from('ecommerce_sellers')
-        .select('tenant_id, refresh_token')
-        .eq('id', seller_id)
-        .single();
-
       // Get seller (tenant only) and tokens (from protected table)
       const { data: seller, error: sellerError } = await supabase
         .from('ecommerce_sellers')
