@@ -199,7 +199,7 @@ export default function Incidents() {
         profs?.forEach((p: any) => { profilesMap[p.user_id] = { nombre: p.nombre, apellido: p.apellido }; });
       }
 
-      return envios.map((env: any) => {
+      return enviosFiltrados.map((env: any) => {
         const inc = incidenciasRel?.find((i: any) => i.envio_id === env.id);
         const hist = historial?.find((h: any) => h.envio_id === env.id && h.estado_nuevo === env.estado);
         const motivo = inc?.resolucion || hist?.notas || null;
