@@ -2,15 +2,13 @@ import type { Config } from "tailwindcss";
 
 export default {
   darkMode: ["class"],
-  content: ["./pages/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
+  content: ["./index.html", "./src/**/*.{ts,tsx}"],
   prefix: "",
   theme: {
     container: {
       center: true,
       padding: "2rem",
-      screens: {
-        "2xl": "1400px",
-      },
+      screens: { "2xl": "1400px" },
     },
     extend: {
       colors: {
@@ -47,7 +45,6 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        // Colores de estado
         success: {
           DEFAULT: "hsl(var(--success))",
           foreground: "hsl(var(--success-foreground))",
@@ -60,17 +57,6 @@ export default {
           DEFAULT: "hsl(var(--info))",
           foreground: "hsl(var(--info-foreground))",
         },
-        // Colores por módulo
-        envios: "hsl(var(--envios))",
-        chofer: "hsl(var(--chofer))",
-        caja: "hsl(var(--caja))",
-        comisiones: "hsl(var(--comisiones))",
-        pagos: "hsl(var(--pagos))",
-        clientes: "hsl(var(--clientes))",
-        sucursales: "hsl(var(--sucursales))",
-        tarifas: "hsl(var(--tarifas))",
-        admin: "hsl(var(--admin))",
-        // Sidebar
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
@@ -100,29 +86,14 @@ export default {
           from: { opacity: "0", transform: "translateY(10px)" },
           to: { opacity: "1", transform: "translateY(0)" },
         },
-        "slide-in-right": {
-          from: { transform: "translateX(100%)" },
-          to: { transform: "translateX(0)" },
-        },
-        "pulse-soft": {
-          "0%, 100%": { opacity: "1" },
-          "50%": { opacity: "0.7" },
-        },
-        "driver-pulse": {
-          "0%": { transform: "scale(1)", opacity: "0.6" },
-          "100%": { transform: "scale(2.2)", opacity: "0" },
-        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "fade-in": "fade-in 0.3s ease-out",
-        "slide-in-right": "slide-in-right 0.3s ease-out",
-        "pulse-soft": "pulse-soft 2s ease-in-out infinite",
-        "driver-pulse": "driver-pulse 1.5s ease-out infinite",
       },
       boxShadow: {
-        "colored": "var(--shadow-colored)",
+        colored: "var(--shadow-colored)",
       },
     },
   },
