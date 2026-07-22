@@ -81,6 +81,9 @@ export default function Incidents() {
   const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
   const [historyEnvio, setHistoryEnvio] = useState<{ id: string; tracking: string } | null>(null);
   const [returnEnvio, setReturnEnvio] = useState<{ id: string; tracking: string; destinatario: string | null; estado: string } | null>(null);
+  const [filterRemitente, setFilterRemitente] = useState<string>('all');
+  const [filterChofer, setFilterChofer] = useState<string>('all');
+  const [filterTipo, setFilterTipo] = useState<string>('all');
 
 
   // Fetch incidents
