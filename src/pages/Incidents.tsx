@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   AlertTriangle, 
   Search, 
@@ -56,6 +57,7 @@ interface Incident {
     estado: string;
     reprogramado_count: number | null;
     nombre_destinatario: string | null;
+    nombre_remitente: string | null;
     direccion_entrega: string | null;
     ciudad_entrega: string | null;
     whatsapp_destinatario: string | null;
@@ -79,6 +81,9 @@ export default function Incidents() {
   const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
   const [historyEnvio, setHistoryEnvio] = useState<{ id: string; tracking: string } | null>(null);
   const [returnEnvio, setReturnEnvio] = useState<{ id: string; tracking: string; destinatario: string | null; estado: string } | null>(null);
+  const [filterRemitente, setFilterRemitente] = useState<string>('all');
+  const [filterChofer, setFilterChofer] = useState<string>('all');
+  const [filterTipo, setFilterTipo] = useState<string>('all');
 
 
   // Fetch incidents
@@ -102,7 +107,7 @@ export default function Incidents() {
           created_at,
           envio:envios!incidentes_envio_id_fkey(
             id, tracking_number, estado, reprogramado_count,
-            nombre_destinatario, direccion_entrega, ciudad_entrega, whatsapp_destinatario
+            nombre_destinatario, nombre_remitente, direccion_entrega, ciudad_entrega, whatsapp_destinatario
           ),
           chofer:profiles!incidentes_chofer_id_fkey(nombre, apellido)
         `)
@@ -145,7 +150,7 @@ export default function Incidents() {
         .from('envios')
         .select(`
           id, tracking_number, tracking_externo, estado, updated_at,
-          nombre_destinatario, direccion_entrega, ciudad_entrega
+          nombre_destinatario, nombre_remitente, direccion_entrega, ciudad_entrega
         `)
         .eq('tenant_id', profile.tenant_id)
         .in('estado', ['cancelado', 'devuelto'])
@@ -215,31 +220,60 @@ export default function Incidents() {
   });
 
 
-  // Filter incidents by search term
+  // Filter incidents by search + filters
   const filteredIncidents = incidents?.filter(incident => {
-    if (!searchTerm) return true;
     const search = searchTerm.toLowerCase();
-    return (
+    const matchesSearch = !searchTerm || (
       incident.envio?.tracking_number?.toLowerCase().includes(search) ||
       incident.envio?.nombre_destinatario?.toLowerCase().includes(search) ||
+      incident.envio?.nombre_remitente?.toLowerCase().includes(search) ||
       incident.envio?.direccion_entrega?.toLowerCase().includes(search) ||
       incident.chofer?.nombre?.toLowerCase().includes(search) ||
       incident.chofer?.apellido?.toLowerCase().includes(search)
     );
+    const rem = incident.envio?.nombre_remitente || '';
+    const chof = `${incident.chofer?.nombre || ''} ${incident.chofer?.apellido || ''}`.trim();
+    const matchesRem = filterRemitente === 'all' || rem === filterRemitente;
+    const matchesChof = filterChofer === 'all' || chof === filterChofer;
+    const matchesTipo = filterTipo === 'all' || incident.tipo === filterTipo;
+    return matchesSearch && matchesRem && matchesChof && matchesTipo;
   });
 
-  // Filter cancelled shipments by search term
+  // Filter cancelled shipments by search + filters
   const filteredCanceladas = canceladas?.filter(row => {
-    if (!searchTerm) return true;
     const s = searchTerm.toLowerCase();
-    return (
+    const matchesSearch = !searchTerm || (
       row.envio?.tracking_number?.toLowerCase().includes(s) ||
       row.envio?.tracking_externo?.toLowerCase().includes(s) ||
       row.envio?.nombre_destinatario?.toLowerCase().includes(s) ||
+      (row.envio as any)?.nombre_remitente?.toLowerCase().includes(s) ||
       row.envio?.direccion_entrega?.toLowerCase().includes(s) ||
       row.motivo?.toLowerCase().includes(s)
     );
+    const rem = (row.envio as any)?.nombre_remitente || '';
+    const matchesRem = filterRemitente === 'all' || rem === filterRemitente;
+    return matchesSearch && matchesRem;
   });
+
+  // Distinct option lists for filters
+  const remitentesOptions = Array.from(new Set([
+    ...((incidents || []).map(i => i.envio?.nombre_remitente).filter(Boolean) as string[]),
+    ...((canceladas || []).map((r: any) => r.envio?.nombre_remitente).filter(Boolean) as string[]),
+  ])).sort();
+  const choferesOptions = Array.from(new Set(
+    (incidents || [])
+      .map(i => `${i.chofer?.nombre || ''} ${i.chofer?.apellido || ''}`.trim())
+      .filter(Boolean)
+  )).sort();
+  const tiposOptions = Array.from(new Set((incidents || []).map(i => i.tipo).filter(Boolean))).sort();
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setFilterRemitente('all');
+    setFilterChofer('all');
+    setFilterTipo('all');
+  };
+  const hasActiveFilters = !!searchTerm || filterRemitente !== 'all' || filterChofer !== 'all' || filterTipo !== 'all';
 
   // Count pending incidents
   const pendingCount = activeTab === 'pendiente' 
@@ -359,15 +393,66 @@ export default function Incidents() {
               </TabsList>
             </Tabs>
 
-            <div className="relative w-full sm:w-64">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por tracking, cliente..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9"
-              />
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar por tracking, cliente, remitente..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
             </div>
+          </div>
+
+          {/* Filters bar */}
+          <div className="flex flex-wrap items-center gap-2 pt-4">
+            <Select value={filterRemitente} onValueChange={setFilterRemitente}>
+              <SelectTrigger className="w-full sm:w-56">
+                <SelectValue placeholder="Remitente / Seller" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los remitentes</SelectItem>
+                {remitentesOptions.map(r => (
+                  <SelectItem key={r} value={r}>{r}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {activeTab !== 'canceladas' && (
+              <>
+                <Select value={filterChofer} onValueChange={setFilterChofer}>
+                  <SelectTrigger className="w-full sm:w-48">
+                    <SelectValue placeholder="Chofer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los choferes</SelectItem>
+                    {choferesOptions.map(c => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={filterTipo} onValueChange={setFilterTipo}>
+                  <SelectTrigger className="w-full sm:w-56">
+                    <SelectValue placeholder="Tipo de incidencia" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los tipos</SelectItem>
+                    {tiposOptions.map(t => (
+                      <SelectItem key={t} value={t}>{getIncidentTypeInfo(t).label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            )}
+
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={clearFilters}>
+                Limpiar filtros
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -389,6 +474,7 @@ export default function Incidents() {
                       <TableHead>Tracking</TableHead>
                       <TableHead>Estado</TableHead>
                       <TableHead>Destinatario</TableHead>
+                      <TableHead>Remitente</TableHead>
                       <TableHead>Motivo</TableHead>
                       <TableHead>Cerrado por</TableHead>
                       <TableHead>Fecha</TableHead>
@@ -421,6 +507,11 @@ export default function Incidents() {
                                 {row.envio.direccion_entrega}{row.envio.ciudad_entrega ? `, ${row.envio.ciudad_entrega}` : ''}
                               </p>
                             </div>
+                          </TableCell>
+                          <TableCell>
+                            <p className="text-sm truncate max-w-[180px]">
+                              {(row.envio as any).nombre_remitente || <span className="text-muted-foreground italic">-</span>}
+                            </p>
                           </TableCell>
                           <TableCell>
                             <p className="text-sm text-muted-foreground max-w-[280px] whitespace-pre-wrap">
@@ -565,6 +656,11 @@ export default function Incidents() {
                             <p className="text-xs text-muted-foreground truncate max-w-[200px]">
                               {incident.envio?.direccion_entrega}
                             </p>
+                            {incident.envio?.nombre_remitente && (
+                              <p className="text-xs text-muted-foreground truncate max-w-[200px] mt-1">
+                                <span className="font-medium">Remitente:</span> {incident.envio.nombre_remitente}
+                              </p>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>
