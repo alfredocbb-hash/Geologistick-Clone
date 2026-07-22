@@ -150,7 +150,7 @@ export default function Incidents() {
         .from('envios')
         .select(`
           id, tracking_number, tracking_externo, estado, updated_at,
-          nombre_destinatario, direccion_entrega, ciudad_entrega
+          nombre_destinatario, nombre_remitente, direccion_entrega, ciudad_entrega
         `)
         .eq('tenant_id', profile.tenant_id)
         .in('estado', ['cancelado', 'devuelto'])
