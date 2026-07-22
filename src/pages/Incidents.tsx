@@ -474,6 +474,7 @@ export default function Incidents() {
                       <TableHead>Tracking</TableHead>
                       <TableHead>Estado</TableHead>
                       <TableHead>Destinatario</TableHead>
+                      <TableHead>Remitente</TableHead>
                       <TableHead>Motivo</TableHead>
                       <TableHead>Cerrado por</TableHead>
                       <TableHead>Fecha</TableHead>
