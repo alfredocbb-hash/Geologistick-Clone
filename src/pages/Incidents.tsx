@@ -656,6 +656,11 @@ export default function Incidents() {
                             <p className="text-xs text-muted-foreground truncate max-w-[200px]">
                               {incident.envio?.direccion_entrega}
                             </p>
+                            {incident.envio?.nombre_remitente && (
+                              <p className="text-xs text-muted-foreground truncate max-w-[200px] mt-1">
+                                <span className="font-medium">Remitente:</span> {incident.envio.nombre_remitente}
+                              </p>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>
