@@ -107,7 +107,7 @@ export default function Incidents() {
           created_at,
           envio:envios!incidentes_envio_id_fkey(
             id, tracking_number, estado, reprogramado_count,
-            nombre_destinatario, direccion_entrega, ciudad_entrega, whatsapp_destinatario
+            nombre_destinatario, nombre_remitente, direccion_entrega, ciudad_entrega, whatsapp_destinatario
           ),
           chofer:profiles!incidentes_chofer_id_fkey(nombre, apellido)
         `)
