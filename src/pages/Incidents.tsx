@@ -393,15 +393,66 @@ export default function Incidents() {
               </TabsList>
             </Tabs>
 
-            <div className="relative w-full sm:w-64">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por tracking, cliente..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9"
-              />
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar por tracking, cliente, remitente..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
             </div>
+          </div>
+
+          {/* Filters bar */}
+          <div className="flex flex-wrap items-center gap-2 pt-4">
+            <Select value={filterRemitente} onValueChange={setFilterRemitente}>
+              <SelectTrigger className="w-full sm:w-56">
+                <SelectValue placeholder="Remitente / Seller" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los remitentes</SelectItem>
+                {remitentesOptions.map(r => (
+                  <SelectItem key={r} value={r}>{r}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {activeTab !== 'canceladas' && (
+              <>
+                <Select value={filterChofer} onValueChange={setFilterChofer}>
+                  <SelectTrigger className="w-full sm:w-48">
+                    <SelectValue placeholder="Chofer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los choferes</SelectItem>
+                    {choferesOptions.map(c => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={filterTipo} onValueChange={setFilterTipo}>
+                  <SelectTrigger className="w-full sm:w-56">
+                    <SelectValue placeholder="Tipo de incidencia" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los tipos</SelectItem>
+                    {tiposOptions.map(t => (
+                      <SelectItem key={t} value={t}>{getIncidentTypeInfo(t).label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            )}
+
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={clearFilters}>
+                Limpiar filtros
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent>
