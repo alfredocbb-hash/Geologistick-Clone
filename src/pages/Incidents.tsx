@@ -509,6 +509,11 @@ export default function Incidents() {
                             </div>
                           </TableCell>
                           <TableCell>
+                            <p className="text-sm truncate max-w-[180px]">
+                              {(row.envio as any).nombre_remitente || <span className="text-muted-foreground italic">-</span>}
+                            </p>
+                          </TableCell>
+                          <TableCell>
                             <p className="text-sm text-muted-foreground max-w-[280px] whitespace-pre-wrap">
                               {row.motivo || <span className="italic">Sin motivo registrado</span>}
                             </p>
