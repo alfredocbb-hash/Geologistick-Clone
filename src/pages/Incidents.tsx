@@ -57,6 +57,7 @@ interface Incident {
     estado: string;
     reprogramado_count: number | null;
     nombre_destinatario: string | null;
+    nombre_remitente: string | null;
     direccion_entrega: string | null;
     ciudad_entrega: string | null;
     whatsapp_destinatario: string | null;
