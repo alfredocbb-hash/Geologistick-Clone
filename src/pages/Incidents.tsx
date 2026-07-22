@@ -220,31 +220,60 @@ export default function Incidents() {
   });
 
 
-  // Filter incidents by search term
+  // Filter incidents by search + filters
   const filteredIncidents = incidents?.filter(incident => {
-    if (!searchTerm) return true;
     const search = searchTerm.toLowerCase();
-    return (
+    const matchesSearch = !searchTerm || (
       incident.envio?.tracking_number?.toLowerCase().includes(search) ||
       incident.envio?.nombre_destinatario?.toLowerCase().includes(search) ||
+      incident.envio?.nombre_remitente?.toLowerCase().includes(search) ||
       incident.envio?.direccion_entrega?.toLowerCase().includes(search) ||
       incident.chofer?.nombre?.toLowerCase().includes(search) ||
       incident.chofer?.apellido?.toLowerCase().includes(search)
     );
+    const rem = incident.envio?.nombre_remitente || '';
+    const chof = `${incident.chofer?.nombre || ''} ${incident.chofer?.apellido || ''}`.trim();
+    const matchesRem = filterRemitente === 'all' || rem === filterRemitente;
+    const matchesChof = filterChofer === 'all' || chof === filterChofer;
+    const matchesTipo = filterTipo === 'all' || incident.tipo === filterTipo;
+    return matchesSearch && matchesRem && matchesChof && matchesTipo;
   });
 
-  // Filter cancelled shipments by search term
+  // Filter cancelled shipments by search + filters
   const filteredCanceladas = canceladas?.filter(row => {
-    if (!searchTerm) return true;
     const s = searchTerm.toLowerCase();
-    return (
+    const matchesSearch = !searchTerm || (
       row.envio?.tracking_number?.toLowerCase().includes(s) ||
       row.envio?.tracking_externo?.toLowerCase().includes(s) ||
       row.envio?.nombre_destinatario?.toLowerCase().includes(s) ||
+      (row.envio as any)?.nombre_remitente?.toLowerCase().includes(s) ||
       row.envio?.direccion_entrega?.toLowerCase().includes(s) ||
       row.motivo?.toLowerCase().includes(s)
     );
+    const rem = (row.envio as any)?.nombre_remitente || '';
+    const matchesRem = filterRemitente === 'all' || rem === filterRemitente;
+    return matchesSearch && matchesRem;
   });
+
+  // Distinct option lists for filters
+  const remitentesOptions = Array.from(new Set([
+    ...((incidents || []).map(i => i.envio?.nombre_remitente).filter(Boolean) as string[]),
+    ...((canceladas || []).map((r: any) => r.envio?.nombre_remitente).filter(Boolean) as string[]),
+  ])).sort();
+  const choferesOptions = Array.from(new Set(
+    (incidents || [])
+      .map(i => `${i.chofer?.nombre || ''} ${i.chofer?.apellido || ''}`.trim())
+      .filter(Boolean)
+  )).sort();
+  const tiposOptions = Array.from(new Set((incidents || []).map(i => i.tipo).filter(Boolean))).sort();
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setFilterRemitente('all');
+    setFilterChofer('all');
+    setFilterTipo('all');
+  };
+  const hasActiveFilters = !!searchTerm || filterRemitente !== 'all' || filterChofer !== 'all' || filterTipo !== 'all';
 
   // Count pending incidents
   const pendingCount = activeTab === 'pendiente' 
