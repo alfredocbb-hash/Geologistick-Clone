@@ -1,22 +1,63 @@
-## Problema
+## Objetivo
 
-En `src/pages/Shipments.tsx` la consulta principal de envíos no filtra por el estado del seller remitente, así que los envíos de sellers inactivos siguen apareciendo (lista y stats).
+Sumar un botón **"Enviar por WhatsApp"** junto a las acciones ya existentes (PDF, etc.) en cada liquidación generada, para Sellers eCommerce, Choferes, Sucursales, Terciarizados y Partners.
 
-## Cambios
+## Comportamiento
 
-1. **Nueva subconsulta de sellers inactivos** (`src/pages/Shipments.tsx`):
-   - Traer de `ecommerce_sellers` los registros con `activo = false` del tenant actual, quedándome con sus `cliente_id` (los envíos vinculan al seller a través de `remitente_id → clientes.id`, según la regla ya establecida del proyecto).
-   - Cachear con `useQuery` bajo `['inactive-seller-cliente-ids', tenant_id]`.
+- Abre `https://wa.me/<telefono>?text=<mensaje>` en una pestaña nueva (funciona en web y en la APK vía WhatsApp instalado).
+- El teléfono se toma del registro del destinatario y se normaliza con `normalizePhoneAR`.
+- Dispara además la descarga del PDF de la liquidación para que el usuario lo adjunte manualmente (wa.me no permite adjuntos).
+- Si no hay teléfono cargado, el botón queda deshabilitado con tooltip *"Sin teléfono cargado"*.
 
-2. **Excluir esos remitentes de la query de envíos**:
-   - En la query `['envios', ...]` agregar `.not('remitente_id', 'in', '(id1,id2,...)')` cuando haya IDs.
-   - Sumar el array de IDs al `queryKey` para que refresque si cambia.
-   - Aplicar la misma exclusión en la query `['envios-stats', ...]` en cada `base()`.
+## Mensaje (cordial, según horario y día)
 
-3. **Sin cambios de UI ni de otras pantallas** — solo Gestión de Envíos.
+Se arma dinámicamente en AR-Spanish. Estructura:
 
-## Notas técnicas
+```
+{saludo_horario}, adjunto liquidación correspondiente al período {desde} al {hasta}
+por un total de ${monto}. Aguardo comprobante de transferencia, ¡gracias! 😊
+{cierre_dia}
+```
 
-- El vínculo seller → envío es `ecommerce_sellers.cliente_id = envios.remitente_id`. Sellers sin `cliente_id` no generan envíos, así que se ignoran.
-- Búsqueda global por tracking (`isGlobalSearch`) también aplicará la exclusión — un envío histórico de un seller inactivo no debe seguir apareciendo en gestión.
-- Superadmin no se exceptúa (no fue pedido); si querés bypass para superadmin, avisame y lo agrego.
+- **saludo_horario** según hora local:
+  - 05:00–12:59 → "Buenos días"
+  - 13:00–19:59 → "Buenas tardes"
+  - resto → "Buenas noches"
+- **cierre_dia** según día de la semana:
+  - Lunes → "¡Que tengas un excelente comienzo de semana!"
+  - Martes–Jueves → "¡Que tengas un excelente día!"
+  - Viernes → "¡Buen finde!"
+  - Sábado/Domingo → "¡Que disfrutes el finde!"
+- Se personaliza con el nombre del destinatario cuando esté disponible ("Buenos días, Ariel, …").
+
+## Origen del teléfono por tipo
+
+| Liquidación | Fuente |
+|---|---|
+| Seller eCommerce | `ecommerce_sellers.telefono` (fallback `clientes.telefono`) |
+| Chofer | `profiles.telefono` del `chofer_id` |
+| Sucursal | `sucursales.telefono` |
+| Terciarizado | `empresas_terciarizadas.telefono` |
+| Partner | `tenants.telefono` del `partner_tenant_id` |
+
+## Implementación técnica
+
+1. **Helper** `src/lib/sendSettlementWhatsApp.ts`:
+   - `buildSettlementMessage({ tipo, nombre, periodoInicio, periodoFin, monto, now })` → arma el texto con saludo/cierre según fecha.
+   - `sendSettlementViaWhatsApp({ phone, message, onDownloadPdf })` → normaliza con `normalizePhoneAR`, descarga PDF y abre `wa.me` en `_blank`.
+
+2. **Componente** `src/components/settlements/SendWhatsAppButton.tsx` — botón reutilizable (ícono verde tipo WhatsApp), deshabilitado sin teléfono, con tooltip explicativo.
+
+3. **Integraciones** (solo agregar el botón junto al de PDF existente):
+   - `src/components/ecommerce/SellerLiquidacionDetailDialog.tsx`
+   - `src/pages/DriverSettlements.tsx`
+   - `src/pages/BranchSettlements.tsx`
+   - `src/components/settlements/ThirdPartySettlementDetailDialog.tsx`
+   - `src/components/settlements/PartnerSettlementDetailDialog.tsx`
+
+4. **Consultas**: extender los `select()` de cada listado/dialog para traer `telefono` y `nombre` del destinatario cuando falte.
+
+## Fuera de alcance
+
+- Envío automático con PDF adjunto (requeriría WhatsApp Business API).
+- Cambios en cálculos, permisos o estados de liquidación.
