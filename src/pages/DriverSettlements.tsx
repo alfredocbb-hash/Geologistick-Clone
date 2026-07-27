@@ -44,6 +44,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { downloadDriverSettlementPDF } from '@/lib/generateSettlementPDF';
+import { SendWhatsAppButton } from '@/components/settlements/SendWhatsAppButton';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Database } from '@/integrations/supabase/types';
