@@ -138,7 +138,7 @@ export default function ThirdPartySettlements() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("empresas_terciarizadas")
-        .select("id, codigo, nombre, cuit, tiene_cuenta_corriente, limite_credito, saldo_cuenta_corriente, incluye_iva, porcentaje_iva")
+        .select("id, codigo, nombre, cuit, telefono, tiene_cuenta_corriente, limite_credito, saldo_cuenta_corriente, incluye_iva, porcentaje_iva")
         .eq("activa", true)
         .order("nombre");
       if (error) throw error;

@@ -22,6 +22,7 @@ import { es } from 'date-fns/locale';
 import { parseDateString } from '@/lib/dateUtils';
 import { downloadSellerSettlementPDF } from '@/lib/generateSettlementPDF';
 import { InvoiceDataDialog } from '@/components/invoicing/InvoiceDataDialog';
+import { SendWhatsAppButton } from '@/components/settlements/SendWhatsAppButton';
 
 interface SellerLiquidacion {
   id: string;
@@ -40,7 +41,7 @@ interface SellerLiquidacion {
   referencia_pago: string | null;
   fecha_pago: string | null;
   factura_id: string | null;
-  seller?: { nombre: string };
+  seller?: { nombre: string; telefono?: string | null };
 }
 
 interface SellerLiquidacionDetailDialogProps {
@@ -277,6 +278,15 @@ export function SellerLiquidacionDetailDialog({
                   <Download className="mr-2 h-4 w-4" />
                   PDF
                 </Button>
+                <SendWhatsAppButton
+                  tipo="seller"
+                  phone={liquidacion.seller?.telefono}
+                  nombre={liquidacion.seller?.nombre}
+                  periodoInicio={liquidacion.periodo_inicio}
+                  periodoFin={liquidacion.periodo_fin}
+                  monto={liquidacion.saldo_final ?? liquidacion.saldo_periodo ?? liquidacion.total_cargos}
+                  onDownloadPdf={handleDownloadPDF}
+                />
               </div>
             </div>
           </DialogHeader>

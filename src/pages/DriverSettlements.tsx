@@ -44,6 +44,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { downloadDriverSettlementPDF } from '@/lib/generateSettlementPDF';
+import { SendWhatsAppButton } from '@/components/settlements/SendWhatsAppButton';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Database } from '@/integrations/supabase/types';
@@ -325,7 +326,7 @@ export default function DriverSettlements() {
       const { data: profiles } = choferIds.length
         ? await supabase
             .from('profiles')
-            .select('user_id, nombre, apellido')
+            .select('user_id, nombre, apellido, telefono')
             .in('user_id', choferIds)
         : { data: [] as any[] };
 
@@ -1294,6 +1295,17 @@ export default function DriverSettlements() {
                         >
                           <Download className="h-4 w-4" />
                         </Button>
+                        <SendWhatsAppButton
+                          tipo="chofer"
+                          phone={(liq as any).chofer?.telefono}
+                          nombre={`${liq.chofer?.nombre || ''} ${liq.chofer?.apellido || ''}`.trim()}
+                          periodoInicio={liq.periodo_inicio}
+                          periodoFin={liq.periodo_fin}
+                          monto={liq.monto_total}
+                          onDownloadPdf={() => downloadDriverSettlementPDF(liq)}
+                          variant="ghost"
+                          iconOnly
+                        />
                         <Button
                           size="sm"
                           variant="ghost"

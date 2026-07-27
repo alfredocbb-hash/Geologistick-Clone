@@ -461,7 +461,7 @@ export default function Settlements() {
         .from('liquidaciones_seller')
         .select(`
           *,
-          seller:ecommerce_sellers(nombre)
+          seller:ecommerce_sellers(nombre, telefono)
         `)
         .order('created_at', { ascending: false })
         .limit(500);

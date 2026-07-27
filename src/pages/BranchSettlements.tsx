@@ -45,6 +45,7 @@ import {
 } from '@/components/ui/alert-dialog';
  import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { downloadBranchSettlementPDF } from '@/lib/generateSettlementPDF';
+import { SendWhatsAppButton } from '@/components/settlements/SendWhatsAppButton';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { parseDateString, toLocalISOStart, toLocalISOEnd } from '@/lib/dateUtils';
@@ -149,7 +150,7 @@ export default function BranchSettlements() {
         .from('liquidaciones_sucursal')
         .select(`
           *,
-          sucursal:sucursales(nombre)
+          sucursal:sucursales(nombre, telefono)
         `)
         .order('created_at', { ascending: false })
         .limit(50);
@@ -1075,6 +1076,17 @@ export default function BranchSettlements() {
                         >
                           <Download className="h-4 w-4" />
                         </Button>
+                        <SendWhatsAppButton
+                          tipo="sucursal"
+                          phone={(liq as any).sucursal?.telefono}
+                          nombre={(liq as any).sucursal?.nombre}
+                          periodoInicio={liq.periodo_inicio}
+                          periodoFin={liq.periodo_fin}
+                          monto={(liq as any).saldo ?? (liq as any).total_cobrado}
+                          onDownloadPdf={() => downloadBranchSettlementPDF(liq)}
+                          variant="ghost"
+                          iconOnly
+                        />
                         <Button
                           size="sm"
                           variant="ghost"
