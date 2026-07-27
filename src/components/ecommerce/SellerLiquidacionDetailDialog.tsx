@@ -284,7 +284,7 @@ export function SellerLiquidacionDetailDialog({
                   nombre={liquidacion.seller?.nombre}
                   periodoInicio={liquidacion.periodo_inicio}
                   periodoFin={liquidacion.periodo_fin}
-                  monto={liquidacion.saldo_final ?? liquidacion.saldo_periodo ?? liquidacion.total_cargos}
+                  monto={liquidacion.total_cargos ?? liquidacion.saldo_periodo ?? liquidacion.saldo_final}
                   onDownloadPdf={handleDownloadPDF}
                 />
               </div>

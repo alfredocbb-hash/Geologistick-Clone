@@ -1,63 +1,56 @@
-## Objetivo
+## Problema
 
-Sumar un botón **"Enviar por WhatsApp"** junto a las acciones ya existentes (PDF, etc.) en cada liquidación generada, para Sellers eCommerce, Choferes, Sucursales, Terciarizados y Partners.
-
-## Comportamiento
-
-- Abre `https://wa.me/<telefono>?text=<mensaje>` en una pestaña nueva (funciona en web y en la APK vía WhatsApp instalado).
-- El teléfono se toma del registro del destinatario y se normaliza con `normalizePhoneAR`.
-- Dispara además la descarga del PDF de la liquidación para que el usuario lo adjunte manualmente (wa.me no permite adjuntos).
-- Si no hay teléfono cargado, el botón queda deshabilitado con tooltip *"Sin teléfono cargado"*.
-
-## Mensaje (cordial, según horario y día)
-
-Se arma dinámicamente en AR-Spanish. Estructura:
+En la liquidación de eCommerce (Radikal) el WhatsApp muestra un total que no coincide con el total real de la liquidación. Revisando el código:
 
 ```
-{saludo_horario}, adjunto liquidación correspondiente al período {desde} al {hasta}
-por un total de ${monto}. Aguardo comprobante de transferencia, ¡gracias! 😊
-{cierre_dia}
+monto={liquidacion.saldo_final ?? liquidacion.saldo_periodo ?? liquidacion.total_cargos}
 ```
 
-- **saludo_horario** según hora local:
-  - 05:00–12:59 → "Buenos días"
-  - 13:00–19:59 → "Buenas tardes"
-  - resto → "Buenas noches"
-- **cierre_dia** según día de la semana:
-  - Lunes → "¡Que tengas un excelente comienzo de semana!"
-  - Martes–Jueves → "¡Que tengas un excelente día!"
-  - Viernes → "¡Buen finde!"
-  - Sábado/Domingo → "¡Que disfrutes el finde!"
-- Se personaliza con el nombre del destinatario cuando esté disponible ("Buenos días, Ariel, …").
+Se está enviando el **saldo final acumulado** (que arrastra saldo anterior y descuenta pagos) en lugar del **total de la liquidación del período**.
 
-## Origen del teléfono por tipo
+Además el mensaje pone el total al final de un párrafo largo, difícil de leer en mobile.
 
-| Liquidación | Fuente |
-|---|---|
-| Seller eCommerce | `ecommerce_sellers.telefono` (fallback `clientes.telefono`) |
-| Chofer | `profiles.telefono` del `chofer_id` |
-| Sucursal | `sucursales.telefono` |
-| Terciarizado | `empresas_terciarizadas.telefono` |
-| Partner | `tenants.telefono` del `partner_tenant_id` |
+## Cambios
 
-## Implementación técnica
+### 1. Enviar el total correcto por cada tipo de liquidación
 
-1. **Helper** `src/lib/sendSettlementWhatsApp.ts`:
-   - `buildSettlementMessage({ tipo, nombre, periodoInicio, periodoFin, monto, now })` → arma el texto con saludo/cierre según fecha.
-   - `sendSettlementViaWhatsApp({ phone, message, onDownloadPdf })` → normaliza con `normalizePhoneAR`, descarga PDF y abre `wa.me` en `_blank`.
+Ajustar el `monto` que se pasa a `SendWhatsAppButton`:
 
-2. **Componente** `src/components/settlements/SendWhatsAppButton.tsx` — botón reutilizable (ícono verde tipo WhatsApp), deshabilitado sin teléfono, con tooltip explicativo.
+| Liquidación | `monto` actual | `monto` correcto |
+|---|---|---|
+| Seller eCommerce (`SellerLiquidacionDetailDialog.tsx`) | `saldo_final ?? saldo_periodo ?? total_cargos` | **`total_cargos`** (total facturado en el período) |
+| Chofer (`DriverSettlements.tsx`) | ya usa `monto_total` / `total_a_pagar` | verificar y dejar el total a pagar al chofer |
+| Sucursal (`BranchSettlements.tsx`) | ya usa `total` | sin cambio |
+| Terciarizado (`ThirdPartySettlementDetailDialog.tsx`) | ya usa `monto_total` | sin cambio |
+| Partner (`PartnerSettlementDetailDialog.tsx`) | `monto_comision ?? monto_total` | sin cambio |
 
-3. **Integraciones** (solo agregar el botón junto al de PDF existente):
-   - `src/components/ecommerce/SellerLiquidacionDetailDialog.tsx`
-   - `src/pages/DriverSettlements.tsx`
-   - `src/pages/BranchSettlements.tsx`
-   - `src/components/settlements/ThirdPartySettlementDetailDialog.tsx`
-   - `src/components/settlements/PartnerSettlementDetailDialog.tsx`
+Foco real del fix: **Seller eCommerce** → cambiar a `total_cargos` (el "Total del período" que se ve en el detalle).
 
-4. **Consultas**: extender los `select()` de cada listado/dialog para traer `telefono` y `nombre` del destinatario cuando falte.
+### 2. Reformatear el mensaje para que el total destaque
+
+En `src/lib/sendSettlementWhatsApp.ts` cambiar `buildSettlementMessage` para que quede así (usando negrita WhatsApp con asteriscos):
+
+```
+{saludo}, {nombre} 👋
+
+Te adjunto la {tipo} del período {desde} al {hasta}.
+
+*Total: $2.967.981,62*
+
+Aguardo comprobante de transferencia, ¡gracias! 😊
+
+{cierre}
+```
+
+## Adjunto del PDF en WhatsApp
+
+`wa.me` no admite adjuntos por diseño de WhatsApp; no es un bug nuestro. Para adjuntar el PDF de verdad hacen falta dos caminos:
+
+- **Mobile (Android APK / móvil web)**: usar `navigator.share({ files: [pdf], text })`, que abre la hoja "Compartir" del sistema y permite elegir WhatsApp con el PDF ya adjunto.
+- **Desktop**: mantener flujo actual (descarga + `wa.me` con el texto). WhatsApp Web/Desktop **no** acepta adjuntos por URL: es limitación de WhatsApp.
+
+Como el usuario principal parece estar en desktop (según captura), este plan se enfoca en **corregir el total** primero. Si querés que además implemente `navigator.share` con archivo para la APK/móvil, lo agrego en el mismo cambio — avisame y lo incluyo.
 
 ## Fuera de alcance
 
-- Envío automático con PDF adjunto (requeriría WhatsApp Business API).
-- Cambios en cálculos, permisos o estados de liquidación.
+- WhatsApp Business Cloud API (envío server-side con adjunto real sin intervención del usuario).

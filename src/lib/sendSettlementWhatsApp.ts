@@ -63,12 +63,12 @@ export function buildSettlementMessage({
   const nom = (nombre || '').trim();
   const abre = nom ? `${saludo}, ${nom} 👋` : `${saludo} 👋`;
   const periodo = periodoInicio && periodoFin
-    ? ` correspondiente al período ${formatFecha(periodoInicio)} al ${formatFecha(periodoFin)}`
+    ? ` del período ${formatFecha(periodoInicio)} al ${formatFecha(periodoFin)}`
     : '';
-  const total = ` por un total de $${formatMonto(monto)}`;
   return (
     `${abre}\n\n` +
-    `Te adjunto la ${TIPO_LABEL[tipo]}${periodo}${total}.\n` +
+    `Te adjunto la ${TIPO_LABEL[tipo]}${periodo}.\n\n` +
+    `*Total: $${formatMonto(monto)}*\n\n` +
     `Aguardo comprobante de transferencia, ¡gracias! 😊\n\n` +
     `${cierre}`
   );
