@@ -278,6 +278,15 @@ export function SellerLiquidacionDetailDialog({
                   <Download className="mr-2 h-4 w-4" />
                   PDF
                 </Button>
+                <SendWhatsAppButton
+                  tipo="seller"
+                  phone={liquidacion.seller?.telefono}
+                  nombre={liquidacion.seller?.nombre}
+                  periodoInicio={liquidacion.periodo_inicio}
+                  periodoFin={liquidacion.periodo_fin}
+                  monto={liquidacion.saldo_final ?? liquidacion.saldo_periodo ?? liquidacion.total_cargos}
+                  onDownloadPdf={handleDownloadPDF}
+                />
               </div>
             </div>
           </DialogHeader>
