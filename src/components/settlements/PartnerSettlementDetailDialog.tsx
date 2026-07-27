@@ -15,6 +15,7 @@ import { es } from 'date-fns/locale';
 import { parseDateString } from '@/lib/dateUtils';
 import { downloadPartnerSettlementPDF } from '@/lib/generateSettlementPDF';
 import { useState } from 'react';
+import { SendWhatsAppButton } from '@/components/settlements/SendWhatsAppButton';
 
 interface PartnerLiquidacion {
   id: string;
@@ -99,10 +100,21 @@ export function PartnerSettlementDetailDialog({ open, onOpenChange, liquidacion 
               <Handshake className="h-5 w-5" />
               Liquidación de Partner
             </DialogTitle>
-            <Button variant="outline" size="sm" onClick={() => downloadPartnerSettlementPDF(liquidacion)}>
-              <Download className="mr-2 h-4 w-4" />
-              PDF
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => downloadPartnerSettlementPDF(liquidacion)}>
+                <Download className="mr-2 h-4 w-4" />
+                PDF
+              </Button>
+              <SendWhatsAppButton
+                tipo="partner"
+                phone={(liquidacion as any).partner_telefono}
+                nombre={liquidacion.partner_name}
+                periodoInicio={liquidacion.periodo_inicio}
+                periodoFin={liquidacion.periodo_fin}
+                monto={liquidacion.monto_comision ?? liquidacion.monto_total}
+                onDownloadPdf={() => downloadPartnerSettlementPDF(liquidacion)}
+              />
+            </div>
           </div>
         </DialogHeader>
 

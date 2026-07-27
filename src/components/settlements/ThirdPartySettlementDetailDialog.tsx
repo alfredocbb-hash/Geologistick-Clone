@@ -19,6 +19,7 @@ import { es } from 'date-fns/locale';
 import { parseDateString } from '@/lib/dateUtils';
 import { downloadThirdPartySettlementPDF } from '@/lib/generateSettlementPDF';
 import { InvoiceDataDialog } from '@/components/invoicing/InvoiceDataDialog';
+import { SendWhatsAppButton } from '@/components/settlements/SendWhatsAppButton';
 
 interface ThirdPartyLiquidacion {
   id: string;
@@ -36,7 +37,7 @@ interface ThirdPartyLiquidacion {
   fecha_pago: string | null;
   factura_id: string | null;
   created_at: string;
-  empresa?: { nombre: string; cuit: string | null };
+  empresa?: { nombre: string; cuit: string | null; telefono?: string | null };
 }
 
 interface ThirdPartySettlementDetailDialogProps {
@@ -149,6 +150,15 @@ export function ThirdPartySettlementDetailDialog({
                   <Download className="mr-2 h-4 w-4" />
                   PDF
                 </Button>
+                <SendWhatsAppButton
+                  tipo="terciarizado"
+                  phone={liquidacion.empresa?.telefono}
+                  nombre={liquidacion.empresa?.nombre}
+                  periodoInicio={liquidacion.periodo_inicio}
+                  periodoFin={liquidacion.periodo_fin}
+                  monto={liquidacion.monto_total}
+                  onDownloadPdf={handleDownloadPDF}
+                />
               </div>
             </div>
           </DialogHeader>
