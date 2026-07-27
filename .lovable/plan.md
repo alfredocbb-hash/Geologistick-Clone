@@ -1,30 +1,22 @@
-## Objetivo
+## Problema
 
-En `src/pages/Incidents.tsx` mostrar el **remitente / seller** de cada envío y agregar **filtros** para ubicar incidencias más rápido, tanto en la pestaña de incidencias activas como en "Canceladas / Devoluciones".
+En `src/pages/Shipments.tsx` la consulta principal de envíos no filtra por el estado del seller remitente, así que los envíos de sellers inactivos siguen apareciendo (lista y stats).
 
 ## Cambios
 
-### 1. Traer datos del remitente en las queries
-- Incluir `nombre_remitente` en el `select` del envío embebido de la query de `incidentes`.
-- Incluir `nombre_remitente` en la query de `incidents-canceladas`.
+1. **Nueva subconsulta de sellers inactivos** (`src/pages/Shipments.tsx`):
+   - Traer de `ecommerce_sellers` los registros con `activo = false` del tenant actual, quedándome con sus `cliente_id` (los envíos vinculan al seller a través de `remitente_id → clientes.id`, según la regla ya establecida del proyecto).
+   - Cachear con `useQuery` bajo `['inactive-seller-cliente-ids', tenant_id]`.
 
-### 2. UI — Mostrar remitente
-- En cada card/fila de incidencia activa: agregar línea "Remitente: {nombre_remitente}" bajo el destinatario.
-- En la tabla de "Canceladas / Devoluciones": nueva columna **Remitente**.
+2. **Excluir esos remitentes de la query de envíos**:
+   - En la query `['envios', ...]` agregar `.not('remitente_id', 'in', '(id1,id2,...)')` cuando haya IDs.
+   - Sumar el array de IDs al `queryKey` para que refresque si cambia.
+   - Aplicar la misma exclusión en la query `['envios-stats', ...]` en cada `base()`.
 
-### 3. Filtros nuevos (aplican a ambas pestañas)
-Barra de filtros encima del listado con:
-- **Búsqueda** (ya existe): extender el match para incluir `nombre_remitente`.
-- **Remitente / Seller**: `Select` poblado con los remitentes distintos presentes en los resultados.
-- **Chofer**: `Select` con los choferes distintos presentes en los resultados.
-- **Tipo de incidencia**: `Select` con los tipos existentes (`tipo` de `incidentes`) — solo visible en la pestaña activa.
-- Botón **Limpiar filtros**.
+3. **Sin cambios de UI ni de otras pantallas** — solo Gestión de Envíos.
 
-Los filtros se aplican en cliente sobre los datos ya cargados (mismo patrón que el buscador actual) y se combinan entre sí.
+## Notas técnicas
 
-### 4. Sin cambios en lógica de negocio
-- No se modifican queries de estados, reglas de cancelación, ni el flujo de "Devolver al remitente".
-- Solo lectura + presentación + filtrado en cliente.
-
-## Archivos afectados
-- `src/pages/Incidents.tsx` (único archivo tocado).
+- El vínculo seller → envío es `ecommerce_sellers.cliente_id = envios.remitente_id`. Sellers sin `cliente_id` no generan envíos, así que se ignoran.
+- Búsqueda global por tracking (`isGlobalSearch`) también aplicará la exclusión — un envío histórico de un seller inactivo no debe seguir apareciendo en gestión.
+- Superadmin no se exceptúa (no fue pedido); si querés bypass para superadmin, avisame y lo agrego.
