@@ -309,8 +309,30 @@ export default function Shipments() {
 
   const effectiveTenantId = useEffectiveTenantId();
 
+  // IDs de clientes vinculados a sellers inactivos → se excluyen de gestión de envíos
+  const { data: inactiveSellerClientIds = [] } = useQuery({
+    queryKey: ['inactive-seller-cliente-ids', effectiveTenantId],
+    queryFn: async () => {
+      let q = supabase
+        .from('ecommerce_sellers')
+        .select('cliente_id')
+        .eq('activo', false)
+        .not('cliente_id', 'is', null);
+      if (effectiveTenantId) q = q.eq('tenant_id', effectiveTenantId);
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data || []).map((r: any) => r.cliente_id).filter(Boolean) as string[];
+    },
+  });
+
+  const inactiveIdsKey = inactiveSellerClientIds.join(',');
+  const applyInactiveSellerExclusion = <T extends { not: (...args: any[]) => T }>(q: T): T => {
+    if (inactiveSellerClientIds.length === 0) return q;
+    return q.not('remitente_id', 'in', `(${inactiveSellerClientIds.join(',')})`);
+  };
+
   const { data: enviosData, isLoading, refetch } = useQuery({
-    queryKey: ['envios', statusFilter, dateFrom.toISOString(), dateTo.toISOString(), isGlobalSearch ? trimmedSearch : '', effectiveTenantId],
+    queryKey: ['envios', statusFilter, dateFrom.toISOString(), dateTo.toISOString(), isGlobalSearch ? trimmedSearch : '', effectiveTenantId, inactiveIdsKey],
     queryFn: async () => {
       let query = supabase
         .from('envios')
@@ -325,6 +347,7 @@ export default function Shipments() {
         .order('created_at', { ascending: false });
 
       if (effectiveTenantId) query = query.eq('tenant_id', effectiveTenantId);
+      query = applyInactiveSellerExclusion(query);
 
       if (isGlobalSearch) {
         // Búsqueda global por tracking: ignora rango de fechas y estado para
@@ -371,11 +394,12 @@ export default function Shipments() {
   const choferMap = enviosData?.choferMap || {};
 
   const { data: stats } = useQuery({
-    queryKey: ['envios-stats', effectiveTenantId],
+    queryKey: ['envios-stats', effectiveTenantId, inactiveIdsKey],
     queryFn: async () => {
       const base = () => {
         let q = supabase.from('envios').select('*', { count: 'exact', head: true });
         if (effectiveTenantId) q = q.eq('tenant_id', effectiveTenantId);
+        q = applyInactiveSellerExclusion(q);
         return q;
       };
       const [totalRes, pendienteRes, transitoRes, entregadoRes, problemasRes] = await Promise.all([
@@ -395,6 +419,7 @@ export default function Shipments() {
       };
     },
   });
+
 
   const filteredEnvios = envios?.filter(envio => {
     if (!search) return true;
